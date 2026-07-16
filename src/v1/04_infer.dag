@@ -6554,8 +6554,6 @@ fn bind_imported_name_from_surface(state: VariantFoldState, surface: VariantExpo
   }
 }
 
-}
-
 fn merge_global_bare_variant_locals(
   precomputed: Map<String, TypeBinding>,
   state: VariantFoldState,
@@ -6622,12 +6620,6 @@ fn build_module_context(contributions: List<ItemContribution>,
     module_name: module_name,
     init: VariantFoldState { locals: empty_map(), collision_errors: [] }
   )
-<<<<<<< ours
-  let variant_fold = build_imported_variants(
-    resolved_imports: resolved_imports,
-    parent_index: parent_index,
-    variant_surfaces: variant_surfaces,
-=======
   let variant_fold = merge_global_bare_variant_locals(
     precomputed: global_bare_variant_locals,
     state: build_imported_variants(
@@ -6638,10 +6630,8 @@ fn build_module_context(contributions: List<ItemContribution>,
       module_name: module_name,
       init: local_variant_fold
     ),
->>>>>>> theirs
     source_indices: env.source_indices,
-    module_name: module_name,
-    init: local_variant_fold
+    module_name: module_name
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)

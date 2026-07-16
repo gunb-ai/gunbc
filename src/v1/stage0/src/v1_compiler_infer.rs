@@ -14581,8 +14581,6 @@ pub fn bind_imported_name_from_surface(
     }
 }
 
-<<<<<<< ours
-=======
 pub fn merge_global_bare_variant_locals(
     precomputed: Rc<HashMap<String, Rc<TypeBinding>>>,
     state: Rc<VariantFoldState>,
@@ -14593,28 +14591,29 @@ pub fn merge_global_bare_variant_locals(
     MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
         c.set(c.get() + keys.len());
     });
-    keys.iter().cloned().fold(
-        state.clone(),
-        |acc: Rc<VariantFoldState>, name: String| match v1_rt::map_get(
-            &acc.locals.clone(),
-            name.clone(),
-        ) {
-            Some(_) => acc.clone(),
-            None => match v1_rt::map_get(&precomputed, name.clone()) {
-                Some(binding) => insert_variant_owner_checked(
-                    acc.clone(),
-                    name.clone(),
-                    binding.resolved.clone(),
-                    source_indices.clone(),
-                    module_name.clone(),
-                ),
-                None => acc.clone(),
+    keys.iter()
+        .cloned()
+        .fold(
+            state.clone(),
+            |acc: Rc<VariantFoldState>, name: String| match v1_rt::map_get(
+                &acc.locals.clone(),
+                name.clone(),
+            ) {
+                Some(_) => acc.clone(),
+                None => match v1_rt::map_get(&precomputed, name.clone()) {
+                    Some(binding) => insert_variant_owner_checked(
+                        acc.clone(),
+                        name.clone(),
+                        binding.resolved.clone(),
+                        source_indices.clone(),
+                        module_name.clone(),
+                    ),
+                    None => acc.clone(),
+                },
             },
-        },
-    )
+        )
 }
 
->>>>>>> theirs
 pub fn build_imported_variants(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -14702,12 +14701,6 @@ pub fn build_module_context(
                 collision_errors: Rc::new(vec![]),
             }),
         );
-<<<<<<< ours
-        let variant_fold = build_imported_variants(
-            resolved_imports.clone(),
-            parent_index.clone(),
-            variant_surfaces.clone(),
-=======
         let variant_fold = merge_global_bare_variant_locals(
             global_bare_variant_locals.clone(),
             build_imported_variants(
@@ -14718,10 +14711,8 @@ pub fn build_module_context(
                 module_name.clone(),
                 local_variant_fold.clone(),
             ),
->>>>>>> theirs
             env.source_indices.clone(),
             module_name.clone(),
-            local_variant_fold.clone(),
         );
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
