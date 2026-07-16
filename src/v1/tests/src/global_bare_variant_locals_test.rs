@@ -3,12 +3,13 @@
 
 use std::rc::Rc;
 
-use im_rc::HashMap;
+use im_rc::{HashMap, vector};
 use v1_compiler::v1_compiler_infer::{
     build_global_bare_variant_locals, merge_global_bare_variant_locals, VariantFoldState,
     take_merge_global_bare_per_module_scans,
 };
 use v1_compiler::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding};
+use v1_compiler::v1_rt;
 use v1_compiler::v1_std_core::{
     has_child_named, leaf_node_with_span, make_span, Connective, Node, SubValueRelation,
 };
@@ -122,8 +123,8 @@ fn precomputed_merge_records_zero_has_child_named_per_module() {
     let precomputed =
         build_global_bare_variant_locals(census.clone(), source_indices.clone());
     let init = Rc::new(VariantFoldState {
-        locals: Rc::new(HashMap::new()),
-        collision_errors: Rc::new(vec![]),
+        locals: v1_rt::rc_empty_map(),
+        collision_errors: Rc::new(vector![]),
     });
 
     std::env::set_var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE", "1");
