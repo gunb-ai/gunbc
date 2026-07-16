@@ -8,6 +8,10 @@
 //!
 //! NOT floor-enrolled — run standalone. Do NOT invoke from cargo tests (whole-tree
 //! resolve OOM risk in test harness).
+//!
+//! DISSOLUTION (quiet-gull-833 / namespace migration): delete this bin and the
+//! `compile_clean_whole_tree_hard_diagnostics` helpers when the wiring bug is
+//! fixed and the PR-body cross-tab receipt has served its purpose.
 
 use std::collections::BTreeMap;
 use std::process::ExitCode;
