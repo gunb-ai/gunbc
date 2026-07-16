@@ -5,9 +5,10 @@
 
 use std::rc::Rc;
 
-use v1_compiler::v1_compiler_compile::{front_end_sources, SourceFile};
+use v1_compiler::v1_compiler_compile::{compile_sources, front_end_sources, SourceFile};
 use v1_compiler::v1_compiler_infer::build_global_bare_census;
 use v1_compiler::v1_compiler_infer_env::GlobalBareLookupState;
+use v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic;
 
 fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Rc<SourceFile>>) {
     let mut entries: Vec<_> = match std::fs::read_dir(dir) {
@@ -129,5 +130,121 @@ fn corpus_ambiguous_roster() {
         ambiguous.len(),
         census.len(),
         (unique as f64 / census.len() as f64) * 100.0
+    );
+}
+
+// --- Compile probes for the two #6640 residues (proud-gull-205) ---
+
+fn probe_src(path: &str, content: &str) -> Rc<SourceFile> {
+    Rc::new(SourceFile {
+        path: path.to_string(),
+        content: content.to_string(),
+    })
+}
+
+fn hard_diags(sources: Vec<Rc<SourceFile>>) -> Vec<String> {
+    let result = compile_sources(
+        Rc::new(sources.into()),
+        v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
+    );
+    result
+        .diagnostics
+        .iter()
+        .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect()
+}
+
+/// fold is ABSENT from global_bare census; bare `fold(...)` must resolve via the
+/// builtin/method-bridge path, never scope lookup.
+#[test]
+fn probe_bare_fold_call_in_single_module() {
+    let src = r#"module probe.fold
+
+fn uses_fold(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: fn(acc, _) { acc })
+}
+"#;
+    let d = hard_diags(vec![probe_src("dag/probe_fold.dag", src)]);
+    eprintln!("[fold-probe] hard diags = {d:?}");
+    assert!(
+        !d.iter().any(|m| m.contains("function 'fold' not found in scope")),
+        "bare fold must not fail scope lookup: {d:?}"
+    );
+}
+
+/// Same shape as dag/tools/rust_stage0_gates.dag: bare fold over a list literal.
+#[test]
+fn probe_bare_fold_over_list_literal() {
+    let src = r#"module probe.fold_lit
+
+fn any_suffix(paths: List<String>) -> Bool {
+  fold([".rs"], false, fn(acc, suffix) { acc })
+}
+"#;
+    let d = hard_diags(vec![probe_src("dag/probe_fold_lit.dag", src)]);
+    eprintln!("[fold-lit-probe] hard diags = {d:?}");
+    assert!(
+        !d.iter().any(|m| m.contains("function 'fold' not found in scope")),
+        "list-literal fold must not fail scope lookup: {d:?}"
+    );
+}
+
+/// Corpus shape: nullary fn returning a record type, bare-called cross-module (no import).
+#[test]
+fn probe_bare_nullary_fn_returning_record_resolves() {
+    let definer = r#"module std.numerical_contract
+
+type NumericalContract
+  = IntegerExact { precision: Int }
+
+fn integer_exact_contract() -> NumericalContract {
+  IntegerExact { precision: 32 }
+}
+"#;
+    let user = r#"module test.use
+
+fn witness() -> Bool {
+  match integer_exact_contract() {
+    IntegerExact { precision: p } => p == 32
+  }
+}
+"#;
+    let d = hard_diags(vec![
+        probe_src("dag/std/numerical_contract.dag", definer),
+        probe_src("dag/test/use.dag", user),
+    ]);
+    eprintln!("[record-probe] hard diags = {d:?}");
+    assert!(
+        d.is_empty(),
+        "nullary record-return fn bare-call should resolve: {d:?}"
+    );
+}
+
+/// Corpus shape: nullary fn returning a named record type, bare-called cross-module.
+#[test]
+fn probe_bare_nullary_markup_fn_resolves() {
+    let definer = r#"module gunbc.gunbhub_serve
+
+type HostilePage = ElementNode { tag: String, text: String }
+
+fn gunbhub_hostile_page() -> HostilePage {
+  ElementNode { tag: "a", text: "x" }
+}
+"#;
+    let user = r#"module test.react
+
+fn witness() -> HostilePage {
+  gunbhub_hostile_page()
+}
+"#;
+    let d = hard_diags(vec![
+        probe_src("dag/gunbc/gunbhub_serve.dag", definer),
+        probe_src("dag/test/react.dag", user),
+    ]);
+    eprintln!("[markup-probe] hard diags = {d:?}");
+    assert!(
+        !d.iter().any(|m| m.contains("type mismatch")),
+        "record-return nullary fn bare-call should not type-mismatch: {d:?}"
     );
 }
