@@ -1,6 +1,7 @@
 module test.claim.nbd_proxy_serve_transport
 
 import std.logic { Bool }
+import std.types { NonEmptyStr }
 import std.disposition { Scaffold, Terminal }
 import extdeps.bmc.webui.nbd_proxy {
   VmSlotIndexEndpoint,
@@ -17,6 +18,7 @@ import extdeps.bmc.webui.nbd_proxy_serve {
   nbd_proxy_serve_websocat_unit_name,
   nbd_proxy_serve_cited_tool_names,
   bmcweb_session_login_argv,
+  bmcweb_session_login_curl_args,
   bmcweb_session_token_env_ref,
   srv3_nbd_proxy_local_port,
   nbd_proxy_serve_requires_host_as_nbd_server,
@@ -100,14 +102,40 @@ test fn nbd_proxy_serve_carrier_names_systemd_realization_dissolution_trigger() 
 }
 
 test fn bmcweb_session_login_argv_uses_curl_authority_not_inline_secret() -> Bool {
+  witness_bmcweb_session_login_argv_semantic_surface_holds()
+}
+
+fn witness_bmcweb_session_login_argv_semantic_surface_holds() -> Bool {
+  let body = "/tmp/bmcweb-login.json" as NonEmptyStr
+  let response = "/tmp/bmcweb-login-response.json" as NonEmptyStr
+  let curl_args = bmcweb_session_login_curl_args(
+    bmc_host: asrock_srv3_live_bmc_host,
+    request_body_file: body,
+    response_path: response,
+  )
   let argv = bmcweb_session_login_argv(
     bmc_host: asrock_srv3_live_bmc_host,
-    request_body_file: "/tmp/bmcweb-login.json",
-    response_path: "/tmp/bmcweb-login-response.json",
+    request_body_file: body,
+    response_path: response,
   )
-  argv.length() > 0
-    && fold(argv, init: "", f: (acc, word) => if acc == "" { word } else { acc }) == curl_cli_tool.name
+  let curl_args_surface = fold(
+    curl_args,
+    init: "",
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
+  let argv_surface = fold(
+    argv,
+    init: "",
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
+  fold(argv, init: "", f: (acc, word) => if acc == "" { word } else { acc }) == curl_cli_tool.name
     && curl_cli_tool.name == "curl"
+    && string_contains(s: argv_surface, pattern: curl_args_surface)
+    && string_contains(s: argv_surface, pattern: "-o")
+    && string_contains(s: argv_surface, pattern: body as String)
+    && string_contains(s: argv_surface, pattern: response as String)
+    && string_contains(s: argv_surface, pattern: "https://")
+    && string_contains(s: argv_surface, pattern: "/login")
 }
 
 test fn nbd_proxy_serve_host_role_is_nbd_server() -> Bool {
