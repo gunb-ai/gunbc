@@ -23,6 +23,7 @@ import v2.lens.enforcement.gate {
 import v2.lens.enforcement.standing_intent {
   whole_corpus_scope, standing_intent_complexity_repo_wide
 }
+import v2.lens.enforcement.lens_module_gate { lens_module_gate_holds }
 import std.realization_schedule { ScheduleWitnessEntry }
 
 fn enforcement_ci_witness_entries() -> List<ScheduleWitnessEntry> {
@@ -90,6 +91,10 @@ fn complexity_repo_wide_verdict_live() -> IntentVerdict {
 
 fn enforcement_consistency_live() -> Bool {
   enforcement_consistency_holds(contracts: lens_contract_registry, receipts: coverage_receipts_live())
+}
+
+fn lens_closure_question_zero_holds_live() -> Bool {
+  lens_module_gate_holds()
 }
 
 fn fn_item_count_live() -> Int {

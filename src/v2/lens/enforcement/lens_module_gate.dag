@@ -1,0 +1,76 @@
+module v2.lens.enforcement.lens_module_gate
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.module_graph { ModuleDeclarationFact }
+import v2.lens.registry.completeness {
+  lens_registry_completeness_bound_module_paths,
+  lens_registry_completeness_consolidated_roster,
+  lens_registry_completeness_is_candidate,
+  lens_registry_completeness_live_facts,
+  lens_registry_completeness_unenrolled_count_from_facts
+}
+import std.disposition { RealizationDispatch }
+import v2.std.algebra { contains, count_where }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.text { String }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data lens_module_gate_note: String = "Question 0 (lens-consolidation-design §3.0 / W4.1): a new top-level v2.lens.* module is warranted only by a genuinely new invariant (a new mechanism and distinct verdict/remedy); otherwise the check must be a data row on an existing invariant-kernel. This gate is the fail-closed carrier for that standing intent: every live candidate module must be enrolled in LensIdV0 (a named handler with a contract) or on the consolidated-roster (an explicit second handler for an already-enrolled invariant). Infrastructure, nested submodules, and *_test modules are excluded by the same structural rules as v2.lens.registry.completeness. Forked-mechanism dedup (structural_similarity vs simulated_relationship, effect/idempotency/ownership/parallelism quartet, …) is W0/W4.2 follow-on — this module refuses only unauthorized modules, never widens to absorb them."
+
+type LensInvariantKernel
+  = ReachabilityAcyclicity
+  | DuplicatedMaterialization
+  | AuthorityOracleProvenance
+  | RelationalConformance
+  | AlgebraicComposition
+  | CostBoundRecurrence
+  | ExhaustivenessCoverage
+  | Discrimination
+  | ConstructionReviewResidue
+  | EnforcementRegistryMeta
+
+fn lens_module_gate_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn lens_module_gate_string_member(xs: List<String>, x: String) -> Bool {
+  contains(xs: xs, item: x, eq: lens_module_gate_string_eq)
+}
+
+fn lens_module_gate_module_authorized(
+  module: String,
+  bound_module_paths: List<String>
+) -> Bool {
+  !lens_registry_completeness_is_candidate(module_name: module)
+    || lens_module_gate_string_member(xs: bound_module_paths, x: module)
+    || lens_module_gate_string_member(xs: lens_registry_completeness_consolidated_roster, x: module)
+}
+
+fn lens_module_gate_unauthorized_count_from_facts(
+  facts: List<ModuleDeclarationFact>,
+  bound_module_paths: List<String>
+) -> Int {
+  lens_registry_completeness_unenrolled_count_from_facts(
+    facts: facts,
+    bound_module_paths: bound_module_paths
+  )
+}
+
+fn lens_module_gate_unauthorized_count() -> Int {
+  lens_module_gate_unauthorized_count_from_facts(
+    facts: lens_registry_completeness_live_facts(),
+    bound_module_paths: lens_registry_completeness_bound_module_paths()
+  )
+}
+
+fn lens_module_gate_holds() -> Bool {
+  lens_module_gate_unauthorized_count() == 0
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

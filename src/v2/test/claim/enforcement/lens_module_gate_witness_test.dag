@@ -1,0 +1,40 @@
+module v2.test.claim.enforcement.lens_module_gate_witness
+
+import v2.lens.module_graph { ModuleDeclarationFact }
+import v2.lens.enforcement.lens_module_gate {
+  lens_module_gate_holds,
+  lens_module_gate_unauthorized_count_from_facts
+}
+import v2.workflow.enforcement_live { lens_closure_question_zero_holds_live }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data lens_module_gate_fixture_facts: List<ModuleDeclarationFact> = [
+  ModuleDeclarationFact { module: "v2.lens.alpha_fixture", path: "src/v2/lens/alpha_fixture.dag" },
+  ModuleDeclarationFact { module: "v2.lens.synthetic_redundant_lens", path: "src/v2/lens/synthetic_redundant_lens.dag" }
+]
+
+test fn lens_closure_question_zero_holds_live() -> Bool {
+  lens_closure_question_zero_holds_live()
+}
+
+test fn lens_module_gate_holds_live() -> Bool {
+  lens_module_gate_holds()
+}
+
+test fn lens_module_gate_red_control_refuses_synthetic_redundant_module() -> Bool {
+  lens_module_gate_unauthorized_count_from_facts(
+    facts: lens_module_gate_fixture_facts,
+    bound_module_paths: ["v2.lens.alpha_fixture"]
+  ) > 0
+}
+
+test fn lens_module_gate_clean_when_fully_authorized() -> Bool {
+  lens_module_gate_unauthorized_count_from_facts(
+    facts: lens_module_gate_fixture_facts,
+    bound_module_paths: ["v2.lens.alpha_fixture", "v2.lens.synthetic_redundant_lens"]
+  ) == 0
+}
