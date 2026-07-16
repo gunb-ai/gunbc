@@ -19,6 +19,8 @@ import gunbc.live_deploy.service_ready {
   ServiceNotReady,
   service_not_ready_reason,
   live_deploy_service_ready_poll_bound,
+  live_deploy_service_ready_poll_cadence,
+  live_deploy_service_ready_poll_max_attempts,
   live_deploy_service_ready_unit_authority,
   live_deploy_service_ready_endpoint_authority,
 }
@@ -200,15 +202,15 @@ fn live_deploy_service_ready_once() -> Reconciliation<ServiceReadyApplyEffect, S
   reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
 }
 
-fn live_deploy_poll_service_ready_after_seconds(
+fn live_deploy_poll_service_ready_after_attempts(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   access: DeployAccess,
-  elapsed: Int,
+  attempt: Int,
   last_probe: String,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  let bound = second_count(s: live_deploy_service_ready_poll_bound)
-  if elapsed >= bound {
+  let max_attempts = live_deploy_service_ready_poll_max_attempts()
+  if attempt >= max_attempts {
     NotConverged {
       reason: service_not_ready_reason(refusal: ServiceNotReady {
         unit: live_deploy_service_ready_unit_authority,
@@ -219,22 +221,23 @@ fn live_deploy_poll_service_ready_after_seconds(
       applied: service_ready_apply_effect(),
     }
   } else {
-    let attempt = live_deploy_service_ready_once_for_deploy(
+    let probe = live_deploy_service_ready_once_for_deploy(
       spec: spec,
       transport: transport,
       access: access,
     )
-    if reconciliation_converged(r: attempt) {
-      attempt
+    if reconciliation_converged(r: probe) {
+      probe
     } else {
-      let delay = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
+      let cadence = to_string(second_count(s: live_deploy_service_ready_poll_cadence)) as NonEmptyStr
+      let delay = sleep.Delay.Seconds(seconds: cadence)
       if delay.success {
-        live_deploy_poll_service_ready_after_seconds(
+        live_deploy_poll_service_ready_after_attempts(
           spec: spec,
           transport: transport,
           access: access,
-          elapsed: elapsed + 1,
-          last_probe: last_probe_from_attempt(attempt: attempt)
+          attempt: attempt + 1,
+          last_probe: last_probe_from_attempt(attempt: probe)
         )
       } else {
         NotConverged {
@@ -265,11 +268,11 @@ fn live_deploy_poll_until_service_ready_for_deploy(
   transport: HostEffectTransport,
   access: DeployAccess,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  live_deploy_poll_service_ready_after_seconds(
+  live_deploy_poll_service_ready_after_attempts(
     spec: spec,
     transport: transport,
     access: access,
-    elapsed: 0,
+    attempt: 0,
     last_probe: "no probe yet",
   )
 }

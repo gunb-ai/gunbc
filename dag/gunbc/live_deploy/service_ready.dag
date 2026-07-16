@@ -34,7 +34,24 @@ type ServiceNotReady {
   last_probe: String
 }
 
-data live_deploy_service_ready_poll_bound: Second = second(count: 30)
+data live_deploy_roadmap_unit_expected_startup: Second = second(count: 30)
+
+data live_deploy_service_ready_poll_bound_reason: String = "Conservative default for gunbc-roadmap.service cold-start after systemctl restart (node HTTP bind + localhost healthz); revisit if false ServiceNotReady observed in production."
+
+data live_deploy_service_ready_poll_bound: Second = live_deploy_roadmap_unit_expected_startup
+
+data live_deploy_service_ready_poll_cadence: Second = second(count: 1)
+
+data live_deploy_host_sleep_generalization_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "Srv3BootOnceReadBackSleep",
+    field: WholeDeclaration,
+  }
+}
+
+data live_deploy_executor_pacing_sleep_frontier_note: String = "Slice 3 readiness poll paces via extdeps.tools.sleep.Delay.Seconds (executor-local modeled sleep authority). General HostSleep duration host_effect variant is deferred — live_deploy_host_sleep_generalization_dissolution_trigger; Srv3BootOnceReadBackSleep dissolves as a consumer when HostSleep lands."
 
 data live_deploy_service_ready_unit_authority: NonEmptyStr = gunbc_roadmap_unit_name
 
@@ -63,6 +80,14 @@ fn live_deploy_readiness_poll_bound_seconds() -> Second {
 
 fn live_deploy_readiness_poll_bound_is_positive() -> Bool {
   second_count(s: live_deploy_service_ready_poll_bound) > 0
+}
+
+fn live_deploy_service_ready_poll_max_attempts() -> Int {
+  second_count(s: live_deploy_service_ready_poll_bound)
+}
+
+fn live_deploy_service_ready_poll_cadence_seconds() -> Second {
+  live_deploy_service_ready_poll_cadence
 }
 
 fn service_not_ready_refusal_at_poll_bound(last_probe: String) -> ServiceNotReady {

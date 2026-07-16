@@ -2,16 +2,19 @@ module test.claim.live_deploy.readiness
 
 import gunbc.live_deploy.readiness {
   live_deploy_service_ready_once,
-  live_deploy_poll_until_service_ready,
-  live_deploy_poll_service_ready_after_seconds,
-  live_deploy_poll_until_service_ready_for_deploy,
+  live_deploy_poll_service_ready_after_attempts,
   healthz_body_groundable,
+  ground_service_ready_from_healthz,
   reconcile_service_ready_read,
   show_healthz_read_fixture_healthy,
   live_deploy_healthz_probe_script_for_port,
+  healthz_read_from_shell_apply,
+  HealthzEffectiveRead,
 }
 import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
+  live_deploy_service_ready_poll_max_attempts,
+  live_deploy_service_ready_poll_cadence_seconds,
   service_not_ready_reason,
   ServiceNotReady,
   live_deploy_service_ready_unit_authority,
@@ -19,11 +22,26 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_listen_port }
 import gunbc.ci_deploy_access { ci_deploy_srv1_access }
-import std.realization_reconcile { reconciliation_converged, NotConverged }
+import gunbc.host_effect {
+  ShellCommand,
+  HostOs,
+  host_effect_read_evidence,
+  SshShell,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import std.realization_reconcile {
+  reconciliation_converged,
+  NotConverged,
+  DoesNotGround,
+  Grounds,
+}
 import std.measure { second_count }
+import extdeps.tools.sleep
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_ssh_mock_stdout: String = "mock ssh stdin script executed"
 
 fn witness_healthz_mock_body_groundable() -> Bool {
   healthz_body_groundable(body: "{\"status\":\"ok\"}")
@@ -33,12 +51,45 @@ fn witness_healthz_bad_body_not_groundable() -> Bool {
   !healthz_body_groundable(body: "")
 }
 
+fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
+  !healthz_body_groundable(body: witness_ssh_mock_stdout)
+    && match ground_service_ready_from_healthz(
+      read: HealthzEffectiveRead {
+        body: witness_ssh_mock_stdout,
+        probe_error: "",
+      }
+    ) {
+      DoesNotGround { reason: _ } => true
+      Grounds { evidence: _ } => false
+    }
+}
+
 fn witness_transport_probe_script_targets_localhost_healthz() -> Bool {
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let script = live_deploy_healthz_probe_script_for_port(port: port)
   string_contains(s: script, pattern: "curl -sf")
     && string_contains(s: script, pattern: "127.0.0.1:")
     && string_contains(s: script, pattern: "/healthz")
+}
+
+fn witness_transport_curl_probe_over_ssh_does_not_ground_mock_stdout() -> Bool {
+  let spec = deployment_spec_srv1()
+  !reconciliation_converged(
+    r: reconcile_service_ready_read(
+      read: healthz_read_from_shell_apply(
+        r: host_effect_apply(
+          target: HostOs { node: spec.target.host },
+          effect: ShellCommand {
+            script: live_deploy_healthz_probe_script_for_port(
+              port: deployment_plan_listen_port(spec: spec)
+            ),
+          },
+          evidence: host_effect_read_evidence,
+          transport: SshShell { ssh_host: "srv1" as NonEmptyStr },
+        )
+      )
+    )
+  )
 }
 
 fn witness_service_ready_once_converges_on_healthy_fixture() -> Bool {
@@ -51,19 +102,40 @@ fn witness_reconcile_grounds_healthy_fixture_read() -> Bool {
   )
 }
 
-fn witness_poll_until_service_ready_converges_when_deploy_probe_grounds() -> Bool {
+fn witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep() -> Bool {
+  let spec = deployment_spec_srv1()
+  let probe = reconcile_service_ready_read(
+    read: healthz_read_from_shell_apply(
+      r: host_effect_apply(
+        target: HostOs { node: spec.target.host },
+        effect: ShellCommand {
+          script: live_deploy_healthz_probe_script_for_port(
+            port: deployment_plan_listen_port(spec: spec)
+          ),
+        },
+        evidence: host_effect_read_evidence,
+        transport: ci_deploy_srv1_access.transport,
+      )
+    )
+  )
+  let cadence = to_string(second_count(s: live_deploy_service_ready_poll_cadence_seconds())) as NonEmptyStr
+  let delay = sleep.Delay.Seconds(seconds: cadence)
+  !reconciliation_converged(r: probe) && delay.success
+}
+
+fn witness_bounded_poll_early_exit_on_grounded_read() -> Bool {
   reconciliation_converged(
     r: reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
   )
 }
 
 fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
-  let bound = second_count(s: live_deploy_service_ready_poll_bound)
-  let r = live_deploy_poll_service_ready_after_seconds(
+  let max_attempts = live_deploy_service_ready_poll_max_attempts()
+  let r = live_deploy_poll_service_ready_after_attempts(
     spec: deployment_spec_srv1(),
     transport: ci_deploy_srv1_access.transport,
     access: ci_deploy_srv1_access,
-    elapsed: bound,
+    attempt: max_attempts,
     last_probe: "health probe never succeeded"
   )
   match r {
@@ -74,6 +146,10 @@ fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
         && !string_contains(s: why, pattern: "converged")
     Converged { evidence: _, applied: _ } => false
   }
+}
+
+fn witness_bounded_poll_max_attempts_matches_second_bound() -> Bool {
+  live_deploy_service_ready_poll_max_attempts() == second_count(s: live_deploy_service_ready_poll_bound)
 }
 
 fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
@@ -87,21 +163,17 @@ fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")
 }
 
-fn witness_poll_entry_binds_srv1_deploy_transport() -> Bool {
-  match live_deploy_poll_until_service_ready() {
-    NotConverged { reason: _, applied: _ } => true
-    Converged { evidence: _, applied: _ } => true
-  }
-}
-
 test fn live_deploy_readiness_witnesses() -> Bool {
   witness_healthz_mock_body_groundable()
     && witness_healthz_bad_body_not_groundable()
+    && witness_ssh_mock_stdout_is_discriminating_red()
     && witness_transport_probe_script_targets_localhost_healthz()
+    && witness_transport_curl_probe_over_ssh_does_not_ground_mock_stdout()
     && witness_service_ready_once_converges_on_healthy_fixture()
     && witness_reconcile_grounds_healthy_fixture_read()
-    && witness_poll_until_service_ready_converges_when_deploy_probe_grounds()
+    && witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep()
+    && witness_bounded_poll_early_exit_on_grounded_read()
+    && witness_bounded_poll_max_attempts_matches_second_bound()
     && witness_red_control_never_ready_refuses_at_poll_bound()
     && witness_service_not_ready_refusal_shape_matches_contract()
-    && witness_poll_entry_binds_srv1_deploy_transport()
 }

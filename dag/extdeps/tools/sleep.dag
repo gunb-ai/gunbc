@@ -27,5 +27,8 @@ service sleep.Delay {
       0 => Unit
       nonzero => String "sleep failed"
     }
+    mock_response {
+      0 => { success: true } "hermetic sleep.Delay.Seconds"
+    }
   }
 }
