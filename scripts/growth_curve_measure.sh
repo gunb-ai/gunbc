@@ -8,14 +8,15 @@ ROOTS=(--source-root dag --source-root src/v2 --source-root src/v1)
 run_point() {
   local label="$1"
   local entry="$2"
-  local outdir="/tmp/gunbc-growth-${label}"
+  local outdir="/tmp/gunbc-receipt-${label}"
   rm -rf "$outdir"
   local start end elapsed
   start=$(date +%s.%N)
-  echo "=== POINT $label entry=$entry ==="
+  echo "=== $label entry=$entry ==="
   set +e
-  env GUNBC_GLOBAL_BARE_Q2_BISECT=all \
-    "$GUNBC" compile --target dag --output-dir "$outdir" "${ROOTS[@]}" --entry "$entry" 2>&1 | tee "/tmp/gunbc-growth-${label}.out"
+  env GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE=1 \
+    "$GUNBC" compile --target dag --output-dir "$outdir" "${ROOTS[@]}" --entry "$entry" 2>&1 \
+    | rg "global-bare-receipt|compiling [0-9]+|indexed"
   local ec=${PIPESTATUS[0]}
   set -e
   end=$(date +%s.%N)
@@ -24,9 +25,6 @@ run_point() {
   echo
 }
 
-export GUNBC_GLOBAL_BARE_Q2_BISECT=all
-
-run_point "n8-std-algebra" "src/v2/std/algebra.dag"
-run_point "n8-std-node" "src/v2/std/node.dag"
-run_point "n40-v2-infer" "src/v2/compiler/04_infer.dag"
-run_point "n120-ci-spec" "dag/gunbc/ci_spec.dag"
+run_point "std-algebra" "src/v2/std/algebra.dag"
+run_point "v2-infer" "src/v2/compiler/04_infer.dag"
+run_point "ci-spec" "dag/gunbc/ci_spec.dag"
