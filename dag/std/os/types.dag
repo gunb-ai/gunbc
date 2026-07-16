@@ -1,5 +1,8 @@
 module std.os.types
 
+import std.types { NonEmptyStr }
+
+
 
 type KernelFamily = Linux | Darwin | WindowsNt | LinuxGuestOnWindows
 type FileSystemSemantics = Posix | Ntfs | Apfs | WslPathTranslation
