@@ -5588,22 +5588,28 @@ fn dispatch_shell(
                 msg: format!("failed to execute '{}': {}", argv[0], e),
             })?;
 
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(&stdin_bytes)
-                .map_err(|e| InterpError::TypeError {
-                    msg: format!(
-                        "failed to write shell transport stdin for '{}': {}",
-                        argv[0], e
-                    ),
-                })?;
-        }
+        let stdin_writer = child
+            .stdin
+            .take()
+            .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
         let output = child
             .wait_with_output()
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to wait on '{}': {}", argv[0], e),
             })?;
+
+        if let Some(writer) = stdin_writer {
+            // A stdin-write error (e.g. broken pipe) here is not itself the
+            // failure to report: the child may have exited (successfully or
+            // not) before consuming all of stdin, which is ordinary POSIX
+            // pipe behavior. The child's real exit_code/stdout/stderr in
+            // `output` is the authoritative result and already flows to the
+            // `exit { .. }` clause in the .dag transport declaration.
+            let _ = writer.join().map_err(|_| InterpError::TypeError {
+                msg: format!("shell transport stdin writer for '{}' panicked", argv[0]),
+            })?;
+        }
         render_shell_completion_trace(
             output.status.code().unwrap_or(-1),
             output.stdout.len(),

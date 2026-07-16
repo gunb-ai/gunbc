@@ -55,6 +55,8 @@ mod generator_match_arm_test;
 #[cfg(test)]
 mod generic_return_clone_bound_test;
 #[cfg(test)]
+mod global_bare_corpus_census_test;
+#[cfg(test)]
 mod gunbhub_serve_program_test;
 #[cfg(test)]
 mod html_markup_smoke_test;

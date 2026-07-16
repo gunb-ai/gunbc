@@ -1,0 +1,33 @@
+module test.claim.shell_exec_run_argv_embed_witness
+
+import std.types { Bool, String }
+import std.measure { byte_size_count }
+import gunbc.live_deploy.emit { live_deploy_apply_script_for }
+import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import extdeps.filesystem.filesystem_io
+import extdeps.shell { shell_argv_max_arg_strlen }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data shell_dag_path: String = "dag/extdeps/shell/shell.dag"
+
+fn src_has(path: String, needle: String) -> Bool {
+  let r = filesystem_read(path: path)
+  string_contains(s: r.content, pattern: needle)
+}
+
+fn witness_apply_script_exceeds_local_argv_embed_budget() -> Bool {
+  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1()))
+  let budget = byte_size_count(b: shell_argv_max_arg_strlen)
+  script_len > budget
+}
+
+fn witness_shell_exec_run_uses_stdin_transport() -> Bool {
+  src_has(path: shell_dag_path, needle: "stdin: script")
+}
+
+test fn shell_exec_run_argv_embed_witnesses() -> Bool {
+  witness_apply_script_exceeds_local_argv_embed_budget()
+    && witness_shell_exec_run_uses_stdin_transport()
+}

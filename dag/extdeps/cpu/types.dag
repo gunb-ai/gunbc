@@ -1,7 +1,7 @@
 module extdeps.cpu.types
 
-import std.measure { HardwareThreadCount, Hertz, Watt }
-import std.types { Int, NonEmptyStr }
+import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt }
+import std.types { Int, NonEmptyStr, List }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 
@@ -24,6 +24,17 @@ type CpuSocket {
   contact_count: Int
 }
 
+type CpuL1CacheGeometry {
+  data_capacity_per_core: ByteSize
+  instruction_capacity_per_core: ByteSize
+  line_size: ByteSize
+}
+
+type CpuCacheGeometryCitation {
+  field: NonEmptyStr
+  authority: ExternalAuthority
+}
+
 type CpuModelCatalogRow {
   model_number: NonEmptyStr
   oem_listing_id: NonEmptyStr?
@@ -34,7 +45,8 @@ type CpuModelCatalogRow {
   nominal_sustained_per_thread_hz: Hertz
   socket: CpuSocket
   tdp_watts: Watt
-
+  l1_cache: CpuL1CacheGeometry
+  l1_cache_citations: List<CpuCacheGeometryCitation>
 }
 
 type CpuDeploymentFacts {
