@@ -77,6 +77,7 @@ fn memory_limit_converge_verdict_for_bytes_value(
   bytes_value: String,
 ) -> ConvergeVerdict {
   match observed {
+    // converge_verdict short-circuits on effective=="" → Absent (same as the direct variant arm); route avoids importing ConvergeVerdict::Absent which shadows Optional::Absent at runtime.
     MemoryLimitAbsent => converge_verdict(effective: "", expected: bytes_value)
     MemoryLimitUnbounded => Drifted
     MemoryLimitBytes { bytes: b } =>

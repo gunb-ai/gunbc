@@ -159,9 +159,9 @@ if fresh_fmt "${PUSH_CHANGED[@]}"; then NEED_FMT=1; fi
 if [[ "$NEED_DOC" == "0" && "$NEED_ARTIFACT" == "0" && "$NEED_FMT" == "0" ]]; then exit 0; fi
 if [[ "$NEED_DOC" == "1" ]]; then
 echo "[pre-push] doc reachability: doc_graph_has_no_orphan_docs"
-"$CLAIM_BATCH" --source-root dag --entry dag/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_orphan_docs --claim-run
+"$CLAIM_BATCH" --source-root dag --source-root src/v2 --entry dag/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_orphan_docs --claim-run
 echo "[pre-push] doc reachability: doc_graph_has_no_dangling_links"
-"$CLAIM_BATCH" --source-root dag --entry dag/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_dangling_links --claim-run
+"$CLAIM_BATCH" --source-root dag --source-root src/v2 --entry dag/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_dangling_links --claim-run
 fi
 if [[ "$NEED_ARTIFACT" == "1" ]]; then
 echo "[pre-push] generated-artifact drift gate"
