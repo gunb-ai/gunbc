@@ -4443,6 +4443,7 @@ type RcPatternAnalysis {
 type RcMatchAnalysis {
   needs_option_deref: Bool
   needs_deref: Bool
+  needs_rc_option_ref: Bool
 }
 
 fn empty_rc_pattern_analysis() -> RcPatternAnalysis {
@@ -4518,9 +4519,14 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   }
   let arms_want_option = arm_analyses |> any(a => a.matches_option_rc_variant)
   let arms_want_deref = arm_analyses |> any(a => a.matches_rc_variant)
+  let scrutinee_is_call = match scrutinee.expr_data {
+    ExprCall { call_semantics: _, descent_evidence: _ } => true
+    _ => false
+  }
 
   RcMatchAnalysis {
-    needs_option_deref: arms_want_option,
+    needs_rc_option_ref: arms_want_option && scrutinee_is_optional && scrutinee_is_call,
+    needs_option_deref: arms_want_option && !(scrutinee_is_optional && scrutinee_is_call),
     needs_deref: if scrutinee_is_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref }
   }
 }
@@ -6339,7 +6345,9 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
 
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
   let needs_string_from = has_string_lit_with_bind(arms: arms)
-  if rc_match.needs_option_deref {
+  if rc_match.needs_rc_option_ref {
+    concat("match ", scrut_str, ".as_ref()", clone_iterator_suffix(), " {\n", arms_str, "\n}")
+  } else if rc_match.needs_option_deref {
     concat("match ", scrut_str, ".as_deref()", clone_iterator_suffix(), " {\n", arms_str, "\n}")
   } else if rc_match.needs_deref {
     let sharing = language_spec(target: Rust).sharing
