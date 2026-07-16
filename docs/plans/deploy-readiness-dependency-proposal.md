@@ -29,19 +29,18 @@ The substrate is already a dependency DAG (DESIGN §4) and there is already a re
 - **The reconcile *satisfies* the precondition — it does not skip it or race it.** The realization of "make `ServiceReady` true" is **poll-until-healthy-or-timeout**, bounded. This is NOT a `sleep`, and NOT code inside the readback — it is the spine driving the precondition to satisfaction before the dependent effect runs (the substrate's bounded-forward execution, §4, on the existing ready-set). The wait falls out of the dependency, it is not hand-authored ordering.
 - **Fail-closed on timeout.** If readiness is not reached within the declared bound, the reconcile REFUSES with a typed, located diagnostic — `ServiceNotReady { unit, endpoint, waited, last_probe }` — and never proceeds to the readback, never fabricates convergence. (Contrast today: an instant `JSON.parse('')` throw mislabeled "healthz json parse failed", which blames the parser for a readiness gap.)
 
-### The health probe is a modeled operation — and its GET op is a genuine prerequisite gap
+### The health probe is a modeled operation — grounded on the EXISTING production REST transport
 
-- `ServiceReady`'s evidence is a **modeled HTTP GET** (GET `health_endpoint` → in-process typed response) realized via curl as *one* transport, not `curl -sf | node -e`.
+- `ServiceReady`'s evidence is a **modeled HTTP GET** (GET `health_endpoint` → in-process typed response), NOT `curl -sf | node -e`.
 - The JSON validity check becomes a **typed response decode** (the existing `roadmap_site_healthz_validate` JSON-parse is the decode's realization), not `node -e 'JSON.parse(...)'`.
 - The two digest checks (`/ROADMAP.md`, `/target/roadmap-dispatch.json`) are the same GET→verify shape (§2 one operation, N uses) — each `depends-on ServiceReady`, not N independent racing curls.
 
-**PREREQUISITE GAP (surface this to the operator — it is part of what the bump decides):** there is **no canonical http-client GET** in extdeps today. The existing http surfaces are fragmented and none fits a GET→in-process-body probe:
-- `extdeps/http/server.dag` — HTTP *server* types (`HttpStatusResponse`), not a client.
-- `extdeps/tools/curl.dag` — `curl.Http` has only `PostJsonFromFile` + `DownloadToFile` (DownloadToFile writes a *file*; the probe needs the body **in-process** to validate JSON).
-- `extdeps/bmc/http.dag` — `redfish.Http`, BMC-domain-specific (`GetServiceRoot`/`GetSystem`).
-- `extdeps/test/http_pilot.dag` — `test.HttpPilot`, a test pilot.
+**CORRECTION (operator, 2026-07-16): the canonical http-client GET already exists — do NOT extend `curl.Http` or coin a new surface.** The earlier draft claimed "no canonical http-client GET in extdeps"; that survey missed the `transport rest` mechanism. There **is** a well-defined, production-proven REST client transport:
+- **`transport rest { method: GET, path: "..." }`** with a service-level `config { endpoint, auth, auth_input }` and a **typed `response { 200 => T, 401/403/404 => E, 5xx => E }`** — grounded on `std.types.HttpMethod` / `TransportRequest` / `TransportResponse` and `extdeps/transports/rest.dag` `RestTransportConfig` (cited to **RFC 9110**, RED anchor already present).
+- **Production consumers** (GET → in-process typed body, exactly the probe shape): `tailscale.AclAdmin.GetPolicy`, `github.pulls.Get`, `cloud.gcp.iam.GetIamPolicy`, `llm/openai_rest`, `llm/anthropic_rest`. `redfish.Http`'s `GetServiceRoot`/`GetSystem` are the same GET→body shape realized over a curl transport.
+- **Realized in the v1 seed** (`src/v1/stage0/src/bin/effects_rest_transport_witness.rs`, `cli_run.rs`) — it runs today, not a paper type.
 
-So the probe realization is a **scoped prerequisite sub-task**: land a canonical http-client GET as an **extension of the existing `curl.Http`** (curl the *transport*, behind an agnostic http-client *interface* — §3 Realization: interface shape central, curl transport peripheral, one of N), **not a 5th http surface**. The readiness slice depends on this; do not fork a new http surface to get it.
+So the probe is a **`service roadmap.Health { operation GetHealthz { transport rest { method: GET, path: "/healthz" } response { 200 => HealthOk, 5xx => HealthUnavailable } } }`** on the existing REST authority — one new *domain operation*, zero new transport/surface. Sub-task 1 collapses from "build a canonical GET" to "model the roadmap health probe as a REST GET operation." Do **not** fork a 5th http surface and do **not** extend `curl.Http`; reuse `transport rest`.
 
 ## 3. Why the readiness edge earns its place (§6)
 
@@ -53,7 +52,7 @@ So the probe realization is a **scoped prerequisite sub-task**: land a canonical
 
 - **Readiness edge = existing `src/v2/std/dependency.dag` ready-set** (`ReadinessFoldState`, `ready_set_fold_step`, `ready_set`) — the concrete reuse target. `ServiceReady` is a *predicate*, not a new readiness subsystem.
 - Reuse `HostEffectIntent` / `HostEffectEvidence` / `Reconciliation` from `host_effect_realize` — `ServiceReady` is a precondition on the intent, its evidence a successful health probe (HTTP 200 + parseable body). Mirrors the existing reconcile evidence pattern.
-- **Probe GET = extend the existing `curl.Http` authority** (see the prerequisite gap in §2), not a new http surface.
+- **Probe GET = the existing `transport rest { method: GET }` mechanism** (see §2 correction), production-proven and v1-realized — a new domain *operation*, not a new transport/surface, not a `curl.Http` extension.
 - One script receiver authority (bash) — the Slice 3 direction #6746 already started; the readiness edge does not fork it.
 - DFS the concept DAG before minting the remaining names: the timeout `Bound` should reuse an existing measure/duration type under `std` if one exists before adding a new name. (Flagged for the implementing slice; not pre-decided here.)
 
@@ -70,6 +69,6 @@ Slice 3's dissolution is currently gated on host_effect **Phase B** (srv3 `OsIns
 
 ## 7. Prerequisite sub-tasks (scoped, for the bump)
 
-1. **Canonical http-client GET** — extend `curl.Http` with a GET→in-process-response op behind an agnostic http-client interface (§2/§3). Blocks the probe realization. Not a new http surface.
-2. **`ServiceReady` predicate + readiness edge** on the dissolved spine, riding `dependency.dag`'s ready-set + `Reconciliation`. The readiness slice proper (royal-carp-451 owns).
-3. Both land **with** Slice 3's heredoc/apt/systemctl dissolution, not before it on the raw string.
+1. **Roadmap health-probe REST operation** — model `roadmap.Health.GetHealthz` as `transport rest { method: GET, path: "/healthz" }` with a typed `response`, on the **existing** `transports.rest` + `std.types.HttpMethod` authority (production-proven: tailscale/github/gcp/llm; v1-realized). NOT a new http surface, NOT a `curl.Http` extension. Small: one domain operation over existing machinery.
+2. **`ServiceReady` predicate + readiness edge** on the dissolved spine, riding `dependency.dag`'s ready-set + `Reconciliation`. The readiness slice proper.
+3. Both land **with** Slice 3's heredoc/apt/systemctl dissolution, not before it on the raw string — integration point to confirm with calm-ferret-849 (lane owner).
