@@ -6016,18 +6016,31 @@ pub fn infer_record_lit(
                     scope.clone(),
                 ) {
                     Some(inst_fields) => inst_fields.clone(),
-                    None => match lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) {
-                        Some(decl) => {
-                            if (((decl.connective.clone() == Connective::Conj)
-                                && ((decl.params.clone().len() as i64) == 0))
-                                && ((decl.children.clone().len() as i64) > 0))
-                            {
-                                decl.children.clone()
-                            } else {
-                                Rc::new(vec![])
+                    None => match record_lit_fields_from_expected(
+                        type_name.clone(),
+                        expected.clone(),
+                        scope.clone(),
+                    ) {
+                        Some(fields) => fields.clone(),
+                        None => match expected.clone() {
+                            Some(_) => {
+                                record_lit_expected_fields(type_name.clone(), scope.clone())
                             }
-                        }
-                        None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                            None => match lookup_type_by_name(scope.type_env.clone(), tn_str.clone())
+                            {
+                                Some(decl) => {
+                                    if (((decl.connective.clone() == Connective::Conj)
+                                        && ((decl.params.clone().len() as i64) == 0))
+                                        && ((decl.children.clone().len() as i64) > 0))
+                                    {
+                                        decl.children.clone()
+                                    } else {
+                                        Rc::new(vec![])
+                                    }
+                                }
+                                None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                            },
+                        },
                     },
                 },
             }
