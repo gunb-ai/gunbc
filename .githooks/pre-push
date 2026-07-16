@@ -114,7 +114,7 @@ fresh_artifact_path() {
 fresh_artifact() {
   local p
   for p in "$@"; do fresh_artifact_path "$p" && return 0; done
-  if ! "$CLAIM_BATCH" --source-root dag --entry dag/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet 2>/dev/null; then return 0; fi
+  if ! "$CLAIM_BATCH" --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet 2>/dev/null; then return 0; fi
   return 1
 }
 fresh_fmt_path() {
@@ -183,13 +183,13 @@ if fresh_witness "${PUSH_CHANGED[@]}"; then NEED_WITNESS=1; fi
 if [[ "$NEED_DOC" == "0" && "$NEED_ARTIFACT" == "0" && "$NEED_FMT" == "0" && "$NEED_WITNESS" == "0" ]]; then exit 0; fi
 if [[ "$NEED_DOC" == "1" ]]; then
 echo "[pre-push] doc reachability: doc_graph_has_no_orphan_docs"
-"$CLAIM_BATCH" --source-root dag --entry dag/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_orphan_docs --claim-run
+"$CLAIM_BATCH" --source-root dag --source-root src/v2 --entry dag/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_orphan_docs --claim-run
 echo "[pre-push] doc reachability: doc_graph_has_no_dangling_links"
-"$CLAIM_BATCH" --source-root dag --entry dag/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_dangling_links --claim-run
+"$CLAIM_BATCH" --source-root dag --source-root src/v2 --entry dag/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_dangling_links --claim-run
 fi
 if [[ "$NEED_ARTIFACT" == "1" ]]; then
 echo "[pre-push] generated-artifact drift gate"
-if ! "$CLAIM_BATCH" --source-root dag --entry dag/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet 2>/dev/null; then
+if ! "$CLAIM_BATCH" --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet 2>/dev/null; then
   echo "[pre-push] generated artifacts are stale — run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet   (then commit the regenerated files and re-push, or 'git push --no-verify' to skip)" >&2
   exit 1
 fi
