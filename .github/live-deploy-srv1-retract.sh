@@ -8,3 +8,4 @@ sudo -n rm -f /etc/systemd/system/gunbc-roadmap.service
 sudo -n systemctl daemon-reload
 sudo -n rm -f /opt/gunbc/server.js
 echo live-deploy-receipt host=srv1 fold=retract verdict=converged
+
