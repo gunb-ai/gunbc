@@ -3,6 +3,7 @@ module v2.lens.enforcement.lens_module_gate.compile_gate
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.enforcement.lens_module_gate { lens_module_gate_blocking_holds }
 import std.disposition { RealizationDispatch }
+import std.algebra { Empty }
 import v2.std.diagnostic {
   Diagnostic,
   ExternalContractUnknown,
@@ -32,7 +33,7 @@ fn lens_module_gate_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   } else {
     let d = lens_module_gate_blocking_diagnostic(n: node)
     Rejected {
-      diagnostics: NonEmptyDiagnostics { head: d, tail: [] }
+      diagnostics: NonEmptyDiagnostics { head: d, tail: Empty }
     }
   }
 }

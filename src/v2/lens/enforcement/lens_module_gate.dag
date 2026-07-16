@@ -24,7 +24,7 @@ import v2.lens.registry.completeness {
   lens_registry_completeness_unenrolled_count_from_facts
 }
 import std.disposition { RealizationDispatch }
-import v2.std.algebra { any, contains, count_where, filter, fold, fold_list, list_head, list_snoc_item, HeadFound, HeadAbsent }
+import v2.std.algebra { any, contains, count_where, filter, fold_list, list_head, list_snoc_item, HeadFound, HeadAbsent }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -614,35 +614,60 @@ fn lens_module_gate_is_audit_residue_pair(left: String, right: String) -> Bool {
   )
 }
 
-fn lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: List<LensInvariantSurface>) -> Int {
-  fold(surfaces, init: 0, f: fn(acc, surface) {
-    if lens_module_gate_is_genuinely_new(surface: surface) {
-      let pair = lens_module_gate_verdict_remedy_pair(surface: surface)
-      let earlier = filter(
-        xs: surfaces,
-        predicate: fn(other) {
-          other.module != surface.module
-            && lens_module_gate_is_genuinely_new(surface: other)
-            && lens_module_gate_verdict_remedy_pair_eq(
-              a: lens_module_gate_verdict_remedy_pair(surface: other),
-              b: pair
-            )
-            && other.module < surface.module
-        }
-      )
-      match list_head(xs: earlier) {
-        HeadFound { value: prior } =>
-          if lens_module_gate_is_audit_residue_pair(left: prior.module, right: surface.module) {
-            acc
-          } else {
-            acc + 1
-          }
-        HeadAbsent => acc
+type RedundantBlockingAcc {
+  redundant: Int
+  seen: List<LensInvariantSurface>
+}
+
+fn lens_module_gate_redundant_blocking_step(
+  acc: RedundantBlockingAcc,
+  surface: LensInvariantSurface
+) -> RedundantBlockingAcc {
+  if lens_module_gate_is_genuinely_new(surface: surface) {
+    let pair = lens_module_gate_verdict_remedy_pair(surface: surface)
+    let prior = filter(
+      xs: acc.seen,
+      predicate: fn(other) {
+        lens_module_gate_is_genuinely_new(surface: other)
+          && lens_module_gate_verdict_remedy_pair_eq(
+            a: lens_module_gate_verdict_remedy_pair(surface: other),
+            b: pair
+          )
       }
-    } else {
-      acc
+    )
+    match list_head(xs: prior) {
+      HeadFound { value: earlier } =>
+        if lens_module_gate_is_audit_residue_pair(left: earlier.module, right: surface.module) {
+          RedundantBlockingAcc {
+            redundant: acc.redundant,
+            seen: list_snoc_item(xs: acc.seen, item: surface)
+          }
+        } else {
+          RedundantBlockingAcc {
+            redundant: acc.redundant + 1,
+            seen: list_snoc_item(xs: acc.seen, item: surface)
+          }
+        }
+      HeadAbsent =>
+        RedundantBlockingAcc {
+          redundant: acc.redundant,
+          seen: list_snoc_item(xs: acc.seen, item: surface)
+        }
     }
-  })
+  } else {
+    RedundantBlockingAcc {
+      redundant: acc.redundant,
+      seen: list_snoc_item(xs: acc.seen, item: surface)
+    }
+  }
+}
+
+fn lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: List<LensInvariantSurface>) -> Int {
+  fold_list(
+    xs: surfaces,
+    empty: RedundantBlockingAcc { redundant: 0, seen: [] },
+    cons: lens_module_gate_redundant_blocking_step
+  ).redundant
 }
 
 fn lens_module_gate_audit_residue_count_from_surfaces(surfaces: List<LensInvariantSurface>) -> Int {
