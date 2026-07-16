@@ -1,0 +1,67 @@
+module test.claim.gpu_interconnect_and_sm_cache_witness
+
+import extdeps.gpu.nvidia {
+  nvidia_rtx_5090_catalog,
+  rtx_5090_interconnect,
+  rtx_5090_sm_cache_citations,
+  rtx_5090_sm_cache_geometry,
+}
+import extdeps.gpu.types { cuda_compute_capabilities_authority }
+import extdeps.gpu.apple { apple_m5_gpu_catalog }
+import extdeps.storage.types { PcieGeneration, pcie_link_bandwidth }
+import std.logic { Bool }
+import std.nat { Nat }
+import std.measure { bandwidth_count, byte_size_count }
+import std.types { list_length }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data rtx_5090_pcie_lane_count: Nat = 16
+data rtx_5090_sm_shared_memory_bytes: Nat = 102400
+data rtx_5090_sm_register_file_bytes: Nat = 262144
+
+fn w_rtx_5090_interconnect_is_the_shared_pcie_authority() -> Bool {
+  match nvidia_rtx_5090_catalog.interconnect {
+    Present { value: link } =>
+      link.generation == Gen5
+        && link.lane_count == rtx_5090_pcie_lane_count
+        && link == rtx_5090_interconnect
+        && bandwidth_count(b: pcie_link_bandwidth(link: link)) > 0
+    Absent => false
+  }
+}
+
+fn w_rtx_5090_sm_cache_geometry_matches_cuda_docs() -> Bool {
+  match nvidia_rtx_5090_catalog.sm_cache {
+    Present { value: geometry } =>
+      byte_size_count(b: geometry.shared_memory_per_sm) == rtx_5090_sm_shared_memory_bytes
+        && byte_size_count(b: geometry.register_file_per_sm) == rtx_5090_sm_register_file_bytes
+        && geometry == rtx_5090_sm_cache_geometry
+    Absent => false
+  }
+}
+
+fn w_rtx_5090_sm_cache_citations_cover_both_fields() -> Bool {
+  let citations = rtx_5090_sm_cache_citations
+  list_length(items: citations) == 2
+    && citations.first().authority == cuda_compute_capabilities_authority
+}
+
+fn w_apple_m5_gpu_leaves_unified_soc_facts_unfabricated() -> Bool {
+  match apple_m5_gpu_catalog.interconnect {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match apple_m5_gpu_catalog.sm_cache {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+test fn gpu_interconnect_and_sm_cache_witnesses() -> Bool {
+  w_rtx_5090_interconnect_is_the_shared_pcie_authority()
+    && w_rtx_5090_sm_cache_geometry_matches_cuda_docs()
+    && w_rtx_5090_sm_cache_citations_cover_both_fields()
+    && w_apple_m5_gpu_leaves_unified_soc_facts_unfabricated()
+}
