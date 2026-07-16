@@ -3402,6 +3402,94 @@ fn cost_conditional(condition: CostExpr, branches: List<CostExpr>) -> CostExpr {
   cost_seq(a: condition, b: max_branch)
 }
 
+data space_of_note: String = "space-complexity increment 1a (space-complexity-design.md): peak working-set derivation as the structural dual of the time cost-expr. Sequential steps RELEASE, so time's CostAdd (sum) becomes space's CostMax; concurrent steps CO-RESIDE, so time's CostMax becomes space's CostAdd (P1's space_measure_seq=max / space_measure_par=add lifted to CostExpr). A fold's iterations release, so CostSum collapses to its body's peak — the headline dual: a reducing fold is O(n) time but O(1) space. The accumulator/output_size additive term is added at the summary grain (peak_space = space_of(work) + output_size), not here. CostUnknown passes through fail-closed (the SpaceBoundUnknown frontier: counted now, error later)."
+
+fn space_of(work: CostExpr) -> CostExpr {
+  match work {
+    CostConst { value: v } => CostConst { value: v }
+    CostAdd { left: l, right: r } => cost_par(a: space_of(work: l), b: space_of(work: r))
+    CostMax { left: l, right: r } => cost_seq(a: space_of(work: l), b: space_of(work: r))
+    CostMul { left: l, right: r } => cost_seq(a: space_of(work: l), b: space_of(work: r))
+    CostSum { binder: _, upper: _, body: bd } => space_of(work: bd)
+    CostLog { base: b, argument: a } => CostLog { base: b, argument: a }
+    CostExtern { name: n } => CostExtern { name: n }
+    CostUnknown { reason: r } => CostUnknown { reason: r }
+  }
+}
+
+fn fold_peak_space(body_peak: CostExpr, output_size: CostExpr) -> CostExpr {
+  cost_seq(a: output_size, b: space_of(work: body_peak))
+}
+
+fn eval_size_expr_concrete(s: SizeExpr, env: Map<String, Int>) -> Int? {
+  match s {
+    SizeConst { value: v } => Present { value: v }
+    SizeVar { name: n } => map_get(env, n)
+    SizeLen { collection: c } => map_get(env, c)
+    SizeAdd { left: l, right: r } =>
+      match eval_size_expr_concrete(s: l, env: env) {
+        Present { value: lv } => match eval_size_expr_concrete(s: r, env: env) {
+          Present { value: rv } => Present { value: lv + rv }
+          Absent => none
+        }
+        Absent => none
+      }
+    SizeMax { left: l, right: r } =>
+      match eval_size_expr_concrete(s: l, env: env) {
+        Present { value: lv } => match eval_size_expr_concrete(s: r, env: env) {
+          Present { value: rv } => Present { value: if lv >= rv { lv } else { rv } }
+          Absent => none
+        }
+        Absent => none
+      }
+  }
+}
+
+fn int_max2(a: Int, b: Int) -> Int {
+  if a >= b { a } else { b }
+}
+
+fn eval_cost_expr_concrete(e: CostExpr, env: Map<String, Int>) -> Int? {
+  match e {
+    CostConst { value: v } => Present { value: v }
+    CostAdd { left: l, right: r } =>
+      match eval_cost_expr_concrete(e: l, env: env) {
+        Present { value: lv } => match eval_cost_expr_concrete(e: r, env: env) {
+          Present { value: rv } => Present { value: lv + rv }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostMul { left: l, right: r } =>
+      match eval_cost_expr_concrete(e: l, env: env) {
+        Present { value: lv } => match eval_cost_expr_concrete(e: r, env: env) {
+          Present { value: rv } => Present { value: lv * rv }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostMax { left: l, right: r } =>
+      match eval_cost_expr_concrete(e: l, env: env) {
+        Present { value: lv } => match eval_cost_expr_concrete(e: r, env: env) {
+          Present { value: rv } => Present { value: int_max2(a: lv, b: rv) }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostSum { binder: _, upper: up, body: bd } =>
+      match eval_size_expr_concrete(s: up, env: env) {
+        Present { value: n } => match eval_cost_expr_concrete(e: bd, env: env) {
+          Present { value: bv } => Present { value: n * bv }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostLog { base: _, argument: _ } => none
+    CostExtern { name: _ } => none
+    CostUnknown { reason: _ } => none
+  }
+}
+
 fn collection_output(binder: String, size: SizeExpr) -> Map<String, CostExpr> {
   let result = seed_cost_map(key: "result", value: cost_loop(binder: binder, iterations: size, body: CostConst { value: 1 }))
   result
