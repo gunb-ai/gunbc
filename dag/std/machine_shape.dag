@@ -1,13 +1,12 @@
 module std.machine_shape
 
-import std.types { NonEmptyStr, Bool, List, list_length }
+import std.types { NonEmptyStr, Bool, List, Map, list_length }
 import std.measure {
   ByteSize,
   Bandwidth,
   Nanosecond,
   HardwareThreadCount,
 }
-import std.cache_interface { ReadLatencyClass }
 
 type DomainId = NonEmptyStr where brand("DomainId")
 type LevelId = NonEmptyStr where brand("LevelId")
@@ -39,7 +38,7 @@ type ExecutionDomain {
 
 type InterconnectLink {
   bandwidth: Bandwidth
-  latency_class: ReadLatencyClass?
+  latency: Nanosecond?
 }
 
 type InterconnectEdge
@@ -59,39 +58,63 @@ type MachineShapeConstruction
   = MachineShapeOk { shape: MachineShape }
   | MachineShapeRefused { cause: MachineShapeRefusalCause }
 
+type MachineShapeValidationIndex {
+  domain_ids: Map<DomainId, Bool>
+  owner_levels: Map<DomainId, Map<LevelId, Bool>>
+}
+
 fn execution_shape_independent_lanes(lane_count: HardwareThreadCount) -> ExecutionShape {
   ExecutionShape { lane_count: lane_count, grouping: IndependentLanes }
 }
 
-fn domain_id_in_list(domains: List<ExecutionDomain>, id: DomainId) -> Bool {
-  fold(domains, init: false, f: (found, d) => found || d.id == id)
+fn memory_level_id_index(levels: List<MemoryLevel>) -> Map<LevelId, Bool> {
+  fold(levels, init: empty_map(), f: (acc, level) => map_insert(acc, level.id, true))
 }
 
-fn owner_has_level(domains: List<ExecutionDomain>, owner_id: DomainId, level_id: LevelId) -> Bool {
-  fold(domains, init: false, f: (found, d) =>
-    found || (d.id == owner_id && level_id_in_memory(levels: d.memory, level: level_id)))
+fn machine_shape_build_validation_index(domains: List<ExecutionDomain>) -> MachineShapeValidationIndex {
+  fold(domains, init: MachineShapeValidationIndex { domain_ids: empty_map(), owner_levels: empty_map() }, f: (acc, domain) =>
+    MachineShapeValidationIndex {
+      domain_ids: map_insert(acc.domain_ids, domain.id, true)
+      owner_levels: map_insert(acc.owner_levels, domain.id, memory_level_id_index(levels: domain.memory))
+    })
 }
 
-fn level_id_in_memory(levels: List<MemoryLevel>, level: LevelId) -> Bool {
-  fold(levels, init: false, f: (found, m) => found || m.id == level)
+fn domain_id_in_index(index: Map<DomainId, Bool>, id: DomainId) -> Bool {
+  match map_get(index, id) {
+    Present { value: true } => true
+    Present { value: false } => false
+    Absent => false
+  }
 }
 
-fn machine_shape_validate_edge(shape: MachineShape, edge: InterconnectEdge) -> MachineShapeConstruction? {
+fn owner_has_level_in_index(index: Map<DomainId, Map<LevelId, Bool>>, owner_id: DomainId, level_id: LevelId) -> Bool {
+  match map_get(index, owner_id) {
+    Present { value: levels } =>
+      match map_get(levels, level_id) {
+        Present { value: true } => true
+        Present { value: false } => false
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+fn machine_shape_validate_edge(index: MachineShapeValidationIndex, edge: InterconnectEdge) -> MachineShapeConstruction? {
   match edge {
     LinkEdge { from: from_id, to: to_id, link: _ } =>
-      if !domain_id_in_list(domains: shape.domains, id: from_id) {
+      if !domain_id_in_index(index: index.domain_ids, id: from_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: from_id } } }
-      } else if !domain_id_in_list(domains: shape.domains, id: to_id) {
+      } else if !domain_id_in_index(index: index.domain_ids, id: to_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: to_id } } }
       } else {
         none
       }
     SharedLevelEdge { owner: owner_id, sharer: sharer_id, level: level_id } =>
-      if !domain_id_in_list(domains: shape.domains, id: owner_id) {
+      if !domain_id_in_index(index: index.domain_ids, id: owner_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: owner_id } } }
-      } else if !domain_id_in_list(domains: shape.domains, id: sharer_id) {
+      } else if !domain_id_in_index(index: index.domain_ids, id: sharer_id) {
         Present { value: MachineShapeRefused { cause: UnknownDomain { id: sharer_id } } }
-      } else if !owner_has_level(domains: shape.domains, owner_id: owner_id, level_id: level_id) {
+      } else if !owner_has_level_in_index(index: index.owner_levels, owner_id: owner_id, level_id: level_id) {
         Present { value: MachineShapeRefused { cause: UnknownLevel { owner: owner_id, level: level_id } } }
       } else {
         none
@@ -100,10 +123,11 @@ fn machine_shape_validate_edge(shape: MachineShape, edge: InterconnectEdge) -> M
 }
 
 fn machine_shape_validate(shape: MachineShape) -> MachineShapeConstruction {
+  let index = machine_shape_build_validation_index(domains: shape.domains)
   match fold(shape.edges, init: none, f: (refused, edge) =>
     match refused {
       Present { value: _ } => refused
-      Absent => machine_shape_validate_edge(shape: shape, edge: edge)
+      Absent => machine_shape_validate_edge(index: index, edge: edge)
     }) {
     Present { value: refused } => refused
     Absent => MachineShapeOk { shape: shape }

@@ -42,7 +42,7 @@ fn pcie_link_bandwidth(link: PcieLink) -> Bandwidth {
 fn pcie_interconnect_link(link: PcieLink) -> InterconnectLink {
   InterconnectLink {
     bandwidth: pcie_link_bandwidth(link: link)
-    latency_class: none
+    latency: none
   }
 }
 
