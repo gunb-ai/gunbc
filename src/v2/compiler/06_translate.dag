@@ -75,10 +75,10 @@ import v2.std.node {
   TypeNode,
   fold_node,
   node_rebuild,
-  node_subtree_count,
   well_formed,
   SyntheticOccurrence
 }
+import v2.std.node_count { node_subtree_count }
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.compilers.target_model {
   ConcreteSyntaxToken,
