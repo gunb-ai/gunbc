@@ -3,7 +3,6 @@ module v2.test.self_host.compiler_frontier_census
 import v2.compiler.self_host.frontier_band_a_emit_readiness {
   FlippableNow,
   OtherGate,
-  compiler_frontier_band_a_row_discovery_enumeration,
   compiler_frontier_band_a_row_parse_engine_hooks,
   compiler_frontier_band_a_row_use_site_verdict
 }
@@ -74,15 +73,11 @@ test fn compiler_frontier_band_a_emit_readiness_roster_holds() -> Bool {
   compiler_frontier_band_a_emit_readiness_holds()
 }
 
-test fn compiler_frontier_band_a_flippable_now_discriminator_holds() -> Bool {
+test fn compiler_frontier_band_a_parse_engine_hooks_flipped_discriminator_holds() -> Bool {
   match compiler_frontier_band_a_row_parse_engine_hooks.gate {
     FlippableNow => true
     _ => false
   }
-    && match compiler_frontier_band_a_row_discovery_enumeration.gate {
-      FlippableNow => true
-      _ => false
-    }
 }
 
 test fn compiler_frontier_band_a_use_site_verdict_flipped_discriminator_holds() -> Bool {

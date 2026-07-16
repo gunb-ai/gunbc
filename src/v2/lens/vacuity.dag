@@ -1,0 +1,315 @@
+module v2.lens.vacuity
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.std.algebra { count_where, length }
+import v2.std.collection { List }
+import v2.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.std.verification {
+  BoolWitnessClaim,
+  CompilesClaim,
+  DiagnosticClaim,
+  EmitVsEval,
+  EqualsClaim,
+  EvalOnly,
+  NodeCorpus,
+  RoundTripClaim,
+  StructuralEqualsClaim,
+  TestClaim,
+  TestClaimTransportMode,
+  UnifiedTestClaim
+}
+
+data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). VacuityEvidenceRecord carries TestClaimTransportMode directly — the consumer/observation dimension (rung_5 EmitVsEval counterexample: distinct execution paths, not operand syntax). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3). W3 trigger: re-audit classify_vacuity_same_eval_record's deepest else (known-provenance residue → ProvenIndependent) — when gating on ProvenDuplicate, that residue may need Unknown instead of a positive ProvenIndependent claim."
+
+data vacuity_operand_provenance_independent_oracle_predicate_dissolution_note: String = "🟡 dissolve-on: operand_provenance_is_independent_oracle is a hand-rolled subset predicate over TestClaimOperandProvenance until symbol_index_fill/reference_deps ground operand provenance at census time (W3). DISSOLVES WHEN provenance is read from the containment-tree projection and independent-oracle membership is construction-side (illegal states unrepresentable) or a single canonical accessor replaces the predicate."
+
+type TestClaimOperandProvenance
+  = ReadBack
+  | IndependentTranscription
+  | BehavioralComputation
+  | RenderingTransform
+  | LiteralOracle
+  | TemporalExternalAuthority
+  | HelperAlias
+  | OperandProvenanceUnknown
+
+type VacuityEvidenceSubject
+  = EqualityOperands
+  | CompilesOutput
+  | DiagnosticRejection
+  | RoundTripInput
+  | SubjectUnknown
+
+type VacuityEvidenceRecord {
+  subject: VacuityEvidenceSubject
+  transport: TestClaimTransportMode
+  lhs_provenance: TestClaimOperandProvenance
+  rhs_provenance: TestClaimOperandProvenance
+  operands_structurally_equal: Bool
+}
+
+type VacuityEvidence
+  = ProvenDuplicate
+  | ProvenIndependent
+  | Unknown
+
+type VacuityCensusRow {
+  label: String
+  evidence: VacuityEvidence
+  carries_parallel_authority_debt: Bool
+}
+
+type VacuityAdvisoryCensus {
+  proven_duplicate_count: Int
+  proven_independent_count: Int
+  unknown_count: Int
+}
+
+fn operands_structurally_equal(lhs: Node, rhs: Node) -> Bool {
+  exact_structural_equality_zip_fold(source_facts: lhs, candidate: rhs)
+}
+
+fn vacuity_evidence_eq(a: VacuityEvidence, b: VacuityEvidence) -> Bool {
+  match a {
+    ProvenDuplicate =>
+      match b {
+        ProvenDuplicate => true
+        _ => false
+      }
+    ProvenIndependent =>
+      match b {
+        ProvenIndependent => true
+        _ => false
+      }
+    Unknown =>
+      match b {
+        Unknown => true
+        _ => false
+      }
+  }
+}
+
+fn vacuity_evidence_record_for_binary_claim(
+  subject: VacuityEvidenceSubject,
+  transport: TestClaimTransportMode,
+  lhs: Node,
+  rhs: Node,
+  lhs_provenance: TestClaimOperandProvenance,
+  rhs_provenance: TestClaimOperandProvenance
+) -> VacuityEvidenceRecord {
+  VacuityEvidenceRecord {
+    subject: subject,
+    transport: transport,
+    lhs_provenance: lhs_provenance,
+    rhs_provenance: rhs_provenance,
+    operands_structurally_equal: operands_structurally_equal(lhs: lhs, rhs: rhs)
+  }
+}
+
+fn operand_provenance_is_independent_oracle(p: TestClaimOperandProvenance) -> Bool {
+  match p {
+    BehavioralComputation => true
+    RenderingTransform => true
+    TemporalExternalAuthority => true
+    IndependentTranscription => true
+    ReadBack => false
+    LiteralOracle => false
+    HelperAlias => false
+    OperandProvenanceUnknown => false
+  }
+}
+
+fn vacuity_same_eval_has_unknown_provenance(record: VacuityEvidenceRecord) -> Bool {
+  record.lhs_provenance == OperandProvenanceUnknown
+    || record.rhs_provenance == OperandProvenanceUnknown
+}
+
+fn vacuity_same_eval_has_independent_oracle(record: VacuityEvidenceRecord) -> Bool {
+  operand_provenance_is_independent_oracle(p: record.lhs_provenance)
+    || operand_provenance_is_independent_oracle(p: record.rhs_provenance)
+}
+
+fn vacuity_same_eval_is_readback_literal_oracle(record: VacuityEvidenceRecord) -> Bool {
+  record.lhs_provenance == ReadBack && record.rhs_provenance == LiteralOracle
+}
+
+fn vacuity_same_eval_has_helper_alias(record: VacuityEvidenceRecord) -> Bool {
+  record.lhs_provenance == HelperAlias || record.rhs_provenance == HelperAlias
+}
+
+fn vacuity_same_eval_is_literal_pair(record: VacuityEvidenceRecord) -> Bool {
+  record.lhs_provenance == LiteralOracle && record.rhs_provenance == LiteralOracle
+}
+
+fn classify_vacuity_same_eval_record(record: VacuityEvidenceRecord) -> VacuityEvidence {
+  if vacuity_same_eval_has_unknown_provenance(record: record) {
+    Unknown
+  } else {
+    if vacuity_same_eval_has_independent_oracle(record: record) {
+      ProvenIndependent
+    } else {
+      if vacuity_carries_parallel_authority_debt(
+        lhs_provenance: record.lhs_provenance,
+        rhs_provenance: record.rhs_provenance
+      ) {
+        ProvenIndependent
+      } else {
+        if vacuity_same_eval_is_readback_literal_oracle(record: record) {
+          ProvenDuplicate
+        } else {
+          if vacuity_same_eval_has_helper_alias(record: record) {
+            ProvenDuplicate
+          } else {
+            if vacuity_same_eval_is_literal_pair(record: record) {
+              ProvenDuplicate
+            } else {
+              if record.operands_structurally_equal {
+                ProvenDuplicate
+              } else {
+                ProvenIndependent
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn classify_vacuity_evidence_record(record: VacuityEvidenceRecord) -> VacuityEvidence {
+  match record.transport {
+    EmitVsEval { target: _ } => ProvenIndependent
+    EvalOnly => classify_vacuity_same_eval_record(record: record)
+  }
+}
+
+fn classify_test_claim_vacuity(
+  claim: TestClaim,
+  transport: TestClaimTransportMode,
+  lhs_provenance: TestClaimOperandProvenance,
+  rhs_provenance: TestClaimOperandProvenance,
+  operand_provenance: TestClaimOperandProvenance
+) -> VacuityEvidence {
+  match claim {
+    EqualsClaim { label: _, anchor: _, lhs: lhs, rhs: rhs, classification: _ } =>
+      classify_vacuity_evidence_record(
+        record: vacuity_evidence_record_for_binary_claim(
+          subject: EqualityOperands,
+          transport: transport,
+          lhs: lhs,
+          rhs: rhs,
+          lhs_provenance: lhs_provenance,
+          rhs_provenance: rhs_provenance
+        )
+      )
+    StructuralEqualsClaim { label: _, anchor: _, lhs: lhs, rhs: rhs, classification: _ } =>
+      classify_vacuity_evidence_record(
+        record: vacuity_evidence_record_for_binary_claim(
+          subject: EqualityOperands,
+          transport: transport,
+          lhs: lhs,
+          rhs: rhs,
+          lhs_provenance: lhs_provenance,
+          rhs_provenance: rhs_provenance
+        )
+      )
+    CompilesClaim {
+      label: _,
+      anchor: _,
+      input: input,
+      expected_value: expected,
+      classification: _
+    } =>
+      classify_vacuity_evidence_record(
+        record: vacuity_evidence_record_for_binary_claim(
+          subject: CompilesOutput,
+          transport: transport,
+          lhs: input,
+          rhs: expected,
+          lhs_provenance: operand_provenance,
+          rhs_provenance: rhs_provenance
+        )
+      )
+    DiagnosticClaim { label: _, anchor: _, input: _, expected_rejection: _, classification: _ } =>
+      ProvenIndependent
+    RoundTripClaim { label: _, anchor: _, input: _, classification: _ } =>
+      ProvenIndependent
+  }
+}
+
+fn classify_unified_test_claim_vacuity(
+  claim: UnifiedTestClaim,
+  lhs_provenance: TestClaimOperandProvenance,
+  rhs_provenance: TestClaimOperandProvenance,
+  operand_provenance: TestClaimOperandProvenance
+) -> VacuityEvidence {
+  match claim {
+    NodeCorpus { claim: c, transport: t } =>
+      classify_test_claim_vacuity(
+        claim: c,
+        transport: t,
+        lhs_provenance: lhs_provenance,
+        rhs_provenance: rhs_provenance,
+        operand_provenance: operand_provenance
+      )
+    BoolWitnessClaim { witness: _ } => Unknown
+  }
+}
+
+fn vacuity_carries_parallel_authority_debt(
+  lhs_provenance: TestClaimOperandProvenance,
+  rhs_provenance: TestClaimOperandProvenance
+) -> Bool {
+  lhs_provenance == IndependentTranscription
+    && rhs_provenance == IndependentTranscription
+}
+
+fn vacuity_census_row(
+  label: String,
+  evidence: VacuityEvidence,
+  carries_parallel_authority_debt: Bool
+) -> VacuityCensusRow {
+  VacuityCensusRow {
+    label: label,
+    evidence: evidence,
+    carries_parallel_authority_debt: carries_parallel_authority_debt
+  }
+}
+
+fn vacuity_advisory_census_from_rows(rows: List<VacuityCensusRow>) -> VacuityAdvisoryCensus {
+  VacuityAdvisoryCensus {
+    proven_duplicate_count: count_where(
+      xs: rows,
+      predicate: fn(row) { vacuity_evidence_eq(a: row.evidence, b: ProvenDuplicate) }
+    ),
+    proven_independent_count: count_where(
+      xs: rows,
+      predicate: fn(row) { vacuity_evidence_eq(a: row.evidence, b: ProvenIndependent) }
+    ),
+    unknown_count: count_where(
+      xs: rows,
+      predicate: fn(row) { vacuity_evidence_eq(a: row.evidence, b: Unknown) }
+    )
+  }
+}
+
+fn vacuity_advisory_census_total(census: VacuityAdvisoryCensus) -> Int {
+  census.proven_duplicate_count + census.proven_independent_count + census.unknown_count
+}
+
+fn vacuity_advisory_census_matches_row_count(
+  rows: List<VacuityCensusRow>,
+  census: VacuityAdvisoryCensus
+) -> Bool {
+  vacuity_advisory_census_total(census: census) == length(xs: rows)
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}
