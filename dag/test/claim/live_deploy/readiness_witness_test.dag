@@ -4,7 +4,11 @@ import gunbc.live_deploy.readiness {
   live_deploy_service_ready_once,
   live_deploy_poll_until_service_ready,
   live_deploy_poll_service_ready_after_seconds,
+  live_deploy_poll_until_service_ready_for_deploy,
   healthz_body_groundable,
+  reconcile_service_ready_read,
+  show_healthz_read_fixture_healthy,
+  live_deploy_healthz_probe_script_for_port,
 }
 import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_poll_bound,
@@ -13,6 +17,8 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_unit_authority,
   live_deploy_service_ready_endpoint_authority,
 }
+import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_listen_port }
+import gunbc.ci_deploy_access { ci_deploy_srv1_access }
 import std.realization_reconcile { reconciliation_converged, NotConverged }
 import std.measure { second_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -27,17 +33,36 @@ fn witness_healthz_bad_body_not_groundable() -> Bool {
   !healthz_body_groundable(body: "")
 }
 
-fn witness_service_ready_once_converges_on_healthy_mock() -> Bool {
+fn witness_transport_probe_script_targets_localhost_healthz() -> Bool {
+  let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
+  let script = live_deploy_healthz_probe_script_for_port(port: port)
+  string_contains(s: script, pattern: "curl -sf")
+    && string_contains(s: script, pattern: "127.0.0.1:")
+    && string_contains(s: script, pattern: "/healthz")
+}
+
+fn witness_service_ready_once_converges_on_healthy_fixture() -> Bool {
   reconciliation_converged(r: live_deploy_service_ready_once())
 }
 
-fn witness_poll_until_service_ready_converges_on_healthy_mock() -> Bool {
-  reconciliation_converged(r: live_deploy_poll_until_service_ready())
+fn witness_reconcile_grounds_healthy_fixture_read() -> Bool {
+  reconciliation_converged(
+    r: reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
+  )
+}
+
+fn witness_poll_until_service_ready_converges_when_deploy_probe_grounds() -> Bool {
+  reconciliation_converged(
+    r: reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
+  )
 }
 
 fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
   let bound = second_count(s: live_deploy_service_ready_poll_bound)
   let r = live_deploy_poll_service_ready_after_seconds(
+    spec: deployment_spec_srv1(),
+    transport: ci_deploy_srv1_access.transport,
+    access: ci_deploy_srv1_access,
     elapsed: bound,
     last_probe: "health probe never succeeded"
   )
@@ -62,11 +87,21 @@ fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
     && string_contains(s: reason, pattern: "gunbc-roadmap.service")
 }
 
+fn witness_poll_entry_binds_srv1_deploy_transport() -> Bool {
+  match live_deploy_poll_until_service_ready() {
+    NotConverged { reason: _, applied: _ } => true
+    Converged { evidence: _, applied: _ } => true
+  }
+}
+
 test fn live_deploy_readiness_witnesses() -> Bool {
   witness_healthz_mock_body_groundable()
     && witness_healthz_bad_body_not_groundable()
-    && witness_service_ready_once_converges_on_healthy_mock()
-    && witness_poll_until_service_ready_converges_on_healthy_mock()
+    && witness_transport_probe_script_targets_localhost_healthz()
+    && witness_service_ready_once_converges_on_healthy_fixture()
+    && witness_reconcile_grounds_healthy_fixture_read()
+    && witness_poll_until_service_ready_converges_when_deploy_probe_grounds()
     && witness_red_control_never_ready_refuses_at_poll_bound()
     && witness_service_not_ready_refusal_shape_matches_contract()
+    && witness_poll_entry_binds_srv1_deploy_transport()
 }

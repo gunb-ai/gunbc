@@ -15,7 +15,6 @@ import std.realization_reconcile {
   reconcile_grounded,
   reconciliation_converged,
 }
-import gunbc.roadmap_health
 import gunbc.live_deploy.service_ready {
   ServiceNotReady,
   service_not_ready_reason,
@@ -23,6 +22,30 @@ import gunbc.live_deploy.service_ready {
   live_deploy_service_ready_unit_authority,
   live_deploy_service_ready_endpoint_authority,
 }
+import gunbc.live_deploy.intent {
+  live_deploy_health_probe_curl_command,
+  live_deploy_health_url_for_port,
+}
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  deployment_spec_srv1,
+  deployment_plan_listen_port,
+}
+import gunbc.ci_deploy_access {
+  DeployAccess,
+  ci_deploy_srv1_access,
+}
+import gunbc.host_effect {
+  ShellCommand,
+  HostOs,
+  host_effect_read_evidence,
+  HostEffectTransport,
+  HostEffectIntent,
+  HostEffectEvidence,
+  ShellEffectApplied,
+  ConvergePlanApplied,
+}
+import gunbc.host_effect_realize { host_effect_apply_gated }
 import extdeps.tools.sleep
 
 type ServiceReadyEvidence {
@@ -46,6 +69,12 @@ fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
   }
 }
 
+fn live_deploy_healthz_probe_script_for_port(port: Int) -> String {
+  live_deploy_health_probe_curl_command(
+    health_url: live_deploy_health_url_for_port(port: port)
+  )
+}
+
 fn healthz_body_groundable(body: String) -> Bool {
   starts_with(s: body, prefix: "{")
     && ends_with(s: body, suffix: "}")
@@ -64,11 +93,71 @@ fn ground_service_ready_from_healthz(read: HealthzEffectiveRead) -> Grounding<Se
   }
 }
 
-fn show_healthz_read() -> ShowEffectiveRead<HealthzEffectiveRead> {
-  let probe = roadmap.Health.GetHealthz()
+fn healthz_read_from_shell_apply(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>
+) -> ShowEffectiveRead<HealthzEffectiveRead> {
+  match r {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: out, exit_code: _ } =>
+          ReadObserved {
+            value: HealthzEffectiveRead {
+              body: out,
+              probe_error: "",
+            }
+          }
+        ConvergePlanApplied { stdout: _, exit_code: _ } =>
+          ReadAbsent {
+            reason: "health probe returned ConvergePlanApplied; typed mismatch",
+          }
+      }
+    NotConverged { reason: why, applied: _ } =>
+      ReadObserved {
+        value: HealthzEffectiveRead {
+          body: "",
+          probe_error: why,
+        }
+      }
+  }
+}
+
+fn live_deploy_service_ready_probe_apply(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  host_effect_apply_gated(
+    access: access,
+    target: HostOs { node: spec.target.host },
+    effect: ShellCommand {
+      script: live_deploy_healthz_probe_script_for_port(
+        port: deployment_plan_listen_port(spec: spec)
+      ),
+    },
+    evidence: host_effect_read_evidence,
+    transport: transport,
+    fixture_actor: Absent,
+  )
+}
+
+fn show_healthz_read_for_deploy(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> ShowEffectiveRead<HealthzEffectiveRead> {
+  healthz_read_from_shell_apply(
+    r: live_deploy_service_ready_probe_apply(
+      spec: spec,
+      transport: transport,
+      access: access,
+    )
+  )
+}
+
+fn show_healthz_read_fixture_healthy() -> ShowEffectiveRead<HealthzEffectiveRead> {
   ReadObserved {
     value: HealthzEffectiveRead {
-      body: probe.body,
+      body: "{\"status\":\"ok\"}",
       probe_error: "",
     }
   }
@@ -93,13 +182,30 @@ fn reconcile_service_ready_read(
   }
 }
 
+fn live_deploy_service_ready_once_for_deploy(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  reconcile_service_ready_read(
+    read: show_healthz_read_for_deploy(
+      spec: spec,
+      transport: transport,
+      access: access,
+    )
+  )
+}
+
 fn live_deploy_service_ready_once() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  reconcile_service_ready_read(read: show_healthz_read())
+  reconcile_service_ready_read(read: show_healthz_read_fixture_healthy())
 }
 
 fn live_deploy_poll_service_ready_after_seconds(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
   elapsed: Int,
-  last_probe: String
+  last_probe: String,
 ) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
   let bound = second_count(s: live_deploy_service_ready_poll_bound)
   if elapsed >= bound {
@@ -113,13 +219,20 @@ fn live_deploy_poll_service_ready_after_seconds(
       applied: service_ready_apply_effect(),
     }
   } else {
-    let attempt = live_deploy_service_ready_once()
+    let attempt = live_deploy_service_ready_once_for_deploy(
+      spec: spec,
+      transport: transport,
+      access: access,
+    )
     if reconciliation_converged(r: attempt) {
       attempt
     } else {
       let delay = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
       if delay.success {
         live_deploy_poll_service_ready_after_seconds(
+          spec: spec,
+          transport: transport,
+          access: access,
           elapsed: elapsed + 1,
           last_probe: last_probe_from_attempt(attempt: attempt)
         )
@@ -147,6 +260,24 @@ fn last_probe_from_attempt(
   }
 }
 
+fn live_deploy_poll_until_service_ready_for_deploy(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
+  live_deploy_poll_service_ready_after_seconds(
+    spec: spec,
+    transport: transport,
+    access: access,
+    elapsed: 0,
+    last_probe: "no probe yet",
+  )
+}
+
 fn live_deploy_poll_until_service_ready() -> Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> {
-  live_deploy_poll_service_ready_after_seconds(elapsed: 0, last_probe: "no probe yet")
+  live_deploy_poll_until_service_ready_for_deploy(
+    spec: deployment_spec_srv1(),
+    transport: ci_deploy_srv1_access.transport,
+    access: ci_deploy_srv1_access,
+  )
 }

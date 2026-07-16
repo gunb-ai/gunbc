@@ -39,6 +39,11 @@ import gunbc.host_effect {
   ShellEffectApplied,
 }
 import gunbc.host_effect_realize { host_effect_apply, host_effect_apply_gated }
+import gunbc.live_deploy.readiness {
+  live_deploy_poll_until_service_ready_for_deploy,
+  ServiceReadyApplyEffect,
+  ServiceReadyEvidence,
+}
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
@@ -110,7 +115,7 @@ fn live_deploy_ensure_dependency(
   )
 }
 
-fn live_deploy_apply_via_transport(
+fn live_deploy_apply_mutation_via_transport(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   access: DeployAccess
@@ -122,6 +127,63 @@ fn live_deploy_apply_via_transport(
     access: access,
     fixture_actor: Absent,
     fixture_host: Absent
+  )
+}
+
+fn live_deploy_apply_readiness_gate(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_apply_readiness_gate_with_readiness(
+    mutation: mutation,
+    readiness: live_deploy_poll_until_service_ready_for_deploy(
+      spec: spec,
+      transport: transport,
+      access: access,
+    ),
+  )
+}
+
+fn live_deploy_apply_readiness_gate_with_readiness(
+  mutation: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  readiness: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence>,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if !reconciliation_converged(r: mutation) {
+    mutation
+  } else {
+    if reconciliation_converged(r: readiness) {
+      mutation
+    } else {
+      match readiness {
+        NotConverged { reason: why, applied: _ } =>
+          match mutation {
+            Converged { evidence: _, applied: intent } =>
+              NotConverged { reason: why, applied: intent }
+            NotConverged { reason: _, applied: intent } =>
+              NotConverged { reason: why, applied: intent }
+          }
+        Converged { evidence: _, applied: _ } => mutation
+      }
+    }
+  }
+}
+
+fn live_deploy_apply_via_transport(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_apply_readiness_gate(
+    spec: spec,
+    transport: transport,
+    access: access,
+    mutation: live_deploy_apply_mutation_via_transport(
+      spec: spec,
+      transport: transport,
+      access: access,
+    ),
   )
 }
 
