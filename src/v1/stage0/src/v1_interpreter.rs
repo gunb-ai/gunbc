@@ -9136,7 +9136,10 @@ mod base64_std_tests {
     #[test]
     fn basic_credential_shape() {
         // The exact header value a BMC Basic auth op must send for user:pass.
-        assert_eq!(base64_encode_std(b"bmcadmin:s3cret"), "Ym1jYWRtaW46czNjcmV0");
+        assert_eq!(
+            base64_encode_std(b"bmcadmin:s3cret"),
+            "Ym1jYWRtaW46czNjcmV0"
+        );
         // Bytes with high bits set exercise the +/ tail of the alphabet.
         assert_eq!(base64_encode_std(&[0xfb, 0xff, 0xfe]), "+//+");
     }
