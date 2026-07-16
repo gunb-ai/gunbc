@@ -11,6 +11,7 @@ import gunbc.roadmap_static_site {
   roadmap_site_text_artifacts,
   roadmap_site_healthz_body,
   roadmap_site_healthz_route,
+  roadmap_site_healthz_body_groundable,
   roadmap_site_text_static_routes,
   roadmap_site_static_route_authority_paths,
   served_static_route_literal_path,
@@ -89,6 +90,8 @@ fn witness_healthz_route_json_ok() -> Bool {
   witness_healthz_body_json_well_formed()
     && witness_healthz_perturbed_body_fails_well_formed()
     && witness_healthz_body_extra_brace_perturb_red()
+    && roadmap_site_healthz_body_groundable(body: body)
+    && roadmap_site_healthz_body_groundable(body: concat(body, "\n"))
     && string_contains(s: body, pattern: "\"status\": \"ok\"")
     && string_contains(s: body, pattern: roadmap_site_roadmap_url_path)
     && string_contains(s: body, pattern: roadmap_site_dispatch_url_path)

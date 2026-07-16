@@ -254,10 +254,19 @@ fn roadmap_site_deploy_receipt_line(host: String, port: Int) -> String {
   )
 }
 
+fn roadmap_site_healthz_body_trim_trailing_lf(body: String) -> String {
+  if ends_with(s: body, suffix: "\n") {
+    substring(s: body, start: 0, end: string_length(s: body) - 1)
+  } else {
+    body
+  }
+}
+
 fn roadmap_site_healthz_body_groundable(body: String) -> Bool {
-  starts_with(s: body, prefix: "{")
-    && ends_with(s: body, suffix: "}")
-    && string_contains(s: body, pattern: "\"status\"")
+  let trimmed = roadmap_site_healthz_body_trim_trailing_lf(body: body)
+  starts_with(s: trimmed, prefix: "{")
+    && ends_with(s: trimmed, suffix: "}")
+    && string_contains(s: trimmed, pattern: "\"status\"")
 }
 
 fn roadmap_site_digest_readback_script(port: Int) -> String {
