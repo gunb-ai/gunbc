@@ -174,9 +174,22 @@ fn render_stage0_layered_core_lib(spec: Stage0CrateSpec) -> String {
   )
 }
 
+fn emit_core_reexport_crate(module: String) -> String {
+  match module {
+    "v1_compiler_artifact" => "v1_stage0_v1_artifact"
+    "v1_compiler_languages" => "v1_stage0_v1_artifact"
+    "v1_rt" => "v1_stage0_runtime"
+    "v1_std_core" => "v1_stage0_runtime"
+    _ => "v1_stage0_v1_infer"
+  }
+}
+
 fn render_stage0_emit_core_lib(spec: Stage0CrateSpec) -> String {
   let reexports = spec.modules
-    |> map(m => concat("pub mod ", m, " {\n    pub use v1_stage0_v1_compiler::", m, "::*;\n}"))
+    |> map(m => concat(
+      "pub mod ", m, " {\n    pub use ",
+      emit_core_reexport_crate(module: m), "::", m, "::*;\n}"
+    ))
     |> join(separator: "\n\n")
   concat(
     spec.header_doc, "\n\n",
@@ -246,7 +259,8 @@ fn stage0_dependencies_for_row(row: Stage0PartitionCrateRow) -> List<CargoDepend
       CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
       CargoDependency { name: "im-rc", source: RegistryDep { version: "15.1", features: ["serde"] } },
       CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
-      stage0_local_path_dep(name: "v1-stage0-v1-compiler", path: "../stage0_v1_compiler"),
+      stage0_local_path_dep(name: "v1-stage0-v1-artifact", path: "../stage0_v1_artifact"),
+      stage0_local_path_dep(name: "v1-stage0-v1-infer", path: "../stage0_v1_infer"),
       stage0_local_path_dep(name: "v1-stage0-runtime", path: "../stage0_runtime")
     ]
   }

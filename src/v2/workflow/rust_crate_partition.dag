@@ -68,11 +68,11 @@ data rust_crate_partition_declared_core_target: Int = 8
 
 data stage0_unit_runtime: CompilationUnitId = "stage0-unit-runtime" as ContentHash
 data stage0_unit_std_primitives: CompilationUnitId = "stage0-unit-std-primitives" as ContentHash
-data stage0_unit_std_structure: CompilationUnitId = "stage0-unit-std-structure" as ContentHash
-data stage0_unit_std_compute: CompilationUnitId = "stage0-unit-std-compute" as ContentHash
+data stage0_unit_std_core: CompilationUnitId = "stage0-unit-std-core" as ContentHash
 data stage0_unit_std_surface: CompilationUnitId = "stage0-unit-std-surface" as ContentHash
 data stage0_unit_extdeps: CompilationUnitId = "stage0-unit-extdeps" as ContentHash
-data stage0_unit_v1_compiler: CompilationUnitId = "stage0-unit-v1-compiler" as ContentHash
+data stage0_unit_v1_infer: CompilationUnitId = "stage0-unit-v1-infer" as ContentHash
+data stage0_unit_v1_artifact: CompilationUnitId = "stage0-unit-v1-artifact" as ContentHash
 data stage0_unit_emit_core: CompilationUnitId = "stage0-unit-emit-core" as ContentHash
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
@@ -103,12 +103,18 @@ fn stage0_std_primitive_modules() -> List<String> {
   ]
 }
 
-fn stage0_std_structure_modules() -> List<String> {
-  ["std_algebra", "std_nat", "std_node", "std_syntax"]
-}
-
-fn stage0_std_compute_modules() -> List<String> {
-  ["std_computation", "std_termination", "std_induction", "std_iteration", "std_graph"]
+fn stage0_std_core_modules() -> List<String> {
+  [
+    "std_algebra",
+    "std_nat",
+    "std_node",
+    "std_syntax",
+    "std_computation",
+    "std_termination",
+    "std_induction",
+    "std_iteration",
+    "std_graph"
+  ]
 }
 
 fn stage0_std_surface_modules() -> List<String> {
@@ -140,17 +146,19 @@ fn stage0_extdeps_modules() -> List<String> {
   ]
 }
 
-fn stage0_v1_compiler_modules() -> List<String> {
+fn stage0_v1_infer_modules() -> List<String> {
   [
-    "v1_compiler_artifact",
     "v1_compiler_infer_emit_info",
     "v1_compiler_infer_env",
     "v1_compiler_infer_items",
     "v1_compiler_infer_service",
     "v1_compiler_infer_sigs",
-    "v1_compiler_infer_types",
-    "v1_compiler_languages"
+    "v1_compiler_infer_types"
   ]
+}
+
+fn stage0_v1_artifact_modules() -> List<String> {
+  ["v1_compiler_artifact", "v1_compiler_languages"]
 }
 
 fn stage0_emit_core_modules() -> List<String> {
@@ -168,11 +176,11 @@ fn stage0_emit_core_modules() -> List<String> {
 fn stage0_all_partitioned_modules() -> List<String> {
   stage0_runtime_modules()
     |> concat(stage0_std_primitive_modules())
-    |> concat(stage0_std_structure_modules())
-    |> concat(stage0_std_compute_modules())
+    |> concat(stage0_std_core_modules())
     |> concat(stage0_std_surface_modules())
     |> concat(stage0_extdeps_modules())
-    |> concat(stage0_v1_compiler_modules())
+    |> concat(stage0_v1_infer_modules())
+    |> concat(stage0_v1_artifact_modules())
 }
 
 fn stage0_assign_modules_to_unit(
@@ -201,20 +209,20 @@ fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
               modules: stage0_std_primitive_modules(),
               unit_id: stage0_unit_std_primitives
             ),
-            modules: stage0_std_structure_modules(),
-            unit_id: stage0_unit_std_structure
+            modules: stage0_std_core_modules(),
+            unit_id: stage0_unit_std_core
           ),
-          modules: stage0_std_compute_modules(),
-          unit_id: stage0_unit_std_compute
+          modules: stage0_std_surface_modules(),
+          unit_id: stage0_unit_std_surface
         ),
-        modules: stage0_std_surface_modules(),
-        unit_id: stage0_unit_std_surface
+        modules: stage0_extdeps_modules(),
+        unit_id: stage0_unit_extdeps
       ),
-      modules: stage0_extdeps_modules(),
-      unit_id: stage0_unit_extdeps
+      modules: stage0_v1_infer_modules(),
+      unit_id: stage0_unit_v1_infer
     ),
-    modules: stage0_v1_compiler_modules(),
-    unit_id: stage0_unit_v1_compiler
+    modules: stage0_v1_artifact_modules(),
+    unit_id: stage0_unit_v1_artifact
   )
 }
 
@@ -399,25 +407,12 @@ fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
       carries_non_empty_wrappers: false
     },
     Stage0PartitionCrateRow {
-      unit_id: stage0_unit_std_structure,
-      package_name: "v1-stage0-std-structure",
-      crate_dir: "src/v1/stage0_std_structure",
+      unit_id: stage0_unit_std_core,
+      package_name: "v1-stage0-std-core",
+      crate_dir: "src/v1/stage0_std_core",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_structure_modules(),
+      modules: stage0_std_core_modules(),
       reexport_packages: ["v1-stage0-runtime", "v1-stage0-std-primitives"],
-      carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
-      unit_id: stage0_unit_std_compute,
-      package_name: "v1-stage0-std-compute",
-      crate_dir: "src/v1/stage0_std_compute",
-      kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_compute_modules(),
-      reexport_packages: [
-        "v1-stage0-runtime",
-        "v1-stage0-std-primitives",
-        "v1-stage0-std-structure"
-      ],
       carries_non_empty_wrappers: false
     },
     Stage0PartitionCrateRow {
@@ -429,8 +424,7 @@ fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-primitives",
-        "v1-stage0-std-structure",
-        "v1-stage0-std-compute"
+        "v1-stage0-std-core"
       ],
       carries_non_empty_wrappers: false
     },
@@ -443,25 +437,39 @@ fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-primitives",
-        "v1-stage0-std-structure",
-        "v1-stage0-std-compute",
+        "v1-stage0-std-core",
         "v1-stage0-std-surface"
       ],
       carries_non_empty_wrappers: false
     },
     Stage0PartitionCrateRow {
-      unit_id: stage0_unit_v1_compiler,
-      package_name: "v1-stage0-v1-compiler",
-      crate_dir: "src/v1/stage0_v1_compiler",
+      unit_id: stage0_unit_v1_infer,
+      package_name: "v1-stage0-v1-infer",
+      crate_dir: "src/v1/stage0_v1_infer",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_v1_compiler_modules(),
+      modules: stage0_v1_infer_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
         "v1-stage0-std-primitives",
-        "v1-stage0-std-structure",
-        "v1-stage0-std-compute",
+        "v1-stage0-std-core",
         "v1-stage0-std-surface",
         "v1-stage0-extdeps"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_v1_artifact,
+      package_name: "v1-stage0-v1-artifact",
+      crate_dir: "src/v1/stage0_v1_artifact",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_v1_artifact_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-primitives",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface",
+        "v1-stage0-extdeps",
+        "v1-stage0-v1-infer"
       ],
       carries_non_empty_wrappers: false
     },

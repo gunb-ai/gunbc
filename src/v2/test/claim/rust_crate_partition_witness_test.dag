@@ -33,7 +33,8 @@ import v2.workflow.rust_crate_partition {
   stage0_partition_r4_valid,
   stage0_partition_unit_count,
   stage0_unit_runtime,
-  stage0_unit_v1_compiler,
+  stage0_unit_v1_infer,
+  stage0_unit_v1_artifact,
   validate_partition_r4
 }
 
@@ -108,11 +109,20 @@ fn witness_runtime_unit_members_holds() -> Bool {
   }
 }
 
-fn witness_v1_compiler_unit_members_holds() -> Bool {
+fn witness_v1_infer_unit_members_holds() -> Bool {
   let units = stage0_compilation_units()
-  match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_compiler) {
+  match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
     Present { value: unit } =>
-      (unit.members |> count) == 8
+      (unit.members |> count) == 6
+    Absent => false
+  }
+}
+
+fn witness_v1_artifact_unit_members_holds() -> Bool {
+  let units = stage0_compilation_units()
+  match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_artifact) {
+    Present { value: unit } =>
+      (unit.members |> count) == 2
     Absent => false
   }
 }
@@ -141,7 +151,8 @@ test fn rust_crate_partition_witnesses() -> Bool {
     && witness_interim_provenance_is_hand_explicit_holds()
     && witness_provenance_distinct_from_policy_derived_holds()
     && witness_runtime_unit_members_holds()
-    && witness_v1_compiler_unit_members_holds()
+    && witness_v1_infer_unit_members_holds()
+    && witness_v1_artifact_unit_members_holds()
     && witness_partition_fold_unit_count_holds()
     && witness_partition_r4_valid_on_interim_holds()
     && witness_resolve_partition_explicit_returns_assignment_holds()
