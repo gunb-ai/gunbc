@@ -31,7 +31,12 @@ data sleep_delay_seconds_flat_scalar_dissolution_trigger: Disposition = Scaffold
 }
 
 fn sleep_delay_seconds_second_carrier_projection(duration: Second) -> Bool {
-  sleep.Delay.Seconds(seconds: to_string(second_count(s: duration)) as NonEmptyStr).success
+  let seconds = second_count(s: duration)
+  if seconds <= 0 {
+    false
+  } else {
+    sleep.Delay.Seconds(seconds: to_string(seconds) as NonEmptyStr).success
+  }
 }
 
 service sleep.Delay {
