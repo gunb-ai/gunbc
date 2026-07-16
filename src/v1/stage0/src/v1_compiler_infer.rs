@@ -1073,10 +1073,7 @@ match exp.children.clone().get(pair.0.clone() as usize).cloned() {
     None => acc.clone(),
 }
 });
-                                        let template_fields = record_lit_expected_fields(
-                                            type_name.clone(),
-                                            scope.clone(),
-                                        );
+                                        let template_fields = decl.children.clone();
                                         Some(Rc::new({
                                             let mut __result = Vec::new();
                                             for sf in template_fields.clone().iter().cloned() {

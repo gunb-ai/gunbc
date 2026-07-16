@@ -1,15 +1,14 @@
 module v2.workflow.build_step_emit
 
-import extdeps.languages.bash.program { ShellProgram }
 import tools.build_step { BuildArtifact, emit_verifications }
 import v2.std.diagnostic { Outcome }
-import v2.workflow.bash_program_emit { bash_program_serialize }
+import v2.workflow.bash_program_emit { bash_program_serialize_stmts }
 
 data build_step_emit_authority_note: String = "Build-artifact verification shell text emits through v2.workflow.bash_program_emit (grammar rows), not extdeps.languages.bash.program serialize_bash. Stmt construction stays in tools.build_step; this module is the realization-edge serializer. Byte-identity vs v1 is witnessed in v2.test.claim.build_artifact_verification_witness."
 
 fn verifications_script(produces: List<BuildArtifact>) -> Outcome<String> {
-  bash_program_serialize(p: ShellProgram {
-    set_e: false,
-    statements: emit_verifications(produces: produces)
-  })
+  bash_program_serialize_stmts(
+    statements: emit_verifications(produces: produces),
+    set_e: false
+  )
 }
