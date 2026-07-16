@@ -11,7 +11,8 @@ import tools.emit_host_transport {
   run_python_smoke,
   run_go_smoke,
   run_ts_smoke,
-  run_node_http_serve_smoke
+  run_node_http_serve_smoke,
+  run_c_smoke
 }
 
 
@@ -37,18 +38,19 @@ fn join_space(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => match acc { "" => p _ => concat(acc, concat(" ", p)) })
 }
 
-fn smoke_verdict_line(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bool) -> String {
+fn smoke_verdict_line(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bool, c: Bool) -> String {
   concat("emit-host smoke verdicts: ", join_space(parts: [
     smoke_verdict(name: "rust", ok: rust),
     smoke_verdict(name: "python", ok: python),
     smoke_verdict(name: "go", ok: go),
     smoke_verdict(name: "ts", ok: ts),
-    smoke_verdict(name: "node_http", ok: node_http)
+    smoke_verdict(name: "node_http", ok: node_http),
+    smoke_verdict(name: "c", ok: c)
   ]))
 }
 
-fn gate_failure_exit(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bool) -> ProcessExit {
-  let verdicts = smoke_verdict_line(rust: rust, python: python, go: go, ts: ts, node_http: node_http)
+fn gate_failure_exit(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bool, c: Bool) -> ProcessExit {
+  let verdicts = smoke_verdict_line(rust: rust, python: python, go: go, ts: ts, node_http: node_http, c: c)
   let narrated = shell.Exec.Run(script: shell_printf_line(line: verdicts))
   exit_failure(
     reason: if narrated.success { verdicts } else { concat(verdicts, " (verdict narration refused)") }
@@ -61,10 +63,11 @@ func run_emit_host_gate_body() -> ProcessExit {
   go = run_go_smoke()
   ts = run_ts_smoke()
   node_http = run_node_http_serve_smoke()
-  return if rust && python && go && ts && node_http {
+  c = run_c_smoke()
+  return if rust && python && go && ts && node_http && c {
     ExitSuccess
   } else {
-    gate_failure_exit(rust: rust, python: python, go: go, ts: ts, node_http: node_http)
+    gate_failure_exit(rust: rust, python: python, go: go, ts: ts, node_http: node_http, c: c)
   }
 }
 

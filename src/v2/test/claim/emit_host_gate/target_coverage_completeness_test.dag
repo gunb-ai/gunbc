@@ -1,6 +1,5 @@
 module v2.test.emit_host_gate.target_coverage_completeness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type EmitHostTargetCoverageRow {
@@ -30,6 +29,11 @@ data emit_host_coverage_row_typescript: EmitHostTargetCoverageRow = EmitHostTarg
 
 data emit_host_coverage_row_cpp: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
   target: cpp_target_model(),
+  host_smoked: false
+}
+
+data emit_host_coverage_row_c: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
+  target: c_target_model(),
   host_smoked: true
 }
 
@@ -44,6 +48,7 @@ data emit_host_target_coverage_rows: List<EmitHostTargetCoverageRow> = [
   emit_host_coverage_row_go,
   emit_host_coverage_row_typescript,
   emit_host_coverage_row_cpp,
+  emit_host_coverage_row_c,
   emit_host_coverage_row_java
 ]
 
