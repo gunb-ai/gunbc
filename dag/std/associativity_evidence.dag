@@ -28,25 +28,6 @@ fn associativity_decl_ref(module_path: String, decl_name: String) -> Declaration
   }
 }
 
-fn decl_ref_eq(left: DeclarationRef, right: DeclarationRef) -> Bool {
-  (left.module_path == right.module_path)
-    && (left.decl_name == right.decl_name)
-    && decl_field_eq(left: left.field, right: right.field)
-}
-
-fn decl_field_eq(left: DeclField, right: DeclField) -> Bool {
-  match left {
-    WholeDeclaration => match right {
-      WholeDeclaration => true
-      NamedField { field_name: _ } => false
-    }
-    NamedField { field_name: ln } => match right {
-      WholeDeclaration => false
-      NamedField { field_name: rn } => ln == rn
-    }
-  }
-}
-
 fn associativity_evidence_not_witnessed() -> AssociativityEvidence {
   NotWitnessed
 }

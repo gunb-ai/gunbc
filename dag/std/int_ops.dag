@@ -1,0 +1,21 @@
+module std.int_ops
+
+import std.types { Int }
+
+fn int_min(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+fn int_max(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+fn int_ceil_div(numerator: Int, denominator: Int) -> Int? {
+  if denominator <= 0 {
+    none
+  } else if numerator <= 0 {
+    Present { value: 0 }
+  } else {
+    Present { value: (numerator + denominator - 1) / denominator }
+  }
+}

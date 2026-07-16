@@ -3,6 +3,7 @@ module std.fold_parallelism
 import std.types { Int }
 import std.measure { HardwareThreadCount, hardware_thread_count_value }
 import std.induction { ceil_log }
+import std.int_ops { int_min, int_max, int_ceil_div }
 
 data fold_parallelism_plan_doc_provenance: String = "bind: docs/plans/machine-shape-orthogonal-scheduling.md §6 — within-fold serial vs tree-reduce; depth/width derive from lane_count (one axis, no machine kind)"
 
@@ -24,24 +25,6 @@ fn fold_parallelism_eq(left: FoldParallelism, right: FoldParallelism) -> Bool {
       SerialFold => false
       TreeReduce { tree_depth: rd, lane_width: rw } => (ld == rd) && (lw == rw)
     }
-  }
-}
-
-fn int_min(a: Int, b: Int) -> Int {
-  if a < b { a } else { b }
-}
-
-fn int_max(a: Int, b: Int) -> Int {
-  if a > b { a } else { b }
-}
-
-fn int_ceil_div(numerator: Int, denominator: Int) -> Int? {
-  if denominator <= 0 {
-    none
-  } else if numerator <= 0 {
-    Present { value: 0 }
-  } else {
-    Present { value: (numerator + denominator - 1) / denominator }
   }
 }
 
@@ -74,9 +57,4 @@ fn derive_tree_reduce_parallelism(
 fn idle_lane_count(lane_count: HardwareThreadCount) -> Int {
   let lanes = hardware_thread_count_value(t: lane_count)
   int_max(a: lanes - 1, b: 0)
-}
-
-fn serial_fold_idle_lane_waste_visible(lane_count: HardwareThreadCount) -> Bool {
-  idle_lane_count(lane_count: lane_count) == 0
-    || idle_lane_count(lane_count: lane_count) > 0
 }
