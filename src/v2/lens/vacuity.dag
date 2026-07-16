@@ -27,6 +27,8 @@ import v2.std.verification {
 
 data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). VacuityEvidenceRecord carries TestClaimTransportMode directly — the consumer/observation dimension (rung_5 EmitVsEval counterexample: distinct execution paths, not operand syntax). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3). W3 trigger: re-audit classify_vacuity_same_eval_record's deepest else (known-provenance residue → ProvenIndependent) — when gating on ProvenDuplicate, that residue may need Unknown instead of a positive ProvenIndependent claim."
 
+data vacuity_operand_provenance_independent_oracle_predicate_dissolution_note: String = "🟡 dissolve-on: operand_provenance_is_independent_oracle is a hand-rolled subset predicate over TestClaimOperandProvenance until symbol_index_fill/reference_deps ground operand provenance at census time (W3). DISSOLVES WHEN provenance is read from the containment-tree projection and independent-oracle membership is construction-side (illegal states unrepresentable) or a single canonical accessor replaces the predicate."
+
 type TestClaimOperandProvenance
   = ReadBack
   | IndependentTranscription
@@ -71,30 +73,6 @@ type VacuityAdvisoryCensus {
 
 fn operands_structurally_equal(lhs: Node, rhs: Node) -> Bool {
   exact_structural_equality_zip_fold(source_facts: lhs, candidate: rhs)
-}
-
-fn vacuity_evidence_is_proven_duplicate(evidence: VacuityEvidence) -> Bool {
-  match evidence {
-    ProvenDuplicate => true
-    ProvenIndependent => false
-    Unknown => false
-  }
-}
-
-fn vacuity_evidence_is_proven_independent(evidence: VacuityEvidence) -> Bool {
-  match evidence {
-    ProvenIndependent => true
-    ProvenDuplicate => false
-    Unknown => false
-  }
-}
-
-fn vacuity_evidence_is_unknown(evidence: VacuityEvidence) -> Bool {
-  match evidence {
-    Unknown => true
-    ProvenDuplicate => false
-    ProvenIndependent => false
-  }
 }
 
 fn vacuity_evidence_eq(a: VacuityEvidence, b: VacuityEvidence) -> Bool {
@@ -308,15 +286,15 @@ fn vacuity_advisory_census_from_rows(rows: List<VacuityCensusRow>) -> VacuityAdv
   VacuityAdvisoryCensus {
     proven_duplicate_count: count_where(
       xs: rows,
-      predicate: fn(row) { vacuity_evidence_is_proven_duplicate(evidence: row.evidence) }
+      predicate: fn(row) { vacuity_evidence_eq(a: row.evidence, b: ProvenDuplicate) }
     ),
     proven_independent_count: count_where(
       xs: rows,
-      predicate: fn(row) { vacuity_evidence_is_proven_independent(evidence: row.evidence) }
+      predicate: fn(row) { vacuity_evidence_eq(a: row.evidence, b: ProvenIndependent) }
     ),
     unknown_count: count_where(
       xs: rows,
-      predicate: fn(row) { vacuity_evidence_is_unknown(evidence: row.evidence) }
+      predicate: fn(row) { vacuity_evidence_eq(a: row.evidence, b: Unknown) }
     )
   }
 }
