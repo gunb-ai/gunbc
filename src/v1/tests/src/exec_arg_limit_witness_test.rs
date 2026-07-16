@@ -1,5 +1,9 @@
 //! Wet demonstration of the host argv-size wall (Deploy E2BIG, Part B).
 //!
+//! Pairs with the floor witness `dag/test/claim/exec_arg_limit_witness_test.dag` by
+//! exact stem (`exec_arg_limit_witness`) so the v1 test-debt ratchet counts this
+//! module as covered, not new debt.
+//!
 //! Runs the REAL `extdeps.shell` service through the interpreter in WET mode
 //! (`v1_interpreter::run` defaults to `ExecutionMode::Wet`, so shell transports
 //! dispatch to a real `sh` spawn — no mock). `shell.Exec.Check` embeds its
