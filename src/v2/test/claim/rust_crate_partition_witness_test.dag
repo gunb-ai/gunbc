@@ -32,6 +32,8 @@ import v2.workflow.rust_crate_partition {
   stage0_compilation_units,
   stage0_interim_explicit_assignment,
   stage0_module_dag,
+  stage0_module_dag_interface_grounding_debt_dissolve_on,
+  stage0_module_dag_interface_grounding_is_debt,
   stage0_partition_fold_outcome,
   stage0_partition_fold_ok,
   stage0_partition_member_coverage_consistent,
@@ -169,6 +171,14 @@ fn witness_dissolve_on_note_present_holds() -> Bool {
   (rust_crate_partition_dissolve_on |> count) > 0
 }
 
+fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> Bool {
+  stage0_module_dag_interface_grounding_is_debt()
+}
+
+fn witness_stage0_module_dag_interface_grounding_debt_dissolve_on_present_holds() -> Bool {
+  (stage0_module_dag_interface_grounding_debt_dissolve_on |> count) > 0
+}
+
 test fn rust_crate_partition_witnesses() -> Bool {
   witness_interim_explicit_unit_count_holds()
     && witness_interim_provenance_is_hand_explicit_holds()
@@ -181,5 +191,7 @@ test fn rust_crate_partition_witnesses() -> Bool {
     && witness_resolve_partition_explicit_returns_assignment_holds()
     && witness_r4_refuses_forced_scc_split_holds()
     && witness_partition_perturbation_member_coverage_holds()
+    && witness_stage0_module_dag_interface_grounding_debt_declared_holds()
+    && witness_stage0_module_dag_interface_grounding_debt_dissolve_on_present_holds()
     && witness_dissolve_on_note_present_holds()
 }

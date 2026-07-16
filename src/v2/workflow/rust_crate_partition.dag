@@ -96,10 +96,14 @@ type TypeDefinitionsMapNotFrontierGrounded {
 
 data stage0_module_dag_interface_grounding_debt_dissolve_on: String = "dissolve-on: stage0_module_dag_interface_grounding — populate ModuleDag.exports + ModuleDag.type_definitions from frontier.dag cross-module export Nodes and by-value ModuleTypeDefinitionRow rows; REQUIRED before stage0_crate_plan cutover (empty maps yield empty interface -> empty pub/use surface -> fail-open broken crates at emission, §5)."
 
+data rust_crate_partition_interface_deferred_note: String = "Interim staged state (interface-deferred, emission-incomplete): ModuleDag.exports + type_definitions are NOT frontier-grounded yet — partition_fold derives empty interface (correct derivation, not a refusal). member+deps fold is valid for capturing the ~8-crate list + inter-crate dep graph NOW; exports/type_definitions population is REQUIRED before R3 crate emission (pub/mod surfaces). See stage0_module_dag_interface_grounding + dissolve_on."
+
+data rust_crate_partition_r4_by_value_type_cycle_note: String = "Rust R4 primary refusals on current main: SccSplit + UnitGraphCycle (LinkageCycle permissive). ByValueTypeCycle arm lands with #6744 rebase — refuse type-layout cycles via ByValueTypeCycle { detail } ONLY, never SccSplit. Exhaustive PartitionR4ValidityCause matches must add the 4th arm on rebase."
+
 fn stage0_frontier_grounding_target() -> DeclarationRef {
   DeclarationRef {
     module_path: "v2.compiler.self_host.frontier" as NonEmptyStr,
-    decl_name: "compiler_frontier" as NonEmptyStr,
+    decl_name: "compiler_frontier_roster" as NonEmptyStr,
     field: WholeDeclaration,
   }
 }
@@ -333,11 +337,7 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
 }
 
 fn stage0_module_dag() -> ModuleDag {
-  if !stage0_module_dag_interface_grounding_is_debt() {
-    stage0_module_dag_edges_only_ungrounded()
-  } else {
-    stage0_module_dag_edges_only_ungrounded()
-  }
+  stage0_module_dag_edges_only_ungrounded()
 }
 
 fn resolve_partition(
