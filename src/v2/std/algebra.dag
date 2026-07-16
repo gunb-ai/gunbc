@@ -1,4 +1,8 @@
 module v2.std.algebra
+
+import v2.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import std.algebra { FreeMonoid, Empty, Cons }
+
 type Magma<T> {
   op: fn(T, T) -> T
 }

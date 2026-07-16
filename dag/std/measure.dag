@@ -1,5 +1,9 @@
 module std.measure
 
+import std.nat { Nat }
+import std.types { Int }
+
+
 
 type Quantity =
     Time

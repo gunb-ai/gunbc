@@ -16,7 +16,11 @@ import gunbc.ci_gate {
 import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
+<<<<<<< HEAD
 import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+=======
+import v2.std.node { Atom, Node, TypeNode }
+>>>>>>> ecf8ac7827 (WIP: Namespace integration branch: collapse strip PRs #6603 #6600 #6607 #6610)
 import v2.std.text { String }
 import std.types { ContentHash, Int }
 import std.nat { Nat }
@@ -55,6 +59,11 @@ import v2.workflow.realization_runner {
   runner_schedule_plan_from_dependencies,
   runner_schedule_store_covers_nodes
 }
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> ecf8ac7827 (WIP: Namespace integration branch: collapse strip PRs #6603 #6600 #6607 #6610)
 
 data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
 
