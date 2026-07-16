@@ -209,7 +209,7 @@ fn witness_runtime_unit_members_holds() -> Bool {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_runtime) {
         Present { value: unit } =>
-          (unit.members |> count) == 2
+          (unit.members |> count) == 1
         Absent => false
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
