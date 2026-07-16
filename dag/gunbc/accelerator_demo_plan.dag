@@ -481,7 +481,9 @@ fn witness_associative_fold_recognized_with_tree_reduce() -> Bool {
         Lossless =>
           match demo_plan_fold_parallelism(plan: plan) {
             TreeReduce { tree_depth: depth, lane_width: width } =>
-              depth == 3 && width == 8 && medium == simd_kernel_target_medium_name
+              depth == 3
+                && hardware_thread_count_value(t: width) == 8
+                && medium == simd_kernel_target_medium_name
             SerialFold => false
           }
         Lossy => false

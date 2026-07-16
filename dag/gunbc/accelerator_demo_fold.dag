@@ -13,7 +13,7 @@ import std.associativity_evidence {
   AssociativityLicenseMissing,
   AssociativityLicenseMismatch,
 }
-import std.measure { HardwareThreadCount, hardware_thread_count }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.fold_parallelism {
   FoldParallelism,
   SerialFold,
@@ -77,7 +77,7 @@ fn witness_demo_tree_reduce_derives_from_simd_lanes() -> Bool {
     Present { value: parallelism } => match parallelism {
       SerialFold => false
       TreeReduce { tree_depth: depth, lane_width: width } =>
-        width == 8 && depth == 3
+        hardware_thread_count_value(t: width) == 8 && depth == 3
     }
   }
 }
@@ -90,7 +90,7 @@ fn witness_demo_serial_fold_at_scalar_lanes() -> Bool {
     Absent => false
     Present { value: parallelism } => match parallelism {
       TreeReduce { tree_depth: depth, lane_width: width } =>
-        width == 1 && depth == 6
+        hardware_thread_count_value(t: width) == 1 && depth == 6
       SerialFold => false
     }
   }
