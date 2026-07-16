@@ -34,7 +34,7 @@ import v2.std.node {
 
 data c_stage1_type_decl_note: String = "Stage 1 C semantic type declarations (ISO/IEC 9899:2018): record→typedef struct, nullary closed-coproduct→typedef enum, payload closed-coproduct→tagged union (tag enum + struct/union). Int fields only (^Int→int binding); primitive-width model deferred. Generic type params not in scope — receipts use Empty params only."
 
-data c_tagged_union_tag_naming_note: String = "Tagged-union tag enum members reuse substrate variant spellings (not TypeName_Tag_Variant prefix) — Stage 1 interim; dissolve when formal concat or C-specific surface projection lands."
+data c_tagged_union_tag_naming_note: String = "Stage 1 payload coproduct → single typedef struct with int tag + anonymous union (one variant_block match). Named tag enum typedef deferred until formal grammar can emit two typedefs from one surface without double-matching variant_block."
 
 fn c_decl_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
@@ -76,7 +76,7 @@ fn c_decl_shared_field_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^c_decl_field,
       rhs: [
-        grammar_formal_terminal(identity: ^c_token_ty_int),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_type_expr),
         grammar_formal_terminal_free(identity: ^c_token_ident)
       ]
     ),
@@ -196,7 +196,6 @@ fn c_decl_struct_top_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ^c_token_kw_typedef_struct),
         grammar_formal_terminal_free(identity: ^c_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_block),
-        grammar_formal_terminal(identity: ^c_token_rbrace),
         grammar_formal_terminal_free(identity: ^c_token_ident),
         grammar_formal_terminal(identity: ^c_token_semicolon)
       ]
@@ -226,22 +225,14 @@ fn c_decl_tagged_union_top_productions() -> List<FormalProduction> {
       lhs: ^c_decl_tagged_union,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_shape_tagged),
-        grammar_formal_terminal(identity: ^c_token_kw_typedef_enum),
-        grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant_block),
-        grammar_formal_terminal(identity: ^c_token_rbrace),
-        grammar_formal_terminal_free(identity: ^c_token_ident),
-        grammar_formal_terminal(identity: ^c_token_tag_suffix),
-        grammar_formal_terminal(identity: ^c_token_semicolon),
-        grammar_formal_terminal(identity: ^c_token_blank_line),
         grammar_formal_terminal(identity: ^c_token_kw_typedef_struct),
+        grammar_formal_terminal_free(identity: ^c_token_ident),
         grammar_formal_terminal(identity: ^c_token_lbrace),
-        grammar_formal_terminal_free(identity: ^c_token_ident),
-        grammar_formal_terminal(identity: ^c_token_tag_suffix),
-        grammar_formal_terminal(identity: ^c_token_space),
-        grammar_formal_terminal_free(identity: ^c_token_ident),
+        grammar_formal_terminal(identity: ^c_token_ty_int),
+        grammar_formal_terminal_free(identity: ^c_token_tag_field),
         grammar_formal_terminal(identity: ^c_token_semicolon_field),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_body),
-        grammar_formal_terminal(identity: ^c_token_rbrace),
+        grammar_formal_terminal(identity: ^c_token_semicolon_field),
         grammar_formal_terminal(identity: ^c_token_rbrace),
         grammar_formal_terminal_free(identity: ^c_token_ident),
         grammar_formal_terminal(identity: ^c_token_semicolon)
@@ -257,17 +248,7 @@ fn c_decl_struct_formal_productions() -> List<FormalProduction> {
   )
 }
 
-fn c_decl_enum_formal_productions() -> List<FormalProduction> {
-  list_append(
-    left: c_decl_shape_productions(),
-    right: list_append(
-      left: c_decl_shared_variant_productions(),
-      right: c_decl_enum_top_productions()
-    )
-  )
-}
-
-fn c_decl_tagged_union_formal_productions() -> List<FormalProduction> {
+fn c_decl_coproduct_formal_productions() -> List<FormalProduction> {
   list_append(
     left: c_decl_shape_productions(),
     right: list_append(
@@ -276,7 +257,10 @@ fn c_decl_tagged_union_formal_productions() -> List<FormalProduction> {
         left: c_decl_shared_variant_productions(),
         right: list_append(
           left: c_decl_tagged_union_member_productions(),
-          right: c_decl_tagged_union_top_productions()
+          right: list_append(
+            left: c_decl_enum_top_productions(),
+            right: c_decl_tagged_union_top_productions()
+          )
         )
       )
     )
@@ -301,11 +285,7 @@ fn c_struct_general_decl_productions_only_translation_rules() -> Node {
 }
 
 fn c_enum_general_decl_productions_only_translation_rules() -> Node {
-  c_decl_productions_only_translation_rules(productions: c_decl_enum_formal_productions())
-}
-
-fn c_tagged_union_general_decl_productions_only_translation_rules() -> Node {
-  c_decl_productions_only_translation_rules(productions: c_decl_tagged_union_formal_productions())
+  c_decl_productions_only_translation_rules(productions: c_decl_coproduct_formal_productions())
 }
 
 fn c_semantic_decl_lex_rows() -> List<Node> {
@@ -323,9 +303,7 @@ fn c_semantic_decl_lex_rows() -> List<Node> {
     semantic_decl_lex_literal_row(token_class: ^c_token_comma, text: ", "),
     semantic_decl_lex_literal_row(token_class: ^c_token_semicolon_field, text: "; "),
     semantic_decl_lex_literal_row(token_class: ^c_token_semicolon, text: ";"),
-    semantic_decl_lex_literal_row(token_class: ^c_token_tag_suffix, text: "_Tag"),
-    semantic_decl_lex_literal_row(token_class: ^c_token_blank_line, text: "\n\n"),
-    semantic_decl_lex_literal_row(token_class: ^c_token_space, text: " "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_tag_field, text: "tag"),
     semantic_decl_lex_ident_row(token_class: ^c_token_ident)
   ]
 }
@@ -335,7 +313,8 @@ fn c_semantic_decl_binding_spelling_rows() -> List<Node> {
     semantic_decl_binding_spelling_row(binding: ^c_decl_shape_enum_binding, spelling: ""),
     semantic_decl_binding_spelling_row(binding: ^c_decl_shape_tagged_binding, spelling: ""),
     semantic_decl_binding_spelling_row(binding: ^Int, spelling: "int"),
-    semantic_decl_binding_spelling_row(binding: ^c_token_union_field, spelling: "u")
+    semantic_decl_binding_spelling_row(binding: ^c_token_union_field, spelling: "u"),
+    semantic_decl_binding_spelling_row(binding: ^c_token_tag_field, spelling: "tag")
   ]
 }
 
