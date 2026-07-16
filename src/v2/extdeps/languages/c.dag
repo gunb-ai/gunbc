@@ -395,12 +395,13 @@ fn c_by_value_edge_crosses_units(
   edge: CByValueTypeEdge,
   assignment: Map<ModuleId, CompilationUnitId>
 ) -> Bool {
-  match (
-    module_unit_id(assignment: assignment, module: edge.from.module),
-    module_unit_id(assignment: assignment, module: edge.to.module)
-  ) {
-    (Present { value: from_unit }, Present { value: to_unit }) => from_unit != to_unit
-    _ => false
+  match module_unit_id(assignment: assignment, module: edge.from.module) {
+    Present { value: from_unit } =>
+      match module_unit_id(assignment: assignment, module: edge.to.module) {
+        Present { value: to_unit } => from_unit != to_unit
+        Absent => false
+      }
+    Absent => false
   }
 }
 
