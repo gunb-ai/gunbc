@@ -16235,7 +16235,10 @@ mod witness_layer_roots_compile_clean_tests {
         let none: HashSet<String> = HashSet::new();
         let s = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
 
-        assert_eq!(regen_affected_decision(&[], &none, &closure), REGEN_AFFECTED_LABEL);
+        assert_eq!(
+            regen_affected_decision(&[], &none, &closure),
+            REGEN_AFFECTED_LABEL
+        );
         assert_eq!(
             regen_affected_decision(&s(&["src/v1/stage0/src/cli_run.rs"]), &none, &closure),
             REGEN_AFFECTED_LABEL
@@ -16251,7 +16254,11 @@ mod witness_layer_roots_compile_clean_tests {
         let departed_dag: HashSet<String> =
             ["dag/std/removed.dag".to_string()].into_iter().collect();
         assert_eq!(
-            regen_affected_decision(&s(&["dag/test/claim/parse_test.dag"]), &departed_dag, &closure),
+            regen_affected_decision(
+                &s(&["dag/test/claim/parse_test.dag"]),
+                &departed_dag,
+                &closure
+            ),
             REGEN_AFFECTED_LABEL
         );
         assert_eq!(
@@ -16302,8 +16309,7 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
     fn scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
-            let plan =
-                compile_clean_scope_plan_from_touched_paths(
+            let plan = compile_clean_scope_plan_from_touched_paths(
                 &["docs/plans/example.md".to_string()],
                 &HashSet::new(),
             )
@@ -16350,8 +16356,7 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
     fn scoped_plan_includes_touched_dag_entry() {
         with_workspace_cwd(|| {
-            let plan =
-                compile_clean_scope_plan_from_touched_paths(
+            let plan = compile_clean_scope_plan_from_touched_paths(
                 &["dag/std/logic.dag".to_string()],
                 &HashSet::new(),
             )

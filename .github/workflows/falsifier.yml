@@ -13,7 +13,7 @@ env:
 jobs:
   falsifier:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 230
+    timeout-minutes: 260
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -97,6 +97,13 @@ jobs:
           GUNBC_CI_DIFF_BASE: HEAD~20
           GUNBC_CI_DIFF_HEAD: HEAD
         timeout-minutes: 170
+      - name: compile-clean whole-tree cold control (scoped-PR admission counterpart)
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_plan_artifact_batches
+        env:
+          GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL: 1
+        timeout-minutes: 30
       - name: Floor cgroup peak post-read (calibration; survives a killed floor)
         run: |
           d="/sys/fs/cgroup$(awk -F: '$1=="0"{print $3}' /proc/self/cgroup)"

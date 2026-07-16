@@ -251,6 +251,15 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
+          # 🟡 dissolve-on: ci_regen_scope_shortcut_prefix — concat-built bash regen admission predicate over regen_stage0 --affected-by-diff; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes the regen disposition through orchestration emit and the step reads CI_REGEN_DISPOSITION without a transport scaffold. Regen admission scoping (2026-07-16): regen_stage0 --affected-by-diff computes the exact input closure its own compile_stage0 loader reads (src/v1/** + the dag/** import closure + manifests/toolchain) and compares it against the merge-base diff. A non-empty diff provably disjoint from the closure skips the self-host fixed-point step with a typed disposition (CI_REGEN_DISPOSITION=regen_not_affected_skipped; Skipped is never Green) — the fresh self-compile is a pure function of that closure, so its --verify outcome is forced by the green merge-base. Empty diff (main pushes), departed non-docs paths, inactive scoping, or ANY observation/walk failure prints regen_affected and the step runs (fail-closed: every arm refuses to skip, never widens). Main pushes therefore run regen on every merge as the unconditional cold control.
+          _ci_regen_scope=$("$ROOT/target/release/regen_stage0" --affected-by-diff 2>/dev/null || echo regen_affected)
+          echo "regen scope label: $_ci_regen_scope"
+          if [ "$_ci_regen_scope" = "regen_not_affected_skip" ]; then
+            mkdir -p target
+            echo regen_not_affected_skipped > target/ci-regen-disposition.txt
+            echo "regen scope: merge-base diff disjoint from the regen input closure — self-host fixed-point skipped (CI_REGEN_DISPOSITION=regen_not_affected_skipped; main pushes run regen unconditionally as the cold control)"
+            exit 0
+          fi
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
         timeout-minutes: 270
   deploy_dashboard_srv1:
