@@ -45,24 +45,20 @@ fn decode_fidelity_for_contract(contract: NumericalContract) -> DecodeFidelity {
 }
 
 fn lowering_fidelity_verdict_for_contract(contract: NumericalContract) -> LoweringFidelityVerdict {
+  LoweringAccepted {
+    fidelity: decode_fidelity_for_contract(contract: contract)
+  }
+}
+
+fn tree_reduce_lowering_verdict_for_contract(contract: NumericalContract) -> LoweringFidelityVerdict {
   match contract {
-    IntegerExact => LoweringAccepted {
-      fidelity: decode_fidelity_for_contract(contract: contract)
-    }
-    FloatApproximate { fma_contraction: fma, rounding: _, reduction_order: reduction } =>
-      match fma {
-        FmaContractionRefused =>
-          match reduction {
-            ReductionOrderRefused => LoweringAccepted {
-              fidelity: decode_fidelity_for_contract(contract: contract)
-            }
-            ReductionOrderPermitted => LoweringAccepted {
-              fidelity: decode_fidelity_for_contract(contract: contract)
-            }
-          }
-        FmaContractionPermitted => LoweringAccepted {
-          fidelity: decode_fidelity_for_contract(contract: contract)
-        }
+    IntegerExact => lowering_fidelity_verdict_for_contract(contract: contract)
+    FloatApproximate { fma_contraction: _, rounding: _, reduction_order: reduction } =>
+      match reduction {
+        ReductionOrderRefused =>
+          LoweringRefused { reason: ReductionOrderRefusedByContract }
+        ReductionOrderPermitted =>
+          lowering_fidelity_verdict_for_contract(contract: contract)
       }
   }
 }

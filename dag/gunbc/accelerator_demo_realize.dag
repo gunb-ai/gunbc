@@ -253,6 +253,7 @@ fn witness_effectful_program_execution_refused() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -273,6 +274,7 @@ fn witness_gather_program_execution_refused() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -438,6 +440,7 @@ fn witness_float_fma_fused_kernel_refused_when_contract_refuses() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }

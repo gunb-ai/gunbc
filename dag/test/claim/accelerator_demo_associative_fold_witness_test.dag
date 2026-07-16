@@ -3,6 +3,8 @@ module test.claim.accelerator_demo_associative_fold_witness
 import gunbc.accelerator_demo_plan {
   witness_associative_fold_recognized_with_tree_reduce,
   witness_associative_fold_refused_without_witness,
+  witness_float_associative_fold_refused_when_reduction_order_refused,
+  witness_tree_reduce_geometry_degenerate_refused,
   witness_placement_chosen_for_simd_lanes,
   witness_idle_lane_cost_visible_for_simd_domain,
 }
@@ -22,7 +24,12 @@ import std.numerical_contract {
   ReductionOrderRefused,
 }
 import std.approximate_field { ToNearestEven }
-import extdeps.communication.numerical_fidelity { decode_fidelity_for_contract }
+import extdeps.communication.numerical_fidelity {
+  decode_fidelity_for_contract,
+  tree_reduce_lowering_verdict_for_contract,
+  LoweringRefused,
+  ReductionOrderRefusedByContract,
+}
 import extdeps.communication.medium { Lossless, Lossy }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -52,6 +59,23 @@ fn witness_float_reduction_order_refused_maps_to_lossless() -> Bool {
   }
 }
 
+fn witness_tree_reduce_lowering_produces_reduction_order_refusal() -> Bool {
+  match tree_reduce_lowering_verdict_for_contract(
+    contract: float_contract_with_reduction(
+      rounding: ToNearestEven,
+      fma: FmaContractionRefused,
+      reduction: ReductionOrderRefused
+    )
+  ) {
+    LoweringRefused { reason: r } => match r {
+      ReductionOrderRefusedByContract => true
+      FmaContractionRefusedByContract => false
+      UnsupportedNumericalDomain => false
+    }
+    LoweringAccepted { fidelity: _ } => false
+  }
+}
+
 test fn accelerator_demo_phase4_within_fold_parallelism_witnesses() -> Bool {
   witness_associativity_license_matches_scheduled_combine()
     && witness_associativity_license_rejects_mismatched_combine()
@@ -66,4 +90,7 @@ test fn accelerator_demo_phase4_within_fold_parallelism_witnesses() -> Bool {
     && witness_idle_lane_cost_visible_for_simd_domain()
     && witness_float_reduction_order_permitted_maps_to_lossy()
     && witness_float_reduction_order_refused_maps_to_lossless()
+    && witness_tree_reduce_lowering_produces_reduction_order_refusal()
+    && witness_float_associative_fold_refused_when_reduction_order_refused()
+    && witness_tree_reduce_geometry_degenerate_refused()
 }

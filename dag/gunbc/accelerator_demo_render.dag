@@ -97,6 +97,7 @@ fn render_refusal_reason(reason: AcceleratorRefusalReason) -> String {
     ReductionOrderViolatesContract => "ReductionOrderViolatesContract"
     AssociativityNotWitnessedForFold => "AssociativityNotWitnessedForFold"
     AssociativityCombineMismatch => "AssociativityCombineMismatch"
+    TreeReduceGeometryDegenerate => "TreeReduceGeometryDegenerate"
     AcceleratorUnsupportedNumericalDomain => "AcceleratorUnsupportedNumericalDomain"
   }
 }

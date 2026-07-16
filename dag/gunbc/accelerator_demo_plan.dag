@@ -1,7 +1,7 @@
 module gunbc.accelerator_demo_plan
 
 import std.types { Bool, String, Int, List, NonEmptyStr }
-import std.measure { Nano, HardwareThreadCount, hardware_thread_count_value }
+import std.measure { Nano, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.effects { ReadEffect }
 import std.realization {
   Placement,
@@ -70,6 +70,7 @@ import extdeps.communication.numerical_fidelity {
   ReductionOrderRefusedByContract,
   UnsupportedNumericalDomain,
   lowering_fidelity_verdict_for_contract,
+  tree_reduce_lowering_verdict_for_contract,
 }
 import extdeps.gpu.types { AcceleratorFacts }
 import extdeps.vendor.nvidia { nvidia }
@@ -102,6 +103,7 @@ type AcceleratorRefusalReason
   | ReductionOrderViolatesContract
   | AssociativityNotWitnessedForFold
   | AssociativityCombineMismatch
+  | TreeReduceGeometryDegenerate
   | AcceleratorUnsupportedNumericalDomain
 
 type AcceleratorRecognitionOutcome
@@ -229,18 +231,20 @@ fn recognize_with_contract(
 fn recognize_elementwise_fold(class: ElementwiseFoldClass) -> AcceleratorRecognitionOutcome {
   recognize_elementwise_fold_for_lanes(
     class: class,
-    lane_count: demo_simd_lane_count
+    lane_count: demo_simd_lane_count,
+    contract: integer_exact_contract()
   )
 }
 
 fn recognize_elementwise_fold_for_lanes(
   class: ElementwiseFoldClass,
-  lane_count: HardwareThreadCount
+  lane_count: HardwareThreadCount,
+  contract: NumericalContract
 ) -> AcceleratorRecognitionOutcome {
   match class {
     PureElementwiseChain { op_count: _ } =>
       recognize_with_contract(
-        contract: integer_exact_contract(),
+        contract: contract,
         insist_on_fma_fused_kernel: false
       )
     AssociativeFoldChain { combine: combine, evidence: evidence } =>
@@ -249,18 +253,23 @@ fn recognize_elementwise_fold_for_lanes(
         scheduled_combine: combine
       ) {
         AssociativityLicenseGranted =>
-          match derive_tree_reduce_parallelism(
-            lane_count: lane_count,
-            element_count: demo_associative_fold_element_count
-          ) {
-            Absent =>
-              Refused { reason: AssociativityNotWitnessedForFold }
-            Present { value: parallelism } =>
-              recognized_associative_fold_outcome(
-                fold_parallelism: parallelism,
-                contract: integer_exact_contract(),
-                fidelity: Lossless
-              )
+          match tree_reduce_lowering_verdict_for_contract(contract: contract) {
+            LoweringRefused { reason: reason } =>
+              Refused { reason: accelerator_refusal_from_lowering(reason: reason) }
+            LoweringAccepted { fidelity: fidelity } =>
+              match derive_tree_reduce_parallelism(
+                lane_count: lane_count,
+                element_count: demo_associative_fold_element_count
+              ) {
+                Absent =>
+                  Refused { reason: TreeReduceGeometryDegenerate }
+                Present { value: parallelism } =>
+                  recognized_associative_fold_outcome(
+                    fold_parallelism: parallelism,
+                    contract: contract,
+                    fidelity: fidelity
+                  )
+              }
           }
         AssociativityLicenseMissing =>
           Refused { reason: AssociativityNotWitnessedForFold }
@@ -356,6 +365,7 @@ fn witness_effectful_subgraph_refused() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -371,6 +381,7 @@ fn witness_data_dependent_gather_refused() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -397,6 +408,7 @@ fn witness_float_fma_fused_kernel_refused_when_contraction_refused() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -418,6 +430,20 @@ fn witness_lowering_fma_refusal_maps_to_accelerator_refusal() -> Bool {
     ReductionOrderViolatesContract => false
     AssociativityNotWitnessedForFold => false
     AssociativityCombineMismatch => false
+    TreeReduceGeometryDegenerate => false
+    AcceleratorUnsupportedNumericalDomain => false
+  }
+}
+
+fn witness_lowering_reduction_order_refusal_maps_to_accelerator_refusal() -> Bool {
+  match accelerator_refusal_from_lowering(reason: ReductionOrderRefusedByContract) {
+    ReductionOrderViolatesContract => true
+    NotElementwisePure => false
+    CarriesEffects => false
+    FmaContractionViolatesContract => false
+    AssociativityNotWitnessedForFold => false
+    AssociativityCombineMismatch => false
+    TreeReduceGeometryDegenerate => false
     AcceleratorUnsupportedNumericalDomain => false
   }
 }
@@ -431,6 +457,7 @@ fn witness_lowering_unsupported_domain_maps_to_accelerator_refusal() -> Bool {
     ReductionOrderViolatesContract => false
     AssociativityNotWitnessedForFold => false
     AssociativityCombineMismatch => false
+    TreeReduceGeometryDegenerate => false
   }
 }
 
@@ -472,6 +499,65 @@ fn witness_associative_fold_refused_without_witness() -> Bool {
       CarriesEffects => false
       FmaContractionViolatesContract => false
       ReductionOrderViolatesContract => false
+      AssociativityCombineMismatch => false
+      TreeReduceGeometryDegenerate => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}
+
+fn recognize_associative_int_sum_fold_with_contract(
+  contract: NumericalContract
+) -> AcceleratorRecognitionOutcome {
+  recognize_elementwise_fold_for_lanes(
+    class: AssociativeFoldChain {
+      combine: demo_int_sum_combine_ref()
+      evidence: demo_int_sum_witnessed_associativity_evidence()
+    },
+    lane_count: demo_simd_lane_count,
+    contract: contract
+  )
+}
+
+fn witness_float_associative_fold_refused_when_reduction_order_refused() -> Bool {
+  match recognize_associative_int_sum_fold_with_contract(
+    contract: float_contract_with_reduction(
+      rounding: ToNearestEven,
+      fma: FmaContractionRefused,
+      reduction: ReductionOrderRefused
+    )
+  ) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => false
+    Refused { reason: r } => match r {
+      ReductionOrderViolatesContract => true
+      NotElementwisePure => false
+      CarriesEffects => false
+      FmaContractionViolatesContract => false
+      AssociativityNotWitnessedForFold => false
+      AssociativityCombineMismatch => false
+      TreeReduceGeometryDegenerate => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}
+
+fn witness_tree_reduce_geometry_degenerate_refused() -> Bool {
+  match recognize_elementwise_fold_for_lanes(
+    class: AssociativeFoldChain {
+      combine: demo_int_sum_combine_ref()
+      evidence: demo_int_sum_witnessed_associativity_evidence()
+    },
+    lane_count: hardware_thread_count(count: 0),
+    contract: integer_exact_contract()
+  ) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => false
+    Refused { reason: r } => match r {
+      TreeReduceGeometryDegenerate => true
+      NotElementwisePure => false
+      CarriesEffects => false
+      FmaContractionViolatesContract => false
+      ReductionOrderViolatesContract => false
+      AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
       AcceleratorUnsupportedNumericalDomain => false
     }

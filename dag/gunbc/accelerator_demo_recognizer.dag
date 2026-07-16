@@ -69,6 +69,7 @@ fn witness_effectful_program_structurally_refused() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -84,6 +85,7 @@ fn witness_gather_program_structurally_refused() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
