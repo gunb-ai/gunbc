@@ -19,6 +19,7 @@ import gunbc.accelerator_demo_fold {
   witness_idle_lane_cost_zero_at_scalar,
   witness_idle_lane_cost_visible_at_simd,
 }
+import std.approximate_field { ToNearestEven }
 import std.numerical_contract {
   float_contract_with_reduction,
   FmaContractionRefused,

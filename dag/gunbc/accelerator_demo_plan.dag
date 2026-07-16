@@ -438,6 +438,7 @@ fn witness_lowering_fma_refusal_maps_to_accelerator_refusal() -> Bool {
     ReductionOrderViolatesContract => false
     AssociativityNotWitnessedForFold => false
     AssociativityCombineMismatch => false
+    AssociativitySubjectMismatch => false
     TreeReduceGeometryDegenerate => false
     AcceleratorUnsupportedNumericalDomain => false
   }
@@ -451,6 +452,7 @@ fn witness_lowering_reduction_order_refusal_maps_to_accelerator_refusal() -> Boo
     FmaContractionViolatesContract => false
     AssociativityNotWitnessedForFold => false
     AssociativityCombineMismatch => false
+    AssociativitySubjectMismatch => false
     TreeReduceGeometryDegenerate => false
     AcceleratorUnsupportedNumericalDomain => false
   }
@@ -465,6 +467,7 @@ fn witness_lowering_unsupported_domain_maps_to_accelerator_refusal() -> Bool {
     ReductionOrderViolatesContract => false
     AssociativityNotWitnessedForFold => false
     AssociativityCombineMismatch => false
+    AssociativitySubjectMismatch => false
     TreeReduceGeometryDegenerate => false
   }
 }
@@ -542,11 +545,11 @@ fn witness_float_associative_fold_refused_when_reduction_order_refused() -> Bool
   ) {
     Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => false
     Refused { reason: r } => match r {
-      ReductionOrderViolatesContract => true
+      AssociativityNotWitnessedForFold => true
+      ReductionOrderViolatesContract => false
       NotElementwisePure => false
       CarriesEffects => false
       FmaContractionViolatesContract => false
-      AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
       AssociativitySubjectMismatch => false
       TreeReduceGeometryDegenerate => false
