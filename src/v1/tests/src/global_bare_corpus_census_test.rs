@@ -74,16 +74,74 @@ fn load_floor_census(
     build_global_bare_census(graph.modules.clone(), Rc::new(source_indices))
 }
 
-fn assert_not_census_ambiguous(
+enum CensusInvariantDisposition {
+    Unique,
+    Ambiguous,
+    Absent,
+}
+
+fn census_invariant_disposition(
+    census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
+    name: &str,
+) -> CensusInvariantDisposition {
+    match census.get(name).map(|s| &**s) {
+        None => CensusInvariantDisposition::Absent,
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => {
+            CensusInvariantDisposition::Ambiguous
+        }
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {
+            CensusInvariantDisposition::Unique
+        }
+    }
+}
+
+enum CensusAmbiguityLeg {
+    /// Name is in census with exactly one binding shape — ambiguity leg evaluable.
+    KnownUnique,
+    /// Name is in census as a homonym — red.
+    KnownAmbiguous,
+    /// Name is not in census — ambiguity leg refused (not "non-ambiguous").
+    RefusedAbsent,
+}
+
+fn census_ambiguity_leg(
+    census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
+    name: &str,
+) -> CensusAmbiguityLeg {
+    match census_invariant_disposition(census, name) {
+        CensusInvariantDisposition::Absent => CensusAmbiguityLeg::RefusedAbsent,
+        CensusInvariantDisposition::Ambiguous => CensusAmbiguityLeg::KnownAmbiguous,
+        CensusInvariantDisposition::Unique => CensusAmbiguityLeg::KnownUnique,
+    }
+}
+
+fn emit_census_ambiguity_leg_refusal(
     census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
     name: &str,
 ) {
-    if let Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) = census.get(name).map(|s| &**s)
-    {
-        panic!(
+    let key_count = census.len();
+    eprintln!(
+        "[tier2-census] REFUSED {name}: not in global_bare census ({key_count} keys); \
+         ambiguity leg cannot be evaluated; census shape-coverage gap, precedent fold"
+    );
+}
+
+/// Census ambiguity leg: UNIQUE proceeds, AMBIGUOUS reds, ABSENT refuses with a counted
+/// diagnostic (reachability leg still runs separately). Returns true when refused.
+fn assert_census_ambiguity_leg_or_reachability_only(
+    census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
+    name: &str,
+) -> bool {
+    match census_ambiguity_leg(census, name) {
+        CensusAmbiguityLeg::RefusedAbsent => {
+            emit_census_ambiguity_leg_refusal(census, name);
+            true
+        }
+        CensusAmbiguityLeg::KnownAmbiguous => panic!(
             "{name}: global bare census is AMBIGUOUS — this was construction protocol / \
              subtree-local resolution; a new homonym authority now exists; triage before consolidating"
-        );
+        ),
+        CensusAmbiguityLeg::KnownUnique => false,
     }
 }
 
@@ -106,6 +164,35 @@ fn assert_zero_cross_subtree_bare_sites(name: &str, stats: BareRefReachability) 
     );
 }
 
+/// Census disposition snapshot — dissolve trigger: asserts tier-2 names are ABSENT from the
+/// global bare census today (shape gap: entry-grain data stamps, fn bodies). When census
+/// coverage widens (#6640) and a name becomes UNIQUE, this test reds to activate the leg.
+#[test]
+fn tier2_census_disposition_snapshot() {
+    let census = load_floor_census(&workspace_root());
+    let names = [
+        "live_tree_disposition",
+        "extdeps_external_authority_anchor",
+        "emit",
+    ];
+    let mut refused = 0usize;
+    for name in names {
+        let leg = census_ambiguity_leg(&census, name);
+        assert!(
+            matches!(leg, CensusAmbiguityLeg::RefusedAbsent),
+            "{name}: expected ABSENT from global bare census ({} keys) — census shape-coverage \
+             gap; when coverage lands and name becomes UNIQUE, update this dissolve trigger",
+            census.len()
+        );
+        emit_census_ambiguity_leg_refusal(&census, name);
+        refused += 1;
+    }
+    eprintln!(
+        "[tier2-census] census leg refused {refused}/{} names",
+        names.len()
+    );
+}
+
 /// Tier-2 triage proved ConstructionProtocolNoAction on the two highest-rank roster ghosts;
 /// consolidating either would destroy information. These gates encode that finding durably.
 #[test]
@@ -114,13 +201,27 @@ fn tier2_namespace_homonym_invariants() {
     let roots = floor_source_roots(&ws);
     let census = load_floor_census(&ws);
 
+    let tier2_names = [
+        "live_tree_disposition",
+        "extdeps_external_authority_anchor",
+        "emit",
+    ];
+    let mut census_refused = 0usize;
+    for name in tier2_names {
+        if assert_census_ambiguity_leg_or_reachability_only(&census, name) {
+            census_refused += 1;
+        }
+    }
+    eprintln!(
+        "[tier2-census] census leg refused {census_refused}/{} names",
+        tier2_names.len()
+    );
+
     for name in ["live_tree_disposition", "extdeps_external_authority_anchor"] {
-        assert_not_census_ambiguous(&census, name);
         let stats = bare_ref_reachability_for_name(&roots, &roots, &[], name);
         assert_zero_ambiguous_bare_sites(name, stats);
     }
 
-    assert_not_census_ambiguous(&census, "emit");
     let emit_stats = bare_ref_reachability_for_name(&roots, &roots, &[], "emit");
     assert_zero_cross_subtree_bare_sites("emit", emit_stats);
 }

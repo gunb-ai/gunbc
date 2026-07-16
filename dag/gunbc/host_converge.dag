@@ -246,7 +246,7 @@ fn find_by_identity<T>(items: List<T>, identity: HostIdentity, key: fn(T) -> Hos
     f: fn(acc, item) {
       match acc {
         Present { value: _ } => acc
-        Absent =>
+        _ =>
           if key(item) == identity {
             Present { value: item }
           } else {
