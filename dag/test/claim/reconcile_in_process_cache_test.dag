@@ -9,6 +9,7 @@ import std.cache_identity {
 import std.cache_interface {
   ArtifactIdentity,
   HandAuthoredString,
+  NativeInternalHash,
   ContentAddressedByValue,
   PerHostFilesystem,
   InProcess,
@@ -42,9 +43,9 @@ fn witness_parse_cache_is_in_process_hand_authored() -> Bool {
     && (row.miss_semantics == MissThenCreate)
 }
 
-fn witness_typed_module_cache_is_in_process_hand_authored() -> Bool {
+fn witness_typed_module_cache_is_in_process_native_internal() -> Bool {
   let row = cache_interface_facts_from_catalog(row: typed_module_cache_facts)
-  (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == HandAuthoredString)
+  (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == NativeInternalHash)
     && !row.key_derivation.content_verified_on_read
     && (row.locality == InProcess)
     && (row.value_shape == StructuredArtifact)
@@ -66,7 +67,7 @@ fn witness_in_process_siblings_share_locality_not_key_class() -> Bool {
     && (parse.locality == InProcess)
     && !(disk.locality == parse.locality)
     && (catalog_key_derivation_classification(kd: parse_cache_facts.key_derivation) == HandAuthoredString)
-    && (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == HandAuthoredString)
+    && (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == NativeInternalHash)
     && (catalog_key_derivation_classification(kd: resolved_graph_cache_facts.key_derivation) == ContentAddressedByValue)
 }
 
@@ -105,7 +106,7 @@ fn witness_reconcile_family_backends_are_distinct() -> Bool {
 
 test fn reconcile_in_process_cache_witnesses() -> Bool {
   witness_parse_cache_is_in_process_hand_authored()
-    && witness_typed_module_cache_is_in_process_hand_authored()
+    && witness_typed_module_cache_is_in_process_native_internal()
     && witness_disk_sibling_is_content_addressed()
     && witness_in_process_siblings_share_locality_not_key_class()
     && witness_parse_source_routes_to_parse_cache_backend()

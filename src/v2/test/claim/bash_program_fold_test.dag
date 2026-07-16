@@ -42,6 +42,10 @@ data bash_program_exit_subshell_golden: String = "('echo' 'hi'; exit 1)\n"
 data bash_program_exit_if_golden: String = "if 'true'; then 'echo' 'hi'; exit 1; fi\n"
 data bash_program_andor_exit_golden: String = "'true' || exit 1\n"
 
+data bash_program_mktemp_rm_golden: String = "set -e\nOUT=$('mktemp' '-d')\n'rm' '-rf' \"$OUT\"\n"
+data bash_program_metachars_quoted_golden: String = "'echo' '$(rm -rf /)'\n"
+data bash_program_varref_vs_lit_golden: String = "\"$ROOT\" 'ROOT'\n"
+
 data bash_program_real_witness_golden: String = "set -e\nROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\nV1_DAG_PARSE=\"$ROOT\"'/target/release/v1srcdag_parse'\nif '[' '!' '-x' \"$V1_DAG_PARSE\" ']'; then ('cd' \"$ROOT\" && 'cargo' 'build' '-p' 'v1-compiler' '--release' '--bin' 'v1srcdag_parse') || exit 1; fi\nif '[' '!' '-x' \"$V1_DAG_PARSE\" ']'; then 'echo' '::error::build verification: declared artifact '\\''v1srcdag_parse'\\'' absent or not executable after a '\\''successful'\\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '\"$V1_DAG_PARSE\" >&2; exit 1; fi\nif '[' '!' '-s' \"$V1_DAG_PARSE\" ']'; then 'echo' '::error::build verification: declared artifact '\\''v1srcdag_parse'\\'' is zero-byte after a '\\''successful'\\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '\"$V1_DAG_PARSE\" >&2; exit 1; fi\n'cd' \"$ROOT\"\n\"$V1_DAG_PARSE\" '--entry' 'dag/std/algebra.dag'\n"
 
 data bash_program_real_claims_golden: String = "set -e\nROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\nGUNBC=\"$ROOT\"'/target/release/gunbc'\nif '[' '!' '-x' \"$GUNBC\" ']'; then ('cd' \"$ROOT\" && 'cargo' 'build' '-p' 'v1-compiler' '--release' '--bin' 'gunbc') || exit 1; fi\nif '[' '!' '-x' \"$GUNBC\" ']'; then 'echo' '::error::build verification: declared artifact '\\''gunbc'\\'' absent or not executable after a '\\''successful'\\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '\"$GUNBC\" >&2; exit 1; fi\nif '[' '!' '-s' \"$GUNBC\" ']'; then 'echo' '::error::build verification: declared artifact '\\''gunbc'\\'' is zero-byte after a '\\''successful'\\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '\"$GUNBC\" >&2; exit 1; fi\n\"$GUNBC\" 'run' '--source-root' 'src/v2' '--source-root' 'dag' '--entry' 'src/v2/test/claim/bash_program_fold_test.dag' '--function' 'bash_program_serialize_matches_golden_holds' '--claim-run'\n"
@@ -206,6 +210,43 @@ fn bash_program_fold_real_witness_program() -> ShellProgram {
 
 fn bash_program_fold_real_claims_program() -> ShellProgram {
   bash_program_fixture_gunbc_claims_program()
+}
+
+fn bash_program_mktemp_rm_sample() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: [
+      assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), var_ref(name: "OUT")])
+    ]
+  }
+}
+
+test fn bash_program_mktemp_rm_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: bash_program_mktemp_rm_sample(),
+    golden: bash_program_mktemp_rm_golden
+  )
+}
+
+test fn bash_program_metachars_quoted_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: ShellProgram {
+      set_e: false,
+      statements: [command(words: [lit(text: "echo"), lit(text: "$(rm -rf /)")])]
+    },
+    golden: bash_program_metachars_quoted_golden
+  )
+}
+
+test fn bash_program_varref_vs_lit_quoting_matches_golden_holds() -> Bool {
+  bash_program_serialize_matches_golden(
+    p: ShellProgram {
+      set_e: false,
+      statements: [command(words: [var_ref(name: "ROOT"), lit(text: "ROOT")])]
+    },
+    golden: bash_program_varref_vs_lit_golden
+  )
 }
 
 test fn bash_program_serialize_matches_golden_holds() -> Bool {

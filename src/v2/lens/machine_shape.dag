@@ -41,13 +41,11 @@ import std.algebra { Cons, Empty }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.witness { Holds, Witness }
 
-data machine_shape_construction_wall_note: String = "Single-constructor discipline (machine-shape-orthogonal-scheduling.md §2 ruling 9 / operator redirect 2026-07-16): MachineShape may be MATERIALIZED only inside std.machine_shape, extdeps.gpu.machine_shape (shape_from_catalog fill), or in test/claim RED controls. Every other direct MachineShape { .. } record literal is an unsanctioned hand-authored shape — judgment-guarded until this compile gate lands. Precedent: symbol_index_fill's fill-only discipline (SymbolIndex materializes only through symbol_index_fill_* / empty_symbol_index, never a parallel index walk). Recognition: module-context fold_node_topdown + callee Atom identity (^MachineShape on a Transform call), mirroring determinism_compile_gate's map_keys reach detection."
+data machine_shape_construction_wall_note: String = "Single-constructor discipline (machine-shape-orthogonal-scheduling.md §2 ruling 9 / operator redirect 2026-07-16): MachineShape may be MATERIALIZED only inside std.machine_shape, extdeps.*.machine_shape (shape_from_catalog fills beside cited catalog rows), or in test/claim RED controls. Every other direct MachineShape { .. } record literal is an unsanctioned hand-authored shape — judgment-guarded until this compile gate lands. Precedent: symbol_index_fill's fill-only discipline (SymbolIndex materializes only through symbol_index_fill_* / empty_symbol_index, never a parallel index walk). Recognition: module-context fold_node_topdown + callee Atom identity (^MachineShape on a Transform call), mirroring determinism_compile_gate's map_keys reach detection."
 
-data machine_shape_witness_scope_note: String = "SCOPE (matches medium_structure_containment test/claim exclusion): dag/test/claim and src/v2/test/claim are deliberately OUT OF SCOPE — a witness that CONSTRUCTS MachineShape to exercise machine_shape_validate RED arms is building the escape hatch to TEST it, not smuggling a shape. std.machine_shape is the type authority; extdeps.gpu.machine_shape is the sanctioned catalog fill. Production substrate elsewhere must call shape_from_catalog and match on MachineShapeConstruction."
+data machine_shape_witness_scope_note: String = "SCOPE (matches medium_structure_containment test/claim exclusion): dag/test/claim and src/v2/test/claim are deliberately OUT OF SCOPE — a witness that CONSTRUCTS MachineShape to exercise machine_shape_validate RED arms is building the escape hatch to TEST it, not smuggling a shape. std.machine_shape is the type authority; extdeps cpu/gpu machine_shape modules are the sanctioned catalog fills. Production substrate elsewhere must call shape_from_catalog and match on MachineShapeConstruction."
 
 data machine_shape_authority_module: String = "std.machine_shape"
-
-data machine_shape_catalog_fill_module: String = "extdeps.gpu.machine_shape"
 
 fn node_callee_symbol(n: Node) -> Optional<Symbol> {
   if node_is_call(node: n) {
@@ -68,7 +66,8 @@ fn qualified_name_is_authority_home(qn: QualifiedName) -> Bool {
 }
 
 fn qualified_name_is_catalog_fill_home(qn: QualifiedName) -> Bool {
-  qualified_name_to_dotted_string(qn: qn) == machine_shape_catalog_fill_module
+  let dotted = qualified_name_to_dotted_string(qn: qn)
+  dotted.starts_with(prefix: "extdeps.") && dotted.ends_with(suffix: ".machine_shape")
 }
 
 fn qualified_name_is_witness_module(qn: QualifiedName) -> Bool {
@@ -182,7 +181,7 @@ fn machine_shape_construction_findings(root: Node) -> List<Diagnostic> {
   }
 }
 
-data compile_gate_law: String = "MachineShape single-constructor compile gate (operator redirect 2026-07-16): a direct MachineShape record literal outside std.machine_shape, extdeps.gpu.machine_shape, and outside test/claim witnesses FAILS COMPILATION, inheriting compile's affected-set scoping. shape_from_catalog is the sanctioned producer; consumers match MachineShapeConstruction and never hand-author shapes. Grain: rooted whole-tree walk (module-context fold_node_topdown) — enrolls in always_required_root_lenses, not the per-node roster. Witness lane = RED controls in machine_shape_construction_wall_test; enforcement never the witness."
+data compile_gate_law: String = "MachineShape single-constructor compile gate (operator redirect 2026-07-16): a direct MachineShape record literal outside std.machine_shape, extdeps.*.machine_shape, and outside test/claim witnesses FAILS COMPILATION, inheriting compile's affected-set scoping. shape_from_catalog is the sanctioned producer; consumers match MachineShapeConstruction and never hand-author shapes. Grain: rooted whole-tree walk (module-context fold_node_topdown) — enrolls in always_required_root_lenses, not the per-node roster. Witness lane = RED controls in machine_shape_construction_wall_test; enforcement never the witness."
 
 fn machine_shape_compile_gate(node: Node) -> Outcome<Witness<Node>> {
   match machine_shape_construction_findings(root: node) {

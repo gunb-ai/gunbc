@@ -4,7 +4,7 @@ import std.logic { Bool }
 import extdeps.languages.bash.program {
   ShellStmt, ShellWord, ShellProgram,
   If, Command, Concat, VarRef, Lit,
-  lit, var_ref, serialize_bash
+  lit, var_ref
 }
 import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
 import v2.workflow.build_step_emit { verifications_script }
@@ -63,18 +63,6 @@ fn witness_serialized_conjuncts_and_teeth() -> Bool {
   }
 }
 
-fn witness_verifications_script_byte_identical_to_serialize_bash() -> Bool {
-  let probe = [probe_artifact()]
-  let v1 = serialize_bash(p: ShellProgram {
-    set_e: false,
-    statements: emit_verifications(produces: probe)
-  })
-  match verifications_script(produces: probe) {
-    Accepted { value: v2, diagnostics: _ } => v2 == v1
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 fn witness_floor_covers_both_release_bins() -> Bool {
   let script = ci_floor_build_verify_script()
   string_contains(s: script, pattern: "--verify-build-artifacts")
@@ -84,8 +72,7 @@ fn witness_floor_covers_both_release_bins() -> Bool {
 }
 
 test fn build_artifact_verification_holds() -> Bool {
-  witness_verifications_script_byte_identical_to_serialize_bash()
-    && witness_single_artifact_produces_two_checks()
+  witness_single_artifact_produces_two_checks()
     && witness_existence_check_no_mtime()
     && witness_serialized_conjuncts_and_teeth()
     && witness_floor_covers_both_release_bins()
