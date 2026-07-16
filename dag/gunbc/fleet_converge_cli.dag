@@ -215,7 +215,7 @@ fn converge_cli_run(host: String) -> ConvergeCliReceipt {
         reason: Present { value: PolicyUnsound { reason: why } },
       }
     ConvergePolicyDerived { hosts: hosts } =>
-      if host == "srv1" {
+      if host as HostIdentity == operator_host_srv1 {
         converge_cli_slice1_srv1_receipt()
       } else {
         match host_converge_for_identity(hosts: hosts, identity: host as HostIdentity) {
