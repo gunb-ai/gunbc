@@ -17,10 +17,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "usv_pilot_v2_std_collection.rs",
     "usv_pilot_v2_std_node.rs",
     "v2_compiler_discovery_enumeration.rs",
-<<<<<<< HEAD
     "v2_compiler_parse_engine_hooks.rs",
-=======
->>>>>>> 2a44a5f0ce (Regen bootstrap_stage0_crate_layout_generated.rs (trailing-comma drift).)
     "v2_compiler_use_site_verdict.rs"
 ];
 
