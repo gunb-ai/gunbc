@@ -161,7 +161,12 @@ pub fn closure_content_digest(sources: &[Rc<SourceFile>]) -> Hash {
     acc
 }
 
-fn transform_content_digest() -> Hash {
+/// Content hash of the running compiler binary — the compiler-identity key term.
+/// One authority for every key that must invalidate across a seed rebuild: the
+/// resolved-graph subject digest (below) and the typed-module content key
+/// (`std.interface_summary.typed_module_key`, cli_run's typed store) both consume
+/// this digest rather than re-deriving the executable read.
+pub fn transform_content_digest() -> Hash {
     static DIGEST: OnceLock<Hash> = OnceLock::new();
     DIGEST
         .get_or_init(|| {
