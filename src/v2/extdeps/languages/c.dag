@@ -623,7 +623,7 @@ data c_source_text: String = "int add(int x, int y) { return x + y; }"
 
 data c_emit_host_main_suffix: String = "\n\nextern long write(int, const void *, unsigned long);\nint main(void) { int value = add(2, 3); if (value != 5) { return 1; } unsigned char b[5] = {0, (unsigned char)(value & 0xff), (unsigned char)((value >> 8) & 0xff), (unsigned char)((value >> 16) & 0xff), (unsigned char)((value >> 24) & 0xff)}; write(1, b, 5); return 0; }\n"
 
-data c_emit_host_inject_fault_main_suffix: String = "\n\nextern long write(int, const void *, unsigned long);\nint main(void) { int value = add(2, 2); if (value != 5) { return 1; } unsigned char b[5] = {0, (unsigned char)(value & 0xff), (unsigned char)((value >> 8) & 0xff), (unsigned char)((value >> 16) & 0xff), (unsigned char)((value >> 24) & 0xff)}; write(1, b, 5); return 0; }\n"
+data c_emit_host_inject_fault_main_suffix: String = "\n\nextern long write(int, const void *, unsigned long);\nint main(void) { int value = add(2, 2); unsigned char b[5] = {0, (unsigned char)(value & 0xff), (unsigned char)((value >> 8) & 0xff), (unsigned char)((value >> 16) & 0xff), (unsigned char)((value >> 24) & 0xff)}; write(1, b, 5); return 0; }\n"
 
 data c_emit_host_main_suffix_dissolution_trigger: String = "🟡 dissolve-on: c_emit_host_main_suffix + c_emit_host_inject_fault_main_suffix — smoke-driver main harness fragments spliced after emitted add via EmittedWithSuffix (parallel to rust_emit_host_main_suffix / slb_driver_main_source). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then."
 

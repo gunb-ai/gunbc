@@ -120,7 +120,7 @@ test fn c_add_emit_host_inject_fault_refuses_holds() -> Bool {
                 Accepted { value: _, diagnostics: _ } =>
                   stdout.bytes != emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
               }
-            Rejected { diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false
       }
