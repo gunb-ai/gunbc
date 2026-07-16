@@ -8,7 +8,7 @@ import extdeps.gunbc
 import std.logic { Bool }
 import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
 
-data sfl_doc: String = "Wave 2 Band B (fold_lowering self-emit): shim-free seed-linked behavioral receipt. Emit ONLY v2.compiler.fold_lowering via gunbc compile --entry; the emitted lib.rs carries its std import closure (no hand dep shims). Seed oracle: v1_compiler::v2_compiler_fold_lowering (hand-retained in src/v1/stage0). Behavioral bar: cargo-green witness pairs emitted vs seed on fold_family_head (plain + --inject-fault RED) plus supplementary claim-run on fold_lowering_test."
+data sfl_doc: String = "Wave 2 Band B (fold_lowering self-emit): seed-linked behavioral receipt mirroring tools.self_host_parse_engine_hooks_behavioral_transport. Emit ONLY v2.compiler.fold_lowering via gunbc compile --entry (emit step must succeed); compile a v1_compiled driver crate with shim lib.rs + compilable fold_family_head entry surface linked against the v1-compiler seed path dependency. Seed oracle: v1_compiler::v2_compiler_fold_lowering. Behavioral bar: cargo-green witness pairs emitted vs seed on fold_family_head (plain + --inject-fault RED) plus supplementary claim-run on fold_lowering_test."
 
 data sfl_seed_retained_note: String = "Seed oracle: v1_compiler::v2_compiler_fold_lowering in src/v1/stage0 (hand-retained, independent of emitted artifact). Dissolve-on: same as sfl_scaffold_dissolution_trigger."
 
@@ -16,9 +16,13 @@ data sfl_source_rel: String = "src/v2/compiler/fold_lowering.dag"
 
 data sfl_test_entry_rel: String = "src/v2/test/claim/fold_lowering_test.dag"
 
+data sfl_shim_lib_rel: String = "dag/tools/self_host_fold_lowering_shims/lib.rs"
+
+data sfl_shim_entry_rel: String = "dag/tools/self_host_fold_lowering_shims/v2_compiler_fold_lowering.rs"
+
 data sfl_shim_driver_rel: String = "dag/tools/self_host_fold_lowering_shims/witness_main.rs"
 
-data sfl_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_fold_lowering_shims/witness_main.rs + sfl_cargo_toml — hand-written equivalence driver + driver-crate manifest (mirrors sde/ssuv scaffold debt; shim-free for std deps only). DISSOLVES WHEN a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest without hand shims."
+data sfl_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_fold_lowering_shims/* + sfl_cargo_toml — hand-written equivalence driver, driver-crate manifest, and compilable fold_family_head entry shim (full gunbc-emitted entry rs still carries FreeMonoid note debt). DISSOLVES WHEN gunbc-emitted v2_compiler_fold_lowering.rs is rustc-clean standalone and a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest without hand shims."
 
 data sfl_receipt_pass_marker: String = "SELF_HOST_FOLD_LOWERING_BEHAVIORAL_RECEIPT: PASS"
 
@@ -38,6 +42,8 @@ fn sfl_cargo_toml(root: String) -> String {
 fn sfl_behavioral_receipt_holds() -> Bool {
   let root = git.Core.Toplevel()
   let module_read = Filesystem.Read(path: sfl_repo_path(root: root.path, rel: sfl_source_rel))
+  let lib_read = Filesystem.Read(path: sfl_repo_path(root: root.path, rel: sfl_shim_lib_rel))
+  let entry_read = Filesystem.Read(path: sfl_repo_path(root: root.path, rel: sfl_shim_entry_rel))
   let driver_read = Filesystem.Read(path: sfl_repo_path(root: root.path, rel: sfl_shim_driver_rel))
 
   let out_dir = shell.Mktemp.Dir()
@@ -57,6 +63,9 @@ fn sfl_behavioral_receipt_holds() -> Bool {
     ]
   )
 
+  let src_dir = shell.Mkdir.Parents(path: concat(out_dir.path, "/src"))
+  let lib_written = Filesystem.Write(path: concat(out_dir.path, "/src/lib.rs"), content: lib_read.content)
+  let entry_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_compiler_fold_lowering.rs"), content: entry_read.content)
   let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: sfl_cargo_toml(root: root.path))
   let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: driver_read.content)
 
@@ -85,8 +94,11 @@ fn sfl_behavioral_receipt_holds() -> Bool {
 
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
 
-  module_read.success && driver_read.success
+  module_read.success
+    && lib_read.success && entry_read.success && driver_read.success
     && out_dir.success && gunbc_built && emit.success
+    && src_dir.success
+    && lib_written.success && entry_written.success
     && manifest.success && main_rs.success
     && build.success
     && pass_run.success && string_contains(s: pass_run.stdout, pattern: sfl_receipt_pass_marker)
