@@ -195,3 +195,9 @@ path = "src/bin/dag_collect_fingerprint_witness.rs"
 [[bin]]
 name = "parse_witness"
 path = "src/bin/parse_witness.rs"
+
+# Whole-tree compile-clean hard-diagnostic histogram (namespace migration instrument).
+# NOT floor-enrolled — run standalone; do not invoke from cargo tests (OOM risk).
+[[bin]]
+name = "compile_clean_diagnostic_histogram"
+path = "src/bin/compile_clean_diagnostic_histogram.rs"
