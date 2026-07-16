@@ -5918,6 +5918,22 @@ fn build_global_bare_census(modules: List<ResolvedModule>, source_indices: Map<S
   )
 }
 
+fn build_global_bare_variant_locals(census: Map<String, GlobalBareLookupState>, source_indices: Map<String, NewlineIndex>) -> Map<String, TypeBinding> {
+  fold(map_keys(census), init: empty_map(), f: (acc, name) =>
+    match map_get(census, name) {
+      Present { value: GlobalBareUniqueBinding { binding } } =>
+        let owner = binding.resolved
+        if owner.connective == Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
+          match map_get(acc, name) {
+            Present { value: _ } => acc
+            Absent => map_insert(acc, name, binding)
+          }
+        } else { acc }
+      _ => acc
+    }
+  )
+}
+
 fn symbol_index_insert_item(
   index: SymbolIndex,
   module_path: String,
@@ -6538,6 +6554,27 @@ fn bind_imported_name_from_surface(state: VariantFoldState, surface: VariantExpo
   }
 }
 
+}
+
+fn merge_global_bare_variant_locals(
+  precomputed: Map<String, TypeBinding>,
+  state: VariantFoldState,
+  source_indices: Map<String, NewlineIndex>,
+  module_name: String
+) -> VariantFoldState {
+  fold(map_keys(precomputed), init: state, f: (acc, name) =>
+    match map_get(acc.locals, name) {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(precomputed, name) {
+          Present { value: binding } =>
+            insert_variant_owner_checked(state: acc, arm_name: name, owner: binding.resolved, source_indices: source_indices, module_name: module_name)
+          Absent => acc
+        }
+    }
+  )
+}
+
 fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, module_name: String, init: VariantFoldState) -> VariantFoldState {
   fold(resolved_imports, init: init, f: (acc, imp) =>
     let with_glob = if imp.is_all {
@@ -6567,7 +6604,8 @@ fn build_module_context(contributions: List<ItemContribution>,
     variant_surfaces: Map<String, VariantExportSurface>,
     resolved_imports: List<ResolvedImport>,
     env: TypeEnv,
-    module_name: String) -> ModuleContext {
+    module_name: String,
+    global_bare_variant_locals: Map<String, TypeBinding>) -> ModuleContext {
   let local = fold_module_contributions(
     remaining: contributions,
     resolved_items: [],
@@ -6584,10 +6622,23 @@ fn build_module_context(contributions: List<ItemContribution>,
     module_name: module_name,
     init: VariantFoldState { locals: empty_map(), collision_errors: [] }
   )
+<<<<<<< ours
   let variant_fold = build_imported_variants(
     resolved_imports: resolved_imports,
     parent_index: parent_index,
     variant_surfaces: variant_surfaces,
+=======
+  let variant_fold = merge_global_bare_variant_locals(
+    precomputed: global_bare_variant_locals,
+    state: build_imported_variants(
+      resolved_imports: resolved_imports,
+      parent_index: parent_index,
+      variant_surfaces: variant_surfaces,
+      source_indices: env.source_indices,
+      module_name: module_name,
+      init: local_variant_fold
+    ),
+>>>>>>> theirs
     source_indices: env.source_indices,
     module_name: module_name,
     init: local_variant_fold
@@ -6634,7 +6685,7 @@ type TypecheckModuleResult {
   binding_forks: List<TypeEnvCacheMergeConflict>
 }
 
-fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, global_bare: Map<String, GlobalBareLookupState>, symbol_index: SymbolIndex) -> TypecheckModuleResult {
+fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, global_bare: Map<String, GlobalBareLookupState>, global_bare_variant_locals: Map<String, TypeBinding>, symbol_index: SymbolIndex) -> TypecheckModuleResult {
   let env_result = build_type_env(module: resolved, parent_index: parent_index, source_indices: source_indices, intern_table: intern_table, global_bare: global_bare, symbol_index: symbol_index)
   let env = env_result.env
   let env_cache = env_result.cache
@@ -6674,7 +6725,8 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     variant_surfaces: variant_surfaces,
     resolved_imports: resolved.resolved_imports,
     env: env,
-    module_name: resolved_module_name
+    module_name: resolved_module_name,
+    global_bare_variant_locals: global_bare_variant_locals
   )
 
   let data_locals = fold(ctx.resolved_items, init: ctx.locals, f: (acc, item) =>
@@ -6756,7 +6808,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
 }
 
 fn typecheck_module_isolated(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckModuleResult {
-  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, global_bare: empty_map(), symbol_index: empty_symbol_index())
+  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, global_bare: empty_map(), global_bare_variant_locals: empty_map(), symbol_index: empty_symbol_index())
 }
 
 type EnvResolveResult {
@@ -6998,6 +7050,7 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
     map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
   )
   let global_bare = build_global_bare_census(modules: graph.modules, source_indices: source_indices)
+  let global_bare_variant_locals = build_global_bare_variant_locals(census: global_bare, source_indices: source_indices)
   let symbol_index = build_symbol_index_census(modules: graph.modules, source_indices: source_indices)
   let state = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
@@ -7011,7 +7064,9 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
       state: st,
       source_indices: source_indices,
       intern_table: intern_table,
-      global_bare: global_bare, symbol_index: symbol_index
+      global_bare: global_bare,
+      global_bare_variant_locals: global_bare_variant_locals,
+      symbol_index: symbol_index
     )
   )
   let modules = graph.modules |> flat_map(rm =>
@@ -7037,6 +7092,7 @@ fn realize_module(
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable,
   global_bare: Map<String, GlobalBareLookupState>,
+  global_bare_variant_locals: Map<String, TypeBinding>,
   symbol_index: SymbolIndex
 ) -> RealizeState {
   match map_get(state.module_index, name) {
@@ -7052,11 +7108,13 @@ fn realize_module(
               state: st,
               source_indices: source_indices,
               intern_table: intern_table,
-              global_bare: global_bare, symbol_index: symbol_index
+              global_bare: global_bare,
+              global_bare_variant_locals: global_bare_variant_locals,
+              symbol_index: symbol_index
             )
           )
           let parent_result = collect_parent_envs(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
-          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, global_bare: global_bare, symbol_index: symbol_index)
+          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table, global_bare: global_bare, global_bare_variant_locals: global_bare_variant_locals, symbol_index: symbol_index)
           let typed = tc_result.typed
           let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
           RealizeState {

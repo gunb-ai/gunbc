@@ -13,7 +13,13 @@ use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
+<<<<<<< ours
 use crate::v1_compiler_infer_env::{lookup_type_by_name, symbol_index_insert, SymbolIndex};
+=======
+use crate::v1_compiler_infer_env::{
+    lookup_type_by_name, symbol_index_insert, GlobalBareLookupState, SymbolIndex, TypeBinding,
+};
+>>>>>>> theirs
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -4418,6 +4424,88 @@ fn build_symbol_index_for_reconcile(
     Ok(symbol_index)
 }
 
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: sleek-wolf-190 global_bare cost-shape receipt;
+// receipt: PR #6743 / quiet-gull-833 defork blowup investigation).
+// 🟡 dissolve-on: cost-shape receipt landed (located root + n-vs-time growth curve on bounded
+// corpus); namespace unblock lands cost fix then de-fork from defork-preserve-quiet-gull-833.
+// DELETE WHEN dissolved: `GUNBC_GLOBAL_BARE_Q2_BISECT`, `census_module_path_q2_consumption`,
+// `is_std_homonym_v2_std_path`, `global_bare_q2_bisect_allows`, `global_bare_for_decl_file`,
+// `global_bare_variant_locals_for_decl_file`, and the reconcile receipt eprint (~90 LOC).
+// Receipt: `rg GLOBAL_BARE_Q2_BISECT_SCAFFOLD_MARKER src/v1/stage0/src/cli_run.rs` == 1 until deletion.
+pub(crate) const GLOBAL_BARE_Q2_BISECT_SCAFFOLD_MARKER: &str = "global_bare_q2_bisect_receipt";
+
+/// Q2 consumption predicate (namespace PR-5c): may this module's typecheck read the corpus census.
+fn census_module_path_q2_consumption(path: &str) -> bool {
+    let p = path.replace('\\', "/");
+    if p.contains("dag/") && !p.contains("dag/test/") {
+        if p.contains("dag/extdeps/docker/container_stats.dag") {
+            return false;
+        }
+        return true;
+    }
+    if p.contains("src/v2/std/") {
+        return true;
+    }
+    p.contains("src/v2/") || p.contains("dag/test/")
+}
+
+fn is_std_homonym_v2_std_path(path: &str) -> bool {
+    let base = path.rsplit('/').next().unwrap_or(path);
+    matches!(
+        base,
+        "algebra.dag"
+            | "change.dag"
+            | "coercion.dag"
+            | "grammar.dag"
+            | "integer.dag"
+            | "logic.dag"
+            | "nat.dag"
+            | "node.dag"
+    )
+}
+
+/// Bisect arm for quiet-gull-833 population isolation (`GUNBC_GLOBAL_BARE_Q2_BISECT`).
+fn global_bare_q2_bisect_allows(decl_file: &str) -> bool {
+    let p = decl_file.replace('\\', "/");
+    match std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT")
+        .unwrap_or_else(|_| "all".to_string())
+        .as_str()
+    {
+        "none" => false,
+        "test_only" => p.contains("dag/test/"),
+        "std_only" => p.contains("src/v2/std/") && is_std_homonym_v2_std_path(&p),
+        _ => census_module_path_q2_consumption(&p),
+    }
+}
+
+fn global_bare_variant_locals_for_decl_file(
+    decl_file: &str,
+    precomputed: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_err() {
+        return precomputed;
+    }
+    if global_bare_q2_bisect_allows(decl_file) {
+        precomputed
+    } else {
+        v1_rt::rc_empty_map()
+    }
+}
+
+fn global_bare_for_decl_file(
+    decl_file: &str,
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_err() {
+        return census;
+    }
+    if global_bare_q2_bisect_allows(decl_file) {
+        census
+    } else {
+        v1_rt::rc_empty_map()
+    }
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4428,11 +4516,18 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
+<<<<<<< ours
     // Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): built once,
     // order-independent, over the whole graph before any module typechecks — see
     // global_bare_fallback_invariant in v1_compiler_infer_env.
     let global_bare =
         v1_compiler_infer::build_global_bare_census(graph.modules.clone(), source_indices.clone());
+=======
+    let global_bare_variant_locals = v1_compiler_infer::build_global_bare_variant_locals(
+        global_bare.clone(),
+        source_indices.clone(),
+    );
+>>>>>>> theirs
     let symbol_index =
         build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
 
@@ -4516,13 +4611,25 @@ fn reconcile_with_typed_cache(
                         eprintln!("[typecheck-attribution] module={mod_name} start");
                     }
                     let module_tc_started = std::time::Instant::now();
+                    let module_global_bare =
+                        global_bare_for_decl_file(&decl_file, global_bare.clone());
+                    let module_global_bare_variant_locals =
+                        global_bare_variant_locals_for_decl_file(
+                            &decl_file,
+                            global_bare_variant_locals.clone(),
+                        );
                     let computed = v1_compiler_infer::typecheck_module(
                         resolved.clone(),
                         module_index.clone(),
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+<<<<<<< ours
                         global_bare.clone(),
+=======
+                        module_global_bare,
+                        module_global_bare_variant_locals,
+>>>>>>> theirs
                         symbol_index.clone(),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
@@ -4553,6 +4660,16 @@ fn reconcile_with_typed_cache(
             module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
             dispatched[slot] = Some((parent_diags, tc_result));
         }
+    }
+
+    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok() {
+        let scans = v1_compiler_infer::take_merge_global_bare_variant_key_scans();
+        eprintln!(
+            "[global-bare-q2-bisect] mode={} merge_global_bare_variant_key_scans={scans} \
+             variant_locals_keys={}",
+            std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").unwrap_or_else(|_| "all".to_string()),
+            global_bare_variant_locals.len(),
+        );
     }
 
     // Binding-fork ledger receipt (declared interim, lane ruling REVISED 2026-07-11: novelty,

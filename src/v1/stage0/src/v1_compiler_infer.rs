@@ -175,7 +175,31 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use std::cell::Cell;
 use std::rc::Rc;
+
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: sleek-wolf-190 global_bare cost-shape receipt;
+// receipt: PR #6743 / quiet-gull-833 defork blowup investigation).
+// 🟡 dissolve-on: cost-shape receipt landed (located root + n-vs-time growth curve on bounded
+// corpus); namespace unblock lands cost fix then de-fork from defork-preserve-quiet-gull-833.
+// DELETE WHEN dissolved: `MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS`, `take_merge_global_bare_variant_key_scans`.
+// Receipt: `rg MERGE_GLOBAL_BARE_VARIANT_KEY_SCAN_SCAFFOLD_MARKER src/v1/stage0/src/v1_compiler_infer.rs` == 1
+// until deletion; not a compiler_frontier `.dag` row (seed-Rust diagnostic, counted here).
+pub(crate) const MERGE_GLOBAL_BARE_VARIANT_KEY_SCAN_SCAFFOLD_MARKER: &str =
+    "merge_global_bare_variant_key_scan_counter";
+
+thread_local! {
+    static MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Poor-man's profiler receipt: Σ map_keys(precomputed) iterations per reconcile pass.
+pub fn take_merge_global_bare_variant_key_scans() -> usize {
+    MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
+        let n = c.get();
+        c.set(0);
+        n
+    })
+}
 
 pub fn is_witness_type_name(name: String) -> bool {
     ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
@@ -12736,6 +12760,39 @@ pub fn build_global_bare_census(
     )
 }
 
+pub fn build_global_bare_variant_locals(
+    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    Rc::new(v1_rt::map_keys(&census)).iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
+            &census,
+            name.clone(),
+        )
+        .as_deref()
+        .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                binding: binding, ..
+            }) => {
+                let owner = binding.resolved.clone();
+                if (owner.connective.clone() == Connective::Disj)
+                    && has_child_named(owner.clone(), name.clone(), source_indices.clone())
+                {
+                    match v1_rt::map_get(&acc, name.clone()) {
+                        Some(_) => acc.clone(),
+                        None => v1_rt::rc_map_insert(acc, name.clone(), binding.clone()),
+                    }
+                } else {
+                    acc.clone()
+                }
+            }
+            _ => acc.clone(),
+        },
+    )
+}
+
 pub fn symbol_index_insert_item(
     index: Rc<SymbolIndex>,
     module_path: String,
@@ -14524,6 +14581,40 @@ pub fn bind_imported_name_from_surface(
     }
 }
 
+<<<<<<< ours
+=======
+pub fn merge_global_bare_variant_locals(
+    precomputed: Rc<HashMap<String, Rc<TypeBinding>>>,
+    state: Rc<VariantFoldState>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<VariantFoldState> {
+    let keys = Rc::new(v1_rt::map_keys(&precomputed));
+    MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
+        c.set(c.get() + keys.len());
+    });
+    keys.iter().cloned().fold(
+        state.clone(),
+        |acc: Rc<VariantFoldState>, name: String| match v1_rt::map_get(
+            &acc.locals.clone(),
+            name.clone(),
+        ) {
+            Some(_) => acc.clone(),
+            None => match v1_rt::map_get(&precomputed, name.clone()) {
+                Some(binding) => insert_variant_owner_checked(
+                    acc.clone(),
+                    name.clone(),
+                    binding.resolved.clone(),
+                    source_indices.clone(),
+                    module_name.clone(),
+                ),
+                None => acc.clone(),
+            },
+        },
+    )
+}
+
+>>>>>>> theirs
 pub fn build_imported_variants(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -14589,6 +14680,7 @@ pub fn build_module_context(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     env: Rc<TypeEnv>,
     module_name: String,
+    global_bare_variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<ModuleContext> {
     {
         let local = fold_module_contributions(
@@ -14610,10 +14702,23 @@ pub fn build_module_context(
                 collision_errors: Rc::new(vec![]),
             }),
         );
+<<<<<<< ours
         let variant_fold = build_imported_variants(
             resolved_imports.clone(),
             parent_index.clone(),
             variant_surfaces.clone(),
+=======
+        let variant_fold = merge_global_bare_variant_locals(
+            global_bare_variant_locals.clone(),
+            build_imported_variants(
+                resolved_imports.clone(),
+                parent_index.clone(),
+                variant_surfaces.clone(),
+                env.source_indices.clone(),
+                module_name.clone(),
+                local_variant_fold.clone(),
+            ),
+>>>>>>> theirs
             env.source_indices.clone(),
             module_name.clone(),
             local_variant_fold.clone(),
@@ -14696,6 +14801,7 @@ pub fn typecheck_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    global_bare_variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<TypecheckModuleResult> {
     {
@@ -14764,6 +14870,7 @@ pub fn typecheck_module(
             resolved.resolved_imports.clone(),
             env.clone(),
             resolved_module_name.clone(),
+            global_bare_variant_locals.clone(),
         );
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
@@ -14917,6 +15024,7 @@ pub fn typecheck_module_isolated(
         source_indices.clone(),
         intern_table.clone(),
         v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         empty_symbol_index(),
     )
 }
@@ -15533,6 +15641,8 @@ pub fn typecheck(
             },
         );
         let global_bare = build_global_bare_census(graph.modules.clone(), source_indices.clone());
+        let global_bare_variant_locals =
+            build_global_bare_variant_locals(global_bare.clone(), source_indices.clone());
         let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
@@ -15549,6 +15659,7 @@ pub fn typecheck(
                     source_indices.clone(),
                     intern_table.clone(),
                     global_bare.clone(),
+                    global_bare_variant_locals.clone(),
                     symbol_index.clone(),
                 )
             },
@@ -15608,6 +15719,7 @@ pub fn realize_module(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    global_bare_variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<RealizeState> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -15626,6 +15738,7 @@ pub fn realize_module(
                                 source_indices.clone(),
                                 intern_table.clone(),
                                 global_bare.clone(),
+                                global_bare_variant_locals.clone(),
                                 symbol_index.clone(),
                             )
                         },
@@ -15642,6 +15755,7 @@ pub fn realize_module(
                         source_indices.clone(),
                         intern_table.clone(),
                         global_bare.clone(),
+                        global_bare_variant_locals.clone(),
                         symbol_index.clone(),
                     );
                     let typed = tc_result.typed.clone();
