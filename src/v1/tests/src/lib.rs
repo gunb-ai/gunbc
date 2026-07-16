@@ -19,6 +19,8 @@ mod cache_purity_oracle_test;
 #[cfg(test)]
 mod global_bare_census_coverage_test;
 #[cfg(test)]
+mod global_bare_corpus_census_test;
+#[cfg(test)]
 mod compile_clean_diagnostic_authority_test;
 #[cfg(test)]
 mod constructor_owner_ruling_test;
