@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# SCAFFOLD (§7 seed-retained HAND-SHELL — authority: sleek-wolf-190 global_bare cost-shape receipt;
+# bind: dag/gunbc/plans/global_bare_cost_shape_receipt.dag
+# SCAFFOLD (§7 seed-retained HAND-SHELL — authority: gunbc.plans.global_bare_cost_shape_receipt;
 # receipt: PR #6743 / quiet-gull-833 defork blowup investigation).
 # 🟡 dissolve-on: cost-shape receipt landed (located root + n-vs-time growth curve on bounded
 # corpus); namespace unblock lands cost fix then de-fork from defork-preserve-quiet-gull-833.
 # DELETE WHEN dissolved: this script and `GROWTH_CURVE_MEASURE_SCAFFOLD_MARKER`.
 # Receipt: `rg GROWTH_CURVE_MEASURE_SCAFFOLD_MARKER scripts/growth_curve_measure.sh` == 1
-# Local investigation helper only — NOT a CI gate (§3: no shell-as-authority).
+# Local investigation helper only — NOT a CI gate (§3: shell is a realization handler, not authority).
 # §5: `GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE` refuses green compile after receipt.
 GROWTH_CURVE_MEASURE_SCAFFOLD_MARKER=growth_curve_measure_receipt
 set -euo pipefail

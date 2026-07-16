@@ -1,0 +1,37 @@
+module gunbc.plans.global_bare_cost_shape_receipt
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock, CodeBlock }
+import gunbc.plans.md_helpers { h2, p, hr }
+
+data global_bare_cost_shape_receipt_scaffold_note: String = "SCAFFOLD (§7 investigation receipt — quiet-gull-833 / sleek-wolf-190): models the bounded-entry growth-curve measurement for v1 typecheck-env cost-shape after global_bare de-fork. HAND-SHELL realization handler: scripts/growth_curve_measure.sh (bind: this module). Diagnostic env GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE replays legacy per-module has_child_named merge for receipt only; finish_global_bare_diagnostic_reconcile_refusal refuses green resolve on every reconcile entry (v1_compiler_infer::reconcile, cli_run reconcile_with_typed_cache). Dissolve-on: cost-shape receipt landed + namespace cost fix de-forks defork-preserve-quiet-gull-833."
+
+data global_bare_cost_shape_growth_curve_entry_std_algebra: String = "src/v2/std/algebra.dag"
+data global_bare_cost_shape_growth_curve_entry_v2_infer: String = "src/v2/compiler/04_infer.dag"
+data global_bare_cost_shape_growth_curve_entry_ci_spec: String = "dag/gunbc/ci_spec.dag"
+
+data global_bare_cost_shape_receipt_env_baseline_merge: String = "GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE"
+data global_bare_cost_shape_receipt_env_q2_bisect: String = "GUNBC_GLOBAL_BARE_Q2_BISECT"
+
+fn global_bare_cost_shape_receipt_body() -> List<MarkdownBlock> {
+  [
+    p(text: global_bare_cost_shape_receipt_scaffold_note),
+    hr(),
+    h2(text: "Growth-curve entry roster (bounded --entry closures)"),
+    CodeBlock {
+      code: "src/v2/std/algebra.dag\nsrc/v2/compiler/04_infer.dag\ndag/gunbc/ci_spec.dag\n"
+    },
+    hr(),
+    h2(text: "HAND-SHELL handler"),
+    CodeBlock { code: "scripts/growth_curve_measure.sh\n" },
+  ]
+}
+
+data global_bare_cost_shape_receipt_plan: Plan = Plan {
+  slug: "global-bare-cost-shape-receipt",
+  title: "global_bare cost-shape receipt — bounded growth curve",
+  body: global_bare_cost_shape_receipt_body(),
+  dissolution: HasTrigger {
+    text: "Delete when quiet-gull-833 receipt lands (located root + n-vs-time curve + fix direction) and defork-preserve branch merges the hoist."
+  }
+}

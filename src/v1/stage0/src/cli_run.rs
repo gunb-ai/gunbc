@@ -4252,6 +4252,13 @@ fn reconcile_all_cache_hits(
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
+    .and_then(|graph| {
+        v1_compiler_infer::finish_global_bare_diagnostic_reconcile_refusal(
+            closure_modules.len(),
+            None,
+        )?;
+        Ok(graph)
+    })
 }
 
 fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
@@ -4429,9 +4436,10 @@ fn build_symbol_index_for_reconcile(
 // `is_std_homonym_v2_std_path`, `global_bare_q2_bisect_allows`, `global_bare_for_decl_file`,
 // `global_bare_variant_locals_for_decl_file`, and the reconcile receipt eprint (~90 LOC).
 // Receipt: `rg GLOBAL_BARE_Q2_BISECT_SCAFFOLD_MARKER src/v1/stage0/src/cli_run.rs` == 1 until deletion.
-// §5: when `GUNBC_GLOBAL_BARE_Q2_BISECT` is set the mode subset-filters census inputs (diagnostic
-// population bisect only) and `reconcile_with_typed_cache` refuses green resolve after printing
-// its receipt — diagnostic modes read state and report; they do not green a starved typecheck.
+// §5: when `GUNBC_GLOBAL_BARE_Q2_BISECT` or `GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE` is set,
+// `finish_global_bare_diagnostic_reconcile_refusal` (v1_compiler_infer) refuses green resolve on
+// every reconcile entry (`reconcile`, `reconcile_with_typed_cache`, cache-hit assembly) after
+// printing its receipt — diagnostic modes read state and report; they do not green a starved typecheck.
 pub(crate) const GLOBAL_BARE_Q2_BISECT_SCAFFOLD_MARKER: &str = "global_bare_q2_bisect_receipt";
 
 fn global_bare_q2_bisect_active() -> bool {
@@ -4544,7 +4552,10 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
-    let all_cached = {
+    let all_cached = if v1_compiler_infer::global_bare_diagnostic_reconcile_active() {
+        // Diagnostic receipt modes must observe cold merge scans — never green on cache hit.
+        false
+    } else {
         let mut cached = true;
         for name in &closure_names {
             if !index_contains_typed(index, name)? {
@@ -4656,39 +4667,10 @@ fn reconcile_with_typed_cache(
         }
     }
 
-    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok()
-        || std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok()
-    {
-        v1_compiler_infer::eprint_merge_global_bare_per_module_receipt(closure_modules.len());
-    }
-
-    if global_bare_q2_bisect_active() {
-        let scans = v1_compiler_infer::take_merge_global_bare_variant_key_scans();
-        eprintln!(
-            "[global-bare-q2-bisect] mode={} merge_global_bare_variant_key_scans={scans} \
-             variant_locals_keys={}",
-            std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").unwrap_or_else(|_| "all".to_string()),
-            global_bare_variant_locals.len(),
-        );
-        return Err(
-            "GUNBC_GLOBAL_BARE_Q2_BISECT: diagnostic bisect subset-filtered global_bare per module; \
-             refusing green resolve after receipt (DESIGN §5 — diagnostic modes report, never green starved inputs)"
-                .to_string(),
-        );
-    }
-
-    if std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok() {
-        let scans = v1_compiler_infer::take_merge_global_bare_variant_key_scans();
-        eprintln!(
-            "[global-bare-receipt] baseline_legacy merge_global_bare_variant_key_scans={scans}"
-        );
-        return Err(
-            "GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE: replayed legacy per-module global_bare fold \
-             for cost-shape receipt; refusing green resolve after receipt (DESIGN §5 — diagnostic \
-             modes report, never green starved inputs)"
-                .to_string(),
-        );
-    }
+    v1_compiler_infer::finish_global_bare_diagnostic_reconcile_refusal(
+        closure_modules.len(),
+        Some(global_bare_variant_locals.len()),
+    )?;
 
     // Binding-fork ledger receipt (declared interim, lane ruling REVISED 2026-07-11: novelty,
     // not tree, is the refusal axis). ALL pre-existing binding forks — same-tree AND cross-tree —

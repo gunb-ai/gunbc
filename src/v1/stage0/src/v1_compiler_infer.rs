@@ -276,6 +276,50 @@ pub fn take_merge_global_bare_variant_key_scans() -> usize {
     })
 }
 
+/// True when any global_bare diagnostic reconcile env is active (receipt + §5 refusal surface).
+pub fn global_bare_diagnostic_reconcile_active() -> bool {
+    global_bare_receipt_instrumentation_active()
+}
+
+/// §5 factory model: diagnostic env surfaces print their receipt then refuse green resolve.
+/// `precomputed_variant_locals_key_count` is required for the Q2 bisect receipt line only.
+pub fn finish_global_bare_diagnostic_reconcile_refusal(
+    module_count: usize,
+    precomputed_variant_locals_key_count: Option<usize>,
+) -> Result<(), String> {
+    if !global_bare_diagnostic_reconcile_active() {
+        return Ok(());
+    }
+    eprint_merge_global_bare_per_module_receipt(module_count);
+    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok() {
+        let scans = take_merge_global_bare_variant_key_scans();
+        eprintln!(
+            "[global-bare-q2-bisect] mode={} merge_global_bare_variant_key_scans={scans} \
+             variant_locals_keys={}",
+            std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").unwrap_or_else(|_| "all".to_string()),
+            precomputed_variant_locals_key_count.unwrap_or(0),
+        );
+        return Err(
+            "GUNBC_GLOBAL_BARE_Q2_BISECT: diagnostic bisect subset-filtered global_bare per module; \
+             refusing green resolve after receipt (DESIGN §5 — diagnostic modes report, never green starved inputs)"
+                .to_string(),
+        );
+    }
+    if std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok() {
+        let scans = take_merge_global_bare_variant_key_scans();
+        eprintln!(
+            "[global-bare-receipt] baseline_legacy merge_global_bare_variant_key_scans={scans}"
+        );
+        return Err(
+            "GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE: replayed legacy per-module global_bare fold \
+             for cost-shape receipt; refusing green resolve after receipt (DESIGN §5 — diagnostic \
+             modes report, never green starved inputs)"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 pub fn is_witness_type_name(name: String) -> bool {
     ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
 }
@@ -15835,7 +15879,6 @@ pub fn typecheck(
         });
         let expanded_registry =
             expand_transitive_services(modules.clone(), state.item_registry.clone(), 5);
-        eprint_merge_global_bare_per_module_receipt(graph.modules.len());
         Rc::new(TypedGraph {
             modules: modules.clone(),
             item_registry: expanded_registry.clone(),
@@ -16585,19 +16628,29 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
+    reconcile_checked(graph, source_indices, intern_table)
+        .unwrap_or_else(|e| panic!("{e}"))
+}
+
+pub fn reconcile_checked(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Result<Rc<ResolvedGraph>, String> {
     {
         let typed = typecheck(graph.clone(), source_indices.clone(), intern_table.clone());
+        finish_global_bare_diagnostic_reconcile_refusal(graph.modules.len(), None)?;
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
         let modules =
             rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         let has_v1_seed = corpus_has_v1_seed_source_indices(modules.clone());
         let emit_info = build_emit_graph_info(modules.clone(), has_v1_seed.clone());
-        Rc::new(ResolvedGraph {
+        Ok(Rc::new(ResolvedGraph {
             modules: modules.clone(),
             item_registry: typed.item_registry.clone(),
             diagnostics: typed.diagnostics.clone(),
             emit_graph_info: emit_info.clone(),
-        })
+        }))
     }
 }
