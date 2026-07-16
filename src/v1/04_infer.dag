@@ -643,7 +643,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                       Absent => acc
                     }
                   )
-                  let template_fields = record_lit_expected_fields(type_name: type_name, scope: scope)
+                  let template_fields = decl.children
                   Present { value: template_fields |> map(sf =>
                     Node {
                       name: sf.name, span: sf.span, ident_span: sf.ident_span,
@@ -2981,14 +2981,22 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
           Present { value: inst_fields } => inst_fields
           Absent =>
-            match lookup_type_by_name(env: scope.type_env, name: tn_str) {
-              Present { value: decl } =>
-                if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
-                  decl.children
-                } else {
-                  []
+            match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
+              Present { value: fields } => fields
+              Absent =>
+                match expected {
+                  Present { value: _ } => record_lit_expected_fields(type_name: type_name, scope: scope)
+                  Absent =>
+                    match lookup_type_by_name(env: scope.type_env, name: tn_str) {
+                      Present { value: decl } =>
+                        if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
+                          decl.children
+                        } else {
+                          []
+                        }
+                      Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+                    }
                 }
-              Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
             }
         }
     }
