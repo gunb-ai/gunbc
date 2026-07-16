@@ -1,6 +1,6 @@
 module v2.workflow.ci_workflow_run_emit
 
-import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_step }
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import gunbc.ci_materialization { ci_sccache_provider_shell_injection }
 import gunbc.ci_spec { ci_repo_root_shell }
@@ -57,17 +57,6 @@ fn ci_workflow_do(command: String) -> PipelineStep {
 
 fn ci_workflow_run_emit_pipeline(p: Pipeline) -> String {
   match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => source.carried
-        Some { diagnostics: _ } => ci_workflow_run_emit_refused_poison
-      }
-    Rejected { diagnostics: _ } => ci_workflow_run_emit_refused_poison
-  }
-}
-
-fn ci_workflow_run_emit_step(s: PipelineStep) -> String {
-  match orch_emit_step(s: s, medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: d } =>
       match d {
         None => source.carried
