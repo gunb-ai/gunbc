@@ -101,14 +101,58 @@ fn stage0_partition_row_is_module_bearing(row: GeneratedPartitionCrateRow) -> Bo
   }
 }
 
-fn stage0_module_owner_package_name(module_basename: String) -> String {
-  generated_partition_crate_rows
+type Stage0ModuleOwnerRefusalCause
+  = Stage0ModuleOwnerMissing { module_basename: String }
+
+type Stage0ModuleOwnerLookup
+  = Stage0ModuleOwnerFound { package_name: String }
+  | Stage0ModuleOwnerRefused { cause: Stage0ModuleOwnerRefusalCause }
+
+type Stage0PackageCrateDirRefusalCause
+  = Stage0PackageCrateDirMissing { package_name: String }
+
+type Stage0PackageCrateDirLookup
+  = Stage0PackageCrateDirFound { crate_dir: String }
+  | Stage0PackageCrateDirRefused { cause: Stage0PackageCrateDirRefusalCause }
+
+type Stage0ReexportPathDepsOutcome
+  = Stage0ReexportPathDepsOk { deps: List<CargoDependency> }
+  | Stage0ReexportPathDepsRefused { cause: Stage0PackageCrateDirRefusalCause }
+
+type Stage0EmitShellReexportsOutcome
+  = Stage0EmitShellReexportsOk { lines: List<String> }
+  | Stage0EmitShellReexportsRefused { cause: Stage0ModuleOwnerRefusalCause }
+
+fn stage0_lookup_module_owner_package_name(module_basename: String) -> Stage0ModuleOwnerLookup {
+  let matches = generated_partition_crate_rows
     |> filter(row =>
       stage0_partition_row_is_module_bearing(row: row)
         && (row.modules |> any(m => m == module_basename))
     )
+  let package_name = matches
     |> map(row => row.package_name)
     |> fold(init: "", f: fn(acc, pkg) { if acc == "" { pkg } else { acc } })
+  if package_name == "" {
+    Stage0ModuleOwnerRefused {
+      cause: Stage0ModuleOwnerMissing { module_basename: module_basename }
+    }
+  } else {
+    Stage0ModuleOwnerFound { package_name: package_name }
+  }
+}
+
+fn stage0_lookup_package_crate_dir(package_name: String) -> Stage0PackageCrateDirLookup {
+  let matches = generated_partition_crate_rows
+    |> filter(row => row.package_name == package_name)
+  let crate_dir = matches
+    |> fold(init: "", f: fn(acc, row) { if acc == "" { row.crate_dir } else { acc } })
+  if crate_dir == "" {
+    Stage0PackageCrateDirRefused {
+      cause: Stage0PackageCrateDirMissing { package_name: package_name }
+    }
+  } else {
+    Stage0PackageCrateDirFound { crate_dir: crate_dir }
+  }
 }
 
 fn stage0_foundation_runtime_dependencies() -> List<CargoDependency> {
@@ -130,22 +174,32 @@ fn stage0_emit_shell_registry_dependencies() -> List<CargoDependency> {
   ]
 }
 
-fn stage0_reexport_path_dependencies(
+fn stage0_reexport_path_dependencies_outcome(
   reexport_packages: List<String>
-) -> List<CargoDependency> {
+) -> Stage0ReexportPathDepsOutcome {
   reexport_packages
-    |> map(pkg =>
-      CargoDependency {
-        name: pkg,
-        source: LocalPathDep {
-          path: stage0_crate_dir_to_sibling_dep_path(
-            crate_dir: generated_partition_crate_rows
-              |> filter(row => row.package_name == pkg)
-              |> fold(init: "", f: fn(acc, row) { if acc == "" { row.crate_dir } else { acc } })
-          )
-        }
+    |> fold(init: Stage0ReexportPathDepsOk { deps: [] }, f: fn(acc, pkg) {
+      match acc {
+        Stage0ReexportPathDepsRefused { cause: cause } =>
+          Stage0ReexportPathDepsRefused { cause: cause }
+        Stage0ReexportPathDepsOk { deps: deps } =>
+          match stage0_lookup_package_crate_dir(package_name: pkg) {
+            Stage0PackageCrateDirFound { crate_dir: crate_dir } =>
+              Stage0ReexportPathDepsOk {
+                deps: deps |> concat([
+                  CargoDependency {
+                    name: pkg,
+                    source: LocalPathDep {
+                      path: stage0_crate_dir_to_sibling_dep_path(crate_dir: crate_dir)
+                    }
+                  }
+                ])
+              }
+            Stage0PackageCrateDirRefused { cause: cause } =>
+              Stage0ReexportPathDepsRefused { cause: cause }
+          }
       }
-    )
+    })
 }
 
 fn stage0_emit_shell_path_dependencies() -> List<CargoDependency> {
@@ -179,8 +233,11 @@ fn stage0_partition_row_dependencies(row: GeneratedPartitionCrateRow) -> List<Ca
   match row.kind {
     GeneratedFoundationCrate => stage0_foundation_runtime_dependencies()
     GeneratedLayeredCoreCrate =>
-      stage0_foundation_runtime_dependencies()
-        |> concat(stage0_reexport_path_dependencies(reexport_packages: row.reexport_packages))
+      match stage0_reexport_path_dependencies_outcome(reexport_packages: row.reexport_packages) {
+        Stage0ReexportPathDepsOk { deps: reexport_deps } =>
+          stage0_foundation_runtime_dependencies() |> concat(reexport_deps)
+        Stage0ReexportPathDepsRefused { cause: _ } => []
+      }
     GeneratedEmitCoreCrate =>
       stage0_foundation_runtime_dependencies()
         |> concat(stage0_emit_shell_path_dependencies())
