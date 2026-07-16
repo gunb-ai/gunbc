@@ -1,6 +1,11 @@
-use std::rc::Rc;
-
-pub type Optional<T> = Option<T>;
+// Optional import path for dead `use Optional::{Absent, Present}` in emitted entry.
+pub mod Optional {
+    pub enum Enum<T> {
+        Absent,
+        Present { value: T },
+    }
+    pub use Enum::{Absent, Present};
+}
 
 pub fn optional_absent<T>() -> Option<T> {
     None

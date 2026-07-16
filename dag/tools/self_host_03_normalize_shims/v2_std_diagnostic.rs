@@ -1,4 +1,4 @@
-use im_rc::Vector as Vec;
+use im_rc::{vector as vec, Vector as Vec};
 use std::rc::Rc;
 
 use crate::v2_std_node::{Node, Symbol};
@@ -29,13 +29,24 @@ pub struct NonEmptyDiagnostics(Rc<Vec<Rc<Diagnostic>>>);
 #[derive(Debug, Clone, PartialEq)]
 pub enum Diagnostics {
     None,
-    Some(NonEmptyDiagnostics),
+    Some {
+        diagnostics: Rc<NonEmptyDiagnostics>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome<T> {
-    Accepted { value: T, diagnostics: Rc<Diagnostics> },
-    Rejected { diagnostics: Rc<NonEmptyDiagnostics> },
+    Accepted {
+        value: T,
+        diagnostics: Rc<Diagnostics>,
+    },
+    Rejected {
+        diagnostics: Rc<NonEmptyDiagnostics>,
+    },
+}
+
+pub fn diag_none() -> Rc<Diagnostics> {
+    Rc::new(Diagnostics::None)
 }
 
 pub fn node_locus(_node: Rc<Node>) -> Rc<Locus> {
@@ -49,12 +60,20 @@ pub fn diagnostics_singleton(d: Rc<Diagnostic>) -> Rc<NonEmptyDiagnostics> {
 pub fn diagnostics_merge(outer: Rc<Diagnostics>, inner: Rc<Diagnostics>) -> Rc<Diagnostics> {
     match (outer.as_ref(), inner.as_ref()) {
         (Diagnostics::None, Diagnostics::None) => Rc::new(Diagnostics::None),
-        (Diagnostics::None, Diagnostics::Some(b)) => Rc::new(Diagnostics::Some(b.clone())),
-        (Diagnostics::Some(a), Diagnostics::None) => Rc::new(Diagnostics::Some(a.clone())),
-        (Diagnostics::Some(a), Diagnostics::Some(b)) => {
+        (Diagnostics::None, Diagnostics::Some { diagnostics }) => {
+            Rc::new(Diagnostics::Some {
+                diagnostics: diagnostics.clone(),
+            })
+        }
+        (Diagnostics::Some { diagnostics: a }, Diagnostics::None) => Rc::new(Diagnostics::Some {
+            diagnostics: a.clone(),
+        }),
+        (Diagnostics::Some { diagnostics: a }, Diagnostics::Some { diagnostics: b }) => {
             let mut merged = a.0.as_ref().clone();
             merged.extend(b.0.iter().cloned());
-            Rc::new(Diagnostics::Some(NonEmptyDiagnostics(Rc::new(merged))))
+            Rc::new(Diagnostics::Some {
+                diagnostics: Rc::new(NonEmptyDiagnostics(Rc::new(merged))),
+            })
         }
     }
 }
@@ -65,7 +84,7 @@ pub fn rejected_with_pending(
 ) -> Rc<NonEmptyDiagnostics> {
     match pending.as_ref() {
         Diagnostics::None => rejected,
-        Diagnostics::Some(p) => {
+        Diagnostics::Some { diagnostics: p } => {
             let mut merged = p.0.as_ref().clone();
             merged.extend(rejected.0.iter().cloned());
             Rc::new(NonEmptyDiagnostics(Rc::new(merged)))
