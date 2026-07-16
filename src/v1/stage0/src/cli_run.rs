@@ -16400,6 +16400,18 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
+    /// Falsifier cold-control arm: the env forces WholeTree before any diff observation
+    /// (widen-to-more-checking only — it can never skip or narrow the gate).
+    #[test]
+    fn cold_control_env_forces_whole_tree_scope_plan() {
+        with_env_test_lock(|| {
+            let _cc = EnvGuard::set("GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL", "1");
+            let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
+            let plan = compile_clean_scope_plan_for_ci();
+            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+        });
+    }
+
     /// Hand-Rust receipt: primary-precedence pool defers to the first witness root.
     #[test]
     fn primary_precedence_pool_fills_only_absent_modules() {
