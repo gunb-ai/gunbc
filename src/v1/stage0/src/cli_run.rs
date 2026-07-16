@@ -2600,6 +2600,165 @@ mod shared_cache_collision_guard_tests {
     }
 }
 
+#[cfg(test)]
+mod typed_module_content_key_tests {
+    //! Typed-module content-key RED controls (cross-entry-typed-module-memo-sketch.md
+    //! §1/§3, operator-signed 2026-07-16; PR-α — the store re-key).
+    //!
+    //! The typed store keys on `std.interface_summary.typed_module_key` — module source
+    //! hash ⊕ direct-import interface hashes ⊕ compiler identity — never on authored
+    //! module name. Each test is a discriminating control for one live key term, proven
+    //! BY EXECUTION against the store (`typecheck_compute_count` counts genuine
+    //! typechecks — a stale serve shows up as a missing compute):
+    //!
+    //!  - **source term**: mutate a module's source (same path, same authored name)
+    //!    between two indexes sharing one cross-worker store → the mutated module MUST
+    //!    recompute. Under the dissolved name key this control goes RED (stale serve,
+    //!    0 computes).
+    //!  - **import-interface term**: change an imported module's export surface (its v0
+    //!    interface hash) without touching the dependent → the dependent MUST recompute.
+    //!    RED under the name key the same way.
+    //!  - **interface-grain minimality** (signed decision 1): a body-only edit in the
+    //!    import leaves its v0 interface hash unchanged → the dependent must HIT (only
+    //!    the edited module recomputes). A conservative source-transitive key would go
+    //!    RED here by over-invalidating the dependent.
+    //!
+    //! The compiler-identity term cannot vary within one test process; it is witnessed
+    //! at the algebra level by the PR1 .dag witnesses
+    //! (`src/v2/test/claim/interface_summary/typed_module_key_test.dag`). Warm==cold
+    //! byte-equivalence stays owned by `resolve_typed_cache_equivalence_test`.
+    //!
+    //! Mutations rewrite the SAME file path so the `module_source_identity` collision
+    //! wall (name→file, unchanged by the re-key) never fires.
+
+    use super::{
+        build_multi_entry_index_with_shared_caches, new_shared_typecheck_caches,
+        reset_typecheck_compute_count, resolve_entry_with_index, typecheck_compute_count,
+        with_typecheck_compute_count_receipt, workspace_root,
+    };
+    use crate::shared_typecheck_store::SharedTypecheckCaches;
+    use std::fs;
+    use std::sync::{Arc, RwLock};
+
+    const IMPORT_MODULE: &str = "module k.imp\nfn base() -> Int { 10 }\n";
+    const IMPORT_MODULE_BODY_EDIT: &str = "module k.imp\nfn base() -> Int { 4 + 6 }\n";
+    const IMPORT_MODULE_SURFACE_EDIT: &str =
+        "module k.imp\nfn base() -> Int { 10 }\nfn extra() -> Int { 1 }\n";
+    const DEPENDENT_MODULE: &str =
+        "module k.dep\nimport k.imp { base }\nfn wit() -> Bool { base() == 10 }\n";
+
+    struct Fixture {
+        dir: std::path::PathBuf,
+        roots: Vec<String>,
+        entry: String,
+    }
+
+    impl Fixture {
+        fn new(tag: &str) -> Fixture {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+            let dir = workspace_root().join("target").join(format!(
+                "typed-module-content-key-{tag}-{}-{seq}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("create fixture dir");
+            fs::write(dir.join("imp.dag"), IMPORT_MODULE).expect("write imp.dag");
+            fs::write(dir.join("dep.dag"), DEPENDENT_MODULE).expect("write dep.dag");
+            let roots = vec![dir.to_string_lossy().into_owned()];
+            let entry = dir.join("dep.dag").to_string_lossy().into_owned();
+            Fixture { dir, roots, entry }
+        }
+
+        fn rewrite_import(&self, src: &str) {
+            fs::write(self.dir.join("imp.dag"), src).expect("rewrite imp.dag");
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// Resolve `entry` against a fresh index bound to `store`, returning how many genuine
+    /// typecheck computes the resolve performed (misses; hits don't count).
+    fn computes_with_store(
+        store: &Arc<RwLock<SharedTypecheckCaches>>,
+        roots: &[String],
+        entry: &str,
+    ) -> usize {
+        let index = build_multi_entry_index_with_shared_caches(roots, store.clone());
+        reset_typecheck_compute_count();
+        resolve_entry_with_index(&index, entry).expect("resolve");
+        typecheck_compute_count()
+    }
+
+    #[test]
+    fn source_term_recomputes_mutated_module() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new("source-term");
+            let store = new_shared_typecheck_caches();
+
+            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(cold, 2, "cold resolve computes both closure modules");
+
+            // Unchanged snapshot, fresh index: full hit — the content key is stable.
+            let warm = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(warm, 0, "unchanged snapshot must be a full store hit");
+
+            // Body-only mutation of the import: its source hash moves, so its key moves.
+            fx.rewrite_import(IMPORT_MODULE_BODY_EDIT);
+            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert!(
+                after_edit >= 1,
+                "mutated module must recompute (a stale serve is a §5 fail-open); \
+                 got {after_edit} computes"
+            );
+        });
+    }
+
+    #[test]
+    fn import_interface_term_recomputes_dependent() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new("import-term");
+            let store = new_shared_typecheck_caches();
+
+            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(cold, 2, "cold resolve computes both closure modules");
+
+            // Export-surface edit: a new exported fn changes k.imp's interface rollup.
+            fx.rewrite_import(IMPORT_MODULE_SURFACE_EDIT);
+            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(
+                after_edit, 2,
+                "an interface change in the import must recompute the import AND its \
+                 dependent (the dependent's typed result consumed that interface)"
+            );
+        });
+    }
+
+    #[test]
+    fn body_only_edit_leaves_dependent_warm() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new("minimality");
+            let store = new_shared_typecheck_caches();
+
+            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(cold, 2, "cold resolve computes both closure modules");
+
+            fx.rewrite_import(IMPORT_MODULE_BODY_EDIT);
+            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(
+                after_edit, 1,
+                "body-only import edit: import recomputes, dependent stays warm \
+                 (interface-grain minimality, signed decision 1)"
+            );
+        });
+    }
+}
+
 thread_local! {
     static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
         RefCell::new(HashMap::new());
