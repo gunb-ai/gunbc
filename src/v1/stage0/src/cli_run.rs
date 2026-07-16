@@ -759,6 +759,84 @@ mod workspace_root_discovery_tests {
     }
 }
 
+#[cfg(test)]
+mod regen_input_closure_tests {
+    use super::{regen_input_sources, regen_path_affects_regen};
+    use std::collections::HashSet;
+    use std::path::{Path, PathBuf};
+
+    fn fixture_root(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("gunbc-regen-closure-{tag}-{}", std::process::id()))
+    }
+
+    fn write(root: &Path, rel: &str, content: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir fixture");
+        std::fs::write(p, content).expect("write fixture");
+    }
+
+    /// The regen input closure is exactly the `src/v1` entries plus their transitive
+    /// `import` closure through `[src/v1, dag]` — a `dag` module nobody imports is
+    /// EXCLUDED. This is the RED control: without the exclusion the skip is vacuous
+    /// (every dag change would appear in-closure and the shortcut would never fire).
+    #[test]
+    fn closure_is_imports_only_unimported_dag_excluded() {
+        let root = fixture_root("imports-only");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "src/v1/a.dag",
+            "module v1.a\nimport v1.b { T }\nimport std.x { Y }\n",
+        );
+        write(&root, "src/v1/b.dag", "module v1.b\n");
+        write(&root, "dag/std/x.dag", "module std.x\n");
+        write(&root, "dag/std/y.dag", "module std.y\n"); // unimported — excluded
+        write(&root, "dag/gunbc/u.dag", "module gunbc.u\n"); // unimported — excluded
+
+        let relpaths: HashSet<String> = regen_input_sources(&root)
+            .expect("closure computes")
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(relpaths.contains("src/v1/a.dag"), "entry seed: {relpaths:?}");
+        assert!(relpaths.contains("src/v1/b.dag"), "imported v1 module present");
+        assert!(relpaths.contains("dag/std/x.dag"), "imported dag module present");
+        assert!(
+            !relpaths.contains("dag/std/y.dag"),
+            "unimported dag module must be EXCLUDED: {relpaths:?}"
+        );
+        assert!(
+            !relpaths.contains("dag/gunbc/u.dag"),
+            "unimported dag module must be EXCLUDED: {relpaths:?}"
+        );
+    }
+
+    #[test]
+    fn path_predicate_covers_src_v1_manifest_and_closure_only() {
+        let closure: HashSet<String> = ["dag/std/x.dag".to_string()].into_iter().collect();
+        // src/v1/** = emitter source + committed stage0 outputs + dag entry seeds.
+        assert!(regen_path_affects_regen(
+            "src/v1/stage0/src/cli_run.rs",
+            &closure
+        ));
+        assert!(regen_path_affects_regen("src/v1/03_resolve.dag", &closure));
+        // Cargo manifest / lockfile (emitter binary inputs).
+        assert!(regen_path_affects_regen("Cargo.lock", &closure));
+        assert!(regen_path_affects_regen("src/v1/stage0/Cargo.toml", &closure));
+        // dag file in v1's transitive import closure.
+        assert!(regen_path_affects_regen("dag/std/x.dag", &closure));
+        // NOT affecting: v2 sources, unimported dag, docs — the skip-eligible surface.
+        assert!(!regen_path_affects_regen(
+            "src/v2/compiler/frontier.dag",
+            &closure
+        ));
+        assert!(!regen_path_affects_regen("dag/gunbc/ci_spec.dag", &closure));
+        assert!(!regen_path_affects_regen("docs/plans/x.md", &closure));
+    }
+}
+
 /// Empty ingest-manifest placeholder excluded from the module index when a later
 /// source root carries the host-emitted manifest (source-root ingest / closure gates).
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
@@ -1706,6 +1784,10 @@ pub fn regen_workspace_relpath(path: &Path, workspace: &Path) -> String {
         .to_string()
 }
 
+// Distinct from `collect_dag_files` above (which panics on IO error and skips cargo
+// `target/` output dirs): regen needs the fail-closed Result variant and the exact
+// whole-tree walk `regen_stage0` has always used, so the closure stays byte-identical
+// to the committed seed (guarded by `regen_stage0 --verify`).
 fn regen_collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .map_err(|e| format!("read dir {}: {e}", dir.display()))?
@@ -1723,33 +1805,6 @@ fn regen_collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), S
     Ok(())
 }
 
-fn regen_extract_module_path(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("module ") {
-            return Some(rest.trim().to_string());
-        }
-        if !trimmed.is_empty() && !trimmed.starts_with("//") {
-            break;
-        }
-    }
-    None
-}
-
-fn regen_extract_import_paths(content: &str) -> Vec<String> {
-    let mut imports = Vec::new();
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if let Some(rest) = trimmed.strip_prefix("import ") {
-            let module_path = rest.split('{').next().unwrap_or(rest).trim();
-            if !module_path.is_empty() {
-                imports.push(module_path.to_string());
-            }
-        }
-    }
-    imports
-}
-
 fn regen_build_module_index(
     roots: &[PathBuf],
 ) -> Result<std::collections::HashMap<String, PathBuf>, String> {
@@ -1763,7 +1818,7 @@ fn regen_build_module_index(
         for path in dag_paths {
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read {}: {e}", path.display()))?;
-            if let Some(module_path) = regen_extract_module_path(&content) {
+            if let Some(module_path) = extract_module_path(&content) {
                 if let Some(existing) = index.get(&module_path) {
                     return Err(format!(
                         "duplicate module path `{module_path}`: {} and {}",
@@ -1810,13 +1865,13 @@ pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, St
         let content =
             std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
         let rel = regen_workspace_relpath(path, workspace);
-        if let Some(module_path) = regen_extract_module_path(&content) {
+        if let Some(module_path) = extract_module_path(&content) {
             seen.insert(module_path, (rel, content.clone()));
         }
         queue.push(content);
     }
     while let Some(content) = queue.pop() {
-        for module_path in regen_extract_import_paths(&content) {
+        for module_path in extract_import_paths(&content) {
             if seen.contains_key(&module_path) {
                 continue;
             }
