@@ -217,3 +217,8 @@ path = "src/bin/parse_witness.rs"
 [[bin]]
 name = "compile_clean_diagnostic_histogram"
 path = "src/bin/compile_clean_diagnostic_histogram.rs"
+
+# [LOCAL MEASUREMENT PROBE — investigation clever-seal-476, do not merge]
+[[bin]]
+name = "emit_leg_probe"
+path = "src/bin/emit_leg_probe.rs"
