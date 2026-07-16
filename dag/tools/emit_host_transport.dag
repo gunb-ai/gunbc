@@ -163,6 +163,8 @@ fn c_emit_host_inject_fault_refuses_holds() -> Bool {
   }
 }
 
+data c_emit_host_smoke_red_doc: String = "Discriminating control for run_c_smoke (wet — exercised by emit_host_gate_passes, not hermetic discovery): the inject-fault arm deliberately calls add(2,2) while the green oracle expects add(2,3)=5 in the fixed-width stdout codec — a regression that accepts the fault path or drops the RED half goes RED here."
+
 fn run_c_smoke() -> Bool {
   c_emit_host_green_holds() && c_emit_host_inject_fault_refuses_holds()
 }

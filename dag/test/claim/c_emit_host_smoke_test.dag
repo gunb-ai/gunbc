@@ -1,9 +1,0 @@
-module test.claim.c_emit_host_smoke_test
-
-import tools.emit_host_transport { run_c_smoke }
-
-data c_emit_host_smoke_red_doc: String = "Discriminating control for run_c_smoke: the inject-fault arm deliberately calls add(2,2) while the green oracle expects add(2,3)=5 in the fixed-width stdout codec — a regression that accepts the fault path or drops the RED half goes RED here."
-
-test fn run_c_smoke_holds() -> Bool {
-  run_c_smoke()
-}
