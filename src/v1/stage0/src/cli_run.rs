@@ -4291,12 +4291,13 @@ fn finish_resolved_graph_assembly(
 /// emit). The assembled output matches the serial dispatch path because
 /// variant surfaces are not consulted on a cache hit and parent-env diagnostics
 /// are empty when every import parent is already in the store.
-/// All-hits fast path under the content key: walk the closure in resolver order
-/// (imports precede importers), deriving each module's key from its imports'
-/// interface hashes as their cached results are read. Returns `Ok(None)` on the
-/// first store miss — the caller falls through to the schedule loop, which
-/// recomputes keys the same way (hits are cheap Rc clones, so the repeated
-/// lookups cost nothing over the old name-keyed precheck).
+///
+/// Under the content key this is also the all-hits PROBE: the closure is walked
+/// in resolver order (imports precede importers), each module's key derived from
+/// its imports' interface hashes as their cached results are read. Returns
+/// `Ok(None)` on the first store miss — the caller falls through to the schedule
+/// loop, which recomputes keys the same way (hits are cheap Rc clones, so the
+/// repeated lookups cost nothing over the old name-keyed precheck).
 fn try_reconcile_all_cache_hits(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
