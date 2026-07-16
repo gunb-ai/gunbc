@@ -130,6 +130,31 @@ fn presence_wall_still_refuses_true_shape_missing_field() {
     );
 }
 
+// Kernel-layer arm: the overlay must NOT let a direct import shadow a KERNEL name
+// (kernel_type_set + containers + Optional/Present/Absent) — the kernel scope layer
+// stays positionally above imports (2026-07-11 ruling; builtins type against kernel
+// identities, and the v2 substrate models of these concepts are the known
+// dual-representation interim resolved corpus-wide by kernel-wins). A consumer that
+// imports a String homonym still types string literals as kernel String.
+#[test]
+fn kernel_names_are_not_overridden_by_direct_imports() {
+    let str_leaf = "module forkc.strleaf\n\
+        type String { chars: Int }\n";
+    let entry = "module forkc.consumer\n\
+        import forkc.strleaf { String }\n\
+        fn lit() -> String { \"kernel\" }\n";
+    let result = compile_multi(&[("strleaf.dag", str_leaf), ("consumer.dag", entry)]);
+    let errors = error_messages(&result);
+    assert!(
+        errors.is_empty(),
+        "a string literal must still type as KERNEL String even when a String \
+         homonym is directly imported (kernel positional layer above imports). \
+         Errors:\n{}\nAll diagnostics:\n{}",
+        errors.join("\n"),
+        diagnostic_messages(&result).join("\n")
+    );
+}
+
 // Ledger arm: the precedence overlay corrects which binding serves lookups; the
 // union's conflict LEDGER (binding_forks channel, 2026-07-11 ruling) still records
 // the Widget fork — the fix must not zero the fork's observability.
