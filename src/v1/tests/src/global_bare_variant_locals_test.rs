@@ -4,7 +4,10 @@
 use std::rc::Rc;
 
 use im_rc::{vector, HashMap};
-use v1_compiler::cli_run::finish_global_bare_diagnostic_reconcile_refusal;
+use v1_compiler::global_bare_receipt::{
+    finish_global_bare_diagnostic_reconcile_refusal, record_baseline_module_scan,
+    take_merge_global_bare_per_module_scans,
+};
 use v1_compiler::v1_compiler_infer::{
     build_global_bare_variant_locals, merge_global_bare_variant_locals, VariantFoldState,
 };
@@ -148,6 +151,23 @@ fn precomputed_merge_materializes_hoisted_variant_locals() {
     );
     let red = merged_a.locals.get("Red").expect("Red binding");
     assert_eq!(red.name, red_binding.name);
+}
+
+#[test]
+fn baseline_module_scan_records_has_child_named_per_module() {
+    let (census, source_indices, _) = fixture_disj_with_named_arm();
+    std::env::set_var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE", "1");
+    record_baseline_module_scan("mod_a".to_string(), census.clone(), source_indices.clone());
+    record_baseline_module_scan("mod_b".to_string(), census, source_indices.clone());
+    let rows = take_merge_global_bare_per_module_scans();
+    std::env::remove_var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE");
+
+    assert_eq!(rows.len(), 2, "one receipt row per module scan");
+    assert!(
+        rows.iter()
+            .all(|(_, keys, has_child)| *keys == 3 && *has_child == 1),
+        "baseline census scan visits full global_bare key set: {rows:?}"
+    );
 }
 
 #[test]

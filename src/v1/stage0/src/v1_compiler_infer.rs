@@ -14584,6 +14584,45 @@ pub fn merge_global_bare_variant_locals(
     )
 }
 
+pub fn merge_global_bare_variant_locals_baseline_legacy(
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    state: Rc<VariantFoldState>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<VariantFoldState> {
+    Rc::new(v1_rt::map_keys(&global_bare)).iter().cloned().fold(
+        state.clone(),
+        |acc: Rc<VariantFoldState>, name: String| match v1_rt::map_get(&global_bare, name.clone())
+            .as_deref()
+            .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                binding: binding, ..
+            }) => {
+                let owner = binding.resolved.clone();
+                if ((owner.connective.clone() == Connective::Disj)
+                    && has_child_named(owner.clone(), name.clone(), source_indices.clone()))
+                {
+                    match v1_rt::map_get(&acc.locals.clone(), name.clone()) {
+                        Some(_) => acc.clone(),
+                        None => insert_variant_owner_checked(
+                            acc.clone(),
+                            name.clone(),
+                            owner.clone(),
+                            source_indices.clone(),
+                            module_name.clone(),
+                        ),
+                    }
+                } else {
+                    acc.clone()
+                }
+            }
+            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => acc.clone(),
+            None => acc.clone(),
+        },
+    )
+}
+
 pub fn build_imported_variants(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -14649,7 +14688,9 @@ pub fn build_module_context(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     env: Rc<TypeEnv>,
     module_name: String,
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     global_bare_variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    use_baseline_global_bare_merge: bool,
 ) -> Rc<ModuleContext> {
     {
         let local = fold_module_contributions(
@@ -14671,19 +14712,29 @@ pub fn build_module_context(
                 collision_errors: Rc::new(vec![]),
             }),
         );
-        let variant_fold = merge_global_bare_variant_locals(
-            global_bare_variant_locals.clone(),
-            build_imported_variants(
-                resolved_imports.clone(),
-                parent_index.clone(),
-                variant_surfaces.clone(),
-                env.source_indices.clone(),
-                module_name.clone(),
-                local_variant_fold.clone(),
-            ),
+        let imported = build_imported_variants(
+            resolved_imports.clone(),
+            parent_index.clone(),
+            variant_surfaces.clone(),
             env.source_indices.clone(),
             module_name.clone(),
+            local_variant_fold.clone(),
         );
+        let variant_fold = if use_baseline_global_bare_merge.clone() {
+            merge_global_bare_variant_locals_baseline_legacy(
+                global_bare.clone(),
+                imported.clone(),
+                env.source_indices.clone(),
+                module_name.clone(),
+            )
+        } else {
+            merge_global_bare_variant_locals(
+                global_bare_variant_locals.clone(),
+                imported.clone(),
+                env.source_indices.clone(),
+                module_name.clone(),
+            )
+        };
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
             merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
@@ -14764,6 +14815,7 @@ pub fn typecheck_module(
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     global_bare_variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     symbol_index: Rc<SymbolIndex>,
+    use_baseline_global_bare_merge: bool,
 ) -> Rc<TypecheckModuleResult> {
     {
         let env_result = build_type_env(
@@ -14831,7 +14883,9 @@ pub fn typecheck_module(
             resolved.resolved_imports.clone(),
             env.clone(),
             resolved_module_name.clone(),
+            global_bare.clone(),
             global_bare_variant_locals.clone(),
+            use_baseline_global_bare_merge.clone(),
         );
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
@@ -14987,6 +15041,7 @@ pub fn typecheck_module_isolated(
         v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         empty_symbol_index(),
+        false,
     )
 }
 
@@ -15718,6 +15773,7 @@ pub fn realize_module(
                         global_bare.clone(),
                         global_bare_variant_locals.clone(),
                         symbol_index.clone(),
+                        false,
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());

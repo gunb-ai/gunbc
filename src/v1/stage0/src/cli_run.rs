@@ -1,5 +1,5 @@
 use im_rc::HashMap;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -4431,127 +4431,18 @@ fn build_symbol_index_for_reconcile(
 // DELETE WHEN dissolved: `GUNBC_GLOBAL_BARE_Q2_BISECT`, `GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE`,
 // `census_module_path_q2_consumption`,
 // `is_std_homonym_v2_std_path`, `global_bare_q2_bisect_allows`, `global_bare_for_decl_file`,
-// `global_bare_variant_locals_for_decl_file`, `MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS`, and the
-// reconcile receipt eprint (~90 LOC).
+// `global_bare_variant_locals_for_decl_file`, and `global_bare_receipt.rs`.
 // Receipt: `rg GLOBAL_BARE_Q2_BISECT_SCAFFOLD_MARKER src/v1/stage0/src/cli_run.rs` == 1 until deletion.
-// §5: when `GUNBC_GLOBAL_BARE_Q2_BISECT` or `GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE` is set,
-// `finish_global_bare_diagnostic_reconcile_refusal` refuses green resolve on every reconcile entry
-// (`reconcile`, `reconcile_with_typed_cache`, cache-hit assembly) after printing its receipt —
-// diagnostic modes read state and report; they do not green a starved typecheck.
 pub(crate) const GLOBAL_BARE_Q2_BISECT_SCAFFOLD_MARKER: &str = "global_bare_q2_bisect_receipt";
-pub(crate) const MERGE_GLOBAL_BARE_VARIANT_KEY_SCAN_SCAFFOLD_MARKER: &str =
-    "merge_global_bare_variant_key_scan_counter";
-
-thread_local! {
-    static MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS: Cell<usize> = const { Cell::new(0) };
-    static MERGE_GLOBAL_BARE_PER_MODULE_SCANS: RefCell<Vec<(String, usize, usize)>> =
-        RefCell::new(Vec::new());
-}
-
-fn global_bare_receipt_instrumentation_active() -> bool {
-    std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok()
-        || std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok()
-}
+pub use crate::global_bare_receipt::{
+    finish_global_bare_diagnostic_reconcile_refusal, global_bare_diagnostic_reconcile_active,
+    global_bare_receipt_uses_baseline_merge, record_baseline_module_scan,
+    record_precomputed_merge_module_scan, take_merge_global_bare_per_module_scans,
+    take_merge_global_bare_variant_key_scans,
+};
 
 fn global_bare_q2_bisect_active() -> bool {
-    global_bare_receipt_instrumentation_active()
-        && std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok()
-}
-
-/// True when any global_bare diagnostic reconcile env is active (receipt + §5 refusal surface).
-pub fn global_bare_diagnostic_reconcile_active() -> bool {
-    global_bare_receipt_instrumentation_active()
-}
-
-/// §5 factory model: diagnostic env surfaces print their receipt then refuse green resolve.
-pub fn finish_global_bare_diagnostic_reconcile_refusal(
-    module_count: usize,
-    precomputed_variant_locals_key_count: Option<usize>,
-) -> Result<(), String> {
-    if !global_bare_diagnostic_reconcile_active() {
-        return Ok(());
-    }
-    eprint_merge_global_bare_per_module_receipt(module_count);
-    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok() {
-        let scans = take_merge_global_bare_variant_key_scans();
-        eprintln!(
-            "[global-bare-q2-bisect] mode={} merge_global_bare_variant_key_scans={scans} \
-             variant_locals_keys={}",
-            std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").unwrap_or_else(|_| "all".to_string()),
-            precomputed_variant_locals_key_count.unwrap_or(0),
-        );
-        return Err(
-            "GUNBC_GLOBAL_BARE_Q2_BISECT: diagnostic bisect subset-filtered global_bare per module; \
-             refusing green resolve after receipt (DESIGN §5 — diagnostic modes report, never green starved inputs)"
-                .to_string(),
-        );
-    }
-    if std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok() {
-        let scans = take_merge_global_bare_variant_key_scans();
-        eprintln!(
-            "[global-bare-receipt] baseline_legacy merge_global_bare_variant_key_scans={scans}"
-        );
-        return Err(
-            "GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE: replayed legacy per-module global_bare fold \
-             for cost-shape receipt; refusing green resolve after receipt (DESIGN §5 — diagnostic \
-             modes report, never green starved inputs)"
-                .to_string(),
-        );
-    }
-    Ok(())
-}
-
-pub fn take_merge_global_bare_per_module_scans() -> Vec<(String, usize, usize)> {
-    MERGE_GLOBAL_BARE_PER_MODULE_SCANS.with(|rows| {
-        let out = rows.borrow().clone();
-        rows.borrow_mut().clear();
-        out
-    })
-}
-
-pub fn take_merge_global_bare_variant_key_scans() -> usize {
-    MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
-        let n = c.get();
-        c.set(0);
-        n
-    })
-}
-
-fn eprint_merge_global_bare_per_module_receipt(module_count: usize) {
-    if !global_bare_receipt_instrumentation_active() {
-        return;
-    }
-    let rows = take_merge_global_bare_per_module_scans();
-    if rows.is_empty() {
-        return;
-    }
-    let mut keys_per_module: Vec<usize> = rows.iter().map(|(_, k, _)| *k).collect();
-    keys_per_module.sort_unstable();
-    let min_k = keys_per_module.first().copied().unwrap_or(0);
-    let max_k = keys_per_module.last().copied().unwrap_or(0);
-    let total_has_child: usize = rows.iter().map(|(_, _, h)| h).sum();
-    let mode = if std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok() {
-        "baseline_legacy"
-    } else {
-        "precomputed_merge"
-    };
-    eprintln!(
-        "[global-bare-receipt] mode={mode} M={module_count} modules_scanned={} \
-         keys_per_module min={min_k} max={max_k} constant_k={} total_has_child_named={total_has_child}",
-        rows.len(),
-        min_k == max_k,
-    );
-    for (name, keys, has_child) in rows.iter().take(20) {
-        eprintln!(
-            "[global-bare-receipt] module={name} keys_visited={keys} has_child_named_calls={has_child}"
-        );
-    }
-    if rows.len() > 20 {
-        eprintln!(
-            "[global-bare-receipt] ... {} more module row(s) omitted",
-            rows.len() - 20
-        );
-    }
+    std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok()
 }
 
 /// Q2 consumption predicate (namespace PR-5c): may this module's typecheck read the corpus census.
@@ -4735,16 +4626,32 @@ fn reconcile_with_typed_cache(
                             &decl_file,
                             global_bare_variant_locals.clone(),
                         );
+                    let use_baseline_merge = global_bare_receipt_uses_baseline_merge();
                     let computed = v1_compiler_infer::typecheck_module(
                         resolved.clone(),
                         module_index.clone(),
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
-                        module_global_bare,
-                        module_global_bare_variant_locals,
+                        module_global_bare.clone(),
+                        module_global_bare_variant_locals.clone(),
                         symbol_index.clone(),
+                        use_baseline_merge,
                     );
+                    if global_bare_diagnostic_reconcile_active() {
+                        if use_baseline_merge {
+                            record_baseline_module_scan(
+                                mod_name.clone(),
+                                module_global_bare,
+                                source_indices.clone(),
+                            );
+                        } else {
+                            record_precomputed_merge_module_scan(
+                                mod_name.clone(),
+                                module_global_bare_variant_locals.len(),
+                            );
+                        }
+                    }
                     // Per-module attribution for the typecheck-dominant resolves measured
                     // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
                     // parse+resolve+normalize). Threshold keeps the floor log quiet;
