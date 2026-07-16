@@ -74,16 +74,61 @@ fn load_floor_census(
     build_global_bare_census(graph.modules.clone(), Rc::new(source_indices))
 }
 
-fn assert_not_census_ambiguous(
+enum CensusInvariantDisposition {
+    Unique,
+    Ambiguous,
+    Absent,
+}
+
+fn census_invariant_disposition(
+    census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
+    name: &str,
+) -> CensusInvariantDisposition {
+    match census.get(name).map(|s| &**s) {
+        None => CensusInvariantDisposition::Absent,
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => {
+            CensusInvariantDisposition::Ambiguous
+        }
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {
+            CensusInvariantDisposition::Unique
+        }
+    }
+}
+
+enum CensusAmbiguityLeg {
+    /// Name is in census with exactly one binding shape — ambiguity leg evaluable.
+    KnownUnique,
+    /// Name is in census as a homonym — red.
+    KnownAmbiguous,
+    /// Name is not in census — ambiguity leg refused (not "non-ambiguous").
+    RefusedAbsent,
+}
+
+fn census_ambiguity_leg(
+    census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
+    name: &str,
+) -> CensusAmbiguityLeg {
+    match census_invariant_disposition(census, name) {
+        CensusInvariantDisposition::Absent => CensusAmbiguityLeg::RefusedAbsent,
+        CensusInvariantDisposition::Ambiguous => CensusAmbiguityLeg::KnownAmbiguous,
+        CensusInvariantDisposition::Unique => CensusAmbiguityLeg::KnownUnique,
+    }
+}
+
+fn assert_census_ambiguity_leg_or_reachability_only(
     census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
     name: &str,
 ) {
-    if let Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) = census.get(name).map(|s| &**s)
-    {
-        panic!(
+    match census_ambiguity_leg(census, name) {
+        CensusAmbiguityLeg::RefusedAbsent => {
+            // §5: absent ≠ non-ambiguous. Refuse the census ambiguity leg only; reachability
+            // invariants below still run (separate evidence). Precedent: `fold` ABSENT yet red.
+        }
+        CensusAmbiguityLeg::KnownAmbiguous => panic!(
             "{name}: global bare census is AMBIGUOUS — this was construction protocol / \
              subtree-local resolution; a new homonym authority now exists; triage before consolidating"
-        );
+        ),
+        CensusAmbiguityLeg::KnownUnique => {}
     }
 }
 
@@ -106,6 +151,27 @@ fn assert_zero_cross_subtree_bare_sites(name: &str, stats: BareRefReachability) 
     );
 }
 
+/// Census disposition snapshot — documents tier-2 names are ABSENT from global bare census
+/// today (shape gap: entry-grain data stamps, fn bodies). Ambiguity leg refuses; reachability
+/// leg is evaluated separately in `tier2_namespace_homonym_invariants`.
+#[test]
+fn tier2_census_disposition_snapshot() {
+    let census = load_floor_census(&workspace_root());
+    for name in [
+        "live_tree_disposition",
+        "extdeps_external_authority_anchor",
+        "emit",
+    ] {
+        let leg = census_ambiguity_leg(&census, name);
+        let state = match leg {
+            CensusAmbiguityLeg::RefusedAbsent => "ABSENT (census leg refused)",
+            CensusAmbiguityLeg::KnownAmbiguous => "AMBIGUOUS",
+            CensusAmbiguityLeg::KnownUnique => "UNIQUE",
+        };
+        eprintln!("[tier2-census] {name} -> {state}");
+    }
+}
+
 /// Tier-2 triage proved ConstructionProtocolNoAction on the two highest-rank roster ghosts;
 /// consolidating either would destroy information. These gates encode that finding durably.
 #[test]
@@ -115,12 +181,12 @@ fn tier2_namespace_homonym_invariants() {
     let census = load_floor_census(&ws);
 
     for name in ["live_tree_disposition", "extdeps_external_authority_anchor"] {
-        assert_not_census_ambiguous(&census, name);
+        assert_census_ambiguity_leg_or_reachability_only(&census, name);
         let stats = bare_ref_reachability_for_name(&roots, &roots, &[], name);
         assert_zero_ambiguous_bare_sites(name, stats);
     }
 
-    assert_not_census_ambiguous(&census, "emit");
+    assert_census_ambiguity_leg_or_reachability_only(&census, "emit");
     let emit_stats = bare_ref_reachability_for_name(&roots, &roots, &[], "emit");
     assert_zero_cross_subtree_bare_sites("emit", emit_stats);
 }
