@@ -17,6 +17,7 @@ type IntentProperty
   = LensFamily { lens: LensIdV0 }
   | LensHygieneLiveness
   | LensHygieneSelfApply
+  | LensClosureQuestionZero
   | ModelAnemia
   | SingleAuthorityConsolidation
 
@@ -75,6 +76,22 @@ data standing_intent_lenses_must_be_live: StandingIntent = {
   fallback_when_unavailable: Refuse
 }
 
+data standing_intent_lens_closure_question_zero: StandingIntent = {
+  id: "lens.closure.question-zero",
+  property: LensClosureQuestionZero,
+  displaced_cost: "the lens count grows toward 200 redundant modules because every new check authors a fresh .dag file instead of a row on an existing invariant-kernel; the smell is re-paid in review by diligence",
+  mechanism_class: "lens-module closure gate (row-not-lens; v2.lens.enforcement.lens_module_gate)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: SubjectRoster { entries: [] },
+  default_mode: Blocking,
+  required_consumer: Exact { kind: FloorGate },
+  self_application_required: false,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
 data standing_intent_lenses_self_apply_or_exempt: StandingIntent = {
   id: "lenses.self-apply-or-exempt",
   property: LensHygieneSelfApply,
@@ -126,6 +143,7 @@ data standing_intent_single_authority_consolidation: StandingIntent = {
 data standing_intent_registry: List<StandingIntent> = [
   standing_intent_complexity_repo_wide,
   standing_intent_lenses_must_be_live,
+  standing_intent_lens_closure_question_zero,
   standing_intent_lenses_self_apply_or_exempt,
   standing_intent_model_anemia_repo_wide,
   standing_intent_single_authority_consolidation
