@@ -11,18 +11,22 @@ import v2.std.compilers.compilation_unit {
   ModuleDagEdge,
   ModuleId,
   ModuleTypeDefinitionRow,
+  PartitionFoldOk,
+  PartitionFoldRefused,
   PartitionR4Refused,
   PartitionR4Valid,
+  PartitionR4ValidityVerdict,
   PolicyDerived,
+  partition_r4_witness_refused_scc_split,
   compilation_unit_artifact_id,
   partition_fold,
   partition_fold_deps_match_boundary_edges,
+  partition_fold_outcome,
   partition_interface_closure_converged,
   partition_interface_contains_node,
   partition_provenance_eq,
   partition_provenance_hand_explicit,
   partition_provenance_policy_derived,
-  partition_r4_validity_verdict_valid,
   partition_unit_by_id,
 }
 import v2.std.collection { empty_map, map_insert }
@@ -276,15 +280,26 @@ fn witness_provenance_variants_distinct() -> Bool {
 }
 
 fn witness_r4_interface_carriers_only() -> Bool {
-  partition_r4_validity_verdict_valid(verdict: PartitionR4Valid)
-    && !partition_r4_validity_verdict_valid(
-      verdict: PartitionR4Refused {
-        cause: {
-          tag: "rust-scc-split" as NonEmptyStr,
-          detail: "witness-only carrier; realization-owned predicate",
-        }
-      }
-    )
+  let valid_verdict: PartitionR4ValidityVerdict = PartitionR4Valid
+  let refused_verdict: PartitionR4ValidityVerdict = partition_r4_witness_refused_scc_split
+  match valid_verdict {
+    PartitionR4Valid => true
+    PartitionR4Refused { cause: _ } => false
+  }
+    && match refused_verdict {
+      PartitionR4Valid => false
+      PartitionR4Refused { cause: _ } => true
+    }
+}
+
+fn witness_partition_fold_outcome_ok_on_triangle() -> Bool {
+  match partition_fold_outcome(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
+  ) {
+    PartitionFoldOk { units: units } => (units |> count) == 2
+    PartitionFoldRefused { cause: _ } => false
+  }
 }
 
 test fn compilation_unit_witnesses() -> Bool {
@@ -298,4 +313,5 @@ test fn compilation_unit_witnesses() -> Bool {
     && witness_misderived_deps_would_fail_receipt()
     && witness_provenance_variants_distinct()
     && witness_r4_interface_carriers_only()
+    && witness_partition_fold_outcome_ok_on_triangle()
 }
