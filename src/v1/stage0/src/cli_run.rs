@@ -13,7 +13,9 @@ use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
-use crate::v1_compiler_infer_env::{lookup_type_by_name, GlobalBareLookupState, symbol_index_insert, SymbolIndex};
+use crate::v1_compiler_infer_env::{
+    lookup_type_by_name, symbol_index_insert, GlobalBareLookupState, SymbolIndex,
+};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -29,9 +31,8 @@ use crate::v1_std_core::{
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
     match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items,
-    param_node_name_at,
-    param_node_type_expr, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    param_node_name_at, param_node_type_expr, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -826,7 +827,9 @@ mod process_workspace_root_tests {
             "NetworkInterface",
             "PersistenceKind",
         ] {
-            let entry = census.get(name).unwrap_or_else(|| panic!("{name}: missing"));
+            let entry = census
+                .get(name)
+                .unwrap_or_else(|| panic!("{name}: missing"));
             match entry.as_ref() {
                 GlobalBareUniqueBinding { .. } => {}
                 GlobalBareAmbiguousBinding => panic!("{name}: ambiguous in census"),
@@ -2434,8 +2437,7 @@ fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>
     use crate::v1_compiler_artifact::RenderTarget;
     match compile_to_resolved_with_corpus_global_bare(sources) {
         Ok(resolved) => {
-            let result =
-                v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
+            let result = v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
             let has_hard_errors =
                 compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref());
             if has_hard_errors {
@@ -3540,8 +3542,7 @@ fn build_corpus_global_bare_census_from_index(
         .collect();
     if corpus_sources.is_empty() {
         return Err(
-            "global_bare census: no eligible modules in index after exclusion policy"
-                .to_string(),
+            "global_bare census: no eligible modules in index after exclusion policy".to_string(),
         );
     }
 
@@ -3901,11 +3902,7 @@ pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
 }
 
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
-    new_multi_entry_index_shell(
-        build_module_index(source_roots),
-        source_roots,
-        None,
-    )
+    new_multi_entry_index_shell(build_module_index(source_roots), source_roots, None)
 }
 
 pub fn build_multi_entry_index_with_shared_caches(
@@ -4087,8 +4084,9 @@ fn shared_get_typed(
         caches.clone_typed_bytes(mod_name)
     };
     match bytes {
-        Some(snapshot) => SharedTypecheckCaches::decode_typed_snapshot(snapshot.as_slice())
-            .map(Some),
+        Some(snapshot) => {
+            SharedTypecheckCaches::decode_typed_snapshot(snapshot.as_slice()).map(Some)
+        }
         None => Ok(None),
     }
 }
@@ -4131,11 +4129,7 @@ fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
         "src/v2".to_string(),
         "src/v1".to_string(),
     ];
-    new_multi_entry_index_shell(
-        build_module_index_primary_precedence(&roots),
-        &roots,
-        None,
-    )
+    new_multi_entry_index_shell(build_module_index_primary_precedence(&roots), &roots, None)
 }
 
 pub fn resolve_entry_with_index(
@@ -4744,9 +4738,7 @@ fn reconcile_all_cache_hits(
             check_index_module_source_identity(index, mod_name, &decl_file)?;
         }
         let tc_result = index_get_typed(index, mod_name)?.ok_or_else(|| {
-            format!(
-                "reconcile all-cache-hit path: module '{mod_name}' missing from typed store"
-            )
+            format!("reconcile all-cache-hit path: module '{mod_name}' missing from typed store")
         })?;
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
@@ -4972,12 +4964,7 @@ fn reconcile_with_typed_cache(
         cached
     };
     if all_cached {
-        return reconcile_all_cache_hits(
-            &closure_modules,
-            &closure_names,
-            source_indices,
-            index,
-        );
+        return reconcile_all_cache_hits(&closure_modules, &closure_names, source_indices, index);
     }
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
     let mut dispatched: Vec<
@@ -5171,9 +5158,7 @@ fn resolved_graph_from_sources(
     String,
 > {
     let result = match typecheck_gate {
-        ResolveTypecheckGate::Strict => {
-            compile_to_resolved_with_corpus_global_bare(sources)?
-        }
+        ResolveTypecheckGate::Strict => compile_to_resolved_with_corpus_global_bare(sources)?,
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
             v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(
                 sources.into(),
@@ -9940,7 +9925,7 @@ pub fn run_discovery_corpus_with_options(
                 deferred_rows,
             ))
         }
-    }
+    };
 }
 
 fn attach_deferred_discovery_rows(
@@ -13986,9 +13971,7 @@ pub fn reference_resolution_facts(
         abs_importer_roots.join("\u{1e}"),
         exclude_substrings.join("\u{1e}")
     );
-    if let Some(cached) =
-        REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned())
-    {
+    if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
         return cached;
     }
 
@@ -14032,7 +14015,10 @@ pub fn reference_resolution_facts(
             if seen_modules.insert(module_name.clone()) {
                 module_names.insert(module_name.clone());
                 for name in collect_module_decl_names(&tree) {
-                    decl_index.entry(name).or_default().insert(module_name.clone());
+                    decl_index
+                        .entry(name)
+                        .or_default()
+                        .insert(module_name.clone());
                 }
             }
             pool_trees
@@ -14135,8 +14121,10 @@ pub fn reference_resolution_facts(
                             // AmbiguousBare is a bare ref, in a file that does not declare it, whose
                             // nearest declarers tie — the definitive "needs qualification" site.
                             if std::env::var("REFAMBIG_DUMP").is_ok() {
-                                let is_witness = rel.contains("/test/") || rel.ends_with("_test.dag");
-                                let cands: Vec<String> = winners.iter().map(|s| (*s).clone()).collect();
+                                let is_witness =
+                                    rel.contains("/test/") || rel.ends_with("_test.dag");
+                                let cands: Vec<String> =
+                                    winners.iter().map(|s| (*s).clone()).collect();
                                 eprintln!(
                                     "REFAMBIG\t{}\t{}\t{}\t{}",
                                     if is_witness { "witness" } else { "compile" },
