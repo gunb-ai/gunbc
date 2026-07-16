@@ -2,6 +2,7 @@ module extdeps.storage.types
 
 import std.measure { ByteSize, Bandwidth, bandwidth, bandwidth_count }
 import std.types { Int, NonEmptyStr }
+import std.machine_shape { InterconnectLink }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 

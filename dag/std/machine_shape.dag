@@ -1,14 +1,13 @@
 module std.machine_shape
 
-import std.types { NonEmptyStr, Bool, List, Int, list_length }
+import std.types { NonEmptyStr, Bool, List, list_length }
 import std.measure {
   ByteSize,
   Bandwidth,
   Nanosecond,
   HardwareThreadCount,
 }
-import extdeps.storage.types { PcieLink }
-import extdeps.gpu.types { GpuModelCatalogRow }
+import std.cache_interface { ReadLatencyClass }
 
 type DomainId = NonEmptyStr where brand("DomainId")
 type LevelId = NonEmptyStr where brand("LevelId")
@@ -38,7 +37,10 @@ type ExecutionDomain {
   memory: MemoryShape
 }
 
-type InterconnectLink = PcieAttach { link: PcieLink }
+type InterconnectLink {
+  bandwidth: Bandwidth
+  latency_class: ReadLatencyClass?
+}
 
 type InterconnectEdge
   = LinkEdge { from: DomainId, to: DomainId, link: InterconnectLink }
@@ -57,21 +59,8 @@ type MachineShapeConstruction
   = MachineShapeOk { shape: MachineShape }
   | MachineShapeRefused { cause: MachineShapeRefusalCause }
 
-type ShapeFromCatalogInput
-  = FromGpuModelCatalog { domain: DomainId, device_level: LevelId, row: GpuModelCatalogRow }
-
 fn execution_shape_independent_lanes(lane_count: HardwareThreadCount) -> ExecutionShape {
   ExecutionShape { lane_count: lane_count, grouping: IndependentLanes }
-}
-
-fn memory_level_from_gpu_catalog(level_id: LevelId, row: GpuModelCatalogRow) -> MemoryLevel {
-  MemoryLevel {
-    id: level_id
-    capacity: row.memory.capacity
-    transfer_grain: none
-    bandwidth: Present { value: row.memory_bandwidth }
-    latency: none
-  }
 }
 
 fn domain_id_in_list(domains: List<ExecutionDomain>, id: DomainId) -> Bool {
@@ -118,24 +107,6 @@ fn machine_shape_validate(shape: MachineShape) -> MachineShapeConstruction {
     }) {
     Present { value: refused } => refused
     Absent => MachineShapeOk { shape: shape }
-  }
-}
-
-fn shape_from_catalog(input: ShapeFromCatalogInput) -> MachineShapeConstruction {
-  match input {
-    FromGpuModelCatalog { domain: domain, device_level: device_level, row: row } =>
-      MachineShapeOk {
-        shape: MachineShape {
-          domains: [
-            ExecutionDomain {
-              id: domain
-              execution: execution_shape_independent_lanes(lane_count: row.execution_lane_count)
-              memory: [memory_level_from_gpu_catalog(level_id: device_level, row: row)]
-            }
-          ]
-          edges: []
-        }
-      }
   }
 }
 
