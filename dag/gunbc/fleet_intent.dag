@@ -18,7 +18,7 @@ import extdeps.memory.types { MemoryKind, Dram }
 import extdeps.gpu.types { GpuFacts, AcceleratorFacts, GpuRuntime }
 import extdeps.toolchain.types { ToolchainCapability }
 import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability }
-import product.placement_supply { HostIdentity, PlacementSupplyRow }
+import product.placement_supply { HostIdentity }
 import std.baseboard { ServerBaseboard }
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { CredentialFlow, Stored }
@@ -93,15 +93,6 @@ fn compute_host_ram_bytes_total(host: ComputeHost) -> ByteSize {
         f: (acc, dev) => acc + byte_size_count(dev.capacity),
       ),
   )
-}
-
-fn placement_supply_row_from_host(identity: HostIdentity, cpu: CpuFacts, ram_bytes_total: ByteSize) -> PlacementSupplyRow {
-  PlacementSupplyRow {
-    identity: identity,
-    hardware_threads: cpu_facts_threads(cpu),
-    clock_hz: cpu_facts_sustained_per_thread_hz(cpu),
-    ram_bytes: ram_bytes_total,
-  }
 }
 
 type MeasurementConfidence
