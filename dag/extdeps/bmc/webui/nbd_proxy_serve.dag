@@ -10,18 +10,6 @@ import extdeps.tools.curl { curl_cli_tool }
 import extdeps.tools.websocat { websocat_cli_tool, websocat_install_path }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
-import extdeps.languages.bash.program {
-  ShellWord,
-  ShellStmt,
-  ShellProgram,
-  Lit,
-  Command,
-  WithRedir,
-  RedirToFile,
-  lit,
-  command,
-  serialize_bash,
-}
 import extdeps.bmc.webui.nbd_proxy {
   nbd_proxy_role_assignment,
   NbdServer,
@@ -111,32 +99,6 @@ fn bmcweb_session_login_argv(
     init: [curl_cli_tool.name as String],
     f: (acc, word) => list_push(acc, word),
   )
-}
-
-fn bmcweb_session_login_program(
-  bmc_host: NonEmptyStr,
-  request_body_file: NonEmptyStr,
-  response_path: NonEmptyStr,
-) -> ShellProgram {
-  ShellProgram {
-    set_e: true,
-    statements: [
-      WithRedir {
-        stmt: command(words: [
-          lit(text: curl_cli_tool.name),
-          lit(text: "-sk"),
-          lit(text: "-X"),
-          lit(text: "POST"),
-          lit(text: concat("https://", concat(bmc_host, "/login"))),
-          lit(text: "-H"),
-          lit(text: "Content-Type: application/json"),
-          lit(text: "--data"),
-          lit(text: concat("@", request_body_file)),
-        ]),
-        redir: RedirToFile { path: lit(text: response_path as String) },
-      },
-    ],
-  }
 }
 
 fn nbd_proxy_serve_session_fingerprint() -> NonEmptyStr {

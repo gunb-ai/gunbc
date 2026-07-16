@@ -18,12 +18,69 @@ import v2.lens.enforcement.vocab {
 import v2.lens.enforcement.contract {
   LensContract, CoverageReceipt
 }
+import v2.lens.enforcement.lens_module_gate {
+  LensInvariantSurface,
+  lens_module_gate_blocking_holds,
+  lens_module_gate_unenrolled_count_from_facts,
+  lens_module_gate_unjustified_count_from_facts,
+  lens_module_gate_redundant_blocking_count_from_surfaces,
+  lens_module_gate_audit_residue_count_from_surfaces,
+  lens_module_gate_surfaces
+}
 import v2.lens.enforcement.standing_intent {
   StandingIntent, IntentProperty, LensFamily, LensHygieneLiveness,
-  LensHygieneSelfApply, ModelAnemia, SingleAuthorityConsolidation
+  LensHygieneSelfApply, LensClosureQuestionZero, ModelAnemia, SingleAuthorityConsolidation
 }
+import v2.lens.module_graph { ModuleDeclarationFact }
 
 type LegVerdict = LegHolds | LegFails { reason: String }
+
+type QuestionZeroVerdict {
+  intent_id: String
+  unenrolled: LegVerdict
+  unjustified: LegVerdict
+  redundant_claim: LegVerdict
+  audit_residue_counted: LegVerdict
+}
+
+fn question_zero_verdict_holds(v: QuestionZeroVerdict) -> Bool {
+  leg_holds(l: v.unenrolled)
+    && leg_holds(l: v.unjustified)
+    && leg_holds(l: v.redundant_claim)
+    && leg_holds(l: v.audit_residue_counted)
+}
+
+fn lens_closure_question_zero_verdict(
+  intent: StandingIntent,
+  facts: List<ModuleDeclarationFact>,
+  bound_module_paths: List<String>,
+  surfaces: List<LensInvariantSurface>
+) -> QuestionZeroVerdict {
+  QuestionZeroVerdict {
+    intent_id: intent.id,
+    unenrolled: leg_of(
+      ok: lens_module_gate_unenrolled_count_from_facts(facts: facts, bound_module_paths: bound_module_paths) == 0,
+      reason: "candidate lens module is not enrolled and not on the consolidated roster"
+    ),
+    unjustified: leg_of(
+      ok: lens_module_gate_unjustified_count_from_facts(facts: facts, surfaces: surfaces) == 0,
+      reason: "candidate lens module lacks a lens invariant surface admission row"
+    ),
+    redundant_claim: leg_of(
+      ok: lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: surfaces) == 0,
+      reason: "lens module claims a genuinely-new invariant but shares verdict-authority and remedy with an enrolled peer"
+    ),
+    audit_residue_counted: leg_of(
+      ok: lens_module_gate_audit_residue_count_from_surfaces(surfaces: surfaces) > 0
+        || lens_module_gate_redundant_blocking_count_from_surfaces(surfaces: surfaces) == 0,
+      reason: "undecidable meaning-residue must be counted on the audit roster, never silently absorbed"
+    )
+  }
+}
+
+fn lens_closure_question_zero_holds() -> Bool {
+  lens_module_gate_blocking_holds()
+}
 
 type IntentVerdict {
   intent_id: String
@@ -59,6 +116,7 @@ fn contract_answers(c: LensContract, p: IntentProperty) -> Bool {
     LensFamily { lens } => lens_id_v0_eq(left: c.entry.lens_id, right: lens)
     LensHygieneLiveness => false
     LensHygieneSelfApply => false
+    LensClosureQuestionZero => false
     ModelAnemia => false
     SingleAuthorityConsolidation => false
   }

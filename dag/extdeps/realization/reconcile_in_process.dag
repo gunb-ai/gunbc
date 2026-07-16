@@ -6,8 +6,10 @@ import extdeps.uri { Uri, Https }
 import extdeps.cache.types {
   CacheInterfaceCatalogFacts,
   HandAuthored,
+  NativeInternal,
   FilePaths,
   UpsertSubject,
+  ToolchainSpec,
   CatalogOpaqueStringEncoding,
 }
 import std.cache_identity { CacheInterfaceId }
@@ -24,6 +26,8 @@ import std.cache_interface {
   Strong,
   OperatorObserved,
   ManualPurge,
+  DependencyChange,
+  ToolchainChange,
   Repo,
 }
 
@@ -88,12 +92,12 @@ data typed_module_cache_facts: CacheInterfaceCatalogFacts = {
   transport_encoding: CatalogOpaqueStringEncoding
   key_derivation: {
 
-    key_inputs: HandAuthored { cited_inputs: [UpsertSubject] }
+    key_inputs: NativeInternal { cited_inputs: [UpsertSubject, ToolchainSpec] }
     overwritable: true
     prefix_fallback_allowed: false
     content_verified_on_read: false
     visibility_scope: Repo
-    invalidation_triggers: [ManualPurge]
+    invalidation_triggers: [DependencyChange, ToolchainChange]
   }
   io: {
     lookup_semantics: ExactKeyOnly
@@ -113,7 +117,7 @@ data typed_module_cache_facts: CacheInterfaceCatalogFacts = {
     {
       field: "key_derivation"
       evidence: OperatorObserved {
-        note: "cli_run.rs reconcile_with_typed_cache keys on authored module name (authored_name_at), not module content digest — cache-impurity witness; converge in Phase 2c"
+        note: "cli_run.rs reconcile_with_typed_cache keys on std.interface_summary.typed_module_key — module source hash + direct-import interface hashes (UpsertSubject) + compiler-binary identity via resolved_graph_cache::transform_content_digest (ToolchainSpec); the former authored-name key (the Phase-2c cache-impurity witness) is dissolved (cross-entry-typed-module-memo-sketch.md stage PR-alpha)"
         observed_at: 0
       }
     },
