@@ -86,7 +86,7 @@ fn assert_rc_identity_across_import_chain(
         use_mod.type_env.clone(),
         "shared_fn".to_string(),
     )
-        .expect("consumer lookup shared_fn");
+    .expect("consumer lookup shared_fn");
     assert!(
         Rc::ptr_eq(&def_sig, &use_sig),
         "import chain must reach the defining module's Rc, not a fresh clone"

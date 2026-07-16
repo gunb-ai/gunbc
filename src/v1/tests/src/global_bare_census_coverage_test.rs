@@ -16,7 +16,10 @@ fn src(path: &str, content: &str) -> Rc<SourceFile> {
 }
 
 fn hard_diags(definer: &str, user: &str) -> Vec<String> {
-    let sources = vec![src("dag/probe_def.dag", definer), src("dag/probe_use.dag", user)];
+    let sources = vec![
+        src("dag/probe_def.dag", definer),
+        src("dag/probe_use.dag", user),
+    ];
     let result = compile_sources(
         Rc::new(sources.into()),
         v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
@@ -60,10 +63,9 @@ fn probe_census_indexes_variant_and_fn() {
         .newline_indices
         .iter()
         .cloned()
-        .fold(
-            im_rc::HashMap::new(),
-            |acc, si| acc.update(si.file.clone(), si),
-        );
+        .fold(im_rc::HashMap::new(), |acc, si| {
+            acc.update(si.file.clone(), si)
+        });
     let source_indices_rc = Rc::new(source_indices);
     let census = build_global_bare_census(graph.modules.clone(), source_indices_rc.clone());
     assert!(
@@ -92,7 +94,10 @@ fn takes_currency(c: ProbeCurrency) -> Int {
 }
 "#;
     let d = hard_diags(DEFINER, user);
-    assert!(d.is_empty(), "bare TYPE ref should resolve via global_bare: {d:?}");
+    assert!(
+        d.is_empty(),
+        "bare TYPE ref should resolve via global_bare: {d:?}"
+    );
 }
 
 #[test]
@@ -104,7 +109,10 @@ fn call_it(c: ProbeCurrency) -> Int {
 }
 "#;
     let d = hard_diags(DEFINER, user);
-    assert!(d.is_empty(), "bare FN ref should resolve via global_bare: {d:?}");
+    assert!(
+        d.is_empty(),
+        "bare FN ref should resolve via global_bare: {d:?}"
+    );
 }
 
 #[test]
@@ -116,7 +124,10 @@ fn pick() -> ProbeCurrency {
 }
 "#;
     let d = hard_diags(DEFINER, user);
-    assert!(d.is_empty(), "bare VARIANT ref should resolve via global_bare: {d:?}");
+    assert!(
+        d.is_empty(),
+        "bare VARIANT ref should resolve via global_bare: {d:?}"
+    );
 }
 
 #[test]
@@ -191,7 +202,8 @@ fn code() -> Int {
         .map(|diag| v1_compiler::v1_std_core::diagnostic_to_message(diag.diagnostic.clone()))
         .collect();
     assert!(
-        d.iter().any(|m| m.contains("undefined variable 'probe_exit_code'")),
+        d.iter()
+            .any(|m| m.contains("undefined variable 'probe_exit_code'")),
         "ambiguous global_bare data must stay unresolved: {d:?}"
     );
 }
