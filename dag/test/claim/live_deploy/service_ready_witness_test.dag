@@ -11,13 +11,15 @@ import gunbc.live_deploy.service_ready {
   service_not_ready_refusal_at_poll_bound,
   live_deploy_readiness_poll_bound_is_positive,
   live_deploy_readiness_poll_bound_seconds,
+  live_deploy_service_ready_poll_bound,
+  live_deploy_service_ready_poll_cadence,
   live_deploy_service_ready_poll_max_attempts,
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import gunbc.roadmap_static_site { roadmap_site_health_path }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.measure { second, second_count }
+import std.measure { second, second_count, measure_fit_count_floor }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -100,6 +102,10 @@ fn witness_poll_max_attempts_is_thirty() -> Bool {
   live_deploy_service_ready_poll_max_attempts() == 30
 }
 
+fn witness_poll_max_attempts_tracks_cadence() -> Bool {
+  live_deploy_service_ready_poll_max_attempts() == measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence)
+}
+
 test fn live_deploy_service_ready_witnesses() -> Bool {
   witness_service_ready_unit_authority()
     && witness_service_ready_endpoint_authority()
@@ -110,5 +116,6 @@ test fn live_deploy_service_ready_witnesses() -> Bool {
     && witness_scaffold_dissolution_trigger_binds_readiness_poll()
     && witness_host_sleep_frontier_trigger_binds_srv3_consumer()
     && witness_poll_max_attempts_is_thirty()
+    && witness_poll_max_attempts_tracks_cadence()
     && witness_red_control_never_ready_refuses_at_poll_bound()
 }

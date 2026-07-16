@@ -35,7 +35,7 @@ import std.realization_reconcile {
   DoesNotGround,
   Grounds,
 }
-import std.measure { second_count }
+import std.measure { second_count, measure_fit_count_floor }
 import extdeps.tools.sleep
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -148,8 +148,8 @@ fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
   }
 }
 
-fn witness_bounded_poll_max_attempts_matches_second_bound() -> Bool {
-  live_deploy_service_ready_poll_max_attempts() == second_count(s: live_deploy_service_ready_poll_bound)
+fn witness_bounded_poll_max_attempts_derived_from_bound_over_cadence() -> Bool {
+  live_deploy_service_ready_poll_max_attempts() == measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence_seconds())
 }
 
 fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
@@ -173,7 +173,7 @@ test fn live_deploy_readiness_witnesses() -> Bool {
     && witness_reconcile_grounds_healthy_fixture_read()
     && witness_bounded_poll_one_iteration_composes_probe_and_modeled_sleep()
     && witness_bounded_poll_early_exit_on_grounded_read()
-    && witness_bounded_poll_max_attempts_matches_second_bound()
+    && witness_bounded_poll_max_attempts_derived_from_bound_over_cadence()
     && witness_red_control_never_ready_refuses_at_poll_bound()
     && witness_service_not_ready_refusal_shape_matches_contract()
 }

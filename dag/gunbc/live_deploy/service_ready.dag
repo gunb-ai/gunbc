@@ -1,7 +1,7 @@
 module gunbc.live_deploy.service_ready
 
 import std.types { NonEmptyStr, String, Bool, List }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, measure_fit_count_floor }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
@@ -83,7 +83,7 @@ fn live_deploy_readiness_poll_bound_is_positive() -> Bool {
 }
 
 fn live_deploy_service_ready_poll_max_attempts() -> Int {
-  second_count(s: live_deploy_service_ready_poll_bound)
+  measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence)
 }
 
 fn live_deploy_service_ready_poll_cadence_seconds() -> Second {

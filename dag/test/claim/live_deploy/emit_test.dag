@@ -226,16 +226,18 @@ fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
 
 fn witness_apply_script_matches_committed_golden() -> Bool {
   let r = Filesystem.Read(path: artifact_path(a: LiveDeployApplyScriptArtifact))
+  let expected = expected_live_deploy_apply_script()
   r.success
-    && r.content == expected_live_deploy_apply_script()
-    && !(concat(r.content, "x") == expected_live_deploy_apply_script())
+    && r.content == expected
+    && !(concat(r.content, "x") == expected)
 }
 
 fn witness_retract_script_matches_committed_golden() -> Bool {
   let r = Filesystem.Read(path: artifact_path(a: LiveDeployRetractScriptArtifact))
+  let expected = expected_live_deploy_retract_script()
   r.success
-    && r.content == expected_live_deploy_retract_script()
-    && !(concat(r.content, "x") == expected_live_deploy_retract_script())
+    && r.content == expected
+    && !(concat(r.content, "x") == expected)
 }
 
 test fn live_deploy_emit_holds() -> Bool {
