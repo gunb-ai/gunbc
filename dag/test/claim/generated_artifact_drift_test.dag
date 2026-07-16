@@ -52,6 +52,7 @@ fn witness_all_known_committed() -> Bool {
     && !path_is_ignored(path: ".githooks/pre-commit")
     && !path_is_ignored(path: ".github/fleet-converge.sh")
     && !path_is_ignored(path: "dag/gunbc/stage0_crate_layout_generated.dag")
+    && !path_is_ignored(path: "dag/gunbc/stage0_crate_partition_generated.dag")
     && !path_is_ignored(path: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs")
     && !path_is_ignored(path: "docs/plans/idea-machine.md")
     && !path_is_ignored(path: ".github/live-deploy-srv1-apply.sh")
