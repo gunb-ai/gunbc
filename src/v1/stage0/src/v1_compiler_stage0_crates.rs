@@ -519,9 +519,20 @@ pub fn render_stage0_foundation_lib(spec: Rc<Stage0CrateSpec>) -> String {
 
 pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
     {
+        let sorted_reexports = Rc::new({
+            let mut __sorted: Vec<_> = spec.reexport_packages.clone().iter().cloned().collect();
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka =
+                    (|pkg: String| stage0_package_name_to_rust_ident(pkg.clone()))(a.clone());
+                let __kb =
+                    (|pkg: String| stage0_package_name_to_rust_ident(pkg.clone()))(b.clone());
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            __sorted
+        });
         let reexports = Rc::new({
             let mut __result = Vec::new();
-            for pkg in spec.reexport_packages.clone().iter().cloned() {
+            for pkg in sorted_reexports.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
                     v1_rt::concat(
                         "pub use ".to_string(),

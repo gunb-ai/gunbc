@@ -178,9 +178,11 @@ fn stage0_partition_row_header_doc(row: GeneratedPartitionCrateRow) -> String {
 fn stage0_partition_row_dependencies(row: GeneratedPartitionCrateRow) -> List<CargoDependency> {
   match row.kind {
     GeneratedFoundationCrate => stage0_foundation_runtime_dependencies()
-    GeneratedLayeredCoreCrate => stage0_reexport_path_dependencies(reexport_packages: row.reexport_packages)
+    GeneratedLayeredCoreCrate =>
+      stage0_foundation_runtime_dependencies()
+        |> concat(stage0_reexport_path_dependencies(reexport_packages: row.reexport_packages))
     GeneratedEmitCoreCrate =>
-      stage0_emit_shell_registry_dependencies()
+      stage0_foundation_runtime_dependencies()
         |> concat(stage0_emit_shell_path_dependencies())
   }
 }
@@ -274,7 +276,9 @@ fn render_stage0_foundation_lib(spec: Stage0CrateSpec) -> String {
 }
 
 fn render_stage0_layered_core_lib(spec: Stage0CrateSpec) -> String {
-  let reexports = spec.reexport_packages
+  let sorted_reexports = spec.reexport_packages
+    |> sort_by(pkg => stage0_package_name_to_rust_ident(package_name: pkg))
+  let reexports = sorted_reexports
     |> map(pkg =>
       concat(
         "pub use ",
