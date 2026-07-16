@@ -109,13 +109,17 @@ fn host_converge_slice1_knob_is_per_slot_memory_max(knob: ConvergeKnob) -> Bool 
   }
 }
 
-fn host_converge_slice1_probed_at() -> NonEmptyStr {
+fn host_converge_slice1_probed_at() -> NonEmptyStr? {
   let result = shell.Exec.Run(script: "date -Iseconds")
   if result.success {
     let line = trim(result.stdout)
-    if line == "" { "unknown" as NonEmptyStr } else { line as NonEmptyStr }
+    if line == "" {
+      none
+    } else {
+      Present { value: line as NonEmptyStr }
+    }
   } else {
-    "unknown" as NonEmptyStr
+    none
   }
 }
 
@@ -216,26 +220,32 @@ fn host_converge_slice1_prove_reapply_noop(unit: NonEmptyStr, knob: ConvergeKnob
       value: "host_converge_slice1: reapply-noop second apply (systemctl set-property) failed; fail-closed",
     }
   } else {
-    let reapply_at = host_converge_slice1_probed_at()
-    match host_converge_slice1_live_read(unit: unit, probed_at: reapply_at) {
+    match host_converge_slice1_probed_at() {
       Absent =>
         Present {
-          value: "host_converge_slice1: reapply-noop independent read after second apply absent; fail-closed",
+          value: "host_converge_slice1: reapply-noop probed_at read failed (date -Iseconds); fail-closed",
         }
-      Present { value: reapply_read } =>
-        match host_converge_slice1_memory_cap_verdict(read: reapply_read, knob: knob) {
-          Present { value: VerdictConverged } => none
-          Present { value: Drifted } =>
-            Present {
-              value: "host_converge_slice1: reapply-noop failed — still drifted after second apply; fail-closed",
-            }
-          Present { value: Absent } =>
-            Present {
-              value: "host_converge_slice1: reapply-noop read returned Absent verdict after second apply; fail-closed",
-            }
+      Present { value: reapply_at } =>
+        match host_converge_slice1_live_read(unit: unit, probed_at: reapply_at) {
           Absent =>
             Present {
-              value: "host_converge_slice1: reapply-noop verdict missing after second apply; fail-closed",
+              value: "host_converge_slice1: reapply-noop independent read after second apply absent; fail-closed",
+            }
+          Present { value: reapply_read } =>
+            match host_converge_slice1_memory_cap_verdict(read: reapply_read, knob: knob) {
+              Present { value: VerdictConverged } => none
+              Present { value: Drifted } =>
+                Present {
+                  value: "host_converge_slice1: reapply-noop failed — still drifted after second apply; fail-closed",
+                }
+              Present { value: Absent } =>
+                Present {
+                  value: "host_converge_slice1: reapply-noop read returned Absent verdict after second apply; fail-closed",
+                }
+              Absent =>
+                Present {
+                  value: "host_converge_slice1: reapply-noop verdict missing after second apply; fail-closed",
+                }
             }
         }
     }
@@ -260,8 +270,13 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
           reason: "host_converge_slice1: srv1 per_slot_memory_max_bytes is not a MemoryMax PerSlotMemoryCap row; fail-closed",
         }
       } else {
-        let probed_at = host_converge_slice1_probed_at()
-        match host_converge_slice1_live_read(unit: host_converge_slice1_probe_unit, probed_at: probed_at) {
+        match host_converge_slice1_probed_at() {
+          Absent =>
+            HostConvergeSlice1Refused {
+              reason: "host_converge_slice1: probed_at read failed (date -Iseconds); fail-closed",
+            }
+          Present { value: probed_at } =>
+            match host_converge_slice1_live_read(unit: host_converge_slice1_probe_unit, probed_at: probed_at) {
           Absent =>
             HostConvergeSlice1Refused {
               reason: concat(
@@ -309,8 +324,13 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
                     ),
                   }
                 } else {
-                  let readback_at = host_converge_slice1_probed_at()
-                  match host_converge_slice1_live_read(unit: host_converge_slice1_probe_unit, probed_at: readback_at) {
+                  match host_converge_slice1_probed_at() {
+                    Absent =>
+                      HostConvergeSlice1Refused {
+                        reason: "host_converge_slice1: read-back probed_at read failed (date -Iseconds); fail-closed",
+                      }
+                    Present { value: readback_at } =>
+                      match host_converge_slice1_live_read(unit: host_converge_slice1_probe_unit, probed_at: readback_at) {
                     Absent =>
                       HostConvergeSlice1Refused {
                         reason: "host_converge_slice1: independent read-back after apply returned absent; fail-closed",
