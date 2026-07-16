@@ -269,13 +269,13 @@ fn c_type_definition_body(row: ModuleTypeDefinitionRow) -> Node {
 
 fn c_all_type_owners(module_dag: ModuleDag) -> List<CTypeOwner> {
   module_dag.modules
-    |> fold(init: [], f: fn(acc, module) {
-      module_type_definition_rows(module_dag: module_dag, module: module)
+    |> fold(init: [], f: fn(acc, member_module) {
+      module_type_definition_rows(module_dag: module_dag, module: member_module)
         |> fold(init: acc, f: fn(inner, row) {
           inner
             |> list_push(
               CTypeOwner {
-                module: module,
+                module: member_module,
                 identity: type_definition_row_identity(row: row),
               }
             )
