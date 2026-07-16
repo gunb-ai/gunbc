@@ -50,8 +50,28 @@ import v2.std.node {
   Named,
   Node,
   Symbol,
+  SyntheticOccurrence,
   TypeNode
 }
+import v2.std.compilers.target_model {
+  TargetModel,
+  target_model_emit_transforms_empty,
+  target_model_make_with_emit_transforms
+}
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  EmittedWithSuffix,
+  FixedWidthBytes,
+  HostRuntimeRowPresent,
+  HostToolProgram,
+  HostTransportDescriptor,
+  LiteralArg,
+  ProcessInvocation,
+  ProducedProgram,
+  TargetEmitHostRuntimeRow,
+  WorkspaceFile
+}
+import v2.extdeps.languages.cpp { cpp_target_model }
 
 data c_r3_interface_members_split_note: String = "C R3: CompilationUnit.interface renders to the unit .h (declarations only); CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
 
