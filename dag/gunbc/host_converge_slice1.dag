@@ -73,7 +73,7 @@ fn converge_knob_by_name(host: HostConverge, name: String) -> ConvergeKnob? {
   fold(host.knobs, init: none, f: fn(acc, knob) {
     match acc {
       Present { value: _ } => acc
-      Absent =>
+      none =>
         if knob.name == name {
           Present { value: knob }
         } else {
@@ -95,7 +95,7 @@ fn host_converge_slice1_srv1_per_slot_memory_max_knob() -> ConvergeKnob? {
   match host_converge_from_policy(policy: fleet_converge_policy(), host: operator_host_srv1) {
     Present { value: host } =>
       converge_knob_by_name(host: host, name: host_converge_slice1_knob_name)
-    Absent => none
+    none => none
   }
 }
 
@@ -160,7 +160,7 @@ fn host_converge_slice1_live_read(unit: NonEmptyStr, probed_at: NonEmptyStr) -> 
           }
         )
       }
-    Absent => none
+    none => none
   }
 }
 
@@ -193,7 +193,7 @@ fn host_converge_slice1_receipt_from_read(
           reapply_noop: reapply_noop,
         }
       }
-    Absent => none
+    none => none
   }
 }
 
@@ -207,7 +207,7 @@ fn host_converge_slice1_fixture_receipt() -> HostConvergeSlice1MemoryCapReceipt?
         read_back_converged: false,
         reapply_noop: false,
       )
-    Absent => none
+    none => none
   }
 }
 
@@ -223,11 +223,11 @@ fn host_converge_slice1_prove_reapply_noop(unit: NonEmptyStr, knob: ConvergeKnob
     }
   } else {
     match host_converge_slice1_probed_at() {
-      Absent =>
+      none =>
         Present { value: host_converge_slice1_probed_at_refusal_reason }
       Present { value: reapply_at } =>
         match host_converge_slice1_live_read(unit: unit, probed_at: reapply_at) {
-          Absent =>
+          none =>
             Present {
               value: "host_converge_slice1: reapply-noop independent read after second apply absent; fail-closed",
             }
@@ -242,7 +242,7 @@ fn host_converge_slice1_prove_reapply_noop(unit: NonEmptyStr, knob: ConvergeKnob
                 Present {
                   value: "host_converge_slice1: reapply-noop read returned Absent verdict after second apply; fail-closed",
                 }
-              Absent =>
+              none =>
                 Present {
                   value: "host_converge_slice1: reapply-noop verdict missing after second apply; fail-closed",
                 }
@@ -260,7 +260,7 @@ fn host_converge_slice1_receipt_is_valid(receipt: HostConvergeSlice1MemoryCapRec
 
 fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
   match host_converge_slice1_srv1_per_slot_memory_max_knob() {
-    Absent =>
+    none =>
       HostConvergeSlice1Refused {
         reason: "host_converge_slice1: per_slot_memory_max_bytes knob absent from fleet_converge_policy for srv1; fail-closed",
       }
@@ -271,11 +271,11 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
         }
       } else {
         match host_converge_slice1_probed_at() {
-          Absent =>
+          none =>
             HostConvergeSlice1Refused { reason: host_converge_slice1_probed_at_refusal_reason }
           Present { value: probed_at } =>
             match host_converge_slice1_live_read(unit: host_converge_slice1_probe_unit, probed_at: probed_at) {
-              Absent =>
+              none =>
                 HostConvergeSlice1Refused {
                   reason: concat(
                     "host_converge_slice1: live systemctl show MemoryMax read absent for ",
@@ -291,7 +291,7 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
                 ) {
                   Present { value: why } =>
                     HostConvergeSlice1Refused { reason: why }
-                  Absent =>
+                  none =>
                     match host_converge_slice1_receipt_from_read(
                       read: precondition_read,
                       knob: knob,
@@ -301,7 +301,7 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
                     ) {
                       Present { value: receipt } =>
                         HostConvergeSlice1Converged { applied_knobs: 0, receipt: receipt }
-                      Absent =>
+                      none =>
                         HostConvergeSlice1Refused {
                           reason: "host_converge_slice1: converged read failed receipt construction; fail-closed",
                         }
@@ -323,11 +323,11 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
                   }
                 } else {
                   match host_converge_slice1_probed_at() {
-                    Absent =>
+                    none =>
                       HostConvergeSlice1Refused { reason: host_converge_slice1_probed_at_refusal_reason }
                     Present { value: readback_at } =>
                       match host_converge_slice1_live_read(unit: host_converge_slice1_probe_unit, probed_at: readback_at) {
-                        Absent =>
+                        none =>
                           HostConvergeSlice1Refused {
                             reason: "host_converge_slice1: independent read-back after apply returned absent; fail-closed",
                           }
@@ -340,7 +340,7 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
                               ) {
                                 Present { value: why } =>
                                   HostConvergeSlice1Refused { reason: why }
-                                Absent =>
+                                none =>
                                   match host_converge_slice1_receipt_from_read(
                                     read: read_back,
                                     knob: knob,
@@ -350,7 +350,7 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
                                   ) {
                                     Present { value: receipt } =>
                                       HostConvergeSlice1Converged { applied_knobs: 1, receipt: receipt }
-                                    Absent =>
+                                    none =>
                                       HostConvergeSlice1Refused {
                                         reason: "host_converge_slice1: post-apply receipt construction failed; fail-closed",
                                       }
@@ -364,7 +364,7 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
                               HostConvergeSlice1Refused {
                                 reason: "host_converge_slice1: read-back after apply returned Absent verdict; fail-closed",
                               }
-                            Absent =>
+                            none =>
                               HostConvergeSlice1Refused {
                                 reason: "host_converge_slice1: read-back verdict missing after apply; fail-closed",
                               }
@@ -379,7 +379,7 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
                     host_converge_slice1_probe_unit as String
                   ),
                 }
-              Absent =>
+              none =>
                 HostConvergeSlice1Refused {
                   reason: "host_converge_slice1: live MemoryMax verdict missing; fail-closed",
                 }

@@ -31,7 +31,7 @@ fn witness_converge_cli_run_srv1_uses_slice1_not_realize_frontier() -> Bool {
           UnknownHost { host: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
-      Absent => r.verdict == VerdictConverged
+      none => r.verdict == VerdictConverged
     }
 }
 
@@ -50,7 +50,7 @@ fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
           UnknownHost { host: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
-      Absent => false
+      none => false
     }
 }
 
@@ -69,7 +69,7 @@ fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
           KnobFrontier { reason: _ } => false
           ComputeInventoryAbsent { host: _ } => false
         }
-      Absent => false
+      none => false
     }
 }
 
@@ -115,9 +115,9 @@ fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
             UnknownHost { host: _ } => false
             ComputeInventoryAbsent { host: _ } => false
           }
-        Absent => false
+        none => false
       }
-    Absent => false
+    none => false
   }
 }
 
@@ -140,7 +140,7 @@ fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
     && !out.converged
     && match out.reason {
       Present { value: why } => string_contains(s: why, pattern: "unknown fleet host identity")
-      Absent => false
+      none => false
     }
 }
 
