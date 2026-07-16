@@ -1,12 +1,12 @@
 module test.claim.gpu_interconnect_and_sm_cache_witness
 
 import extdeps.gpu.nvidia {
-  cuda_compute_capabilities_authority,
   nvidia_rtx_5090_catalog,
   rtx_5090_interconnect,
   rtx_5090_sm_cache_citations,
   rtx_5090_sm_cache_geometry,
 }
+import extdeps.gpu.types { cuda_compute_capabilities_authority }
 import extdeps.gpu.apple { apple_m5_gpu_catalog }
 import extdeps.storage.types { PcieGeneration, pcie_link_bandwidth }
 import std.logic { Bool }
