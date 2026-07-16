@@ -1,0 +1,8 @@
+[package]
+name = "v1-stage0-std-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+v1-stage0-runtime = { path = "../stage0_runtime" }
+v1-stage0-std-primitives = { path = "../stage0_std_primitives" }

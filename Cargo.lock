@@ -731,7 +731,33 @@ dependencies = [
 ]
 
 [[package]]
-name = "v1-stage0-core"
+name = "v1-stage0-emit-core"
+version = "0.1.0"
+dependencies = [
+ "im-rc",
+ "serde",
+ "stacker",
+ "v1-stage0-extdeps",
+ "v1-stage0-runtime",
+ "v1-stage0-std-core",
+ "v1-stage0-std-primitives",
+ "v1-stage0-std-surface",
+ "v1-stage0-v1-artifact",
+ "v1-stage0-v1-infer",
+]
+
+[[package]]
+name = "v1-stage0-extdeps"
+version = "0.1.0"
+dependencies = [
+ "v1-stage0-runtime",
+ "v1-stage0-std-core",
+ "v1-stage0-std-primitives",
+ "v1-stage0-std-surface",
+]
+
+[[package]]
+name = "v1-stage0-runtime"
 version = "0.1.0"
 dependencies = [
  "im-rc",
@@ -743,13 +769,50 @@ dependencies = [
 ]
 
 [[package]]
-name = "v1-stage0-emit-core"
+name = "v1-stage0-std-core"
 version = "0.1.0"
 dependencies = [
- "im-rc",
- "serde",
- "stacker",
- "v1-stage0-core",
+ "v1-stage0-runtime",
+ "v1-stage0-std-primitives",
+]
+
+[[package]]
+name = "v1-stage0-std-primitives"
+version = "0.1.0"
+dependencies = [
+ "v1-stage0-runtime",
+]
+
+[[package]]
+name = "v1-stage0-std-surface"
+version = "0.1.0"
+dependencies = [
+ "v1-stage0-runtime",
+ "v1-stage0-std-core",
+ "v1-stage0-std-primitives",
+]
+
+[[package]]
+name = "v1-stage0-v1-artifact"
+version = "0.1.0"
+dependencies = [
+ "v1-stage0-extdeps",
+ "v1-stage0-runtime",
+ "v1-stage0-std-core",
+ "v1-stage0-std-primitives",
+ "v1-stage0-std-surface",
+ "v1-stage0-v1-infer",
+]
+
+[[package]]
+name = "v1-stage0-v1-infer"
+version = "0.1.0"
+dependencies = [
+ "v1-stage0-extdeps",
+ "v1-stage0-runtime",
+ "v1-stage0-std-core",
+ "v1-stage0-std-primitives",
+ "v1-stage0-std-surface",
 ]
 
 [[package]]

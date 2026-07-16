@@ -1,16 +1,11 @@
 [package]
-name = "v1-stage0-emit-core"
+name = "v1-stage0-v1-infer"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-stacker = "0.1"
-im-rc = { version = "15.1", features = ["serde"] }
-serde = { version = "1", features = ["derive", "rc"] }
 v1-stage0-runtime = { path = "../stage0_runtime" }
 v1-stage0-std-primitives = { path = "../stage0_std_primitives" }
 v1-stage0-std-core = { path = "../stage0_std_core" }
 v1-stage0-std-surface = { path = "../stage0_std_surface" }
 v1-stage0-extdeps = { path = "../stage0_extdeps" }
-v1-stage0-v1-infer = { path = "../stage0_v1_infer" }
-v1-stage0-v1-artifact = { path = "../stage0_v1_artifact" }
