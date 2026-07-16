@@ -17,6 +17,8 @@
     clippy::all
 )]
 
+#![rustfmt::skip]
+
 pub use v1_stage0_runtime::{NonEmptyBTreeSet, NonEmptyVec};
 
 pub mod v1_compiler_artifact {

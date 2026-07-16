@@ -461,6 +461,10 @@ pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
     }
 }
 
+pub fn stage0_crate_rustfmt_skip() -> String {
+    "#![rustfmt::skip]".to_string()
+}
+
 pub fn render_stage0_foundation_lib(spec: Rc<Stage0CrateSpec>) -> String {
     {
         let includes = Rc::new({
@@ -483,8 +487,14 @@ pub fn render_stage0_foundation_lib(spec: Rc<Stage0CrateSpec>) -> String {
         let head = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
-                    stage0_crate_allow_block(),
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
+                            stage0_crate_allow_block(),
+                        ),
+                        "\n\n".to_string(),
+                    ),
+                    stage0_crate_rustfmt_skip(),
                 ),
                 "\n\n".to_string(),
             ),
@@ -543,8 +553,14 @@ pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
-                                stage0_crate_allow_block(),
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
+                                        stage0_crate_allow_block(),
+                                    ),
+                                    "\n\n".to_string(),
+                                ),
+                                stage0_crate_rustfmt_skip(),
                             ),
                             "\n\n".to_string(),
                         ),
@@ -591,7 +607,7 @@ pub fn render_stage0_emit_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
             __result
         })
         .join(&"\n\n".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()), stage0_crate_allow_block()), "\n\n".to_string()), "pub use v1_stage0_runtime::{NonEmptyBTreeSet, NonEmptyVec};".to_string()), "\n\n".to_string()), reexports.clone()), "\n\n".to_string()), "#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;".to_string()), "\n\n".to_string()), "pub use v1_compiler_emit_core_support::*;".to_string()), "\n".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()), stage0_crate_allow_block()), "\n\n".to_string()), stage0_crate_rustfmt_skip()), "\n\n".to_string()), "pub use v1_stage0_runtime::{NonEmptyBTreeSet, NonEmptyVec};".to_string()), "\n\n".to_string()), reexports.clone()), "\n\n".to_string()), "#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;".to_string()), "\n\n".to_string()), "pub use v1_compiler_emit_core_support::*;".to_string()), "\n".to_string())
     }
 }
 

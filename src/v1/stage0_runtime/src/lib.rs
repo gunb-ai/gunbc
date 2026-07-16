@@ -18,6 +18,8 @@
     clippy::all
 )]
 
+#![rustfmt::skip]
+
 #[path = "../../stage0/src/v1_rt.rs"]
 pub mod v1_rt;
 #[path = "../../stage0/src/v1_std_core.rs"]

@@ -17,24 +17,26 @@
     clippy::all
 )]
 
+#![rustfmt::skip]
+
 pub use v1_stage0_runtime::*;
 pub use v1_stage0_std_primitives::*;
 
 #[path = "../../stage0/src/std_algebra.rs"]
 pub mod std_algebra;
-#[path = "../../stage0/src/std_computation.rs"]
-pub mod std_computation;
-#[path = "../../stage0/src/std_graph.rs"]
-pub mod std_graph;
-#[path = "../../stage0/src/std_induction.rs"]
-pub mod std_induction;
-#[path = "../../stage0/src/std_iteration.rs"]
-pub mod std_iteration;
 #[path = "../../stage0/src/std_nat.rs"]
 pub mod std_nat;
 #[path = "../../stage0/src/std_node.rs"]
 pub mod std_node;
 #[path = "../../stage0/src/std_syntax.rs"]
 pub mod std_syntax;
+#[path = "../../stage0/src/std_computation.rs"]
+pub mod std_computation;
 #[path = "../../stage0/src/std_termination.rs"]
 pub mod std_termination;
+#[path = "../../stage0/src/std_induction.rs"]
+pub mod std_induction;
+#[path = "../../stage0/src/std_iteration.rs"]
+pub mod std_iteration;
+#[path = "../../stage0/src/std_graph.rs"]
+pub mod std_graph;

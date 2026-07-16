@@ -17,11 +17,13 @@
     clippy::all
 )]
 
-pub use v1_stage0_extdeps::*;
+#![rustfmt::skip]
+
 pub use v1_stage0_runtime::*;
-pub use v1_stage0_std_core::*;
 pub use v1_stage0_std_primitives::*;
+pub use v1_stage0_std_core::*;
 pub use v1_stage0_std_surface::*;
+pub use v1_stage0_extdeps::*;
 
 #[path = "../../stage0/src/v1_compiler_infer_emit_info.rs"]
 pub mod v1_compiler_infer_emit_info;

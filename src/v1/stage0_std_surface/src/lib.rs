@@ -17,9 +17,11 @@
     clippy::all
 )]
 
+#![rustfmt::skip]
+
 pub use v1_stage0_runtime::*;
-pub use v1_stage0_std_core::*;
 pub use v1_stage0_std_primitives::*;
+pub use v1_stage0_std_core::*;
 
 #[path = "../../stage0/src/std_effects.rs"]
 pub mod std_effects;
