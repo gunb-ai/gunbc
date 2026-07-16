@@ -101,7 +101,8 @@ fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
   length(grounded) == 5
     && length(composed) == 5
     && composed == grounded
-    && grounded.skip(1).first().path == deploy_access_apt_get_binary_path
+    && grounded.first().path == deploy_access_apt_get_binary_path
+    && !any(grounded, c => c.path == "/usr/bin/bash")
 }
 
 fn witness_preflight_shell_is_dash_safe() -> Bool {
