@@ -85,7 +85,9 @@ import v2.std.runtime {
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.witness { Holds, Witness }
 import v2.std.verdict { Pass }
@@ -242,6 +244,9 @@ fn loop_interpretation() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: loop_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }

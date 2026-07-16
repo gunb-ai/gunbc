@@ -4,7 +4,7 @@ import v2.lens.module_graph { ImportResolutionFact, ModuleDeclarationFact }
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.dependency { DependencyView }
-import v2.std.node { Atom, Node, TypeNode }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v2.std.text { String }
 import v2.workflow.executor { ExecutorBatch, executor_job_for_node }
 import v2.workflow.realization_runner {
@@ -27,22 +27,26 @@ import v2.workflow.module_resolution_plan {
 
 data module_fixture_a_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^module_fixture_a } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data module_fixture_b_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^module_fixture_b } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data module_fixture_c_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^module_fixture_c } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data module_fixture_d_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^module_fixture_d } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data module_fixture_declarations: List<ModuleDeclarationFact> = [

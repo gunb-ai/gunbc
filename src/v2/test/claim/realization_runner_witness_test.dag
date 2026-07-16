@@ -3,7 +3,7 @@ module v2.test.claim.realization_runner_witness
 import v2.std.algebra { length }
 import v2.std.collection { List }
 import v2.std.dependency { DataDependsOn, DependencyView }
-import v2.std.node { Atom, Node, TypeNode }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
 import v2.workflow.executor {
   ExecutorBatch,
   ExecutorJob,
@@ -43,12 +43,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data runner_test_a_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^runner_test_a } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data runner_test_b_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^runner_test_b } },
-  children: []
+  children: [],
+  occurrence_id: SyntheticOccurrence
 }
 
 data runner_test_a_to_b: DependencyView = DependencyView {

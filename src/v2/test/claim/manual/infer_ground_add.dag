@@ -65,11 +65,13 @@ import v2.std.runtime {
   InterpretationAlgebra,
   InterpretationStructureWitness,
   LoopInterpreter,
+  MatchInterpreter,
   RuntimePrimitive,
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.witness { Holds, Violates }
 
@@ -165,7 +167,8 @@ fn infer_receipt_interpretation() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: infer_receipt_bind_value
-    }
+    },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
