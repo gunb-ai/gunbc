@@ -21639,7 +21639,14 @@ pub fn emit_rest_client_init(
                     "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
                         .to_string()
                 } else {
-                    v1_rt::concat(v1_rt::concat("compile_error!(\"rest transport tls: unrecognized posture '".to_string(), p.clone()), "'\"); let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;".to_string())
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            "compile_error!(\"rest transport tls: unrecognized posture '"
+                                .to_string(),
+                            p.clone(),
+                        ),
+                        "'\");".to_string(),
+                    )
                 }
             }
         }
