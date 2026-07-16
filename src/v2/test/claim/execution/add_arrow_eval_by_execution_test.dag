@@ -210,6 +210,9 @@ fn add_arrow_eval_lazy_arm_interpretation() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: add_arrow_eval_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }

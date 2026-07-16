@@ -30,6 +30,8 @@ fn synthetic_correct_schedule() -> List<List<Runnable>> {
         explicit_entries: []
         node_frontier_selection: SelectionOff
         profile: runnable_resource_profile_negligible()
+        exclude_substrings: []
+        discovery_scope_dirs: []
       },
       RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
     ]
