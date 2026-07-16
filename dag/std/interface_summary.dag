@@ -8,6 +8,7 @@ import std.content_hash { content_hash_atom, content_hash_combine, content_hash_
 type InterfaceHash = ContentHash where brand("InterfaceHash")
 type ModuleKey = ContentHash where brand("ModuleKey")
 type SignatureFingerprint = ContentHash where brand("SignatureFingerprint")
+type TypedModuleKey = ContentHash where brand("TypedModuleKey")
 
 type InterfaceContract
   = ContractAbsent
@@ -101,5 +102,14 @@ fn module_key(source_hash: ContentHash, direct_import_interface_hashes: List<Int
         payload: content_hash_combine(left: acc, right: import_hash)
       )
     }
+  )
+}
+
+data typed_module_key_note: NonEmptyStr = "A typed module's content-key = its interface module_key (source hash + direct-import interface hashes) + the compiler's own identity. The compiler is itself an input to the typed result (a seed regen changes inference), so a memo keyed on module_key alone would serve a stale typed module across a rebuild. compiler_identity is consumed here, not authored here — its derivation is the store realization's concern. This is the pure key for the cross-entry typed-module memo (docs/plans/cross-entry-typed-module-memo-sketch.md); the store, eviction, and ComputationIdentity wrapping land downstream."
+
+fn typed_module_key(interface_key: ModuleKey, compiler_identity: ContentHash) -> TypedModuleKey {
+  content_hash_tagged(
+    tag: "typed-module-compiler",
+    payload: content_hash_combine(left: interface_key, right: compiler_identity)
   )
 }
