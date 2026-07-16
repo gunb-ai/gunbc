@@ -17,13 +17,11 @@
     clippy::all
 )]
 
+pub use v1_stage0_extdeps_base::*;
 pub use v1_stage0_runtime::*;
 pub use v1_stage0_std_core::*;
 pub use v1_stage0_std_surface::*;
 
-#[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_external_authority.rs"]
-pub mod extdeps_external_authority;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_languages_dag_emit.rs"]
 pub mod extdeps_languages_dag_emit;
@@ -60,6 +58,3 @@ pub mod extdeps_languages_rust_syntax;
 #[rustfmt::skip]
 #[path = "../../stage0/src/extdeps_languages_rust_types.rs"]
 pub mod extdeps_languages_rust_types;
-#[rustfmt::skip]
-#[path = "../../stage0/src/extdeps_uri.rs"]
-pub mod extdeps_uri;

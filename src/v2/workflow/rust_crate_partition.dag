@@ -94,6 +94,8 @@ data stage0_unit_std_core: CompilationUnitId = "stage0-unit-std-core" as Content
 data stage0_unit_std_surface: CompilationUnitId = "stage0-unit-std-surface" as ContentHash
 data stage0_unit_extdeps: CompilationUnitId = "stage0-unit-extdeps" as ContentHash
 data stage0_unit_v1_infer: CompilationUnitId = "stage0-unit-v1-infer" as ContentHash
+data stage0_unit_extdeps_base: CompilationUnitId = "stage0-unit-extdeps-base" as ContentHash
+data stage0_unit_extdeps_languages: CompilationUnitId = "stage0-unit-extdeps-languages" as ContentHash
 data stage0_unit_v1_artifact: CompilationUnitId = "stage0-unit-v1-artifact" as ContentHash
 data stage0_unit_emit_core: CompilationUnitId = "stage0-unit-emit-core" as ContentHash
 
@@ -180,18 +182,19 @@ fn stage0_std_primitive_modules() -> List<String> {
 }
 
 fn stage0_std_core_modules() -> List<String> {
-  [
-    "std_algebra",
-    "std_nat",
-    "std_node",
-    "std_syntax",
-    "std_computation",
-    "std_termination",
-    "std_induction",
-    "std_iteration",
-    "std_graph",
-    "v1_std_core"
-  ]
+  stage0_std_primitive_modules()
+    |> concat([
+      "std_algebra",
+      "std_nat",
+      "std_node",
+      "std_syntax",
+      "std_computation",
+      "std_termination",
+      "std_induction",
+      "std_iteration",
+      "std_graph",
+      "v1_std_core"
+    ])
 }
 
 fn stage0_std_surface_modules() -> List<String> {
@@ -204,9 +207,12 @@ fn stage0_std_surface_modules() -> List<String> {
   ]
 }
 
-fn stage0_extdeps_modules() -> List<String> {
+fn stage0_extdeps_base_modules() -> List<String> {
+  ["extdeps_external_authority", "extdeps_uri"]
+}
+
+fn stage0_extdeps_language_modules() -> List<String> {
   [
-    "extdeps_external_authority",
     "extdeps_languages_dag_emit",
     "extdeps_languages_dag_syntax",
     "extdeps_languages_dag_types",
@@ -218,9 +224,13 @@ fn stage0_extdeps_modules() -> List<String> {
     "extdeps_languages_python_types",
     "extdeps_languages_rust_emit",
     "extdeps_languages_rust_syntax",
-    "extdeps_languages_rust_types",
-    "extdeps_uri"
+    "extdeps_languages_rust_types"
   ]
+}
+
+fn stage0_extdeps_modules() -> List<String> {
+  stage0_extdeps_base_modules()
+    |> concat(stage0_extdeps_language_modules())
 }
 
 fn stage0_v1_infer_modules() -> List<String> {
@@ -252,7 +262,6 @@ fn stage0_r3_emit_reexport_surface_modules() -> List<String> {
 
 fn stage0_all_partitioned_modules() -> List<String> {
   stage0_runtime_modules()
-    |> concat(stage0_std_primitive_modules())
     |> concat(stage0_std_core_modules())
     |> concat(stage0_std_surface_modules())
     |> concat(stage0_extdeps_modules())
@@ -283,17 +292,17 @@ fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
                 modules: stage0_runtime_modules(),
                 unit_id: stage0_unit_runtime
               ),
-              modules: stage0_std_primitive_modules(),
-              unit_id: stage0_unit_std_primitives
+              modules: stage0_std_core_modules(),
+              unit_id: stage0_unit_std_core
             ),
-            modules: stage0_std_core_modules(),
-            unit_id: stage0_unit_std_core
+            modules: stage0_std_surface_modules(),
+            unit_id: stage0_unit_std_surface
           ),
-          modules: stage0_std_surface_modules(),
-          unit_id: stage0_unit_std_surface
+          modules: stage0_extdeps_base_modules(),
+          unit_id: stage0_unit_extdeps_base
         ),
-        modules: stage0_extdeps_modules(),
-        unit_id: stage0_unit_extdeps
+        modules: stage0_extdeps_language_modules(),
+        unit_id: stage0_unit_extdeps_languages
       ),
       modules: stage0_v1_infer_modules(),
       unit_id: stage0_unit_v1_infer
@@ -378,14 +387,14 @@ fn stage0_package_name_to_rust_ident(package_name: String) -> String {
 fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
   if crate_dir == "src/v1/stage0_runtime" {
     "../stage0_runtime"
-  } else if crate_dir == "src/v1/stage0_std_primitives" {
-    "../stage0_std_primitives"
   } else if crate_dir == "src/v1/stage0_std_core" {
     "../stage0_std_core"
   } else if crate_dir == "src/v1/stage0_std_surface" {
     "../stage0_std_surface"
-  } else if crate_dir == "src/v1/stage0_extdeps" {
-    "../stage0_extdeps"
+  } else if crate_dir == "src/v1/stage0_extdeps_base" {
+    "../stage0_extdeps_base"
+  } else if crate_dir == "src/v1/stage0_extdeps_languages" {
+    "../stage0_extdeps_languages"
   } else if crate_dir == "src/v1/stage0_v1_infer" {
     "../stage0_v1_infer"
   } else if crate_dir == "src/v1/stage0_v1_artifact" {
@@ -400,14 +409,14 @@ fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
 fn stage0_module_owner_package_name(module_basename: String) -> String {
   if stage0_runtime_modules() |> any(m => m == module_basename) {
     "v1-stage0-runtime"
-  } else if stage0_std_primitive_modules() |> any(m => m == module_basename) {
-    "v1-stage0-std-primitives"
   } else if stage0_std_core_modules() |> any(m => m == module_basename) {
     "v1-stage0-std-core"
   } else if stage0_std_surface_modules() |> any(m => m == module_basename) {
     "v1-stage0-std-surface"
-  } else if stage0_extdeps_modules() |> any(m => m == module_basename) {
-    "v1-stage0-extdeps"
+  } else if stage0_extdeps_base_modules() |> any(m => m == module_basename) {
+    "v1-stage0-extdeps-base"
+  } else if stage0_extdeps_language_modules() |> any(m => m == module_basename) {
+    "v1-stage0-extdeps-languages"
   } else if stage0_v1_infer_modules() |> any(m => m == module_basename) {
     "v1-stage0-v1-infer"
   } else if stage0_v1_artifact_modules() |> any(m => m == module_basename) {
@@ -595,21 +604,12 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       carries_non_empty_wrappers: true
     },
     Stage0PartitionCrateRow {
-      unit_id: stage0_unit_std_primitives,
-      package_name: "v1-stage0-std-primitives",
-      crate_dir: "src/v1/stage0_std_primitives",
-      kind: Stage0LayeredCoreCrate,
-      modules: stage0_std_primitive_modules(),
-      reexport_packages: ["v1-stage0-runtime"],
-      carries_non_empty_wrappers: false
-    },
-    Stage0PartitionCrateRow {
       unit_id: stage0_unit_std_core,
       package_name: "v1-stage0-std-core",
       crate_dir: "src/v1/stage0_std_core",
       kind: Stage0LayeredCoreCrate,
       modules: stage0_std_core_modules(),
-      reexport_packages: ["v1-stage0-runtime", "v1-stage0-std-primitives"],
+      reexport_packages: ["v1-stage0-runtime"],
       carries_non_empty_wrappers: false
     },
     Stage0PartitionCrateRow {
@@ -620,22 +620,34 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       modules: stage0_std_surface_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
-        "v1-stage0-std-primitives",
         "v1-stage0-std-core"
       ],
       carries_non_empty_wrappers: false
     },
     Stage0PartitionCrateRow {
-      unit_id: stage0_unit_extdeps,
-      package_name: "v1-stage0-extdeps",
-      crate_dir: "src/v1/stage0_extdeps",
+      unit_id: stage0_unit_extdeps_base,
+      package_name: "v1-stage0-extdeps-base",
+      crate_dir: "src/v1/stage0_extdeps_base",
       kind: Stage0LayeredCoreCrate,
-      modules: stage0_extdeps_modules(),
+      modules: stage0_extdeps_base_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
-        "v1-stage0-std-primitives",
         "v1-stage0-std-core",
         "v1-stage0-std-surface"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      unit_id: stage0_unit_extdeps_languages,
+      package_name: "v1-stage0-extdeps-languages",
+      crate_dir: "src/v1/stage0_extdeps_languages",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_extdeps_language_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface",
+        "v1-stage0-extdeps-base"
       ],
       carries_non_empty_wrappers: false
     },
@@ -647,10 +659,10 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       modules: stage0_v1_infer_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
-        "v1-stage0-std-primitives",
         "v1-stage0-std-core",
         "v1-stage0-std-surface",
-        "v1-stage0-extdeps"
+        "v1-stage0-extdeps-base",
+        "v1-stage0-extdeps-languages"
       ],
       carries_non_empty_wrappers: false
     },
@@ -662,10 +674,10 @@ fn stage0_module_bearing_crate_rows() -> List<Stage0PartitionCrateRow> {
       modules: stage0_v1_artifact_modules(),
       reexport_packages: [
         "v1-stage0-runtime",
-        "v1-stage0-std-primitives",
         "v1-stage0-std-core",
         "v1-stage0-std-surface",
-        "v1-stage0-extdeps",
+        "v1-stage0-extdeps-base",
+        "v1-stage0-extdeps-languages",
         "v1-stage0-v1-infer"
       ],
       carries_non_empty_wrappers: false

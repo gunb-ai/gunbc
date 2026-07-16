@@ -330,11 +330,12 @@ pub fn stage0_partition_row_dependencies(
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
             stage0_foundation_runtime_dependencies()
         }
-        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => {
-            stage0_reexport_path_dependencies(row.reexport_packages.clone())
-        }
+        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => v1_rt::concat(
+            stage0_foundation_runtime_dependencies(),
+            stage0_reexport_path_dependencies(row.reexport_packages.clone()),
+        ),
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => v1_rt::concat(
-            stage0_emit_shell_registry_dependencies(),
+            stage0_foundation_runtime_dependencies(),
             stage0_emit_shell_path_dependencies(),
         ),
     }

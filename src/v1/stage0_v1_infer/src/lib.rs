@@ -17,10 +17,10 @@
     clippy::all
 )]
 
-pub use v1_stage0_extdeps::*;
+pub use v1_stage0_extdeps_base::*;
+pub use v1_stage0_extdeps_languages::*;
 pub use v1_stage0_runtime::*;
 pub use v1_stage0_std_core::*;
-pub use v1_stage0_std_primitives::*;
 pub use v1_stage0_std_surface::*;
 
 #[rustfmt::skip]

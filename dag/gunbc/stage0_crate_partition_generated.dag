@@ -30,8 +30,8 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       carries_non_empty_wrappers: true
     },
     GeneratedPartitionCrateRow {
-      package_name: "v1-stage0-std-primitives",
-      crate_dir: "src/v1/stage0_std_primitives",
+      package_name: "v1-stage0-std-core",
+      crate_dir: "src/v1/stage0_std_core",
       kind: GeneratedLayeredCoreCrate,
       modules: [
   "std_content_hash",
@@ -44,18 +44,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
   "std_magnitude",
   "std_measure",
   "std_types",
-  "std_lens_verdict"
-],
-      reexport_packages: [
-  "v1-stage0-runtime"
-],
-      carries_non_empty_wrappers: false
-    },
-    GeneratedPartitionCrateRow {
-      package_name: "v1-stage0-std-core",
-      crate_dir: "src/v1/stage0_std_core",
-      kind: GeneratedLayeredCoreCrate,
-      modules: [
+  "std_lens_verdict",
   "std_algebra",
   "std_nat",
   "std_node",
@@ -68,8 +57,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
   "v1_std_core"
 ],
       reexport_packages: [
-  "v1-stage0-runtime",
-  "v1-stage0-std-primitives"
+  "v1-stage0-runtime"
 ],
       carries_non_empty_wrappers: false
     },
@@ -86,17 +74,30 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
 ],
       reexport_packages: [
   "v1-stage0-runtime",
-  "v1-stage0-std-primitives",
   "v1-stage0-std-core"
 ],
       carries_non_empty_wrappers: false
     },
     GeneratedPartitionCrateRow {
-      package_name: "v1-stage0-extdeps",
-      crate_dir: "src/v1/stage0_extdeps",
+      package_name: "v1-stage0-extdeps-base",
+      crate_dir: "src/v1/stage0_extdeps_base",
       kind: GeneratedLayeredCoreCrate,
       modules: [
   "extdeps_external_authority",
+  "extdeps_uri"
+],
+      reexport_packages: [
+  "v1-stage0-runtime",
+  "v1-stage0-std-core",
+  "v1-stage0-std-surface"
+],
+      carries_non_empty_wrappers: false
+    },
+    GeneratedPartitionCrateRow {
+      package_name: "v1-stage0-extdeps-languages",
+      crate_dir: "src/v1/stage0_extdeps_languages",
+      kind: GeneratedLayeredCoreCrate,
+      modules: [
   "extdeps_languages_dag_emit",
   "extdeps_languages_dag_syntax",
   "extdeps_languages_dag_types",
@@ -108,14 +109,13 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
   "extdeps_languages_python_types",
   "extdeps_languages_rust_emit",
   "extdeps_languages_rust_syntax",
-  "extdeps_languages_rust_types",
-  "extdeps_uri"
+  "extdeps_languages_rust_types"
 ],
       reexport_packages: [
   "v1-stage0-runtime",
-  "v1-stage0-std-primitives",
   "v1-stage0-std-core",
-  "v1-stage0-std-surface"
+  "v1-stage0-std-surface",
+  "v1-stage0-extdeps-base"
 ],
       carries_non_empty_wrappers: false
     },
@@ -133,10 +133,10 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
 ],
       reexport_packages: [
   "v1-stage0-runtime",
-  "v1-stage0-std-primitives",
   "v1-stage0-std-core",
   "v1-stage0-std-surface",
-  "v1-stage0-extdeps"
+  "v1-stage0-extdeps-base",
+  "v1-stage0-extdeps-languages"
 ],
       carries_non_empty_wrappers: false
     },
@@ -150,10 +150,10 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
 ],
       reexport_packages: [
   "v1-stage0-runtime",
-  "v1-stage0-std-primitives",
   "v1-stage0-std-core",
   "v1-stage0-std-surface",
-  "v1-stage0-extdeps",
+  "v1-stage0-extdeps-base",
+  "v1-stage0-extdeps-languages",
   "v1-stage0-v1-infer"
 ],
       carries_non_empty_wrappers: false

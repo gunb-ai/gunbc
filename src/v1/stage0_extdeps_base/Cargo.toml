@@ -1,5 +1,5 @@
 [package]
-name = "v1-stage0-std-core"
+name = "v1-stage0-extdeps-base"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,3 +11,5 @@ serde_json = "1"
 unicode-ident = "1"
 unicode-properties = { version = "0.1", features = ["emoji"] }
 v1-stage0-runtime = { path = "../stage0_runtime" }
+v1-stage0-std-core = { path = "../stage0_std_core" }
+v1-stage0-std-surface = { path = "../stage0_std_surface" }
