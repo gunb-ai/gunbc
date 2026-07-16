@@ -166,6 +166,15 @@ path = "src/bin/floor_skip_discovery_witness.rs"
 name = "compile_clean_floor_skip_witness"
 path = "src/bin/compile_clean_floor_skip_witness.rs"
 
+# Host-physics CI witness: regen self-host fixed-point affected-set skip. Prints
+# regen_not_affected_skip | run_regen for the generated ci regen step by intersecting
+# the merge-base diff with the [src/v1, dag] regen input closure (shared authority
+# cli_run::regen_input_sources). Empty diff / diff failure / closure failure → run_regen
+# (fail-closed; main + the 4-hourly falsifier run regen cold as the control).
+[[bin]]
+name = "regen_floor_skip_witness"
+path = "src/bin/regen_floor_skip_witness.rs"
+
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real
 # claim_batch binary with --record/--hermetic/--fixture-store + mutates fixtures on
