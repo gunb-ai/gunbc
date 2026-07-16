@@ -184,13 +184,6 @@ fn json_text_parse_ok(end: Int) -> JsonTextParseResult {
   JsonTextParseOk { end: end }
 }
 
-fn json_text_parse_end(r: JsonTextParseResult) -> Int {
-  match r {
-    JsonTextParseOk { end: e } => e
-    JsonTextParseFail { end: e } => e
-  }
-}
-
 fn json_text_whitespace_char(c: String) -> JsonWhitespaceChar? {
   if c == " " {
     Present { value: JsonWsSpace }
@@ -210,7 +203,7 @@ fn json_text_skip_ws(s: String, i: Int) -> Int {
     i
   } else {
     match json_text_whitespace_char(c: char_at(s: s, i: i)) {
-      none => i
+      Absent => i
       Present { value: _ } => json_text_skip_ws(s: s, i: i + 1)
     }
   }
