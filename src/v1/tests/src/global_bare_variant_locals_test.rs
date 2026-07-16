@@ -3,10 +3,10 @@
 
 use std::rc::Rc;
 
-use im_rc::{HashMap, vector};
+use im_rc::{vector, HashMap};
 use v1_compiler::v1_compiler_infer::{
-    build_global_bare_variant_locals, merge_global_bare_variant_locals, VariantFoldState,
-    take_merge_global_bare_per_module_scans,
+    build_global_bare_variant_locals, merge_global_bare_variant_locals,
+    take_merge_global_bare_per_module_scans, VariantFoldState,
 };
 use v1_compiler::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding};
 use v1_compiler::v1_rt;
@@ -74,8 +74,7 @@ fn fixture_disj_with_named_arm() -> (
 #[test]
 fn build_global_bare_variant_locals_only_admits_disj_with_named_arm() {
     let (census, source_indices, red_binding) = fixture_disj_with_named_arm();
-    let variant_locals =
-        build_global_bare_variant_locals(census.clone(), source_indices.clone());
+    let variant_locals = build_global_bare_variant_locals(census.clone(), source_indices.clone());
 
     assert_eq!(
         variant_locals.len(),
@@ -120,8 +119,7 @@ fn build_global_bare_variant_locals_only_admits_disj_with_named_arm() {
 #[test]
 fn precomputed_merge_records_zero_has_child_named_per_module() {
     let (census, source_indices, _) = fixture_disj_with_named_arm();
-    let precomputed =
-        build_global_bare_variant_locals(census.clone(), source_indices.clone());
+    let precomputed = build_global_bare_variant_locals(census.clone(), source_indices.clone());
     let init = Rc::new(VariantFoldState {
         locals: v1_rt::rc_empty_map(),
         collision_errors: Rc::new(vector![]),
