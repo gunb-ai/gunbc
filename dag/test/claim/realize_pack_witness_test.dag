@@ -1,0 +1,65 @@
+module test.claim.realize_pack_witness
+
+import std.logic { Bool }
+import std.types { Int }
+import std.measure { byte_size, hardware_thread_count, hardware_thread_count_value }
+import std.realization_schedule { CostAccount, Measured, Predicted, cost_account_predicted_zero }
+import std.realization_measurement { cost_account_measured_from_time_and_space }
+import std.measure { time_measure }
+import std.realize_pack {
+  MeasuredPeak, PeakMeasured, PeakUnknown, measured_peak_of,
+  HostBudget, BudgetReadable, BudgetUnreadable,
+  RealizeVerdict, PackedWidth, MaturationReserve, BudgetRefused,
+  realize_pack_width, realize_verdict_width, realize_fits_budget,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data realize_pack_witness_note: String = "P4 v0 ACCEPT: memory-safe realize packing. width = min(independence, budget/measured_peak); packing NEVER exceeds budget by construction (the exit-137 control); a Predicted (unmeasured) peak -> width-1 maturation reserve; an unreadable budget REFUSES rather than fabricating a width (retires realization_width conservative_fallback_width, the §5 finding). NOTE on realize_packs_within_budget: budget 100 / peak 25 = 4 naive, but memory_bounded_shard_count reserves 20% headroom (effective 80 -> floor(80/25) = 3) — the maturation-reserve margin (admitted demand grows post-admission); the safe pack is 3, and 3*25 = 75 <= 100 leaves the headroom by construction."
+
+data budget_100: HostBudget = BudgetReadable { bytes: byte_size(count: 100) }
+
+test fn realize_packs_within_budget_holds() -> Bool {
+  let peak = PeakMeasured { bytes: byte_size(count: 25) }
+  let v = realize_pack_width(peak: peak, budget: budget_100, independence_width: 16)
+  let width = realize_verdict_width(v: v)
+  width == 3
+    && realize_fits_budget(v: v, peak: peak, budget: budget_100)
+    && match v { PackedWidth { width: _ } => true  _ => false }
+}
+
+test fn realize_capped_by_independence_holds() -> Bool {
+  let peak = PeakMeasured { bytes: byte_size(count: 1) }
+  let v = realize_pack_width(peak: peak, budget: budget_100, independence_width: 3)
+  realize_verdict_width(v: v) == 3
+    && realize_fits_budget(v: v, peak: peak, budget: budget_100)
+}
+
+test fn realize_never_exceeds_budget_holds() -> Bool {
+  let peak = PeakMeasured { bytes: byte_size(count: 60) }
+  let v = realize_pack_width(peak: peak, budget: budget_100, independence_width: 16)
+  realize_verdict_width(v: v) == 1
+    && realize_fits_budget(v: v, peak: peak, budget: budget_100)
+}
+
+test fn realize_unknown_peak_maturation_reserve_holds() -> Bool {
+  let v = realize_pack_width(peak: PeakUnknown, budget: budget_100, independence_width: 16)
+  realize_verdict_width(v: v) == 1
+    && match v { MaturationReserve { width: _ } => true  _ => false }
+}
+
+test fn realize_unreadable_budget_refuses_holds() -> Bool {
+  let peak = PeakMeasured { bytes: byte_size(count: 25) }
+  let v = realize_pack_width(peak: peak, budget: BudgetUnreadable, independence_width: 16)
+  match v { BudgetRefused => true  _ => false }
+    && realize_verdict_width(v: v) == 0
+    && realize_fits_budget(v: v, peak: peak, budget: BudgetUnreadable)
+}
+
+test fn realize_measured_vs_predicted_peak_holds() -> Bool {
+  let measured = cost_account_measured_from_time_and_space(time: time_measure(count: 1), space: byte_size(count: 25))
+  let predicted = cost_account_predicted_zero()
+  match measured_peak_of(cost: measured) { PeakMeasured { bytes: _ } => true  PeakUnknown => false }
+    && match measured_peak_of(cost: predicted) { PeakMeasured { bytes: _ } => false  PeakUnknown => true }
+}
