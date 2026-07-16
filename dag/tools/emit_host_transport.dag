@@ -5,8 +5,29 @@ import extdeps.filesystem.filesystem_io
 import extdeps.cargo_build
 import extdeps.python
 import extdeps.gunbc
+import extdeps.communication.medium { Lossless, Medium }
 import std.measure { byte_size_count }
 import std.render_repeat_string_bootstrap { repeat_string }
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_emit_host,
+  run_host_process,
+  runtime_value_parse
+}
+import v2.compiler.eval { Inputs, inputs_root_only }
+import v2.extdeps.languages.c {
+  c_inject_fault_runtime_row,
+  c_source_text,
+  c_target_model
+}
+import v2.std.diagnostic { Accepted, Rejected, None }
+import v2.std.host_run { HostLogicalRun }
+import v2.std.host_transport {
+  HostRuntimeRowAbsent,
+  HostRuntimeRowPresent
+}
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
 import tools.emit_host_fixtures {
   rust_stdout_fixture_source,
   python_stdout_fixture_source,
@@ -75,4 +96,73 @@ fn run_node_http_serve_smoke() -> Bool {
   let server_source = gunbhub_node_http_server_source()
   let script = "set -e\nWORKDIR=$(mktemp -d)\n{emit_host_node_bootstrap_script}command -v node >/dev/null 2>&1\ncat > \"$WORKDIR/server.js\" <<'GUNBC_EOF'\n{server_source}\nGUNBC_EOF\nPORT=$((19000 + ($$ % 1000)))\nHOST=127.0.0.1 PORT=$PORT node \"$WORKDIR/server.js\" &\nSERVER_PID=$!\ntrap 'kill $SERVER_PID 2>/dev/null; rm -rf \"$WORKDIR\"' EXIT\n{emit_host_node_http_probe_script}"
   toolchain_provision_shell_exec(script: script)
+}
+
+fn c_run_probe_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^c_emit_host_run_probe } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_run_inputs() -> Inputs {
+  inputs_root_only(root: c_run_probe_node())
+}
+
+fn c_run_source() -> Medium<String> {
+  Medium { carried: c_source_text, fidelity: Lossless }
+}
+
+fn c_expected_add_stdout_octets() -> List<Int> {
+  [0, 5, 0, 0, 0]
+}
+
+fn c_emit_host_green_holds() -> Bool {
+  match run_emit_host(
+    target: c_target_model(),
+    source: c_run_source(),
+    fixture_inputs: c_run_inputs()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+          match runtime_value_parse(target: c_target_model(), stdout: stdout) {
+            Accepted { value: _, diagnostics: _ } =>
+              stdout.bytes == emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+            Rejected { diagnostics: _ } => false
+          }
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn c_emit_host_inject_fault_refuses_holds() -> Bool {
+  match c_inject_fault_runtime_row() {
+    HostRuntimeRowAbsent => false
+    HostRuntimeRowPresent { row: row } =>
+      match run_host_process(
+        row: row,
+        target: c_target_model(),
+        source: c_run_source(),
+        fixture_inputs: c_run_inputs()
+      ) {
+        Accepted { value: receipt, diagnostics: _ } =>
+          match receipt.logical_run {
+            Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+              match runtime_value_parse(target: c_target_model(), stdout: stdout) {
+                Rejected { diagnostics: _ } => true
+                Accepted { value: _, diagnostics: _ } =>
+                  stdout.bytes != emit_host_octets_byte_string(octets: c_expected_add_stdout_octets())
+              }
+            Rejected { diagnostics: _ } => true
+          }
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn run_c_smoke() -> Bool {
+  c_emit_host_green_holds() && c_emit_host_inject_fault_refuses_holds()
 }

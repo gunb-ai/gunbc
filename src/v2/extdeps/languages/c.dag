@@ -18,9 +18,52 @@ import v2.std.algebra { any, length }
 import v2.std.collection {
   Absent,
   Optional,
-  Present
+  Present,
+  List,
+  Map,
+  empty_map,
+  map_insert
 }
-import v2.std.algebra { fold_list }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.compilers.lexing {
+  LexRule,
+  LexRuleSet,
+  LexRules,
+  LiteralPattern,
+  ModeledLexRules,
+  TokenRule
+}
+import v2.std.grammar {
+  GrammarExpr,
+  GrammarProduction,
+  Sequence,
+  StampClass,
+  Terminal,
+  grammar_production_to_node,
+  grammar_relation_tokens_node
+}
+import v2.std.compilers.target_model {
+  TargetModel,
+  ConcreteSyntaxToken,
+  FixedToken,
+  BoundToken,
+  target_model_emit_transforms_empty,
+  concrete_syntax_token_class,
+  concrete_syntax_token_to_node
+}
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  EmittedWithSuffix,
+  FixedWidthBytes,
+  HostRuntimeRowPresent,
+  HostToolProgram,
+  HostTransportDescriptor,
+  LiteralArg,
+  ProcessInvocation,
+  ProducedProgram,
+  TargetEmitHostRuntimeRow,
+  WorkspaceFile
+}
 import v2.std.compilers.compilation_unit {
   ByValueTypeCycle,
   CompilationUnit,
@@ -49,29 +92,11 @@ import v2.std.node {
   Edge,
   Named,
   Node,
+  Positional,
   Symbol,
   SyntheticOccurrence,
   TypeNode
 }
-import v2.std.compilers.target_model {
-  TargetModel,
-  target_model_emit_transforms_empty,
-  target_model_make_with_emit_transforms
-}
-import v2.std.host_transport {
-  EmitHostRuntimeRow,
-  EmittedWithSuffix,
-  FixedWidthBytes,
-  HostRuntimeRowPresent,
-  HostToolProgram,
-  HostTransportDescriptor,
-  LiteralArg,
-  ProcessInvocation,
-  ProducedProgram,
-  TargetEmitHostRuntimeRow,
-  WorkspaceFile
-}
-import v2.extdeps.languages.cpp { cpp_target_model }
 
 data c_r3_interface_members_split_note: String = "C R3: CompilationUnit.interface renders to the unit .h (declarations only); CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
 
@@ -587,5 +612,306 @@ fn c_validate_partition_r4(
       PartitionR4Refused {
         cause: ByValueTypeCycle { detail: detail },
       }
+  }
+}
+
+data c_stage0_emit_note: String = "Stage 0 C source emitter seeded on fn add (ISO/IEC 9899:2018 / C17 — extdeps.languages.c.emit extdeps_external_authority_anchor). Grammar relation rows + lex + binding_spellings live here; the smoke main harness suffix is the sole legitimate string scaffold (dissolves when a modeled main producer lands)."
+
+data c_source_text: String = "int add(int x, int y) { return x + y; }"
+
+data c_emit_host_main_suffix: String = "\n\nextern long write(int, const void *, unsigned long);\nint main(void) { int value = add(2, 3); if (value != 5) { return 1; } unsigned char b[5] = {0, (unsigned char)(value & 0xff), (unsigned char)((value >> 8) & 0xff), (unsigned char)((value >> 16) & 0xff), (unsigned char)((value >> 24) & 0xff)}; write(1, b, 5); return 0; }\n"
+
+data c_emit_host_inject_fault_main_suffix: String = "\n\nextern long write(int, const void *, unsigned long);\nint main(void) { int value = add(2, 2); if (value != 5) { return 1; } unsigned char b[5] = {0, (unsigned char)(value & 0xff), (unsigned char)((value >> 8) & 0xff), (unsigned char)((value >> 16) & 0xff), (unsigned char)((value >> 24) & 0xff)}; write(1, b, 5); return 0; }\n"
+
+data c_emit_host_main_suffix_dissolution_trigger: String = "🟡 dissolve-on: c_emit_host_main_suffix + c_emit_host_inject_fault_main_suffix — smoke-driver main harness fragments spliced after emitted add via EmittedWithSuffix (parallel to rust_emit_host_main_suffix / slb_driver_main_source). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then."
+
+fn c_atom(id: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: id } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn c_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^c_token_ty_int },
+    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_fn_add },
+    FixedToken { token_class: ^c_token_lparen },
+    FixedToken { token_class: ^c_token_ty_int },
+    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_x },
+    FixedToken { token_class: ^c_token_comma },
+    FixedToken { token_class: ^c_token_ty_int },
+    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_y },
+    FixedToken { token_class: ^c_token_rparen },
+    FixedToken { token_class: ^c_token_lbrace },
+    FixedToken { token_class: ^c_token_kw_return },
+    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_x },
+    FixedToken { token_class: ^c_token_plus },
+    BoundToken { token_class: ^c_token_ident, binding: ^c_binding_param_y },
+    FixedToken { token_class: ^c_token_semicolon },
+    FixedToken { token_class: ^c_token_rbrace }
+  ]
+}
+
+fn c_int_inhabitant_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_named_edge(name: ^c_inhabitant_field_atom, target: c_atom(id: ^c_inhabitant_int))
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_emitted_add_fn_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [
+      Edge { label: Positional, target: c_int_inhabitant_node() },
+      Edge { label: Positional, target: c_int_inhabitant_node() },
+      Edge { label: Positional, target: c_int_inhabitant_node() }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
+  concrete_syntax_token_to_node(token: token)
+}
+
+fn c_serialize_source_children() -> List<Edge> {
+  list_append(
+    left: [
+      c_named_edge(name: ^serialize_source_field_source_text, target: c_atom(id: ^c_source_literal)),
+      c_named_edge(name: ^serialize_source_field_source_grammar, target: c_atom(id: ^c_production_fn_add))
+    ],
+    right: [
+      c_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: c_concrete_tokens(),
+          token_to_node: c_concrete_token_node
+        )
+      )
+    ]
+  )
+}
+
+fn c_serialize_source_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: c_serialize_source_children(),
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_grammar_terminal(token_class: Symbol) -> GrammarExpr {
+  Terminal { token_class: token_class, stamp: StampClass }
+}
+
+type CGramBuild1State
+  = CGramBuild1StateInit
+  | CGramBuild1StateReady { expr: GrammarExpr }
+
+fn c_grammar_sequence_from_token_classes() -> GrammarExpr {
+  match fold_list(
+    xs: c_concrete_tokens(),
+    empty: CGramBuild1StateInit,
+    cons: fn(state, token) {
+      match state {
+        CGramBuild1StateInit =>
+          CGramBuild1StateReady {
+            expr: c_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+          }
+        CGramBuild1StateReady { expr: acc } =>
+          CGramBuild1StateReady {
+            expr: Sequence {
+              left: acc,
+              right: c_grammar_terminal(token_class: concrete_syntax_token_class(token: token))
+            }
+          }
+      }
+    }
+  ) {
+    CGramBuild1StateInit =>
+      c_grammar_terminal(token_class: ^c_token_ty_int)
+    CGramBuild1StateReady { expr: result } => result
+  }
+}
+
+fn c_grammar_production_fn_add() -> GrammarProduction {
+  GrammarProduction {
+    name: ^c_production_fn_add,
+    expression: c_grammar_sequence_from_token_classes(),
+    emitted: c_emitted_add_fn_node()
+  }
+}
+
+type CGrammarRelationRow {
+  production: GrammarProduction
+  emitted: Node
+  tokens: List<ConcreteSyntaxToken>
+}
+
+fn c_grammar_relation_row() -> CGrammarRelationRow {
+  CGrammarRelationRow {
+    production: c_grammar_production_fn_add(),
+    emitted: c_emitted_add_fn_node(),
+    tokens: c_concrete_tokens()
+  }
+}
+
+fn c_grammar_relation_row_node(row: CGrammarRelationRow) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_named_edge(name: ^grammar_relation_field_production, target: grammar_production_to_node(production: row.production)),
+      c_named_edge(name: ^grammar_relation_field_emitted, target: row.emitted),
+      c_named_edge(
+        name: ^grammar_relation_field_tokens,
+        target: grammar_relation_tokens_node(
+          tokens: row.tokens,
+          token_to_node: c_concrete_token_node
+        )
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_translation_rules_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_named_edge(name: ^c_relation_rule_fn_add, target: c_grammar_relation_row_node(row: c_grammar_relation_row()))
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_selection_policy_node() -> Node {
+  c_int_inhabitant_node()
+}
+
+fn c_add_declared_inhabitants_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_named_edge(name: ^c_inhabitant_field_int, target: c_int_inhabitant_node()),
+      c_named_edge(name: ^c_inhabitant_field_add_fn, target: c_emitted_add_fn_node())
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_target_model_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_named_edge(name: ^target_model_edge_selection_policy, target: c_selection_policy_node()),
+      c_named_edge(name: ^target_model_edge_declared_inhabitants, target: c_add_declared_inhabitants_root()),
+      c_named_edge(name: ^target_model_edge_translation_rules, target: c_translation_rules_node()),
+      c_named_edge(name: ^target_model_edge_serialize_source, target: c_serialize_source_node())
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), ^c_binding_fn_add, "add"),
+      ^c_binding_param_x,
+      "x"
+    ),
+    ^c_binding_param_y,
+    "y"
+  )
+}
+
+fn c_lex_rule(token_class: Symbol, text: String) -> LexRule {
+  TokenRule { token_class: token_class, pattern: LiteralPattern { text: text } }
+}
+
+fn c_lex_rules() -> List<LexRule> {
+  [
+    c_lex_rule(token_class: ^c_token_ty_int, text: "int "),
+    c_lex_rule(token_class: ^c_token_lparen, text: "("),
+    c_lex_rule(token_class: ^c_token_comma, text: ", "),
+    c_lex_rule(token_class: ^c_token_rparen, text: ") "),
+    c_lex_rule(token_class: ^c_token_lbrace, text: "{ "),
+    c_lex_rule(token_class: ^c_token_kw_return, text: "return "),
+    c_lex_rule(token_class: ^c_token_plus, text: " + "),
+    c_lex_rule(token_class: ^c_token_semicolon, text: ";"),
+    c_lex_rule(token_class: ^c_token_rbrace, text: " }")
+  ]
+}
+
+fn c_lex() -> LexRules {
+  ModeledLexRules { root: LexRuleSet { rules: c_lex_rules() } }
+}
+
+fn c_emit_host_runtime_primitive_type_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^c_emit_host_runtime_primitive_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_host_transport_descriptor(main_suffix: String) -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^c_host_transport_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "fixture.c",
+        content: EmittedWithSuffix { suffix: main_suffix }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        program: HostToolProgram { executable: "cc" },
+        args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+      }
+    ],
+    run: ProcessInvocation {
+      program: ProducedProgram { path: "fixture" },
+      args: []
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn c_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: c_host_transport_descriptor(main_suffix: c_emit_host_main_suffix),
+      runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn c_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: c_host_transport_descriptor(main_suffix: c_emit_host_inject_fault_main_suffix),
+      runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn c_target_model() -> TargetModel {
+  TargetModel {
+    bundle: c_target_model_node(),
+    lex: c_lex(),
+    binding_spellings: c_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: c_source_text,
+    runtime_row: c_runtime_row()
   }
 }
