@@ -17,6 +17,7 @@ import v2.std.compilers.compilation_unit {
   PartitionFoldRefused,
   PartitionR4Refused,
   PartitionR4Valid,
+  ByValueTypeCycle,
   LinkageCycle,
   SccSplit,
   UnitGraphCycle,
