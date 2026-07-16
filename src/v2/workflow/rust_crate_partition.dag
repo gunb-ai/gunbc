@@ -295,7 +295,7 @@ fn resolve_partition(
 ) -> Map<ModuleId, CompilationUnitId> {
   match parameter {
     ExplicitPartitionParam { partition: explicit } => explicit.assignment
-    PolicyPartitionParam { policy: _ } =>
+    PolicyPartitionParam { policy: policy } =>
       stage0_interim_explicit_assignment()
   }
 }

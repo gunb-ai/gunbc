@@ -4,15 +4,202 @@ import v1.std.core { TextFile }
 import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep }
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
-import v2.workflow.rust_crate_partition {
-  Stage0EmitCoreCrate,
-  Stage0FoundationCrate,
-  Stage0LayeredCoreCrate,
-  Stage0PartitionCrateRow,
-  stage0_partition_crate_rows,
-  stage0_partition_provenance,
-  rust_crate_partition_dissolve_on,
-  rust_crate_partition_note
+
+type Stage0PartitionCrateKind
+  = Stage0FoundationCrate
+  | Stage0LayeredCoreCrate
+  | Stage0EmitCoreCrate
+
+type Stage0PartitionCrateRow {
+  package_name: String
+  crate_dir: String
+  kind: Stage0PartitionCrateKind
+  modules: List<String>
+  reexport_packages: List<String>
+  carries_non_empty_wrappers: Bool
+}
+
+data stage0_crate_plan_dissolve_on: String = "dissolve-on: stage0_crate_plan_interim_explicit — regen-closure mirror of v2.workflow.rust_crate_partition HandExplicit rows; dissolves when PolicyPartition replaces ExplicitPartition (see rust_crate_partition_dissolve_on)."
+
+fn stage0_runtime_modules() -> List<String> {
+  ["v1_rt", "v1_std_core"]
+}
+
+fn stage0_std_primitive_modules() -> List<String> {
+  [
+    "std_content_hash",
+    "std_coercion",
+    "std_decl_ref",
+    "std_disposition",
+    "std_error_primitives",
+    "std_http_path",
+    "std_emit_model",
+    "std_magnitude",
+    "std_measure",
+    "std_types",
+    "std_lens_verdict"
+  ]
+}
+
+fn stage0_std_core_modules() -> List<String> {
+  [
+    "std_algebra",
+    "std_nat",
+    "std_node",
+    "std_syntax",
+    "std_computation",
+    "std_termination",
+    "std_induction",
+    "std_iteration",
+    "std_graph"
+  ]
+}
+
+fn stage0_std_surface_modules() -> List<String> {
+  [
+    "std_effects",
+    "std_execution_mode",
+    "std_interface_summary",
+    "std_pareto",
+    "std_realization_schedule"
+  ]
+}
+
+fn stage0_extdeps_modules() -> List<String> {
+  [
+    "extdeps_external_authority",
+    "extdeps_languages_dag_emit",
+    "extdeps_languages_dag_syntax",
+    "extdeps_languages_dag_types",
+    "extdeps_languages_go_emit",
+    "extdeps_languages_go_syntax",
+    "extdeps_languages_go_types",
+    "extdeps_languages_python_emit",
+    "extdeps_languages_python_syntax",
+    "extdeps_languages_python_types",
+    "extdeps_languages_rust_emit",
+    "extdeps_languages_rust_syntax",
+    "extdeps_languages_rust_types",
+    "extdeps_uri"
+  ]
+}
+
+fn stage0_v1_infer_modules() -> List<String> {
+  [
+    "v1_compiler_infer_emit_info",
+    "v1_compiler_infer_env",
+    "v1_compiler_infer_items",
+    "v1_compiler_infer_service",
+    "v1_compiler_infer_sigs",
+    "v1_compiler_infer_types"
+  ]
+}
+
+fn stage0_v1_artifact_modules() -> List<String> {
+  ["v1_compiler_artifact", "v1_compiler_languages"]
+}
+
+fn stage0_emit_core_modules() -> List<String> {
+  [
+    "v1_compiler_artifact",
+    "v1_compiler_infer_items",
+    "v1_compiler_infer_service",
+    "v1_compiler_infer_types",
+    "v1_compiler_languages",
+    "v1_rt",
+    "v1_std_core"
+  ]
+}
+
+fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
+  [
+    Stage0PartitionCrateRow {
+      package_name: "v1-stage0-runtime",
+      crate_dir: "src/v1/stage0_runtime",
+      kind: Stage0FoundationCrate,
+      modules: stage0_runtime_modules(),
+      reexport_packages: [],
+      carries_non_empty_wrappers: true
+    },
+    Stage0PartitionCrateRow {
+      package_name: "v1-stage0-std-primitives",
+      crate_dir: "src/v1/stage0_std_primitives",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_std_primitive_modules(),
+      reexport_packages: ["v1-stage0-runtime"],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      package_name: "v1-stage0-std-core",
+      crate_dir: "src/v1/stage0_std_core",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_std_core_modules(),
+      reexport_packages: ["v1-stage0-runtime", "v1-stage0-std-primitives"],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      package_name: "v1-stage0-std-surface",
+      crate_dir: "src/v1/stage0_std_surface",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_std_surface_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-primitives",
+        "v1-stage0-std-core"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      package_name: "v1-stage0-extdeps",
+      crate_dir: "src/v1/stage0_extdeps",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_extdeps_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-primitives",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      package_name: "v1-stage0-v1-infer",
+      crate_dir: "src/v1/stage0_v1_infer",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_v1_infer_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-primitives",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface",
+        "v1-stage0-extdeps"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      package_name: "v1-stage0-v1-artifact",
+      crate_dir: "src/v1/stage0_v1_artifact",
+      kind: Stage0LayeredCoreCrate,
+      modules: stage0_v1_artifact_modules(),
+      reexport_packages: [
+        "v1-stage0-runtime",
+        "v1-stage0-std-primitives",
+        "v1-stage0-std-core",
+        "v1-stage0-std-surface",
+        "v1-stage0-extdeps",
+        "v1-stage0-v1-infer"
+      ],
+      carries_non_empty_wrappers: false
+    },
+    Stage0PartitionCrateRow {
+      package_name: "v1-stage0-emit-core",
+      crate_dir: "src/v1/stage0_emit_core",
+      kind: Stage0EmitCoreCrate,
+      modules: stage0_emit_core_modules(),
+      reexport_packages: [],
+      carries_non_empty_wrappers: false
+    }
+  ]
 }
 
 type Stage0CrateKind
@@ -36,7 +223,7 @@ type Stage0CratePlan {
   crates: List<Stage0CrateSpec>
 }
 
-data stage0_crate_plan_note: String = "Realizes the shared CompilationUnit shape via v2.workflow.rust_crate_partition (HandExplicit provenance; dissolves to PolicyDerived when balanced partition policy lands). Replaces the former hand membership ledger in stage0_crate_plan()."
+data stage0_crate_plan_note: String = "HandExplicit ~8-crate partition (regen closure). Workflow authority + CompilationUnit fold/R4 live in v2.workflow.rust_crate_partition; this file is the R3 renderer consumed by regen_stage0."
 
 fn stage0_crate_allow_block() -> String {
   [
@@ -155,10 +342,10 @@ fn render_stage0_reexport_block(packages: List<String>) -> String {
   if (packages |> count) == 0 {
     ""
   } else {
-    packages
+    let body = packages
       |> map(pkg => concat("pub use ", pkg, "::*;"))
       |> join(separator: "\n")
-      |> concat("\n\n", _, "\n\n")
+    concat("\n\n", body, "\n\n")
   }
 }
 
@@ -175,12 +362,16 @@ fn render_stage0_layered_core_lib(spec: Stage0CrateSpec) -> String {
 }
 
 fn emit_core_reexport_crate(module: String) -> String {
-  match module {
-    "v1_compiler_artifact" => "v1_stage0_v1_artifact"
-    "v1_compiler_languages" => "v1_stage0_v1_artifact"
-    "v1_rt" => "v1_stage0_runtime"
-    "v1_std_core" => "v1_stage0_runtime"
-    _ => "v1_stage0_v1_infer"
+  if module == "v1_compiler_artifact" {
+    "v1_stage0_v1_artifact"
+  } else if module == "v1_compiler_languages" {
+    "v1_stage0_v1_artifact"
+  } else if module == "v1_rt" {
+    "v1_stage0_runtime"
+  } else if module == "v1_std_core" {
+    "v1_stage0_runtime"
+  } else {
+    "v1_stage0_v1_infer"
   }
 }
 
@@ -194,7 +385,7 @@ fn render_stage0_emit_core_lib(spec: Stage0CrateSpec) -> String {
   concat(
     spec.header_doc, "\n\n",
     stage0_crate_allow_block(), "\n\n",
-    "pub use v1_stage0_runtime::{NonEmptyBTreeSet, NonEmptyVec};", "\n\n",
+    "pub use v1_stage0_runtime::\{NonEmptyBTreeSet, NonEmptyVec};", "\n\n",
     reexports, "\n\n",
     "#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;", "\n\n",
     "pub use v1_compiler_emit_core_support::*;", "\n"
