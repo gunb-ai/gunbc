@@ -26,11 +26,13 @@ import std.realization_reconcile {
 }
 import std.types { String }
 import std.logic { Bool }
+import v2.workflow.bash_program_emit { bash_program_serialize }
+import v2.std.diagnostic { Accepted, Rejected }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
   Command, If, AndOr, Exit, Concat, Negation, Subshell,
   OrElse,
-  lit, var_ref, command, assign, serialize_bash
+  lit, var_ref, command, assign
 }
 import extdeps.git {
   GitDiffNameStatusComplete,
@@ -173,8 +175,18 @@ fn floor_git_diff_unified_program(policy: DiffPolicy) -> ShellProgram {
   }
 }
 
+fn floor_bash_program_serialize_script(p: ShellProgram) -> String {
+  match bash_program_serialize(p: p) {
+    Accepted { value: script, diagnostics: _ } => script
+    Rejected { diagnostics: _ } =>
+      "echo 'floor_diff_observe: bash_program_serialize refused' >&2; exit 1\n"
+  }
+}
+
 fn floor_git_diff_unified_script(policy: DiffPolicy) -> String {
-  serialize_bash(p: floor_git_diff_unified_program(policy: policy))
+  floor_bash_program_serialize_script(
+    p: floor_git_diff_unified_program(policy: policy)
+  )
 }
 
 fn floor_unified_diff_from_reconciliation(
@@ -298,7 +310,9 @@ fn floor_git_diff_name_status_program(policy: DiffPolicy) -> ShellProgram {
 }
 
 fn floor_git_diff_name_status_script(policy: DiffPolicy) -> String {
-  serialize_bash(p: floor_git_diff_name_status_program(policy: policy))
+  floor_bash_program_serialize_script(
+    p: floor_git_diff_name_status_program(policy: policy)
+  )
 }
 
 fn floor_name_status_diff_from_reconciliation(
