@@ -444,7 +444,7 @@ fn c_dfs_by_value_type_cycle(
           Present { value: _ } => acc
           Absent =>
             if c_type_owner_eq(left: edge.from, right: current) {
-              c_dfs_by_value_cycle(
+              c_dfs_by_value_type_cycle(
                 edges: edges,
                 assignment: assignment,
                 current: edge.to,
