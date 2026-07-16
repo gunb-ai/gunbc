@@ -11,9 +11,7 @@ use v1_compiler::v1_compiler_infer::{
     build_global_bare_census, build_global_bare_variant_locals, build_local_variants,
     build_type_env, insert_variant_owner_checked, typecheck_module, VariantFoldState,
 };
-use v1_compiler::v1_compiler_infer_env::{
-    union_variant_locals_into_acc, GlobalBareLookupState, TypeBinding,
-};
+use v1_compiler::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding};
 use v1_compiler::v1_compiler_resolve::ResolvedModule;
 use v1_compiler::v1_rt;
 use v1_compiler::v1_std_core::{
@@ -131,7 +129,7 @@ fn expected_variant_locals_old_path(
         module_name.clone(),
         Rc::new(VariantFoldState {
             locals: v1_rt::rc_empty_map(),
-            collision_errors: Rc::new(vec![]),
+            collision_errors: Rc::new(im_rc::Vector::new()),
         }),
     );
     let after_old_merge = simulate_old_merge_global_bare_variant_locals(
@@ -142,7 +140,7 @@ fn expected_variant_locals_old_path(
     );
     v1_compiler::v1_compiler_infer::merge_kernel_variant_locals_low_priority(
         env,
-        after_old_merge.locals,
+        after_old_merge.locals.clone(),
     )
 }
 
@@ -226,7 +224,7 @@ fn receipt1_owning_module_same_authority_variant_locals_byte_identical() {
         module_path.clone(),
         Rc::new(VariantFoldState {
             locals: v1_rt::rc_empty_map(),
-            collision_errors: Rc::new(vec![]),
+            collision_errors: Rc::new(im_rc::Vector::new()),
         }),
     );
     let probe_eur_module = module_fold.locals.get("ProbeEur").expect("module defines ProbeEur");
