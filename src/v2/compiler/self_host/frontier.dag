@@ -343,7 +343,7 @@ data compiler_frontier_row_emit_semantic_decl: CompilerModuleFrontierRow = knowl
   module_path: "src/v2/compiler/emit_semantic_decl.dag",
   closure_reads: 59,
   measured_blocker: EmitSurfaceGap,
-  migration_trigger: ^migrate_when_rust_decl_emit_track_a_completes
+  migration_trigger: ^migrate_when_semantic_decl_pipeline_wired
 )
 
 data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
