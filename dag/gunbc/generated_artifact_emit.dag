@@ -7,6 +7,7 @@ import gunbc.generated_artifact {
   RunnerDeployArtifact, FleetConvergeArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact,
   AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact,
+  LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact,
   artifact_path
 }
 import gunbc.ci_yaml_emit { expected_ci_yml }
@@ -26,6 +27,10 @@ import gunbc.stage0_crate_layout_emit {
   expected_stage0_crate_layout_generated_dag,
   expected_stage0_crate_layout_generated_rs
 }
+import gunbc.live_deploy.emit {
+  expected_live_deploy_apply_script,
+  expected_live_deploy_retract_script
+}
 
 fn artifact_generate(a: GeneratedArtifact) -> String {
   match a {
@@ -40,6 +45,8 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
     FleetConvergeArtifact => expected_fleet_converge_sh()
     Stage0CrateLayoutGeneratedDagArtifact => expected_stage0_crate_layout_generated_dag()
     Stage0CrateLayoutGeneratedRsArtifact => expected_stage0_crate_layout_generated_rs()
+    LiveDeployApplyScriptArtifact => expected_live_deploy_apply_script()
+    LiveDeployRetractScriptArtifact => expected_live_deploy_retract_script()
     AutoinstallUserDataArtifact { spec } => autoinstall_user_data(payload: spec.payload)
     ProxyDhcpDnsmasqArtifact { spec } => install_server_dnsmasq_conf(spec: spec)
     PlanArtifact { plan } => expected_plan_md(p: plan)
