@@ -5935,6 +5935,70 @@ fn map_file_outputs(
     })
 }
 
+/// Standard base64 (RFC 4648 §4, with `=` padding) — the fixed alphabet an HTTP Basic
+/// credential requires (RFC 7617). Hand-rolled to keep the shrinking bootstrap seed free of a
+/// direct base64 dependency; deterministic and total over any byte slice.
+fn base64_encode_std(input: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(ALPHABET[((n >> 18) & 0x3f) as usize] as char);
+        out.push(ALPHABET[((n >> 12) & 0x3f) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            ALPHABET[((n >> 6) & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            ALPHABET[(n & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+/// The `Authorization: Basic …` header value for RFC 7617 credentials — the single-authority
+/// derivation dispatch_rest uses for a transport `auth_basic` property. Pure so it is
+/// execution-witnessable without a live server.
+fn rest_basic_auth_header_value(username: &str, password: &str) -> String {
+    format!(
+        "Basic {}",
+        base64_encode_std(format!("{}:{}", username, password).as_bytes())
+    )
+}
+
+/// The interpreter's disposition for a rest transport `tls:` posture (extdeps.transports.rest
+/// TlsPosture). `VerifyPeer` proceeds on the stock verifier; `InsecureAcceptAnyCert` is realized
+/// emit-only (operator decision 2026-07-16) so the interpreter refuses it rather than carry a
+/// cert-verification bypass into the retiring seed; an unrecognized posture also refuses. Pure so
+/// each arm is execution-witnessable.
+fn rest_tls_posture_interp_disposition(posture: &str) -> Result<(), String> {
+    match posture {
+        "VerifyPeer" => Ok(()),
+        "InsecureAcceptAnyCert" => Err(
+            "rest transport tls: InsecureAcceptAnyCert is realized emit-only (reqwest \
+             danger_accept_invalid_certs); the interpreter refuses it by design rather than carry \
+             a cert-verification bypass into the retiring seed — run such ops through emitted code"
+                .to_string(),
+        ),
+        other => Err(format!(
+            "rest transport tls: unrecognized posture '{}'",
+            other
+        )),
+    }
+}
+
+/// The single-authority rule (§3): a rest operation must not declare both config-level auth and a
+/// transport `auth_basic` property. Pure so the conflict rule is execution-witnessable.
+fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool) -> bool {
+    config_auth_resolved && has_auth_basic
+}
+
 fn dispatch_rest(
     service_node: &Rc<Node>,
     op_node: &Rc<Node>,
@@ -5999,6 +6063,8 @@ fn dispatch_rest(
         "response_format",
         "auth_token",
         "auth_header",
+        "auth_basic",
+        "tls",
         "stdin",
     ];
     let mut headers: Vec<(String, String)> = Vec::new();
@@ -6045,6 +6111,24 @@ fn dispatch_rest(
     )
     .unwrap_or_else(|| "Json".to_string());
 
+    // TLS posture (extdeps.transports.rest TlsPosture). Absent = VerifyPeer, the fail-closed
+    // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution of
+    // curl's `-k` for self-signed BMC endpoints. Realization is EMIT-ONLY by decision (operator,
+    // 2026-07-16): emitted reqwest code realizes it via `.danger_accept_invalid_certs(true)`, but
+    // the interpreter refuses it by design rather than carry an accept-any rustls verifier into the
+    // bootstrap seed the self-host is retiring. So a present InsecureAcceptAnyCert is a typed
+    // refusal here — the interp is not a realization path for insecure-TLS ops (redfish etc. run
+    // through emitted code); it fails closed, never a silent no-op that would send under VerifyPeer
+    // while the row asked for insecure. An unrecognized posture also refuses.
+    if let Some(tls_node) =
+        find_property(transport.properties.clone(), "tls".to_string(), si.clone())
+    {
+        let posture = authored_name_at(si.clone(), tls_node);
+        if let Err(msg) = rest_tls_posture_interp_disposition(&posture) {
+            return Err(InterpError::TypeError { msg });
+        }
+    }
+
     trace_emit(
         OutputChannel::ShellTrace,
         &format!("[rest] {} {}", method, url),
@@ -6075,6 +6159,57 @@ fn dispatch_rest(
                 token.clone()
             };
             request = request.set(header, &header_val);
+        }
+    }
+
+    // Basic auth (RFC 7617), realized from a `auth_basic: { username: <input>, password: <input> }`
+    // transport-block property. This is the modeled dissolution of curl's `-u user:pass` / netrc
+    // argv — the credential never touches a process argv or a temp file, and its header value is
+    // derived in exactly one place (§3 rest_auth_value_single_authority_note). Fail-closed: a
+    // present `auth_basic` with a non-record shape, a missing username/password field, or a
+    // non-Str credential value is a typed refusal, never an unauthenticated send or a
+    // stringified-debug header.
+    if let Some(basic_node) = find_property(
+        transport.properties.clone(),
+        "auth_basic".to_string(),
+        si.clone(),
+    ) {
+        if rest_auth_authority_conflict(matches!(auth, AuthResolution::Resolved { .. }), true) {
+            return Err(InterpError::TypeError {
+                msg: "rest transport declares both config-level auth and auth_basic — one auth \
+                      authority per operation (§3)"
+                    .to_string(),
+            });
+        }
+        let mut username: Option<String> = None;
+        let mut password: Option<String> = None;
+        for child in basic_node.children.iter() {
+            let fname = field_init_node_name_at(child.clone(), si.clone());
+            let fval = eval_expr(&field_init_node_value(child.clone()), param_env, ctx)?;
+            match (fname.as_str(), &fval) {
+                ("username", Value::Str(s)) => username = Some(s.clone()),
+                ("password", Value::Str(s)) => password = Some(s.clone()),
+                ("username", _) | ("password", _) => {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "auth_basic.{} must resolve to a String credential, got {}",
+                            fname, fval
+                        ),
+                    });
+                }
+                _ => {}
+            }
+        }
+        match (username, password) {
+            (Some(u), Some(p)) => {
+                let header_val = rest_basic_auth_header_value(&u, &p);
+                request = request.set("Authorization", &header_val);
+            }
+            _ => {
+                return Err(InterpError::TypeError {
+                    msg: "auth_basic requires both username and password fields".to_string(),
+                });
+            }
         }
     }
 
@@ -9001,6 +9136,72 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
         (Value::Str(x), Value::Str(y)) => x.cmp(y),
         (Value::Bool(x), Value::Bool(y)) => x.cmp(y),
         _ => std::cmp::Ordering::Equal,
+    }
+}
+
+#[cfg(test)]
+mod base64_std_tests {
+    use super::base64_encode_std;
+
+    #[test]
+    fn rfc4648_test_vectors() {
+        // RFC 4648 §10 test vectors — the fixed alphabet + padding a Basic credential relies on.
+        assert_eq!(base64_encode_std(b""), "");
+        assert_eq!(base64_encode_std(b"f"), "Zg==");
+        assert_eq!(base64_encode_std(b"fo"), "Zm8=");
+        assert_eq!(base64_encode_std(b"foo"), "Zm9v");
+        assert_eq!(base64_encode_std(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode_std(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode_std(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn basic_credential_shape() {
+        // The exact header value a BMC Basic auth op must send for user:pass.
+        assert_eq!(
+            base64_encode_std(b"bmcadmin:s3cret"),
+            "Ym1jYWRtaW46czNjcmV0"
+        );
+        // Bytes with high bits set exercise the +/ tail of the alphabet.
+        assert_eq!(base64_encode_std(&[0xfb, 0xff, 0xfe]), "+//+");
+    }
+}
+
+#[cfg(test)]
+mod dispatch_rest_decision_tests {
+    use super::rest_auth_authority_conflict;
+    use super::rest_basic_auth_header_value;
+    use super::rest_tls_posture_interp_disposition;
+
+    #[test]
+    fn basic_auth_header_is_exact_rfc7617_value() {
+        // The header dispatch_rest sets for auth_basic — discriminating: the exact Base64(user:pass).
+        assert_eq!(
+            rest_basic_auth_header_value("bmcadmin", "s3cret"),
+            "Basic Ym1jYWRtaW46czNjcmV0"
+        );
+        // A different credential must produce a different header (no fixed/empty header).
+        assert_ne!(
+            rest_basic_auth_header_value("bmcadmin", "s3cret"),
+            rest_basic_auth_header_value("bmcadmin", "wrong")
+        );
+    }
+
+    #[test]
+    fn tls_posture_disposition_fails_closed() {
+        // VerifyPeer proceeds; InsecureAcceptAnyCert and unknown refuse (emit-only decision).
+        assert!(rest_tls_posture_interp_disposition("VerifyPeer").is_ok());
+        assert!(rest_tls_posture_interp_disposition("InsecureAcceptAnyCert").is_err());
+        assert!(rest_tls_posture_interp_disposition("TrustEveryone").is_err());
+    }
+
+    #[test]
+    fn dual_auth_conflict_rule() {
+        // Both authorities present is the only conflict; either alone (or neither) is fine.
+        assert!(rest_auth_authority_conflict(true, true));
+        assert!(!rest_auth_authority_conflict(true, false));
+        assert!(!rest_auth_authority_conflict(false, true));
+        assert!(!rest_auth_authority_conflict(false, false));
     }
 }
 

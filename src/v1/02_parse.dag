@@ -2,8 +2,6 @@ module v1.compiler.parse
 
 
 
-
-
 type TokenStream {
   all: List<Token>
   pos: Int
@@ -2195,6 +2193,9 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
         _ => return TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: make_error_node(diagnostic: InternalError { message: "transport headers must be a record literal { \"Name\": value, ... }", span: token_span(tok: token_stream_first(stream: tokens)) }, module_name: "") } }
       }
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
+    } else if fname == transport_auth_basic_key || fname == transport_tls_key {
+      let field = make_field_init_node(name: fname, value: r3.expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: concat(headers, [field]))
     } else {
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
     }

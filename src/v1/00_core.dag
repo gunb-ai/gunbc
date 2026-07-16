@@ -822,6 +822,8 @@ data transport_body_key: String = "body"
 data transport_stdin_key: String = "stdin"
 data transport_response_format_key: String = "response_format"
 data transport_headers_key: String = "headers"
+data transport_auth_basic_key: String = "auth_basic"
+data transport_tls_key: String = "tls"
 
 fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
   Node {
@@ -980,6 +982,18 @@ fn is_config_reserved_key(name: String) -> Bool {
     || name == transport_method_key || name == transport_path_template_key
     || name == transport_query_key || name == transport_body_key || name == transport_stdin_key
     || name == transport_response_format_key || name == transport_headers_key
+    || name == transport_auth_basic_key || name == transport_tls_key
+}
+
+fn transport_auth_basic(t: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  find_property(props: t.properties, prop_name: transport_auth_basic_key, source_indices: source_indices)
+}
+
+fn transport_tls_posture(t: Node, source_indices: Map<String, NewlineIndex>) -> String? {
+  match find_property(props: t.properties, prop_name: transport_tls_key, source_indices: source_indices) {
+    Present { value: n } => Present { value: authored_name_at(source_indices: source_indices, node: n) }
+    Absent => Absent
+  }
 }
 
 fn transport_headers(t: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
