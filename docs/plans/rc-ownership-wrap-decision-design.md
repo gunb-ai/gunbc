@@ -48,7 +48,7 @@ type WrapDecisionGate
 ```
 
 `WrapByValue` = emit the inner type shell with no reference layer.
-`WrapByReference { layer }` = apply `target_reference_layer_apply_type_emitted` / `target_reference_layer_apply_value_expression` with the given layer.
+`WrapByReference { layer }` = apply `target_reference_layer_apply_type_emitted` / `target_reference_layer_apply_value_expression` with the given layer (`Rc` or `Box` only — catalog `ReferenceLayerOwned` rows normalize to `WrapByValue` in `wrap_decision_from_carrier_ownership`).
 
 ### Core lookup (`wrap_decision_lookup_in_catalog_node`)
 

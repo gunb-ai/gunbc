@@ -9891,7 +9891,10 @@ fn wrap_decision_from_carrier_ownership(
   match ownership {
     CarrierOwnershipByValue => WrapByValue
     CarrierOwnershipByReference { realization: row } =>
-      WrapByReference { layer: row.reference_layer }
+      match row.reference_layer {
+        ReferenceLayerOwned => WrapByValue
+        layer => WrapByReference { layer: layer }
+      }
   }
 }
 
