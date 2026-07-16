@@ -127,5 +127,6 @@ test fn host_converge_slice1_wires_srv1_memory_cap() -> Bool {
     && witness_short_stdout_is_read_absent()
     && witness_verdict_uses_converge_target_not_string_flatten()
     && witness_transport_scripts_are_read_only_systemctl()
+    && witness_transport_script_scaffold_carries_dissolution_trigger()
     && witness_apply_and_knob_paths_wired()
 }
