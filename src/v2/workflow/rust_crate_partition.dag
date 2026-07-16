@@ -27,6 +27,7 @@ import v2.std.compilers.compilation_unit {
   SccSplit,
   UnitGraphCycle,
   PartitionFoldOutcome,
+  PartitionFoldRefusalCause,
   partition_fold_outcome,
   partition_provenance_hand_explicit
 }
@@ -56,7 +57,10 @@ type ResolvePartitionOutcome
   = ResolvePartitionOk { assignment: Map<ModuleId, CompilationUnitId> }
   | ResolvePartitionRefused { cause: ResolvePartitionRefusalCause }
 
-data resolve_partition_list_wrapper_dissolve_on: String = "dissolve-on: resolve_partition — Map-returning wrapper collapses ResolvePartitionRefused to []; receipt paths must call resolve_partition_outcome (§5 absorbing-fallback shape)."
+type Stage0PartitionReceiptOutcome
+  = Stage0PartitionReceiptOk { units: List<CompilationUnit> }
+  | Stage0PartitionReceiptResolveRefused { cause: ResolvePartitionRefusalCause }
+  | Stage0PartitionReceiptFoldRefused { cause: PartitionFoldRefusalCause }
 
 type Stage0PartitionCrateKind
   = Stage0FoundationCrate
@@ -73,7 +77,7 @@ type Stage0PartitionCrateRow {
   carries_non_empty_wrappers: Bool
 }
 
-data rust_crate_partition_note: String = "Rust R3 workflow realization of the shared CompilationUnit home (emitted-crate-partition-design.md §2/§13). resolve_partition is the sole entry for the assignment Map; partition_fold is the sole producer of interface + deps. Phase 0: HandExplicit provenance + ExplicitPartition interim ~8-crate layered grouping (dissolves to PolicyPartition when balanced crates≈cores policy lands)."
+data rust_crate_partition_note: String = "Rust R3 workflow realization of the shared CompilationUnit home (emitted-crate-partition-design.md §2/§13). resolve_partition_outcome is the sole entry for the assignment Map; partition_fold_outcome is the sole producer of interface + deps. Phase 0: HandExplicit provenance + ExplicitPartition interim ~8-crate layered grouping (dissolves to PolicyPartition when balanced crates≈cores policy lands)."
 
 data rust_crate_partition_dissolve_on: String = "dissolve-on: rust_crate_partition_interim_explicit — replace ExplicitPartition assignment with PolicyPartition { target_crate_count: declared_core_target } when balanced partition policy lands; provenance flips HandExplicit → PolicyDerived."
 
@@ -371,13 +375,21 @@ fn resolve_partition_outcome(
   }
 }
 
-fn resolve_partition(
-  parameter: PartitionParameter,
-  module_dag: ModuleDag
-) -> Map<ModuleId, CompilationUnitId> {
-  match resolve_partition_outcome(parameter: parameter, module_dag: module_dag) {
-    ResolvePartitionOk { assignment: assignment } => assignment
-    ResolvePartitionRefused { cause: _ } => empty_map()
+fn stage0_partition_receipt_outcome() -> Stage0PartitionReceiptOutcome {
+  let dag = stage0_module_dag()
+  match resolve_partition_outcome(
+    parameter: stage0_partition_parameter(),
+    module_dag: dag
+  ) {
+    ResolvePartitionOk { assignment: assignment } =>
+      match partition_fold_outcome(module_dag: dag, assignment: assignment) {
+        PartitionFoldOk { units: units } =>
+          Stage0PartitionReceiptOk { units: units }
+        PartitionFoldRefused { cause: cause } =>
+          Stage0PartitionReceiptFoldRefused { cause: cause }
+      }
+    ResolvePartitionRefused { cause: cause } =>
+      Stage0PartitionReceiptResolveRefused { cause: cause }
   }
 }
 
@@ -461,27 +473,12 @@ fn validate_partition_r4(
   }
 }
 
-fn stage0_compilation_units_from_outcome(outcome: PartitionFoldOutcome) -> List<CompilationUnit> {
-  match outcome {
-    PartitionFoldOk { units: units } => units
-    PartitionFoldRefused { cause: _ } => []
-  }
-}
-
-fn stage0_partition_fold_outcome() -> PartitionFoldOutcome {
-  let dag = stage0_module_dag()
-  let assignment = match resolve_partition_outcome(
-    parameter: stage0_partition_parameter(),
-    module_dag: dag
-  ) {
-    ResolvePartitionOk { assignment: assignment } => assignment
-    ResolvePartitionRefused { cause: _ } => empty_map()
-  }
-  partition_fold_outcome(module_dag: dag, assignment: assignment)
-}
-
 fn stage0_compilation_units() -> List<CompilationUnit> {
-  stage0_compilation_units_from_outcome(outcome: stage0_partition_fold_outcome())
+  match stage0_partition_receipt_outcome() {
+    Stage0PartitionReceiptOk { units: units } => units
+    Stage0PartitionReceiptResolveRefused { cause: _ } => []
+    Stage0PartitionReceiptFoldRefused { cause: _ } => []
+  }
 }
 
 fn stage0_single_crate_assignment() -> Map<ModuleId, CompilationUnitId> {
@@ -506,17 +503,18 @@ fn compilation_unit_member_count(units: List<CompilationUnit>) -> Int {
 
 fn stage0_partition_member_coverage_consistent(
   left: PartitionFoldOutcome,
-  right: PartitionFoldOutcome
+  right: Stage0PartitionReceiptOutcome
 ) -> Bool {
   match left {
     PartitionFoldOk { units: left_units } =>
       match right {
-        PartitionFoldOk { units: right_units } => {
+        Stage0PartitionReceiptOk { units: right_units } => {
           let left_count = compilation_unit_member_count(units: left_units)
           let right_count = compilation_unit_member_count(units: right_units)
           left_count == right_count
         }
-        PartitionFoldRefused { cause: _ } => false
+        Stage0PartitionReceiptResolveRefused { cause: _ } => false
+        Stage0PartitionReceiptFoldRefused { cause: _ } => false
       }
     PartitionFoldRefused { cause: _ } => false
   }
@@ -639,24 +637,28 @@ fn stage0_module_bearing_unit_count() -> Int {
 
 fn stage0_partition_r4_valid() -> Bool {
   let dag = stage0_module_dag()
-  let assignment = match resolve_partition_outcome(
+  match resolve_partition_outcome(
     parameter: stage0_partition_parameter(),
     module_dag: dag
   ) {
-    ResolvePartitionOk { assignment: assignment } => assignment
-    ResolvePartitionRefused { cause: _ } => empty_map()
-  }
-  let units = stage0_compilation_units()
-  match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
-    PartitionR4Valid => true
-    PartitionR4Refused { cause: _ } => false
+    ResolvePartitionOk { assignment: assignment } =>
+      match partition_fold_outcome(module_dag: dag, assignment: assignment) {
+        PartitionFoldOk { units: units } =>
+          match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
+            PartitionR4Valid => true
+            PartitionR4Refused { cause: _ } => false
+          }
+        PartitionFoldRefused { cause: _ } => false
+      }
+    ResolvePartitionRefused { cause: _ } => false
   }
 }
 
 fn stage0_partition_fold_ok() -> Bool {
-  match stage0_partition_fold_outcome() {
-    PartitionFoldOk { units: units } =>
+  match stage0_partition_receipt_outcome() {
+    Stage0PartitionReceiptOk { units: units } =>
       (units |> count) == stage0_module_bearing_unit_count()
-    PartitionFoldRefused { cause: _ } => false
+    Stage0PartitionReceiptResolveRefused { cause: _ } => false
+    Stage0PartitionReceiptFoldRefused { cause: _ } => false
   }
 }

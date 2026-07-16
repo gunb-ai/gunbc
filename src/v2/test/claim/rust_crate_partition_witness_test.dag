@@ -31,7 +31,6 @@ import v2.workflow.rust_crate_partition {
   PartitionPolicy,
   ResolvePartitionRefused,
   ResolvePartitionOk,
-  resolve_partition,
   resolve_partition_outcome,
   rust_crate_partition_declared_core_target,
   rust_crate_partition_dissolve_on,
@@ -42,9 +41,9 @@ import v2.workflow.rust_crate_partition {
   stage0_module_dag_interface_grounding_debt_dissolve_on,
   stage0_module_dag_interface_grounding_is_debt,
   stage0_module_bearing_unit_count,
-  stage0_partition_fold_outcome,
   stage0_partition_fold_ok,
   stage0_partition_member_coverage_consistent,
+  stage0_partition_receipt_outcome,
   stage0_physical_crate_count,
   stage0_single_crate_fold_outcome,
   stage0_partition_parameter,
@@ -102,7 +101,7 @@ fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
 fn witness_partition_perturbation_member_coverage_holds() -> Bool {
   let coverage_same = stage0_partition_member_coverage_consistent(
     left: stage0_single_crate_fold_outcome(),
-    right: stage0_partition_fold_outcome()
+    right: stage0_partition_receipt_outcome()
   )
   perturbation_consistent(
     reading: ForwardSameInSameOut,
