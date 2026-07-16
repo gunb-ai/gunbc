@@ -25,13 +25,7 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). TestClaimObservationRelation is the consumer/observation dimension — without it identical operands cannot be judged (rung_5 EmitVsEval counterexample). Variants ObserveSameEval | ObserveEmitVsEval | ObserveSingleEvalOutput are the observation-relation spellings (global variant-unique vs TestClaimTransportMode::EmitVsEval in verification.dag). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3)."
-
-type TestClaimObservationRelation
-  = ObserveSameEval
-  | ObserveEmitVsEval
-  | ObserveSingleEvalOutput
-  | ObservationRelationUnknown
+data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). VacuityEvidenceRecord carries TestClaimTransportMode directly — the consumer/observation dimension (rung_5 EmitVsEval counterexample: distinct execution paths, not operand syntax). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3). W3 trigger: re-audit classify_vacuity_same_eval_record's deepest else (known-provenance residue → ProvenIndependent) — when gating on ProvenDuplicate, that residue may need Unknown instead of a positive ProvenIndependent claim."
 
 type TestClaimOperandProvenance
   = ReadBack
@@ -52,7 +46,7 @@ type VacuityEvidenceSubject
 
 type VacuityEvidenceRecord {
   subject: VacuityEvidenceSubject
-  observation: TestClaimObservationRelation
+  transport: TestClaimTransportMode
   lhs_provenance: TestClaimOperandProvenance
   rhs_provenance: TestClaimOperandProvenance
   operands_structurally_equal: Bool
@@ -73,15 +67,6 @@ type VacuityAdvisoryCensus {
   proven_duplicate_count: Int
   proven_independent_count: Int
   unknown_count: Int
-}
-
-fn observation_relation_from_transport(
-  transport: TestClaimTransportMode
-) -> TestClaimObservationRelation {
-  match transport {
-    EvalOnly => ObserveSameEval
-    EmitVsEval { target: _ } => ObserveEmitVsEval
-  }
 }
 
 fn operands_structurally_equal(lhs: Node, rhs: Node) -> Bool {
@@ -142,7 +127,7 @@ fn vacuity_evidence_record_for_binary_claim(
 ) -> VacuityEvidenceRecord {
   VacuityEvidenceRecord {
     subject: subject,
-    observation: observation_relation_from_transport(transport: transport),
+    transport: transport,
     lhs_provenance: lhs_provenance,
     rhs_provenance: rhs_provenance,
     operands_structurally_equal: operands_structurally_equal(lhs: lhs, rhs: rhs)
@@ -220,11 +205,9 @@ fn classify_vacuity_same_eval_record(record: VacuityEvidenceRecord) -> VacuityEv
 }
 
 fn classify_vacuity_evidence_record(record: VacuityEvidenceRecord) -> VacuityEvidence {
-  match record.observation {
-    ObservationRelationUnknown => Unknown
-    ObserveEmitVsEval => ProvenIndependent
-    ObserveSameEval => classify_vacuity_same_eval_record(record: record)
-    ObserveSingleEvalOutput => classify_vacuity_same_eval_record(record: record)
+  match record.transport {
+    EmitVsEval { target: _ } => ProvenIndependent
+    EvalOnly => classify_vacuity_same_eval_record(record: record)
   }
 }
 
