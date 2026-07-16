@@ -17,7 +17,7 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
 import extdeps.memory.types { MemoryKind, Dram }
 import extdeps.gpu.types { GpuFacts, AcceleratorFacts, GpuRuntime }
 import extdeps.toolchain.types { ToolchainCapability }
-import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability, LatencyClass }
+import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability }
 import product.placement_supply { HostIdentity, PlacementSupplyRow }
 import std.baseboard { ServerBaseboard }
 import std.bmc { BmcEndpoint, Redfish }
