@@ -1,18 +1,31 @@
 module test.claim.exec_arg_limit_witness
 
 import std.types { Bool, String }
-import std.measure { byte_size }
+import std.measure { byte_size, byte_size_count }
 import extdeps.os.exec_arg_limit { host_exec_arg_max_strlen }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data exec_arg_limit_witness_note: String = "Single-authority pin for the host per-argument exec ceiling (Linux execve(2) MAX_ARG_STRLEN = 131072). This authority is mirrored by the Rust seed const HOST_ARG_MAX_STRLEN_BYTES in src/v1/stage0/src/v1_interpreter.rs, which realizes the argv-size wall in dispatch_shell; the mirror is pinned to the same value by v1_interpreter argv_arg_limit_test::mirror_matches_extdeps_authority. The end-to-end wet demonstration (oversized argv -> typed ArgvExceedsHostArgMax refusal; >128KB script via stdin -> runs) is exec_arg_limit_wet_test.rs."
+data exec_arg_limit_witness_note: String = "Single-authority closure for the host per-argument exec ceiling (Linux execve(2) MAX_ARG_STRLEN = 131072). The authority is extdeps.os.exec_arg_limit.host_exec_arg_max_strlen; the Rust seed const HOST_ARG_MAX_STRLEN_BYTES in v1_interpreter realizes the argv-size wall in dispatch_shell. witness_rust_const_mirrors_authority reads the interpreter source and asserts the const line carries the value DERIVED FROM the authority (not a second independent literal) — so bumping the authority reds this witness until the Rust const follows; v1_interpreter argv_arg_limit_test::mirror_matches_extdeps_authority pins the Rust side. The end-to-end wet demonstration (oversized argv -> typed ArgvExceedsHostArgMax refusal; small -> runs) is exec_arg_limit_wet_test.rs."
+
+data v1_interpreter_source_path: String = "src/v1/stage0/src/v1_interpreter.rs"
 
 fn witness_host_exec_arg_max_strlen_value() -> Bool {
   host_exec_arg_max_strlen == byte_size(131072)
 }
 
+fn witness_rust_const_mirrors_authority() -> Bool {
+  let src = filesystem_read(path: v1_interpreter_source_path)
+  let expected = to_string(byte_size_count(b: host_exec_arg_max_strlen))
+  string_contains(
+    s: src.content,
+    pattern: concat("HOST_ARG_MAX_STRLEN_BYTES: usize = ", concat(expected, ";")),
+  )
+}
+
 test fn exec_arg_limit_witnesses() -> Bool {
   witness_host_exec_arg_max_strlen_value()
+    && witness_rust_const_mirrors_authority()
 }
