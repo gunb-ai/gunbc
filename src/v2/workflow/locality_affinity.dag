@@ -17,6 +17,7 @@ type AffinityRefusalCause
   | AffinityFlowRefused { edge: DependencyView, cause: OperandFlowRefusalCause }
   | AffinityNoFittingLevel { operand: ContentHash, footprint: ByteSize }
   | AffinityFootprintUnresolved { operand: ContentHash }
+  | AffinityOperandMismatch { expected: ContentHash, found: ContentHash }
 
 type AffinityDecision
   = AffinityClaim { operand: ContentHash, level: LevelId, footprint: ByteSize, consumers: List<ContentHash> }
