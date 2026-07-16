@@ -249,6 +249,10 @@ fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> TextFile {
   TextFile { path: concat(spec.crate_dir, "/Cargo.toml"), content: content }
 }
 
+fn stage0_crate_rustfmt_skip() -> String {
+  "#![rustfmt::skip]"
+}
+
 fn render_stage0_foundation_lib(spec: Stage0CrateSpec) -> String {
   let includes = spec.modules
     |> map(m => concat("#[path = \"../../stage0/src/", m, ".rs\"]\npub mod ", m, ";"))
@@ -256,6 +260,7 @@ fn render_stage0_foundation_lib(spec: Stage0CrateSpec) -> String {
   let head = concat(
     spec.header_doc, "\n\n",
     stage0_crate_allow_block(), "\n\n",
+    stage0_crate_rustfmt_skip(), "\n\n",
     includes
   )
   if spec.carries_non_empty_wrappers {
@@ -281,6 +286,7 @@ fn render_stage0_layered_core_lib(spec: Stage0CrateSpec) -> String {
   concat(
     spec.header_doc, "\n\n",
     stage0_crate_allow_block(), "\n\n",
+    stage0_crate_rustfmt_skip(), "\n\n",
     reexports, "\n\n",
     includes, "\n"
   )
@@ -302,6 +308,7 @@ fn render_stage0_emit_core_lib(spec: Stage0CrateSpec) -> String {
   concat(
     spec.header_doc, "\n\n",
     stage0_crate_allow_block(), "\n\n",
+    stage0_crate_rustfmt_skip(), "\n\n",
     "pub use v1_stage0_runtime::\{NonEmptyBTreeSet, NonEmptyVec};", "\n\n",
     reexports, "\n\n",
     "#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;", "\n\n",
