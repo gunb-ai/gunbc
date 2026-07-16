@@ -3,7 +3,7 @@ module v2.lens.enforcement.lens_module_gate
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.lens.registry {
-  Bound, LensIdV0, LensRegistryEntryV0, Unbound, lens_registry_v0,
+  Bound, LensIdV0, Unbound, lens_registry_v0,
   BashCompositionRecognizer, Complexity, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
   ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
   DocReachability, DuplicateComputation, ExtdepsExternalAuthority, ExtdepsShapeTransportPolicy,
@@ -517,17 +517,8 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
   }
 }
 
-fn lens_module_gate_surface_from_registry_entry(entry: LensRegistryEntryV0) -> LensInvariantSurface {
-  match entry.module_path {
-    Bound { path } => lens_module_gate_surface_for_lens_id(id: entry.lens_id, module: path)
-    Unbound => LensInvariantSurface {
-      module: "",
-      projection: ProjectionNodeDag,
-      verdict_authority: VerdictLensVerdict,
-      remedy: RemedyReport,
-      admission: GenuinelyNewInvariant
-    }
-  }
+fn lens_module_gate_surface_from_bound_entry(id: LensIdV0, path: String) -> LensInvariantSurface {
+  lens_module_gate_surface_for_lens_id(id: id, module: path)
 }
 
 data lens_module_gate_consolidated_surfaces: List<LensInvariantSurface> = [
@@ -567,7 +558,7 @@ fn lens_module_gate_surfaces() -> List<LensInvariantSurface> {
     empty: lens_module_gate_consolidated_surfaces,
     cons: fn(acc, entry) {
       match entry.module_path {
-        Bound { path: _ } => list_snoc_item(xs: acc, item: lens_module_gate_surface_from_registry_entry(entry: entry))
+        Bound { path } => list_snoc_item(xs: acc, item: lens_module_gate_surface_from_bound_entry(id: entry.lens_id, path: path))
         Unbound => acc
       }
     }
