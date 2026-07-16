@@ -121,7 +121,7 @@ fn expected_variant_locals_old_path(
         global_bare.clone(),
         v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     );
-    let env = bte.env;
+    let env = bte.env.clone();
     let module_name = authored_name_at(source_indices.clone(), resolved.module.clone());
     let local_fold = build_local_variants(
         resolved.module.children.clone(),
