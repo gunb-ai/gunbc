@@ -16,6 +16,7 @@ type AffinityRefusalCause
   = AffinityInsufficientConsumers { operand: ContentHash }
   | AffinityFlowRefused { edge: DependencyView, cause: OperandFlowRefusalCause }
   | AffinityNoFittingLevel { operand: ContentHash, footprint: ByteSize }
+  | AffinityFootprintUnresolved { operand: ContentHash }
 
 type AffinityDecision
   = AffinityClaim { operand: ContentHash, level: LevelId, footprint: ByteSize, consumers: List<ContentHash> }
@@ -70,7 +71,7 @@ fn derive_affinity(operand: ContentHash, flows: List<OperandFlowRow>, domain: Ex
                 AffinityRefused { operand: operand, cause: AffinityNoFittingLevel { operand: operand, footprint: footprint } }
             }
           Absent =>
-            AffinityRefused { operand: operand, cause: AffinityInsufficientConsumers { operand: operand } }
+            AffinityRefused { operand: operand, cause: AffinityFootprintUnresolved { operand: operand } }
         }
       }
   }
