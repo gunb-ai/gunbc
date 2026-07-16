@@ -173,10 +173,10 @@ fn partition_assignment_lookup_cause_if_rejected(
   fold_list(
     xs: modules,
     empty: Absent,
-    cons: fn(acc, module) {
+    cons: fn(acc, mod_id) {
       match acc {
         Present { value: _ } => acc
-        Absent => module_assigned_unit_fold(assignment: assignment, module: module)
+        Absent => module_assigned_unit_fold(assignment: assignment, module: mod_id)
       }
     }
   )
@@ -201,16 +201,7 @@ fn module_in_unit_fold(
   match module_unit_id_outcome(assignment: assignment, module: module) {
     Rejected { diagnostics: _ } =>
       optional_present(value: ModuleAssignmentLookupRejected { module: module })
-    Accepted { value: opt, diagnostics: _ } =>
-      match opt {
-        Present { value: assigned } =>
-          if assigned == unit_id {
-            Absent
-          } else {
-            Absent
-          }
-        Absent => Absent
-      }
+    Accepted { value: _, diagnostics: _ } => Absent
   }
 }
 
@@ -414,6 +405,18 @@ fn partition_unit_deps(
     |> sort_by(id => id)
 }
 
+fn module_referenced_from_outside_unit(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  unit_id: CompilationUnitId,
+  member: ModuleId
+) -> Bool {
+  module_dag.edges |> any(edge =>
+    (edge.to == member)
+      && !module_in_unit(assignment: assignment, module: edge.from, unit_id: unit_id)
+  )
+}
+
 fn module_referenced_from_outside_unit_fold(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
@@ -428,23 +431,11 @@ fn module_referenced_from_outside_unit_fold(
         Present { value: _ } => acc
         Absent =>
           if edge.to == member {
-            match module_in_unit_fold(
+            module_in_unit_fold(
               assignment: assignment,
               module: edge.from,
               unit_id: unit_id
-            ) {
-              Present { value: cause } => optional_present(value: cause)
-              Absent =>
-                if !module_in_unit(
-                  assignment: assignment,
-                  module: edge.from,
-                  unit_id: unit_id
-                ) {
-                  optional_present(value: ModuleAssignmentLookupRejected { module: edge.from })
-                } else {
-                  Absent
-                }
-            }
+            )
           } else {
             Absent
           }
@@ -619,15 +610,15 @@ fn partition_interface_closure_saturate_with_fuel(
   }
 }
 
-fn partition_interface_closure_saturate_result(
+fn partition_interface_closure_saturate_result_with_fuel(
   seeds: List<Node>,
   module_dag: ModuleDag,
-  members: List<ModuleId>
+  members: List<ModuleId>,
+  closure_fuel: Int
 ) -> PartitionInterfaceClosureResult {
-  let budget = partition_member_declaration_budget(module_dag: module_dag, members: members) + 1
   let final_state = partition_interface_closure_saturate_with_fuel(
     state: PartitionInterfaceClosureState { seeds: seeds, stable: false },
-    fuel: budget,
+    fuel: closure_fuel,
     module_dag: module_dag,
     members: members
   )
@@ -640,19 +631,17 @@ fn partition_interface_closure_saturate_result(
   }
 }
 
-fn partition_interface_closure_converged(
+fn partition_interface_closure_saturate_result(
   seeds: List<Node>,
   module_dag: ModuleDag,
   members: List<ModuleId>
-) -> Bool {
-  match partition_interface_closure_saturate_result(
+) -> PartitionInterfaceClosureResult {
+  partition_interface_closure_saturate_result_with_fuel(
     seeds: seeds,
     module_dag: module_dag,
-    members: members
-  ) {
-    PartitionInterfaceClosed { nodes: _ } => true
-    PartitionInterfaceTruncated => false
-  }
+    members: members,
+    closure_fuel: partition_member_declaration_budget(module_dag: module_dag, members: members) + 1
+  )
 }
 
 fn module_member_dag_lookup_cause_if_rejected(
@@ -706,27 +695,36 @@ fn partition_cross_boundary_exports_fold(
       match acc {
         InterfaceBuildRefused { cause: _ } => acc
         InterfaceBuildOk { nodes: acc_nodes } =>
-          if module_referenced_from_outside_unit(
+          match module_referenced_from_outside_unit_fold(
             module_dag: module_dag,
             assignment: assignment,
             unit_id: unit_id,
             member: member
           ) {
-            match module_export_declarations_outcome(module_dag: module_dag, module: member) {
-              Accepted { value: exports, diagnostics: _ } =>
-                InterfaceBuildOk {
-                  nodes: exports
-                    |> fold(init: acc_nodes, f: fn(inner, decl) {
-                      list_snoc_unique_node(items: inner, item: decl)
-                    }),
+            Present { value: cause } => InterfaceBuildRefused { cause: cause }
+            Absent =>
+              if module_referenced_from_outside_unit(
+                module_dag: module_dag,
+                assignment: assignment,
+                unit_id: unit_id,
+                member: member
+              ) {
+                match module_export_declarations_outcome(module_dag: module_dag, module: member) {
+                  Accepted { value: exports, diagnostics: _ } =>
+                    InterfaceBuildOk {
+                      nodes: exports
+                        |> fold(init: acc_nodes, f: fn(inner, decl) {
+                          list_snoc_unique_node(items: inner, item: decl)
+                        }),
+                    }
+                  Rejected { diagnostics: _ } =>
+                    InterfaceBuildRefused {
+                      cause: ModuleDagExportsLookupRejected { module: member },
+                    }
                 }
-              Rejected { diagnostics: _ } =>
-                InterfaceBuildRefused {
-                  cause: ModuleDagExportsLookupRejected { module: member },
-                }
-            }
-          } else {
-            InterfaceBuildOk { nodes: acc_nodes }
+              } else {
+                InterfaceBuildOk { nodes: acc_nodes }
+              }
           }
       }
     })
@@ -736,7 +734,8 @@ fn partition_unit_interface_fold(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
-  members: List<ModuleId>
+  members: List<ModuleId>,
+  closure_fuel: Int
 ) -> PartitionInterfaceBuild {
   match partition_members_dag_lookup_cause_if_rejected(module_dag: module_dag, members: members) {
     Present { value: cause } => InterfaceBuildRefused { cause: cause }
@@ -749,10 +748,11 @@ fn partition_unit_interface_fold(
       ) {
         InterfaceBuildRefused { cause: cause } => InterfaceBuildRefused { cause: cause }
         InterfaceBuildOk { nodes: seeds } =>
-          match partition_interface_closure_saturate_result(
+          match partition_interface_closure_saturate_result_with_fuel(
             seeds: seeds,
             module_dag: module_dag,
-            members: members
+            members: members,
+            closure_fuel: closure_fuel
           ) {
             PartitionInterfaceClosed { nodes: nodes } => InterfaceBuildOk { nodes: nodes }
             PartitionInterfaceTruncated =>
@@ -764,13 +764,28 @@ fn partition_unit_interface_fold(
   }
 }
 
+fn partition_unit_interface_fold_default(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  unit_id: CompilationUnitId,
+  members: List<ModuleId>
+) -> PartitionInterfaceBuild {
+  partition_unit_interface_fold(
+    module_dag: module_dag,
+    assignment: assignment,
+    unit_id: unit_id,
+    members: members,
+    closure_fuel: partition_member_declaration_budget(module_dag: module_dag, members: members) + 1
+  )
+}
+
 fn partition_unit_interface(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
   members: List<ModuleId>
 ) -> List<Node> {
-  match partition_unit_interface_fold(
+  match partition_unit_interface_fold_default(
     module_dag: module_dag,
     assignment: assignment,
     unit_id: unit_id,
@@ -788,7 +803,8 @@ type PartitionUnitBuildStep
 fn compilation_unit_from_partition_fold(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
-  unit_id: CompilationUnitId
+  unit_id: CompilationUnitId,
+  closure_fuel: Int
 ) -> PartitionUnitBuildStep {
   let members = partition_unit_members(
     module_dag: module_dag,
@@ -799,24 +815,47 @@ fn compilation_unit_from_partition_fold(
     module_dag: module_dag,
     assignment: assignment,
     unit_id: unit_id,
-    members: members
+    members: members,
+    closure_fuel: closure_fuel
   ) {
     InterfaceBuildRefused { cause: cause } => UnitBuildRefused { cause: cause }
     InterfaceBuildOk { nodes: iface_nodes } =>
-      UnitBuildOk {
-        unit: CompilationUnit {
-          id: unit_id
-          members: members
-          interface: iface_nodes
-          deps: partition_unit_deps(
-            module_dag: module_dag,
-            assignment: assignment,
-            unit_id: unit_id
-          )
-          artifact: compilation_unit_artifact_id(unit_id: unit_id)
-        }
+      match partition_unit_deps_fold(
+        module_dag: module_dag,
+        assignment: assignment,
+        unit_id: unit_id
+      ) {
+        DepsBuildRefused { cause: cause } => UnitBuildRefused { cause: cause }
+        DepsBuildOk { deps: deps } =>
+          UnitBuildOk {
+            unit: CompilationUnit {
+              id: unit_id
+              members: members
+              interface: iface_nodes
+              deps: deps
+              artifact: compilation_unit_artifact_id(unit_id: unit_id)
+            }
+          }
       }
   }
+}
+
+fn compilation_unit_from_partition_fold_default(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  unit_id: CompilationUnitId
+) -> PartitionUnitBuildStep {
+  let members = partition_unit_members(
+    module_dag: module_dag,
+    assignment: assignment,
+    unit_id: unit_id
+  )
+  compilation_unit_from_partition_fold(
+    module_dag: module_dag,
+    assignment: assignment,
+    unit_id: unit_id,
+    closure_fuel: partition_member_declaration_budget(module_dag: module_dag, members: members) + 1
+  )
 }
 
 fn compilation_unit_from_partition(
@@ -824,7 +863,7 @@ fn compilation_unit_from_partition(
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId
 ) -> CompilationUnit {
-  match compilation_unit_from_partition_fold(
+  match compilation_unit_from_partition_fold_default(
     module_dag: module_dag,
     assignment: assignment,
     unit_id: unit_id
@@ -841,27 +880,66 @@ fn compilation_unit_from_partition(
   }
 }
 
+fn partition_fold_outcome_with_closure_fuel(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  closure_fuel: Int
+) -> PartitionFoldOutcome {
+  match partition_assignment_lookup_cause_if_rejected(
+    assignment: assignment,
+    modules: module_dag.modules
+  ) {
+    Present { value: cause } => PartitionFoldRefused { cause: cause }
+    Absent =>
+      list_unique_sorted_ids(items: assignment |> map_values)
+        |> fold(init: PartitionFoldOk { units: [] }, f: fn(acc, unit_id) {
+          match acc {
+            PartitionFoldRefused { cause: _ } => acc
+            PartitionFoldOk { units: built } =>
+              match compilation_unit_from_partition_fold(
+                module_dag: module_dag,
+                assignment: assignment,
+                unit_id: unit_id,
+                closure_fuel: closure_fuel
+              ) {
+                UnitBuildOk { unit: unit } =>
+                  PartitionFoldOk { units: built |> list_push(unit) }
+                UnitBuildRefused { cause: cause } =>
+                  PartitionFoldRefused { cause: cause }
+              }
+          }
+        })
+  }
+}
+
 fn partition_fold_outcome(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>
 ) -> PartitionFoldOutcome {
-  list_unique_sorted_ids(items: assignment |> map_values)
-    |> fold(init: PartitionFoldOk { units: [] }, f: fn(acc, unit_id) {
-      match acc {
-        PartitionFoldRefused { cause: _ } => acc
-        PartitionFoldOk { units: built } =>
-          match compilation_unit_from_partition_fold(
-            module_dag: module_dag,
-            assignment: assignment,
-            unit_id: unit_id
-          ) {
-            UnitBuildOk { unit: unit } =>
-              PartitionFoldOk { units: built |> list_push(unit) }
-            UnitBuildRefused { cause: cause } =>
-              PartitionFoldRefused { cause: cause }
+  match partition_assignment_lookup_cause_if_rejected(
+    assignment: assignment,
+    modules: module_dag.modules
+  ) {
+    Present { value: cause } => PartitionFoldRefused { cause: cause }
+    Absent =>
+      list_unique_sorted_ids(items: assignment |> map_values)
+        |> fold(init: PartitionFoldOk { units: [] }, f: fn(acc, unit_id) {
+          match acc {
+            PartitionFoldRefused { cause: _ } => acc
+            PartitionFoldOk { units: built } =>
+              match compilation_unit_from_partition_fold_default(
+                module_dag: module_dag,
+                assignment: assignment,
+                unit_id: unit_id
+              ) {
+                UnitBuildOk { unit: unit } =>
+                  PartitionFoldOk { units: built |> list_push(unit) }
+                UnitBuildRefused { cause: cause } =>
+                  PartitionFoldRefused { cause: cause }
+              }
           }
-      }
-    })
+        })
+  }
 }
 
 fn partition_fold(

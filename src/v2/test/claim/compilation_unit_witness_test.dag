@@ -11,8 +11,11 @@ import v2.std.compilers.compilation_unit {
   ModuleDagEdge,
   ModuleId,
   ModuleTypeDefinitionRow,
+  InterfaceClosureUnreachedFixpoint,
   PartitionFoldOk,
   PartitionFoldRefused,
+  PartitionInterfaceClosed,
+  PartitionInterfaceTruncated,
   PartitionR4Refused,
   PartitionR4Valid,
   PartitionR4ValidityVerdict,
@@ -22,7 +25,8 @@ import v2.std.compilers.compilation_unit {
   partition_fold,
   partition_fold_deps_match_boundary_edges,
   partition_fold_outcome,
-  partition_interface_closure_converged,
+  partition_fold_outcome_with_closure_fuel,
+  partition_interface_closure_saturate_result,
   partition_interface_contains_node,
   partition_provenance_eq,
   partition_provenance_hand_explicit,
@@ -197,18 +201,34 @@ fn witness_unit_two_interface_includes_by_value_type_def() -> Bool {
   }
 }
 
-fn witness_interface_closure_converges_on_triangle() -> Bool {
+fn witness_interface_closure_saturates_on_triangle() -> Bool {
   let dag = witness_triangle_dag()
   let assignment = witness_two_unit_assignment()
   let units = partition_fold(module_dag: dag, assignment: assignment)
   match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
     Present { value: unit } =>
-      partition_interface_closure_converged(
+      match partition_interface_closure_saturate_result(
         seeds: [witness_fn_taking_point_by_value()],
         module_dag: dag,
         members: unit.members
-      )
+      ) {
+        PartitionInterfaceClosed { nodes: _ } => true
+        PartitionInterfaceTruncated => false
+      }
     Absent => false
+  }
+}
+
+fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
+  match partition_fold_outcome_with_closure_fuel(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment(),
+    closure_fuel: 0
+  ) {
+    PartitionFoldRefused {
+      cause: InterfaceClosureUnreachedFixpoint { unit_id: _ },
+    } => true
+    PartitionFoldOk { units: _ } => false
   }
 }
 
@@ -306,7 +326,8 @@ test fn compilation_unit_witnesses() -> Bool {
   witness_unit_one_members_and_deps()
     && witness_unit_two_interface_carries_declaration_content()
     && witness_unit_two_interface_includes_by_value_type_def()
-    && witness_interface_closure_converges_on_triangle()
+    && witness_interface_closure_saturates_on_triangle()
+    && witness_partition_fold_outcome_refuses_zero_closure_fuel()
     && witness_intra_unit_edges_do_not_become_deps()
     && witness_fold_deps_match_boundary_edges_two_unit()
     && witness_fold_deps_match_boundary_edges_single_unit()
