@@ -1,5 +1,5 @@
-use std::rc::Rc;
 use v1_compiled::v2_compiler_materialization_carriers as emitted;
+use v1_compiled::v2_std_text::host_string_text_to_rust_host;
 use v1_compiler::v2_compiler_materialization_carriers as seed;
 
 fn mat_eq(e: &emitted::Materialization, s: &seed::Materialization) -> bool {
@@ -11,8 +11,8 @@ fn mat_eq(e: &emitted::Materialization, s: &seed::Materialization) -> bool {
     )
 }
 
-fn rc_str_eq(e: &Rc<String>, s: &str) -> bool {
-    e.as_str() == s
+fn nonempty_str_eq(e: &emitted::NonEmptyStr, s: &str) -> bool {
+    host_string_text_to_rust_host(e.clone()) == s
 }
 
 fn main() {
@@ -55,24 +55,24 @@ fn main() {
     );
     all_pass &= refusals_ok;
 
-    let parse_id_ok = rc_str_eq(
+    let parse_id_ok = nonempty_str_eq(
         &emitted::parse_table_memo_provider_id(),
         &seed::parse_table_memo_provider_id(),
     );
     println!(
         "parse_table_provider_id emitted={:?} seed={} eq={parse_id_ok}",
-        emitted::parse_table_memo_provider_id(),
+        host_string_text_to_rust_host(emitted::parse_table_memo_provider_id()),
         seed::parse_table_memo_provider_id()
     );
     all_pass &= parse_id_ok;
 
-    let stage_id_ok = rc_str_eq(
+    let stage_id_ok = nonempty_str_eq(
         &emitted::compile_stage_memo_provider_id(),
         &seed::compile_stage_memo_provider_id(),
     );
     println!(
         "compile_stage_provider_id emitted={:?} seed={} eq={stage_id_ok}",
-        emitted::compile_stage_memo_provider_id(),
+        host_string_text_to_rust_host(emitted::compile_stage_memo_provider_id()),
         seed::compile_stage_memo_provider_id()
     );
     all_pass &= stage_id_ok;
