@@ -7442,6 +7442,11 @@ fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, I
 }
 
 fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, env: TypeEnv) -> String {
+  let has_config_auth = match service_config_auth(n: service_item, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
+  let has_basic_auth = match transport_auth_basic(t: transport, source_indices: source_indices) { Present { value: _ } => true  Absent => false }
+  if has_config_auth && has_basic_auth {
+    "compile_error!(\"rest transport declares both config-level auth and auth_basic - one auth authority per operation (§3)\");"
+  } else {
   let client_init = emit_rest_client_init(transport: transport, source_indices: source_indices)
   let url_line = emit_rest_url_line(transport: transport, op_name: op_name, source_indices: source_indices)
   let http_method = emit_rest_http_method(transport: transport, source_indices: source_indices)
@@ -7461,6 +7466,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
     header_lines, [query_line, body_line, send_line, response_handling])
     |> filter(l => l != "")
   all_lines |> join(separator: "\n")
+  }
 }
 
 fn emit_rest_client_init(transport: Node, source_indices: Map<String, NewlineIndex>) -> String {

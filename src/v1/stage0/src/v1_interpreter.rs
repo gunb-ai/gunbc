@@ -6076,11 +6076,13 @@ fn dispatch_rest(
 
     // TLS posture (extdeps.transports.rest TlsPosture). Absent = VerifyPeer, the fail-closed
     // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution of
-    // curl's `-k` for self-signed BMC endpoints; its interpreter realization (a no-verify rustls
-    // agent) is STAGED pending the operator's realization-approach decision (accept-any verifier
-    // in-seed vs. emit-only vs. pinned-cert). Until then a present InsecureAcceptAnyCert is a typed
-    // refusal — the axis fails closed and is witnessable, never a silent no-op that would send
-    // under VerifyPeer while the row asked for insecure. An unrecognized posture also refuses.
+    // curl's `-k` for self-signed BMC endpoints. Realization is EMIT-ONLY by decision (operator,
+    // 2026-07-16): emitted reqwest code realizes it via `.danger_accept_invalid_certs(true)`, but
+    // the interpreter refuses it by design rather than carry an accept-any rustls verifier into the
+    // bootstrap seed the self-host is retiring. So a present InsecureAcceptAnyCert is a typed
+    // refusal here — the interp is not a realization path for insecure-TLS ops (redfish etc. run
+    // through emitted code); it fails closed, never a silent no-op that would send under VerifyPeer
+    // while the row asked for insecure. An unrecognized posture also refuses.
     if let Some(tls_node) =
         find_property(transport.properties.clone(), "tls".to_string(), si.clone())
     {
@@ -6090,9 +6092,10 @@ fn dispatch_rest(
             "InsecureAcceptAnyCert" => {
                 return Err(InterpError::TypeError {
                     msg:
-                        "rest transport tls: InsecureAcceptAnyCert is modeled but its interpreter \
-                          realization is staged pending the realization-approach decision — the \
-                          axis fails closed rather than send under VerifyPeer or bypass silently"
+                        "rest transport tls: InsecureAcceptAnyCert is realized emit-only (reqwest \
+                          danger_accept_invalid_certs); the interpreter refuses it by design rather \
+                          than carry a cert-verification bypass into the retiring seed — run such \
+                          ops through emitted code"
                             .to_string(),
                 });
             }
