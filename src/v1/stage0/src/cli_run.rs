@@ -4027,7 +4027,29 @@ fn resolve_entry_with_parse_cache(
         entry_file,
     )?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
+    resolved_graph_from_sources_with_index(index, sources, typecheck_gate, entry_file)
+}
 
+/// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
+/// normalize → `reconcile_with_typed_cache` → ownership, all through the index's
+/// per-module memo tiers (parse/normalize/typed/ownership caches + the
+/// resolved-graph subject memo). Extracted so a whole-tree SOURCE SET (the
+/// compile-clean gate's closure, which has no single entry file) can ride the same
+/// cached path as entry-file resolves — the lever-1 seam from the typecheck
+/// investigation (PR #6766): one process, ONE typecheck universe.
+fn resolved_graph_from_sources_with_index(
+    index: &MultiEntryIndex,
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    typecheck_gate: ResolveTypecheckGate,
+    phase_label: &str,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let entry_file = phase_label;
     let subject = subject_digest_for_closure(&sources);
     // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in
     // front of the opt-in cross-process store. A subject this process has already
