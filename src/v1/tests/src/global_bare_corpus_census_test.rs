@@ -25,8 +25,15 @@ fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Rc<Sourc
             collect(root, &p, out);
         } else if p.extension().map(|x| x == "dag").unwrap_or(false) {
             if let Ok(c) = std::fs::read_to_string(&p) {
-                let rel = p.strip_prefix(root).unwrap_or(&p).to_string_lossy().to_string();
-                out.push(Rc::new(SourceFile { path: rel, content: c }));
+                let rel = p
+                    .strip_prefix(root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .to_string();
+                out.push(Rc::new(SourceFile {
+                    path: rel,
+                    content: c,
+                }));
             }
         }
     }
@@ -40,7 +47,11 @@ fn corpus_census_state_of_failing_names() {
         .expect("workspace root");
     let mut sources: Vec<Rc<SourceFile>> = Vec::new();
     collect(&ws, &ws.join("dag"), &mut sources);
-    eprintln!("[corpus] {} .dag sources from {}", sources.len(), ws.display());
+    eprintln!(
+        "[corpus] {} .dag sources from {}",
+        sources.len(),
+        ws.display()
+    );
     assert!(!sources.is_empty(), "no dag sources found");
 
     let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im_rc::Vector<_>>()));
@@ -49,7 +60,9 @@ fn corpus_census_state_of_failing_names() {
         .newline_indices
         .iter()
         .cloned()
-        .fold(im_rc::HashMap::new(), |acc, si| acc.update(si.file.clone(), si));
+        .fold(im_rc::HashMap::new(), |acc, si| {
+            acc.update(si.file.clone(), si)
+        });
     let census = build_global_bare_census(graph.modules.clone(), Rc::new(source_indices));
 
     eprintln!("[corpus] census keys = {}", census.len());
@@ -66,7 +79,9 @@ fn corpus_census_state_of_failing_names() {
     ] {
         let state = match census.get(name).map(|s| &**s) {
             None => "ABSENT (never censused)".to_string(),
-            Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => "UNIQUE (binds)".to_string(),
+            Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {
+                "UNIQUE (binds)".to_string()
+            }
             Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => {
                 "AMBIGUOUS (refuses — homonym)".to_string()
             }
@@ -83,7 +98,10 @@ fn corpus_census_state_of_failing_names() {
             GlobalBareLookupState::GlobalBareAmbiguousBinding => ambiguous += 1,
         }
     }
-    eprintln!("[census] UNIQUE={unique} AMBIGUOUS={ambiguous} total={}", unique + ambiguous);
+    eprintln!(
+        "[census] UNIQUE={unique} AMBIGUOUS={ambiguous} total={}",
+        unique + ambiguous
+    );
 }
 
 /// Emit the AMBIGUOUS roster — the forced-qualification worklist (§8 residue).
@@ -99,7 +117,10 @@ fn corpus_ambiguous_roster() {
     let mut sources: Vec<Rc<SourceFile>> = Vec::new();
     collect(&ws, &ws.join("dag"), &mut sources);
     collect(&ws, &ws.join("src/v2"), &mut sources);
-    eprintln!("[roster] {} sources (dag/ + src/v2 — CI floor source-roots)", sources.len());
+    eprintln!(
+        "[roster] {} sources (dag/ + src/v2 — CI floor source-roots)",
+        sources.len()
+    );
 
     let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im_rc::Vector<_>>()));
     let graph = frontend.graph.as_ref().expect("graph");
@@ -107,7 +128,9 @@ fn corpus_ambiguous_roster() {
         .newline_indices
         .iter()
         .cloned()
-        .fold(im_rc::HashMap::new(), |acc, si| acc.update(si.file.clone(), si));
+        .fold(im_rc::HashMap::new(), |acc, si| {
+            acc.update(si.file.clone(), si)
+        });
     let census = build_global_bare_census(graph.modules.clone(), Rc::new(source_indices));
 
     let mut ambiguous: Vec<String> = census
