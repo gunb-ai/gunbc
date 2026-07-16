@@ -1,46 +1,9 @@
 module gunbc.githooks_pre_push_emit
 
-import gunbc.commit_workflow {
-  commit_gate_roster,
-  project_local_tidy_checks,
-  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck,
-  doc_reachability_witness_entry
-}
-import gunbc.local_tidy_spec {
-  local_tidy_trigger_globs,
-  local_tidy_gate_entry, local_tidy_gate_wet_fn,
-  generated_artifact_drift_gate_check_fn
-}
-import gunbc.ci_gate { GeneratedArtifactDriftGate }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags, witness_layer_source_flags_rooted }
-import extdeps.git.hooks { pre_push_zero_sha, pre_push_stdin_read_vars }
-
-data bash_at: String = "@"
-
-fn bash_dollar() -> String {
-  "$"
-}
-
-fn bash_array_all(name: String) -> String {
-  concat(concat(concat(bash_dollar(), "{"), name), concat("[", concat(concat(bash_at, "]"), "}")))
-}
-
-fn bash_positional_all() -> String {
-  concat(bash_dollar(), bash_at)
-}
-
 fn emit_glob_case_arms(globs: List<String>) -> String {
   fold(globs, init: "", f: fn(acc, g) {
     concat(acc, concat("\n    ", concat(g, "*) return 0 ;;")))
   })
-}
-
-fn emit_claim_batch(entry: String, function: String, suffix: String) -> String {
-  let roots = witness_layer_source_flags(roots: witness_layer_roots)
-  concat(
-    concat("\"$CLAIM_BATCH\"", concat(roots, " --entry ")),
-    concat(entry, concat(" --function ", concat(function, suffix)))
-  )
 }
 
 fn emit_freshness_path_fn(label: String, globs: List<String>) -> String {
@@ -50,188 +13,17 @@ fn emit_freshness_path_fn(label: String, globs: List<String>) -> String {
   )
 }
 
-fn emit_freshness_doc() -> String {
-  let globs = local_tidy_trigger_globs(
-    check: LocalTidyWitnessCheck {
-      entry: doc_reachability_witness_entry,
-      check_fns: ["doc_graph_has_no_orphan_docs", "doc_graph_has_no_dangling_links"]
-    }
-  )
+fn emit_ensure_bins() -> String {
   concat(
-    emit_freshness_path_fn(label: "fresh_doc", globs: globs),
-    concat(
-      "fresh_doc() {\n  local p\n  for p in \"",
-      concat(bash_positional_all(), "\"; do fresh_doc_path \"$p\" && return 0; done\n  return 1\n}\n")
-    )
-  )
-}
-
-fn emit_freshness_artifact() -> String {
-  let globs = local_tidy_trigger_globs(check: LocalTidyGateCheck { gate: GeneratedArtifactDriftGate })
-  let entry = local_tidy_gate_entry()
-  concat(
-    concat(
-      emit_freshness_path_fn(label: "fresh_artifact", globs: globs),
-      concat(
-        "fresh_artifact() {\n  local p\n  for p in \"",
-        concat(bash_positional_all(), "\"; do fresh_artifact_path \"$p\" && return 0; done\n  if ! ")
-      )
-    ),
-    concat(
-      emit_claim_batch(entry: entry, function: generated_artifact_drift_gate_check_fn, suffix: " --wet"),
-      " 2>/dev/null; then return 0; fi\n  return 1\n}\n"
-    )
-  )
-}
-
-fn emit_freshness_fmt() -> String {
-  let globs = local_tidy_trigger_globs(check: LocalTidyCargoFmtCheck)
-  concat(
-    emit_freshness_path_fn(label: "fresh_fmt", globs: globs),
-    concat(
-      "fresh_fmt() {\n  local p\n  for p in \"",
-      concat(bash_positional_all(), "\"; do fresh_fmt_path \"$p\" && return 0; done\n  return 1\n}\n")
-    )
-  )
-}
-
-fn emit_freshness_witness() -> String {
-  concat(
-    emit_freshness_path_fn(label: "fresh_witness", globs: map(witness_layer_roots, r => concat(r, "/"))),
-    concat(
-      "fresh_witness() {\n  local p\n  for p in \"",
-      concat(bash_positional_all(), "\"; do fresh_witness_path \"$p\" && return 0; done\n  return 1\n}\n")
-    )
-  )
-}
-
-fn emit_run_witness() -> String {
-  concat(
-    "echo \"[pre-push] affected-set witness corpus (claim_executor; scoped to origin/main...HEAD)\"\nensure_executor\n",
-    concat(
-      concat(
-        concat("if ! \"$CLAIM_EXECUTOR\"", witness_layer_source_flags_rooted(roots: witness_layer_roots)),
-        " --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_witness_corpus_only_batches; then\n"
-      ),
-      "  echo \"[pre-push] affected tests FAILED — fix them and re-push, or 'git push --no-verify' to override (CI still gates).\" >&2\n  exit 1\nfi\n"
-    )
-  )
-}
-
-fn pre_push_checks_from_roster() -> List<LocalTidyCheck> {
-  project_local_tidy_checks(roster: commit_gate_roster)
-}
-
-fn emit_run_doc() -> String {
-  fold(pre_push_checks_from_roster(), init: "", f: fn(acc, check) {
-    match check {
-      LocalTidyWitnessCheck { entry, check_fns } =>
-        fold(check_fns, init: acc, f: fn(inner, check_fn) {
-          let block = concat(
-            concat("echo \"[pre-push] doc reachability: ", check_fn),
-            concat("\"\n", concat(emit_claim_batch(entry: entry, function: check_fn, suffix: " --claim-run"), "\n"))
-          )
-          if inner == "" { block } else { concat(inner, block) }
-        })
-      LocalTidyGateCheck { gate: _ } => acc
-      LocalTidyCargoFmtCheck => acc
-    }
-  })
-}
-
-fn emit_run_artifact() -> String {
-  let entry = local_tidy_gate_entry()
-  concat(
-    concat("echo \"[pre-push] generated-artifact drift gate\"\nif ! ", emit_claim_batch(entry: entry, function: generated_artifact_drift_gate_check_fn, suffix: " --wet")),
-    " 2>/dev/null; then\n  echo \"[pre-push] generated artifacts are stale — run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet   (then commit the regenerated files and re-push, or 'git push --no-verify' to skip)\" >&2\n  exit 1\nfi\n"
-  )
-}
-
-fn emit_run_fmt() -> String {
-  concat(
-    "echo \"[pre-push] cargo fmt --all --check\"\n",
-    "if ! cargo fmt --all --check 2>/dev/null; then\n  echo \"[pre-push] rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)\" >&2\n  exit 1\nfi\n"
+    "ensure_bins() {\n  if [[ -x \"$ROOT/target/release/claim_batch\" ]]; then\n    CLAIM_BATCH=\"$ROOT/target/release/claim_batch\"\n  elif [[ -x \"$ROOT/target/debug/claim_batch\" ]]; then\n    CLAIM_BATCH=\"$ROOT/target/debug/claim_batch\"\n  else\n    echo \"[pre-push] claim_batch not built; compiling debug (one-time)...\"\n    (cd \"$ROOT\" && CTRL_BUILD_WRAP_CARGO=0 cargo build -p v1-compiler --bin claim_batch)\n    CLAIM_BATCH=\"$ROOT/target/debug/claim_batch\"\n  fi\n}\n",
+    "ensure_bins\nexec \"$CLAIM_BATCH\" --pre-push\n"
   )
 }
 
 fn expected_githooks_pre_push_sh() -> String {
   concat(
-    concat(
-      "#!/usr/bin/env bash\n# GENERATED by dag/gunbc/githooks_pre_push_emit.dag — DO NOT HAND-EDIT.\n",
-      "set -euo pipefail\nROOT=\"$(git rev-parse --show-toplevel)\"\ncd \"$ROOT\"\n"
-    ),
-    concat(
-      concat("ZERO_SHA=\"", concat(pre_push_zero_sha, "\"\n")),
-      concat(
-        "ensure_bins() {\n  if [[ -x \"$ROOT/target/release/claim_batch\" ]]; then\n    CLAIM_BATCH=\"$ROOT/target/release/claim_batch\"\n  elif [[ -x \"$ROOT/target/debug/claim_batch\" ]]; then\n    CLAIM_BATCH=\"$ROOT/target/debug/claim_batch\"\n  else\n    echo \"[pre-push] claim_batch not built; compiling debug (one-time)...\"\n    (cd \"$ROOT\" && CTRL_BUILD_WRAP_CARGO=0 cargo build -p v1-compiler --bin claim_batch)\n    CLAIM_BATCH=\"$ROOT/target/debug/claim_batch\"\n  fi\n}\nensure_executor() {\n  if [[ -x \"$ROOT/target/release/claim_executor\" ]]; then\n    CLAIM_EXECUTOR=\"$ROOT/target/release/claim_executor\"\n  elif [[ -x \"$ROOT/target/debug/claim_executor\" ]]; then\n    CLAIM_EXECUTOR=\"$ROOT/target/debug/claim_executor\"\n  else\n    echo \"[pre-push] claim_executor not built; compiling release (one-time, minutes)...\"\n    (cd \"$ROOT\" && CTRL_BUILD_WRAP_CARGO=0 cargo build -p v1-compiler --release --bin claim_executor)\n    CLAIM_EXECUTOR=\"$ROOT/target/release/claim_executor\"\n  fi\n}\n",
-        concat(emit_freshness_doc(), concat(emit_freshness_artifact(), concat(emit_freshness_fmt(), emit_freshness_witness())))
-      )
-    ),
-    concat(
-      "HEAD_REF=\"$(git symbolic-ref HEAD 2>/dev/null || echo \"\")\"\nHEAD_BRANCH_IN_PUSH=0\nPUSHES_CONTENT=0\ndeclare -a PUSH_CHANGED=()\n",
-      concat(
-        concat(
-          "collect_push_changed() {\n  local local_sha=\"$1\" remote_sha=\"$2\" base=\"$remote_sha\" head=\"$local_sha\"\n  if [[ \"$remote_sha\" == \"$ZERO_SHA\" ]]; then base=\"$(git hash-object -t tree /dev/null)\"; fi\n  local path seen=0 x\n  while IFS= read -r path; do\n    [[ -z \"$path\" ]] && continue\n    seen=0\n    for x in \"",
-          concat(
-            bash_array_all(name: "PUSH_CHANGED"),
-            "\"; do [[ \"$x\" == \"$path\" ]] && seen=1 && break; done\n    [[ \"$seen\" == \"0\" ]] && PUSH_CHANGED+=(\"$path\")\n  done < <(git diff --name-only --diff-filter=ACMR \"$base\" \"$head\")\n}\n"
-          )
-        ),
-        concat(
-          concat("while IFS=' ' read -r ", pre_push_stdin_read_vars()),
-          "; do\n  [[ \"$local_sha\" == \"$ZERO_SHA\" ]] && continue\n  PUSHES_CONTENT=1\n  collect_push_changed \"$local_sha\" \"$remote_sha\"\n  if [[ -n \"$HEAD_REF\" && \"$local_ref\" == \"$HEAD_REF\" ]]; then HEAD_BRANCH_IN_PUSH=1; fi\ndone\n[[ \"$PUSHES_CONTENT\" == \"0\" ]] && exit 0\n"
-        )
-      )
-    ),
-    concat(
-      "if [[ \"$HEAD_BRANCH_IN_PUSH\" == \"1\" ]]; then\n  if ! git diff --quiet || ! git diff --cached --quiet; then\n    echo \"[pre-push] uncommitted changes — commit or stash before pushing.\" >&2\n    exit 1\n  fi\nfi\n",
-      "ensure_bins\n"
-    ),
-    concat(
-      concat(
-        concat(
-          concat(
-            "NEED_DOC=0 NEED_ARTIFACT=0 NEED_FMT=0 NEED_WITNESS=0\nif fresh_doc \"",
-            bash_array_all(name: "PUSH_CHANGED")
-          ),
-          "\"; then NEED_DOC=1; fi\nif fresh_artifact \""
-        ),
-        concat(
-          bash_array_all(name: "PUSH_CHANGED"),
-          concat(
-            "\"; then NEED_ARTIFACT=1; fi\nif fresh_fmt \"",
-            concat(
-              bash_array_all(name: "PUSH_CHANGED"),
-              concat(
-                "\"; then NEED_FMT=1; fi\nif fresh_witness \"",
-                concat(
-                  bash_array_all(name: "PUSH_CHANGED"),
-                  "\"; then NEED_WITNESS=1; fi\nif [[ \"$NEED_DOC\" == \"0\" && \"$NEED_ARTIFACT\" == \"0\" && \"$NEED_FMT\" == \"0\" && \"$NEED_WITNESS\" == \"0\" ]]; then exit 0; fi\n"
-                )
-              )
-            )
-          )
-        )
-      ),
-      concat(
-        "if [[ \"$NEED_DOC\" == \"1\" ]]; then\n",
-        concat(
-          emit_run_doc(),
-          concat(
-            "fi\nif [[ \"$NEED_ARTIFACT\" == \"1\" ]]; then\n",
-            concat(
-              emit_run_artifact(),
-              concat(
-                "fi\n",
-                concat(
-                  concat("if [[ \"$NEED_WITNESS\" == \"1\" ]]; then\n", concat(emit_run_witness(), "fi\n")),
-                  concat("if [[ \"$NEED_FMT\" == \"1\" ]]; then\n", concat(emit_run_fmt(), "fi\nexit 0\n"))
-                )
-              )
-            )
-          )
-        )
-      )
-    )
+    "#!/usr/bin/env bash\n# GENERATED by dag/gunbc/githooks_pre_push_emit.dag — DO NOT HAND-EDIT.\n",
+    "set -euo pipefail\nROOT=\"$(git rev-parse --show-toplevel)\"\ncd \"$ROOT\"\n",
+    emit_ensure_bins()
   )
 }
