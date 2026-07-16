@@ -9,7 +9,6 @@ import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode, content_hash }
 import v2.workflow.operand_flow {
   OperandFlow,
   OperandFlowFootprintMissingRow,
-  OperandFlowFootprintUnsettled,
   OperandFlowNoOperand,
   OperandFlowRefused,
   OperandRoot,
