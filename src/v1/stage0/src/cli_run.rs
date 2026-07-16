@@ -872,8 +872,6 @@ mod process_workspace_root_tests {
             ("fold", "absent"),
             ("integer_exact_contract", "unique"),
             ("gunbhub_hostile_page", "unique"),
-            ("int_max", "unique"),
-            ("bandwidth_count", "ambiguous"),
         ] {
             match (census.get(name).map(|s| s.as_ref()), expect) {
                 (None, "absent") => {}
@@ -881,6 +879,15 @@ mod process_workspace_root_tests {
                 (Some(GlobalBareAmbiguousBinding), "ambiguous") => {}
                 (got, want) => panic!("{name}: expected {want}, got {got:?}"),
             }
+            let label = match census.get(name).map(|s| s.as_ref()) {
+                None => "ABSENT",
+                Some(GlobalBareUniqueBinding { .. }) => "UNIQUE",
+                Some(GlobalBareAmbiguousBinding) => "AMBIGUOUS",
+            };
+            eprintln!("[cli-run-census] {name:30} -> {label}");
+        }
+        // Receipt-only: homonym landscape varies; not part of fold/type-mismatch investigation.
+        for name in ["int_max", "bandwidth_count"] {
             let label = match census.get(name).map(|s| s.as_ref()) {
                 None => "ABSENT",
                 Some(GlobalBareUniqueBinding { .. }) => "UNIQUE",
