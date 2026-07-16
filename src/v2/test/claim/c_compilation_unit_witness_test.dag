@@ -15,6 +15,7 @@ import v2.extdeps.languages.c {
   c_validate_partition_r4
 }
 import v2.std.compilers.compilation_unit {
+  ByValueTypeCycle,
   CompilationUnitId,
   InterfaceClosureUnreachedFixpoint,
   ModuleDag,
@@ -58,12 +59,50 @@ data witness_unit_two: CompilationUnitId = "cu-two" as ContentHash
 data witness_unit_a: CompilationUnitId = "cu-a" as ContentHash
 data witness_unit_b: CompilationUnitId = "cu-b" as ContentHash
 
+data witness_type_struct_a: Symbol = ^witness_cu_struct_a
+data witness_type_struct_b: Symbol = ^witness_cu_struct_b
 data witness_type_point: Symbol = ^witness_cu_point
 data witness_type_int: Symbol = ^witness_cu_int
 data witness_fn_use_point: Symbol = ^witness_cu_use_point
 
 fn witness_type_atom(sym: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+}
+
+fn witness_struct_field_by_value(sym: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^member },
+        target: witness_type_atom(sym: sym),
+      }
+    ]
+  )
+}
+
+fn witness_struct_field_by_pointer(sym: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^next },
+        target: node_synthetic(
+          kind: TypeNode { connective: Arrow },
+          children: [
+            Edge {
+              label: Named { name: ^domain },
+              target: witness_type_atom(sym: sym),
+            },
+            Edge {
+              label: Named { name: ^codomain },
+              target: witness_type_atom(sym: witness_type_int),
+            }
+          ]
+        ),
+      }
+    ]
+  )
 }
 
 fn witness_point_struct_conj_body() -> Node {
@@ -155,6 +194,72 @@ fn witness_module_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
   empty_map()
     |> map_insert(witness_mod_a, witness_unit_a)
     |> map_insert(witness_mod_b, witness_unit_b)
+}
+
+fn witness_by_value_type_cycle_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_a, witness_mod_b],
+    edges: [],
+    exports: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty),
+    type_definitions: empty_map()
+      |> map_insert(
+        witness_mod_a,
+        [
+          ModuleTypeDefinitionRow {
+            identity: witness_type_struct_a,
+            definition: witness_struct_field_by_value(sym: witness_type_struct_b),
+          }
+        ]
+      )
+      |> map_insert(
+        witness_mod_b,
+        [
+          ModuleTypeDefinitionRow {
+            identity: witness_type_struct_b,
+            definition: witness_struct_field_by_value(sym: witness_type_struct_a),
+          }
+        ]
+      ),
+  }
+}
+
+fn witness_by_value_type_cycle_assignment() -> Map<ModuleId, CompilationUnitId> {
+  witness_module_scc_split_assignment()
+}
+
+fn witness_pointer_type_cycle_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_a, witness_mod_b],
+    edges: [],
+    exports: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty),
+    type_definitions: empty_map()
+      |> map_insert(
+        witness_mod_a,
+        [
+          ModuleTypeDefinitionRow {
+            identity: witness_type_struct_a,
+            definition: witness_struct_field_by_pointer(sym: witness_type_struct_b),
+          }
+        ]
+      )
+      |> map_insert(
+        witness_mod_b,
+        [
+          ModuleTypeDefinitionRow {
+            identity: witness_type_struct_b,
+            definition: witness_struct_field_by_pointer(sym: witness_type_struct_a),
+          }
+        ]
+      ),
+  }
+}
+
+fn witness_pointer_type_cycle_assignment() -> Map<ModuleId, CompilationUnitId> {
+  witness_module_scc_split_assignment()
 }
 
 fn witness_link_cyclic_dag() -> ModuleDag {
@@ -285,6 +390,41 @@ fn witness_r4_accepts_triangle_module_scc_split() -> Bool {
   }
 }
 
+fn witness_r4_refuses_by_value_type_cycle_across_units() -> Bool {
+  let dag = witness_by_value_type_cycle_dag()
+  let assignment = witness_by_value_type_cycle_assignment()
+  match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    CPartitionFoldOk { units: units } =>
+      match c_validate_partition_r4(
+        module_dag: dag,
+        assignment: assignment,
+        units: units
+      ) {
+        PartitionR4Refused { cause: ByValueTypeCycle { detail: _ } } => true
+        PartitionR4Valid => false
+        PartitionR4Refused { cause: _ } => false
+      }
+    CPartitionFoldRefused { outcome: _ } => false
+  }
+}
+
+fn witness_r4_accepts_pointer_type_cycle_across_units() -> Bool {
+  let dag = witness_pointer_type_cycle_dag()
+  let assignment = witness_pointer_type_cycle_assignment()
+  match c_partition_fold_outcome(module_dag: dag, assignment: assignment) {
+    CPartitionFoldOk { units: units } =>
+      match c_validate_partition_r4(
+        module_dag: dag,
+        assignment: assignment,
+        units: units
+      ) {
+        PartitionR4Valid => true
+        PartitionR4Refused { cause: _ } => false
+      }
+    CPartitionFoldRefused { outcome: _ } => false
+  }
+}
+
 fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
   match partition_fold_outcome_with_closure_fuel(
     module_dag: witness_triangle_dag(),
@@ -318,4 +458,6 @@ test fn c_compilation_unit_witnesses() -> Bool {
     && witness_r4_accepts_link_cyclic_unit_graph()
     && witness_r4_accepts_module_scc_split_across_units()
     && witness_r4_accepts_triangle_module_scc_split()
+    && witness_r4_refuses_by_value_type_cycle_across_units()
+    && witness_r4_accepts_pointer_type_cycle_across_units()
 }

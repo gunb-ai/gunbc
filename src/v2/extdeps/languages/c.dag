@@ -20,28 +20,44 @@ import v2.std.collection {
   Optional,
   Present
 }
+import v2.std.algebra { fold_list }
 import v2.std.compilers.compilation_unit {
+  ByValueTypeCycle,
   CompilationUnit,
   CompilationUnitArtifactId,
   CompilationUnitId,
   ModuleDag,
   ModuleId,
+  ModuleTypeDefinitionRow,
   PartitionFoldOk,
   PartitionFoldOutcome,
   PartitionFoldRefused,
+  PartitionR4Refused,
   PartitionR4Valid,
   PartitionR4ValidityVerdict,
+  module_type_definition_rows,
+  module_unit_id,
   partition_fold_outcome,
-  partition_unit_by_id
+  partition_unit_by_id,
+  type_definition_row_identity
 }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode
+}
 
 data c_r3_interface_members_split_note: String = "C R3: CompilationUnit.interface renders to the unit .h (declarations only); CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
 
-data c_r4_permissive_linkage_note: String = "C R4: permissive on module-SCC split across TUs, UnitGraphCycle, and LinkageCycle — mutually-recursive modules may live in different units; each .c #includes peer headers and links cyclically. The sole C-specific refusal (once home lands the cause) is ByValueTypeCycle: an incomplete by-value type containment cycle that cannot be forward-declared. SccSplit is Rust R4, not C R4."
+data c_r4_permissive_linkage_note: String = "C R4: permissive on module-SCC split across TUs, UnitGraphCycle, and LinkageCycle — mutually-recursive modules may live in different units; each .c #includes peer headers and links cyclically. Refuses only ByValueTypeCycle: an incomplete by-value type containment cycle that cannot be forward-declared (universal cause on home PartitionR4ValidityCause). SccSplit is Rust R4, not C R4."
 
-data c_by_value_type_cycle_refusal_dissolve_on: String = "dissolve-on: c_partition_by_value_type_cycle_cause currently returns Absent — wire the refusal arm to PartitionR4Refused { cause: ByValueTypeCycle { detail } } once eager-ferret-110 lands ByValueTypeCycle on PartitionR4ValidityCause (universal cause, not C-nickname)."
+data c_by_value_type_cycle_detail: String = "incomplete by-value type containment cycle across partition units"
 
 data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes partition_fold_outcome). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback)."
 
@@ -219,12 +235,274 @@ fn c_partition_unit_graph_has_cycle(units: List<CompilationUnit>) -> Bool {
   )
 }
 
+type CTypeOwner {
+  module: ModuleId
+  identity: Symbol
+}
+
+type CByValueTypeEdge {
+  from: CTypeOwner
+  to: CTypeOwner
+}
+
+fn c_type_owner_eq(left: CTypeOwner, right: CTypeOwner) -> Bool {
+  left.module == right.module && left.identity == right.identity
+}
+
+fn c_list_snoc_type_owner(items: List<CTypeOwner>, item: CTypeOwner) -> List<CTypeOwner> {
+  items |> list_push(item)
+}
+
+fn c_type_atoms_by_value_in_node(node: Node) -> List<Symbol> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: sym } } => [sym]
+    TypeNode { connective: Arrow } => []
+    TypeNode { connective: Conj } =>
+      node.children
+        |> fold(init: [], f: fn(acc, child) {
+          c_type_atoms_by_value_in_node(node: child.target)
+            |> fold(init: acc, f: fn(inner, sym) {
+              if any(xs: inner, predicate: fn(s) { s == sym }) {
+                inner
+              } else {
+                inner |> list_push(sym)
+              }
+            })
+        })
+    _ => []
+  }
+}
+
+fn c_type_definition_body(row: ModuleTypeDefinitionRow) -> Node {
+  row.definition
+}
+
+fn c_all_type_owners(module_dag: ModuleDag) -> List<CTypeOwner> {
+  module_dag.modules
+    |> fold(init: [], f: fn(acc, module) {
+      module_type_definition_rows(module_dag: module_dag, module: module)
+        |> fold(init: acc, f: fn(inner, row) {
+          inner
+            |> list_push(
+              CTypeOwner {
+                module: module,
+                identity: type_definition_row_identity(row: row),
+              }
+            )
+        })
+    })
+}
+
+fn c_type_owner_for_symbol_in_module(
+  owners: List<CTypeOwner>,
+  module: ModuleId,
+  sym: Symbol
+) -> Optional<CTypeOwner> {
+  fold_list(
+    xs: owners,
+    empty: Absent,
+    cons: fn(acc, owner) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if owner.module == module && owner.identity == sym {
+            Present { value: owner }
+          } else {
+            Absent
+          }
+      }
+    }
+  )
+}
+
+fn c_type_owner_for_symbol(
+  owners: List<CTypeOwner>,
+  home_module: ModuleId,
+  sym: Symbol
+) -> Optional<CTypeOwner> {
+  match c_type_owner_for_symbol_in_module(
+    owners: owners,
+    module: home_module,
+    sym: sym
+  ) {
+    Present { value: owner } => Present { value: owner }
+    Absent =>
+      fold_list(
+        xs: owners,
+        empty: Absent,
+        cons: fn(acc, owner) {
+          match acc {
+            Present { value: _ } => acc
+            Absent =>
+              if owner.identity == sym {
+                Present { value: owner }
+              } else {
+                Absent
+              }
+          }
+        }
+      )
+  }
+}
+
+fn c_type_definition_for_owner(
+  module_dag: ModuleDag,
+  owner: CTypeOwner
+) -> Optional<Node> {
+  fold_list(
+    xs: module_type_definition_rows(module_dag: module_dag, module: owner.module),
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if type_definition_row_identity(row: row) == owner.identity {
+            Present { value: c_type_definition_body(row: row) }
+          } else {
+            Absent
+          }
+      }
+    }
+  )
+}
+
+fn c_by_value_type_edges(
+  module_dag: ModuleDag,
+  owners: List<CTypeOwner>
+) -> List<CByValueTypeEdge> {
+  owners
+    |> fold(init: [], f: fn(acc, owner) {
+      match c_type_definition_for_owner(module_dag: module_dag, owner: owner) {
+        Present { value: defn } =>
+          c_type_atoms_by_value_in_node(node: defn)
+            |> fold(init: acc, f: fn(inner, sym) {
+              match c_type_owner_for_symbol(
+                owners: owners,
+                home_module: owner.module,
+                sym: sym
+              ) {
+                Present { value: target } =>
+                  inner
+                    |> list_push(
+                      CByValueTypeEdge {
+                        from: owner,
+                        to: target,
+                      }
+                    )
+                Absent => inner
+              }
+            })
+        Absent => acc
+      }
+    })
+}
+
+fn c_path_contains_type_owner(path: List<CTypeOwner>, node: CTypeOwner) -> Bool {
+  path |> any(step => c_type_owner_eq(left: step, right: node))
+}
+
+fn c_by_value_edge_crosses_units(
+  edge: CByValueTypeEdge,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Bool {
+  match (
+    module_unit_id(assignment: assignment, module: edge.from.module),
+    module_unit_id(assignment: assignment, module: edge.to.module)
+  ) {
+    (Present { value: from_unit }, Present { value: to_unit }) => from_unit != to_unit
+    _ => false
+  }
+}
+
+fn c_by_value_cycle_has_cross_unit_edge(
+  edges: List<CByValueTypeEdge>,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  cycle: List<CTypeOwner>
+) -> Bool {
+  edges |> any(edge =>
+    c_path_contains_type_owner(path: cycle, node: edge.from)
+      && c_path_contains_type_owner(path: cycle, node: edge.to)
+      && c_by_value_edge_crosses_units(edge: edge, assignment: assignment)
+  )
+}
+
+fn c_dfs_by_value_type_cycle(
+  edges: List<CByValueTypeEdge>,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  current: CTypeOwner,
+  path: List<CTypeOwner>,
+  fuel: Int
+) -> Optional<String> {
+  if fuel <= 0 {
+    Absent
+  } else if c_path_contains_type_owner(path: path, node: current) {
+    let cycle = path
+    if c_by_value_cycle_has_cross_unit_edge(
+      edges: edges,
+      assignment: assignment,
+      cycle: cycle
+    ) {
+      Present { value: c_by_value_type_cycle_detail }
+    } else {
+      Absent
+    }
+  } else {
+    let next_path = c_list_snoc_type_owner(items: path, item: current)
+    edges
+      |> fold(init: Absent, f: fn(acc, edge) {
+        match acc {
+          Present { value: _ } => acc
+          Absent =>
+            if c_type_owner_eq(left: edge.from, right: current) {
+              c_dfs_by_value_cycle(
+                edges: edges,
+                assignment: assignment,
+                current: edge.to,
+                path: next_path,
+                fuel: fuel - 1
+              )
+            } else {
+              Absent
+            }
+        }
+      })
+  }
+}
+
+fn c_find_by_value_type_cycle_detail(
+  edges: List<CByValueTypeEdge>,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  owners: List<CTypeOwner>
+) -> Optional<String> {
+  owners
+    |> fold(init: Absent, f: fn(acc, owner) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          c_dfs_by_value_type_cycle(
+            edges: edges,
+            assignment: assignment,
+            current: owner,
+            path: [],
+            fuel: (owners |> count) + 1
+          )
+      }
+    })
+}
+
 fn c_partition_by_value_type_cycle_cause(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   units: List<CompilationUnit>
 ) -> Optional<String> {
-  Absent
+  let _ = units
+  let owners = c_all_type_owners(module_dag: module_dag)
+  let edges = c_by_value_type_edges(module_dag: module_dag, owners: owners)
+  c_find_by_value_type_cycle_detail(
+    edges: edges,
+    assignment: assignment,
+    owners: owners
+  )
 }
 
 fn c_validate_partition_r4(
@@ -238,6 +516,9 @@ fn c_validate_partition_r4(
     units: units
   ) {
     Absent => PartitionR4Valid
-    Present { value: _ } => PartitionR4Valid
+    Present { value: detail } =>
+      PartitionR4Refused {
+        cause: ByValueTypeCycle { detail: detail },
+      }
   }
 }
