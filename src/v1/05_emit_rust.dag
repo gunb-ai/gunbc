@@ -1807,7 +1807,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   )
   let prelude_imported_names = module_imports(n: m)
     |> flat_map(imp => import_specific_names_at(n: imp, source_indices: scope.type_env.source_indices))
-  let prelude = emit_prelude(imported_names: prelude_imported_names)
+  let prelude = emit_prelude(imported_names: prelude_imported_names, shared_types: shared_types)
   let local_type_names = typed_module.items
     |> filter(item =>
       is_type_def_item(item: item)
@@ -3033,7 +3033,13 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
   }
 }
 
-fn emit_prelude(imported_names: List<String>) -> String {
+fn shared_types_need_text_prelude(shared_types: Set<String>) -> Bool {
+  set_contains(shared_types, "FreeMonoid")
+    || set_contains(shared_types, "FreeMonoid<Char>")
+    || set_contains(shared_types, "Char")
+}
+
+fn emit_prelude(imported_names: List<String>, shared_types: Set<String>) -> String {
   let base = concat(
     "use im_rc::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
     "use crate::v1_rt::\{VecCompat, VecJoin\};\n",
@@ -3057,7 +3063,12 @@ fn emit_prelude(imported_names: List<String>) -> String {
     "\nuse crate::v1_rt::Witness::\{Holds, Violates\};"
   }
   let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;"
-  concat(base, witness_line, variant_line, wrapper_use)
+  let text_prelude = if shared_types_need_text_prelude(shared_types: shared_types) {
+    "\nuse crate::std_algebra::FreeMonoid;\nuse crate::std_types::Char;\nuse crate::std_types::NonEmptyStr;"
+  } else {
+    ""
+  }
+  concat(base, witness_line, variant_line, wrapper_use, text_prelude)
 }
 
 fn emit_non_empty_wrappers() -> String {
