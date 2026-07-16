@@ -3777,8 +3777,8 @@ fn build_corpus_global_bare_census_from_index(
             {
                 return false;
             }
-            // PR-5c import strip: see `census_module_path_included`.
-            census_module_path_included(&p)
+            // PR-5c import strip, Q1 only: see `census_module_contributes_declarations`.
+            census_module_contributes_declarations(&p)
         })
         .map(|(_, sf)| sf.clone())
         .collect();
@@ -3852,62 +3852,30 @@ fn build_corpus_global_bare_census_from_index(
     ))
 }
 
-/// PR-5c import strip: census-backed bare lookup for any module whose path is
-/// included in the corpus census (`census_module_path_included`). On the integration
-/// branch this covers stripped `dag/**`, `src/v2/**`, and `dag/gunbc/**`; modules
-/// outside the census policy keep empty global_bare (main's import-closure behavior).
-fn global_bare_for_decl_file(
-    decl_file: &str,
-    census: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    if census_module_path_included(decl_file) {
-        census.clone()
-    } else {
-        v1_rt::rc_empty_map()
-    }
-}
-
-/// Paths whose top-level declarations feed the interim PR-5c `global_bare` census.
-/// Non-test `dag/**` is the stripped namespace authority surface; `src/v2/std/**`
-/// contributes only non-homonym modules (dag/std and v2/std share 11 basenames that
-/// would mark census keys ambiguous); other `src/v2/**` is included.
-pub fn census_module_path_included(path: &str) -> bool {
+/// Q1 — "do this module's top-level declarations FEED the `global_bare` census?"
+///
+/// This is NOT "may this module's references CONSUME the census?" (Q2). Q2 is total
+/// and has no predicate — see the `typecheck_module` call in the reconcile loop, which
+/// passes `global_bare.clone()` unconditionally. Conflating the two was the wiring bug:
+/// one predicate answered both, so `src/v2/std` homonym modules typechecked against an
+/// EMPTY census and every bare reference in them failed, while the names they referenced
+/// sat in that same census marked unique (the ~9.3k "name not found" on #6640).
+///
+/// The homonym exclusions this predicate used to carry (a `src/v2/std` basename list and
+/// the `dag/extdeps/docker/container_stats.dag` special-case) are removed by operator
+/// ruling (2026-07-16, option A). When `dag/std/algebra.dag` and `src/v2/std/algebra.dag`
+/// both contribute, their shared keys go `GlobalBareAmbiguousBinding` and bare lookup
+/// REFUSES (§5) rather than binding to whichever tree a list happened to favour. Hiding
+/// one authority so the other silently wins is overlay-wins — the fork
+/// `binding_forks_channel_note` exists to surface, not a resolution of it.
+pub fn census_module_contributes_declarations(path: &str) -> bool {
     let p = path.replace('\\', "/");
-    // PR-5c bare census: all non-test dag modules that gunbc may reference after
-    // import strip (std, extdeps, product, ctrl, tools, …).
+    // Non-test `dag/**` is the stripped namespace authority surface; `src/v2/**` peers it.
+    // `src/v2/std/algebra.dag` has no `dag/` segment — the extension is not a directory.
     if p.contains("dag/") && !p.contains("dag/test/") {
-        // product.NetworkInterface is the gunbc authority; docker's homonym is excluded.
-        if p.contains("dag/extdeps/docker/container_stats.dag") {
-            return false;
-        }
         return true;
     }
-    if p.contains("src/v2/std/") {
-        return census_v2_std_module_included(&p);
-    }
     p.contains("src/v2/")
-}
-
-/// `dag/std/*` and `src/v2/std/*` share these basenames; census must use dag/std only.
-fn census_v2_std_module_included(path: &str) -> bool {
-    let base = path.rsplit('/').next().unwrap_or(path);
-    !matches!(
-        base,
-        "algebra.dag"
-            | "artifact.dag"
-            | "change.dag"
-            | "coercion.dag"
-            | "determinism.dag"
-            | "effects.dag"
-            | "float.dag"
-            | "grammar.dag"
-            | "integer.dag"
-            | "logic.dag"
-            | "nat.dag"
-            | "network.dag"
-            | "node.dag"
-            | "verification.dag"
-    )
 }
 
 fn merge_source_indices(
@@ -5292,7 +5260,13 @@ fn reconcile_with_typed_cache(
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
-                        global_bare_for_decl_file(&decl_file, global_bare.clone()),
+                        // Q2 "may this module CONSUME the census?" is TOTAL — no predicate.
+                        // Withholding the census is not a conservative fallback: the strip
+                        // removed this module's imports, so an empty map leaves it unable to
+                        // resolve anything (§5 — refuse loudly, never hand back a plausible
+                        // nothing). Q1 (which declarations FEED the census) is separate, and
+                        // is answered by `census_module_contributes_declarations`.
+                        global_bare.clone(),
                         symbol_index.clone(),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
