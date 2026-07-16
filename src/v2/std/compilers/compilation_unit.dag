@@ -92,6 +92,10 @@ data partition_fold_outcome_note: String = "partition_fold_outcome is the fail-c
 
 data partition_fold_list_wrapper_dissolve_on: String = "dissolve-on: partition_fold_list_wrapper — delete fn partition_fold when every caller migrates to partition_fold_outcome. The List-returning wrapper is locked-signature compat only; PartitionFoldRefused collapses to [] here (indistinguishable from a legitimately empty partition), so receipt-requiring paths must not call it (§5 absorbing-fallback shape; primary surface is partition_fold_outcome per partition_fold_outcome_note)."
 
+data partition_unit_interface_list_wrapper_dissolve_on: String = "dissolve-on: partition_unit_interface_list_wrapper — delete fn partition_unit_interface when every caller migrates to partition_unit_interface_fold_default. InterfaceBuildRefused collapses to [] here (same §5 absorbing-fallback shape as partition_fold_list_wrapper_dissolve_on); receipt-requiring paths must use partition_unit_interface_fold_default."
+
+data compilation_unit_from_partition_wrapper_dissolve_on: String = "dissolve-on: compilation_unit_from_partition_wrapper — delete fn compilation_unit_from_partition when every caller migrates to compilation_unit_from_partition_fold_default. UnitBuildRefused collapses to an empty-shell CompilationUnit here (same §5 absorbing-fallback shape); receipt-requiring paths must use compilation_unit_from_partition_fold_default or partition_fold_outcome."
+
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallNow {
     mechanism: SingleAuthority,
@@ -190,18 +194,6 @@ fn module_in_unit(
   match module_unit_id(assignment: assignment, module: module) {
     Present { value: assigned } => assigned == unit_id
     Absent => false
-  }
-}
-
-fn module_in_unit_fold(
-  assignment: Map<ModuleId, CompilationUnitId>,
-  module: ModuleId,
-  unit_id: CompilationUnitId
-) -> Optional<PartitionFoldRefusalCause> {
-  match module_unit_id_outcome(assignment: assignment, module: module) {
-    Rejected { diagnostics: _ } =>
-      optional_present(value: ModuleAssignmentLookupRejected { module: module })
-    Accepted { value: _, diagnostics: _ } => Absent
   }
 }
 
@@ -322,10 +314,10 @@ fn partition_unit_dep_from_edge_fold(
   unit_id: CompilationUnitId,
   edge: ModuleDagEdge
 ) -> Optional<PartitionFoldRefusalCause> {
-  match module_in_unit_fold(assignment: assignment, module: edge.from, unit_id: unit_id) {
+  match module_assigned_unit_fold(assignment: assignment, module: edge.from) {
     Present { value: cause } => optional_present(value: cause)
     Absent =>
-      match module_in_unit_fold(assignment: assignment, module: edge.to, unit_id: unit_id) {
+      match module_assigned_unit_fold(assignment: assignment, module: edge.to) {
         Present { value: cause } => optional_present(value: cause)
         Absent =>
           if module_in_unit(assignment: assignment, module: edge.from, unit_id: unit_id)
@@ -431,10 +423,9 @@ fn module_referenced_from_outside_unit_fold(
         Present { value: _ } => acc
         Absent =>
           if edge.to == member {
-            module_in_unit_fold(
+            module_assigned_unit_fold(
               assignment: assignment,
-              module: edge.from,
-              unit_id: unit_id
+              module: edge.from
             )
           } else {
             Absent
