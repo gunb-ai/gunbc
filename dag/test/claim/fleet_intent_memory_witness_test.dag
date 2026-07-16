@@ -1,0 +1,66 @@
+module test.claim.fleet_intent_memory
+
+import std.logic { Bool }
+import std.types { list_length }
+import std.measure {
+  byte_size_count,
+  gibibyte,
+  Gibibyte,
+}
+import gunbc.fleet_intent {
+  srv3_host,
+  srv3_memory_population,
+  compute_host_ram_bytes_total,
+}
+import extdeps.memory {
+  host_memory_population_nominal_bytes,
+  memory_population_row_bytes,
+}
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
+import extdeps.memory.types { MemoryPopulationRow, HostMemoryPopulation, dram_module_is_realizable }
+import extdeps.memory.jedec { ddr4_generation_catalog }
+import extdeps.bmc.redfish { redfish_memory_summary_from_gib }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data srv3_bmc_observed_total_gib: Gibibyte = gibibyte(128)
+
+test fn srv3_population_matches_bmc_memory_summary() -> Bool {
+  byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
+    == byte_size_count(redfish_memory_summary_from_gib(total_gib: srv3_bmc_observed_total_gib).total_memory_bytes)
+}
+
+test fn srv3_host_memory_derives_from_cited_population() -> Bool {
+  byte_size_count(compute_host_ram_bytes_total(host: srv3_host))
+    == byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
+    && list_length(items: srv3_host.memory) == 2
+}
+
+test fn srv3_observed_catalog_rows_are_jedec_realizable() -> Bool {
+  dram_module_is_realizable(module: hma82gr7afr8n_vk_catalog, jedec: ddr4_generation_catalog)
+    && dram_module_is_realizable(module: hma82gr7afr4n_vk_catalog, jedec: ddr4_generation_catalog)
+}
+
+test fn srv3_population_row_bytes_match_stick_capacity() -> Bool {
+  byte_size_count(
+    memory_population_row_bytes(
+      row: MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 }
+    )
+  ) == 7 * byte_size_count(hma82gr7afr8n_vk_catalog.capacity_bytes)
+    && byte_size_count(
+      memory_population_row_bytes(
+        row: MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 1 }
+      )
+    ) == byte_size_count(hma82gr7afr4n_vk_catalog.capacity_bytes)
+}
+
+test fn red_wrong_stick_count_changes_nominal_total() -> Bool {
+  let wrong = HostMemoryPopulation {
+    rows: [
+      MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 8 },
+    ],
+  }
+  byte_size_count(host_memory_population_nominal_bytes(pop: wrong))
+    != byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
+}

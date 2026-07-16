@@ -27,3 +27,16 @@ data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
 
   rank_count: 1,
 }
+
+data hma82gr7afr8n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "HMA82GR7AFR8N-VK",
+  manufacturer: sk_hynix,
+  generation: dram_generation_ddr4,
+  capacity_bytes: stick_capacity_bytes,
+  data_rate_mts: 2666,
+  ecc: true,
+  buffering: Registered,
+  chip_width: bit_width(4),
+
+  rank_count: 2,
+}

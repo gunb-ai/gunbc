@@ -14,7 +14,9 @@ import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.cpu { cpu_facts_threads, cpu_facts_sustained_per_thread_hz }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_catalog }
-import extdeps.memory.types { MemoryKind, Dram }
+import extdeps.memory.types { MemoryKind, Dram, HostMemoryPopulation, MemoryPopulationRow }
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
+import extdeps.memory { memory_population_row_bytes, host_memory_population_nominal_bytes }
 import extdeps.gpu.types { GpuFacts, AcceleratorFacts, GpuRuntime }
 import extdeps.toolchain.types { ToolchainCapability }
 import product.network_topology { NetworkLocality, NetworkInterface, NetworkAddressability }
@@ -93,6 +95,18 @@ fn compute_host_ram_bytes_total(host: ComputeHost) -> ByteSize {
         f: (acc, dev) => acc + byte_size_count(dev.capacity),
       ),
   )
+}
+
+fn memory_devices_from_population(pop: HostMemoryPopulation) -> List<MemoryDevice> {
+  pop.rows
+    |> map(
+      row =>
+        MemoryDevice {
+          capacity: memory_population_row_bytes(row: row),
+          memory_kind: Dram,
+          bandwidth: none,
+        }
+    )
 }
 
 type MeasurementConfidence
@@ -205,6 +219,13 @@ data srv3_nvme0: StorageDevice = nvme_storage_device(
   persistence: Persistent,
 )
 
+data srv3_memory_population: HostMemoryPopulation = HostMemoryPopulation {
+  rows: [
+    MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 },
+    MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 1 },
+  ],
+}
+
 data srv1_host: ComputeHost = ComputeHost {
   identity: operator_host_srv1,
   baseboard: Present { value: srv1_baseboard },
@@ -225,7 +246,7 @@ data srv3_host: ComputeHost = ComputeHost {
   identity: operator_host_srv3,
   baseboard: Present { value: srv3_baseboard },
   processors: [CpuProcessor { cpu: fleet_intent_cpu }],
-  memory: [MemoryDevice { capacity: gibibyte_to_byte_size(g: gibibyte(128)), memory_kind: Dram, bandwidth: none }],
+  memory: memory_devices_from_population(pop: srv3_memory_population),
   storage: [srv3_nvme0],
   network_interfaces: [],
 }

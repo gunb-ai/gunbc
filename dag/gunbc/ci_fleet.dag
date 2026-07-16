@@ -11,6 +11,8 @@ import gunbc.fleet_intent {
   srv1_host,
   srv2_host,
   srv3_host,
+  srv3_memory_population,
+  memory_devices_from_population,
 }
 import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog }
@@ -118,7 +120,7 @@ data gunbc_ci_host: ComputeHost = ComputeHost {
   identity: gunbc_ci_host_identity,
   baseboard: none,
   processors: [CpuProcessor { cpu: gunbc_ci_cpu }],
-  memory: [MemoryDevice { capacity: byte_size(134217728000), memory_kind: Dram, bandwidth: none }],
+  memory: memory_devices_from_population(pop: srv3_memory_population),
   storage: [],
   network_interfaces: [],
 }
