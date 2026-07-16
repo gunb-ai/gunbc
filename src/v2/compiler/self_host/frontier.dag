@@ -27,6 +27,12 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
+import extdeps.languages.rust.emit { rust_qualified_module_mod_basename }
+
+type FrontierQualifiedModuleBinding {
+  module_path: String
+  qualified_module: String
+}
 
 type CompilerFrontierAttributedDebt {
   dissolution_trigger: Symbol
@@ -72,6 +78,44 @@ type CompilerModuleFrontierRow {
 data compiler_frontier_module_count_expected: Int = 27
 
 data compiler_frontier_self_emitted_baseline: Int = 1
+
+data compiler_frontier_qualified_module_bindings: List<FrontierQualifiedModuleBinding> = [
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/00_compile.dag", qualified_module: "v2.compiler.compile" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/01_tokenize.dag", qualified_module: "v2.compiler.tokenize" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/02_parse.dag", qualified_module: "v2.compiler.parse" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_body_producer.dag", qualified_module: "v2.compiler.body_producer" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_ingest.dag", qualified_module: "v2.compiler.ingest" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_name_resolve.dag", qualified_module: "v2.compiler.name_resolve" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_normalize.dag", qualified_module: "v2.compiler.normalize" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/03_resolve.dag", qualified_module: "v2.compiler.resolve" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/04_infer.dag", qualified_module: "v2.compiler.infer" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/05_emit.dag", qualified_module: "v2.compiler.emit" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/05_emit_orchestration.dag", qualified_module: "v2.compiler.emit_orchestration" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/05_eval.dag", qualified_module: "v2.compiler.eval" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/06_translate.dag", qualified_module: "v2.compiler.translate" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/07_target_carriers.dag", qualified_module: "v2.compiler.target_carriers" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/discovery_enumeration.dag", qualified_module: "v2.compiler.discovery_enumeration" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_host.dag", qualified_module: "v2.compiler.emit_host" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_module.dag", qualified_module: "v2.compiler.emit_module" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_produced.dag", qualified_module: "v2.compiler.emit_produced" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/emit_semantic_decl.dag", qualified_module: "v2.compiler.emit_semantic_decl" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/fold_lowering.dag", qualified_module: "v2.compiler.fold_lowering" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/materialization_carriers.dag", qualified_module: "v2.compiler.materialization_carriers" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/parse_engine_hooks.dag", qualified_module: "v2.compiler.parse_engine_hooks" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/program_assembly.dag", qualified_module: "v2.compiler.program_assembly" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/program_partition.dag", qualified_module: "v2.compiler.program_partition" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/self_host.dag", qualified_module: "v2.compiler.self_host" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/source_authority.dag", qualified_module: "v2.compiler.source_authority" },
+  FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/use_site_verdict.dag", qualified_module: "v2.compiler.use_site_verdict" }
+]
+
+data compiler_frontier_crate_layout_note: String = "Single crate-organization authority (Wave 2 derived layout): self-emitted stage0 mod basenames derive from compiler_frontier_roster SelfEmitted rows via qualified_module bindings + rust_qualified_module_mod_basename (extdeps.languages.rust.emit). Seed-retained intrinsic kernel + pilot scaffolds compose via hand_maintained_pub_mod_basenames derived from SeedRetainedIntrinsicRegistration rows (single row per intrinsic; pub_mod / stage0_file / dir projections). v1 consumers read gunbc.stage0_crate_layout_generated (frontier-derived committed artifact; regen via generated_artifact_gate main_wet; drift wall = byte-identical gate + crate_layout_witness_test RED controls). Dissolve-on: layer boundary lifts and v1 regen closure imports frontier directly."
+
+data compiler_frontier_crate_linkage_unit_generalization_trigger: String = "Rust realization of the agnostic linkage-unit / unit-of-separate-compilation concept (crate = C translation-unit = Go package = .NET assembly). Kept Rust-specific until a 2nd target realization staffs (full-C-target frontier row, eager-ferret lane, anti-fork constraint recorded there). GENERALIZES-WHEN: a 2nd realization exists — factor the agnostic CompilationUnit/TargetLinkageUnit shape then, with per-realization axes (acyclicity, monomorphization-boundary) NOT averaged away; partition POLICY is workflow-derived, not baked here."
+
+data compiler_frontier_rust_linkage_unit_axis_acyclic_crates: String = "Rust-specific axis (not universal): crate graph must be acyclic; separate-compilation unit = one Cargo crate."
+
+data compiler_frontier_rust_linkage_unit_axis_monomorphization_boundary: String = "Rust-specific axis (not universal): crate boundary = monomorphization / codegen partition boundary (generics instantiated per crate)."
 
 fn measured_stage_for_blocker(blocker: FrontierBlockerClass) -> FrontierProbeStage {
   match blocker {
@@ -768,6 +812,205 @@ fn compiler_frontier_roster_matches_survey_holds(survey: List<FrontierProbeRecei
   )
 }
 
+fn compiler_frontier_qualified_module_for_path(target: String) -> String {
+  fold_list(
+    xs: compiler_frontier_qualified_module_bindings,
+    empty: "",
+    cons: fn(found, binding) {
+      if found != "" {
+        found
+      } else if binding.module_path == target {
+        binding.qualified_module
+      } else {
+        ""
+      }
+    }
+  )
+}
+
+fn compiler_frontier_qualified_module_bindings_complete_holds() -> Bool {
+  length(xs: compiler_frontier_qualified_module_bindings) == compiler_frontier_module_count_expected
+}
+
+fn compiler_frontier_qualified_module_bindings_unique_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok
+        && (compiler_frontier_qualified_module_for_path(target: row.module_path) != "")
+        && (count_rows_with_module_path(xs: compiler_frontier_roster, target: row.module_path) == 1)
+    }
+  )
+}
+
+fn frontier_row_stage0_mod_basename(row: CompilerModuleFrontierRow) -> String {
+  rust_qualified_module_mod_basename(
+    qualified_module: compiler_frontier_qualified_module_for_path(target: row.module_path)
+  )
+}
+
+fn self_emitted_frontier_row_stage0_mod_basename(row: CompilerModuleFrontierRow) -> List<String> {
+  match row.disposition {
+    SelfEmitted => [frontier_row_stage0_mod_basename(row: row)]
+    SeedRetained { reason: _, migration_trigger: _ } => []
+  }
+}
+
+fn compiler_frontier_self_emitted_stage0_mod_basenames() -> List<String> {
+  fold(
+    compiler_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, self_emitted_frontier_row_stage0_mod_basename(row: row))
+    }
+  )
+}
+
+type SeedRetainedIntrinsicRegistration {
+  basename: String
+  has_pub_mod: Bool
+  is_dir: Bool
+}
+
+type SeedRetainedScaffoldRegistration {
+  basename: String
+}
+
+data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistration> = [
+  SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "cli_run", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "recorded_fixture", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "main", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "phase_profile", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true }
+]
+
+data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
+  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
+  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
+  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" }
+]
+
+fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
+  if row.has_pub_mod {
+    [row.basename]
+  } else {
+    []
+  }
+}
+
+fn intrinsic_stage0_filename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
+  if row.is_dir {
+    []
+  } else {
+    [concat(row.basename, ".rs")]
+  }
+}
+
+fn intrinsic_stage0_dir_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
+  if row.is_dir {
+    [row.basename]
+  } else {
+    []
+  }
+}
+
+fn seed_retained_intrinsic_pub_mod_basenames() -> List<String> {
+  fold(
+    seed_retained_intrinsic_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, intrinsic_pub_mod_basename_from_row(row: row))
+    }
+  )
+}
+
+fn seed_retained_intrinsic_stage0_files() -> List<String> {
+  fold(
+    seed_retained_intrinsic_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, intrinsic_stage0_filename_from_row(row: row))
+    }
+  )
+}
+
+fn seed_retained_scaffold_pub_mod_basenames() -> List<String> {
+  fold(
+    seed_retained_scaffold_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [row.basename])
+    }
+  )
+}
+
+fn seed_retained_scaffold_stage0_files() -> List<String> {
+  fold(
+    seed_retained_scaffold_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [concat(row.basename, ".rs")])
+    }
+  )
+}
+
+fn hand_maintained_stage0_dirs() -> List<String> {
+  fold(
+    seed_retained_intrinsic_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, intrinsic_stage0_dir_from_row(row: row))
+    }
+  )
+}
+
+fn basename_to_pub_mod_decl(basename: String) -> String {
+  concat("pub mod ", basename, ";")
+}
+
+fn format_pub_mod_declarations(basenames: List<String>) -> String {
+  let lines = basenames |> map(basename_to_pub_mod_decl)
+  concat("\n", lines |> join(separator: "\n"))
+}
+
+fn basename_to_stage0_filename(basename: String) -> String {
+  concat(basename, ".rs")
+}
+
+fn basenames_to_stage0_filenames(basenames: List<String>) -> List<String> {
+  basenames |> map(basename_to_stage0_filename)
+}
+
+fn hand_maintained_pub_mod_basenames() -> List<String> {
+  concat(
+    concat(seed_retained_intrinsic_pub_mod_basenames(), seed_retained_scaffold_pub_mod_basenames()),
+    compiler_frontier_self_emitted_stage0_mod_basenames()
+  )
+}
+
+fn emit_hand_maintained_pub_mod_block() -> String {
+  format_pub_mod_declarations(basenames: hand_maintained_pub_mod_basenames())
+}
+
+fn hand_maintained_stage0_filenames() -> List<String> {
+  concat(
+    concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files()),
+    basenames_to_stage0_filenames(basenames: compiler_frontier_self_emitted_stage0_mod_basenames())
+  )
+}
+
+fn compiler_frontier_crate_layout_holds() -> Bool {
+  compiler_frontier_qualified_module_bindings_complete_holds()
+    && compiler_frontier_qualified_module_bindings_unique_holds()
+    && (length(xs: compiler_frontier_self_emitted_stage0_mod_basenames()) == compiler_frontier_self_emitted_count())
+}
+
 fn compiler_frontier_census_holds() -> Bool {
   compiler_frontier_roster_complete_holds()
     && compiler_frontier_roster_paths_unique_holds()
@@ -782,6 +1025,7 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_self_emitted_located_reason_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
     && compiler_frontier_band_a_emit_readiness_holds()
+    && compiler_frontier_crate_layout_holds()
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

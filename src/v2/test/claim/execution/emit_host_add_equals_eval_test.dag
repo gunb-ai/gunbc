@@ -61,7 +61,9 @@ import v2.std.runtime {
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.verdict {
   BuildFailed,
@@ -162,7 +164,10 @@ fn emit_eval_interpretation(call_primitive: fn(Node, List<RuntimeValue>, Evaluat
     transform: TransformInterpreter { call_primitive: call_primitive },
     branch: BranchInterpreter { choose_branch: emit_eval_choose_branch },
     loop: LoopInterpreter { step_loop: emit_eval_step_loop },
-    bind: BindInterpreter { bind_value: emit_eval_bind_value }
+    bind: BindInterpreter { bind_value: emit_eval_bind_value },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
+    }
   }
 }
 

@@ -36,6 +36,7 @@ pub mod extdeps_uri;
 pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
+pub mod gunbc_stage0_crate_layout_generated;
 pub mod memory_governor;
 pub mod module_path_index;
 pub mod recorded_fixture;

@@ -7,9 +7,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn gt_complement(a: Bool) -> Bool { bool_boolean_algebra.complement(a) }
 
-fn gt_meet(a: Bool, b: Bool) -> Bool { bool_boolean_algebra.bounded_lattice.lattice.meet(a, b) }
+fn gt_meet(a: Bool, b: Bool) -> Bool { bool_boolean_algebra.meet(a, b) }
 
-fn gt_join(a: Bool, b: Bool) -> Bool { bool_boolean_algebra.bounded_lattice.lattice.join(a, b) }
+fn gt_join(a: Bool, b: Bool) -> Bool { bool_boolean_algebra.join(a, b) }
 
 fn is_false(b: Bool) -> Bool { match b { True => False, False => True } }
 

@@ -61,7 +61,9 @@ import v2.std.runtime {
   RuntimeUnitValue,
   RuntimeValue,
   ValueInterpreter,
-  ValueRepresentationModel
+  ValueRepresentationModel,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.machine { Byte }
 import v2.std.node {
@@ -257,6 +259,9 @@ fn eval_interpretation_algebra() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: eval_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }
