@@ -1,0 +1,31 @@
+module extdeps.tools.sleep
+
+import std.types { NonEmptyStr, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceCoreutils }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/sleep.html"
+  }
+}
+
+data sleep_cli_tool: CliTool = CliTool {
+  name: "sleep",
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}
+
+service sleep.Delay {
+  operation Seconds {
+    input { seconds: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["sleep", "{seconds}"] }
+    exit {
+      0 => Unit
+      nonzero => String "sleep failed"
+    }
+  }
+}
