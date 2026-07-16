@@ -78,16 +78,6 @@ fn c_partition_fold_outcome(
   }
 }
 
-fn c_partition_fold_units_or_empty(
-  module_dag: ModuleDag,
-  assignment: Map<ModuleId, CompilationUnitId>
-) -> List<CompilationUnit> {
-  match c_partition_fold_outcome(module_dag: module_dag, assignment: assignment) {
-    CPartitionFoldOk { units: units } => units
-    CPartitionFoldRefused { outcome: _ } => []
-  }
-}
-
 type CTranslationUnitSpelling {
   unit_id: CompilationUnitId
   header_path: String
