@@ -15,9 +15,9 @@ fn escape_dag_string_body(s: String) -> String {
   replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
 }
 
-fn render_dag_string_list_items(xs: List<String>) -> String {
+fn render_dag_string_list_items(xs: List<String>, item_indent: String) -> String {
   fold_list(xs, empty: "", cons: fn(acc, item) {
-    let line = concat("  \"", escape_dag_string_body(s: item), "\"")
+    let line = concat(item_indent, "\"", escape_dag_string_body(s: item), "\"")
     if acc == "" {
       line
     } else {
@@ -26,8 +26,15 @@ fn render_dag_string_list_items(xs: List<String>) -> String {
   })
 }
 
-fn render_dag_string_list(xs: List<String>) -> String {
-  concat("[\n", concat(render_dag_string_list_items(xs: xs), "\n]"))
+fn render_dag_string_list(
+  xs: List<String>,
+  item_indent: String,
+  close_indent: String
+) -> String {
+  concat(
+    "[\n",
+    concat(render_dag_string_list_items(xs: xs, item_indent: item_indent), "\n", close_indent, "]")
+  )
 }
 
 fn render_partition_crate_kind(row: Stage0PartitionCrateRow) -> String {
@@ -44,8 +51,8 @@ fn render_partition_crate_row(row: Stage0PartitionCrateRow) -> String {
     "      package_name: \"", escape_dag_string_body(s: row.package_name), "\",\n",
     "      crate_dir: \"", escape_dag_string_body(s: row.crate_dir), "\",\n",
     "      kind: ", render_partition_crate_kind(row: row), ",\n",
-    "      modules: ", render_dag_string_list(xs: row.modules), ",\n",
-    "      reexport_packages: ", render_dag_string_list(xs: row.reexport_packages), ",\n",
+    "      modules: ", render_dag_string_list(xs: row.modules, item_indent: "        ", close_indent: "      "), ",\n",
+    "      reexport_packages: ", render_dag_string_list(xs: row.reexport_packages, item_indent: "        ", close_indent: "      "), ",\n",
     "      carries_non_empty_wrappers: ", if row.carries_non_empty_wrappers { "true" } else { "false" }, "\n",
     "    }"
   )

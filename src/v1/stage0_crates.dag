@@ -571,21 +571,3 @@ fn stage0_crate_boundary_emit_outcome() -> Stage0CrateBoundaryEmitOutcome {
       emit_stage0_crate_boundary_files_outcome(plan: plan)
   }
 }
-
-fn stage0_crate_boundary_files() -> List<TextFile> {
-  match stage0_crate_boundary_emit_outcome() {
-    Stage0CrateBoundaryEmitOk { files: files } => files
-    Stage0CrateBoundaryEmitRefused { cause: cause } =>
-      match cause {
-        Stage0CrateBoundaryEmitModuleOwnerMissing { module_basename: _ } => []
-        Stage0CrateBoundaryEmitPackageCrateDirMissing { package_name: _ } => []
-      }
-  }
-}
-
-fn emit_stage0_crate_boundary_files(plan: Stage0CratePlan) -> List<TextFile> {
-  match emit_stage0_crate_boundary_files_outcome(plan: plan) {
-    Stage0CrateBoundaryEmitOk { files: files } => files
-    Stage0CrateBoundaryEmitRefused { cause: _ } => []
-  }
-}
