@@ -1,18 +1,17 @@
 module test.claim.machine_shape_witness
 
 import extdeps.gpu.nvidia { nvidia_rtx_5090_catalog }
-import extdeps.gpu.types { GpuModelCatalogRow }
-import extdeps.catalog_estimate { Exact, Interval, estimate_floor }
-import extdeps.storage.types { PcieLink, PcieGeneration, Gen4 }
+import extdeps.gpu.machine_shape {
+  FromGpuModelCatalog,
+  shape_from_catalog,
+}
+import extdeps.storage.types { PcieLink, PcieGeneration, Gen4, pcie_interconnect_link, pcie_link_bandwidth }
 import std.measure {
   ByteSize,
   Bandwidth,
   HardwareThreadCount,
-  hardware_thread_count,
   hardware_thread_count_value,
-  byte_size,
   byte_size_count,
-  bandwidth,
   bandwidth_count,
   watt,
   second,
@@ -20,27 +19,17 @@ import std.measure {
   joule_count,
   watt_count,
   second_count,
-  hertz,
-  hertz_count,
 }
 import std.machine_shape {
   DomainId,
   LevelId,
   MachineShape,
-  ExecutionDomain,
-  ExecutionShape,
-  MemoryLevel,
-  IndependentLanes,
   LinkEdge,
   SharedLevelEdge,
-  PcieAttach,
   MachineShapeOk,
   MachineShapeRefused,
   UnknownDomain,
   UnknownLevel,
-  ShapeFromCatalogInput,
-  FromGpuModelCatalog,
-  shape_from_catalog,
   machine_shape_validate,
   machine_shape_is_single_domain,
   machine_shape_domain_lane_count,
@@ -55,6 +44,8 @@ data rtx5090_domain: DomainId = "rtx5090" as DomainId
 data rtx5090_device_level: LevelId = "device-dram" as LevelId
 
 data dangling_domain: DomainId = "missing-domain" as DomainId
+
+data rtx5090_pcie_link: PcieLink = PcieLink { generation: Gen4, lane_count: 16 }
 
 fn shape_from_rtx5090_catalog() -> MachineShape {
   match shape_from_catalog(input: FromGpuModelCatalog {
@@ -94,21 +85,8 @@ fn energy_derived_not_stored() -> Bool {
   joule_count(j: energy_from_power_and_time(power: watt(count: 100), time: second(count: 5))) == 500
 }
 
-fn catalog_estimate_exact_on_row() -> Bool {
-  match nvidia_rtx_5090_catalog.boost_clock {
-    Present { value: Exact { value: hz } } =>
-      hertz_count(h: estimate_floor(estimate: Exact { value: hz })) == 2410000000
-    Present { value: Interval { lo: _, hi: _ } } => false
-    Absent => false
-  }
-}
-
-fn catalog_estimate_interval_floor() -> Bool {
-  hertz_count(
-    h: estimate_floor(
-      estimate: Interval { lo: hertz(count: 1500000000), hi: hertz(count: 2410000000) }
-    )
-  ) == 1500000000
+fn pcie_interconnect_link_derives_bandwidth() -> Bool {
+  bandwidth_count(b: pcie_interconnect_link(link: rtx5090_pcie_link).bandwidth) == bandwidth_count(b: pcie_link_bandwidth(link: rtx5090_pcie_link))
 }
 
 fn red_dangling_domain_refuses() -> Bool {
@@ -119,7 +97,7 @@ fn red_dangling_domain_refuses() -> Bool {
       LinkEdge {
         from: rtx5090_domain
         to: dangling_domain
-        link: PcieAttach { link: PcieLink { generation: Gen4, lane_count: 16 } }
+        link: pcie_interconnect_link(link: rtx5090_pcie_link)
       }
     ]
   }
@@ -154,8 +132,7 @@ test fn machine_shape_witnesses() -> Bool {
   catalog_derivation_matches_row()
     && minimal_grant_is_single_domain()
     && energy_derived_not_stored()
-    && catalog_estimate_exact_on_row()
-    && catalog_estimate_interval_floor()
+    && pcie_interconnect_link_derives_bandwidth()
     && red_dangling_domain_refuses()
     && red_dangling_level_refuses()
 }

@@ -1,7 +1,6 @@
 module extdeps.gpu.nvidia
 
 import extdeps.gpu.types { GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, Cuda }
-import extdeps.catalog_estimate { Exact }
 import extdeps.memory.types { MemoryFacts, Dram }
 import extdeps.vendor.nvidia { nvidia }
 import std.measure { hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size }
@@ -26,7 +25,7 @@ data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
     memory_kind: Dram,
   },
   memory_bandwidth: bandwidth(count: 1792000000000),
-  boost_clock: Present { value: Exact { value: hertz(count: 2410000000) } },
+  boost_clock: hertz(count: 2410000000),
   tdp_watts: watt(count: 575),
   compute_capability: Present {
     value: GpuComputeCapability {

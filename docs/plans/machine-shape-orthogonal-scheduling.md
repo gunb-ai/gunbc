@@ -21,7 +21,7 @@ Dissolution trigger (DESIGN §6): this document's authority transfers to the car
 
 The orthogonality claim: computation graph × machine facts × algebraic evidence → schedule, each axis independently variable, no cross-term hand-authored.
 
-**B. Machine shape is definite allocation-as-contract (operator-signed reframe 2026-07-16).** The scheduler consumes a **bound, definite grant** — never per-value epistemics. Two sides, both already modeled: *description* = extdeps catalog rows (cited; ranged facts such as base/boost clock live in the row as `extdeps.catalog_estimate.Estimate<T>`); *grant* = `compute_fabric`'s `Bound` (`Program` + `Opportunity.offers` + `connect`). Ungranted facts are **structurally absent** (a level not in the tower), never an `UnknownQuantity` value. Measurement receipts (`MeasuredBy`) stay in the witness-realization lane and are **unrepresentable in shapes** — no constructor admits them. A coarse grant (single domain, shallow tower) is legal to schedule; pricing refuses (`PricingRefused{missing}`) exactly where the grant structurally lacks a fact, counted.
+**B. Machine shape is definite allocation-as-contract (operator-signed reframe 2026-07-16).** The scheduler consumes a **bound, definite grant** — never per-value epistemics. Two sides, both already modeled: *description* = extdeps catalog rows (cited; genuinely ranged facts resolve at citation time into named single-valued fields — precedent: `CpuModelCatalogRow.nominal_sustained_per_thread_hz`, extdeps/cpu/types.dag:34, with deployment-observed values on a separate axis); *grant* = `compute_fabric`'s `Bound` (`Program` + `Opportunity.offers` + `connect`). Ungranted facts are **structurally absent** (a level not in the tower), never an `UnknownQuantity` value. Measurement receipts (`MeasuredBy`) stay in the witness-realization lane and are **unrepresentable in shapes** — no constructor admits them. A coarse grant (single domain, shallow tower) is legal to schedule; pricing refuses (`PricingRefused{missing}`) exactly where the grant structurally lacks a fact, counted.
 
 ## 2. The end shape (terminal model — operator agreement requested, then held fixed)
 
@@ -37,7 +37,7 @@ Operator working ruling (2026-07-15): define the end shape immediately, agree on
 
 ## 3. Phase 1 — model the machine shape (std + extdeps; no scheduler change)
 
-New std authority (`std.machine_shape`):
+New std authority (`std.machine_shape`) — **import-clean** (std never imports extdeps; derivations live beside their cited rows in extdeps/, cross-domain composition in product/):
 
 ```
 type DomainId = NonEmptyStr where brand("DomainId")
@@ -53,15 +53,16 @@ type MemoryShape = List<MemoryLevel>
 type LaneGrouping = IndependentLanes | Lockstep { group_width: HardwareThreadCount }
 type ExecutionShape { lane_count: HardwareThreadCount, grouping: LaneGrouping }
 type ExecutionDomain { id: DomainId, execution: ExecutionShape, memory: MemoryShape }
-type InterconnectLink = PcieAttach { link: PcieLink }   -- NetworkAttach when NetworkInterface migrates to extdeps
+type InterconnectLink { bandwidth: Bandwidth, latency_class: ReadLatencyClass? }   -- agnostic link facts; PCIe/network dispatch lives in extdeps
 type InterconnectEdge
   = LinkEdge        { from: DomainId, to: DomainId, link: InterconnectLink }
   | SharedLevelEdge { owner: DomainId, sharer: DomainId, level: LevelId }
 type MachineShape { domains: List<ExecutionDomain>, edges: List<InterconnectEdge> }
-fn shape_from_catalog(input: ShapeFromCatalogInput) -> MachineShapeConstruction   -- sole sanctioned producer
 ```
 
-Catalog-row ranges (e.g. base/boost clock intervals) live in extdeps as `extdeps.catalog_estimate.Estimate<T> = Exact | Interval` — value-level cited facts, never shape-level epistemics. **No `Quantified<T>`, no `UnknownQuantity`, no per-value `Evidence` on shapes.** Measurement receipts stay in witness-realization; topology = pure fn(graph × bound shape).
+Extdeps derivations (beside their rows): `extdeps.gpu.machine_shape.shape_from_catalog` (GPU catalog → single-domain grant); `extdeps.storage.types.pcie_interconnect_link` (reuses `pcie_link_bandwidth` — derived, never stored). Cross-domain host composition, when it comes, lives in `product/` (precedent: hardware_selection composes cpu+memory rows).
+
+**No `Quantified<T>`, no `UnknownQuantity`, no per-value `Evidence` on shapes.** Measurement receipts stay in witness-realization; topology = pure fn(graph × bound shape).
 
 A host is a *graph* of execution domains whose memory towers may share levels — and it is now literally representable as one: domains and levels carry stable identities, edges carry endpoints, and §2's terminal `Placement` is a `DomainId` reference. "Where a computation runs" is a domain in this graph; "what a move costs" is the edge it crosses (zero link-edges crossed = zero transfer, emerging on unified-memory shapes with no special case). There is deliberately no field that names what a domain *is* — only what it *has*.
 
@@ -87,10 +88,15 @@ Acceptance (green-by-execution): witness that a minimal single-domain grant from
 | `MemoryKind.UnifiedShared` | extdeps/memory/types.dag:18 | flagged (§2 kind-erasure bullet): topology fused into technology enum; sheds when `SharedLevelEdge` lands |
 | `ExecutionShape.lane_count` | `HardwareThreadCount` (measure.dag:207) — already spans CPU threads and GPU lanes | reuse the brand |
 | `LaneGrouping` fills | `ThreadHierarchyShape`, `PtxCost` (src/v2/extdeps/languages/ptx.dag — zero consumers today) | gains its first consumer |
-| `InterconnectEdge.LinkEdge` | `PcieLink` + derived per-lane bandwidth (extdeps/storage/types.dag:23-38) | de-fork onto GPU rows (which have no bus today) |
-| `InterconnectEdge` fleet-grain fill | `NetworkInterface { bandwidth, latency_class, locality }` + reachability zones (product/network_topology.dag:23-28,64-98) | now held by the type: `InterconnectLink.NetworkAttach { interface: NetworkInterface }` (revised per review — previously claimed as a fill the `PcieLink`-only type could not hold) |
+| `InterconnectEdge.LinkEdge` | `InterconnectLink { bandwidth, latency_class }` (std.machine_shape) filled by `pcie_interconnect_link` / future network dispatch in extdeps | std interface agnostic; PCIe-ness is realization beside `PcieLink` rows (extdeps/storage/types.dag:37-46) |
+| `InterconnectEdge` fleet-grain fill | `NetworkInterface { bandwidth, latency_class, locality }` + reachability zones (product/network_topology.dag:23-28,64-98) | network attach dispatches to the same agnostic `InterconnectLink` record when product composition lands |
 | `MachineShape` (degenerate) | ~~`PlacementSupplyRow`~~ **converged/deleted** (Phase 1 landing); superseded by `shape_from_catalog` single-domain fills | zero production callers; `placement_supply_row_from_host` removed |
-| `MachineShape` derivation source | `ComputeHost { processors, memory, storage, network_interfaces }` (fleet_intent.dag) | derives-from, with kind-erasure at the boundary (§2) |
+| `MachineShape` derivation source | `ComputeHost { processors, memory, storage, network_interfaces }` (fleet_intent.dag) | derives-from, with kind-erasure at the boundary (§2); **`extdeps.gpu.machine_shape.shape_from_catalog`** for GPU single-domain fills |
+| Grant mechanism authority | `Appropriation<Q,S>` / `LineItem` / `admit_all` (extdeps/accounting/budget.dag); instantiated for memory via `product/budget_tree.dag` | any MachineShape-based grant instantiates this; minting new ceiling/admission types is a hard reject |
+| Live up-front grant row | `gunbc.runner_slot_allocation` (#6648) — operator-set per-slot memory/swap/cpu caps, single authority, never reconcile toward live readback | machine-resource grant at slot grain converges with this row; implements the description→grant seam |
+| Plan-only grant vocabulary (HIGH debt) | `RunShape` / `ProviderOffer` / `StrictLease` / `HostSupply` / `Allocation→Receipt` in `dag/gunbc/plans/fleet_acceptance_criteria.dag:98-149` + roadmap_authority fabric milestone | **no carriers exist** — converges onto `compute_fabric`'s `Program`/`Opportunity`/`connect`→`Bound` (ruling 5's thin market); must not land as a parallel grant model |
+| Fleet host memory-description fork | `ComputeHost.memory` hand-literal `MemoryDevice` rows (fleet_intent.dag:221,229,237; ci_fleet.dag:121) vs dangling cited carrier `HostMemoryPopulation`/`MemoryPopulationRow` (extdeps/memory/types.dag:109-114) | **named debt**: fleet-host MachineShape fill must derive DRAM through cited carrier (module × stick_count), dissolving literals |
+| GpuFacts vs catalog derivation | `GpuFacts` (installed-instance, gpu/types.dag:53) lacks lane_count/bandwidth/clock; derivation takes `GpuModelCatalogRow` | if fleet hosts need GPU domains, `GpuFacts` grows a `catalog` field mirroring `CpuFacts.catalog` — never a second derivation |
 | `MachineShape` market consumer | `compute_fabric.Shape { hard: HardRequirements { threads } }`, `Opportunity.offers`, `shape_covers` (product/compute_fabric.dag:6-14,30-34) | **`Shape` IS the degenerate one-axis MachineShape** (operator-ruled 2026-07-15): MachineShape grounds it; the thin market (`Program`/`Opportunity`/`connect`) stays product-layer and is NOT rebuilt (the #5904 dissolution stands); `shape_covers` generalizes to the derived legality relation over the full shape; a `Fabric` is the outermost rung of the same recursive tower — hosts as domains, `network_topology` links as edges |
 | pricing/comparison fold | `cache_reach_comparisons` pareto fold (cache_interface.dag:289-307); `time_measure_par`/`seq` (realization_measurement.dag:74-96) | roofline is the on-chip instance of the same comparison shape |
 | demand side (unchanged) | `ResourceEnvelope`/`MemoryRequirement` (fleet_container.dag:35-45); `CostAccount.space` | `MachineShape` is supply; demand carriers stay put |
@@ -166,7 +172,8 @@ Ruled:
 6. **Evidence-carrier convergence (2026-07-15, superseded for machine-shape by ruling 9)**: staged — per-value epistemics on shapes (`Quantified<T>`) withdrawn; witness-realization P1 receipts reuse `Evidence.MeasuredBy` from day one for *measurement* facts; `CostBasis` untouched until the P1 join forces per-field migration; single owner = the #6663 lane.
 7. **`Energy` (2026-07-15)**: derived quantity in `measure.dag` — `Energy = Power × Time`, derived never stored; `CostAccount.power: Watt` unchanged; DESIGN §2 becomes true as written. Lands in Phase 1; this assignment is the #6663-F3 dedupe.
 8. **Scheduling-invariant refinement (2026-07-15)**: the §5 restatement — determinism ≠ input-invariance; declared shape is a stable input; MeasuredBy-banned-from-topology is the surviving wall; cross-host `schedule_eq` demoted to corollary under equal declared shapes. **Phase 3 unblocked**; the signed doc's wording amended at Phase-3 landing.
-9. **Allocation-as-contract reframe (2026-07-16)**: supersedes the `Quantified<T>`/`UnknownQuantity`/per-value-`Evidence` element of §2. Machine shapes are definite grants derived only via `shape_from_catalog`; ungranted facts are structurally absent; catalog citation lives in extdeps rows; `Estimate<T>` ranges live in `extdeps.catalog_estimate` for honestly-ranged catalog facts; measurement stays in witness-realization. Lands in Phase 1 (#6687).
+9. **Allocation-as-contract reframe (2026-07-16)**: supersedes the `Quantified<T>`/`UnknownQuantity`/per-value-`Evidence` element of §2. Machine shapes are definite grants derived only via extdeps `shape_from_catalog`; ungranted facts are structurally absent; catalog citation lives in extdeps rows (ranged facts resolve at citation time per cpu-catalog precedent); measurement stays in witness-realization. Lands in Phase 1 (#6687).
+10. **Layer-clean std interface (2026-07-16)**: `std.machine_shape` carries agnostic link facts only (`InterconnectLink { bandwidth, latency_class }`); PCIe/network dispatch and `shape_from_catalog` live in extdeps beside their cited rows (same §3 rule as std/os "projection only; dispatch lives in extdeps").
 
 Open:
 
