@@ -11,6 +11,9 @@ import tools.dag_compile_clean_scope {
   ExpectWholeTree,
   witness_entry_root_is_first_witness_layer_root,
   witness_pool_roots_match_witness_layer_roots,
+  witness_mixed_rs_and_dag_requires_whole_tree,
+  witness_departed_dag_path_requires_whole_tree,
+  witness_docs_only_departure_still_skips,
   compile_clean_docs_universe_path_grain_dissolve_trigger
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -40,6 +43,18 @@ test fn dag_compile_clean_scope_disposition_core_discriminates() -> Bool {
 test fn dag_compile_clean_scope_partition_authority_holds() -> Bool {
   witness_entry_root_is_first_witness_layer_root()
     && witness_pool_roots_match_witness_layer_roots()
+}
+
+test fn dag_compile_clean_scope_mixed_rs_and_dag_requires_whole_tree() -> Bool {
+  witness_mixed_rs_and_dag_requires_whole_tree()
+}
+
+test fn dag_compile_clean_scope_departed_dag_path_requires_whole_tree() -> Bool {
+  witness_departed_dag_path_requires_whole_tree()
+}
+
+test fn dag_compile_clean_scope_docs_only_departure_still_skips() -> Bool {
+  witness_docs_only_departure_still_skips()
 }
 
 test fn dag_compile_clean_scope_docs_universe_path_grain_dissolve_on_named() -> Bool {
