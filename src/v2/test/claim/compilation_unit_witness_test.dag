@@ -300,8 +300,8 @@ fn witness_provenance_variants_distinct() -> Bool {
 }
 
 fn witness_r4_interface_carriers_only() -> Bool {
-  let valid_verdict: PartitionR4ValidityVerdict = PartitionR4Valid
-  let refused_verdict: PartitionR4ValidityVerdict = partition_r4_witness_refused_scc_split
+  let valid_verdict = PartitionR4Valid
+  let refused_verdict = partition_r4_witness_refused_scc_split
   match valid_verdict {
     PartitionR4Valid => true
     PartitionR4Refused { cause: _ } => false
