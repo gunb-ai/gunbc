@@ -657,6 +657,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn compile_clean_diagnostic_histogram_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER,
+            "cli_run_compile_clean_diagnostic_histogram"
+        );
+    }
+
+    #[test]
     fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();
         let baked = workspace_root();
@@ -1877,8 +1885,21 @@ fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt
     *guard = Some(receipt);
 }
 
+// DELETE WHEN dissolved: `compile_clean_whole_tree_hard_diagnostics`,
+// `compile_clean_diagnostic_histogram_key`, `truncate_histogram_label`,
+// `compile_clean_internal_error_histogram_name`, and the `compile_clean_diagnostic_histogram` bin
+// (~200 LOC).
+// Receipt: `rg cli_run_compile_clean_diagnostic_histogram src/v1/stage0` == 1 until deletion;
+// ROADMAP §1 namespace-only lane (docs/plans/namespace-resolution-design.md).
+pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
+    "cli_run_compile_clean_diagnostic_histogram";
+
 /// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
 /// Instrument path for diagnostic histogram — not for cargo tests.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
+/// dissolves when ROADMAP §1 namespace-only lane closes (import strip + global_bare wiring fixed)
+/// or a floor-enrolled diagnostic-histogram lens subsumes this host transport.
 /// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
 /// (`compile_to_resolved` on the whole-tree source closure).
 pub fn compile_clean_whole_tree_hard_diagnostics(
@@ -1898,6 +1919,9 @@ pub fn compile_clean_whole_tree_hard_diagnostics(
 }
 
 /// `(class, name)` key for histogram aggregation over hard diagnostics.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
+/// total match over `CompilerDiagnostic` variants — no silent widening.
 pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, String) {
     use crate::v1_std_core::CompilerDiagnostic;
     let class = match d.diagnostic.as_ref() {

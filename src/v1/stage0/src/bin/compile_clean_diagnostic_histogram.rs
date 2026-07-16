@@ -1,17 +1,21 @@
 #![allow(clippy::disallowed_macros)]
 
-//! Whole-tree compile-clean hard-diagnostic histogram (instrument only).
+//! SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / P5) — host transport for the whole-tree
+//! compile-clean hard-diagnostic histogram (namespace migration burndown).
+//!
 //! Runs the same resolve kernel as batch-1 `dag_compile_clean_gate` on main
-//! (`witness_layer_roots` whole-tree closure + `compile_to_resolved`) but emits
-//! ALL hard diagnostics aggregated by class and (class, name) — not the truncated
-//! first-20 window.
+//! (`witness_layer_roots` whole-tree closure + `compile_to_resolved`) but emits ALL hard
+//! diagnostics aggregated by class and (class, name) — not the truncated first-20 window.
 //!
-//! NOT floor-enrolled — run standalone. Do NOT invoke from cargo tests (whole-tree
-//! resolve OOM risk in test harness).
+//! NOT floor-enrolled — run standalone. Do NOT invoke from cargo tests (whole-tree resolve OOM
+//! risk in test harness). Carrier: `CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER`
+//! in `cli_run.rs`.
 //!
-//! DISSOLUTION (quiet-gull-833 / namespace migration): delete this bin and the
-//! `compile_clean_whole_tree_hard_diagnostics` helpers when the wiring bug is
-//! fixed and the PR-body cross-tab receipt has served its purpose.
+//! DISSOLUTION: delete this bin and the marker-gated helpers when ROADMAP §1 namespace-only
+//! lane closes (`docs/plans/namespace-resolution-design.md` — import strip + global_bare wiring
+//! fixed; whole-tree compile-clean quiet on the strip tree) OR a floor-enrolled histogram lens
+//! subsumes this transport. Receipt: `rg cli_run_compile_clean_diagnostic_histogram
+//! src/v1/stage0` == 1 until deletion.
 
 use std::collections::BTreeMap;
 use std::process::ExitCode;
