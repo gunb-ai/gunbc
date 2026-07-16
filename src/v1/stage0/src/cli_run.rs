@@ -666,10 +666,12 @@ mod process_workspace_root_tests {
 
     #[test]
     fn truncate_histogram_label_respects_utf8_boundaries() {
+        let max = 80;
         let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
-        let out = super::truncate_histogram_label(&s, 80);
+        let out = super::truncate_histogram_label(&s, max);
         assert!(out.ends_with('…'));
         assert!(out.is_char_boundary(out.len()));
+        assert!(out.len() <= max);
     }
 
     #[test]
@@ -1982,14 +1984,15 @@ fn truncate_histogram_label(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        let budget = max.saturating_sub(1);
+        let ellipsis = '…';
+        let budget = max.saturating_sub(ellipsis.len_utf8());
         let end = s
             .char_indices()
             .map(|(i, c)| i + c.len_utf8())
             .take_while(|&end| end <= budget)
             .last()
             .unwrap_or(0);
-        format!("{}…", &s[..end])
+        format!("{s_prefix}{ellipsis}", s_prefix = &s[..end])
     }
 }
 
