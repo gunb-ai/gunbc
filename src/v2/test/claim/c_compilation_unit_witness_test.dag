@@ -1,0 +1,266 @@
+module v2.test.claim.c_compilation_unit_witness
+
+import std.algebra { Empty }
+import std.types { ContentHash, NonEmptyStr, List }
+import v2.extdeps.languages.c {
+  c_include_directive_for_dep,
+  c_partition_unit_graph_has_cycle,
+  c_translation_unit_spelling,
+  c_unit_header_path,
+  c_unit_object_path,
+  c_unit_source_path,
+  c_validate_partition_r4
+}
+import v2.std.compilers.compilation_unit {
+  CompilationUnit,
+  CompilationUnitId,
+  ModuleDag,
+  ModuleDagEdge,
+  ModuleId,
+  ModuleTypeDefinitionRow,
+  PartitionFoldOk,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  PartitionR4ValidityVerdict,
+  SccSplit,
+  compilation_unit_artifact_id,
+  partition_fold,
+  partition_fold_outcome,
+  partition_unit_by_id
+}
+import v2.std.collection { empty_map, map_insert }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  node_synthetic
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_mod_a: ModuleId = "mod.a" as NonEmptyStr
+data witness_mod_b: ModuleId = "mod.b" as NonEmptyStr
+data witness_mod_c: ModuleId = "mod.c" as NonEmptyStr
+data witness_mod_a1: ModuleId = "mod.a1" as NonEmptyStr
+data witness_mod_a2: ModuleId = "mod.a2" as NonEmptyStr
+
+data witness_unit_one: CompilationUnitId = "cu-one" as ContentHash
+data witness_unit_two: CompilationUnitId = "cu-two" as ContentHash
+data witness_unit_a: CompilationUnitId = "cu-a" as ContentHash
+data witness_unit_b: CompilationUnitId = "cu-b" as ContentHash
+
+data witness_type_point: Symbol = ^witness_cu_point
+data witness_type_int: Symbol = ^witness_cu_int
+data witness_fn_use_point: Symbol = ^witness_cu_use_point
+
+fn witness_type_atom(sym: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+}
+
+fn witness_point_struct_conj_body() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^x },
+        target: witness_type_atom(sym: witness_type_int),
+      }
+    ]
+  )
+}
+
+fn witness_fn_taking_point_by_value() -> Node {
+  node_synthetic(
+    kind: TypeNode {
+      connective: Arrow,
+    },
+    children: [
+      Edge {
+        label: Named { name: ^domain },
+        target: witness_type_atom(sym: witness_type_point),
+      },
+      Edge {
+        label: Named { name: ^codomain },
+        target: witness_type_atom(sym: witness_type_int),
+      }
+    ]
+  )
+}
+
+fn witness_exports_for_c() -> List<Node> {
+  [witness_fn_taking_point_by_value()]
+}
+
+fn witness_type_defs_for_c() -> List<ModuleTypeDefinitionRow> {
+  [
+    ModuleTypeDefinitionRow {
+      identity: witness_type_point,
+      definition: witness_point_struct_conj_body(),
+    }
+  ]
+}
+
+fn witness_triangle_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_a, witness_mod_b, witness_mod_c],
+    edges: [
+      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
+      ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
+    ],
+    exports: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_c, witness_exports_for_c()),
+    type_definitions: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_c, witness_type_defs_for_c()),
+  }
+}
+
+fn witness_two_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
+  empty_map()
+    |> map_insert(witness_mod_a, witness_unit_one)
+    |> map_insert(witness_mod_b, witness_unit_one)
+    |> map_insert(witness_mod_c, witness_unit_two)
+}
+
+fn witness_link_cyclic_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_a1, witness_mod_a2, witness_mod_b],
+    edges: [
+      ModuleDagEdge { from: witness_mod_a1, to: witness_mod_b },
+      ModuleDagEdge { from: witness_mod_b, to: witness_mod_a2 },
+    ],
+    exports: empty_map()
+      |> map_insert(witness_mod_a1, Empty)
+      |> map_insert(witness_mod_a2, Empty)
+      |> map_insert(witness_mod_b, Empty),
+    type_definitions: empty_map()
+      |> map_insert(witness_mod_a1, Empty)
+      |> map_insert(witness_mod_a2, Empty)
+      |> map_insert(witness_mod_b, Empty),
+  }
+}
+
+fn witness_link_cyclic_assignment() -> Map<ModuleId, CompilationUnitId> {
+  empty_map()
+    |> map_insert(witness_mod_a1, witness_unit_a)
+    |> map_insert(witness_mod_a2, witness_unit_a)
+    |> map_insert(witness_mod_b, witness_unit_b)
+}
+
+fn witness_partition_fold_two_units() -> List<CompilationUnit> {
+  partition_fold(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
+  )
+}
+
+fn witness_r3_header_source_object_paths() -> Bool {
+  c_unit_header_path(unit_id: witness_unit_one) == "cu-one.h"
+    && c_unit_source_path(unit_id: witness_unit_one) == "cu-one.c"
+    && c_unit_object_path(artifact: compilation_unit_artifact_id(unit_id: witness_unit_one)) == "cu-one.o"
+}
+
+fn witness_r3_include_directive_per_dep() -> Bool {
+  c_include_directive_for_dep(dep_id: witness_unit_two) == "#include \"cu-two.h\""
+}
+
+fn witness_r3_spelling_from_partition_fold() -> Bool {
+  let units = witness_partition_fold_two_units()
+  match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
+    Present { value: unit } =>
+      let spelling = c_translation_unit_spelling(unit: unit, units: units)
+      (spelling.header_path == "cu-one.h")
+        && (spelling.source_path == "cu-one.c")
+        && (spelling.object_path == "cu-one.o")
+        && (spelling.include_directives == ["#include \"cu-two.h\""])
+        && (spelling.include_closure == [witness_unit_two])
+    Absent => false
+  }
+}
+
+fn witness_r4_accepts_link_cyclic_unit_graph() -> Bool {
+  let dag = witness_link_cyclic_dag()
+  let assignment = witness_link_cyclic_assignment()
+  let units = partition_fold(module_dag: dag, assignment: assignment)
+  c_partition_unit_graph_has_cycle(units: units)
+    && match c_validate_partition_r4(
+      module_dag: dag,
+      assignment: assignment,
+      units: units
+    ) {
+      PartitionR4Valid => true
+      PartitionR4Refused { cause: _ } => false
+    }
+}
+
+fn witness_r4_refuses_module_scc_split() -> Bool {
+  let assignment = witness_two_unit_assignment()
+  let units = partition_fold(
+    module_dag: witness_triangle_dag(),
+    assignment: assignment
+  )
+  match c_validate_partition_r4(
+    module_dag: witness_triangle_dag(),
+    assignment: assignment,
+    units: units
+  ) {
+    PartitionR4Refused { cause: SccSplit { detail: _ } } => true
+    PartitionR4Valid => false
+  }
+}
+
+fn witness_r4_refuses_duplicate_member_partition() -> Bool {
+  let duplicate_units = [
+    CompilationUnit {
+      id: witness_unit_one
+      members: [witness_mod_a]
+      interface: Empty
+      deps: Empty
+      artifact: compilation_unit_artifact_id(unit_id: witness_unit_one)
+    },
+    CompilationUnit {
+      id: witness_unit_two
+      members: [witness_mod_a]
+      interface: Empty
+      deps: Empty
+      artifact: compilation_unit_artifact_id(unit_id: witness_unit_two)
+    }
+  ]
+  match c_validate_partition_r4(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment(),
+    units: duplicate_units
+  ) {
+    PartitionR4Refused { cause: SccSplit { detail: _ } } => true
+    PartitionR4Valid => false
+  }
+}
+
+fn witness_partition_fold_ok_before_c_r4() -> Bool {
+  match partition_fold_outcome(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
+  ) {
+    PartitionFoldOk { units: units } => (units |> count) == 2
+    _ => false
+  }
+}
+
+test fn c_compilation_unit_witnesses() -> Bool {
+  witness_partition_fold_ok_before_c_r4()
+    && witness_r3_header_source_object_paths()
+    && witness_r3_include_directive_per_dep()
+    && witness_r3_spelling_from_partition_fold()
+    && witness_r4_accepts_link_cyclic_unit_graph()
+    && witness_r4_refuses_module_scc_split()
+    && witness_r4_refuses_duplicate_member_partition()
+}

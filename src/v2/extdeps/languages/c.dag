@@ -1,0 +1,360 @@
+module v2.extdeps.languages.c
+
+import extdeps.languages.c.emit {
+  c_header_extension,
+  c_include_directive_for_header_path,
+  c_object_extension,
+  c_path_with_extension,
+  c_source_extension
+}
+import std.algebra { Empty }
+import std.graph {
+  CallGraph,
+  DfsFinishAcc,
+  GraphEdge,
+  SccComponentAcc,
+  build_adjacency_views,
+  dfs_collect_component,
+  dfs_finish_order,
+  graph_has_multi_node_scc
+}
+import std.types { String }
+import v2.std.algebra { any, fold_list, length }
+import v2.std.collection {
+  Absent,
+  Optional,
+  Present,
+  empty_map,
+  optional_present
+}
+import v2.std.compilers.compilation_unit {
+  CompilationUnit,
+  CompilationUnitArtifactId,
+  CompilationUnitId,
+  ModuleDag,
+  ModuleId,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  PartitionR4ValidityVerdict,
+  SccSplit,
+  module_unit_id,
+  partition_unit_by_id
+}
+import v2.std.logic { Bool }
+
+data c_r3_interface_members_split_note: String = "C R3: CompilationUnit.interface renders to the unit .h (declarations only); CompilationUnit.members renders to the unit .c (implementation). partition_fold is the sole producer of interface/deps; this module only spells linkage paths and cross-unit #include lines."
+
+data c_r4_permissive_linkage_note: String = "C R4: permissive on unit-graph / linkage condensation cycles (forward-declared cross-calls resolve at link time). Refuses only module-SCC split across units (SccSplit) and duplicate module membership across units (split-definition / ODR)."
+
+type CTranslationUnitSpelling {
+  unit_id: CompilationUnitId
+  header_path: String
+  source_path: String
+  include_directives: List<String>
+  include_closure: List<CompilationUnitId>
+  object_path: String
+}
+
+fn c_unit_basename(unit_id: CompilationUnitId) -> String {
+  unit_id
+}
+
+fn c_unit_header_path(unit_id: CompilationUnitId) -> String {
+  c_path_with_extension(
+    basename: c_unit_basename(unit_id: unit_id),
+    extension: c_header_extension
+  )
+}
+
+fn c_unit_source_path(unit_id: CompilationUnitId) -> String {
+  c_path_with_extension(
+    basename: c_unit_basename(unit_id: unit_id),
+    extension: c_source_extension
+  )
+}
+
+fn c_unit_object_path(artifact: CompilationUnitArtifactId) -> String {
+  c_path_with_extension(basename: artifact, extension: c_object_extension)
+}
+
+fn c_include_directive_for_dep(dep_id: CompilationUnitId) -> String {
+  c_include_directive_for_header_path(
+    header_path: c_unit_header_path(unit_id: dep_id)
+  )
+}
+
+fn c_unit_include_directives(deps: List<CompilationUnitId>) -> List<String> {
+  deps |> map(dep => c_include_directive_for_dep(dep_id: dep))
+}
+
+fn c_include_closure_snoc_unique(
+  items: List<CompilationUnitId>,
+  item: CompilationUnitId
+) -> List<CompilationUnitId> {
+  if any(xs: items, predicate: fn(id) { id == item }) {
+    items
+  } else {
+    items |> list_push(item)
+  }
+}
+
+fn c_include_closure_grow_once(
+  units: List<CompilationUnit>,
+  closed: List<CompilationUnitId>
+) -> List<CompilationUnitId> {
+  closed
+    |> fold(init: closed, f: fn(acc, dep_id) {
+      match partition_unit_by_id(units: units, unit_id: dep_id) {
+        Present { value: dep_unit } =>
+          dep_unit.deps
+            |> fold(init: acc, f: fn(inner, next) {
+              c_include_closure_snoc_unique(items: inner, item: next)
+            })
+        Absent => acc
+      }
+    })
+    |> sort_by(id => id)
+}
+
+fn c_include_closure_saturate_with_fuel(
+  units: List<CompilationUnit>,
+  closed: List<CompilationUnitId>,
+  fuel: Int
+) -> List<CompilationUnitId> {
+  if fuel <= 0 {
+    closed
+  } else {
+    let grown = c_include_closure_grow_once(units: units, closed: closed)
+    if length(xs: grown) == length(xs: closed) {
+      grown
+    } else {
+      c_include_closure_saturate_with_fuel(
+        units: units,
+        closed: grown,
+        fuel: fuel - 1
+      )
+    }
+  }
+}
+
+fn c_include_closure(
+  unit: CompilationUnit,
+  units: List<CompilationUnit>
+) -> List<CompilationUnitId> {
+  c_include_closure_saturate_with_fuel(
+    units: units,
+    closed: unit.deps,
+    fuel: (units |> count) + 1
+  )
+}
+
+fn c_translation_unit_spelling(
+  unit: CompilationUnit,
+  units: List<CompilationUnit>
+) -> CTranslationUnitSpelling {
+  CTranslationUnitSpelling {
+    unit_id: unit.id
+    header_path: c_unit_header_path(unit_id: unit.id)
+    source_path: c_unit_source_path(unit_id: unit.id)
+    include_directives: c_unit_include_directives(deps: unit.deps)
+    include_closure: c_include_closure(unit: unit, units: units)
+    object_path: c_unit_object_path(artifact: unit.artifact)
+  }
+}
+
+fn c_module_id_graph_name(module: ModuleId) -> String {
+  module
+}
+
+fn c_module_dag_call_graph(module_dag: ModuleDag) -> CallGraph {
+  CallGraph {
+    edges: module_dag.edges
+      |> map(edge =>
+        GraphEdge {
+          caller: c_module_id_graph_name(module: edge.from),
+          callee: c_module_id_graph_name(module: edge.to)
+        }
+      )
+  }
+}
+
+fn c_module_dag_graph_names(module_dag: ModuleDag) -> List<String> {
+  module_dag.modules |> map(module => c_module_id_graph_name(module: module))
+}
+
+type CSccComponentHarvestAcc {
+  visited: Set<String>
+  components: List<List<String>>
+}
+
+fn c_graph_scc_components(names: List<String>, graph: CallGraph) -> List<List<String>> {
+  let adjacency = build_adjacency_views(names: names, graph: graph)
+  let finish = names
+    |> fold(
+      init: DfsFinishAcc { visited: empty_set(), order: [] },
+      f: fn(acc, name) {
+        dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
+      }
+    )
+  let harvested = finish.order
+    |> reverse
+    |> fold(
+      init: CSccComponentHarvestAcc {
+        visited: empty_set(),
+        components: []
+      },
+      f: fn(acc, name) {
+        if set_contains(acc.visited, name) {
+          acc
+        } else {
+          let component = dfs_collect_component(
+            node: name,
+            adjacency: adjacency.reverse,
+            acc: SccComponentAcc { visited: acc.visited, members: [] }
+          )
+          CSccComponentHarvestAcc {
+            visited: component.visited,
+            components: acc.components |> list_push(component.members)
+          }
+        }
+      }
+    )
+  harvested.components
+}
+
+fn c_graph_name_to_module_id(name: String) -> ModuleId {
+  name as ModuleId
+}
+
+fn c_module_scc_split_detail(
+  component: List<String>,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Optional<String> {
+  let unit_ids = component
+    |> fold(init: Empty, f: fn(acc, graph_name) {
+      let module = c_graph_name_to_module_id(name: graph_name)
+      match module_unit_id(assignment: assignment, module: module) {
+        Present { value: unit_id } =>
+          c_include_closure_snoc_unique(items: acc, item: unit_id)
+        Absent => acc
+      }
+    })
+  if (unit_ids |> count) <= 1 {
+    Absent
+  } else {
+    optional_present(
+      value: concat(
+        "module SCC split across compilation units: ",
+        component |> join(separator: ",")
+      )
+    )
+  }
+}
+
+fn c_partition_scc_split_cause(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>
+) -> Optional<String> {
+  let graph = c_module_dag_call_graph(module_dag: module_dag)
+  let names = c_module_dag_graph_names(module_dag: module_dag)
+  fold_list(
+    xs: c_graph_scc_components(names: names, graph: graph),
+    empty: Absent,
+    cons: fn(acc, component) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if (component |> count) <= 1 {
+            Absent
+          } else {
+            c_module_scc_split_detail(component: component, assignment: assignment)
+          }
+      }
+    }
+  )
+}
+
+type CMemberScanAcc {
+  seen: List<ModuleId>
+  duplicate: Bool
+}
+
+fn c_partition_duplicate_member_cause(
+  units: List<CompilationUnit>
+) -> Optional<String> {
+  let scanned = fold_list(
+    xs: units,
+    empty: CMemberScanAcc { seen: Empty, duplicate: false },
+    cons: fn(acc, unit) {
+      fold_list(
+        xs: unit.members,
+        empty: acc,
+        cons: fn(inner, member) {
+          if inner.duplicate {
+            inner
+          } else if any(xs: inner.seen, predicate: fn(m) { m == member }) {
+            CMemberScanAcc { seen: inner.seen, duplicate: true }
+          } else {
+            CMemberScanAcc {
+              seen: inner.seen |> list_push(member),
+              duplicate: false
+            }
+          }
+        }
+      )
+    }
+  )
+  if scanned.duplicate {
+    optional_present(
+      value: "module definition split across compilation units (ODR violation)"
+    )
+  } else {
+    Absent
+  }
+}
+
+fn c_unit_graph_call_graph(units: List<CompilationUnit>) -> CallGraph {
+  CallGraph {
+    edges: units
+      |> fold(init: Empty, f: fn(acc, unit) {
+        unit.deps
+          |> fold(init: acc, f: fn(inner, dep) {
+            inner
+              |> list_push(
+                GraphEdge {
+                  caller: unit.id,
+                  callee: dep
+                }
+              )
+          })
+      })
+  }
+}
+
+fn c_unit_graph_names(units: List<CompilationUnit>) -> List<String> {
+  units |> map(unit => unit.id) |> sort_by(id => id)
+}
+
+fn c_partition_unit_graph_has_cycle(units: List<CompilationUnit>) -> Bool {
+  graph_has_multi_node_scc(
+    names: c_unit_graph_names(units: units),
+    graph: c_unit_graph_call_graph(units: units)
+  )
+}
+
+fn c_validate_partition_r4(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  units: List<CompilationUnit>
+) -> PartitionR4ValidityVerdict {
+  match c_partition_scc_split_cause(module_dag: module_dag, assignment: assignment) {
+    Present { value: detail } =>
+      PartitionR4Refused { cause: SccSplit { detail: detail } }
+    Absent =>
+      match c_partition_duplicate_member_cause(units: units) {
+        Present { value: detail } =>
+          PartitionR4Refused { cause: SccSplit { detail: detail } }
+        Absent => PartitionR4Valid
+      }
+  }
+}
