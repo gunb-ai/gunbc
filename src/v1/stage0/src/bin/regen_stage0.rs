@@ -908,7 +908,9 @@ fn verify_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> 
         let committed =
             fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
         if committed != expected {
-            mismatches.push(v1_compiler::cli_run::regen_workspace_relpath(&path, workspace));
+            mismatches.push(v1_compiler::cli_run::regen_workspace_relpath(
+                &path, workspace,
+            ));
         }
     }
     if mismatches.is_empty() {

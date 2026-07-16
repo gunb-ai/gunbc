@@ -800,9 +800,18 @@ mod regen_input_closure_tests {
             .collect();
         let _ = std::fs::remove_dir_all(&root);
 
-        assert!(relpaths.contains("src/v1/a.dag"), "entry seed: {relpaths:?}");
-        assert!(relpaths.contains("src/v1/b.dag"), "imported v1 module present");
-        assert!(relpaths.contains("dag/std/x.dag"), "imported dag module present");
+        assert!(
+            relpaths.contains("src/v1/a.dag"),
+            "entry seed: {relpaths:?}"
+        );
+        assert!(
+            relpaths.contains("src/v1/b.dag"),
+            "imported v1 module present"
+        );
+        assert!(
+            relpaths.contains("dag/std/x.dag"),
+            "imported dag module present"
+        );
         assert!(
             !relpaths.contains("dag/std/y.dag"),
             "unimported dag module must be EXCLUDED: {relpaths:?}"
@@ -824,7 +833,10 @@ mod regen_input_closure_tests {
         assert!(regen_path_affects_regen("src/v1/03_resolve.dag", &closure));
         // Cargo manifest / lockfile (emitter binary inputs).
         assert!(regen_path_affects_regen("Cargo.lock", &closure));
-        assert!(regen_path_affects_regen("src/v1/stage0/Cargo.toml", &closure));
+        assert!(regen_path_affects_regen(
+            "src/v1/stage0/Cargo.toml",
+            &closure
+        ));
         // dag file in v1's transitive import closure.
         assert!(regen_path_affects_regen("dag/std/x.dag", &closure));
         // NOT affecting: v2 sources, unimported dag, docs — the skip-eligible surface.
