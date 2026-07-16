@@ -1,0 +1,63 @@
+module v2.test.claim.interface_summary.typed_module_key
+
+import std.interface_summary {
+  InterfaceHash,
+  ModuleKey,
+  module_key,
+  typed_module_key,
+  interface_summary_rollup
+}
+import std.content_hash { content_hash_atom }
+import std.types { ContentHash, NonEmptyStr }
+import v2.std.logic { Bool }
+
+data purpose_note: NonEmptyStr = "RED controls proving each term of typed_module_key is load-bearing: vary compiler_identity alone -> key changes; vary interface_key alone -> key changes; drop neither -> extends the interface key. Synthetic inputs only; no store, no live tree."
+
+fn synthetic_interface_hash() -> InterfaceHash {
+  interface_summary_rollup(exports: [])
+}
+
+fn interface_key_a() -> ModuleKey {
+  module_key(
+    source_hash: content_hash_atom(value: "module-source-a"),
+    direct_import_interface_hashes: [synthetic_interface_hash()]
+  )
+}
+
+fn interface_key_b() -> ModuleKey {
+  module_key(
+    source_hash: content_hash_atom(value: "module-source-b"),
+    direct_import_interface_hashes: [synthetic_interface_hash()]
+  )
+}
+
+fn compiler_id_x() -> ContentHash {
+  content_hash_atom(value: "compiler-identity-x")
+}
+
+fn compiler_id_y() -> ContentHash {
+  content_hash_atom(value: "compiler-identity-y")
+}
+
+test fn typed_module_key_is_deterministic() -> Bool {
+  let k1 = typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_x())
+  let k2 = typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_x())
+  k1 == k2
+}
+
+test fn typed_module_key_varies_with_compiler_identity() -> Bool {
+  let with_x = typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_x())
+  let with_y = typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_y())
+  with_x != with_y
+}
+
+test fn typed_module_key_varies_with_interface_key() -> Bool {
+  let key_a = typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_x())
+  let key_b = typed_module_key(interface_key: interface_key_b(), compiler_identity: compiler_id_x())
+  key_a != key_b
+}
+
+test fn typed_module_key_extends_interface_key() -> Bool {
+  let typed = typed_module_key(interface_key: interface_key_a(), compiler_identity: compiler_id_x())
+  typed != interface_key_a()
+}

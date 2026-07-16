@@ -17,6 +17,7 @@ type GeneratedArtifact
   | FleetConvergeArtifact
   | Stage0CrateLayoutGeneratedDagArtifact
   | Stage0CrateLayoutGeneratedRsArtifact
+  | Stage0CratePartitionGeneratedDagArtifact
   | LiveDeployApplyScriptArtifact
   | LiveDeployRetractScriptArtifact
   | AutoinstallUserDataArtifact { spec: HostAutoinstall }
@@ -26,7 +27,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, FleetConvergeArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
+      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, GithooksPreCommitArtifact, RunnerDeployArtifact, FleetConvergeArtifact, Stage0CrateLayoutGeneratedDagArtifact, Stage0CrateLayoutGeneratedRsArtifact, Stage0CratePartitionGeneratedDagArtifact, LiveDeployApplyScriptArtifact, LiveDeployRetractScriptArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -57,6 +58,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     FleetConvergeArtifact => ".github/fleet-converge.sh"
     Stage0CrateLayoutGeneratedDagArtifact => "dag/gunbc/stage0_crate_layout_generated.dag"
     Stage0CrateLayoutGeneratedRsArtifact => "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
+    Stage0CratePartitionGeneratedDagArtifact => "dag/gunbc/stage0_crate_partition_generated.dag"
     LiveDeployApplyScriptArtifact => ".github/live-deploy-srv1-apply.sh"
     LiveDeployRetractScriptArtifact => ".github/live-deploy-srv1-retract.sh"
     AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
@@ -79,6 +81,7 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     FleetConvergeArtifact => CommitRequired { consumer: HostReconciler }
     Stage0CrateLayoutGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     Stage0CrateLayoutGeneratedRsArtifact => CommitRequired { consumer: GitProtocol }
+    Stage0CratePartitionGeneratedDagArtifact => CommitRequired { consumer: GitProtocol }
     LiveDeployApplyScriptArtifact => CommitRequired { consumer: HostReconciler }
     LiveDeployRetractScriptArtifact => CommitRequired { consumer: HostReconciler }
     AutoinstallUserDataArtifact { spec: _ } => NotCommitted
@@ -110,6 +113,7 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
     FleetConvergeArtifact => match b { FleetConvergeArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedDagArtifact => match b { Stage0CrateLayoutGeneratedDagArtifact => true  _ => false }
     Stage0CrateLayoutGeneratedRsArtifact => match b { Stage0CrateLayoutGeneratedRsArtifact => true  _ => false }
+    Stage0CratePartitionGeneratedDagArtifact => match b { Stage0CratePartitionGeneratedDagArtifact => true  _ => false }
     LiveDeployApplyScriptArtifact => match b { LiveDeployApplyScriptArtifact => true  _ => false }
     LiveDeployRetractScriptArtifact => match b { LiveDeployRetractScriptArtifact => true  _ => false }
     AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }

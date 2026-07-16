@@ -11,7 +11,7 @@ import gunbc.commit_workflow {
   project_local_tidy_checks,
   doc_reachability_witness_entry
 }
-import tools.rust_stage0_gates { rust_monolith_suffixes }
+import tools.rust_stage0_gates { rust_monolith_suffixes, path_is_rust_monolith }
 
 data local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
 
@@ -24,8 +24,8 @@ data generated_artifact_drift_gate_wet_fn: String = "main_wet"
 data githooks_pre_push_emit_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
-    module_path: "extdeps.languages.bash.program",
-    decl_name: "serialize_bash",
+    module_path: "gunbc.githooks_pre_push_emit",
+    decl_name: "expected_githooks_pre_push_sh",
     field: WholeDeclaration
   }
 }
@@ -65,6 +65,28 @@ fn local_tidy_trigger_globs(check: LocalTidyCheck) -> List<String> {
     LocalTidyWitnessCheck { entry: _, check_fns: _ } => doc_reachability_trigger_globs()
     LocalTidyGateCheck { gate: _ } => generated_artifact_trigger_globs()
     LocalTidyCargoFmtCheck => cargo_fmt_trigger_globs()
+  }
+}
+
+fn local_tidy_path_matches_glob(path: String, glob: String) -> Bool {
+  if ends_with(s: glob, suffix: "/*") {
+    let prefix = substring(s: glob, start: 0, end: length(glob) - 1)
+    starts_with(s: path, prefix: prefix)
+  } else if starts_with(s: glob, prefix: "*") {
+    let suffix = substring(s: glob, start: 1, end: length(glob))
+    ends_with(s: path, suffix: suffix)
+  } else {
+    starts_with(s: path, prefix: glob)
+  }
+}
+
+fn local_tidy_path_matches_trigger(path: String, check: LocalTidyCheck) -> Bool {
+  match check {
+    LocalTidyCargoFmtCheck => path_is_rust_monolith(path: path)
+    _ => any(
+      local_tidy_trigger_globs(check: check),
+      g => local_tidy_path_matches_glob(path: path, glob: g)
+    )
   }
 }
 
