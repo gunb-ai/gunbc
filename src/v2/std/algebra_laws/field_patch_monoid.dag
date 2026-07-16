@@ -27,7 +27,7 @@ fn fp_ok(b: Bool) -> Node {
 
 fn fp_monoid_op(left: FieldPatch<Bool>, right: FieldPatch<Bool>) -> FieldPatch<Bool> {
   let m = field_patch_monoid()
-  m.semigroup.magma.op(left, right)
+  m.op(left, right)
 }
 fn fp_monoid_identity() -> FieldPatch<Bool> {
   field_patch_monoid().identity
