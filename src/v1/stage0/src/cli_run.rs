@@ -4656,7 +4656,9 @@ fn reconcile_with_typed_cache(
         }
     }
 
-    if global_bare_receipt_instrumentation_active() {
+    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok()
+        || std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok()
+    {
         v1_compiler_infer::eprint_merge_global_bare_per_module_receipt(closure_modules.len());
     }
 
