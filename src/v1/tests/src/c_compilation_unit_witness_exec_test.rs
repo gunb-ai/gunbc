@@ -15,13 +15,12 @@ fn c_compilation_unit_witnesses_green_by_execution() {
         .join("src/v2/test/claim/c_compilation_unit_witness_test.dag")
         .to_string_lossy()
         .into_owned();
-    let (graph, si) = resolve_entry_graph(&roots, entry).expect("resolve c witness entry");
+    let (graph, si) = resolve_entry_graph(&roots, &entry).expect("resolve c witness entry");
     let ctx = make_eval_context(&graph, si, ExecutionMode::Hermetic);
+    let outcome = run_claim(&ctx, "c_compilation_unit_witnesses");
     assert!(
-        matches!(
-            run_claim(&ctx, "c_compilation_unit_witnesses"),
-            ClaimOutcome::Pass
-        ),
-        "c_compilation_unit_witnesses must pass by execution"
+        matches!(outcome, ClaimOutcome::Pass),
+        "c_compilation_unit_witnesses must pass by execution, got {:?}",
+        outcome
     );
 }

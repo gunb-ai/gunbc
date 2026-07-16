@@ -183,7 +183,7 @@ fn witness_r3_spelling_from_partition_fold() -> Bool {
         && (spelling.source_path == "cu-one.c")
         && (spelling.object_path == "cu-one.o")
         && (spelling.include_directives == ["#include \"cu-two.h\""])
-        && (spelling.include_closure == [witness_unit_two])
+        && (spelling.include_closure == [witness_unit_one, witness_unit_two])
     Absent => false
   }
 }

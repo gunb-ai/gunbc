@@ -18,7 +18,7 @@ import std.graph {
   dfs_finish_order,
   graph_has_multi_node_scc
 }
-import std.types { String }
+import std.types { String, NonEmptyStr }
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection {
   Absent,
@@ -223,7 +223,7 @@ fn c_graph_scc_components(names: List<String>, graph: CallGraph) -> List<List<St
 }
 
 fn c_graph_name_to_module_id(name: String) -> ModuleId {
-  name as ModuleId
+  name as NonEmptyStr
 }
 
 fn c_module_scc_split_detail(
