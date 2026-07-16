@@ -5624,16 +5624,12 @@ pub fn make_eval_context_with_runtime_options(
     fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
 ) -> v1_interpreter::InterpContext {
-    let census_overlay = census_eval_overlay_for_interp();
     v1_interpreter::InterpContext::with_runtime_options(
         graph,
         source_indices,
         execution_mode,
         fixture_store,
         whole_tree_published_keys,
-        census_overlay.as_ref().map(|o| o.fn_nodes.clone()),
-        census_overlay.as_ref().map(|o| o.item_registry.clone()),
-        census_overlay.as_ref().map(|o| o.variant_parents.clone()),
     )
 }
 
