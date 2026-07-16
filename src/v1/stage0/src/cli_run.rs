@@ -1709,6 +1709,81 @@ pub fn documentation_only_floor_skip_label_for_ci() -> String {
     }
 }
 
+pub const REGEN_AFFECTED_LABEL: &str = "regen_affected";
+pub const REGEN_NOT_AFFECTED_SKIP_LABEL: &str = "regen_not_affected_skip";
+
+/// Pure decision for the CI regen (self-host fixed-point) admission: the fresh stage0
+/// self-compile is a pure function of the regen input closure, so a non-empty merge-base
+/// diff provably disjoint from that closure cannot change `regen_stage0 --verify`'s
+/// outcome and the step skips with a typed disposition (Skipped ≠ Green). Every arm that
+/// cannot prove disjointness runs regen:
+/// - empty diff (main push / cold control / degenerate observation) → run;
+/// - any departed non-docs path → run (a deleted closure member is invisible to the
+///   current-tree closure walk);
+/// - any changed path inside `src/v1/**` (compiler `.dag` entries, the committed stage0
+///   seed `.rs`, the emitter itself), the workspace manifests / toolchain pin, or the
+///   `.dag` import closure `compile_stage0` actually loads → run.
+pub fn regen_affected_decision(
+    changed_paths: &[String],
+    departed_paths: &HashSet<String>,
+    closure_paths: &HashSet<String>,
+) -> String {
+    fn norm(p: &str) -> &str {
+        p.strip_prefix("./").unwrap_or(p)
+    }
+    if changed_paths.is_empty() {
+        return REGEN_AFFECTED_LABEL.to_string();
+    }
+    if departed_paths.iter().any(|p| !norm(p).starts_with("docs/")) {
+        return REGEN_AFFECTED_LABEL.to_string();
+    }
+    let affected = changed_paths.iter().any(|p| {
+        let n = norm(p);
+        n.starts_with("src/v1/")
+            || n == "Cargo.toml"
+            || n == "Cargo.lock"
+            || n.starts_with("rust-toolchain")
+            || closure_paths.contains(n)
+    });
+    if affected {
+        REGEN_AFFECTED_LABEL.to_string()
+    } else {
+        REGEN_NOT_AFFECTED_SKIP_LABEL.to_string()
+    }
+}
+
+/// CI regen admission label for the self-host fixed-point step. Same observation
+/// authority as the floor (`floor_git_diff_name_status_range` over the merge-base);
+/// inactive scoping or a failed observation runs regen (fail-closed, refuse to skip).
+/// `closure_paths` is the caller-computed regen input closure — `regen_stage0` passes
+/// the exact workspace-relative file set its own `compile_stage0` loader reads, so the
+/// closure authority is the loader itself, never a second walk.
+pub fn regen_affected_by_diff_label_for_ci(closure_paths: &HashSet<String>) -> String {
+    if !compile_clean_scoping_active() {
+        eprintln!("regen scope: ci diff scoping inactive — regen runs");
+        return REGEN_AFFECTED_LABEL.to_string();
+    }
+    match floor_git_diff_name_status_range() {
+        Err(msg) => {
+            eprintln!("regen scope: diff observation failed ({msg}) — regen runs (fail-closed)");
+            REGEN_AFFECTED_LABEL.to_string()
+        }
+        Ok((changed_paths, departed_paths)) => {
+            let label = regen_affected_decision(&changed_paths, &departed_paths, closure_paths);
+            if label == REGEN_NOT_AFFECTED_SKIP_LABEL {
+                eprintln!(
+                    "regen scope: {} changed path(s), none inside the regen input closure ({} file(s)) — skip with typed disposition",
+                    changed_paths.len(),
+                    closure_paths.len()
+                );
+            } else {
+                eprintln!("regen scope: diff intersects the regen input closure — regen runs");
+            }
+            label
+        }
+    }
+}
+
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     if !compile_clean_scoping_active() {
         eprintln!("compile-clean scope: whole-tree (ci diff scoping inactive)");

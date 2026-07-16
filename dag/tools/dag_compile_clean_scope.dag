@@ -255,17 +255,23 @@ fn touched_path_disposition_matches_with_roster(
   }
 }
 
+data scope_disposition_witness_roster: List<String> = [
+  "dag/std/logic.dag",
+  "dag/test/claim/parse_test.dag"
+]
+
+data scope_disposition_witness_roster_note: String = "Pinned two-entry REAL roster for the disposition-row witness, not compile_clean_shard_entry_paths(): the interpreted entry_affected_by_touched_paths fold over the ~2k-entry live roster costs ~100s and multi-GB under the Wet interpreter (OOM-kill class in the witness corpus), and the live-roster selection is already proven by execution on the host-realized floor fast path (entry_file_touched_via_import_closure — certified against v2.lens.module_graph by the module-grain receipt harness, exercised by floor_fast_plan_scopes_touched_dag_entry_via_import_closure and every non-docs PR floor run). This witness proves the DISPOSITION LOGIC per arm on real entries; the two entries cover self-selection (dag/std/logic.dag) and cross-root selection (src/v2 module reached from a dag test entry)."
+
 fn touched_path_disposition_matches(row: ScopeDispositionRow) -> Bool {
   touched_path_disposition_matches_with_roster(
     row: row,
-    roster: compile_clean_shard_entry_paths()
+    roster: scope_disposition_witness_roster
   )
 }
 
 fn witness_touched_path_dispositions_hold() -> Bool {
-  let roster = compile_clean_shard_entry_paths()
   fold(scope_disposition_rows, init: true, f: fn(acc, row) {
-    acc && touched_path_disposition_matches_with_roster(row: row, roster: roster)
+    acc && touched_path_disposition_matches_with_roster(row: row, roster: scope_disposition_witness_roster)
   })
 }
 
