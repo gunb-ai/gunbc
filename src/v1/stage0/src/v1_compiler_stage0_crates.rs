@@ -1081,17 +1081,6 @@ pub fn stage0_crate_boundary_emit_outcome() -> Rc<Stage0CrateBoundaryEmitOutcome
     }
 }
 
-pub fn stage0_crate_boundary_files() -> Rc<Vec<Rc<TextFile>>> {
-    match (*stage0_crate_boundary_emit_outcome()).clone() {
-        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk { files: files, .. } => {
-            files.clone()
-        }
-        Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused { cause: _, .. } => {
-            Rc::new(vec![])
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FoundationCrate;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
