@@ -1,0 +1,66 @@
+module v2.test.emit.semantic_decl_rules_parity_test
+
+import v2.compiler.translate {
+  grammar_relation_row_for_emitted,
+  grammar_relation_row_tokens_root
+}
+import v2.extdeps.languages.rust {
+  rust_enum_general_decl_productions_only_translation_rules,
+  rust_target_model
+}
+import v2.std.compilers.semantic_decl_emission {
+  semantic_decl_emission_from_target,
+  target_semantic_enum_surface_from_coproduct
+}
+import v2.std.compilers.target_model { concrete_syntax_token_list_from_node }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Disj, Edge, Named, Node, SyntheticOccurrence, Symbol, TypeNode }
+import std.algebra { Empty }
+
+fn bool_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      Edge { label: Named { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
+      Edge { label: Named { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn tokens_for_rules(surface: Node, rules: Node) -> Bool {
+  match grammar_relation_row_for_emitted(rules: rules, emitted: surface) {
+    Accepted { value: row, diagnostics: _ } =>
+      match grammar_relation_row_tokens_root(row: row) {
+        Accepted { value: tokens_root, diagnostics: _ } =>
+          match concrete_syntax_token_list_from_node(list_node: tokens_root) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
+  match semantic_decl_emission_from_target(target: rust_target_model()) {
+    Accepted { value: emission, diagnostics: _ } =>
+      match target_semantic_enum_surface_from_coproduct(
+        projection: emission.surface,
+        name: ^Bool,
+        params: Empty,
+        coproduct: bool_coproduct()
+      ) {
+        Accepted { value: surface, diagnostics: _ } =>
+          tokens_for_rules(surface: surface, rules: emission.enum_translation_rules)
+            && tokens_for_rules(
+              surface: surface,
+              rules: rust_enum_general_decl_productions_only_translation_rules()
+            )
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
