@@ -50,4 +50,8 @@ data namespace_homonym_triage_tier2_rows: List<AmbiguousNameTriageRow> = [
   }
 ]
 
-data namespace_homonym_triage_tier2_dissolve_trigger: String = "Dissolve when the namespace homonym triage roster is folded into a single std authority (rows consumed by Wave-0 (c) qualify work and §3 fork consolidation lanes) and this interim tier-2 carrier is redundant."
+data namespace_homonym_triage_tier2_dissolve_trigger: String = "Dissolve when the namespace homonym triage roster is folded into a single std authority (rows consumed by Wave-0 (c) qualify work and §3 fork consolidation lanes), this interim tier-2 carrier is redundant, and the seed-retained census probe below is deleted."
+
+data namespace_homonym_triage_tier2_census_probe_path: String = "src/v1/tests/src/global_bare_corpus_census_test.rs"
+
+data namespace_homonym_triage_tier2_census_probe_note: String = "bind: src/v1/tests/src/global_bare_corpus_census_test.rs — seed-retained diagnostic probe for tier-2 triage receipts (not witness-enrolled, not a regression gate; module header states diagnostic-only). `corpus_ambiguous_roster` and `corpus_census_state_of_failing_names` print histograms/rosters for human sizing; dissolve-on: namespace_homonym_triage_tier2_dissolve_trigger (roster owned by namespace lane single authority)."

@@ -6,6 +6,12 @@
 //! Diagnostic instrument only — these tests print histograms/rosters via eprintln/println
 //! and do not assert census shape beyond `sources.is_empty()`. They are not enrolled as
 //! regression gates; a census logic regression would pass silently until a human reads output.
+//!
+//! SEED-RETAINED diagnostic probe (DESIGN §7): bind
+//! `dag/gunbc/plans/namespace_homonym_triage_tier2.dag`
+//! (`namespace_homonym_triage_tier2_census_probe_note`). Dissolve-on: when
+//! `namespace_homonym_triage_tier2_dissolve_trigger` fires and roster sizing is owned
+//! by the namespace lane's single authority — delete this module.
 
 use std::rc::Rc;
 
