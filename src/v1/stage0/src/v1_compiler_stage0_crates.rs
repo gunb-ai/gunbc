@@ -72,6 +72,15 @@ pub fn stage0_crate_plan_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn stage0_crate_plan_list_wrapper_dissolve_on() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn stage0_crate_allow_block() -> String {
     Rc::new(vec![
         "#![allow(".to_string(),
@@ -1014,17 +1023,6 @@ pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
             }
         },
     )
-}
-
-pub fn stage0_crate_plan() -> Rc<Stage0CratePlan> {
-    match (*stage0_crate_plan_outcome()).clone() {
-        Stage0CratePlanOutcome::Stage0CratePlanOk { plan: plan, .. } => plan.clone(),
-        Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: _, .. } => {
-            Rc::new(Stage0CratePlan {
-                crates: Rc::new(vec![]),
-            })
-        }
-    }
 }
 
 pub fn emit_stage0_crate_boundary_files_outcome(
