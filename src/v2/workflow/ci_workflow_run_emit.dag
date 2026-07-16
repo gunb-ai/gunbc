@@ -1,0 +1,155 @@
+module v2.workflow.ci_workflow_run_emit
+
+import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_step }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  Do,
+  DiscardAll,
+  ExitZero,
+  FailFast,
+  If,
+  Pipeline,
+  PipelineStep,
+  Predicate,
+  RedirectSpec,
+  Run
+}
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected, None, Some }
+
+data ci_workflow_run_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ ci_workflow run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
+
+data ci_isolate_rm_rustup_cargo_command: String = "rm -rf \"$RUNNER_TEMP/rustup\" \"$RUNNER_TEMP/cargo\""
+
+data ci_isolate_echo_home_command: String = "echo \"HOME=$RUNNER_TEMP\" >> \"$GITHUB_ENV\""
+
+data ci_isolate_echo_cargo_home_command: String = "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\""
+
+data ci_isolate_echo_rustup_home_command: String = "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\""
+
+data ci_isolate_echo_makeflags_command: String = "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\""
+
+data ci_isolate_sccache_stats_command: String = "sccache --show-stats"
+
+data ci_isolate_echo_rustc_wrapper_command: String = "echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\""
+
+data ci_isolate_echo_cargo_incremental_command: String = "echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\""
+
+data ci_pin_rustup_default_command: String = "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\""
+
+data ci_pin_rustup_cargo_bin_resolve_command: String = "if [ -x \"$CARGO_HOME/bin/cargo\" ]; then CARGO_BIN=\"$CARGO_HOME/bin/cargo\"; else CARGO_BIN=\"$(command -v cargo || true)\"; fi"
+
+data ci_pin_rustup_cargo_bin_missing_command: String = "if [ -z \"$CARGO_BIN\" ]; then echo \"::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one\"; exit 1; fi"
+
+data ci_pin_rustup_echo_cargo_bin_command: String = "echo \"CARGO_BIN=$CARGO_BIN\" >> \"$GITHUB_ENV\""
+
+fn ci_workflow_run(command: String) -> Run {
+  Run {
+    command: command,
+    env: [],
+    redirect: Absent,
+    capture: Absent
+  }
+}
+
+fn ci_workflow_run_redirect(command: String, redirect: RedirectSpec) -> Run {
+  Run {
+    command: command,
+    env: [],
+    redirect: Present { value: redirect },
+    capture: Absent
+  }
+}
+
+fn ci_workflow_do(command: String) -> PipelineStep {
+  Do { run: ci_workflow_run(command: command) }
+}
+
+fn ci_workflow_exit_zero(command: String) -> Predicate {
+  ExitZero { run: ci_workflow_run(command: command) }
+}
+
+fn ci_workflow_exit_zero_redirect(command: String, redirect: RedirectSpec) -> Predicate {
+  ExitZero { run: ci_workflow_run_redirect(command: command, redirect: redirect) }
+}
+
+fn ci_workflow_run_emit_pipeline(p: Pipeline) -> String {
+  match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried
+        Some { diagnostics: _ } => ci_workflow_run_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => ci_workflow_run_emit_refused_poison
+  }
+}
+
+fn ci_workflow_run_emit_step(s: PipelineStep) -> String {
+  match orch_emit_step(s: s, medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried
+        Some { diagnostics: _ } => ci_workflow_run_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => ci_workflow_run_emit_refused_poison
+  }
+}
+
+fn ci_isolate_cargo_build_jobs_command(build_jobs_count: Int) -> String {
+  concat(
+    "echo \"CARGO_BUILD_JOBS=",
+    concat(to_string(build_jobs_count), "\" >> \"$GITHUB_ENV\"")
+  )
+}
+
+fn ci_isolate_sccache_if_step() -> PipelineStep {
+  If {
+    cond: ci_workflow_exit_zero_redirect(
+      command: ci_isolate_sccache_stats_command,
+      redirect: DiscardAll
+    ),
+    then_: Pipeline {
+      steps: [
+        ci_workflow_do(command: ci_isolate_echo_rustc_wrapper_command),
+        ci_workflow_do(command: ci_isolate_echo_cargo_incremental_command)
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_workflow_do(command: ci_isolate_rm_rustup_cargo_command),
+      ci_workflow_do(command: ci_isolate_echo_home_command),
+      ci_workflow_do(command: ci_isolate_echo_cargo_home_command),
+      ci_workflow_do(command: ci_isolate_echo_rustup_home_command),
+      ci_workflow_do(command: ci_isolate_echo_makeflags_command),
+      ci_workflow_do(command: ci_isolate_cargo_build_jobs_command(build_jobs_count: build_jobs_count)),
+      ci_isolate_sccache_if_step()
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_isolate_toolchain_script(build_jobs_count: Int) -> String {
+  ci_workflow_run_emit_pipeline(p: ci_isolate_toolchain_intent(build_jobs_count: build_jobs_count))
+}
+
+fn ci_pin_rustup_default_intent() -> Pipeline {
+  Pipeline {
+    steps: [
+      ci_workflow_do(command: ci_pin_rustup_default_command),
+      ci_workflow_do(command: ci_pin_rustup_cargo_bin_resolve_command),
+      ci_workflow_do(command: ci_pin_rustup_cargo_bin_missing_command),
+      ci_workflow_do(command: ci_pin_rustup_echo_cargo_bin_command)
+    ],
+    on_failure: FailFast
+  }
+}
+
+fn ci_pin_rustup_default_script() -> String {
+  ci_workflow_run_emit_pipeline(p: ci_pin_rustup_default_intent())
+}

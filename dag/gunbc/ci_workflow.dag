@@ -32,6 +32,10 @@ import v2.workflow.ci_floor_peak_emit {
   ci_floor_peak_pre_script,
   ci_floor_peak_post_script
 }
+import v2.workflow.ci_workflow_run_emit {
+  ci_isolate_toolchain_script,
+  ci_pin_rustup_default_script
+}
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
@@ -78,25 +82,7 @@ fn ci_isolate_toolchain_step() -> Step {
   RunStep {
     name: Present { value: "Isolate toolchain dirs" },
     id: none,
-    run: concat(
-      concat(
-        concat(
-          concat(
-            "rm -rf \"$RUNNER_TEMP/rustup\" \"$RUNNER_TEMP/cargo\"\n",
-            "echo \"HOME=$RUNNER_TEMP\" >> \"$GITHUB_ENV\"\n"
-          ),
-          concat(
-            "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\n",
-            "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n"
-          )
-        ),
-        concat(
-          "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\"\n",
-          ci_cargo_build_jobs_line()
-        )
-      ),
-      ci_sccache_provider_shell_injection()
-    ),
+    run: ci_isolate_toolchain_script(build_jobs_count: ci_cargo_build_jobs_count()),
     shell: none,
     env: none,
     working_directory: none,
@@ -131,19 +117,7 @@ fn ci_prelude_steps() -> List<Step> {
     RunStep {
       name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
       id: none,
-      run: concat(
-        concat(
-          "rustup default \"$(rustup show active-toolchain | awk '",
-          concat(concat("{", "print $1; exit"), concat("}", "')\""))
-        ),
-        concat(
-          concat(
-            "\nif [ -x \"$CARGO_HOME/bin/cargo\" ]; then CARGO_BIN=\"$CARGO_HOME/bin/cargo\"; else CARGO_BIN=\"$(command -v cargo || true)\"; fi\n",
-            "if [ -z \"$CARGO_BIN\" ]; then echo \"::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one\"; exit 1; fi\n"
-          ),
-          "echo \"CARGO_BIN=$CARGO_BIN\" >> \"$GITHUB_ENV\""
-        )
-      ),
+      run: ci_pin_rustup_default_script(),
       shell: none,
       env: none,
       working_directory: none,
