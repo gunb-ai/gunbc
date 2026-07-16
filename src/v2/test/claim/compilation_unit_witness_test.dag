@@ -328,6 +328,7 @@ test fn compilation_unit_witnesses() -> Bool {
     && witness_unit_two_interface_includes_by_value_type_def()
     && witness_interface_closure_saturates_on_triangle()
     && witness_partition_fold_outcome_refuses_zero_closure_fuel()
+    && witness_single_unit_partition_has_no_cross_unit_deps()
     && witness_intra_unit_edges_do_not_become_deps()
     && witness_fold_deps_match_boundary_edges_two_unit()
     && witness_fold_deps_match_boundary_edges_single_unit()
