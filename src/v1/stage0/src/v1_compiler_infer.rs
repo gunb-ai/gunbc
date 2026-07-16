@@ -175,150 +175,7 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::cell::{Cell, RefCell};
 use std::rc::Rc;
-
-// SCAFFOLD (§7 seed-retained HAND-RUST — authority: sleek-wolf-190 global_bare cost-shape receipt;
-// receipt: PR #6743 / quiet-gull-833 defork blowup investigation).
-// 🟡 dissolve-on: cost-shape receipt landed (located root + n-vs-time growth curve on bounded
-// corpus); namespace unblock lands cost fix then de-fork from defork-preserve-quiet-gull-833.
-// DELETE WHEN dissolved: `MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS`, `take_merge_global_bare_variant_key_scans`.
-// Receipt: `rg MERGE_GLOBAL_BARE_VARIANT_KEY_SCAN_SCAFFOLD_MARKER src/v1/stage0/src/v1_compiler_infer.rs` == 1
-// until deletion; not a compiler_frontier `.dag` row (seed-Rust diagnostic, counted here).
-pub(crate) const MERGE_GLOBAL_BARE_VARIANT_KEY_SCAN_SCAFFOLD_MARKER: &str =
-    "merge_global_bare_variant_key_scan_counter";
-
-thread_local! {
-    static MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS: Cell<usize> = const { Cell::new(0) };
-    static MERGE_GLOBAL_BARE_PER_MODULE_SCANS: RefCell<std::vec::Vec<(String, usize, usize)>> =
-        RefCell::new(std::vec::Vec::new());
-}
-
-fn global_bare_receipt_instrumentation_active() -> bool {
-    std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok()
-        || std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok()
-}
-
-fn record_merge_global_bare_variant_key_scans(key_count: usize) {
-    if !global_bare_receipt_instrumentation_active() {
-        return;
-    }
-    MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
-        c.set(c.get() + key_count);
-    });
-}
-
-fn record_merge_global_bare_per_module_scan(
-    module_name: String,
-    keys_visited: usize,
-    has_child_named_calls: usize,
-) {
-    if !global_bare_receipt_instrumentation_active() {
-        return;
-    }
-    MERGE_GLOBAL_BARE_PER_MODULE_SCANS.with(|rows| {
-        rows.borrow_mut()
-            .push((module_name, keys_visited, has_child_named_calls));
-    });
-}
-
-pub fn take_merge_global_bare_per_module_scans() -> std::vec::Vec<(String, usize, usize)> {
-    MERGE_GLOBAL_BARE_PER_MODULE_SCANS.with(|rows| {
-        let out = rows.borrow().clone();
-        rows.borrow_mut().clear();
-        out
-    })
-}
-
-pub fn eprint_merge_global_bare_per_module_receipt(module_count: usize) {
-    if !global_bare_receipt_instrumentation_active() {
-        return;
-    }
-    let rows = take_merge_global_bare_per_module_scans();
-    if rows.is_empty() {
-        return;
-    }
-    let mut keys_per_module: std::vec::Vec<usize> = rows.iter().map(|(_, k, _)| *k).collect();
-    keys_per_module.sort_unstable();
-    let min_k = keys_per_module.first().copied().unwrap_or(0);
-    let max_k = keys_per_module.last().copied().unwrap_or(0);
-    let total_has_child: usize = rows.iter().map(|(_, _, h)| h).sum();
-    let mode = if std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok() {
-        "baseline_legacy"
-    } else {
-        "precomputed_merge"
-    };
-    eprintln!(
-        "[global-bare-receipt] mode={mode} M={module_count} modules_scanned={} \
-         keys_per_module min={min_k} max={max_k} constant_k={} total_has_child_named={total_has_child}",
-        rows.len(),
-        min_k == max_k,
-    );
-    for (name, keys, has_child) in rows.iter().take(20) {
-        eprintln!(
-            "[global-bare-receipt] module={name} keys_visited={keys} has_child_named_calls={has_child}"
-        );
-    }
-    if rows.len() > 20 {
-        eprintln!(
-            "[global-bare-receipt] ... {} more module row(s) omitted",
-            rows.len() - 20
-        );
-    }
-}
-
-/// Poor-man's profiler receipt: Σ map_keys(precomputed) iterations per reconcile pass.
-pub fn take_merge_global_bare_variant_key_scans() -> usize {
-    MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
-        let n = c.get();
-        c.set(0);
-        n
-    })
-}
-
-/// True when any global_bare diagnostic reconcile env is active (receipt + §5 refusal surface).
-pub fn global_bare_diagnostic_reconcile_active() -> bool {
-    global_bare_receipt_instrumentation_active()
-}
-
-/// §5 factory model: diagnostic env surfaces print their receipt then refuse green resolve.
-/// `precomputed_variant_locals_key_count` is required for the Q2 bisect receipt line only.
-pub fn finish_global_bare_diagnostic_reconcile_refusal(
-    module_count: usize,
-    precomputed_variant_locals_key_count: Option<usize>,
-) -> Result<(), String> {
-    if !global_bare_diagnostic_reconcile_active() {
-        return Ok(());
-    }
-    eprint_merge_global_bare_per_module_receipt(module_count);
-    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok() {
-        let scans = take_merge_global_bare_variant_key_scans();
-        eprintln!(
-            "[global-bare-q2-bisect] mode={} merge_global_bare_variant_key_scans={scans} \
-             variant_locals_keys={}",
-            std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").unwrap_or_else(|_| "all".to_string()),
-            precomputed_variant_locals_key_count.unwrap_or(0),
-        );
-        return Err(
-            "GUNBC_GLOBAL_BARE_Q2_BISECT: diagnostic bisect subset-filtered global_bare per module; \
-             refusing green resolve after receipt (DESIGN §5 — diagnostic modes report, never green starved inputs)"
-                .to_string(),
-        );
-    }
-    if std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok() {
-        let scans = take_merge_global_bare_variant_key_scans();
-        eprintln!(
-            "[global-bare-receipt] baseline_legacy merge_global_bare_variant_key_scans={scans}"
-        );
-        return Err(
-            "GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE: replayed legacy per-module global_bare fold \
-             for cost-shape receipt; refusing green resolve after receipt (DESIGN §5 — diagnostic \
-             modes report, never green starved inputs)"
-                .to_string(),
-        );
-    }
-    Ok(())
-}
 
 pub fn is_witness_type_name(name: String) -> bool {
     ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string()))
@@ -12896,12 +12753,12 @@ pub fn build_global_bare_variant_locals(
                 binding: binding, ..
             }) => {
                 let owner = binding.resolved.clone();
-                if (owner.connective.clone() == Connective::Disj)
-                    && has_child_named(owner.clone(), name.clone(), source_indices.clone())
+                if ((owner.connective.clone() == Connective::Disj)
+                    && has_child_named(owner.clone(), name.clone(), source_indices.clone()))
                 {
                     match v1_rt::map_get(&acc, name.clone()) {
                         Some(_) => acc.clone(),
-                        None => v1_rt::rc_map_insert(acc, name.clone(), binding.clone()),
+                        None => v1_rt::rc_map_insert(acc.clone(), name.clone(), binding.clone()),
                     }
                 } else {
                     acc.clone()
@@ -14706,92 +14563,25 @@ pub fn merge_global_bare_variant_locals(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_name: String,
 ) -> Rc<VariantFoldState> {
-    let keys = Rc::new(v1_rt::map_keys(&precomputed));
-    let key_count = keys.len();
-    record_merge_global_bare_variant_key_scans(key_count);
-    record_merge_global_bare_per_module_scan(module_name.clone(), key_count, 0);
-    keys.iter()
-        .cloned()
-        .fold(
-            state.clone(),
-            |acc: Rc<VariantFoldState>, name: String| match v1_rt::map_get(
-                &acc.locals.clone(),
-                name.clone(),
-            ) {
-                Some(_) => acc.clone(),
-                None => match v1_rt::map_get(&precomputed, name.clone()) {
-                    Some(binding) => insert_variant_owner_checked(
-                        acc.clone(),
-                        name.clone(),
-                        binding.resolved.clone(),
-                        source_indices.clone(),
-                        module_name.clone(),
-                    ),
-                    None => acc.clone(),
-                },
-            },
-        )
-}
-
-/// Defork-preserve baseline for receipt only: fold full `global_bare` per module with
-/// `has_child_named` inside the loop (the redundant-recomputation path under test).
-fn merge_global_bare_variant_locals_baseline_legacy(
-    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    state: Rc<VariantFoldState>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_name: String,
-) -> Rc<VariantFoldState> {
-    let keys = Rc::new(v1_rt::map_keys(&global_bare));
-    let key_count = keys.len();
-    let has_child_named_calls = Cell::new(0usize);
-    record_merge_global_bare_variant_key_scans(key_count);
-    let folded =
-        keys.iter()
-            .cloned()
-            .fold(
-                state.clone(),
-                |acc: Rc<VariantFoldState>, name: String| match v1_rt::map_get(
-                    &global_bare,
+    Rc::new(v1_rt::map_keys(&precomputed)).iter().cloned().fold(
+        state.clone(),
+        |acc: Rc<VariantFoldState>, name: String| match v1_rt::map_get(
+            &acc.locals.clone(),
+            name.clone(),
+        ) {
+            Some(_) => acc.clone(),
+            None => match v1_rt::map_get(&precomputed, name.clone()) {
+                Some(binding) => insert_variant_owner_checked(
+                    acc.clone(),
                     name.clone(),
-                ) {
-                    Some(lookup) => match lookup.as_ref() {
-                        GlobalBareLookupState::GlobalBareUniqueBinding { binding } => {
-                            let owner = binding.resolved.clone();
-                            if owner.connective == Disj {
-                                has_child_named_calls.set(has_child_named_calls.get() + 1);
-                                if crate::v1_std_core::has_child_named(
-                                    owner.clone(),
-                                    name.clone(),
-                                    source_indices.clone(),
-                                ) {
-                                    match v1_rt::map_get(&acc.locals.clone(), name.clone()) {
-                                        Some(_) => acc.clone(),
-                                        None => insert_variant_owner_checked(
-                                            acc.clone(),
-                                            name.clone(),
-                                            owner.clone(),
-                                            source_indices.clone(),
-                                            module_name.clone(),
-                                        ),
-                                    }
-                                } else {
-                                    acc.clone()
-                                }
-                            } else {
-                                acc.clone()
-                            }
-                        }
-                        GlobalBareLookupState::GlobalBareAmbiguousBinding => acc.clone(),
-                    },
-                    None => acc.clone(),
-                },
-            );
-    record_merge_global_bare_per_module_scan(
-        module_name.clone(),
-        key_count,
-        has_child_named_calls.get(),
-    );
-    folded
+                    binding.resolved.clone(),
+                    source_indices.clone(),
+                    module_name.clone(),
+                ),
+                None => acc.clone(),
+            },
+        },
+    )
 }
 
 pub fn build_imported_variants(
@@ -14881,29 +14671,19 @@ pub fn build_module_context(
                 collision_errors: Rc::new(vec![]),
             }),
         );
-        let imported = build_imported_variants(
-            resolved_imports.clone(),
-            parent_index.clone(),
-            variant_surfaces.clone(),
+        let variant_fold = merge_global_bare_variant_locals(
+            global_bare_variant_locals.clone(),
+            build_imported_variants(
+                resolved_imports.clone(),
+                parent_index.clone(),
+                variant_surfaces.clone(),
+                env.source_indices.clone(),
+                module_name.clone(),
+                local_variant_fold.clone(),
+            ),
             env.source_indices.clone(),
             module_name.clone(),
-            local_variant_fold.clone(),
         );
-        let variant_fold = if std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok() {
-            merge_global_bare_variant_locals_baseline_legacy(
-                env.global_bare.clone(),
-                imported,
-                env.source_indices.clone(),
-                module_name.clone(),
-            )
-        } else {
-            merge_global_bare_variant_locals(
-                global_bare_variant_locals.clone(),
-                imported,
-                env.source_indices.clone(),
-                module_name.clone(),
-            )
-        };
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
             merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
@@ -16628,28 +16408,19 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
-    reconcile_checked(graph, source_indices, intern_table).unwrap_or_else(|e| panic!("{e}"))
-}
-
-pub fn reconcile_checked(
-    graph: Rc<ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-) -> Result<Rc<ResolvedGraph>, String> {
     {
         let typed = typecheck(graph.clone(), source_indices.clone(), intern_table.clone());
-        finish_global_bare_diagnostic_reconcile_refusal(graph.modules.len(), None)?;
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
         let modules =
             rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         let has_v1_seed = corpus_has_v1_seed_source_indices(modules.clone());
         let emit_info = build_emit_graph_info(modules.clone(), has_v1_seed.clone());
-        Ok(Rc::new(ResolvedGraph {
+        Rc::new(ResolvedGraph {
             modules: modules.clone(),
             item_registry: typed.item_registry.clone(),
             diagnostics: typed.diagnostics.clone(),
             emit_graph_info: emit_info.clone(),
-        }))
+        })
     }
 }
