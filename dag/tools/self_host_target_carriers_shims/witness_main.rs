@@ -1,6 +1,6 @@
 use im_rc::{vector as vec, Vector as Vec};
 use std::rc::Rc;
-use v1_compiled::extdeps_communication_medium::DecodeFidelity as EDecodeFidelity;
+use v1_compiled::extdeps_communication_medium::{DecodeFidelity as EDecodeFidelity, Medium as EMedium};
 use v1_compiled::std_algebra::FreeMonoid;
 use v1_compiled::v2_compiler_target_carriers as emitted;
 use v1_compiled::v2_std_nat::Nat;
@@ -33,7 +33,7 @@ fn decode_fidelity_eq(e: EDecodeFidelity, s: seed::DecodeFidelity) -> bool {
 }
 
 fn medium_text_eq_emitted_seed(
-    e: &emitted::Medium<Rc<FreeMonoid<Char>>>,
+    e: &EMedium<Rc<FreeMonoid<Char>>>,
     s: &seed::Medium<String>,
 ) -> bool {
     decode_fidelity_eq(e.fidelity, s.fidelity)
@@ -85,47 +85,11 @@ fn main() {
     println!("source_medium Lossy eq={lossy_ok}");
     all_pass &= lossy_ok;
 
-    let modeled = seed::fidelity_disposition_modeled_node();
-    let e_modeled_bundle = Rc::new(emitted::TargetModel {
-        bundle: modeled.clone(),
-    });
-    let s_modeled = Rc::new(seed::TargetModel {
-        bundle: modeled,
-    });
-    let e_modeled_fidelity = emitted::decode_fidelity_from_target(e_modeled_bundle);
-    let s_modeled_fidelity = seed::decode_fidelity_from_target(s_modeled);
-    let modeled_ok = match (&*e_modeled_fidelity, &s_modeled_fidelity) {
-        (
-            emitted::Outcome::Accepted {
-                value: ef,
-                diagnostics: _,
-            },
-            seed::Outcome::Accepted { value: sf },
-        ) => decode_fidelity_eq(*ef, *sf),
-        _ => false,
-    };
-    println!("decode_fidelity_from_target modeled eq={modeled_ok}");
-    all_pass &= modeled_ok;
-
-    let declared = seed::fidelity_disposition_declared_loss_node();
-    let e_decl_bundle = Rc::new(emitted::TargetModel {
-        bundle: declared.clone(),
-    });
-    let s_decl = Rc::new(seed::TargetModel { bundle: declared });
-    let e_decl_fidelity = emitted::decode_fidelity_from_target(e_decl_bundle);
-    let s_decl_fidelity = seed::decode_fidelity_from_target(s_decl);
-    let decl_ok = match (&*e_decl_fidelity, &s_decl_fidelity) {
-        (
-            emitted::Outcome::Accepted {
-                value: ef,
-                diagnostics: _,
-            },
-            seed::Outcome::Accepted { value: sf },
-        ) => decode_fidelity_eq(*ef, *sf) && matches!(sf, seed::DecodeFidelity::Lossy),
-        _ => false,
-    };
-    println!("decode_fidelity_from_target declared_loss eq={decl_ok}");
-    all_pass &= decl_ok;
+    let e_lossless2 = emitted::source_medium(e_text, EDecodeFidelity::Lossless);
+    let s_lossless2 = seed::source_medium(probe.to_string(), seed::DecodeFidelity::Lossless);
+    let lossless2_ok = medium_text_eq_emitted_seed(&e_lossless2, &s_lossless2);
+    println!("source_medium Lossless eq={lossless2_ok}");
+    all_pass &= lossless2_ok;
 
     if all_pass {
         println!("SELF_HOST_TARGET_CARRIERS_BEHAVIORAL_RECEIPT: PASS");

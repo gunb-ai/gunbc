@@ -5,7 +5,7 @@
 
 use crate::usv_pilot_v2_std_node::{
     named_edge_target_lookup, node_synthetic, Connective, Edge, EdgeLabel, NamedEdgeTargetLookup,
-    Node, NodeKind, Symbol,
+    Node, NodeKind,
 };
 use im_rc::{vector as vec, Vector as Vec};
 use std::rc::Rc;
@@ -23,19 +23,19 @@ pub struct Medium<T> {
     pub fidelity: DecodeFidelity,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TargetModel {
     pub bundle: Rc<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OptionalNode {
     Absent,
     Present { value: Rc<Node> },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Outcome<T> {
     Accepted { value: T },
@@ -60,7 +60,7 @@ fn decode_fidelity_merge(left: DecodeFidelity, right: DecodeFidelity) -> DecodeF
     }
 }
 
-fn fidelity_disposition_node_has_named_kind(root: Rc<Node>, name: Symbol) -> bool {
+fn fidelity_disposition_node_has_named_kind(root: Rc<Node>, name: String) -> bool {
     match &*named_edge_target_lookup(root.children.clone(), name) {
         NamedEdgeTargetLookup::Found { .. } => true,
         _ => false,
