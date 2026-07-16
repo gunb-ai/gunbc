@@ -59,23 +59,15 @@ data c_r4_permissive_linkage_note: String = "C R4: permissive on module-SCC spli
 
 data c_by_value_type_cycle_detail: String = "incomplete by-value type containment cycle across partition units"
 
-data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes partition_fold_outcome). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback)."
+data c_by_value_type_ambiguous_identity_detail: String = "ambiguous type identity across modules for by-value R4 lookup"
 
-type CPartitionFold
-  = CPartitionFoldOk { units: List<CompilationUnit> }
-  | CPartitionFoldRefused { outcome: PartitionFoldOutcome }
+data c_partition_fold_outcome_note: String = "C callers requiring receipt-bearing partition results MUST use c_partition_fold_outcome (routes partition_fold_outcome from home). Never treat partition_fold() -> [] as a refusal signal — that compat wrapper collapses PartitionFoldRefused to [] (§5 absorbing-fallback). Returns PartitionFoldOutcome directly — no parallel C-local coproduct."
 
 fn c_partition_fold_outcome(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>
-) -> CPartitionFold {
-  match partition_fold_outcome(module_dag: module_dag, assignment: assignment) {
-    PartitionFoldOk { units: units } => CPartitionFoldOk { units: units }
-    PartitionFoldRefused { cause: cause } =>
-      CPartitionFoldRefused {
-        outcome: PartitionFoldRefused { cause: cause },
-      }
-  }
+) -> PartitionFoldOutcome {
+  partition_fold_outcome(module_dag: module_dag, assignment: assignment)
 }
 
 type CTranslationUnitSpelling {
@@ -235,6 +227,11 @@ type CByValueTypeEdge {
   to: CTypeOwner
 }
 
+type CTypeOwnerLookup
+  = CTypeOwnerFound { owner: CTypeOwner }
+  | CTypeOwnerAbsent
+  | CTypeOwnerAmbiguous { identity: Symbol }
+
 fn c_type_owner_eq(left: CTypeOwner, right: CTypeOwner) -> Bool {
   left.module == right.module && left.identity == right.identity
 }
@@ -305,33 +302,39 @@ fn c_type_owner_for_symbol_in_module(
   )
 }
 
+fn c_type_owner_singleton_match(
+  owners: List<CTypeOwner>,
+  sym: Symbol
+) -> CTypeOwnerLookup {
+  fold_list(
+    xs: owners,
+    empty: CTypeOwnerAbsent,
+    cons: fn(acc, owner) {
+      if owner.identity != sym {
+        acc
+      } else {
+        match acc {
+          CTypeOwnerAbsent => CTypeOwnerFound { owner: owner }
+          CTypeOwnerFound { owner: _ } => CTypeOwnerAmbiguous { identity: sym }
+          CTypeOwnerAmbiguous { identity: _ } => acc
+        }
+      }
+    }
+  )
+}
+
 fn c_type_owner_for_symbol(
   owners: List<CTypeOwner>,
   home_module: ModuleId,
   sym: Symbol
-) -> Optional<CTypeOwner> {
+) -> CTypeOwnerLookup {
   match c_type_owner_for_symbol_in_module(
     owners: owners,
     module: home_module,
     sym: sym
   ) {
-    Present { value: owner } => Present { value: owner }
-    Absent =>
-      fold_list(
-        xs: owners,
-        empty: Absent,
-        cons: fn(acc, owner) {
-          match acc {
-            Present { value: _ } => acc
-            Absent =>
-              if owner.identity == sym {
-                Present { value: owner }
-              } else {
-                Absent
-              }
-          }
-        }
-      )
+    Present { value: owner } => CTypeOwnerFound { owner: owner }
+    Absent => c_type_owner_singleton_match(owners: owners, sym: sym)
   }
 }
 
@@ -371,7 +374,7 @@ fn c_by_value_type_edges(
                 home_module: owner.module,
                 sym: sym
               ) {
-                Present { value: target } =>
+                CTypeOwnerFound { owner: target } =>
                   inner
                     |> list_push(
                       CByValueTypeEdge {
@@ -379,10 +382,45 @@ fn c_by_value_type_edges(
                         to: target,
                       }
                     )
-                Absent => inner
+                CTypeOwnerAbsent => inner
+                CTypeOwnerAmbiguous { identity: _ } => inner
               }
             })
         Absent => acc
+      }
+    })
+}
+
+fn c_by_value_type_identity_resolution_refusal(
+  module_dag: ModuleDag,
+  owners: List<CTypeOwner>
+) -> Optional<String> {
+  owners
+    |> fold(init: Absent, f: fn(acc, owner) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match c_type_definition_for_owner(module_dag: module_dag, owner: owner) {
+            Present { value: defn } =>
+              c_type_atoms_by_value_in_node(node: defn)
+                |> fold(init: Absent, f: fn(inner_acc, sym) {
+                  match inner_acc {
+                    Present { value: _ } => inner_acc
+                    Absent =>
+                      match c_type_owner_for_symbol(
+                        owners: owners,
+                        home_module: owner.module,
+                        sym: sym
+                      ) {
+                        CTypeOwnerAmbiguous { identity: _ } =>
+                          Present { value: c_by_value_type_ambiguous_identity_detail }
+                        CTypeOwnerFound { owner: _ } => Absent
+                        CTypeOwnerAbsent => Absent
+                      }
+                  }
+                })
+            Absent => Absent
+          }
       }
     })
 }
@@ -488,12 +526,20 @@ fn c_partition_by_value_type_cycle_cause(
 ) -> Optional<String> {
   let _ = units
   let owners = c_all_type_owners(module_dag: module_dag)
-  let edges = c_by_value_type_edges(module_dag: module_dag, owners: owners)
-  c_find_by_value_type_cycle_detail(
-    edges: edges,
-    assignment: assignment,
+  match c_by_value_type_identity_resolution_refusal(
+    module_dag: module_dag,
     owners: owners
-  )
+  ) {
+    Present { value: detail } => Present { value: detail }
+    Absent => {
+      let edges = c_by_value_type_edges(module_dag: module_dag, owners: owners)
+      c_find_by_value_type_cycle_detail(
+        edges: edges,
+        assignment: assignment,
+        owners: owners
+      )
+    }
+  }
 }
 
 fn c_validate_partition_r4(
