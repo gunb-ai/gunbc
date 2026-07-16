@@ -109,7 +109,7 @@ fn runnable_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => corpus_sentinel
-    RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => "__kernel_workload__"
   }
 }
 
@@ -171,7 +171,7 @@ fn runnable_is_heavy_discovery(r: Runnable) -> Bool {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
       runnable_heavy_whole_tree_resolve(profile: p)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => false
   }
 }
 
@@ -292,7 +292,7 @@ fn discovery_batch_declares_hermetic(r: Runnable) -> Bool {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
       execution_mode_eq(left: p.execution_mode, right: Hermetic)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => false
   }
 }
 
@@ -324,7 +324,7 @@ fn discovery_batch_declares_wet(r: Runnable) -> Bool {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
       execution_mode_eq(left: p.execution_mode, right: Wet)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => false
   }
 }
 
@@ -336,7 +336,7 @@ fn falsifier_predict_only_batch_holds(r: Runnable) -> Bool {
         && (length(xs: dirs) == 2)
         && execution_mode_eq(left: p.execution_mode, right: Hermetic)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => false
   }
 }
 
@@ -353,7 +353,7 @@ fn falsifier_self_host_wet_batch_holds(r: Runnable) -> Bool {
         && discovery_batch_declares_wet(r: r)
         && p.spawns_host_compiler
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => false
   }
 }
 

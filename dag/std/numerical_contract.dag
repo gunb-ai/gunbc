@@ -10,11 +10,16 @@ type FmaContractionPolicy
   = FmaContractionPermitted
   | FmaContractionRefused
 
+type ReductionOrderPolicy
+  = ReductionOrderPermitted
+  | ReductionOrderRefused
+
 type NumericalContract
   = IntegerExact
   | FloatApproximate {
       rounding: RoundingMode
       fma_contraction: FmaContractionPolicy
+      reduction_order: ReductionOrderPolicy
     }
 
 fn integer_exact_contract() -> NumericalContract {
@@ -25,8 +30,21 @@ fn float_contract(
   rounding: RoundingMode,
   fma: FmaContractionPolicy
 ) -> NumericalContract {
+  float_contract_with_reduction(
+    rounding: rounding,
+    fma: fma,
+    reduction: ReductionOrderRefused
+  )
+}
+
+fn float_contract_with_reduction(
+  rounding: RoundingMode,
+  fma: FmaContractionPolicy,
+  reduction: ReductionOrderPolicy
+) -> NumericalContract {
   FloatApproximate {
     rounding: rounding
     fma_contraction: fma
+    reduction_order: reduction
   }
 }

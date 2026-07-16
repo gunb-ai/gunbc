@@ -13,6 +13,8 @@ import std.bytes { pure_dag_seam_unreachable }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
+import std.fold_parallelism { FoldParallelism, SerialFold, serial_fold_parallelism }
+
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -29,6 +31,7 @@ type SimdKernelBufferLayout
 type SimdKernelEmitSurface {
   fused_op_count: Int
   buffer_layout: SimdKernelBufferLayout
+  fold_parallelism: FoldParallelism
 }
 
 fn simd_kernel_medium(surface: SimdKernelEmitSurface) -> Medium<SimdKernelEmitSurface> {
@@ -42,6 +45,7 @@ fn simd_relu_mul_add_kernel_surface() -> SimdKernelEmitSurface {
   SimdKernelEmitSurface {
     fused_op_count: 3
     buffer_layout: ContiguousSoa
+    fold_parallelism: serial_fold_parallelism()
   }
 }
 

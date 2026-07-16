@@ -250,6 +250,9 @@ fn witness_effectful_program_execution_refused() -> Bool {
       CarriesEffects => true
       NotElementwisePure => false
       FmaContractionViolatesContract => false
+      ReductionOrderViolatesContract => false
+      AssociativityNotWitnessedForFold => false
+      AssociativityCombineMismatch => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -267,6 +270,9 @@ fn witness_gather_program_execution_refused() -> Bool {
       NotElementwisePure => true
       CarriesEffects => false
       FmaContractionViolatesContract => false
+      ReductionOrderViolatesContract => false
+      AssociativityNotWitnessedForFold => false
+      AssociativityCombineMismatch => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -429,6 +435,9 @@ fn witness_float_fma_fused_kernel_refused_when_contract_refuses() -> Bool {
       FmaContractionViolatesContract => true
       NotElementwisePure => false
       CarriesEffects => false
+      ReductionOrderViolatesContract => false
+      AssociativityNotWitnessedForFold => false
+      AssociativityCombineMismatch => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }

@@ -1,0 +1,69 @@
+module test.claim.accelerator_demo_associative_fold_witness
+
+import gunbc.accelerator_demo_plan {
+  witness_associative_fold_recognized_with_tree_reduce,
+  witness_associative_fold_refused_without_witness,
+  witness_placement_chosen_for_simd_lanes,
+  witness_idle_lane_cost_visible_for_simd_domain,
+}
+import gunbc.accelerator_demo_fold {
+  witness_demo_tree_reduce_derives_from_simd_lanes,
+  witness_demo_serial_fold_at_scalar_lanes,
+  witness_associativity_license_matches_scheduled_combine,
+  witness_associativity_license_rejects_mismatched_combine,
+  witness_not_witnessed_evidence_refuses_license,
+  witness_idle_lane_cost_zero_at_scalar,
+  witness_idle_lane_cost_visible_at_simd,
+}
+import std.numerical_contract {
+  float_contract_with_reduction,
+  FmaContractionRefused,
+  ReductionOrderPermitted,
+  ReductionOrderRefused,
+}
+import std.approximate_field { ToNearestEven }
+import extdeps.communication.numerical_fidelity { decode_fidelity_for_contract }
+import extdeps.communication.medium { Lossless, Lossy }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_float_reduction_order_permitted_maps_to_lossy() -> Bool {
+  let contract = float_contract_with_reduction(
+    rounding: ToNearestEven,
+    fma: FmaContractionRefused,
+    reduction: ReductionOrderPermitted
+  )
+  match decode_fidelity_for_contract(contract: contract) {
+    Lossy => true
+    Lossless => false
+  }
+}
+
+fn witness_float_reduction_order_refused_maps_to_lossless() -> Bool {
+  let contract = float_contract_with_reduction(
+    rounding: ToNearestEven,
+    fma: FmaContractionRefused,
+    reduction: ReductionOrderRefused
+  )
+  match decode_fidelity_for_contract(contract: contract) {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+test fn accelerator_demo_phase4_within_fold_parallelism_witnesses() -> Bool {
+  witness_associativity_license_matches_scheduled_combine()
+    && witness_associativity_license_rejects_mismatched_combine()
+    && witness_not_witnessed_evidence_refuses_license()
+    && witness_demo_tree_reduce_derives_from_simd_lanes()
+    && witness_demo_serial_fold_at_scalar_lanes()
+    && witness_idle_lane_cost_zero_at_scalar()
+    && witness_idle_lane_cost_visible_at_simd()
+    && witness_associative_fold_recognized_with_tree_reduce()
+    && witness_associative_fold_refused_without_witness()
+    && witness_placement_chosen_for_simd_lanes()
+    && witness_idle_lane_cost_visible_for_simd_domain()
+    && witness_float_reduction_order_permitted_maps_to_lossy()
+    && witness_float_reduction_order_refused_maps_to_lossless()
+}

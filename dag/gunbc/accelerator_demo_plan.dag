@@ -1,7 +1,7 @@
 module gunbc.accelerator_demo_plan
 
-import std.types { Bool, String, Int, NonEmptyStr }
-import std.measure { Nano }
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.measure { Nano, HardwareThreadCount, hardware_thread_count_value }
 import std.effects { ReadEffect }
 import std.realization {
   Placement,
@@ -21,6 +21,32 @@ import std.realization_schedule {
   Schedule,
   CostAccount,
   cost_account_predicted_zero,
+  runnable_kernel_workload_elementwise,
+  runnable_kernel_workload_associative_fold,
+}
+import std.decl_ref { DeclarationRef }
+import std.associativity_evidence {
+  AssociativityEvidence,
+  AssociativityLicenseVerdict,
+  AssociativityLicenseGranted,
+  AssociativityLicenseMissing,
+  AssociativityLicenseMismatch,
+  associativity_license_verdict,
+  associativity_evidence_not_witnessed,
+}
+import std.fold_parallelism {
+  FoldParallelism,
+  SerialFold,
+  TreeReduce,
+  serial_fold_parallelism,
+  derive_tree_reduce_parallelism,
+  idle_lane_count,
+}
+import gunbc.accelerator_demo_fold {
+  demo_int_sum_combine_ref,
+  demo_int_sum_witnessed_associativity_evidence,
+  demo_associative_fold_element_count,
+  demo_simd_lane_count,
 }
 import std.numerical_contract {
   NumericalContract,
@@ -30,6 +56,9 @@ import std.numerical_contract {
   float_contract,
   FmaContractionRefused,
   FmaContractionPermitted,
+  ReductionOrderPermitted,
+  ReductionOrderRefused,
+  float_contract_with_reduction,
 }
 import std.approximate_field { ToNearestEven }
 import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
@@ -38,6 +67,7 @@ import extdeps.communication.numerical_fidelity {
   LoweringRefused,
   LoweringRefusalReason,
   FmaContractionRefusedByContract,
+  ReductionOrderRefusedByContract,
   UnsupportedNumericalDomain,
   lowering_fidelity_verdict_for_contract,
 }
@@ -54,13 +84,24 @@ data machine_shape_orthogonal_scheduling_plan_doc_provenance: String = "bind: do
 
 type ElementwiseFoldClass
   = PureElementwiseChain { op_count: Int }
+  | AssociativeFoldChain {
+      combine: DeclarationRef
+      evidence: AssociativityEvidence
+    }
   | EffectfulSubgraph
   | DataDependentGather
+
+type PlacementDecision
+  = PlacementChosen { domain_label: NonEmptyStr }
+  | PlacementRefused { missing: List<String> }
 
 type AcceleratorRefusalReason
   = NotElementwisePure
   | CarriesEffects
   | FmaContractionViolatesContract
+  | ReductionOrderViolatesContract
+  | AssociativityNotWitnessedForFold
+  | AssociativityCombineMismatch
   | AcceleratorUnsupportedNumericalDomain
 
 type AcceleratorRecognitionOutcome
@@ -100,7 +141,14 @@ fn demo_kernel_step(placement: Placement) -> RealizedStep<Nano> {
 }
 
 fn relu_mul_add_schedule() -> Schedule {
-  [[RunnableKernelWorkload { fused_op_count: relu_mul_add_fused_op_count }]]
+  [[runnable_kernel_workload_elementwise(fused_op_count: relu_mul_add_fused_op_count)]]
+}
+
+fn associative_fold_schedule(fold_parallelism: FoldParallelism) -> Schedule {
+  [[runnable_kernel_workload_associative_fold(
+    fused_op_count: 0,
+    fold_parallelism: fold_parallelism
+  )]]
 }
 
 fn build_realization_plan(schedule: Schedule) -> RealizationPlan<Nano> {
@@ -115,7 +163,30 @@ fn build_realization_plan(schedule: Schedule) -> RealizationPlan<Nano> {
 fn accelerator_refusal_from_lowering(reason: LoweringRefusalReason) -> AcceleratorRefusalReason {
   match reason {
     FmaContractionRefusedByContract => FmaContractionViolatesContract
+    ReductionOrderRefusedByContract => ReductionOrderViolatesContract
     UnsupportedNumericalDomain => AcceleratorUnsupportedNumericalDomain
+  }
+}
+
+fn choose_simd_cpu_placement(lane_count: HardwareThreadCount) -> PlacementDecision {
+  if hardware_thread_count_value(t: lane_count) < 1 {
+    PlacementRefused { missing: ["lane_count"] }
+  } else {
+    PlacementChosen { domain_label: "simd-cpu-domain" as NonEmptyStr }
+  }
+}
+
+fn recognized_associative_fold_outcome(
+  fold_parallelism: FoldParallelism,
+  contract: NumericalContract,
+  fidelity: DecodeFidelity
+) -> AcceleratorRecognitionOutcome {
+  Recognized {
+    plan: build_realization_plan(schedule: associative_fold_schedule(fold_parallelism: fold_parallelism))
+    kernel_step: demo_kernel_step(placement: demo_accelerator_placement())
+    contract: contract
+    fidelity: fidelity
+    target_medium: simd_kernel_target_medium_name
   }
 }
 
@@ -141,7 +212,7 @@ fn recognize_with_contract(
       Refused { reason: accelerator_refusal_from_lowering(reason: reason) }
     LoweringAccepted { fidelity: fidelity } =>
       match contract {
-        FloatApproximate { fma_contraction: FmaContractionRefused, rounding: _ } =>
+        FloatApproximate { fma_contraction: FmaContractionRefused, rounding: _, reduction_order: _ } =>
           if insist_on_fma_fused_kernel {
             Refused { reason: FmaContractionViolatesContract }
           } else {
@@ -149,22 +220,70 @@ fn recognize_with_contract(
           }
         IntegerExact =>
           recognized_outcome(contract: contract, fidelity: fidelity)
-        FloatApproximate { fma_contraction: FmaContractionPermitted, rounding: _ } =>
+        FloatApproximate { fma_contraction: FmaContractionPermitted, rounding: _, reduction_order: _ } =>
           recognized_outcome(contract: contract, fidelity: fidelity)
       }
   }
 }
 
 fn recognize_elementwise_fold(class: ElementwiseFoldClass) -> AcceleratorRecognitionOutcome {
+  recognize_elementwise_fold_for_lanes(
+    class: class,
+    lane_count: demo_simd_lane_count
+  )
+}
+
+fn recognize_elementwise_fold_for_lanes(
+  class: ElementwiseFoldClass,
+  lane_count: HardwareThreadCount
+) -> AcceleratorRecognitionOutcome {
   match class {
     PureElementwiseChain { op_count: _ } =>
       recognize_with_contract(
         contract: integer_exact_contract(),
         insist_on_fma_fused_kernel: false
       )
+    AssociativeFoldChain { combine: combine, evidence: evidence } =>
+      match associativity_license_verdict(
+        evidence: evidence,
+        scheduled_combine: combine
+      ) {
+        AssociativityLicenseGranted =>
+          match derive_tree_reduce_parallelism(
+            lane_count: lane_count,
+            element_count: demo_associative_fold_element_count
+          ) {
+            Absent =>
+              Refused { reason: AssociativityNotWitnessedForFold }
+            Present { value: parallelism } =>
+              recognized_associative_fold_outcome(
+                fold_parallelism: parallelism,
+                contract: integer_exact_contract(),
+                fidelity: Lossless
+              )
+          }
+        AssociativityLicenseMissing =>
+          Refused { reason: AssociativityNotWitnessedForFold }
+        AssociativityLicenseMismatch =>
+          Refused { reason: AssociativityCombineMismatch }
+      }
     EffectfulSubgraph => Refused { reason: CarriesEffects }
     DataDependentGather => Refused { reason: NotElementwisePure }
   }
+}
+
+fn recognize_associative_int_sum_fold() -> AcceleratorRecognitionOutcome {
+  recognize_elementwise_fold(class: AssociativeFoldChain {
+    combine: demo_int_sum_combine_ref()
+    evidence: demo_int_sum_witnessed_associativity_evidence()
+  })
+}
+
+fn recognize_associative_int_sum_fold_without_witness() -> AcceleratorRecognitionOutcome {
+  recognize_elementwise_fold(class: AssociativeFoldChain {
+    combine: demo_int_sum_combine_ref()
+    evidence: associativity_evidence_not_witnessed()
+  })
 }
 
 fn recognize_float_relu_mul_add_no_contraction() -> AcceleratorRecognitionOutcome {
@@ -186,7 +305,7 @@ fn demo_plan_fused_op_count(plan: RealizationPlan<Nano>) -> Int {
   match batch.first() {
     Absent => 0
     Present { value: runnable } => match runnable {
-      RunnableKernelWorkload { fused_op_count: count } => count
+      RunnableKernelWorkload { fused_op_count: count, fold_parallelism: _ } => count
       RunnableSingleClaim { entry: _, function: _, profile: _ } => 0
       RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => 0
     }
@@ -234,6 +353,9 @@ fn witness_effectful_subgraph_refused() -> Bool {
       CarriesEffects => true
       NotElementwisePure => false
       FmaContractionViolatesContract => false
+      ReductionOrderViolatesContract => false
+      AssociativityNotWitnessedForFold => false
+      AssociativityCombineMismatch => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -246,6 +368,9 @@ fn witness_data_dependent_gather_refused() -> Bool {
       NotElementwisePure => true
       CarriesEffects => false
       FmaContractionViolatesContract => false
+      ReductionOrderViolatesContract => false
+      AssociativityNotWitnessedForFold => false
+      AssociativityCombineMismatch => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -269,6 +394,9 @@ fn witness_float_fma_fused_kernel_refused_when_contraction_refused() -> Bool {
       FmaContractionViolatesContract => true
       NotElementwisePure => false
       CarriesEffects => false
+      ReductionOrderViolatesContract => false
+      AssociativityNotWitnessedForFold => false
+      AssociativityCombineMismatch => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -287,6 +415,9 @@ fn witness_lowering_fma_refusal_maps_to_accelerator_refusal() -> Bool {
     FmaContractionViolatesContract => true
     NotElementwisePure => false
     CarriesEffects => false
+    ReductionOrderViolatesContract => false
+    AssociativityNotWitnessedForFold => false
+    AssociativityCombineMismatch => false
     AcceleratorUnsupportedNumericalDomain => false
   }
 }
@@ -297,5 +428,63 @@ fn witness_lowering_unsupported_domain_maps_to_accelerator_refusal() -> Bool {
     NotElementwisePure => false
     CarriesEffects => false
     FmaContractionViolatesContract => false
+    ReductionOrderViolatesContract => false
+    AssociativityNotWitnessedForFold => false
+    AssociativityCombineMismatch => false
   }
+}
+
+fn demo_plan_fold_parallelism(plan: RealizationPlan<Nano>) -> FoldParallelism {
+  let batch = plan.schedule.first()
+  match batch.first() {
+    Absent => serial_fold_parallelism()
+    Present { value: runnable } => match runnable {
+      RunnableKernelWorkload { fused_op_count: _, fold_parallelism: parallelism } => parallelism
+      RunnableSingleClaim { entry: _, function: _, profile: _ } => serial_fold_parallelism()
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
+        serial_fold_parallelism()
+    }
+  }
+}
+
+fn witness_associative_fold_recognized_with_tree_reduce() -> Bool {
+  match recognize_associative_int_sum_fold() {
+    Recognized { plan: plan, kernel_step: _, contract: _, fidelity: f, target_medium: medium } =>
+      match f {
+        Lossless =>
+          match demo_plan_fold_parallelism(plan: plan) {
+            TreeReduce { tree_depth: depth, lane_width: width } =>
+              depth == 3 && width == 8 && medium == simd_kernel_target_medium_name
+            SerialFold => false
+          }
+        Lossy => false
+      }
+    Refused { reason: _ } => false
+  }
+}
+
+fn witness_associative_fold_refused_without_witness() -> Bool {
+  match recognize_associative_int_sum_fold_without_witness() {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => false
+    Refused { reason: r } => match r {
+      AssociativityNotWitnessedForFold => true
+      NotElementwisePure => false
+      CarriesEffects => false
+      FmaContractionViolatesContract => false
+      ReductionOrderViolatesContract => false
+      AssociativityCombineMismatch => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
+  }
+}
+
+fn witness_placement_chosen_for_simd_lanes() -> Bool {
+  match choose_simd_cpu_placement(lane_count: demo_simd_lane_count) {
+    PlacementChosen { domain_label: label } => label == "simd-cpu-domain"
+    PlacementRefused { missing: _ } => false
+  }
+}
+
+fn witness_idle_lane_cost_visible_for_simd_domain() -> Bool {
+  idle_lane_count(lane_count: demo_simd_lane_count) == 7
 }

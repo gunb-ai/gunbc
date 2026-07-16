@@ -66,6 +66,9 @@ fn witness_effectful_program_structurally_refused() -> Bool {
       CarriesEffects => true
       NotElementwisePure => false
       FmaContractionViolatesContract => false
+      ReductionOrderViolatesContract => false
+      AssociativityNotWitnessedForFold => false
+      AssociativityCombineMismatch => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
@@ -78,6 +81,9 @@ fn witness_gather_program_structurally_refused() -> Bool {
       NotElementwisePure => true
       CarriesEffects => false
       FmaContractionViolatesContract => false
+      ReductionOrderViolatesContract => false
+      AssociativityNotWitnessedForFold => false
+      AssociativityCombineMismatch => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }

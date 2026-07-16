@@ -8,6 +8,7 @@ import std.measure {
   byte_size, byte_size_count, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }
+import std.fold_parallelism { FoldParallelism, SerialFold, TreeReduce, serial_fold_parallelism, fold_parallelism_eq }
 
 type CostBasis
   = Predicted
@@ -153,7 +154,7 @@ fn runnable_profile(r: Runnable) -> RunnableResourceProfile {
   match r {
     RunnableSingleClaim { entry: _, function: _, profile: p } => p
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: p } => p
-    RunnableKernelWorkload { fused_op_count: _ } => runnable_resource_profile_negligible()
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => runnable_resource_profile_negligible()
   }
 }
 
@@ -161,7 +162,7 @@ fn runnable_forbids_corpus_co_residence(r: Runnable) -> Bool {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
     RunnableSingleClaim { entry: _, function: _, profile: p } => runnable_excludes_corpus_co_residence(profile: p)
-    RunnableKernelWorkload { fused_op_count: _ } => false
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => false
   }
 }
 
@@ -201,7 +202,27 @@ type Runnable
       discovery_scope_dirs: List<String>
       profile: RunnableResourceProfile
     }
-  | RunnableKernelWorkload { fused_op_count: Int }
+  | RunnableKernelWorkload {
+      fused_op_count: Int
+      fold_parallelism: FoldParallelism
+    }
+
+fn runnable_kernel_workload_elementwise(fused_op_count: Int) -> Runnable {
+  RunnableKernelWorkload {
+    fused_op_count: fused_op_count
+    fold_parallelism: serial_fold_parallelism()
+  }
+}
+
+fn runnable_kernel_workload_associative_fold(
+  fused_op_count: Int,
+  fold_parallelism: FoldParallelism
+) -> Runnable {
+  RunnableKernelWorkload {
+    fused_op_count: fused_op_count
+    fold_parallelism: fold_parallelism
+  }
+}
 
 fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> Bool {
   match sel {
@@ -216,7 +237,7 @@ fn runnable_selection_applied(r: Runnable) -> Bool {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: sel, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } =>
       node_frontier_selection_applied(sel: sel)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-    RunnableKernelWorkload { fused_op_count: _ } => false
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => false
   }
 }
 
@@ -234,7 +255,7 @@ fn runnable_step_label(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => "__discovery_corpus__"
-    RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => "__kernel_workload__"
   }
 }
 
@@ -282,7 +303,7 @@ fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
       RunnableSingleClaim { entry: re, function: rf, profile: rp } =>
         (le == re) && (lf == rf) && runnable_resource_profile_eq(left: lp, right: rp)
       RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
-      RunnableKernelWorkload { fused_op_count: _ } => false
+      RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => false
     }
     RunnableDiscoveryBatch { source_roots: lsr, scan_dirs: lsd, explicit_entries: lex, node_frontier_selection: lskip, exclude_substrings: lex2, discovery_scope_dirs: lsc, profile: lp } => match right {
       RunnableSingleClaim { entry: _, function: _, profile: _ } => false
@@ -294,12 +315,13 @@ fn runnable_eq(left: Runnable, right: Runnable) -> Bool {
           && string_list_eq(left: lex2, right: rex2)
           && string_list_eq(left: lsc, right: rsc)
           && runnable_resource_profile_eq(left: lp, right: rp)
-      RunnableKernelWorkload { fused_op_count: _ } => false
+      RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => false
     }
-    RunnableKernelWorkload { fused_op_count: lleft } => match right {
+    RunnableKernelWorkload { fused_op_count: lleft, fold_parallelism: lfold } => match right {
       RunnableSingleClaim { entry: _, function: _, profile: _ } => false
       RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => false
-      RunnableKernelWorkload { fused_op_count: rcount } => lleft == rcount
+      RunnableKernelWorkload { fused_op_count: rcount, fold_parallelism: rfold } =>
+        (lleft == rcount) && fold_parallelism_eq(left: lfold, right: rfold)
     }
   }
 }

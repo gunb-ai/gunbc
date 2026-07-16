@@ -633,7 +633,7 @@ fn runnable_scan_dir_count(r: Runnable) -> Int {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => length(xs: dirs)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => 0 - 1
-    RunnableKernelWorkload { fused_op_count: _ } => 0 - 1
+    RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => 0 - 1
   }
 }
 
@@ -707,7 +707,7 @@ fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
   fold(batch, init: 0, f: fn(acc, r) {
     match r {
       RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => acc
-      RunnableKernelWorkload { fused_op_count: _ } => acc
+      RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => acc
       RunnableSingleClaim { entry: _, function: f, profile: p } =>
         if f == ci_floor_compile_gate_fn {
           acc

@@ -28,7 +28,7 @@ import std.measure { hardware_thread_count_value, bandwidth_count }
 fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
   match contract {
     IntegerExact => Lossless
-    FloatApproximate { rounding: _, fma_contraction: _ } => Lossy
+    FloatApproximate { rounding: _, fma_contraction: _, reduction_order: _ } => Lossy
   }
 }
 
@@ -93,7 +93,7 @@ fn render_gpu_fidelity_receipt(receipt: GpuFidelityReceipt) -> String {
 fn wgsl_source_for_contract(contract: NumericalContract) -> String {
   match contract {
     IntegerExact => wgsl_relu_mul_add_int_kernel_source
-    FloatApproximate { rounding: _, fma_contraction: _ } => wgsl_relu_mul_add_float_kernel_source
+    FloatApproximate { rounding: _, fma_contraction: _, reduction_order: _ } => wgsl_relu_mul_add_float_kernel_source
   }
 }
 

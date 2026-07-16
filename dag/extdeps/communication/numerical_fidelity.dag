@@ -9,6 +9,8 @@ import std.numerical_contract {
   FloatApproximate,
   FmaContractionPermitted,
   FmaContractionRefused,
+  ReductionOrderPermitted,
+  ReductionOrderRefused,
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -20,6 +22,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type LoweringRefusalReason
   = FmaContractionRefusedByContract
+  | ReductionOrderRefusedByContract
   | UnsupportedNumericalDomain
 
 type LoweringFidelityVerdict
@@ -29,16 +32,37 @@ type LoweringFidelityVerdict
 fn decode_fidelity_for_contract(contract: NumericalContract) -> DecodeFidelity {
   match contract {
     IntegerExact => Lossless
-    FloatApproximate { fma_contraction: fma, rounding: _ } =>
+    FloatApproximate { fma_contraction: fma, rounding: _, reduction_order: reduction } =>
       match fma {
-        FmaContractionRefused => Lossless
         FmaContractionPermitted => Lossy
+        FmaContractionRefused =>
+          match reduction {
+            ReductionOrderPermitted => Lossy
+            ReductionOrderRefused => Lossless
+          }
       }
   }
 }
 
 fn lowering_fidelity_verdict_for_contract(contract: NumericalContract) -> LoweringFidelityVerdict {
-  LoweringAccepted {
-    fidelity: decode_fidelity_for_contract(contract: contract)
+  match contract {
+    IntegerExact => LoweringAccepted {
+      fidelity: decode_fidelity_for_contract(contract: contract)
+    }
+    FloatApproximate { fma_contraction: fma, rounding: _, reduction_order: reduction } =>
+      match fma {
+        FmaContractionRefused =>
+          match reduction {
+            ReductionOrderRefused => LoweringAccepted {
+              fidelity: decode_fidelity_for_contract(contract: contract)
+            }
+            ReductionOrderPermitted => LoweringAccepted {
+              fidelity: decode_fidelity_for_contract(contract: contract)
+            }
+          }
+        FmaContractionPermitted => LoweringAccepted {
+          fidelity: decode_fidelity_for_contract(contract: contract)
+        }
+      }
   }
 }

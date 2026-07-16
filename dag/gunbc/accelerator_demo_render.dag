@@ -75,7 +75,7 @@ fn render_placement(placement: Placement) -> String {
 fn render_numerical_contract(contract: NumericalContract) -> String {
   match contract {
     IntegerExact => "IntegerExact"
-    FloatApproximate { fma_contraction: fma, rounding: _ } => match fma {
+    FloatApproximate { fma_contraction: fma, rounding: _, reduction_order: _ } => match fma {
       FmaContractionPermitted => "FloatApproximate(FmaPermitted)"
       FmaContractionRefused => "FloatApproximate(FmaRefused)"
     }

@@ -16,9 +16,9 @@ type AssociativityEvidence
   | NotWitnessed
 
 type AssociativityLicenseVerdict
-  = AssociativityLicensed
-  | AssociativityNotWitnessed
-  | AssociativityCombineMismatch
+  = AssociativityLicenseGranted
+  | AssociativityLicenseMissing
+  | AssociativityLicenseMismatch
 
 fn associativity_decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
   DeclarationRef {
@@ -56,12 +56,12 @@ fn associativity_license_verdict(
   scheduled_combine: DeclarationRef
 ) -> AssociativityLicenseVerdict {
   match evidence {
-    NotWitnessed => AssociativityNotWitnessed
+    NotWitnessed => AssociativityLicenseMissing
     WitnessedAssociative { combine: combine, inhabitant: _, law: _, receipt: _ } =>
       if decl_ref_eq(left: combine, right: scheduled_combine) {
-        AssociativityLicensed
+        AssociativityLicenseGranted
       } else {
-        AssociativityCombineMismatch
+        AssociativityLicenseMismatch
       }
   }
 }

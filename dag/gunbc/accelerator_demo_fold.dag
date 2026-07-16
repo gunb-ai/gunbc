@@ -1,0 +1,141 @@
+module gunbc.accelerator_demo_fold
+
+import std.types { Int, List, Bool }
+import std.decl_ref { DeclarationRef }
+import std.cache_identity { ExecutionReceiptDigest }
+import std.associativity_evidence {
+  AssociativityEvidence,
+  WitnessedAssociative,
+  NotWitnessed,
+  associativity_decl_ref,
+  associativity_license_verdict,
+  AssociativityLicenseGranted,
+  AssociativityLicenseMissing,
+  AssociativityLicenseMismatch,
+}
+import std.measure { HardwareThreadCount, hardware_thread_count }
+import std.fold_parallelism {
+  FoldParallelism,
+  SerialFold,
+  TreeReduce,
+  serial_fold_parallelism,
+  derive_tree_reduce_parallelism,
+  idle_lane_count,
+}
+
+data demo_int_sum_combine_module: String = "gunbc.accelerator_demo_fold"
+data demo_int_sum_combine_name: String = "demo_int_sum_combine"
+
+fn demo_int_sum_combine(left: Int, right: Int) -> Int {
+  left + right
+}
+
+fn demo_int_sum_combine_ref() -> DeclarationRef {
+  associativity_decl_ref(
+    module_path: demo_int_sum_combine_module,
+    decl_name: demo_int_sum_combine_name
+  )
+}
+
+data demo_int_sum_inhabitant_ref: DeclarationRef = associativity_decl_ref(
+  module_path: "std.integer",
+  decl_name: "Int"
+)
+
+data demo_int_sum_law_ref: DeclarationRef = associativity_decl_ref(
+  module_path: "v2.test.algebra_laws.nat_semiring",
+  decl_name: "claim_nat_add_associativity"
+)
+
+data demo_int_sum_associativity_receipt: ExecutionReceiptDigest = "accelerator-demo-int-sum-associativity-receipt-v1"
+
+fn demo_int_sum_witnessed_associativity_evidence() -> AssociativityEvidence {
+  WitnessedAssociative {
+    combine: demo_int_sum_combine_ref()
+    inhabitant: demo_int_sum_inhabitant_ref
+    law: demo_int_sum_law_ref
+    receipt: demo_int_sum_associativity_receipt
+  }
+}
+
+fn demo_int_sum_not_witnessed_evidence() -> AssociativityEvidence {
+  NotWitnessed
+}
+
+data demo_associative_fold_element_count: Int = 64
+
+data demo_simd_lane_count: HardwareThreadCount = hardware_thread_count(count: 8)
+
+data demo_scalar_lane_count: HardwareThreadCount = hardware_thread_count(count: 1)
+
+fn witness_demo_tree_reduce_derives_from_simd_lanes() -> Bool {
+  match derive_tree_reduce_parallelism(
+    lane_count: demo_simd_lane_count,
+    element_count: demo_associative_fold_element_count
+  ) {
+    Absent => false
+    Present { value: parallelism } => match parallelism {
+      SerialFold => false
+      TreeReduce { tree_depth: depth, lane_width: width } =>
+        width == 8 && depth == 3
+    }
+  }
+}
+
+fn witness_demo_serial_fold_at_scalar_lanes() -> Bool {
+  match derive_tree_reduce_parallelism(
+    lane_count: demo_scalar_lane_count,
+    element_count: demo_associative_fold_element_count
+  ) {
+    Absent => false
+    Present { value: parallelism } => match parallelism {
+      TreeReduce { tree_depth: depth, lane_width: width } =>
+        width == 1 && depth == 6
+      SerialFold => false
+    }
+  }
+}
+
+fn witness_associativity_license_matches_scheduled_combine() -> Bool {
+  match associativity_license_verdict(
+    evidence: demo_int_sum_witnessed_associativity_evidence(),
+    scheduled_combine: demo_int_sum_combine_ref()
+  ) {
+    AssociativityLicenseGranted => true
+    AssociativityLicenseMissing => false
+    AssociativityLicenseMismatch => false
+  }
+}
+
+fn witness_associativity_license_rejects_mismatched_combine() -> Bool {
+  match associativity_license_verdict(
+    evidence: demo_int_sum_witnessed_associativity_evidence(),
+    scheduled_combine: associativity_decl_ref(
+      module_path: "std.nat",
+      decl_name: "nat_max"
+    )
+  ) {
+    AssociativityLicenseMismatch => true
+    AssociativityLicenseGranted => false
+    AssociativityLicenseMissing => false
+  }
+}
+
+fn witness_not_witnessed_evidence_refuses_license() -> Bool {
+  match associativity_license_verdict(
+    evidence: demo_int_sum_not_witnessed_evidence(),
+    scheduled_combine: demo_int_sum_combine_ref()
+  ) {
+    AssociativityLicenseMissing => true
+    AssociativityLicenseGranted => false
+    AssociativityLicenseMismatch => false
+  }
+}
+
+fn witness_idle_lane_cost_zero_at_scalar() -> Bool {
+  idle_lane_count(lane_count: demo_scalar_lane_count) == 0
+}
+
+fn witness_idle_lane_cost_visible_at_simd() -> Bool {
+  idle_lane_count(lane_count: demo_simd_lane_count) == 7
+}
