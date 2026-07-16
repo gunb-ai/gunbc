@@ -1,5 +1,7 @@
 module extdeps.tools.curl
 
+import std.types { String }
+import std.measure { Second, second, second_count }
 import extdeps.version { VersionConstraint }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -19,4 +21,26 @@ data curl_cli_tool: CliTool = CliTool {
   name: "curl",
   min_version: Present { value: curl_pinned_version },
   installable_via: [SourceApt { package: package_curl }],
+}
+
+data curl_localhost_connect_timeout: Second = second(count: 2)
+
+data curl_localhost_max_time: Second = second(count: 5)
+
+fn curl_bounded_get_flags(connect_timeout: Second, max_time: Second) -> String {
+  concat(
+    concat("--connect-timeout ", to_string(second_count(s: connect_timeout))),
+    concat(" --max-time ", to_string(second_count(s: max_time)))
+  )
+}
+
+fn curl_bounded_localhost_get_argv_prefix(connect_timeout: Second, max_time: Second) -> String {
+  concat("curl -sf ", curl_bounded_get_flags(connect_timeout: connect_timeout, max_time: max_time))
+}
+
+fn curl_localhost_bounded_get_argv_prefix() -> String {
+  curl_bounded_localhost_get_argv_prefix(
+    connect_timeout: curl_localhost_connect_timeout,
+    max_time: curl_localhost_max_time
+  )
 }
