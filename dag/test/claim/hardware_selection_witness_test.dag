@@ -5,6 +5,7 @@ import std.types { Int, List }
 import std.measure { ByteSize, byte_size, byte_size_count, bit_width, watt, watt_count, hardware_thread_count, hertz, money_amount_micro }
 import product.hardware_selection { milliwatt }
 import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket, SocketPackage }
+import extdeps.cpu.ampere { ampere_altra_l1_cache_citations, ampere_altra_l1_cache_geometry }
 import extdeps.toolchain.types { Architecture }
 import extdeps.memory.types { DimmBuffering, DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density, dram_generation_ddr4 }
 import extdeps.vendor.sk_hynix { sk_hynix }
@@ -110,7 +111,9 @@ data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   threads: hardware_thread_count(64),
   nominal_sustained_per_thread_hz: hertz(3000000000),
   socket: CpuSocket { package: LandGridArray, contact_count: 4926 },
-  tdp_watts: watt(250)
+  tdp_watts: watt(250),
+  l1_cache: ampere_altra_l1_cache_geometry,
+  l1_cache_citations: ampere_altra_l1_cache_citations,
 }
 
 data cpu_fast: CpuCandidate = CpuCandidate {
