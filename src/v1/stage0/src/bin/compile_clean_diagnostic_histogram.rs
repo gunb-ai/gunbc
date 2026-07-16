@@ -83,10 +83,7 @@ fn main() -> ExitCode {
 
     println!("--- FILE (top 50 by count) ---");
     let mut file_ranked: Vec<(String, usize)> = by_file.into_iter().collect();
-    file_ranked.sort_by(|a, b| {
-        b.1.cmp(&a.1)
-            .then_with(|| a.0.cmp(&b.0))
-    });
+    file_ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     for (file, count) in file_ranked.iter().take(50) {
         let gate = if census_module_path_included(file) {
             "gate_true"
