@@ -645,20 +645,53 @@ impl Env {
 
 #[derive(Debug, Clone)]
 pub enum InterpError {
-    NoSuchFunction { name: String },
+    NoSuchFunction {
+        name: String,
+    },
     NoMainFunction,
-    NoSuchVariable { name: String },
-    NoSuchField { type_name: String, field: String },
-    TypeError { msg: String },
-    CrossRepresentationEquality { detail: String },
-    StringRealizationStraddle { detail: String },
-    PatternMatchFailure { value: String },
+    NoSuchVariable {
+        name: String,
+    },
+    NoSuchField {
+        type_name: String,
+        field: String,
+    },
+    TypeError {
+        msg: String,
+    },
+    CrossRepresentationEquality {
+        detail: String,
+    },
+    StringRealizationStraddle {
+        detail: String,
+    },
+    PatternMatchFailure {
+        value: String,
+    },
     DivisionByZero,
-    Unimplemented { what: String },
-    EarlyReturn { value: Value },
-    AuthDeclaredButUnwired { service: String, reason: String },
-    EvalBudgetExceeded { elapsed_ms: u64, budget_ms: u64 },
-    WitnessWallBudgetExceeded { elapsed_ms: u64, budget_ms: u64 },
+    Unimplemented {
+        what: String,
+    },
+    EarlyReturn {
+        value: Value,
+    },
+    AuthDeclaredButUnwired {
+        service: String,
+        reason: String,
+    },
+    EvalBudgetExceeded {
+        elapsed_ms: u64,
+        budget_ms: u64,
+    },
+    WitnessWallBudgetExceeded {
+        elapsed_ms: u64,
+        budget_ms: u64,
+    },
+    ArgvExceedsHostArgMax {
+        actual_bytes: usize,
+        limit_bytes: usize,
+        argv0: String,
+    },
 }
 
 impl fmt::Display for InterpError {
@@ -707,6 +740,15 @@ impl fmt::Display for InterpError {
                 f,
                 "auth declared but unwired for '{}': {} — refusing to send unauthenticated request",
                 service, reason
+            ),
+            InterpError::ArgvExceedsHostArgMax {
+                actual_bytes,
+                limit_bytes,
+                argv0,
+            } => write!(
+                f,
+                "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.os.exec_arg_limit.host_exec_arg_max_strlen; DESIGN §5 typed refusal in place of an opaque os error 7)",
+                argv0, actual_bytes, limit_bytes
             ),
         }
     }
@@ -5550,6 +5592,34 @@ fn shell_stdin_payload(val: &Value) -> InterpResult<Vec<u8>> {
     }
 }
 
+/// Host per-argument byte ceiling. Mirrors the single authority
+/// `extdeps.os.exec_arg_limit.host_exec_arg_max_strlen` (Linux execve(2)
+/// MAX_ARG_STRLEN = 32 * PAGE_SIZE = 131072). A single argv (or env) string
+/// longer than this makes `execve` fail with E2BIG ("Argument list too long").
+/// `argv_arg_limit_test::mirror_matches_extdeps_authority` pins this to the
+/// modeled value so the two cannot drift silently.
+pub const HOST_ARG_MAX_STRLEN_BYTES: usize = 131072;
+
+/// Pure argv-size wall: refuse (typed, located) an invocation whose largest
+/// single argv token exceeds the host per-argument ceiling, instead of handing
+/// it to `execve` and getting an opaque `os error 7`. Faithful to
+/// MAX_ARG_STRLEN — the ceiling is per single argument, not the argv total
+/// (that is the separate, larger ARG_MAX). Returns `None` when the invocation
+/// is within the limit (proceed) and `Some(err)` when it must refuse — no
+/// truncation, no widening (DESIGN §5: a failure arm refuses, never absorbs).
+fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpError> {
+    let offending = argv.iter().map(|a| a.len()).max().unwrap_or(0);
+    if offending > limit_bytes {
+        Some(InterpError::ArgvExceedsHostArgMax {
+            actual_bytes: offending,
+            limit_bytes,
+            argv0: argv.first().cloned().unwrap_or_default(),
+        })
+    } else {
+        None
+    }
+}
+
 fn dispatch_shell(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
@@ -5569,6 +5639,14 @@ fn dispatch_shell(
     }
 
     render_shell_trace(&argv);
+
+    // Arg-size wall: a single argv token over the host MAX_ARG_STRLEN would make
+    // the spawn below die with an opaque `os error 7` (E2BIG). Refuse here with a
+    // typed, located diagnostic so the deficit is diagnosable and countable. Large
+    // payloads belong in stdin (see extdeps.shell shell.Exec.Run), not argv.
+    if let Some(err) = argv_arg_limit_refusal(&argv, HOST_ARG_MAX_STRLEN_BYTES) {
+        return Err(err);
+    }
 
     let output = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
@@ -9034,5 +9112,140 @@ mod shell_completion_trace_tests {
             "target read must refuse as non-commit-deterministic"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod argv_arg_limit_test {
+    use std::rc::Rc;
+
+    use im_rc::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
+
+    use super::{
+        argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, InterpContext, InterpError,
+        HOST_ARG_MAX_STRLEN_BYTES,
+    };
+
+    fn argv_limit_test_context() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
+    }
+
+    /// `shell.Exec.Check`-shaped argv: `sh -c "<command>"` as three literal tokens.
+    fn shell_check_style_transport(command: &str) -> Rc<Node> {
+        let span = make_span(0, 0);
+        shell_transport_node(
+            Rc::new(im_vec![
+                make_text_part_node("sh".to_string(), span.clone()),
+                make_text_part_node("-c".to_string(), span.clone()),
+                make_text_part_node(command.to_string(), span.clone()),
+            ]),
+            Rc::new(im_vec![]),
+            None,
+            span,
+        )
+    }
+
+    // Pin the Rust seed mirror to the single authority modeled in
+    // extdeps/os/exec_arg_limit.dag (host_exec_arg_max_strlen = byte_size(131072),
+    // Linux execve(2) MAX_ARG_STRLEN = 32 * 4096). Drift on either side reds a test.
+    #[test]
+    fn mirror_matches_extdeps_authority() {
+        assert_eq!(HOST_ARG_MAX_STRLEN_BYTES, 131072);
+    }
+
+    // Discriminating boundary: exactly the limit passes (proceed to exec), one byte
+    // over refuses with the typed, located error — carrying the offending byte count,
+    // the modeled limit, and argv0 — never a truncation or a widen (DESIGN §5).
+    #[test]
+    fn wall_refuses_one_byte_over_and_passes_at_limit() {
+        let limit = HOST_ARG_MAX_STRLEN_BYTES;
+
+        // GREEN control: a small command-sequence argv proceeds (no refusal).
+        let small = vec!["sh".to_string(), "-c".to_string(), "echo hi".to_string()];
+        assert!(argv_arg_limit_refusal(&small, limit).is_none());
+
+        // GREEN boundary: a single argument of exactly the limit is still admitted.
+        let at_limit = vec!["sh".to_string(), "-c".to_string(), "x".repeat(limit)];
+        assert!(argv_arg_limit_refusal(&at_limit, limit).is_none());
+
+        // RED: one byte over the ceiling is refused with the typed diagnostic.
+        let over = vec!["sh".to_string(), "-c".to_string(), "x".repeat(limit + 1)];
+        match argv_arg_limit_refusal(&over, limit) {
+            Some(InterpError::ArgvExceedsHostArgMax {
+                actual_bytes,
+                limit_bytes,
+                argv0,
+            }) => {
+                assert_eq!(actual_bytes, limit + 1);
+                assert_eq!(limit_bytes, limit);
+                assert_eq!(argv0, "sh");
+            }
+            other => panic!("expected ArgvExceedsHostArgMax, got {other:?}"),
+        }
+    }
+
+    // The ceiling is per SINGLE argument (MAX_ARG_STRLEN), not the argv total: many
+    // small args summing over the limit are admitted — refusing them would be an
+    // over-approximation (ARG_MAX is a separate, larger limit not modeled here).
+    #[test]
+    fn wall_is_per_argument_not_argv_total() {
+        let limit = HOST_ARG_MAX_STRLEN_BYTES;
+        let many_small: Vec<String> = std::iter::once("echo".to_string())
+            .chain((0..8).map(|_| "y".repeat(limit / 4)))
+            .collect();
+        // total is ~2x the limit, but no single token exceeds it.
+        assert!(argv_arg_limit_refusal(&many_small, limit).is_none());
+    }
+
+    // Wiring proof: `dispatch_shell` must reach `argv_arg_limit_refusal` on the
+    // evaluated argv and refuse BEFORE any exec branch. Without that guard arm the
+    // same transport would proceed to `Command::spawn` and surface an opaque spawn
+    // error instead of `ArgvExceedsHostArgMax` (RED control — predicate-only tests
+    // do not exercise this call path).
+    #[test]
+    fn dispatch_shell_wiring_refuses_oversized_argv() {
+        let ctx = argv_limit_test_context();
+        let transport = shell_check_style_transport(&"x".repeat(HOST_ARG_MAX_STRLEN_BYTES + 1));
+        let env = Env::empty();
+        match dispatch_shell(&transport, &env, &ctx) {
+            Err(InterpError::ArgvExceedsHostArgMax {
+                actual_bytes,
+                limit_bytes,
+                argv0,
+            }) => {
+                assert_eq!(actual_bytes, HOST_ARG_MAX_STRLEN_BYTES + 1);
+                assert_eq!(limit_bytes, HOST_ARG_MAX_STRLEN_BYTES);
+                assert_eq!(argv0, "sh");
+            }
+            Err(other) => panic!(
+                "expected dispatch_shell to refuse via ArgvExceedsHostArgMax before spawn, got {other:?}"
+            ),
+            Ok(_) => panic!("expected refusal before spawn, got Ok"),
+        }
+    }
+
+    // GREEN control on the wiring path: a small argv is not refused by the wall
+    // (dispatch proceeds to spawn — wet, but the discriminating RED is pre-spawn).
+    #[test]
+    fn dispatch_shell_wiring_admits_small_argv() {
+        let ctx = argv_limit_test_context();
+        let transport = shell_check_style_transport("true");
+        let env = Env::empty();
+        match dispatch_shell(&transport, &env, &ctx) {
+            Err(InterpError::ArgvExceedsHostArgMax { .. }) => {
+                panic!("small argv must not trip the arg-size wall")
+            }
+            Ok(_) | Err(_) => {}
+        }
     }
 }

@@ -28,6 +28,7 @@ pub enum Quantity {
     Count,
     Currency,
     Power,
+    Energy,
     Temperature,
     RotationalSpeed,
     ElectricPotential,
@@ -269,6 +270,8 @@ pub type Millicore = Rc<Measure<(), (), i64>>;
 
 pub type Watt = Rc<Measure<(), (), i64>>;
 
+pub type Joule = Rc<Measure<(), (), i64>>;
+
 pub type Celsius = Rc<Measure<(), (), i64>>;
 
 pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
@@ -282,6 +285,17 @@ pub fn watt(count: Nat) -> Watt {
 
 pub fn watt_count(w: Watt) -> Nat {
     measure_count(w.clone())
+}
+
+pub fn joule(count: Nat) -> Joule {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn joule_count(j: Joule) -> Nat {
+    measure_count(j.clone())
 }
 
 pub fn celsius(count: i64) -> Celsius {
@@ -441,6 +455,10 @@ pub fn second_count(s: Second) -> Nat {
     measure_count(s.clone())
 }
 
+pub fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
+    joule((watt_count(power.clone()) * second_count(time.clone())))
+}
+
 pub type Minute = Rc<Measure<(), (), i64>>;
 
 pub fn minute(count: Nat) -> Minute {
@@ -487,6 +505,8 @@ pub struct Count;
 pub struct Currency;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Power;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Energy;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Temperature;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
