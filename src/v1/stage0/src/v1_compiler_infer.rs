@@ -981,8 +981,10 @@ pub fn record_lit_expanded_from_expected(
     match type_name.clone() {
         Some(tn) => match expected.clone() {
             Some(exp) => {
-                if (((type_node_label(exp.clone(), scope.type_env.clone().source_indices.clone())
-                    == tn.clone())
+                if (((authored_name_at(
+                    scope.type_env.clone().source_indices.clone(),
+                    exp.clone(),
+                ) == tn.clone())
                     && (exp.connective.clone() == Connective::Conj))
                     && ((exp.children.clone().len() as i64) > 0))
                 {
@@ -990,9 +992,9 @@ pub fn record_lit_expanded_from_expected(
                 } else {
                     match exp.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: expanded, .. }) => {
-                            if (type_node_label(
-                                expanded.clone(),
+                            if (authored_name_at(
                                 scope.type_env.clone().source_indices.clone(),
+                                expanded.clone(),
                             ) == tn.clone())
                             {
                                 Some(expanded.clone())
@@ -1002,9 +1004,9 @@ pub fn record_lit_expanded_from_expected(
                         }
                         _ => {
                             let rt = resolved_type(exp.clone());
-                            if (type_node_label(
-                                rt.clone(),
+                            if (authored_name_at(
                                 scope.type_env.clone().source_indices.clone(),
+                                rt.clone(),
                             ) == tn.clone())
                             {
                                 Some(rt.clone())
@@ -1048,7 +1050,7 @@ pub fn record_lit_instantiated_fields(
     match type_name.clone() {
         Some(tn) => match expected.clone() {
             Some(exp) => {
-                if (type_node_label(exp.clone(), scope.type_env.clone().source_indices.clone())
+                if (authored_name_at(scope.type_env.clone().source_indices.clone(), exp.clone())
                     != tn.clone())
                 {
                     None
@@ -1071,7 +1073,10 @@ match exp.children.clone().get(pair.0.clone() as usize).cloned() {
     None => acc.clone(),
 }
 });
-                                        let template_fields = decl.children.clone();
+                                        let template_fields = record_lit_expected_fields(
+                                            type_name.clone(),
+                                            scope.clone(),
+                                        );
                                         Some(Rc::new({
                                             let mut __result = Vec::new();
                                             for sf in template_fields.clone().iter().cloned() {
@@ -6023,25 +6028,18 @@ pub fn infer_record_lit(
                     scope.clone(),
                 ) {
                     Some(inst_fields) => inst_fields.clone(),
-                    None => match record_lit_fields_from_expected(
-                        type_name.clone(),
-                        expected.clone(),
-                        scope.clone(),
-                    ) {
-                        Some(expected_fields) => expected_fields.clone(),
-                        None => match lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) {
-                            Some(decl) => {
-                                if (((decl.connective.clone() == Connective::Conj)
-                                    && ((decl.params.clone().len() as i64) == 0))
-                                    && ((decl.children.clone().len() as i64) > 0))
-                                {
-                                    decl.children.clone()
-                                } else {
-                                    Rc::new(vec![])
-                                }
+                    None => match lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) {
+                        Some(decl) => {
+                            if (((decl.connective.clone() == Connective::Conj)
+                                && ((decl.params.clone().len() as i64) == 0))
+                                && ((decl.children.clone().len() as i64) > 0))
+                            {
+                                decl.children.clone()
+                            } else {
+                                Rc::new(vec![])
                             }
-                            None => record_lit_expected_fields(type_name.clone(), scope.clone()),
-                        },
+                        }
+                        None => record_lit_expected_fields(type_name.clone(), scope.clone()),
                     },
                 },
             }
