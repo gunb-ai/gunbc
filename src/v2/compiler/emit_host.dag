@@ -43,6 +43,7 @@ import v2.std.diagnostic {
   Accepted,
   Rejected,
   None,
+  Some,
   diagnostics_singleton,
   port_locus,
   node_locus,
@@ -70,21 +71,21 @@ import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.runtime { RuntimeValue }
 import v2.std.compilers.target_model { TargetModel, runtime_row_from_target }
 import v2.std.text { String }
-import v2.std.verdict { Verdict, Pass, Fail, Deferred, verdict_fail }
+import v2.std.verdict {
+  Verdict,
+  Pass,
+  Deferred,
+  SemanticMismatch,
+  verdict_build_failed,
+  verdict_run_failed,
+  verdict_semantic_mismatch
+}
 import v2.std.verification {
   test_claim_input,
   EqualsClaim,
   CompilesClaim
 }
 import v2.std.witness { Holds, Violates }
-
-fn emit_host_unknown_host_tool_diagnostic() -> Diagnostic {
-  Diagnostic {
-    reason: ^emit_host_unknown_host_tool,
-    at: port_locus(port: ^emit_host_transport_port),
-    correction: None
-  }
-}
 
 fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -108,6 +109,18 @@ fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
     at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
+}
+
+fn emit_host_build_failed_diagnostic(at: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_host_build_failed,
+    at: node_locus(node: at),
+    correction: None
+  }
+}
+
+fn emit_host_run_failed_diagnostic() -> Diagnostic {
+  emit_host_exit_not_ok_diagnostic()
 }
 
 fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
@@ -161,22 +174,17 @@ fn emit_host_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
   }
 }
 
-fn host_tool_program_name(tool: Symbol) -> Outcome<String> {
-  if tool == ^host_tool_cargo {
-    Accepted { value: "cargo", diagnostics: None }
-  } else if tool == ^host_tool_cc {
-    Accepted { value: "cc", diagnostics: None }
-  } else {
-    outcome_rejected(d: emit_host_unknown_host_tool_diagnostic())
-  }
-}
-
 fn process_program_name(program: ProcessProgram) -> Outcome<String> {
   match program {
-    HostToolProgram { tool: t } => host_tool_program_name(tool: t)
+    HostToolProgram { executable: exe } =>
+      Accepted { value: exe, diagnostics: None }
     ProducedProgram { path: p } =>
       Accepted { value: concat("./", p), diagnostics: None }
   }
+}
+
+fn emit_host_process_program_name(program: ProcessProgram) -> Outcome<String> {
+  process_program_name(program: program)
 }
 
 fn invocation_arg_text(arg: InvocationArg) -> String {
@@ -339,7 +347,7 @@ fn run_test_claim_emit_vs_eval_verdict(
       ) {
         Pass
       } else {
-        Fail {
+        verdict_semantic_mismatch(
           actual: Accepted { value: host_actual, diagnostics: None },
           falsification: optional_present(
             value: FalsificationReceipt {
@@ -350,10 +358,18 @@ fn run_test_claim_emit_vs_eval_verdict(
               evidence: Host { receipt: host_receipt }
             }
           )
-        }
+        )
       }
-    _ =>
-      verdict_fail(actual: expected)
+    Rejected { diagnostics: ds } =>
+      verdict_build_failed(
+        actual: expected,
+        diagnostic: ds.head
+      )
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } =>
+      verdict_build_failed(
+        actual: expected,
+        diagnostic: ds.head
+      )
   }
 }
 
@@ -393,10 +409,16 @@ fn run_test_claim_emit_vs_eval_verdict_from_source(
                     expected: expected
                   )
                 Rejected { diagnostics: ds } =>
-                  verdict_fail(actual: Rejected { diagnostics: ds })
+                  verdict_run_failed(
+                    actual: Rejected { diagnostics: ds },
+                    diagnostic: ds.head
+                  )
               }
             _ =>
-              verdict_fail(actual: host_exit_failure_outcome(exit: host_receipt.exit))
+              verdict_run_failed(
+                actual: host_exit_failure_outcome(exit: host_receipt.exit),
+                diagnostic: emit_host_run_failed_diagnostic()
+              )
           }
         Rejected { diagnostics: ds } =>
           Deferred {
@@ -405,7 +427,10 @@ fn run_test_claim_emit_vs_eval_verdict_from_source(
           }
       }
     Rejected { diagnostics: ds } =>
-      verdict_fail(actual: Rejected { diagnostics: ds })
+      verdict_build_failed(
+        actual: Rejected { diagnostics: ds },
+        diagnostic: emit_host_build_failed_diagnostic(at: at)
+      )
   }
 }
 

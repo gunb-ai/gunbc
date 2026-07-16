@@ -1518,6 +1518,7 @@ fn rust_free_monoid_collection_apply_vec() -> TargetGenericApply {
     surface: ^rust_collection_surface_vec,
     open: ^rust_token_lt,
     separator: ^rust_token_comma,
+    field_label_separator: optional_absent(),
     close: ^rust_token_gt
   }
 }
@@ -1859,12 +1860,12 @@ fn rust_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: [
       ProcessInvocation {
-        program: HostToolProgram { tool: ^host_tool_cargo },
+        program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "build" }, LiteralArg { text: "--quiet" }]
       }
     ],
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_cargo },
+      program: HostToolProgram { executable: "cargo" },
       args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
     },
     runtime_value_codec: FixedWidthBytes { width: 5 }

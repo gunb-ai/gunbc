@@ -17,8 +17,11 @@ import gunbc.srv3_host_effect_apply {
   srv3_seeded_install_media_toolchain_ensure_apply,
   srv3_seeded_install_media_remaster_apply,
   srv3_reconciliation_to_process_exit,
+  srv3_seeded_install_media_toolchain_unprivileged_fixture_denied,
 }
-import gunbc.srv3_host_effect_script { install_media_remaster_toolchain_ensure_script }
+import gunbc.host_effect_realize {
+  srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated,
+}
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
 import gunbc.fleet_intent { srv1_host, ComputeHost }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
@@ -35,22 +38,12 @@ data srv3_seeded_install_media_remaster_scaffold: Disposition = Terminal {
   reason: "srv3_seeded_install_media_remaster() routes through host_effect_apply to install_media_remaster_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
-data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.srv3_host_effect_script",
-    decl_name: "install_media_remaster_toolchain_ensure_script",
-    field: WholeDeclaration,
-  }
+data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = Terminal {
+  reason: "srv3_seeded_install_media_toolchain_ensure routes through host_effect_apply_gated(ci_deploy_srv1_access) to realize_seeded_install_media_toolchain_ensure_on_host (SeededInstallMediaToolchainOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
-data install_media_remaster_toolchain_ensure_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.srv3_host_effect_script",
-    decl_name: "install_media_remaster_toolchain_ensure_script",
-    field: WholeDeclaration
-  }
+data install_media_remaster_toolchain_ensure_dissolution_trigger: Disposition = Terminal {
+  reason: "install_media_remaster_toolchain_ensure dissolved onto host_effect_apply realize_seeded_install_media_toolchain_ensure_on_host (srv3_ensure_apt_tool + xorriso version probe) - no concat-built bash script remains"
 }
 
 data srv3_seeded_install_media_unattended_not_proven_marker: Disposition = Scaffold {
@@ -128,6 +121,6 @@ fn srv3_seeded_install_media_remaster_toolchain_is_modeled() -> Bool {
 }
 
 fn srv3_seeded_install_media_toolchain_ensure_is_privileged_gated() -> Bool {
-  string_contains(s: install_media_remaster_toolchain_ensure_script(), pattern: "sudo -n /usr/bin/apt-get install -y")
-    && string_contains(s: install_media_remaster_toolchain_ensure_script(), pattern: "deploy-access-preflight: FAIL sudo -n /usr/bin/apt-get")
+  srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated()
+    && srv3_seeded_install_media_toolchain_unprivileged_fixture_denied()
 }

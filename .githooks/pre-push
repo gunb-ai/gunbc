@@ -42,6 +42,8 @@ fresh_artifact_path() {
     .githooks/pre-push*) return 0 ;;
     .githooks/pre-commit*) return 0 ;;
     .github/fleet-converge.sh*) return 0 ;;
+    dag/gunbc/stage0_crate_layout_generated.dag*) return 0 ;;
+    src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs*) return 0 ;;
     docs/plans/idea-machine.md*) return 0 ;;
     docs/plans/algebraic-rewrite-optimization.md*) return 0 ;;
     docs/plans/dag-v2-defork-audit.md*) return 0 ;;
@@ -69,6 +71,8 @@ fresh_artifact_path() {
     docs/plans/expressibility-frontier.md*) return 0 ;;
     docs/plans/p1-where-clause-lowering.md*) return 0 ;;
     docs/plans/intent-linearity-design-draft.md*) return 0 ;;
+    docs/plans/solve-higher-order-design.md*) return 0 ;;
+    docs/plans/language-target-self-host-frontier.md*) return 0 ;;
     docs/plans/self-applying-lenses.md*) return 0 ;;
     docs/plans/budget-tree.md*) return 0 ;;
     docs/plans/cardinality-refinement.md*) return 0 ;;

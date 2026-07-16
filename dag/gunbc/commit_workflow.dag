@@ -51,7 +51,7 @@ type CommitWorkflowRealizationBinding {
 }
 
 data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
-  reason: "The v1 Rust test suite (cargo fmt --all --check plus cargo nextest run -p v1-compiler-tests) was REMOVED from CI 2026-07-11 (operator ruling) — its RustMonolithGate enrollment, the rust_tests job, and rust_gates_ci.dag's CI consumers are all gone. This records the removal as intentional, not silent (the review-flagged concern). Rationale: rust_tests was NON-required (only the ci job is protection-required on the gunbc main ruleset; rust_tests and ci_regen were not) AND red on main (it exercises the v1 seed, which is being deleted under the §7 burn-down), so it delivered a permanent non-required red — the §5 tolerated-red anti-pattern — at ~37 GiB, the fleet's single largest CI memory job. Coverage after removal: cargo fmt stays enforced by the pre-push hook (CommitCargoFmtCheck on GitPrePushHook); cargo nextest run -p v1-compiler-tests runs LOCALLY, not in CI. Return trigger — NONE by design: this suite does not re-enroll. It is retired WITH the v1 seed and deleted at §7 terminal collapse. Re-enrolling RustMonolithGate onto the required ci floor is explicitly REJECTED — it would move the ~37 GiB red job into the required merge gate. Compile-level v1 seed breakage is still caught by the required floor's DagCompileCleanGate and RegenVerifyGate; only the seed's runtime test behavior moves local."
+  reason: "The v1 Rust test suite (cargo fmt --all --check plus cargo nextest run -p v1-compiler-tests) was REMOVED from CI 2026-07-11 (operator ruling) — its RustMonolithGate enrollment, the rust_tests job, and rust_gates_ci.dag's CI consumers are all gone. This records the removal as intentional, not silent (the review-flagged concern). Rationale: rust_tests was NON-required (only the ci job is protection-required on the gunbc main ruleset; rust_tests and ci_regen were not) AND red on main (it exercises the v1 seed, which is being deleted under the §7 burn-down), so it delivered a permanent non-required red — the §5 tolerated-red anti-pattern — at ~37 GiB, the fleet's single largest CI memory job. AMENDED 2026-07-15 (operator ruling, the falsifier lane): the fmt HALF of this removal is REVERSED — cargo fmt --all --check is re-enrolled as a standalone build-job step (gunbc.ci_spec ci_fmt_gate_note / ci_fmt_gate_line). Every rationale above is a fact about NEXTEST (37 GiB, red, seed-runtime); fmt is 4.3s measured, parse-only, needs no build, and is green — it was collateral damage of a §3 fusion, since tools.rust_gates_ci.run_gates welds both into one ProcessExit, so killing the bundle killed the cheap green half. This amendment does NOT re-enroll RustMonolithGate (still REJECTED below) and does not return nextest to CI. The former claim 'cargo fmt stays enforced by the pre-push hook (CommitCargoFmtCheck on GitPrePushHook)' is RETRACTED as the enforcement authority: a hook is an escape hatch (§5) — opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, and absent in container worktrees — and it is PROVEN ineffective, not merely theoretically weak: #6658 landed an unformatted .rs on main 2026-07-15 and no gate caught it. The hook remains as fast local feedback, never as the wall. Coverage now: cargo fmt = the required CI path (ci needs:[build], so a red fmt step blocks the required job by construction); cargo nextest run -p v1-compiler-tests still runs LOCALLY, not in CI. Return trigger for NEXTEST — NONE by design: that suite does not re-enroll. It is retired WITH the v1 seed and deleted at §7 terminal collapse. Re-enrolling RustMonolithGate onto the required ci floor is explicitly REJECTED — it would move the ~37 GiB red job into the required merge gate. Compile-level v1 seed breakage is still caught by the required floor's DagCompileCleanGate and RegenVerifyGate; only the seed's runtime test behavior moves local."
 }
 
 data commit_gate_roster: List<CommitCheckEnrollment> = [
@@ -138,13 +138,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "dag/test/claim/ci_materialization_witness_test.dag",
       check_fns: [
         "ci_ladder_holds_on_live_workflow",
-        "ci_single_release_build_is_accepted_single_recompute",
         "ci_ladder_holds_without_sccache_single_build",
-        "ci_prelude_scripts_are_typed_cost_floor_acceptances",
-        "ci_measurement_is_exempt_fresh_effect",
-        "ci_catalog_projection_has_no_refusals",
-        "ci_uses_steps_are_counted_not_silent",
-        "ci_run_step_natures_are_claims_counted_not_silent"
+        "ci_catalog_projection_has_no_refusals"
       ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
@@ -381,6 +376,56 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
         "wave1_gate1_c1_arrow_body_cost_domain_excluded_witness_holds",
         "wave1_gate1_c1_unpriceable_combiner_refusal_witness_holds",
         "wave1_gate1_c1_multi_linear_ambiguous_refusal_witness_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
+      check_fns: ["wave1_gate1_d_census_subsumption_witness_holds"],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/wave1_gate1_d_ingested_bind_loop_eval_witness_test.dag",
+      check_fns: [
+        "wave1_gate1_d_ingested_bind_executes_witness_holds",
+        "wave1_gate1_d_ingested_loop_executes_witness_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/parse_binding_fidelity_witness_test.dag",
+      check_fns: [
+        "witness_parse_binding_fidelity_distinct_identifiers_holds",
+        "witness_resolve_distinct_param_bindings_holds"
+      ],
+      kind: ExecutionWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
+      check_fns: [
+        "lens_affected_set_provenance_producer_single_read_emits_row_holds",
+        "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds",
+        "lens_affected_set_provenance_producer_rejects_beyond_surface_ingest_holds",
+        "lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds",
+        "lens_affected_set_provenance_producer_coverage_receipt_holds",
+        "lens_affected_set_provenance_producer_git_diff_wire_holds",
+        "lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds"
       ],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared

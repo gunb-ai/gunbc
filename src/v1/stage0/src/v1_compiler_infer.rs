@@ -52,11 +52,11 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    empty_symbol_index, empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
-    symbol_index_insert,
+    empty_symbol_index, empty_type_env_cache, global_bare_is_ambiguous, inductive_fields_for,
+    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
+    lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
+    merge_type_env_cache_guarded, put_inductive_field, put_inductive_field_cross,
+    str_bindings_from_bindings, symbol_index_insert,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
@@ -105,12 +105,12 @@ pub use crate::v1_compiler_infer_types::{
     bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
     extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
-    make_callable_type, make_container_type, method_receiver_element_node, node_is_collection,
-    node_is_element_collection, node_is_keyed_collection, node_is_set_collection,
-    node_type_compatible, node_type_deps, node_type_equals, node_type_shape, nominal_type_ref,
-    normalize_access_type_node, prefer_specific_type, resolve_type_variables_from_template,
-    resolved_type, structural_carrier_template_name, template_return_has_variables,
-    template_return_is_receiver_self,
+    is_type_expr_annotation, make_callable_type, make_container_type, method_receiver_element_node,
+    node_is_collection, node_is_element_collection, node_is_keyed_collection,
+    node_is_set_collection, node_type_compatible, node_type_deps, node_type_equals,
+    node_type_shape, nominal_type_ref, normalize_access_type_node, prefer_specific_type,
+    resolve_type_variables_from_template, resolved_type, structural_carrier_template_name,
+    template_return_has_variables, template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
@@ -120,8 +120,8 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
-    FieldNotFound, InternalError, SoleConstructorViolation, TypeMismatch, UnresolvedType,
-    VariantCollision,
+    FieldNotFound, InternalError, MissingField, SoleConstructorViolation, TypeMismatch,
+    UnresolvedType, VariantCollision,
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
@@ -1073,10 +1073,7 @@ match exp.children.clone().get(pair.0.clone() as usize).cloned() {
     None => acc.clone(),
 }
 });
-                                        let template_fields = record_lit_expected_fields(
-                                            type_name.clone(),
-                                            scope.clone(),
-                                        );
+                                        let template_fields = decl.children.clone();
                                         Some(Rc::new({
                                             let mut __result = Vec::new();
                                             for sf in template_fields.clone().iter().cloned() {
@@ -1262,6 +1259,88 @@ pub fn nominal_call_arg_brand_mismatch(
     }
 }
 
+pub fn kernel_value_declared_type_mismatch(
+    formal: Rc<Node>,
+    actual: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (((formal.connective.clone() == Connective::Arrow)
+        || (actual.connective.clone() == Connective::Arrow))
+        || ((actual.children.clone().len() as i64) > 0))
+    {
+        false
+    } else {
+        {
+            let formal_base = if (((formal.connective.clone() == Connective::Conj)
+                && (formal.type_annotation.clone() != None))
+                && ((formal.children.clone().len() as i64) == 1))
+            {
+                match formal.children.clone().first().cloned() {
+                    Some(refinement_base) => refinement_base.clone(),
+                    None => formal.clone(),
+                }
+            } else {
+                formal.clone()
+            };
+            let actual_name = authored_name_at(source_indices.clone(), actual.clone());
+            if ((is_kernel_type(actual_name.clone()) == false)
+                || (actual_name.clone() == "Unit".to_string()))
+            {
+                false
+            } else {
+                {
+                    let formal_name = authored_name_at(source_indices.clone(), formal_base.clone());
+                    if (((formal_name.clone() == "".to_string())
+                        || (formal_name.clone() == actual_name.clone()))
+                        || dag_can_cast(actual_name.clone(), formal_name.clone()))
+                    {
+                        false
+                    } else {
+                        if (structural_carrier_template_name(
+                            formal_base.clone(),
+                            source_indices.clone(),
+                        ) == structural_carrier_template_name(
+                            actual.clone(),
+                            source_indices.clone(),
+                        )) {
+                            false
+                        } else {
+                            if is_kernel_type(formal_name.clone()) {
+                                true
+                            } else {
+                                match lookup_type_by_name(type_env.clone(), formal_name.clone()) {
+                                    Some(decl) => {
+                                        let decl_is_refinement_over_actual =
+                                            (((decl.connective.clone() == Connective::Conj)
+                                                && ((decl.children.clone().len() as i64) == 1))
+                                                && ((decl.type_annotation.clone() != None)
+                                                    || match decl.children.clone().first().cloned()
+                                                    {
+                                                        Some(refinement_child) => {
+                                                            (authored_name_at(
+                                                                source_indices.clone(),
+                                                                refinement_child.clone(),
+                                                            ) == actual_name.clone())
+                                                        }
+                                                        None => false,
+                                                    }));
+                                        ((((decl.connective.clone() == Connective::Conj)
+                                            || (decl.connective.clone() == Connective::Disj))
+                                            && ((decl.children.clone().len() as i64) > 0))
+                                            && (decl_is_refinement_over_actual.clone() == false))
+                                    }
+                                    None => false,
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn container_element_nominal_brand_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
@@ -1312,12 +1391,18 @@ pub fn direct_call_arg_type_mismatch(
     if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
         false
     } else {
-        (nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
+        ((nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
             || container_element_nominal_brand_mismatch(
                 formal.clone(),
                 actual.clone(),
                 type_env.clone(),
                 module_name.clone(),
+                source_indices.clone(),
+            ))
+            || kernel_value_declared_type_mismatch(
+                formal.clone(),
+                actual.clone(),
+                type_env.clone(),
                 source_indices.clone(),
             ))
     }
@@ -1359,7 +1444,27 @@ pub fn direct_call_arg_mismatch_diags(
                             type_env.clone(),
                             module_name.clone(),
                         );
-                        match typed_args.clone().get(pair.0.clone() as usize).cloned() {
+                        let param_name = authored_name_at(source_indices.clone(), pair.1.clone());
+                        let matched_arg = match Rc::new({
+                            let mut __result = Vec::new();
+                            for ta in typed_args.clone().iter().cloned() {
+                                if arg_has_name(
+                                    ta.clone(),
+                                    param_name.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    __result.push(ta);
+                                }
+                            }
+                            __result
+                        })
+                        .first()
+                        .cloned()
+                        {
+                            Some(named_ta) => Some(named_ta.clone()),
+                            None => typed_args.clone().get(pair.0.clone() as usize).cloned(),
+                        };
+                        match matched_arg.clone() {
                             Some(ta) => {
                                 let actual_raw = resolved_type(arg_value(ta.clone()));
                                 let actual = peel_nominal_alias_identity(
@@ -4412,10 +4517,16 @@ match bare_s.clone() {
                     },
                     None => false,
                 };
-                let val_expected = if is_tail_return.clone() {
-                    expected.clone()
+                let val_expected = if ((texpr.type_annotation.clone() != None)
+                    && is_type_expr_annotation(texpr.type_annotation.clone().clone().unwrap()))
+                {
+                    Some(texpr.type_annotation.clone().clone().unwrap())
                 } else {
-                    None
+                    if is_tail_return.clone() {
+                        expected.clone()
+                    } else {
+                        None
+                    }
                 };
                 let val_result = infer_expr(val_expr.clone(), scope.clone(), val_expected.clone());
                 let val_typed = val_result.typed.clone();
@@ -5815,6 +5926,24 @@ pub fn type_has_sole_constructor(type_name: String, scope: Rc<InferScope>) -> bo
     }
 }
 
+pub fn zero_field_variant_tag_reference_frontier_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): a ZERO-field literal of a coproduct VARIANT (field_inits empty AND variant_owner_node != none) is sanctioned as a TAG REFERENCE, not a construction — the `discriminant(v: PrefixToken {})` idiom (16+ sites in src/v2/std/compilers/target_model.dag) names a variant to obtain its stable tag identity without materializing a value. Presence checking is skipped for exactly this shape; PARTIAL literals (any field present) stay red, and zero-field literals of NON-variant records (variant_owner_node == none) stay red — so the audit F1 probes (CacheProvider/CostAccount partial literals) are unaffected. This is a decidable structural exemption (not an absorbing fallback: it refuses precisely, never widens on failure). DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the exemption is deleted and the sites migrate to the carrier.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn presence_check_census_gate_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus). Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn infer_record_lit(
     type_name: Option<String>,
     field_inits: Rc<Vec<Rc<Node>>>,
@@ -5869,6 +5998,106 @@ pub fn infer_record_lit(
         let tn_str = match type_name.clone() {
             Some(tn) => tn.clone(),
             None => "".to_string(),
+        };
+        let si_presence = scope.type_env.clone().source_indices.clone();
+        let presence_fields = if (tn_str.clone() == "".to_string()) {
+            Rc::new(vec![])
+        } else {
+            match variant_owner_node(scope.clone(), tn_str.clone()) {
+                Some(variant_owner) => match Rc::new({
+                    let mut __result = Vec::new();
+                    for v in variant_owner.children.clone().iter().cloned() {
+                        if (authored_name_at(si_presence.clone(), v.clone()) == tn_str.clone()) {
+                            __result.push(v);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(variant_node) => variant_node.children.clone(),
+                    None => Rc::new(vec![]),
+                },
+                None => match record_lit_instantiated_fields(
+                    type_name.clone(),
+                    expected.clone(),
+                    scope.clone(),
+                ) {
+                    Some(inst_fields) => inst_fields.clone(),
+                    None => match lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) {
+                        Some(decl) => {
+                            if (((decl.connective.clone() == Connective::Conj)
+                                && ((decl.params.clone().len() as i64) == 0))
+                                && ((decl.children.clone().len() as i64) > 0))
+                            {
+                                decl.children.clone()
+                            } else {
+                                Rc::new(vec![])
+                            }
+                        }
+                        None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                    },
+                },
+            }
+        };
+        let is_zero_field_variant_tag_reference = (((field_inits.clone().len() as i64) == 0)
+            && (variant_owner_node(scope.clone(), tn_str.clone()) != None));
+        let presence_name_is_ambiguous =
+            global_bare_is_ambiguous(scope.type_env.clone(), tn_str.clone());
+        let missing_field_diags = if ((((tn_str.clone() == "".to_string())
+            || ((presence_fields.clone().len() as i64) == 0))
+            || is_zero_field_variant_tag_reference.clone())
+            || presence_name_is_ambiguous.clone())
+        {
+            Rc::new(vec![])
+        } else {
+            Rc::new({
+                let mut __result = Vec::new();
+                for sf in Rc::new({
+                    let mut __result = Vec::new();
+                    for sf in presence_fields.clone().iter().cloned() {
+                        if {
+                            let sf_type = match sf.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+                                _ => field_node_type_expr(sf.clone()),
+                            };
+                            (((sf_type.return_cardinality.clone() != Cardinality::CardOptional)
+                                && (sf.body.clone() == None))
+                                && ({
+                                    let mut __found = false;
+                                    for fi in field_inits.clone().iter().cloned() {
+                                        if (field_init_node_name_at(
+                                            fi.clone(),
+                                            si_presence.clone(),
+                                        ) == authored_name_at(si_presence.clone(), sf.clone()))
+                                        {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } == false))
+                        } {
+                            __result.push(sf);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(make_error_node(
+                        Rc::new(CompilerDiagnostic::MissingField {
+                            field: authored_name_at(si_presence.clone(), sf.clone()),
+                            type_name: tn_str.clone(),
+                            span: name_span.clone(),
+                        }),
+                        scope.module_name.clone(),
+                    ));
+                }
+                __result
+            })
         };
         let fi_infer_results = Rc::new({
             let mut __result = Vec::new();
@@ -5981,7 +6210,46 @@ pub fn infer_record_lit(
                                     )])
                                 }
                             } else {
-                                Rc::new(vec![])
+                                {
+                                    let expected_required = match lookup_type_for(
+                                        scope.type_env.clone(),
+                                        with_required_cardinality(expected_node.clone()),
+                                    ) {
+                                        Some(resolved) => resolved.clone(),
+                                        None => with_required_cardinality(expected_node.clone()),
+                                    };
+                                    let formal_peeled = peel_nominal_alias_identity(
+                                        expected_required.clone(),
+                                        scope.type_env.clone(),
+                                        scope.module_name.clone(),
+                                    );
+                                    let actual_peeled = peel_nominal_alias_identity(
+                                        got_node.clone(),
+                                        scope.type_env.clone(),
+                                        scope.module_name.clone(),
+                                    );
+                                    if kernel_value_declared_type_mismatch(
+                                        formal_peeled.clone(),
+                                        actual_peeled.clone(),
+                                        scope.type_env.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ) {
+                                        Rc::new(vec![type_mismatch_error(
+                                            node_type_shape(
+                                                formal_peeled.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
+                                            node_type_shape(
+                                                actual_peeled.clone(),
+                                                scope.type_env.clone().source_indices.clone(),
+                                            ),
+                                            ar_typed.span.clone(),
+                                            scope.module_name.clone(),
+                                        )])
+                                    } else {
+                                        Rc::new(vec![])
+                                    }
+                                }
                             }
                         }
                         None => Rc::new(vec![]),
@@ -6190,8 +6458,11 @@ pub fn infer_record_lit(
                 Rc::new(InferResult {
                     typed: texpr.clone(),
                     diagnostics: v1_rt::concat(
-                        v1_rt::concat(fi_diags.clone(), type_diags.clone()),
-                        sole_ctor_diags.clone(),
+                        v1_rt::concat(
+                            v1_rt::concat(fi_diags.clone(), type_diags.clone()),
+                            sole_ctor_diags.clone(),
+                        ),
+                        missing_field_diags.clone(),
                     ),
                 })
             }
@@ -12484,6 +12755,75 @@ pub fn symbol_index_insert_item(
     }
 }
 
+pub fn disj_variant_name_count_inc(
+    counts: Rc<HashMap<String, i64>>,
+    name: String,
+) -> Rc<HashMap<String, i64>> {
+    match v1_rt::map_get(&counts, name.clone()) {
+        Some(n) => v1_rt::rc_map_insert(counts.clone(), name.clone(), (n.clone() + 1)),
+        None => v1_rt::rc_map_insert(counts.clone(), name.clone(), 1),
+    }
+}
+
+pub fn disj_variant_name_counts(
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, i64>> {
+    items.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, i64>(),
+        |counts: Rc<HashMap<String, i64>>, item: Rc<Node>| match item.connective.clone() {
+            Connective::Disj => item.children.clone().iter().cloned().fold(
+                counts.clone(),
+                |c: Rc<HashMap<String, i64>>, child: Rc<Node>| {
+                    disj_variant_name_count_inc(
+                        c,
+                        authored_name_at(source_indices.clone(), child.clone()),
+                    )
+                },
+            ),
+            _ => counts.clone(),
+        },
+    )
+}
+
+pub fn symbol_index_insert_unique_disj_variant_aliases(
+    index: Rc<SymbolIndex>,
+    module_path: String,
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SymbolIndex> {
+    {
+        let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
+        items
+            .clone()
+            .iter()
+            .cloned()
+            .fold(
+                index.clone(),
+                |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
+                    Connective::Disj => item.children.clone().iter().cloned().fold(
+                        acc.clone(),
+                        |a2: Rc<SymbolIndex>, child: Rc<Node>| {
+                            let vname = authored_name_at(source_indices.clone(), child.clone());
+                            match v1_rt::map_get(&counts, vname.clone()) {
+                                Some(1) => symbol_index_insert(
+                                    a2.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(module_path.clone(), ".".to_string()),
+                                        vname.clone(),
+                                    ),
+                                    child.clone(),
+                                ),
+                                _ => a2.clone(),
+                            }
+                        },
+                    ),
+                    _ => acc.clone(),
+                },
+            )
+    }
+}
+
 pub fn build_symbol_index_census(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -12492,7 +12832,8 @@ pub fn build_symbol_index_census(
         empty_symbol_index(),
         |index: Rc<SymbolIndex>, mod_: Rc<ResolvedModule>| {
             let module_path = authored_name_at(source_indices.clone(), mod_.module.clone());
-            module_items(mod_.module.clone()).iter().cloned().fold(
+            let items = module_items(mod_.module.clone());
+            let with_items = items.clone().iter().cloned().fold(
                 index,
                 |acc: Rc<SymbolIndex>, item: Rc<Node>| {
                     symbol_index_insert_item(
@@ -12502,7 +12843,86 @@ pub fn build_symbol_index_census(
                         source_indices.clone(),
                     )
                 },
+            );
+            symbol_index_insert_unique_disj_variant_aliases(
+                with_items.clone(),
+                module_path.clone(),
+                items.clone(),
+                source_indices.clone(),
             )
+        },
+    )
+}
+
+pub fn direct_import_export_precedence_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields; ledger arm = the fork row is still recorded).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn overlay_skips_kernel_name(name: String) -> bool {
+    (((((is_kernel_type(name.clone()) || is_container_type(name.clone()))
+        || (name.clone() == "Unit".to_string()))
+        || (name.clone() == "Optional".to_string()))
+        || (name.clone() == "Present".to_string()))
+        || (name.clone() == "Absent".to_string()))
+}
+
+pub fn overlay_direct_import_exports(
+    ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    resolved_imports.clone().iter().cloned().fold(
+        ancestry_str_bindings.clone(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
+            &parent_index,
+            imp.module_path.clone(),
+        ) {
+            Some(typed_parent) => {
+                let export_surface = interface_env_for_import(
+                    imp.module_path.clone(),
+                    typed_parent.interface.clone().env.clone(),
+                );
+                let selected = if imp.is_all.clone() {
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for name in Rc::new(v1_rt::map_keys(&export_surface.str_bindings.clone()))
+                            .iter()
+                            .cloned()
+                        {
+                            if (is_type_variable_name(name.clone()) == false) {
+                                __result.push(name);
+                            }
+                        }
+                        __result
+                    })
+                } else {
+                    imp.specific_names.clone()
+                };
+                selected.clone().iter().cloned().fold(
+                    acc.clone(),
+                    |bacc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
+                        if overlay_skips_kernel_name(name.clone()) {
+                            bacc.clone()
+                        } else {
+                            match v1_rt::map_get(&export_surface.str_bindings.clone(), name.clone())
+                            {
+                                Some(binding) => v1_rt::rc_map_insert(
+                                    bacc.clone(),
+                                    name.clone(),
+                                    binding.clone(),
+                                ),
+                                None => bacc.clone(),
+                            }
+                        }
+                    },
+                )
+            }
+            None => acc.clone(),
         },
     )
 }
@@ -12994,32 +13414,11 @@ pub fn build_type_env(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
-        let ancestry_str_bindings = if ((module.resolved_imports.clone().len() as i64) == 1) {
-            match module.resolved_imports.clone().first().cloned() {
-                Some(imp) => match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                    Some(parent_mod) => v1_rt::rc_map_merge(
-                        parent_mod
-                            .interface
-                            .clone()
-                            .env
-                            .clone()
-                            .ancestry_str_bindings
-                            .clone(),
-                        parent_mod
-                            .interface
-                            .clone()
-                            .env
-                            .clone()
-                            .str_bindings
-                            .clone(),
-                    ),
-                    None => ancestry_cache.str_bindings.clone(),
-                },
-                None => ancestry_cache.str_bindings.clone(),
-            }
-        } else {
-            ancestry_cache.str_bindings.clone()
-        };
+        let ancestry_str_bindings = overlay_direct_import_exports(
+            ancestry_cache.str_bindings.clone(),
+            module.resolved_imports.clone(),
+            parent_index.clone(),
+        );
         let svn_local = Rc::new(v1_rt::map_keys(&local_str_bindings))
             .iter()
             .cloned()
@@ -13562,32 +13961,7 @@ pub fn build_type_env_unresolved(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
-        let ancestry_str_bindings = if ((module.resolved_imports.clone().len() as i64) == 1) {
-            match module.resolved_imports.clone().first().cloned() {
-                Some(imp) => match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                    Some(parent_mod) => v1_rt::rc_map_merge(
-                        parent_mod
-                            .interface
-                            .clone()
-                            .env
-                            .clone()
-                            .ancestry_str_bindings
-                            .clone(),
-                        parent_mod
-                            .interface
-                            .clone()
-                            .env
-                            .clone()
-                            .str_bindings
-                            .clone(),
-                    ),
-                    None => ancestry_cache.str_bindings.clone(),
-                },
-                None => ancestry_cache.str_bindings.clone(),
-            }
-        } else {
-            ancestry_cache.str_bindings.clone()
-        };
+        let ancestry_str_bindings = ancestry_cache.str_bindings.clone();
         let visible_str_bindings =
             v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
         let unresolved_env = Rc::new(TypeEnv {

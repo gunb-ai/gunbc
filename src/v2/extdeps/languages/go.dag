@@ -1803,7 +1803,7 @@ fn go_host_transport_descriptor() -> HostTransportDescriptor {
     ],
     build: Empty,
     run: ProcessInvocation {
-      program: HostToolProgram { tool: ^host_tool_go },
+      program: HostToolProgram { executable: "go" },
       args: [
         LiteralArg { text: "run" },
         WorkspacePath { path: "main.go" }

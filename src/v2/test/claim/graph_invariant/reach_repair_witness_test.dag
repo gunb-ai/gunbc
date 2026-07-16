@@ -1,0 +1,205 @@
+module v2.test.graph_invariant.reach_repair_witness_test
+
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.dag {
+  dag_fixture_emitted_loop_fn,
+  dag_loop_arrow_with_body_wrong_value_fixture,
+  dag_loop_body_node,
+  dag_loop_target_model
+}
+import v2.lens.application { apply_diff }
+import v2.lens.application_serializer { serialize_diff_as_source_patch }
+import v2.std.lens_verdict { Holds, LensVerdict, Violation }
+import v2.lens.common.graph_invariant {
+  GraphReachProjection,
+  graph_invariant_reach_verdict,
+  graph_invariant_reaches,
+  graph_reach_add_edge_repair,
+  graph_reach_apply_diagnostic_correction,
+  graph_reach_root_replacement_edit,
+  graph_reach_unreachable_diagnostic
+}
+import v2.std.collection { List }
+import v2.std.dependency { Contains, DependencyView, dependency_lens }
+import v2.std.diagnostic {
+  Accepted,
+  Correction,
+  Diagnostic,
+  Rejected,
+  Suggested,
+  Unavailable,
+  correction_eq
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Diff,
+  Edit,
+  Node,
+  Path,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data reach_repair_surgical_body_edit: Edit = Edit {
+  at: Path { steps: [^arrow_body_edge] },
+  replacement: dag_loop_body_node()
+}
+
+data reach_repair_surgical_body_diff: Diff = Diff {
+  edits: [reach_repair_surgical_body_edit]
+}
+
+fn rr_atom(identity: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: identity } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn rr_out() -> Node { rr_atom(identity: ^rr_output) }
+fn rr_mid() -> Node { rr_atom(identity: ^rr_mid) }
+fn rr_in() -> Node { rr_atom(identity: ^rr_input) }
+fn rr_dangling() -> Node { rr_atom(identity: ^rr_dangling) }
+
+fn rr_edge(source: Node, dependent: Node) -> DependencyView {
+  DependencyView {
+    source: source,
+    dependent: dependent,
+    kind: Contains,
+    usage_site: dependent
+  }
+}
+
+fn rr_live_slice() -> List<DependencyView> {
+  [
+    rr_edge(source: rr_out(), dependent: rr_mid()),
+    rr_edge(source: rr_mid(), dependent: rr_in())
+  ]
+}
+
+fn rr_dead_projection() -> GraphReachProjection {
+  GraphReachProjection {
+    edges: rr_live_slice(),
+    roots: [rr_out()]
+  }
+}
+
+fn rr_dead_wire_diagnostic() -> Diagnostic {
+  graph_reach_unreachable_diagnostic(
+    reason: ^graph_invariant_reach_repair_witness,
+    root: rr_out(),
+    unreachable: rr_dangling(),
+    projection: rr_dead_projection()
+  )
+}
+
+fn rr_correction_is_suggested(c: Correction) -> Bool {
+  match c {
+    Suggested { node: _ } => true
+    Unavailable { reason: _ } => false
+  }
+}
+
+fn rr_wrong_correction() -> Node {
+  rr_atom(identity: ^rr_wrong_correction_leaf)
+}
+
+test fn witness_dead_wire_produces_suggested_not_unavailable() -> Bool {
+  let d = rr_dead_wire_diagnostic()
+  rr_correction_is_suggested(c: d.correction)
+}
+
+test fn witness_apply_correction_reruns_satisfied() -> Bool {
+  let d = rr_dead_wire_diagnostic()
+  match graph_reach_apply_diagnostic_correction(root: rr_out(), d: d) {
+    Accepted { value: patched, diagnostics: _ } =>
+      graph_invariant_reaches(
+        projection: GraphReachProjection {
+          edges: dependency_lens(root: patched),
+          roots: [patched]
+        },
+        target: rr_dangling()
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_wrong_correction_stays_violated() -> Bool {
+  match apply_diff(
+    root: rr_out(),
+    d: Diff {
+      edits: [graph_reach_root_replacement_edit(repaired: rr_wrong_correction())]
+    }
+  ) {
+    Accepted { value: patched, diagnostics: _ } =>
+      graph_invariant_reaches(
+        projection: GraphReachProjection {
+          edges: dependency_lens(root: patched),
+          roots: [patched]
+        },
+        target: rr_dangling()
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rr_repaired_root() -> Node {
+  graph_reach_add_edge_repair(root: rr_out(), edge_target: rr_dangling())
+}
+
+test fn witness_apply_edit_emits_corrected_source() -> Bool {
+  match serialize_diff_as_source_patch(
+    root: dag_loop_arrow_with_body_wrong_value_fixture,
+    diff: reach_repair_surgical_body_diff,
+    canonical_source_target: dag_loop_target_model()
+  ) {
+    Accepted { value: patch, diagnostics: _ } =>
+      match target_serialize_source_from_model(
+        target: dag_loop_target_model(),
+        emitted: dag_fixture_emitted_loop_fn
+      ) {
+        Accepted { value: authority_after, diagnostics: _ } =>
+          patch.after == authority_after && patch.before != patch.after
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_suggested_correction_matches_add_edge_repair() -> Bool {
+  let d = rr_dead_wire_diagnostic()
+  correction_eq(
+    a: d.correction,
+    b: Suggested { node: rr_repaired_root() }
+  )
+}
+
+test fn witness_reach_lens_verdict_holds_on_reachable() -> Bool {
+  match graph_invariant_reach_verdict(
+    reason: ^graph_invariant_reach_repair_witness,
+    root: rr_out(),
+    unreachable: rr_in(),
+    projection: rr_dead_projection()
+  ) {
+    Holds => true
+    _ => false
+  }
+}
+
+test fn witness_reach_lens_verdict_violation_suggested_on_unreachable() -> Bool {
+  match graph_invariant_reach_verdict(
+    reason: ^graph_invariant_reach_repair_witness,
+    root: rr_out(),
+    unreachable: rr_dangling(),
+    projection: rr_dead_projection()
+  ) {
+    Violation { diagnostic: d } => rr_correction_is_suggested(c: d.correction)
+    _ => false
+  }
+}

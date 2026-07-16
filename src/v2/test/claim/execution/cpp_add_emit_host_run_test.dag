@@ -61,7 +61,7 @@ fn cpp_fixed_source_row(source_text: String) -> EmitHostRuntimeRow {
       ],
       build: [
         ProcessInvocation {
-          program: HostToolProgram { tool: ^host_tool_cc },
+          program: HostToolProgram { executable: "cc" },
           args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
         }
       ],

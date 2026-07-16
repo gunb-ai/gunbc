@@ -54,13 +54,6 @@ fn fact_cardinality_cross_tree_diverged_fork(
     && left.content_hash != right.content_hash
 }
 
-fn fact_cardinality_cross_tree_variant_mismatch(
-  left: FactCardinalityDeclFact,
-  right: FactCardinalityDeclFact
-) -> Bool {
-  fact_cardinality_cross_tree_diverged_fork(left: left, right: right)
-}
-
 fn any_pair_coexistence_for_key(
   key: String,
   facts: List<FactCardinalityDeclFact>

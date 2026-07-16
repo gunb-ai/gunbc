@@ -1,12 +1,12 @@
 module v2.test.execution.loop_eval_by_execution
 
-import v2.compiler.body_producer {
-  produce_loop_arrow_with_body,
-  produce_loop_arrow_with_body_wrong_value
+import v2.test.complexity_gate.table_fixture_loop_subject_producer {
+  table_fixture_loop_arrow_with_body,
+  table_fixture_loop_wrong_value_arrow_with_body
 }
-import v2.test.complexity_gate.source_bridged_loop_subject_producer {
-  source_bridged_loop_arrow_with_body,
-  source_bridged_loop_wrong_value_arrow_with_body
+import v2.compiler.ingested_fixture_arrows {
+  ingested_loop_arrow_with_body,
+  ingested_loop_arrow_with_body_wrong_value
 }
 import v2.compiler.eval {
   EvalContext,
@@ -85,7 +85,9 @@ import v2.std.runtime {
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.witness { Holds, Witness }
 import v2.std.verdict { Pass }
@@ -242,6 +244,9 @@ fn loop_interpretation() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: loop_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }
@@ -394,14 +399,14 @@ fn loop_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
 }
 
 fn loop_source_pipeline_admits_holds() -> Bool {
-  match source_bridged_loop_arrow_with_body() {
+  match table_fixture_loop_arrow_with_body() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
 fn loop_source_driven_executes_holds() -> Bool {
-  match source_bridged_loop_arrow_with_body() {
+  match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
@@ -414,7 +419,7 @@ fn loop_source_driven_executes_holds() -> Bool {
 }
 
 fn loop_source_driven_wrong_value_red_holds() -> Bool {
-  match source_bridged_loop_wrong_value_arrow_with_body() {
+  match table_fixture_loop_wrong_value_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
@@ -427,7 +432,7 @@ fn loop_source_driven_wrong_value_red_holds() -> Bool {
 }
 
 fn loop_direct_runtime_holds() -> Bool {
-  match source_bridged_loop_arrow_with_body() {
+  match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let input = loop_pick_call(callee: arrow)
       match loop_inferred_run_tree(
@@ -452,7 +457,7 @@ fn loop_direct_runtime_holds() -> Bool {
 }
 
 fn loop_value_perturbation_red_holds() -> Bool {
-  match source_bridged_loop_arrow_with_body() {
+  match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
@@ -465,7 +470,7 @@ fn loop_value_perturbation_red_holds() -> Bool {
 }
 
 fn loop_fixture_producer_holds() -> Bool {
-  match produce_loop_arrow_with_body() {
+  match table_fixture_loop_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(
@@ -478,7 +483,33 @@ fn loop_fixture_producer_holds() -> Bool {
 }
 
 fn loop_fixture_wrong_value_red_holds() -> Bool {
-  match produce_loop_arrow_with_body_wrong_value() {
+  match table_fixture_loop_wrong_value_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      loop_run_passes(
+        run: loop_run(
+          callee: arrow,
+          expected: loop_literal_one_node()
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_census_ingested_executes_holds() -> Bool {
+  match ingested_loop_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      loop_run_passes(
+        run: loop_run(
+          callee: arrow,
+          expected: loop_literal_one_node()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_census_ingested_wrong_value_red_holds() -> Bool {
+  match ingested_loop_arrow_with_body_wrong_value() {
     Accepted { value: arrow, diagnostics: _ } =>
       loop_run_passes(
         run: loop_run(

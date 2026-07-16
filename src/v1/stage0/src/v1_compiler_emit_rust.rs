@@ -9,6 +9,7 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_method_templates, rust_method_wraps_result, rust_serde_rename_all_screaming_snake_case,
     rust_serde_rename_all_snake_case, rust_struct_derives, rust_struct_derives_copy,
 };
+pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_serialization::VariantEncoding::*;
@@ -3861,7 +3862,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod shared_typecheck_store;\npub mod recorded_fixture;\npub mod module_path_index;\npub mod memory_governor;".to_string()
+            generated_pub_mod_block()
         } else {
             "".to_string()
         };

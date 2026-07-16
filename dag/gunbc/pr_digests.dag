@@ -1,4 +1,4 @@
-module ctrl.pr_digests
+module gunbc.pr_digests
 
 import extdeps.github.pulls { PullRequest, PullReview, ReviewComment }
 import extdeps.github.errors { GitHubErrorShape }
@@ -28,7 +28,7 @@ type RestFallbackReason
   | GraphqlRateLimited
   | GraphqlSchemaUnknown
 
-service ctrl.PrDigests {
+service gunbc.PrDigests {
   operation ExtractAttachedUrls {
     input {
       pr: PullRequest

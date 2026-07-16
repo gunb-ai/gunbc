@@ -657,6 +657,24 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn compile_clean_diagnostic_histogram_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER,
+            "cli_run_compile_clean_diagnostic_histogram"
+        );
+    }
+
+    #[test]
+    fn truncate_histogram_label_respects_utf8_boundaries() {
+        let max = 80;
+        let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
+        let out = super::truncate_histogram_label(&s, max);
+        assert!(out.ends_with('…'));
+        assert!(out.is_char_boundary(out.len()));
+        assert!(out.len() <= max);
+    }
+
+    #[test]
     fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();
         let baked = workspace_root();
@@ -1378,35 +1396,41 @@ fn compile_clean_resolve_has_hard_errors(
     compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
 }
 
-fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) -> bool {
-    use crate::v1_std_core::CompilerDiagnostic;
-    diagnostics.iter().any(|d| {
-        !matches!(
-            *d.diagnostic.clone(),
-            CompilerDiagnostic::ComplexityUnknown { .. }
-        )
-    })
+// Single authority (DESIGN.md §3/§7): whether a diagnostic blocks is decided by
+// `00_core.dag`, never restated here. `is_interpreter_blocking_diagnostic` is the
+// {ComplexityUnknown, UnlistedImportUse} tolerance this gate has always intended;
+// the prior hand-rolled `!matches!(ComplexityUnknown)` predated UnlistedImportUse's
+// demotion to advisory and silently reded the namespace import strip.
+fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
+    crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+}
+
+pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) -> bool {
+    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
 fn eprint_compile_clean_hard_diagnostics(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) {
-    use crate::v1_std_core::CompilerDiagnostic;
-    let mut count = 0usize;
-    for d in diagnostics.iter() {
-        if matches!(
-            *d.diagnostic.clone(),
-            CompilerDiagnostic::ComplexityUnknown { .. }
-        ) {
-            continue;
+    const SHOWN_LIMIT: usize = 20;
+    let mut shown = 0usize;
+    let mut total = 0usize;
+    // One pass, no accumulator: the total is counted, never collected (§6).
+    for d in diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+    {
+        total += 1;
+        if shown < SHOWN_LIMIT {
+            eprintln!(
+                "compile-clean: {}",
+                diagnostic_to_message(d.diagnostic.clone())
+            );
+            shown += 1;
         }
-        eprintln!(
-            "compile-clean: {}",
-            diagnostic_to_message(d.diagnostic.clone())
-        );
-        count += 1;
-        if count >= 20 {
-            eprintln!("compile-clean: (truncated hard diagnostics at 20)");
-            break;
-        }
+    }
+    if total > SHOWN_LIMIT {
+        // Count the residue rather than hiding it (§5): a truncated burndown that
+        // never reports its size makes the deficit unprioritizable.
+        eprintln!("compile-clean: (truncated hard diagnostics at {SHOWN_LIMIT}; {total} total)");
     }
 }
 
@@ -1506,9 +1530,9 @@ fn compile_clean_touched_path_norm(path: &str) -> &str {
     path.strip_prefix("./").unwrap_or(path)
 }
 
-fn compile_clean_touches_allow_skip(touched_paths: &[String]) -> bool {
-    touched_paths.is_empty()
-        || touched_paths
+fn compile_clean_all_touched_paths_docs_universe(touched_paths: &[String]) -> bool {
+    !touched_paths.is_empty()
+        && touched_paths
             .iter()
             .all(|p| compile_clean_touched_path_norm(p).starts_with("docs/"))
 }
@@ -1535,17 +1559,21 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
 fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     touched_paths: &[String],
 ) -> CompileCleanScopePlan {
-    if compile_clean_touches_allow_skip(touched_paths) {
-        let reason = if touched_paths.is_empty() {
-            "no compile-clean entry DependencyView frontier intersects touched paths".to_string()
-        } else {
-            "docs-only diff — no compile-clean entry selection required".to_string()
+    if touched_paths.is_empty() {
+        return CompileCleanScopePlan::SkipNoAffected {
+            reason: "no touched paths in diff observation".to_string(),
         };
+    }
+
+    if compile_clean_all_touched_paths_docs_universe(touched_paths) {
+        let reason =
+            "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                .to_string();
         eprintln!("compile-clean scope: skipped ({reason})");
         return CompileCleanScopePlan::SkipNoAffected { reason };
     }
 
-    // `dag_compile_clean_scope.dag:85-88` — RequireWholeTree when substrate not ready.
+    // `dag_compile_clean_scope.dag` — RequireWholeTree when substrate not ready.
     // floor_fast has no whole-tree resolve context (loaded=0) until #6239; live substrate is false.
     if !fn_arrow_decl_substrate_is_whole_tree_for_census(0) {
         eprintln!(
@@ -1600,7 +1628,7 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
         };
     }
     eprintln!(
-        "compile-clean scope: non-empty non-docs diff with no shard intersection — whole-tree baseline"
+        "compile-clean scope: non-empty diff with no shard intersection — whole-tree baseline"
     );
     CompileCleanScopePlan::WholeTree
 }
@@ -1612,6 +1640,43 @@ fn compile_clean_scoping_active() -> bool {
             .map(|v| v == "true")
             .unwrap_or(false)
         || std::env::var("CI").map(|v| v == "true").unwrap_or(false)
+}
+
+pub const DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL: &str = "documentation_only_skip";
+pub const RUN_FULL_FLOOR_LABEL: &str = "run_full_floor";
+
+/// CI floor admission label for the docs-only witness-corpus skip arm.
+/// Uses `tools.dag_compile_clean_scope` at Ruling 1 path grain (host fast path).
+/// Empty diff or diff-observation failure returns `run_full_floor` (fail-closed).
+/// Docs-only (`docs/**` universe, aligned with doc_reachability) skips without
+/// waiting on #6239 substrate — the witness runs before claim_executor warms facts.
+pub fn documentation_only_floor_skip_label_for_ci() -> String {
+    if !compile_clean_scoping_active() {
+        return RUN_FULL_FLOOR_LABEL.to_string();
+    }
+    match floor_git_diff_name_status_range() {
+        Err(msg) => {
+            eprintln!(
+                "documentation-only floor skip: diff observation failed ({msg}) — full floor"
+            );
+            RUN_FULL_FLOOR_LABEL.to_string()
+        }
+        Ok((changed_paths, _departed)) => {
+            if changed_paths.is_empty() {
+                eprintln!("documentation-only floor skip: empty diff — full floor");
+                return RUN_FULL_FLOOR_LABEL.to_string();
+            }
+            if compile_clean_all_touched_paths_docs_universe(&changed_paths) {
+                eprintln!(
+                    "documentation-only floor skip: docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
+                );
+                DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL.to_string()
+            } else {
+                eprintln!("documentation-only floor skip: full floor (non-docs-only diff)");
+                RUN_FULL_FLOOR_LABEL.to_string()
+            }
+        }
+    }
 }
 
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
@@ -1828,6 +1893,121 @@ fn reset_floor_compile_clean_receipt_for_test() {
 fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt) {
     let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
     *guard = Some(receipt);
+}
+
+// DELETE WHEN dissolved: `compile_clean_whole_tree_hard_diagnostics`,
+// `compile_clean_diagnostic_histogram_key`, `truncate_histogram_label`,
+// `compile_clean_internal_error_histogram_name`, and the `compile_clean_diagnostic_histogram` bin
+// (~200 LOC).
+// Receipt: `rg cli_run_compile_clean_diagnostic_histogram src/v1/stage0` == 1 until deletion;
+// ROADMAP §1 namespace-only lane (docs/plans/namespace-resolution-design.md).
+pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
+    "cli_run_compile_clean_diagnostic_histogram";
+
+/// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
+/// Instrument path for diagnostic histogram — not for cargo tests.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
+/// dissolves when ROADMAP §1 namespace-only lane closes (import strip + global_bare wiring fixed)
+/// or a floor-enrolled diagnostic-histogram lens subsumes this host transport.
+/// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
+/// (`compile_to_resolved` on the whole-tree source closure).
+pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im_rc::Vector<Rc<ErrorNode>>, String> {
+    let plan = CompileCleanScopePlan::WholeTree;
+    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
+        None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
+        Some(s) => s,
+    };
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    Ok(result
+        .diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .cloned()
+        .collect())
+}
+
+/// `(class, name)` key for histogram aggregation over hard diagnostics.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
+/// total match over `CompilerDiagnostic` variants — no silent widening.
+pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, String) {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let class = match d.diagnostic.as_ref() {
+        CompilerDiagnostic::UnresolvedImport { .. } => "UnresolvedImport",
+        CompilerDiagnostic::MissingExport { .. } => "MissingExport",
+        CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
+        CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
+        CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
+        CompilerDiagnostic::VariantNotFound { .. } => "VariantNotFound",
+        CompilerDiagnostic::FieldNotFound { .. } => "FieldNotFound",
+        CompilerDiagnostic::MissingField { .. } => "MissingField",
+        CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
+        CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
+        CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
+        CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
+        CompilerDiagnostic::ParseError { .. } => "ParseError",
+        CompilerDiagnostic::InternalError { .. } => "InternalError",
+        CompilerDiagnostic::ComplexityUnknown { .. } => "ComplexityUnknown",
+        CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
+        CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
+        CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
+    };
+    let name = match d.diagnostic.as_ref() {
+        CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
+        CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
+        CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
+        CompilerDiagnostic::TypeMismatch { got, .. } => got.clone(),
+        CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
+        CompilerDiagnostic::VariantNotFound { variant, .. } => variant.clone(),
+        CompilerDiagnostic::FieldNotFound { field, .. } => field.clone(),
+        CompilerDiagnostic::MissingField { field, .. } => field.clone(),
+        CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
+        CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
+        CompilerDiagnostic::DuplicateModule { name, .. } => name.clone(),
+        CompilerDiagnostic::MissingAnnotation { fn_name, .. } => fn_name.clone(),
+        CompilerDiagnostic::ParseError { message, .. } => truncate_histogram_label(message, 80),
+        CompilerDiagnostic::InternalError { message, .. } => {
+            compile_clean_internal_error_histogram_name(message)
+        }
+        CompilerDiagnostic::ComplexityUnknown { func_name, .. } => func_name.clone(),
+        CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
+        CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
+        CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+    };
+    (class.to_string(), name)
+}
+
+fn truncate_histogram_label(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        let ellipsis = '…';
+        let budget = max.saturating_sub(ellipsis.len_utf8());
+        let end = s
+            .char_indices()
+            .map(|(i, c)| i + c.len_utf8())
+            .take_while(|&end| end <= budget)
+            .last()
+            .unwrap_or(0);
+        format!("{s_prefix}{ellipsis}", s_prefix = &s[..end])
+    }
+}
+
+fn compile_clean_internal_error_histogram_name(message: &str) -> String {
+    if let Some(rest) = message.strip_prefix("function '") {
+        if let Some(name) = rest.split_once('\'').map(|(n, _)| n) {
+            return format!("function:{name}");
+        }
+    }
+    if let Some(rest) = message.strip_prefix("undefined variable '") {
+        if let Some(name) = rest.split_once('\'').map(|(n, _)| n) {
+            return format!("variable:{name}");
+        }
+    }
+    truncate_histogram_label(message, 80)
 }
 
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
@@ -2242,6 +2422,18 @@ const LIVE_READ_CARRIER_HOME_MODULES_V0: &[&str] = &[
 /// (an extra witness run) but never under-report (a missed run). It does not attempt to
 /// prove which touched path a reached carrier actually reads at runtime (that precision is
 /// G2/G3's job) — reachability plus any touch is treated as a hit.
+fn import_closure_module_reaches_carrier_home(
+    closure_modules: &HashSet<String>,
+    carrier_home: &str,
+) -> bool {
+    closure_modules.iter().any(|module| {
+        module == carrier_home
+            || module
+                .strip_prefix(carrier_home)
+                .is_some_and(|suffix| suffix.starts_with('.'))
+    })
+}
+
 fn runtime_data_dependency_touched_via_carrier_closure(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -2254,7 +2446,9 @@ fn runtime_data_dependency_touched_via_carrier_closure(
     collect_import_closure_module_names_from_facts(entry_path, facts, &mut closure_modules);
     LIVE_READ_CARRIER_HOME_MODULES_V0
         .iter()
-        .any(|carrier_module| closure_modules.contains(*carrier_module))
+        .any(|carrier_home| {
+            import_closure_module_reaches_carrier_home(&closure_modules, carrier_home)
+        })
 }
 
 #[cfg(test)]
@@ -4818,6 +5012,7 @@ pub fn run_claim_measured(
     ctx.clear_eval_deadline();
     v1_interpreter::eval_subject_clear();
     let outcome = budget_completion_outcome(ctx.witness_eval_budget(), outcome, cpu_nanos);
+    let outcome = wall_budget_completion_outcome(ctx.witness_wall_budget(), outcome, wall_nanos);
     let receipt =
         v1_interpreter::performance_receipt_from_witness(subject_key, function, wall_nanos);
     (outcome, receipt)
@@ -4844,6 +5039,30 @@ fn budget_completion_outcome(
                     "{}",
                     v1_interpreter::InterpError::EvalBudgetExceeded {
                         elapsed_ms: (cpu_nanos / 1_000_000) as u64,
+                        budget_ms,
+                    }
+                ),
+            }
+        }
+        (_, o) => o,
+    }
+}
+
+/// Whole-receipt wall budget for Wet self-host receipts: emit+cargo subprocess I/O
+/// counts against wall time, not CPU. A Pass over the wall budget converts to the same
+/// typed refusal — silent green would fail open on the nightly falsifier lane budget.
+fn wall_budget_completion_outcome(
+    budget: Option<u64>,
+    outcome: ClaimOutcome,
+    wall_nanos: u128,
+) -> ClaimOutcome {
+    match (budget, outcome) {
+        (Some(budget_ms), ClaimOutcome::Pass) if wall_nanos > u128::from(budget_ms) * 1_000_000 => {
+            ClaimOutcome::RuntimeError {
+                message: format!(
+                    "{}",
+                    v1_interpreter::InterpError::WitnessWallBudgetExceeded {
+                        elapsed_ms: (wall_nanos / 1_000_000) as u64,
                         budget_ms,
                     }
                 ),
@@ -4895,6 +5114,19 @@ mod budget_completion_tests {
             budget_completion_outcome(Some(5), ClaimOutcome::Fail, 6_000_000),
             ClaimOutcome::Fail
         ));
+    }
+
+    #[test]
+    fn pass_over_wall_budget_converts_to_typed_refusal() {
+        match wall_budget_completion_outcome(Some(600), ClaimOutcome::Pass, 601_000_000_000) {
+            ClaimOutcome::RuntimeError { message } => {
+                assert!(
+                    message.contains("wet self-host receipt wall budget exceeded"),
+                    "typed refusal expected; got {message}"
+                );
+            }
+            other => panic!("expected RuntimeError, got {other:?}"),
+        }
     }
 }
 
@@ -7164,6 +7396,27 @@ pub struct DiscoveryCorpusOptions {
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
     /// bound (the long-lane / local recipe posture).
     pub fast_lane_eval_budget_ms: Option<u64>,
+    /// Whole-receipt wall budget for the nightly falsifier Wet self-host lane (emit+cargo).
+    pub wet_receipt_wall_budget_ms: Option<u64>,
+    /// Secondary interpreter CPU budget for the falsifier Wet self-host lane.
+    pub wet_receipt_interp_eval_budget_ms: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WitnessBudgetPolicy {
+    pub cpu_eval_budget_ms: Option<u64>,
+    pub wet_receipt_wall_budget_ms: Option<u64>,
+}
+
+impl DiscoveryCorpusOptions {
+    pub fn witness_budget_policy(&self) -> WitnessBudgetPolicy {
+        WitnessBudgetPolicy {
+            cpu_eval_budget_ms: self
+                .fast_lane_eval_budget_ms
+                .or(self.wet_receipt_interp_eval_budget_ms),
+            wet_receipt_wall_budget_ms: self.wet_receipt_wall_budget_ms,
+        }
+    }
 }
 
 impl Default for DiscoveryCorpusOptions {
@@ -7174,6 +7427,8 @@ impl Default for DiscoveryCorpusOptions {
             exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
             fast_lane_eval_budget_ms: None,
+            wet_receipt_wall_budget_ms: None,
+            wet_receipt_interp_eval_budget_ms: None,
         }
     }
 }
@@ -7470,8 +7725,7 @@ fn test_claim_selection_has_node_corpus(
         ]),
         "RoundTripClaim" => all_nodes(&[variant_field(ctx, fields, "input").expect("input")]),
         "DiagnosticClaim" => {
-            variant_field(ctx, fields, "input")
-                .is_some_and(|v| value_is_node(v, ctx))
+            variant_field(ctx, fields, "input").is_some_and(|v| value_is_node(v, ctx))
         }
         _ => false,
     }
@@ -8697,7 +8951,7 @@ pub fn run_discovery_corpus_with_options(
                 &diff_edits,
                 floor_runner_ctx.as_ref(),
                 whole_tree_published_keys.clone(),
-                options.fast_lane_eval_budget_ms,
+                options.witness_budget_policy(),
                 ShardStyle {
                     shard_id: 0,
                     shard_count: 1,
@@ -8773,7 +9027,7 @@ pub fn run_discovery_corpus_with_options(
                         &diff_edits,
                         floor_runner_ctx.as_ref(),
                         whole_tree_published_keys.clone(),
-                        options.fast_lane_eval_budget_ms,
+                        options.witness_budget_policy(),
                         style,
                     )?);
                 }
@@ -8794,157 +9048,160 @@ pub fn run_discovery_corpus_with_options(
                     spawn_target_width,
                 );
             }
-    let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
-        std::sync::Arc::new(Mutex::new(
-            groups
-                .into_iter()
-                .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
-                .collect(),
-        ));
-    let abort = std::sync::Arc::new(AtomicBool::new(false));
-    let source_roots_owned = source_roots.to_vec();
-    let selection_for_workers = options.node_frontier_selection;
-    let fast_lane_budget_for_workers = options.fast_lane_eval_budget_ms;
-    let mut handles = Vec::new();
-    let mut worker_ordinal: usize = 0;
-    loop {
-        if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
-            break;
-        }
-        match governor.try_admit() {
-            crate::memory_governor::AdmitDecision::Admit { .. } => {}
-            crate::memory_governor::AdmitDecision::Hold(_) => {
-                std::thread::sleep(std::time::Duration::from_millis(150));
-                continue;
-            }
-        }
-        let queue_for_worker = queue.clone();
-        let abort_for_worker = abort.clone();
-        let governor_for_worker = governor.clone();
-        let roots = source_roots_owned.clone();
-        let seeds = diff_edits.clone();
-        let paths = changed_paths.clone();
-        let keys = whole_tree_published_keys.clone();
-        let spawn_target_width = governor.current_target_width();
-        let cross_worker_store_for_worker = if spawn_target_width > 1 {
-            Some(cross_worker_store.clone())
-        } else {
-            None
-        };
-        if worker_ordinal == 0 && spawn_target_width <= 1 {
-            eprintln!(
-                "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
-            );
-        }
-        // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
-        // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
-        // admission window has no interleaving to disambiguate.
-        let style = ShardStyle {
-            shard_id: worker_ordinal,
-            shard_count: governor.current_target_width(),
-            color: floor_color,
-            stream: floor_stream,
-        };
-        worker_ordinal += 1;
-        handles.push(std::thread::spawn(
-            move || -> Result<Vec<DiscoverySummary>, String> {
-                // The slot was granted by try_admit on the pump thread; the guard owns the
-                // matching release so a panicking worker cannot wedge admissions.
-                let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
-                    governor_for_worker.clone(),
-                );
-                // Process-scoped typed_module_cache when governor width > 1; private cold
-                // index at width=1 (CI budget — cross-worker-typecheck-share-design §7).
-                let index = match cross_worker_store_for_worker {
-                    Some(store) => build_multi_entry_index_with_shared_caches(&roots, store),
-                    None => build_multi_entry_index(&roots),
-                };
-                let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
-                    match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
-                        Ok((graph, source_indices)) => {
-                            Some(make_eval_context(&graph, source_indices, execution_mode))
-                        }
-                        Err(msg) => {
-                            abort_for_worker.store(true, Ordering::SeqCst);
-                            return Err(format!(
-                                "floor runner resolve failed in worker ({msg}) — declared \
-                                 affected-set machinery must resolve; no silent \
-                                 run-everything fallback"
-                            ));
-                        }
+            let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
+                std::sync::Arc::new(Mutex::new(
+                    groups
+                        .into_iter()
+                        .map(|g| g.iter().map(|&i| rows[i].clone()).collect())
+                        .collect(),
+                ));
+            let abort = std::sync::Arc::new(AtomicBool::new(false));
+            let source_roots_owned = source_roots.to_vec();
+            let selection_for_workers = options.node_frontier_selection;
+            let budget_policy_for_workers = options.witness_budget_policy();
+            let mut handles = Vec::new();
+            let mut worker_ordinal: usize = 0;
+            loop {
+                if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
+                    break;
+                }
+                match governor.try_admit() {
+                    crate::memory_governor::AdmitDecision::Admit { .. } => {}
+                    crate::memory_governor::AdmitDecision::Hold(_) => {
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                        continue;
                     }
+                }
+                let queue_for_worker = queue.clone();
+                let abort_for_worker = abort.clone();
+                let governor_for_worker = governor.clone();
+                let roots = source_roots_owned.clone();
+                let seeds = diff_edits.clone();
+                let paths = changed_paths.clone();
+                let keys = whole_tree_published_keys.clone();
+                let spawn_target_width = governor.current_target_width();
+                let cross_worker_store_for_worker = if spawn_target_width > 1 {
+                    Some(cross_worker_store.clone())
                 } else {
                     None
                 };
-                // The front-loaded admission cost (index build + runner resolve) has
-                // landed and is visible to the creep signals: unblock admission pacing.
-                slot.note_first_cost_paid();
-                let mut worker_summaries = Vec::new();
-                loop {
-                    // Multiplicative decrease drains here: a worker between groups retires
-                    // when concurrency sits above the (possibly just-halved) window.
-                    if governor_for_worker.should_retire()
-                        || abort_for_worker.load(Ordering::SeqCst)
-                    {
-                        break;
-                    }
-                    let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front() else {
-                        break;
-                    };
-                    match run_discovery_rows(
-                        &group_rows,
-                        &index,
-                        execution_mode,
-                        selection_for_workers,
-                        &paths,
-                        &seeds,
-                        runner.as_ref(),
-                        keys.clone(),
-                        fast_lane_budget_for_workers,
-                        style,
-                    ) {
-                        Ok(summary) => {
-                            worker_summaries.push(summary);
-                            slot.note_unit_complete();
-                        }
-                        Err(e) => {
-                            abort_for_worker.store(true, Ordering::SeqCst);
-                            return Err(e);
-                        }
-                    }
+                if worker_ordinal == 0 && spawn_target_width <= 1 {
+                    eprintln!(
+                "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
+            );
                 }
-                Ok(worker_summaries)
-            },
-        ));
-    }
-    let mut summaries = Vec::new();
-    let mut first_err: Option<String> = None;
-    for handle in handles {
-        match handle
-            .join()
-            .map_err(|_| "discovery corpus worker thread panicked".to_string())
-        {
-            Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
-            Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
-        }
-    }
-    if let Some(e) = first_err {
-        return Err(e);
-    }
-    // The pump exits when the queue is empty OR on abort; with no error the queue must be
-    // fully drained (workers only exit early on retire/abort, and the pump re-admits while
-    // items remain), so an undrained queue here is a scheduler bug — refuse, never under-run.
-    let leftover = queue.lock().unwrap().len();
-    if leftover > 0 {
-        return Err(format!(
+                // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
+                // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
+                // admission window has no interleaving to disambiguate.
+                let style = ShardStyle {
+                    shard_id: worker_ordinal,
+                    shard_count: governor.current_target_width(),
+                    color: floor_color,
+                    stream: floor_stream,
+                };
+                worker_ordinal += 1;
+                handles.push(std::thread::spawn(
+                    move || -> Result<Vec<DiscoverySummary>, String> {
+                        // The slot was granted by try_admit on the pump thread; the guard owns the
+                        // matching release so a panicking worker cannot wedge admissions.
+                        let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
+                            governor_for_worker.clone(),
+                        );
+                        // Process-scoped typed_module_cache when governor width > 1; private cold
+                        // index at width=1 (CI budget — cross-worker-typecheck-share-design §7).
+                        let index = match cross_worker_store_for_worker {
+                            Some(store) => {
+                                build_multi_entry_index_with_shared_caches(&roots, store)
+                            }
+                            None => build_multi_entry_index(&roots),
+                        };
+                        let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
+                            match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
+                                Ok((graph, source_indices)) => {
+                                    Some(make_eval_context(&graph, source_indices, execution_mode))
+                                }
+                                Err(msg) => {
+                                    abort_for_worker.store(true, Ordering::SeqCst);
+                                    return Err(format!(
+                                        "floor runner resolve failed in worker ({msg}) — declared \
+                                 affected-set machinery must resolve; no silent \
+                                 run-everything fallback"
+                                    ));
+                                }
+                            }
+                        } else {
+                            None
+                        };
+                        // The front-loaded admission cost (index build + runner resolve) has
+                        // landed and is visible to the creep signals: unblock admission pacing.
+                        slot.note_first_cost_paid();
+                        let mut worker_summaries = Vec::new();
+                        loop {
+                            // Multiplicative decrease drains here: a worker between groups retires
+                            // when concurrency sits above the (possibly just-halved) window.
+                            if governor_for_worker.should_retire()
+                                || abort_for_worker.load(Ordering::SeqCst)
+                            {
+                                break;
+                            }
+                            let Some(group_rows) = queue_for_worker.lock().unwrap().pop_front()
+                            else {
+                                break;
+                            };
+                            match run_discovery_rows(
+                                &group_rows,
+                                &index,
+                                execution_mode,
+                                selection_for_workers,
+                                &paths,
+                                &seeds,
+                                runner.as_ref(),
+                                keys.clone(),
+                                budget_policy_for_workers,
+                                style,
+                            ) {
+                                Ok(summary) => {
+                                    worker_summaries.push(summary);
+                                    slot.note_unit_complete();
+                                }
+                                Err(e) => {
+                                    abort_for_worker.store(true, Ordering::SeqCst);
+                                    return Err(e);
+                                }
+                            }
+                        }
+                        Ok(worker_summaries)
+                    },
+                ));
+            }
+            let mut summaries = Vec::new();
+            let mut first_err: Option<String> = None;
+            for handle in handles {
+                match handle
+                    .join()
+                    .map_err(|_| "discovery corpus worker thread panicked".to_string())
+                {
+                    Ok(Ok(worker_summaries)) => summaries.extend(worker_summaries),
+                    Ok(Err(e)) | Err(e) => first_err = first_err.or(Some(e)),
+                }
+            }
+            if let Some(e) = first_err {
+                return Err(e);
+            }
+            // The pump exits when the queue is empty OR on abort; with no error the queue must be
+            // fully drained (workers only exit early on retire/abort, and the pump re-admits while
+            // items remain), so an undrained queue here is a scheduler bug — refuse, never under-run.
+            let leftover = queue.lock().unwrap().len();
+            if leftover > 0 {
+                return Err(format!(
             "adaptive discovery pool exited with {leftover} undrained entry-group(s) and no \
              worker error — scheduler invariant violated; refusing a partial corpus"
         ));
-    }
-    Ok(attach_deferred_discovery_rows(
-        merge_discovery_summaries(summaries),
-        deferred_rows,
-    ))
+            }
+            Ok(attach_deferred_discovery_rows(
+                merge_discovery_summaries(summaries),
+                deferred_rows,
+            ))
         }
     };
 }
@@ -9230,7 +9487,7 @@ fn run_discovery_rows(
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
-    fast_lane_eval_budget_ms: Option<u64>,
+    budgets: WitnessBudgetPolicy,
     style: ShardStyle,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
@@ -9377,7 +9634,8 @@ fn run_discovery_rows(
                     resolved.entry_runtime_dependency_touched;
                 ctx = Some(resolved.ctx);
                 if let Some(c) = ctx.as_ref() {
-                    c.set_witness_eval_budget(fast_lane_eval_budget_ms);
+                    c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
+                    c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
                 }
                 current_entry = Some(row.entry.clone());
             }
@@ -9475,7 +9733,8 @@ fn run_discovery_rows(
             current_entry_runtime_dependency_touched = resolved.entry_runtime_dependency_touched;
             ctx = Some(resolved.ctx);
             if let Some(c) = ctx.as_ref() {
-                c.set_witness_eval_budget(fast_lane_eval_budget_ms);
+                c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
+                c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
             }
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
@@ -9785,6 +10044,75 @@ new file mode 100644
             kernel_skip,
             "the same unrelated diff must skip a declared SubstrateInputsOnly row \
              (discriminating control: the disposition is what flips the decision)"
+        );
+    }
+
+    #[test]
+    fn import_closure_carrier_home_matches_submodules() {
+        use std::collections::HashSet;
+
+        let carrier = "v2.compiler.self_host";
+        let mut exact = HashSet::from([carrier.to_string()]);
+        assert!(super::import_closure_module_reaches_carrier_home(
+            &exact, carrier
+        ));
+        let mut submodule = HashSet::from(["v2.compiler.self_host.frontier".to_string()]);
+        assert!(super::import_closure_module_reaches_carrier_home(
+            &submodule, carrier
+        ));
+        let mut homonym = HashSet::from(["v2.compiler.self_hostile".to_string()]);
+        assert!(!super::import_closure_module_reaches_carrier_home(
+            &homonym, carrier
+        ));
+    }
+
+    #[test]
+    fn lying_substrate_inputs_only_stamp_census() {
+        use std::collections::HashSet;
+
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let facts = super::build_module_graph_facts_live(&roots);
+        let mut lying: Vec<(String, String)> = Vec::new();
+        for (rel, content) in super::corpus_dag_files() {
+            if !super::is_test_dag(&rel) {
+                continue;
+            }
+            let Ok(reads_live_tree) = super::parse_entry_live_tree_disposition(&rel, &content)
+            else {
+                continue;
+            };
+            if reads_live_tree {
+                continue;
+            }
+            let mut closure_modules = HashSet::new();
+            super::collect_import_closure_module_names_from_facts(
+                &rel,
+                &facts,
+                &mut closure_modules,
+            );
+            for carrier in super::LIVE_READ_CARRIER_HOME_MODULES_V0 {
+                if super::import_closure_module_reaches_carrier_home(&closure_modules, carrier) {
+                    lying.push((rel.clone(), (*carrier).to_string()));
+                    break;
+                }
+            }
+        }
+        lying.sort();
+        eprintln!(
+            "lying SubstrateInputsOnly stamps (G1 carrier closure): {}",
+            lying.len()
+        );
+        for (entry, carrier) in &lying {
+            eprintln!("  {entry}  ->  {carrier}");
+        }
+        assert!(
+            lying.is_empty(),
+            "lying SubstrateInputsOnly stamps must be re-stamped ReadsLiveTree before merge"
         );
     }
 
@@ -13254,6 +13582,143 @@ pub fn reference_resolution_facts(
     edges
 }
 
+/// Reachability stats for bare references to one declared export name (namespace homonym triage).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BareRefReachability {
+    /// Nearest-wins ties among declarers (AmbiguousBare — needs qualification).
+    pub ambiguous_sites: usize,
+    /// Unique nearest declarer shares zero module-path prefix with the referrer (disjoint subtree).
+    pub cross_subtree_unique_sites: usize,
+}
+
+/// Count bare-reference reachability for `name` using the same nearest-wins producer as
+/// `reference_resolution_facts` (import-less files only).
+pub fn bare_ref_reachability_for_name(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+    name: &str,
+) -> BareRefReachability {
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let abs_importer_roots = pool_roots_abs(importer_roots);
+    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
+        HashMap::new();
+    for root in &abs_pool_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let module_name = match extract_module_path(&content) {
+                Some(m) => m,
+                None => continue,
+            };
+            let tree = match parse_module_node_tolerant(&rel, &content) {
+                Some(t) => t,
+                None => continue,
+            };
+            let has_imports = !extract_import_paths(&content).is_empty();
+            if seen_modules.insert(module_name.clone()) {
+                module_names.insert(module_name.clone());
+                for decl_name in collect_module_decl_names(&tree) {
+                    decl_index
+                        .entry(decl_name)
+                        .or_default()
+                        .insert(module_name.clone());
+                }
+            }
+            pool_trees
+                .entry(rel)
+                .or_insert((module_name, tree, has_imports));
+        }
+    }
+
+    let mut stats = BareRefReachability::default();
+    for root in &abs_importer_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let (self_module, tree) = match pool_trees.get(&rel) {
+                Some((_, _, true)) => continue,
+                Some((m, t, false)) => (m.clone(), t.clone()),
+                None => {
+                    let content = match std::fs::read_to_string(&file) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    if !extract_import_paths(&content).is_empty() {
+                        continue;
+                    }
+                    let module_name = match extract_module_path(&content) {
+                        Some(m) => m,
+                        None => continue,
+                    };
+                    match parse_module_node_tolerant(&rel, &content) {
+                        Some(t) => (module_name, t),
+                        None => continue,
+                    }
+                }
+            };
+            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut chains: Vec<Vec<String>> = Vec::new();
+            for item in tree.children.iter() {
+                collect_node_refs(item, &mut bare, &mut chains);
+            }
+            if !bare.contains(name) {
+                continue;
+            }
+            let Some(mods) = decl_index.get(name) else {
+                continue;
+            };
+            if mods.contains(&self_module) {
+                continue;
+            }
+            let mut best_len = 0usize;
+            let mut winners: Vec<&String> = Vec::new();
+            for m in mods.iter() {
+                let shared = module_prefix_shared_len(&self_module, m);
+                if winners.is_empty() || shared > best_len {
+                    best_len = shared;
+                    winners.clear();
+                    winners.push(m);
+                } else if shared == best_len {
+                    winners.push(m);
+                }
+            }
+            match winners.len() {
+                0 => {}
+                1 => {
+                    if module_prefix_shared_len(&self_module, winners[0]) == 0 {
+                        stats.cross_subtree_unique_sites += 1;
+                    }
+                }
+                _ => stats.ambiguous_sites += 1,
+            }
+        }
+    }
+    stats
+}
+
 #[cfg(test)]
 mod reference_edge_producer_tests {
     use super::reference_resolution_facts;
@@ -13339,8 +13804,6 @@ mod reference_edge_producer_tests {
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
-    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
-    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
     // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
     // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
     // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
@@ -13369,6 +13832,12 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // the std eq rows; dissolve with derived equality from inhabitance (dag/std/algebra).
     "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
     "src/v2/lens/live_read_classification.dag::path_pattern_eq",
+    // 2026-07-15 backfill: #6680 merge landed bash_composition_recognizer.dag::apply_role
+    // with a two-special-variant dispatch (IfFraming / UnmodeledKeyword mutate ScanState;
+    // every other TokenRole through close_run unchanged). The nfr witness is corpus-read;
+    // the landing PR predict-skipped it and the red surfaced on the next cold sweep. Burns
+    // down with the bash composition recognizer fold migration.
+    "src/v2/lens/bash_composition_recognizer.dag::apply_role",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.
@@ -13441,7 +13910,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
     "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
-    "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
     "src/v2/compiler/emit_host.dag::runtime_value_signed_i32_le_as_int",
     "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
     "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
@@ -13881,6 +14349,36 @@ mod nfr_tests {
             !sites.contains(&"m.dag::f".to_string()),
             "an exhaustive match (no wildcard) must NOT be flagged; got {sites:?}"
         );
+    }
+
+    #[test]
+    fn nfr_roster_receipt() {
+        let live: std::collections::BTreeSet<&str> = nfr_build_report()
+            .sites
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        eprintln!(
+            "nfr_roster_receipt: unrostered={} stale={} live={}",
+            non_fold_residue_unrostered_count(),
+            non_fold_residue_stale_roster_count(),
+            live.len()
+        );
+        for site in nfr_build_report().sites.iter() {
+            if !non_fold_residue_site_is_rostered(site) {
+                eprintln!("unrostered live site: {site}");
+            }
+            assert!(
+                non_fold_residue_site_is_rostered(site),
+                "unrostered: {site}"
+            );
+        }
+        for entry in NON_FOLD_RESIDUE_ROSTER {
+            if !live.contains(entry) {
+                eprintln!("stale roster entry: {entry}");
+            }
+            assert!(live.contains(entry), "stale roster: {entry}");
+        }
     }
 
     #[test]
@@ -14694,7 +15192,6 @@ fn cla_triage_complexity(site: &str) -> &'static str {
         return "kernel-permanent";
     }
     if site.starts_with("dag/extdeps/")
-        || site.starts_with("dag/ctrl/")
         || site.starts_with("dag/gunbc/plans/")
         || site.starts_with("dag/test/")
     {
@@ -15572,7 +16069,7 @@ mod witness_layer_roots_compile_clean_tests {
         );
     }
 
-    /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
+    /// Lever-a receipt: docs-only compile-clean scope skips at path grain (pre-#6239).
     #[test]
     fn floor_fast_scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
@@ -15582,10 +16079,23 @@ mod witness_layer_roots_compile_clean_tests {
             assert_eq!(
                 plan,
                 CompileCleanScopePlan::SkipNoAffected {
-                    reason: "docs-only diff — no compile-clean entry selection required"
-                        .to_string()
+                    reason: "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)".to_string(),
                 }
             );
+        });
+    }
+
+    /// Floor admission: docs-only skips before substrate warm (witness runs pre-executor).
+    #[test]
+    fn documentation_only_floor_skip_label_skips_docs_only_touch() {
+        with_workspace_cwd(|| {
+            let _gh = EnvGuard::set("GITHUB_ACTIONS", "true");
+            let _ns = EnvGuard::set(
+                "GUNBC_CI_DIFF_NAME_STATUS",
+                "M\\000docs/plans/example.md\\000",
+            );
+            let label = documentation_only_floor_skip_label_for_ci();
+            assert_eq!(label, DOCUMENTATION_ONLY_FLOOR_SKIP_LABEL);
         });
     }
 

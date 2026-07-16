@@ -12,7 +12,7 @@ import v2.compiler.eval {
   test_claim_typed_input_node
 }
 import v2.std.collection { Absent }
-import v2.std.verdict { Verdict, Deferred, Fail, Pass }
+import v2.std.verdict { Verdict, Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed }
 import v2.compiler.infer {
   InferredFacts,
   InferredTree
@@ -30,8 +30,7 @@ import v2.std.diagnostic {
   Outcome,
   Rejected,
   Unavailable,
-  diagnostics_singleton
-}
+  diagnostics_singleton, node_locus }
 import v2.std.node { Atom, Hash, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.runtime {
   BindInterpreter,
@@ -45,7 +44,9 @@ import v2.std.runtime {
   RuntimePrimitiveValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 
 import v2.std.witness { Holds, Violates }
@@ -100,7 +101,7 @@ fn lbe_runtime_value() -> RuntimeValue {
 fn lbe_runtime_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^lbe_interpretation_rejected,
-    at: NodeLocus { node: n },
+    at: node_locus(node: n),
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
@@ -182,7 +183,10 @@ fn lbe_eval_context() -> EvalContext {
       },
       bind: BindInterpreter {
         bind_value: lbe_bind_value
-      }
+      },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
+    }
     },
     structure_witness: lbe_interpretation_structure_witness()
   )
@@ -245,7 +249,7 @@ fn lbe_run_test_claim_assert_from_emit(
     Accepted { value: claim, diagnostics: None } =>
       lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
     Rejected { diagnostics: d } =>
-      Fail { actual: Rejected { diagnostics: d }, falsification: Absent }
+      SemanticMismatch { actual: Rejected { diagnostics: d }, falsification: Absent }
   }
 }
 
@@ -260,7 +264,7 @@ fn lbe_test_claim_run_from_emit(
     Rejected { diagnostics: d } =>
       TestClaimRun {
         cache: lbe_rejected_emit_cache_receipt(label: label, mock: mock, expected: d),
-        verdict: Fail { actual: Rejected { diagnostics: d }, falsification: Absent }
+        verdict: SemanticMismatch { actual: Rejected { diagnostics: d }, falsification: Absent }
       }
   }
 }
@@ -289,7 +293,9 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   mock: lbe_io_mock_conj_dag_surface()
 ) {
   Pass => true
-  Fail { actual: _, falsification: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -299,7 +305,9 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   mock: lbe_io_mock_disj_dag_surface()
 ) {
   Pass => true
-  Fail { actual: _, falsification: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -309,7 +317,9 @@ data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert
   mock: lbe_io_mock_transform_dag_surface()
 ) {
   Pass => true
-  Fail { actual: _, falsification: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 

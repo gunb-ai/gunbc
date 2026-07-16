@@ -17,6 +17,8 @@ mod bug_sentinel_ratchet;
 #[cfg(test)]
 mod cache_purity_oracle_test;
 #[cfg(test)]
+mod compile_clean_diagnostic_authority_test;
+#[cfg(test)]
 mod constructor_owner_ruling_test;
 #[cfg(test)]
 mod coproduct_reflection_conformance_test;
@@ -35,6 +37,8 @@ mod dependency_pool_index_compile_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
 #[cfg(test)]
+mod direct_import_precedence_over_transitive_leak_test;
+#[cfg(test)]
 mod eval_measurement_purity_test;
 #[cfg(test)]
 mod faithful_string_element_char_witness_test;
@@ -50,6 +54,8 @@ mod func_env_semantic_equivalence_test;
 mod generator_match_arm_test;
 #[cfg(test)]
 mod generic_return_clone_bound_test;
+#[cfg(test)]
+mod global_bare_corpus_census_test;
 #[cfg(test)]
 mod gunbhub_serve_program_test;
 #[cfg(test)]

@@ -313,10 +313,12 @@ fn i32_value_set_interval_first() -> Node {
         label: Named { name: ^integer_value_set_field_kind },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_interval } },
-          children: []
+          children: [],
+          occurrence_id: SyntheticOccurrence
         }
       }
-    ]
+    ],
+    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -356,14 +358,16 @@ fn unbounded_value_set_with_extra_field() -> Node {
         label: Named { name: ^integer_value_set_field_kind },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_kind_unbounded } },
-          children: []
+          children: [],
+          occurrence_id: SyntheticOccurrence
         }
       },
       Edge {
         label: Named { name: ^integer_value_set_field_extra },
         target: Node {
           kind: TypeNode { connective: Atom { identity: ^integer_value_set_field_extra } },
-          children: []
+          children: [],
+          occurrence_id: SyntheticOccurrence
         }
       }
     ],

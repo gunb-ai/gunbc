@@ -1,6 +1,6 @@
 module v2.std.patch
 
-import v2.std.algebra { Magma, Semigroup, Monoid }
+import std.algebra { Monoid }
 
 type ConfigPatchRecord<Config>
 
@@ -32,11 +32,7 @@ fn compose_field_patch<T>(left: FieldPatch<T>, right: FieldPatch<T>) -> FieldPat
 
 fn field_patch_monoid<T>() -> Monoid<FieldPatch<T>> {
   Monoid {
-    semigroup: Semigroup {
-      magma: Magma {
-        op: fn(left, right) { compose_field_patch(left: left, right: right) }
-      }
-    },
+    op: fn(left, right) { compose_field_patch(left: left, right: right) },
     identity: Inherit,
   }
 }
