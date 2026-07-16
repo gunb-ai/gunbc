@@ -19,7 +19,8 @@ type AssociativityEvidence
 type AssociativityLicenseVerdict
   = AssociativityLicenseGranted
   | AssociativityLicenseMissing
-  | AssociativityLicenseMismatch
+  | AssociativityLicenseCombineMismatch
+  | AssociativityLicenseSubjectMismatch
 
 fn associativity_decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
   DeclarationRef {
@@ -27,6 +28,50 @@ fn associativity_decl_ref(module_path: String, decl_name: String) -> Declaration
     decl_name: decl_name as NonEmptyStr
     field: WholeDeclaration
   }
+}
+
+data associativity_nat_add_associativity_law_ref: DeclarationRef = associativity_decl_ref(
+  module_path: "v2.test.algebra_laws.nat_semiring",
+  decl_name: "claim_nat_add_associativity"
+)
+
+data associativity_int_add_associativity_law_ref: DeclarationRef = associativity_decl_ref(
+  module_path: "v2.test.algebra_laws.int_additive",
+  decl_name: "claim_int_add_associativity"
+)
+
+data associativity_nat_inhabitant_ref: DeclarationRef = associativity_decl_ref(
+  module_path: "std.nat",
+  decl_name: "Nat"
+)
+
+data associativity_int_inhabitant_ref: DeclarationRef = associativity_decl_ref(
+  module_path: "std.integer",
+  decl_name: "Int"
+)
+
+fn associativity_law_expected_inhabitant(law: DeclarationRef) -> DeclarationRef? {
+  if decl_ref_eq(left: law, right: associativity_nat_add_associativity_law_ref) {
+    Present { value: associativity_nat_inhabitant_ref }
+  } else if decl_ref_eq(left: law, right: associativity_int_add_associativity_law_ref) {
+    Present { value: associativity_int_inhabitant_ref }
+  } else {
+    none
+  }
+}
+
+fn associativity_subject_bound(inhabitant: DeclarationRef, law: DeclarationRef) -> Bool {
+  match associativity_law_expected_inhabitant(law: law) {
+    Absent => false
+    Present { value: expected } => decl_ref_eq(left: inhabitant, right: expected)
+  }
+}
+
+fn associativity_receipt_executed_for_law(
+  receipt: ExecutionReceiptDigest,
+  law: DeclarationRef
+) -> Bool {
+  false
 }
 
 fn associativity_evidence_not_witnessed() -> AssociativityEvidence {
@@ -39,16 +84,20 @@ fn associativity_license_verdict(
 ) -> AssociativityLicenseVerdict {
   match evidence {
     NotWitnessed => AssociativityLicenseMissing
-    WitnessedAssociative { combine: combine, inhabitant: _, law: _, receipt: _ } =>
-      if decl_ref_eq(left: combine, right: scheduled_combine) {
-        AssociativityLicenseGranted
+    WitnessedAssociative { combine: combine, inhabitant: inhabitant, law: law, receipt: receipt } =>
+      if !decl_ref_eq(left: combine, right: scheduled_combine) {
+        AssociativityLicenseCombineMismatch
+      } else if !associativity_subject_bound(inhabitant: inhabitant, law: law) {
+        AssociativityLicenseSubjectMismatch
+      } else if !associativity_receipt_executed_for_law(receipt: receipt, law: law) {
+        AssociativityLicenseMissing
       } else {
-        AssociativityLicenseMismatch
+        AssociativityLicenseGranted
       }
   }
 }
 
-data associativity_license_verdict_receipt_scaffold_note: String = "bind: docs/plans/witness-realization-plan.md — grant arm is combine-ref equality only until witness-realization stamps Evidence.MeasuredBy from executed law-claim receipts (receipt/law/inhabitant fields carried but not verified). Refusal arms (NotWitnessed, combine mismatch) are honest today; dissolves when associativity_license_verdict wires receipt-backed licensing."
+data associativity_license_verdict_receipt_scaffold_note: String = "bind: docs/plans/witness-realization-plan.md — grant arm requires associativity_receipt_executed_for_law (executed law-claim receipt); until witness-realization stamps Evidence.MeasuredBy, WitnessedAssociative rows refuse as Missing even when subject-bound. Refusal arms (NotWitnessed, combine/subject mismatch) are honest today."
 
 data associativity_license_verdict_receipt_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

@@ -1,7 +1,7 @@
 module test.claim.accelerator_demo_associative_fold_witness
 
 import gunbc.accelerator_demo_plan {
-  witness_associative_fold_recognized_with_tree_reduce,
+  witness_associative_fold_refused_without_executed_receipt,
   witness_associative_fold_refused_without_witness,
   witness_float_associative_fold_refused_when_reduction_order_refused,
   witness_tree_reduce_geometry_degenerate_refused,
@@ -11,7 +11,9 @@ import gunbc.accelerator_demo_plan {
 import gunbc.accelerator_demo_fold {
   witness_demo_tree_reduce_derives_from_simd_lanes,
   witness_demo_serial_fold_at_scalar_lanes,
-  witness_associativity_license_matches_scheduled_combine,
+  witness_derive_tree_reduce_absent_at_zero_lanes,
+  witness_associativity_license_refuses_without_executed_receipt,
+  witness_associativity_license_rejects_nat_law_int_inhabitant,
   witness_associativity_license_rejects_mismatched_combine,
   witness_not_witnessed_evidence_refuses_license,
   witness_idle_lane_cost_zero_at_scalar,
@@ -23,7 +25,6 @@ import std.numerical_contract {
   ReductionOrderPermitted,
   ReductionOrderRefused,
 }
-import std.approximate_field { ToNearestEven }
 import extdeps.communication.numerical_fidelity {
   decode_fidelity_for_contract,
   tree_reduce_lowering_verdict_for_contract,
@@ -77,14 +78,16 @@ fn witness_tree_reduce_lowering_produces_reduction_order_refusal() -> Bool {
 }
 
 test fn accelerator_demo_phase4_within_fold_parallelism_witnesses() -> Bool {
-  witness_associativity_license_matches_scheduled_combine()
+  witness_associativity_license_refuses_without_executed_receipt()
+    && witness_associativity_license_rejects_nat_law_int_inhabitant()
     && witness_associativity_license_rejects_mismatched_combine()
     && witness_not_witnessed_evidence_refuses_license()
     && witness_demo_tree_reduce_derives_from_simd_lanes()
     && witness_demo_serial_fold_at_scalar_lanes()
+    && witness_derive_tree_reduce_absent_at_zero_lanes()
     && witness_idle_lane_cost_zero_at_scalar()
     && witness_idle_lane_cost_visible_at_simd()
-    && witness_associative_fold_recognized_with_tree_reduce()
+    && witness_associative_fold_refused_without_executed_receipt()
     && witness_associative_fold_refused_without_witness()
     && witness_placement_chosen_for_simd_lanes()
     && witness_idle_lane_cost_visible_for_simd_domain()

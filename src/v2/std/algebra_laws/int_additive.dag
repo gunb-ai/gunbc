@@ -1,0 +1,71 @@
+module v2.test.algebra_laws.int_additive
+
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  node_locus,
+  None,
+  Outcome,
+  Rejected,
+  Suggested,
+  diagnostics_singleton
+}
+
+import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
+import v2.std.text { String }
+import v2.std.verification {
+  ManualAnchorAbsent,
+  ManualAnchorKey,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  EqualsClaim,
+  manual_claim_anchor
+}
+
+fn atom_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn algebra_law_subject(algebra: Symbol, inhabitant: Symbol, law: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^algebra_law_subject_algebra_field }, target: atom_node(s: algebra) },
+      Edge { label: Named { name: ^algebra_law_subject_inhabitant_field }, target: atom_node(s: inhabitant) },
+      Edge { label: Named { name: ^algebra_law_subject_law_field }, target: atom_node(s: law) },
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn int_add_law(law: Symbol) -> Node {
+  algebra_law_subject(
+    algebra: ^int_algebra_law_subject_symbol_additive_monoid,
+    inhabitant: ^int_algebra_law_subject_symbol_inhabitant_int,
+    law: law
+  )
+}
+
+data int_add_associativity_input: Node = int_add_law(law: ^law_int_add_associativity)
+
+fn accepted_claim(label: String, anchor: ManualAnchorKey, input: Node) -> TestClaim {
+  EqualsClaim {
+    label: label,
+    anchor: manual_claim_anchor(anchor: anchor),
+    lhs: input,
+    rhs: input,
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+data claim_int_add_associativity: TestClaim = accepted_claim(
+  label: "Int addition associativity law",
+  anchor: ManualAnchorAbsent,
+  input: int_add_associativity_input
+)

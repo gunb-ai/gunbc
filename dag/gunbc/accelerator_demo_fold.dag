@@ -3,16 +3,19 @@ module gunbc.accelerator_demo_fold
 import std.types { Int, List, Bool }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.cache_identity { ExecutionReceiptDigest }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.associativity_evidence {
   AssociativityEvidence,
   WitnessedAssociative,
   NotWitnessed,
   associativity_decl_ref,
   associativity_license_verdict,
+  associativity_int_add_associativity_law_ref,
+  associativity_int_inhabitant_ref,
+  associativity_nat_add_associativity_law_ref,
   AssociativityLicenseGranted,
   AssociativityLicenseMissing,
-  AssociativityLicenseMismatch,
+  AssociativityLicenseCombineMismatch,
+  AssociativityLicenseSubjectMismatch,
 }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import std.fold_parallelism {
@@ -38,40 +41,26 @@ fn demo_int_sum_combine_ref() -> DeclarationRef {
   )
 }
 
-data demo_int_sum_inhabitant_ref: DeclarationRef = associativity_decl_ref(
-  module_path: "std.integer",
-  decl_name: "Int"
-)
-
-data demo_int_sum_law_ref: DeclarationRef = associativity_decl_ref(
-  module_path: "v2.test.algebra_laws.nat_semiring",
-  decl_name: "claim_nat_add_associativity"
-)
-
-data demo_int_sum_associativity_receipt: ExecutionReceiptDigest = "accelerator-demo-int-sum-associativity-receipt-v1"
-
-data demo_int_sum_associativity_receipt_dissolution_note: String = "bind: v2.test.algebra_laws.nat_semiring claim_nat_add_associativity — demo hand-receipt placeholder for AssociativityLicenseGranted; dissolves when witness-realization stamps Evidence.MeasuredBy from executed law-claim receipts (ManualNatAddAssociativity anchor). License gate RED arms (NotWitnessed/mismatch) remain the honest refusal path until then."
-
-data demo_int_sum_associativity_receipt_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "v2.test.algebra_laws.nat_semiring",
-    decl_name: "claim_nat_add_associativity",
-    field: WholeDeclaration
-  }
-}
-
-fn demo_int_sum_witnessed_associativity_evidence() -> AssociativityEvidence {
-  WitnessedAssociative {
-    combine: demo_int_sum_combine_ref()
-    inhabitant: demo_int_sum_inhabitant_ref
-    law: demo_int_sum_law_ref
-    receipt: demo_int_sum_associativity_receipt
-  }
-}
-
 fn demo_int_sum_not_witnessed_evidence() -> AssociativityEvidence {
   NotWitnessed
+}
+
+fn demo_int_sum_subject_bound_evidence_without_executed_receipt() -> AssociativityEvidence {
+  WitnessedAssociative {
+    combine: demo_int_sum_combine_ref()
+    inhabitant: associativity_int_inhabitant_ref
+    law: associativity_int_add_associativity_law_ref
+    receipt: "unexecuted-int-add-associativity-receipt-placeholder" as ExecutionReceiptDigest
+  }
+}
+
+fn demo_int_sum_nat_law_int_inhabitant_mismatch_evidence() -> AssociativityEvidence {
+  WitnessedAssociative {
+    combine: demo_int_sum_combine_ref()
+    inhabitant: associativity_int_inhabitant_ref
+    law: associativity_nat_add_associativity_law_ref
+    receipt: "nat-law-int-inhabitant-mismatch-placeholder" as ExecutionReceiptDigest
+  }
 }
 
 data demo_associative_fold_element_count: Int = 64
@@ -108,28 +97,52 @@ fn witness_demo_serial_fold_at_scalar_lanes() -> Bool {
   }
 }
 
-fn witness_associativity_license_matches_scheduled_combine() -> Bool {
+fn witness_derive_tree_reduce_absent_at_zero_lanes() -> Bool {
+  match derive_tree_reduce_parallelism(
+    lane_count: hardware_thread_count(count: 0),
+    element_count: demo_associative_fold_element_count
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn witness_associativity_license_refuses_without_executed_receipt() -> Bool {
   match associativity_license_verdict(
-    evidence: demo_int_sum_witnessed_associativity_evidence(),
+    evidence: demo_int_sum_subject_bound_evidence_without_executed_receipt(),
     scheduled_combine: demo_int_sum_combine_ref()
   ) {
-    AssociativityLicenseGranted => true
+    AssociativityLicenseMissing => true
+    AssociativityLicenseGranted => false
+    AssociativityLicenseCombineMismatch => false
+    AssociativityLicenseSubjectMismatch => false
+  }
+}
+
+fn witness_associativity_license_rejects_nat_law_int_inhabitant() -> Bool {
+  match associativity_license_verdict(
+    evidence: demo_int_sum_nat_law_int_inhabitant_mismatch_evidence(),
+    scheduled_combine: demo_int_sum_combine_ref()
+  ) {
+    AssociativityLicenseSubjectMismatch => true
+    AssociativityLicenseGranted => false
     AssociativityLicenseMissing => false
-    AssociativityLicenseMismatch => false
+    AssociativityLicenseCombineMismatch => false
   }
 }
 
 fn witness_associativity_license_rejects_mismatched_combine() -> Bool {
   match associativity_license_verdict(
-    evidence: demo_int_sum_witnessed_associativity_evidence(),
+    evidence: demo_int_sum_subject_bound_evidence_without_executed_receipt(),
     scheduled_combine: associativity_decl_ref(
       module_path: "std.nat",
       decl_name: "nat_max"
     )
   ) {
-    AssociativityLicenseMismatch => true
+    AssociativityLicenseCombineMismatch => true
     AssociativityLicenseGranted => false
     AssociativityLicenseMissing => false
+    AssociativityLicenseSubjectMismatch => false
   }
 }
 
@@ -140,7 +153,8 @@ fn witness_not_witnessed_evidence_refuses_license() -> Bool {
   ) {
     AssociativityLicenseMissing => true
     AssociativityLicenseGranted => false
-    AssociativityLicenseMismatch => false
+    AssociativityLicenseCombineMismatch => false
+    AssociativityLicenseSubjectMismatch => false
   }
 }
 

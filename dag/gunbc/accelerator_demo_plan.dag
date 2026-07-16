@@ -30,7 +30,8 @@ import std.associativity_evidence {
   AssociativityLicenseVerdict,
   AssociativityLicenseGranted,
   AssociativityLicenseMissing,
-  AssociativityLicenseMismatch,
+  AssociativityLicenseCombineMismatch,
+  AssociativityLicenseSubjectMismatch,
   associativity_license_verdict,
   associativity_evidence_not_witnessed,
 }
@@ -44,7 +45,8 @@ import std.fold_parallelism {
 }
 import gunbc.accelerator_demo_fold {
   demo_int_sum_combine_ref,
-  demo_int_sum_witnessed_associativity_evidence,
+  demo_int_sum_not_witnessed_evidence,
+  demo_int_sum_subject_bound_evidence_without_executed_receipt,
   demo_associative_fold_element_count,
   demo_simd_lane_count,
 }
@@ -103,6 +105,7 @@ type AcceleratorRefusalReason
   | ReductionOrderViolatesContract
   | AssociativityNotWitnessedForFold
   | AssociativityCombineMismatch
+  | AssociativitySubjectMismatch
   | TreeReduceGeometryDegenerate
   | AcceleratorUnsupportedNumericalDomain
 
@@ -273,8 +276,10 @@ fn recognize_elementwise_fold_for_lanes(
           }
         AssociativityLicenseMissing =>
           Refused { reason: AssociativityNotWitnessedForFold }
-        AssociativityLicenseMismatch =>
+        AssociativityLicenseCombineMismatch =>
           Refused { reason: AssociativityCombineMismatch }
+        AssociativityLicenseSubjectMismatch =>
+          Refused { reason: AssociativitySubjectMismatch }
       }
     EffectfulSubgraph => Refused { reason: CarriesEffects }
     DataDependentGather => Refused { reason: NotElementwisePure }
@@ -284,7 +289,7 @@ fn recognize_elementwise_fold_for_lanes(
 fn recognize_associative_int_sum_fold() -> AcceleratorRecognitionOutcome {
   recognize_elementwise_fold(class: AssociativeFoldChain {
     combine: demo_int_sum_combine_ref()
-    evidence: demo_int_sum_witnessed_associativity_evidence()
+    evidence: demo_int_sum_not_witnessed_evidence()
   })
 }
 
@@ -365,6 +370,7 @@ fn witness_effectful_subgraph_refused() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      AssociativitySubjectMismatch => false
       TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
@@ -381,6 +387,7 @@ fn witness_data_dependent_gather_refused() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      AssociativitySubjectMismatch => false
       TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
@@ -408,6 +415,7 @@ fn witness_float_fma_fused_kernel_refused_when_contraction_refused() -> Bool {
       ReductionOrderViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      AssociativitySubjectMismatch => false
       TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
@@ -474,21 +482,23 @@ fn demo_plan_fold_parallelism(plan: RealizationPlan<Nano>) -> FoldParallelism {
   }
 }
 
-fn witness_associative_fold_recognized_with_tree_reduce() -> Bool {
-  match recognize_associative_int_sum_fold() {
-    Recognized { plan: plan, kernel_step: _, contract: _, fidelity: f, target_medium: medium } =>
-      match f {
-        Lossless =>
-          match demo_plan_fold_parallelism(plan: plan) {
-            TreeReduce { tree_depth: depth, lane_width: width } =>
-              depth == 3
-                && hardware_thread_count_value(t: width) == 8
-                && medium == simd_kernel_target_medium_name
-            SerialFold => false
-          }
-        Lossy => false
-      }
-    Refused { reason: _ } => false
+fn witness_associative_fold_refused_without_executed_receipt() -> Bool {
+  match recognize_elementwise_fold(class: AssociativeFoldChain {
+    combine: demo_int_sum_combine_ref()
+    evidence: demo_int_sum_subject_bound_evidence_without_executed_receipt()
+  }) {
+    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => false
+    Refused { reason: r } => match r {
+      AssociativityNotWitnessedForFold => true
+      NotElementwisePure => false
+      CarriesEffects => false
+      FmaContractionViolatesContract => false
+      ReductionOrderViolatesContract => false
+      AssociativityCombineMismatch => false
+      AssociativitySubjectMismatch => false
+      TreeReduceGeometryDegenerate => false
+      AcceleratorUnsupportedNumericalDomain => false
+    }
   }
 }
 
@@ -502,6 +512,7 @@ fn witness_associative_fold_refused_without_witness() -> Bool {
       FmaContractionViolatesContract => false
       ReductionOrderViolatesContract => false
       AssociativityCombineMismatch => false
+      AssociativitySubjectMismatch => false
       TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
@@ -514,7 +525,7 @@ fn recognize_associative_int_sum_fold_with_contract(
   recognize_elementwise_fold_for_lanes(
     class: AssociativeFoldChain {
       combine: demo_int_sum_combine_ref()
-      evidence: demo_int_sum_witnessed_associativity_evidence()
+      evidence: demo_int_sum_subject_bound_evidence_without_executed_receipt()
     },
     lane_count: demo_simd_lane_count,
     contract: contract
@@ -537,6 +548,7 @@ fn witness_float_associative_fold_refused_when_reduction_order_refused() -> Bool
       FmaContractionViolatesContract => false
       AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      AssociativitySubjectMismatch => false
       TreeReduceGeometryDegenerate => false
       AcceleratorUnsupportedNumericalDomain => false
     }
@@ -547,20 +559,21 @@ fn witness_tree_reduce_geometry_degenerate_refused() -> Bool {
   match recognize_elementwise_fold_for_lanes(
     class: AssociativeFoldChain {
       combine: demo_int_sum_combine_ref()
-      evidence: demo_int_sum_witnessed_associativity_evidence()
+      evidence: demo_int_sum_not_witnessed_evidence()
     },
     lane_count: hardware_thread_count(count: 0),
     contract: integer_exact_contract()
   ) {
     Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => false
     Refused { reason: r } => match r {
-      TreeReduceGeometryDegenerate => true
+      AssociativityNotWitnessedForFold => true
+      TreeReduceGeometryDegenerate => false
       NotElementwisePure => false
       CarriesEffects => false
       FmaContractionViolatesContract => false
       ReductionOrderViolatesContract => false
-      AssociativityNotWitnessedForFold => false
       AssociativityCombineMismatch => false
+      AssociativitySubjectMismatch => false
       AcceleratorUnsupportedNumericalDomain => false
     }
   }
