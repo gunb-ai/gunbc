@@ -282,7 +282,7 @@ fn c_all_type_owners(module_dag: ModuleDag) -> List<CTypeOwner> {
 
 fn c_type_owner_for_symbol_in_module(
   owners: List<CTypeOwner>,
-  module: ModuleId,
+  member_module: ModuleId,
   sym: Symbol
 ) -> Optional<CTypeOwner> {
   fold_list(
@@ -292,10 +292,9 @@ fn c_type_owner_for_symbol_in_module(
       match acc {
         Present { value: _ } => acc
         Absent =>
-          if owner.module == module && owner.identity == sym {
-            Present { value: owner }
-          } else {
-            Absent
+          match (owner.module == member_module) && (owner.identity == sym) {
+            true => Present { value: owner }
+            false => Absent
           }
       }
     }
@@ -310,14 +309,14 @@ fn c_type_owner_singleton_match(
     xs: owners,
     empty: CTypeOwnerAbsent,
     cons: fn(acc, owner) {
-      if owner.identity != sym {
-        acc
-      } else {
-        match acc {
-          CTypeOwnerAbsent => CTypeOwnerFound { owner: owner }
-          CTypeOwnerFound { owner: _ } => CTypeOwnerAmbiguous { identity: sym }
-          CTypeOwnerAmbiguous { identity: _ } => acc
-        }
+      match owner.identity == sym {
+        false => acc
+        true =>
+          match acc {
+            CTypeOwnerAbsent => CTypeOwnerFound { owner: owner }
+            CTypeOwnerFound { owner: _ } => CTypeOwnerAmbiguous { identity: sym }
+            CTypeOwnerAmbiguous { identity: _ } => acc
+          }
       }
     }
   )
@@ -330,7 +329,7 @@ fn c_type_owner_for_symbol(
 ) -> CTypeOwnerLookup {
   match c_type_owner_for_symbol_in_module(
     owners: owners,
-    module: home_module,
+    member_module: home_module,
     sym: sym
   ) {
     Present { value: owner } => CTypeOwnerFound { owner: owner }
@@ -349,10 +348,9 @@ fn c_type_definition_for_owner(
       match acc {
         Present { value: _ } => acc
         Absent =>
-          if type_definition_row_identity(row: row) == owner.identity {
-            Present { value: c_type_definition_body(row: row) }
-          } else {
-            Absent
+          match type_definition_row_identity(row: row) == owner.identity {
+            true => Present { value: c_type_definition_body(row: row) }
+            false => Absent
           }
       }
     }
@@ -462,39 +460,40 @@ fn c_dfs_by_value_type_cycle(
   path: List<CTypeOwner>,
   fuel: Int
 ) -> Optional<String> {
-  if fuel <= 0 {
-    Absent
-  } else if c_path_contains_type_owner(path: path, node: current) {
-    let cycle = path
-    if c_by_value_cycle_has_cross_unit_edge(
-      edges: edges,
-      assignment: assignment,
-      cycle: cycle
-    ) {
-      Present { value: c_by_value_type_cycle_detail }
-    } else {
-      Absent
-    }
-  } else {
-    let next_path = c_list_snoc_type_owner(items: path, item: current)
-    edges
-      |> fold(init: Absent, f: fn(acc, edge) {
-        match acc {
-          Present { value: _ } => acc
-          Absent =>
-            if c_type_owner_eq(left: edge.from, right: current) {
-              c_dfs_by_value_type_cycle(
-                edges: edges,
-                assignment: assignment,
-                current: edge.to,
-                path: next_path,
-                fuel: fuel - 1
-              )
-            } else {
-              Absent
-            }
-        }
-      })
+  match fuel <= 0 {
+    true => Absent
+    false =>
+      match c_path_contains_type_owner(path: path, node: current) {
+        true =>
+          match c_by_value_cycle_has_cross_unit_edge(
+            edges: edges,
+            assignment: assignment,
+            cycle: path
+          ) {
+            true => Present { value: c_by_value_type_cycle_detail }
+            false => Absent
+          }
+        false =>
+          let next_path = c_list_snoc_type_owner(items: path, item: current)
+          edges
+            |> fold(init: Absent, f: fn(acc, edge) {
+              match acc {
+                Present { value: _ } => acc
+                Absent =>
+                  match c_type_owner_eq(left: edge.from, right: current) {
+                    true =>
+                      c_dfs_by_value_type_cycle(
+                        edges: edges,
+                        assignment: assignment,
+                        current: edge.to,
+                        path: next_path,
+                        fuel: fuel - 1
+                      )
+                    false => Absent
+                  }
+              }
+            })
+      }
   }
 }
 
@@ -519,6 +518,19 @@ fn c_find_by_value_type_cycle_detail(
     })
 }
 
+fn c_by_value_type_cycle_detail_after_resolution(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  owners: List<CTypeOwner>
+) -> Optional<String> {
+  let edges = c_by_value_type_edges(module_dag: module_dag, owners: owners)
+  c_find_by_value_type_cycle_detail(
+    edges: edges,
+    assignment: assignment,
+    owners: owners
+  )
+}
+
 fn c_partition_by_value_type_cycle_cause(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
@@ -531,14 +543,12 @@ fn c_partition_by_value_type_cycle_cause(
     owners: owners
   ) {
     Present { value: detail } => Present { value: detail }
-    Absent => {
-      let edges = c_by_value_type_edges(module_dag: module_dag, owners: owners)
-      c_find_by_value_type_cycle_detail(
-        edges: edges,
+    Absent =>
+      c_by_value_type_cycle_detail_after_resolution(
+        module_dag: module_dag,
         assignment: assignment,
         owners: owners
       )
-    }
   }
 }
 
