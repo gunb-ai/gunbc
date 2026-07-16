@@ -198,6 +198,26 @@ collide. The census's standing value is the clean quantification of the v1→v2 
 surface (dissolves with the seed) — it forces no consolidate-now forks; its same-name flags are
 homonyms and seed-file duplication, not genuine cross-tree §3 forks.
 
+### 5.2 Tier-2 homonym triage receipt (2026-07-16, quiet-carp-507)
+
+**Deliverable:** tier-2 triage proved `ConstructionProtocolNoAction` on the two
+highest-rank roster ghosts; consolidating either would destroy information.
+
+- **`live_tree_disposition`** — entry-grain witness stamp (`v2.std.live_tree`); 691 modules
+  each declare their own row with differing values (633 `SubstrateInputsOnly` / 67
+  `ReadsLiveTree`). Not one concept forked 691 ways — per-entry construction protocol.
+- **`extdeps_external_authority_anchor`** — per-extdeps-module upstream cite row (same fixed
+  leaf name as `construction_justification` on lenses); 219 distinct locator values across
+  285 modules. Not a §3 fork.
+- **`emit`** — genuine homonym (four fn authorities) but zero cross-subtree bare `emit` sites;
+  nearest-wins subtree resolution handles today. Policy home: §5 nearest-wins / §4 projection,
+  not a per-fn construction stamp.
+
+**Enforcement:** `src/v1/tests/src/global_bare_corpus_census_test.rs`
+`tier2_namespace_homonym_invariants` — fail-closed on reachability invariants (0 ambiguous
+bare refs for the construction-protocol names; 0 cross-subtree bare `emit` refs), not
+declaration counts. Reds with triage-before-consolidating guidance when a carrier changes.
+
 ## 6. Resolution mechanics carried from §1c (unchanged, re-homed)
 
 `resolve(name, position)` *is* the §1c constructor-owner ruling generalized from constructors

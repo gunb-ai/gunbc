@@ -415,6 +415,14 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   }
 }
 
+fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
+  match map_get(env.global_bare, name) {
+    Present { value: GlobalBareAmbiguousBinding } => true
+    Present { value: GlobalBareUniqueBinding { binding: _ } } => false
+    Absent => false
+  }
+}
+
 fn lookup_binding(env: TypeEnv, ident: Int) -> TypeBinding? {
   match map_get(env.bindings, ident) {
     Present { value: binding } => Present { value: binding }

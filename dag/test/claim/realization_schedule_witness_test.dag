@@ -8,9 +8,10 @@ import std.realization_schedule {
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
   runnable_resource_profile_negligible,
-  schedule_lens_verdict_for_ci_floor,
   cost_account_predicted_zero,
 }
+import v2.lens.schedule_lens { schedule_lens_verdict_for_ci_floor }
+import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
 import std.types { ContentHash }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
