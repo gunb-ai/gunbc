@@ -25,12 +25,12 @@ import v2.std.verification {
   UnifiedTestClaim
 }
 
-data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). TestClaimObservationRelation is the consumer/observation dimension — without it identical operands cannot be judged (rung_5 EmitVsEval counterexample). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3)."
+data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). TestClaimObservationRelation is the consumer/observation dimension — without it identical operands cannot be judged (rung_5 EmitVsEval counterexample). Variants ObserveSameEval | ObserveEmitVsEval | ObserveSingleEvalOutput are the observation-relation spellings (global variant-unique vs TestClaimTransportMode::EmitVsEval in verification.dag). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3)."
 
 type TestClaimObservationRelation
-  = SameEval
-  | EmitVsEval
-  | SingleEvalOutput
+  = ObserveSameEval
+  | ObserveEmitVsEval
+  | ObserveSingleEvalOutput
   | ObservationRelationUnknown
 
 type TestClaimOperandProvenance
@@ -79,8 +79,8 @@ fn observation_relation_from_transport(
   transport: TestClaimTransportMode
 ) -> TestClaimObservationRelation {
   match transport {
-    EvalOnly => SameEval
-    EmitVsEval { target: _ } => EmitVsEval
+    EvalOnly => ObserveSameEval
+    EmitVsEval { target: _ } => ObserveEmitVsEval
   }
 }
 
@@ -162,35 +162,69 @@ fn operand_provenance_is_independent_oracle(p: TestClaimOperandProvenance) -> Bo
   }
 }
 
+fn vacuity_same_eval_has_unknown_provenance(record: VacuityEvidenceRecord) -> Bool {
+  record.lhs_provenance == OperandProvenanceUnknown
+    || record.rhs_provenance == OperandProvenanceUnknown
+}
+
+fn vacuity_same_eval_has_independent_oracle(record: VacuityEvidenceRecord) -> Bool {
+  operand_provenance_is_independent_oracle(p: record.lhs_provenance)
+    || operand_provenance_is_independent_oracle(p: record.rhs_provenance)
+}
+
+fn vacuity_same_eval_is_readback_literal_oracle(record: VacuityEvidenceRecord) -> Bool {
+  record.lhs_provenance == ReadBack && record.rhs_provenance == LiteralOracle
+}
+
+fn vacuity_same_eval_has_helper_alias(record: VacuityEvidenceRecord) -> Bool {
+  record.lhs_provenance == HelperAlias || record.rhs_provenance == HelperAlias
+}
+
+fn vacuity_same_eval_is_literal_pair(record: VacuityEvidenceRecord) -> Bool {
+  record.lhs_provenance == LiteralOracle && record.rhs_provenance == LiteralOracle
+}
+
+fn classify_vacuity_same_eval_record(record: VacuityEvidenceRecord) -> VacuityEvidence {
+  if vacuity_same_eval_has_unknown_provenance(record: record) {
+    Unknown
+  } else {
+    if vacuity_same_eval_has_independent_oracle(record: record) {
+      ProvenIndependent
+    } else {
+      if vacuity_carries_parallel_authority_debt(
+        lhs_provenance: record.lhs_provenance,
+        rhs_provenance: record.rhs_provenance
+      ) {
+        ProvenIndependent
+      } else {
+        if vacuity_same_eval_is_readback_literal_oracle(record: record) {
+          ProvenDuplicate
+        } else {
+          if vacuity_same_eval_has_helper_alias(record: record) {
+            ProvenDuplicate
+          } else {
+            if vacuity_same_eval_is_literal_pair(record: record) {
+              ProvenDuplicate
+            } else {
+              if record.operands_structurally_equal {
+                ProvenDuplicate
+              } else {
+                ProvenIndependent
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 fn classify_vacuity_evidence_record(record: VacuityEvidenceRecord) -> VacuityEvidence {
   match record.observation {
     ObservationRelationUnknown => Unknown
-    EmitVsEval => ProvenIndependent
-    SameEval | SingleEvalOutput => {
-      if record.lhs_provenance == OperandProvenanceUnknown
-        || record.rhs_provenance == OperandProvenanceUnknown {
-        Unknown
-      } else if operand_provenance_is_independent_oracle(p: record.lhs_provenance)
-        || operand_provenance_is_independent_oracle(p: record.rhs_provenance) {
-        ProvenIndependent
-      } else if record.lhs_provenance == IndependentTranscription
-        && record.rhs_provenance == IndependentTranscription {
-        ProvenIndependent
-      } else if record.lhs_provenance == ReadBack
-        && record.rhs_provenance == LiteralOracle {
-        ProvenDuplicate
-      } else if record.lhs_provenance == HelperAlias
-        || record.rhs_provenance == HelperAlias {
-        ProvenDuplicate
-      } else if record.lhs_provenance == LiteralOracle
-        && record.rhs_provenance == LiteralOracle {
-        ProvenDuplicate
-      } else if record.operands_structurally_equal {
-        ProvenDuplicate
-      } else {
-        ProvenIndependent
-      }
-    }
+    ObserveEmitVsEval => ProvenIndependent
+    ObserveSameEval => classify_vacuity_same_eval_record(record: record)
+    ObserveSingleEvalOutput => classify_vacuity_same_eval_record(record: record)
   }
 }
 
@@ -305,9 +339,7 @@ fn vacuity_advisory_census_from_rows(rows: List<VacuityCensusRow>) -> VacuityAdv
 }
 
 fn vacuity_advisory_census_total(census: VacuityAdvisoryCensus) -> Int {
-  census.proven_duplicate_count
-    + census.proven_independent_count
-    + census.unknown_count
+  census.proven_duplicate_count + census.proven_independent_count + census.unknown_count
 }
 
 fn vacuity_advisory_census_matches_row_count(
