@@ -177,6 +177,7 @@ struct ParsedArgs {
     execution_mode: ExecutionMode,
     fixture_store: Option<PathBuf>,
     eval_budget_ms: Option<u64>,
+    pre_push: bool,
 }
 
 struct DiscoveryConfig {
@@ -193,6 +194,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut execution_mode = ExecutionMode::Hermetic;
     let mut fixture_store: Option<PathBuf> = None;
     let mut eval_budget_ms: Option<u64> = None;
+    let mut pre_push = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -264,6 +266,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                 i += 1;
                 fixture_store = Some(PathBuf::from(require_value(args, i, "--fixture-store")?));
             }
+            "--pre-push" => pre_push = true,
             other => {
                 eprintln!("claim_batch: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
@@ -294,6 +297,7 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         execution_mode,
         fixture_store,
         eval_budget_ms,
+        pre_push,
     })
 }
 
@@ -477,6 +481,9 @@ fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let parsed = parse_args(&args)?;
+    if parsed.pre_push {
+        return Ok(v1_compiler::cli_run::handle_pre_push());
+    }
     let source_roots = parsed.source_roots;
     let execution_mode = parsed.execution_mode;
     let eval_budget_ms = parsed.eval_budget_ms;
