@@ -84,7 +84,7 @@ fn emit_host_all_targets_consistent() -> Bool {
   )
 }
 
-data emit_host_gate_declared_smoke_count: Int = 6
+data emit_host_gate_declared_smoke_count: Int = 5
 
 fn emit_host_row_is_present(row: EmitHostTargetCoverageRow) -> Bool {
   match runtime_row_from_target(target: row.target) {

@@ -617,6 +617,8 @@ fn c_validate_partition_r4(
 
 data c_stage0_emit_note: String = "Stage 0 C source emitter seeded on fn add (ISO/IEC 9899:2018 / C17 — extdeps.languages.c.emit extdeps_external_authority_anchor). Grammar relation rows + lex + binding_spellings live here; the smoke main harness suffix is the sole legitimate string scaffold (dissolves when a modeled main producer lands)."
 
+data c_cpp_realization_relationship_note: String = "C and C++ share the ISO C subset: cpp_target_model retains the C++ scalar/primitive-facts model (38+ fns) while c_target_model owns the C Stage-0 fn-add grammar + cc runtime_row. Intended end-state: C is the base realization; C++ extends/reuses the C bundle for shared C-syntax rows rather than forking parallel spellings (cpp_source_text and c_source_text currently agree on add — a §3 nicknaming risk until C++ dispatches through c rows or a shared c_subset home). DISSOLVES WHEN cpp_target_model re-homes shared C-syntax translation rules onto c_target_model (or a lifted c_subset authority) and cpp keeps only C++-only extensions."
+
 data c_source_text: String = "int add(int x, int y) { return x + y; }"
 
 data c_emit_host_main_suffix: String = "\n\nextern long write(int, const void *, unsigned long);\nint main(void) { int value = add(2, 3); if (value != 5) { return 1; } unsigned char b[5] = {0, (unsigned char)(value & 0xff), (unsigned char)((value >> 8) & 0xff), (unsigned char)((value >> 16) & 0xff), (unsigned char)((value >> 24) & 0xff)}; write(1, b, 5); return 0; }\n"
