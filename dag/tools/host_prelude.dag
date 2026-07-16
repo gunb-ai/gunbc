@@ -1,5 +1,6 @@
 module tools.host_prelude
 
+
 import extdeps.shell
 import extdeps.cargo_build
 import extdeps.git
@@ -13,6 +14,8 @@ import extdeps.languages.bash.program {
   lit, var_ref, command, assign, test_not_executable
 }
 import tools.build_step { BuildArtifact, emit_verifications }
+
+
 
 fn assign_root_stmt() -> ShellStmt {
   assign(name: "ROOT", value: CmdSubst { body: AndOr {

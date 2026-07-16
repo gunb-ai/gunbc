@@ -1,8 +1,22 @@
 module gunbc.plans.wiring_liveness_preflight
 
 import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
+import std.markdown {
+  MarkdownBlock, MarkdownListItem,
+  MarkdownTableRow, MarkdownTableCell, MarkdownAlignment,
+  HeadingBlock, ParagraphBlock, OrderedListBlock, UnorderedListBlock, TableBlock,
+  TextInline, H2, AlignNone,
+}
+
+
+
+fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
+fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
+fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
+fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
+fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
+fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
+fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
 
 fn wiring_liveness_preflight_body() -> List<MarkdownBlock> {
   [

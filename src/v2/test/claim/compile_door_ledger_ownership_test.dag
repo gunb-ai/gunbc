@@ -1,23 +1,5 @@
 module v2.test.compile_door_ledger_ownership
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { length }
-import v2.std.collection { Absent, List, Present }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.workflow.compile_door_ledger {
-  AffectedDiffRefused,
-  AffectedLedgered,
-  MigrationOwned,
-  SharedSelfHostCriticalPath,
-  ThisLaneCalibration,
-  affected_ledger_from_diff,
-  cause_is_attributed,
-  cause_ownership_lookup,
-  dag_module_paths,
-  ledger_refused_count
-}
-import v2.workflow.floor_diff_observe { NameStatusDiffFail, NameStatusDiffOk }
 
 data ownership_witness_note: String = "Fast pure receipt (no door, no live tree) for the flip-trigger table: every frontier cause the histogram receipts pin is attributed to its owning lane, and an unknown cause is fail-closed UNATTRIBUTED (not silently bucketed). This is the DESIGN 5 tell that the burn-down table stays honest — a new frontier cause appearing over an affected set surfaces as cause_is_attributed = false, forcing an ownership decision rather than absorbing it. Pairs with the slow histogram witness in v2.test.long.compile_door_ledger, which pins the counts; this pins the ATTRIBUTION."
 

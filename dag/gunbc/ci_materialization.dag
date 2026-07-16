@@ -1,5 +1,6 @@
 module gunbc.ci_materialization
 
+
 import std.types { Bool, Int, List, String }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -23,6 +24,7 @@ import gunbc.merge_admission_produce {
   ci_documentation_only_gate_skip_prefix,
 }
 import extdeps.github.actions { Workflow, Job, Step, RunStep, UsesStep }
+
 
 data ci_materialization_note: String = "The worked example the ladder was built for (operator, 2026-07-08): CI emits shell which runs the gunbc binary, and the runs in shell are one frame above the runs in the binary — not fundamentally different, since both are emitted by the same program. This module models the emitted GitHub Actions workflow as a frame tree (workflow = isolated children; each job = a shared-state frame of steps), extracts every RunStep script as a FrameDemand at its site, and declares the cache providers that discharge the obligations the ladder finds. The flagship: the release build script is demanded by THREE sibling jobs (ci, ci_regen, rust_tests warm) whose LCA is the workflow isolation boundary — unrewireable redundancy, so it MUST be discharged by a covering store-tier provider; that provider is the sccache row below, and the shell fragment that realizes it in the emitted ci.yml is DERIVED from this module (ci_sccache_provider_shell_injection), so deleting the provider row would orphan the injection, and deleting the injection while the row stands is drift the witness reds. Grain honesty: identity is the step's run-script string — deploy scripts EMBED the release build script as a superset string and do not group with it at this grain; sub-step decomposition arrives when demands derive from the DependencyView rather than emitted argv (the forward-wiring thread). UsesStep actions are foreign computations and carry no demand row yet; their caching (actions/cache) is itself a provider to model when uses-grain demands land."
 

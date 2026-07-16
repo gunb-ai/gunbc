@@ -1,5 +1,6 @@
 module tools.emit_host_transport
 
+
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.cargo_build
@@ -17,6 +18,8 @@ import tools.emit_host_fixtures {
 }
 import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
 import tools.host_prelude { toolchain_provision_shell_exec }
+
+
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 

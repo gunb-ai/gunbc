@@ -1,48 +1,5 @@
 module v2.test.manual.derivable_coercion_nickname_triple
 
-import v2.compiler.eval { run_test_claim_assert }
-import v2.test.fixture.derivable_coercion_task_id {
-  account_id_wrong_inhabitant_node,
-  derivable_coercion_candidate_closedness,
-  task_id_api_inhabitant_node,
-  task_id_db_inhabitant_node,
-  task_id_semantic_core_node,
-  task_id_wire_inhabitant_node
-}
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected
-}
-import v2.std.exact_structural_equality_zip_fold_predicate {
-  exact_structural_equality_zip_fold
-}
-import v2.std.find_witness {
-  CandidateSet,
-  FindWitnessResult,
-  PreservationPredicate,
-  UniqueOnly,
-  find_witness,
-  find_witness_derives,
-}
-import v2.std.node { Node, Symbol }
-import v2.std.refinement_widening_predicate { refinement_widening_predicate_algebra }
-import v2.std.verdict { Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor,
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -211,9 +168,7 @@ test data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_a
   at: task_id_api_inhabitant_node()
 ) {
   Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -223,9 +178,7 @@ test data witness_claim_crux_substrate_gap: Bool = match run_test_claim_assert(
   at: task_id_api_inhabitant_node()
 ) {
   Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -235,8 +188,6 @@ data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = match
   at: task_id_api_inhabitant_node()
 ) {
   Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }

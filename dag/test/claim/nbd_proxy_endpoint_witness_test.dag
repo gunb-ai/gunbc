@@ -1,16 +1,5 @@
 module test.claim.nbd_proxy_endpoint
 
-import std.logic { Bool }
-import std.types { list_length }
-import extdeps.bmc.webui.nbd_proxy {
-  VmSlotIndexEndpoint,
-  NbdSlotEndpoint,
-}
-import extdeps.boards.asrock_rack {
-  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
-  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,53 +1,5 @@
 module v2.test.manual.english_emit_add
 
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.parse { parse }
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.translate {
-  grammar_inverse_source_validated,
-  target_serialize_source_from_model
-}
-import v2.extdeps.languages.english {
-  english_add_fn_emitted_node,
-  english_add_fn_paragraph_grammar,
-  english_add_fn_source_text,
-  english_add_fn_target_model,
-  english_inhabitant_atom,
-  english_noun_facts_node,
-  english_noun_inhabitant_node,
-  english_lex
-}
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
-import v2.std.algebra { fold_list }
-import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Map }
-import v2.std.constraints {
-  CanonicalGrounding,
-  CanonicalGroundingWitness
-}
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus
-}
-import v2.std.grammar { ParseTree }
-import v2.std.logic { Bool }
-import v2.std.node { Edge, Named, Node, Positional }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

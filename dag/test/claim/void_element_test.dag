@@ -1,9 +1,5 @@
 module test.claim.void_element
 
-import std.markup { MarkupNode, ElementNode, MarkupAttr, TextNode }
-import extdeps.languages.html { serialize_html_source }
-import extdeps.languages.react_jsx { serialize_jsx_component }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

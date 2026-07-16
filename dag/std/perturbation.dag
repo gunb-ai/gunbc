@@ -1,6 +1,5 @@
 module std.perturbation
 
-import std.types { String, Bool }
 
 type PerturbationReading
   = ForwardSameInSameOut

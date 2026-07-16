@@ -1,41 +1,5 @@
 module test.claim.host_converge_delta_witness
 
-import std.types { Bool, String, List }
-import std.measure { byte_size, byte_size_count, hardware_thread_count }
-import std.change { KeyedApplyHunk, KeyedConflict, KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
-import gunbc.ci_runner_placement {
-  RunnerHostDeployment,
-  BatchLatencyTolerant,
-}
-import extdeps.github.actions { SelfHosted }
-import gunbc.host_converge {
-  ConvergeKnob,
-  ConvergeSlice,
-  RunnerSlice,
-  PerSlotMemoryCap,
-  SliceProperty,
-  legacy_converge_knob,
-  runner_host_knobs,
-  runner_instance_glob,
-  gunbc_runner_per_slot_dropin_path,
-  gunbc_runner_per_slot_swap_dropin_path,
-}
-import extdeps.os.systemd {
-  systemd_memory_max_property,
-  systemd_memory_swap_max_property,
-}
-import gunbc.host_converge_delta {
-  ConvergeKnobKey,
-  converge_knob_key,
-  converge_knob_values_equal,
-  host_converge_three_way_patch,
-  host_converge_two_way_diff,
-  host_converge_patch_hunk_count,
-  host_converge_knob_in_patch,
-  host_converge_knob_verdict,
-  host_converge_three_way_entry_count,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

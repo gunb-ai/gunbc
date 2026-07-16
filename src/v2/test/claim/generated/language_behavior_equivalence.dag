@@ -1,86 +1,7 @@
 module v2.test.generated.language_behavior_equivalence
 
-import v2.compiler.eval {
-  EvalContext,
-  TestClaimEvalSubject,
-  TestClaimRun,
-  eval_context_with_semantics,
-  eval_diagnostic,
-  run_test_claim,
-  run_test_claim_assert,
-  test_claim_cache_receipt,
-  test_claim_typed_input_node
-}
-import v2.std.collection { Absent }
-import v2.std.verdict { Verdict, Deferred, Pass, SemanticMismatch, BuildFailed, RunFailed }
-import v2.compiler.infer {
-  InferredFacts,
-  InferredTree
-}
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-import v2.std.algebra { length }
-import v2.std.collection { Map }
-import v2.std.diagnostic {
-  Accepted,
-  AmbiguousIntent,
-  Diagnostic,
-  None,
-  NodeLocus,
-  NonEmptyDiagnostics,
-  Outcome,
-  Rejected,
-  Unavailable,
-  diagnostics_singleton, node_locus }
-import v2.std.node { Atom, Hash, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.runtime {
-  BindInterpreter,
-  BranchInterpreter,
-  ControlTransfer,
-  EnvironmentBindingKey,
-  EvaluationEnvironment,
-  InterpretationAlgebra,
-  InterpretationStructureWitness,
-  LoopInterpreter,
-  RuntimePrimitiveValue,
-  RuntimeValue,
-  TransformInterpreter,
-  ValueInterpreter,
-  MatchInterpreter,
-  runtime_reject_match_arm
-}
 
-import v2.std.witness { Holds, Violates }
 
-import v2.lens.testgen {
-  LanguageBehaviorIoMock,
-  lbe_io_mock_conj_dag_surface,
-  lbe_io_mock_disj_dag_surface,
-  lbe_io_mock_transform_dag_surface,
-  lbe_label_conj_dag_surface,
-  lbe_label_disj_dag_surface,
-  lbe_label_transform_dag_surface,
-  testgen_emit_language_behavior_equivalence_claim,
-  testgen_scheduled_language_behavior_generators
-}
-import v2.std.verification {
-  DiagnosticClaim,
-  TestClaim,
-  ManualAnchorKey,
-  ManualAnchorAbsent,
-  ManualLbeConjDagSurface,
-  ManualLbeDisjDagSurface,
-  ManualLbeTransformDagSurface,
-  TestClassification,
-  Tier1,
-  Unit,
-  test_claim_input,
-  manual_claim_anchor
-}
-import v2.test.manual.connective_anchors {
-  stub_empty_conj,
-  stub_empty_disj,
-  stub_empty_transform
-}
 fn lbe_symbol_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
@@ -101,7 +22,7 @@ fn lbe_runtime_value() -> RuntimeValue {
 fn lbe_runtime_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^lbe_interpretation_rejected,
-    at: node_locus(node: n),
+    at: NodeLocus { node: n },
     correction: Unavailable { reason: AmbiguousIntent }
   }
 }
@@ -183,10 +104,7 @@ fn lbe_eval_context() -> EvalContext {
       },
       bind: BindInterpreter {
         bind_value: lbe_bind_value
-      },
-    match: MatchInterpreter {
-      choose_arm: runtime_reject_match_arm
-    }
+      }
     },
     structure_witness: lbe_interpretation_structure_witness()
   )
@@ -249,7 +167,7 @@ fn lbe_run_test_claim_assert_from_emit(
     Accepted { value: claim, diagnostics: None } =>
       lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
     Rejected { diagnostics: d } =>
-      SemanticMismatch { actual: Rejected { diagnostics: d }, falsification: Absent }
+      Fail { actual: Rejected { diagnostics: d }, falsification: Absent }
   }
 }
 
@@ -264,7 +182,7 @@ fn lbe_test_claim_run_from_emit(
     Rejected { diagnostics: d } =>
       TestClaimRun {
         cache: lbe_rejected_emit_cache_receipt(label: label, mock: mock, expected: d),
-        verdict: SemanticMismatch { actual: Rejected { diagnostics: d }, falsification: Absent }
+        verdict: Fail { actual: Rejected { diagnostics: d }, falsification: Absent }
       }
   }
 }
@@ -293,9 +211,7 @@ data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   mock: lbe_io_mock_conj_dag_surface()
 ) {
   Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -305,9 +221,7 @@ data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from
   mock: lbe_io_mock_disj_dag_surface()
 ) {
   Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -317,9 +231,7 @@ data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert
   mock: lbe_io_mock_transform_dag_surface()
 ) {
   Pass => true
-  SemanticMismatch { actual: _, falsification: _ } => false
-    BuildFailed { actual: _, diagnostic: _ } => false
-    RunFailed { actual: _, diagnostic: _ } => false
+  Fail { actual: _, falsification: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 

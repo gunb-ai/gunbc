@@ -1,8 +1,5 @@
 module v2.lens.inert_lens
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
-import v2.std.logic { Bool }
 
 fn inert_lens_unreached_clean_for_count(unreached_count: Int) -> Bool {
   unreached_count == 0

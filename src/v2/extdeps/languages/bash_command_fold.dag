@@ -87,6 +87,7 @@ import v2.std.node {
 }
 import v2.std.witness { Holds, Violates, Witness }
 
+
 fn bash_fold_word_kinded_emitted(kind: Symbol, value: String) -> Node {
   Node {
     kind: TypeNode { connective: Conj },

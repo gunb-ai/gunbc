@@ -1,19 +1,5 @@
 module test.claim.uri_path_parse_witness
 
-import extdeps.uri_path {
-  parse_path_template,
-  ParsedPathTemplate,
-  MalformedPathTemplate,
-}
-import std.http_path {
-  PathTemplate,
-  UrlPathToken,
-  has_path_params,
-  last_path_param,
-  PathParamBinding,
-  render_path_template,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

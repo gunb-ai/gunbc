@@ -4,6 +4,8 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ol, ul, cell, row }
 
+
+
 fn seed_debt_bundle_item_2_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** design-first (2026-06-28). Parent `stern-moth-225` phase-0 metrics bundle, **item 2**. **#5894 scope:** lands `gunbc.compile_source_model` + pure `.dag` floor witness only — no emitter flip, no exemption retirement, no `regen --verify` flip. Parse-cursor grounding deferred to emit-migration (jolly-cat / #5873 sequencing). Work-item `adhoc-8521769b-288`."),
