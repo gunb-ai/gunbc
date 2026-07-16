@@ -1,0 +1,107 @@
+module tools.self_host_parse_engine_hooks_behavioral_transport
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.cargo_build
+import extdeps.git
+import extdeps.gunbc
+import std.logic { Bool }
+import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
+
+data peh_doc: String = "Wave 2 Band A (parse_engine_hooks self-emit): shim-free behavioral receipt mirroring tools.self_host_use_site_verdict_behavioral_transport without dep shims — the entry module is 100% data Symbol=^atom accessors (value-expression / B0 path). Emit ONLY v2.compiler.parse_engine_hooks via gunbc compile --entry; compile the emitted crate (lib.rs + transitive emit closure) linked against v1-compiler seed oracle. Behavioral bar: cargo-green witness pairs v1_compiled::v2_compiler_parse_engine_hooks with v1_compiler::v2_compiler_parse_engine_hooks (plain + --inject-fault RED) plus supplementary claim-run on parse_engine_hooks_test."
+
+data peh_seed_retained_note: String = "Seed oracle: v1_compiler::v2_compiler_parse_engine_hooks in src/v1/stage0 (hand-retained, independent of emitted artifact). No dep shims — Symbol is a plain string alias in the seed module."
+
+data peh_source_rel: String = "src/v2/compiler/parse_engine_hooks.dag"
+
+data peh_test_entry_rel: String = "src/v2/test/claim/parse_engine_hooks_test.dag"
+
+data peh_scaffold_dissolution_trigger: String = "dissolve-on: peh_cargo_toml + peh_driver_main_source — driver-crate manifest append (v1-compiler path dep, witness bin, text_lookup_work_counter feature) and hand-written equals-seed driver. DISSOLVES WHEN a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest (parallel to ssuv_scaffold_dissolution_trigger / slb_scaffold_dissolution_trigger)."
+
+data peh_receipt_pass_marker: String = "SELF_HOST_PARSE_ENGINE_HOOKS_BEHAVIORAL_RECEIPT: PASS"
+
+data peh_cargo_features_note: String = "Mirrors ssuv_cargo_features_note: text_lookup_work_counter feature declared for -D warnings consumers."
+
+data peh_driver_main_source: String = "use v1_compiled::v2_compiler_parse_engine_hooks as emitted;\nuse v1_compiler::v2_compiler_parse_engine_hooks as seed;\n\nfn sym_eq(a: &str, b: &str) -> bool {\n    a == b\n}\n\nfn main() {\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let cases: [(&str, String, String); 3] = [\n        (\n            \"match_arm_body\",\n            emitted::parse_engine_match_arm_body_production(),\n            seed::parse_engine_match_arm_body_production(),\n        ),\n        (\n            \"match_arm_stmt_body\",\n            emitted::parse_engine_match_arm_stmt_body_production(),\n            seed::parse_engine_match_arm_stmt_body_production(),\n        ),\n        (\n            \"expr\",\n            emitted::parse_engine_expr_production(),\n            seed::parse_engine_expr_production(),\n        ),\n    ];\n    let mut all_pass = true;\n    for (i, (label, e, s)) in cases.iter().enumerate() {\n        let e_cmp = if inject_fault && i == 0 {\n            \"INJECTED_FAULT\".to_string()\n        } else {\n            e.clone()\n        };\n        let ok = sym_eq(&e_cmp, s);\n        println!(\"{label} emitted={e_cmp} seed={s} eq={ok}\");\n        all_pass &= ok;\n    }\n    if all_pass {\n        println!(\"SELF_HOST_PARSE_ENGINE_HOOKS_BEHAVIORAL_RECEIPT: PASS\");\n        std::process::exit(0);\n    }\n    println!(\"SELF_HOST_PARSE_ENGINE_HOOKS_BEHAVIORAL_RECEIPT: FAIL\");\n    std::process::exit(1);\n}\n"
+
+fn peh_repo_path(root: String, rel: String) -> String {
+  concat(root, concat("/", rel))
+}
+
+fn peh_cargo_toml_append(root: String, emitted_manifest: String) -> String {
+  concat(
+    emitted_manifest,
+    concat(
+      "\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/witness_main.rs\"\n\n[dependencies]\nv1-compiler = { path = \"",
+      concat(root, "/src/v1/stage0\" }\n")
+    )
+  )
+}
+
+fn peh_behavioral_receipt_holds() -> Bool {
+  let root = git.Core.Toplevel()
+  let module_read = Filesystem.Read(path: peh_repo_path(root: root.path, rel: peh_source_rel))
+  let manifest_read = Filesystem.Read(path: concat(root.path, "/Cargo.toml"))
+
+  let out_dir = shell.Mktemp.Dir()
+  let gunbc_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+  let emit = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: gunbc_bin,
+    args: [
+      "compile",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", peh_source_rel,
+      "--output-dir", out_dir.path,
+      "--target", "rust",
+      "--dependency-pool-index", "primary-precedence"
+    ]
+  )
+
+  let emitted_manifest_read = Filesystem.Read(path: concat(out_dir.path, "/Cargo.toml"))
+  let manifest_written = Filesystem.Write(
+    path: concat(out_dir.path, "/Cargo.toml"),
+    content: peh_cargo_toml_append(
+      root: root.path,
+      emitted_manifest: emitted_manifest_read.content
+    )
+  )
+  let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/witness_main.rs"), content: peh_driver_main_source)
+
+  let build = cargo.Build.BuildManifest(
+    workdir: out_dir.path,
+    manifest_path: concat(out_dir.path, "/Cargo.toml"),
+    target_dir: concat(out_dir.path, "/target"),
+    extra_args: ["--release"]
+  )
+
+  let witness_bin_path = concat(out_dir.path, "/target/release/witness")
+  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
+  let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
+
+  let eval_symbols = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: gunbc_bin,
+    args: [
+      "run", "--claim-run",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", peh_test_entry_rel,
+      "--function", "parse_engine_hooks_symbols_match_grammar_productions"
+    ]
+  )
+
+  let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
+
+  module_read.success
+    && manifest_read.success
+    && out_dir.success && gunbc_built && emit.success
+    && emitted_manifest_read.success && manifest_written.success && main_rs.success
+    && build.success
+    && pass_run.success && string_contains(s: pass_run.stdout, pattern: peh_receipt_pass_marker)
+    && (fault_run.success == false)
+    && eval_symbols.success
+    && cleanup_out.success
+}
