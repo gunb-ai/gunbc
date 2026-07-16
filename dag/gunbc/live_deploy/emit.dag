@@ -62,6 +62,7 @@ fn deployment_ensured_steps_from_spec(spec: DeploymentSpec) -> List<DeploymentEn
 }
 
 fn emit_apply_script_body(spec: DeploymentSpec) -> Doc {
+  let port = deployment_plan_listen_port(spec: spec)
   let dep_lines = map(
     deployment_ensured_steps_from_spec(spec: spec),
     d => doc_line_of(text: concat("ensure_apt_package ", sh_arg(s: d.package)))

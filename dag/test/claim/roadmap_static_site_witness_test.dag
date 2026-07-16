@@ -143,6 +143,8 @@ fn witness_readback_script_checks_health_and_digests() -> Bool {
   let sh = roadmap_site_readback_script(port: 8080)
   string_contains(s: sh, pattern: "/healthz")
     && string_contains(s: sh, pattern: "healthz json parse failed")
+    && string_contains(s: sh, pattern: "--connect-timeout")
+    && string_contains(s: sh, pattern: "--max-time")
     && string_contains(s: sh, pattern: roadmap_site_roadmap_url_path)
     && string_contains(s: sh, pattern: roadmap_site_dispatch_url_path)
     && string_contains(s: sh, pattern: "digest mismatch")
