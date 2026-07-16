@@ -1285,7 +1285,16 @@ impl InterpContext {
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
     ) -> Self {
-        Self::with_runtime_options(graph, source_indices, execution_mode, None, None, None, None, None)
+        Self::with_runtime_options(
+            graph,
+            source_indices,
+            execution_mode,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
     }
 
     pub fn with_fixture_store(
@@ -1357,18 +1366,25 @@ impl InterpContext {
             }
         }
         let item_registry = if let Some(overlay) = census_item_registry {
-            overlay.iter().fold(graph.item_registry.clone(), |acc, (name, info)| {
-                if acc.contains_key(name) {
-                    acc
-                } else {
-                    v1_rt::rc_map_insert(acc, name.clone(), info.clone())
-                }
-            })
+            overlay
+                .iter()
+                .fold(graph.item_registry.clone(), |acc, (name, info)| {
+                    if acc.contains_key(name) {
+                        acc
+                    } else {
+                        v1_rt::rc_map_insert(acc, name.clone(), info.clone())
+                    }
+                })
         } else {
             graph.item_registry.clone()
         };
         let variant_parents = census_variant_parents
-            .map(|overlay| overlay.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .map(|overlay| {
+                overlay
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            })
             .unwrap_or_default();
         InterpContext {
             modules: graph.modules.clone(),
