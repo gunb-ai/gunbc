@@ -1,5 +1,7 @@
 module gunbc.stage0_crate_layout_emit
 
+data emitted_crate_partition_design_doc_provenance: String = "bind: docs/plans/emitted-crate-partition-design.md — Rust workflow-layer design for deriving emitted crate partition from the module DAG (companion to #6677 registration authority in frontier.dag); bound for doc-graph reachability after main merge 2026-07-16"
+
 import v2.compiler.self_host.frontier {
   emit_hand_maintained_pub_mod_block,
   hand_maintained_pub_mod_basenames,
