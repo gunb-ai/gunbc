@@ -1,0 +1,53 @@
+module extdeps.gpu.machine_shape
+
+import std.machine_shape {
+  DomainId,
+  LevelId,
+  MachineShape,
+  ExecutionDomain,
+  MemoryLevel,
+  MachineShapeConstruction,
+  MachineShapeOk,
+  execution_shape_independent_lanes,
+}
+import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities"
+  }
+}
+
+type ShapeFromCatalogInput
+  = FromGpuModelCatalog { domain: DomainId, device_level: LevelId, row: GpuModelCatalogRow }
+
+fn memory_level_from_gpu_catalog(level_id: LevelId, row: GpuModelCatalogRow) -> MemoryLevel {
+  MemoryLevel {
+    id: level_id
+    capacity: row.memory.capacity
+    transfer_grain: none
+    bandwidth: Present { value: row.memory_bandwidth }
+    latency: none
+  }
+}
+
+fn shape_from_catalog(input: ShapeFromCatalogInput) -> MachineShapeConstruction {
+  match input {
+    FromGpuModelCatalog { domain: domain, device_level: device_level, row: row } =>
+      MachineShapeOk {
+        shape: MachineShape {
+          domains: [
+            ExecutionDomain {
+              id: domain
+              execution: execution_shape_independent_lanes(lane_count: row.execution_lane_count)
+              memory: [memory_level_from_gpu_catalog(level_id: device_level, row: row)]
+            }
+          ]
+          edges: []
+        }
+      }
+  }
+}
