@@ -201,17 +201,27 @@ fn check_modifier_vs_derivation(
     Agrees
   } else if declared_idempotent && !derived_idempotent {
     match op.shape {
-      CreateEffect { cause: PostAlways } =>
-        DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
-      CreateEffect { cause: KeylessFallback { method: method } } =>
-        DerivationUnknown { reason: "keyless PUT/PATCH/DELETE derives CreateEffect; idempotency may be method-derived" }
+      CreateEffect { cause: cause } =>
+        match cause {
+          PostAlways =>
+            DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
+          KeylessFallback { method: method } =>
+            DerivationUnknown { reason: "keyless PUT/PATCH/DELETE derives CreateEffect; idempotency may be method-derived" }
+          CreateIfAbsent { key_source: key_source } =>
+            Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+        }
       _ =>
         Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
     }
   } else if !declared_idempotent && derived_idempotent {
     match op.shape {
-      CreateEffect { cause: CreateIfAbsent { key_source: key_source } } =>
-        Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
+      CreateEffect { cause: cause } =>
+        match cause {
+          CreateIfAbsent { key_source: key_source } =>
+            Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
+          PostAlways => Agrees
+          KeylessFallback { method: method } => Agrees
+        }
       _ =>
         Agrees
     }

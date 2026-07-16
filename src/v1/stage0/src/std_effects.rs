@@ -319,45 +319,33 @@ pub fn check_modifier_vs_derivation(
         } else {
             if (declared_idempotent.clone() && !derived_idempotent.clone()) {
                 match (*op.shape.clone()).clone() {
-                    EffectShape::CreateEffect { ref cause, .. } => {
-                        let CreateCause::PostAlways = cause.as_ref() else {
-                            unreachable!()
-                        };
-                        Rc::new(ModifierAgreement::DerivationUnknown {
+    EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
+    CreateCause::PostAlways => Rc::new(ModifierAgreement::DerivationUnknown {
     reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared".to_string(),
-})
-                    }
-                    EffectShape::CreateEffect { ref cause, .. } => {
-                        let CreateCause::KeylessFallback { method: method, .. } = cause.as_ref()
-                        else {
-                            unreachable!()
-                        };
-                        Rc::new(ModifierAgreement::DerivationUnknown {
+}),
+    CreateCause::KeylessFallback { method: method, .. } => Rc::new(ModifierAgreement::DerivationUnknown {
     reason: "keyless PUT/PATCH/DELETE derives CreateEffect; idempotency may be method-derived".to_string(),
-})
-                    }
-                    _ => Rc::new(ModifierAgreement::Disagrees {
-                        reason: "derivation says non-idempotent but modifier declares idempotent"
-                            .to_string(),
-                    }),
-                }
+}),
+    CreateCause::CreateIfAbsent { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+},
+    _ => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+}
             } else {
                 if (!declared_idempotent.clone() && derived_idempotent.clone()) {
                     match (*op.shape.clone()).clone() {
-                        EffectShape::CreateEffect { ref cause, .. } => {
-                            let CreateCause::CreateIfAbsent {
-                                key_source: key_source,
-                                ..
-                            } = cause.as_ref()
-                            else {
-                                unreachable!()
-                            };
-                            Rc::new(ModifierAgreement::Disagrees {
+    EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
+    CreateCause::CreateIfAbsent { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
     reason: "create-if-absent has proven identity but modifier declares non-idempotent".to_string(),
-})
-                        }
-                        _ => Rc::new(ModifierAgreement::Agrees),
-                    }
+}),
+    CreateCause::PostAlways => Rc::new(ModifierAgreement::Agrees),
+    CreateCause::KeylessFallback { method: method, .. } => Rc::new(ModifierAgreement::Agrees),
+},
+    _ => Rc::new(ModifierAgreement::Agrees),
+}
                 } else {
                     if (!declared_idempotent.clone() && declared_readonly.clone()) {
                         match op.method.clone() {
