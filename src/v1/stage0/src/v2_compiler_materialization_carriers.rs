@@ -127,10 +127,7 @@ fn distinct_identities(demands: &[FrameDemand]) -> Vec<String> {
 }
 
 fn ladder_group<'a>(demands: &'a [FrameDemand], identity: &str) -> Vec<&'a FrameDemand> {
-    demands
-        .iter()
-        .filter(|d| d.identity == identity)
-        .collect()
+    demands.iter().filter(|d| d.identity == identity).collect()
 }
 
 fn group_obligation_lca(group: &[FrameDemand]) -> Vec<Frame> {
@@ -140,20 +137,16 @@ fn group_obligation_lca(group: &[FrameDemand]) -> Vec<Frame> {
     if group.len() == 1 {
         return group[0].site.clone();
     }
-    group[1..]
-        .iter()
-        .fold(group[0].site.clone(), |acc, d| frame_path_lca(&acc, &d.site))
+    group[1..].iter().fold(group[0].site.clone(), |acc, d| {
+        frame_path_lca(&acc, &d.site)
+    })
 }
 
 fn group_is_redundant(group: &[&FrameDemand]) -> bool {
     group.len() > 1
 }
 
-fn discharge_verdict(
-    identity: &str,
-    lca: &[Frame],
-    providers: &[CacheProvider],
-) -> LadderVerdict {
+fn discharge_verdict(identity: &str, lca: &[Frame], providers: &[CacheProvider]) -> LadderVerdict {
     if providers.iter().any(|p| p.scope == lca) {
         return LadderVerdict::AcceptedSingleRecompute {
             identity: identity.to_string(),
