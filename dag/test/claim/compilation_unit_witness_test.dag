@@ -1,0 +1,220 @@
+module test.claim.compilation_unit_witness
+
+import std.types { NonEmptyStr, ContentHash, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.interface_summary {
+  InterfaceSummary,
+  ExportEntry,
+  ExportFn,
+  contract_absent,
+  interface_summary_rollup,
+}
+import std.compilation_unit {
+  CompilationUnit,
+  CompilationUnitId,
+  HandExplicit,
+  ModuleDag,
+  ModuleDagEdge,
+  ModuleId,
+  PartitionRefused,
+  PartitionValid,
+  PolicyDerived,
+  StronglyConnectedComponentSplit,
+  UnitDependencyCycle,
+  UnmappedModule,
+  compilation_unit_artifact_id,
+  partition_fold,
+  partition_provenance_eq,
+  partition_provenance_hand_explicit,
+  partition_provenance_policy_derived,
+  partition_validity_assignment_complete,
+  partition_validity_scc_atoms_coherent,
+  partition_validity_shared,
+  partition_validity_unit_dependency_acyclic,
+  partition_validity_verdict_valid,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_mod_a: ModuleId = "mod.a" as NonEmptyStr
+data witness_mod_b: ModuleId = "mod.b" as NonEmptyStr
+data witness_mod_c: ModuleId = "mod.c" as NonEmptyStr
+
+data witness_unit_one: CompilationUnitId = "cu-one" as ContentHash
+data witness_unit_two: CompilationUnitId = "cu-two" as ContentHash
+
+fn witness_export(name: NonEmptyStr) -> ExportEntry {
+  ExportEntry {
+    name: name,
+    kind: ExportFn,
+    contract: contract_absent(),
+  }
+}
+
+fn witness_interface(module_path: NonEmptyStr, export_name: NonEmptyStr) -> InterfaceSummary {
+  let exports = [witness_export(name: export_name)]
+  InterfaceSummary {
+    module_path: module_path,
+    exports: exports,
+    interface_hash: interface_summary_rollup(exports: exports),
+  }
+}
+
+fn witness_triangle_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_a, witness_mod_b, witness_mod_c],
+    edges: [
+      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
+      ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
+    ],
+    interfaces: {
+      witness_mod_a: witness_interface(module_path: "mod.a" as NonEmptyStr, export_name: "fn_a" as NonEmptyStr),
+      witness_mod_b: witness_interface(module_path: "mod.b" as NonEmptyStr, export_name: "fn_b" as NonEmptyStr),
+      witness_mod_c: witness_interface(module_path: "mod.c" as NonEmptyStr, export_name: "fn_c" as NonEmptyStr),
+    },
+  }
+}
+
+fn witness_two_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
+  {
+    witness_mod_a: witness_unit_one,
+    witness_mod_b: witness_unit_one,
+    witness_mod_c: witness_unit_two,
+  }
+}
+
+fn witness_single_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
+  {
+    witness_mod_a: witness_unit_one,
+    witness_mod_b: witness_unit_one,
+    witness_mod_c: witness_unit_one,
+  }
+}
+
+fn witness_partition_fold_two_units() -> List<CompilationUnit> {
+  partition_fold(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
+  )
+}
+
+fn witness_unit_one_members() -> Bool {
+  let units = witness_partition_fold_two_units()
+  match units |> first {
+    Present { value: unit } =>
+      (unit.id == witness_unit_one)
+        && (unit.members == [witness_mod_a, witness_mod_b])
+        && (unit.deps == [witness_unit_two])
+        && (unit.artifact == compilation_unit_artifact_id(unit_id: witness_unit_one))
+    Absent => false
+  }
+}
+
+fn witness_unit_two_members_and_cross_boundary_interface() -> Bool {
+  let units = witness_partition_fold_two_units()
+  match units |> skip(n: 1) |> first {
+    Present { value: unit } =>
+      (unit.id == witness_unit_two)
+        && (unit.members == [witness_mod_c])
+        && (unit.deps == [witness_unit_one])
+        && ((unit.interface |> count) == 1)
+        && (match unit.interface |> first {
+          Present { value: export } => export.name == ("fn_c" as NonEmptyStr)
+          Absent => false
+        })
+    Absent => false
+  }
+}
+
+fn witness_scc_split_refuses_when_cycle_spans_units() -> Bool {
+  match partition_validity_scc_atoms_coherent(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
+  ) {
+    PartitionRefused { cause: StronglyConnectedComponentSplit { component: _, unit_ids: _ } } => true
+    _ => false
+  }
+}
+
+fn witness_scc_split_accepts_single_unit_cycle() -> Bool {
+  match partition_validity_scc_atoms_coherent(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_single_unit_assignment()
+  ) {
+    PartitionValid => true
+    _ => false
+  }
+}
+
+fn witness_unit_dependency_cycle_refuses() -> Bool {
+  let units = witness_partition_fold_two_units()
+  match partition_validity_unit_dependency_acyclic(units: units) {
+    PartitionRefused { cause: UnitDependencyCycle } => true
+    _ => false
+  }
+}
+
+fn witness_assignment_complete_refuses_unmapped() -> Bool {
+  match partition_validity_assignment_complete(
+    module_dag: witness_triangle_dag(),
+    assignment: {
+      witness_mod_a: witness_unit_one,
+      witness_mod_b: witness_unit_one,
+    }
+  ) {
+    PartitionRefused { cause: UnmappedModule { module: witness_mod_c } } => true
+    _ => false
+  }
+}
+
+fn witness_shared_validity_runs_coverage_before_acyclicity() -> Bool {
+  match partition_validity_shared(
+    module_dag: witness_triangle_dag(),
+    assignment: {
+      witness_mod_a: witness_unit_one,
+      witness_mod_b: witness_unit_one,
+    },
+    units: []
+  ) {
+    PartitionRefused { cause: UnmappedModule { module: _ } } => true
+    _ => false
+  }
+}
+
+fn witness_provenance_variants_distinct() -> Bool {
+  let explicit = partition_provenance_hand_explicit()
+  let derived = partition_provenance_policy_derived(
+    policy: DeclarationRef {
+      module_path: "std.compilation_unit" as NonEmptyStr,
+      decl_name: "partition_fold" as NonEmptyStr,
+      field: WholeDeclaration,
+    }
+  )
+  !partition_provenance_eq(left: explicit, right: derived)
+    && partition_provenance_eq(left: explicit, right: explicit)
+    && match derived {
+      PolicyDerived { policy: _ } => true
+      HandExplicit => false
+    }
+}
+
+fn witness_validity_verdict_valid_only_on_valid() -> Bool {
+  partition_validity_verdict_valid(verdict: PartitionValid)
+    && !partition_validity_verdict_valid(
+      verdict: PartitionRefused { cause: UnitDependencyCycle }
+    )
+}
+
+test fn compilation_unit_witnesses() -> Bool {
+  witness_unit_one_members()
+    && witness_unit_two_members_and_cross_boundary_interface()
+    && witness_scc_split_refuses_when_cycle_spans_units()
+    && witness_scc_split_accepts_single_unit_cycle()
+    && witness_unit_dependency_cycle_refuses()
+    && witness_assignment_complete_refuses_unmapped()
+    && witness_shared_validity_runs_coverage_before_acyclicity()
+    && witness_provenance_variants_distinct()
+    && witness_validity_verdict_valid_only_on_valid()
+}
