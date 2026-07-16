@@ -5,7 +5,6 @@ import v2.compiler.emit { emit }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.c {
   c_atom,
-  c_binding_spellings,
   c_emitted_add_fn_node,
   c_int_inhabitant_node,
   c_lex,
