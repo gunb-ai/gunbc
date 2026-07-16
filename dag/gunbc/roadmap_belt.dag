@@ -2,7 +2,19 @@ module gunbc.roadmap_belt
 
 import std.types { String, Int, List, Bool }
 import gunbc.roadmap_model { RoadmapNode, RoadmapNodeId }
-import gunbc.roadmap_spawner { SpawnFrontier }
+import gunbc.roadmap_document { RoadmapDocument }
+import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
+import extdeps.languages.json.emit {
+  JsonValue,
+  serialize_json,
+  json_string,
+  json_int,
+  json_bool,
+  json_array,
+  json_object,
+  json_kv,
+}
 
 type BeltRunState
   = Running
@@ -68,4 +80,89 @@ fn belt_spawns_node(actions: List<BeltAction>, id: RoadmapNodeId) -> Bool {
     HoldPaused => false
     AtCapacity { ready_waiting: _ } => false
   })
+}
+
+data roadmap_belt_default_capacity: BeltCapacity = BeltCapacity { max_concurrent: 3 }
+
+data roadmap_belt_default_run_state: BeltRunState = Running
+
+fn belt_plan(
+  state: BeltRunState,
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  occupied: List<RoadmapNodeId>,
+  cap: BeltCapacity,
+) -> List<BeltAction> {
+  belt_step(
+    state: state,
+    frontier: spawn_frontier(doc: doc, merged: merged),
+    occupied: occupied,
+    cap: cap,
+  )
+}
+
+fn belt_run_state_label(s: BeltRunState) -> String {
+  match s {
+    Running => "running"
+    Paused => "paused"
+  }
+}
+
+fn belt_would_spawn_ids(actions: List<BeltAction>) -> List<RoadmapNodeId> {
+  fold(actions, init: [], f: fn(acc, a) {
+    match a {
+      SpawnWorker { node } => concat(acc, [node.node])
+      HoldPaused => acc
+      AtCapacity { ready_waiting: _ } => acc
+    }
+  })
+}
+
+fn belt_is_at_capacity(actions: List<BeltAction>) -> Bool {
+  any(actions, a => match a {
+    AtCapacity { ready_waiting: _ } => true
+    SpawnWorker { node: _ } => false
+    HoldPaused => false
+  })
+}
+
+fn belt_at_capacity_backlog(actions: List<BeltAction>) -> Int {
+  fold(actions, init: 0, f: fn(acc, a) {
+    match a {
+      AtCapacity { ready_waiting } => ready_waiting
+      SpawnWorker { node: _ } => acc
+      HoldPaused => acc
+    }
+  })
+}
+
+fn belt_json_value(
+  state: BeltRunState,
+  doc: RoadmapDocument,
+  merged: List<Int>,
+  occupied: List<RoadmapNodeId>,
+  cap: BeltCapacity,
+) -> JsonValue {
+  let frontier = spawn_frontier(doc: doc, merged: merged)
+  let actions = belt_plan(state: state, doc: doc, merged: merged, occupied: occupied, cap: cap)
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-belt/v1")),
+    json_kv(key: "run_state", value: json_string(s: belt_run_state_label(s: state))),
+    json_kv(key: "max_concurrent", value: json_int(n: cap.max_concurrent)),
+    json_kv(key: "occupied", value: json_array(elements: occupied |> map(id => json_string(s: id as String)))),
+    json_kv(key: "ready_count", value: json_int(n: count(frontier.ready))),
+    json_kv(key: "would_spawn", value: json_array(elements: belt_would_spawn_ids(actions: actions) |> map(id => json_string(s: id as String)))),
+    json_kv(key: "at_capacity", value: json_bool(b: belt_is_at_capacity(actions: actions))),
+    json_kv(key: "at_capacity_backlog", value: json_int(n: belt_at_capacity_backlog(actions: actions))),
+  ])
+}
+
+fn roadmap_belt_status_json() -> String {
+  serialize_json(v: belt_json_value(
+    state: roadmap_belt_default_run_state,
+    doc: roadmap_authority(),
+    merged: authored_merged_prs(),
+    occupied: [],
+    cap: roadmap_belt_default_capacity,
+  ))
 }

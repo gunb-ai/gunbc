@@ -104,11 +104,11 @@ fn witness_dependency_ensure_is_idempotent() -> Bool {
 
 fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let sh = expected_live_deploy_apply_script()
-  string_contains(s: sh, pattern: "sudo bash -s <<'GUNBC_APPLY_EOF'")
-    && string_contains(s: sh, pattern: "gunbc-roadmap.service")
+  !string_contains(s: sh, pattern: "sudo bash")
+    && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/server.js\" /opt/gunbc/server.js")
     && string_contains(s: sh, pattern: "[Service]")
-    && string_contains(s: sh, pattern: concat("systemctl restart ", "gunbc-roadmap.service"))
-    && string_contains(s: sh, pattern: "tailscale serve --bg 8080")
+    && string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-roadmap.service")
+    && string_contains(s: sh, pattern: "sudo -n tailscale serve --bg 8080")
     && string_contains(s: sh, pattern: "ensure_apt_package \"tailscale\"")
     && string_contains(s: sh, pattern: "ensure_apt_package \"nodejs\"")
     && string_contains(s: sh, pattern: "fold=apply verdict=converged")
@@ -116,11 +116,11 @@ fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
 
 fn witness_retract_script_owned_only() -> Bool {
   let sh = expected_live_deploy_retract_script()
-  string_contains(s: sh, pattern: "sudo bash -s <<'GUNBC_RETRACT_EOF'")
-    && string_contains(s: sh, pattern: "tailscale serve reset")
-    && string_contains(s: sh, pattern: "systemctl disable --now gunbc-roadmap.service")
-    && string_contains(s: sh, pattern: "rm -f /opt/gunbc/server.js")
-    && string_contains(s: sh, pattern: "rm -f /etc/systemd/system/gunbc-roadmap.service")
+  !string_contains(s: sh, pattern: "sudo bash")
+    && string_contains(s: sh, pattern: "sudo -n tailscale serve reset")
+    && string_contains(s: sh, pattern: "sudo -n systemctl disable --now gunbc-roadmap.service")
+    && string_contains(s: sh, pattern: "sudo -n rm -f /opt/gunbc/server.js")
+    && string_contains(s: sh, pattern: "sudo -n rm -f /etc/systemd/system/gunbc-roadmap.service")
     && string_contains(s: sh, pattern: "fold=retract verdict=converged")
     && !string_contains(s: sh, pattern: "apt-get remove")
     && !string_contains(s: sh, pattern: "apt-get purge")
