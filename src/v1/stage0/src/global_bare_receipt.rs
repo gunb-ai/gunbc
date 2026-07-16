@@ -54,10 +54,7 @@ pub fn record_merge_global_bare_per_module_scan(
     });
 }
 
-pub fn record_precomputed_merge_module_scan(
-    module_name: String,
-    precomputed_key_count: usize,
-) {
+pub fn record_precomputed_merge_module_scan(module_name: String, precomputed_key_count: usize) {
     record_merge_global_bare_variant_key_scans(precomputed_key_count);
     record_merge_global_bare_per_module_scan(module_name, precomputed_key_count, 0);
 }
