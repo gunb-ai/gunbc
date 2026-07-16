@@ -104,10 +104,14 @@ fn assess_intake(
   if count(reasons) == 0 { ReadyToList } else { NeedsReview { reasons: reasons } }
 }
 
-fn count_true(flags: List<Bool>) -> Int {
-  fold(flags, init: 0, f: (acc, b) => if b { acc + 1 } else { acc })
+fn count_flagged(
+  rs: List<{ card_name: String, disposition: IntakeDisposition, product_id: Int, market_price: Float? }>
+) -> Int {
+  fold(rs, init: 0, f: (acc, r) => match r.disposition {
+    ReadyToList => acc
+    NeedsReview { reasons: _ } => acc + 1
+  })
 }
-
 
 func recognize_binder_photo(
   photo_path: FilePath,
@@ -196,14 +200,7 @@ func intake_binder(
     )
   }
 
-  flags = for r in results {
-    match r.disposition {
-      ReadyToList => false
-      NeedsReview { reasons: _ } => true
-    }
-  }
-
-  return { total: count(results), flagged: count_true(flags: flags) }
+  return { total: count(results), flagged: count_flagged(rs: results) }
 }
 
 func list_card_sku(

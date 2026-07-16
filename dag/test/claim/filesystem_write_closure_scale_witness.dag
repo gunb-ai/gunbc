@@ -7,7 +7,7 @@ data filesystem_write_closure_scale_anchor: ResourceHandle = ResourceHandle {
   type: "filesystem",
   resource_id: "closure-scale-witness",
   key: "scale",
-  cap: ""
+  cap: "" as Secret
 }
 
 func witness_filesystem_write_survives_name_collision() -> Bool {

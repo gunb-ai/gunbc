@@ -1,4 +1,4 @@
-module extdeps.ctrl.jobserver
+module extdeps.jobserver
 
 import std.types { Int, String }
 import std.nat { Nat, nat_min }
@@ -10,31 +10,31 @@ import extdeps.uri { Uri, Https }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
-    locator: "github.com/gunb-ai/ctrl/blob/main/host/install-ctrl-jobserver.sh"
+    locator: "www.gnu.org/software/make/manual/html_node/POSIX-Jobserver.html"
   }
 }
 
-type CtrlJobserverConfig {
+type JobserverConfig {
   margin: HardwareThreadCount
   mem_reserve: ByteSize
   mib_per_job: ByteSize
 }
 
-fn derive_jobserver_tokens(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: CtrlJobserverConfig) -> HardwareThreadCount {
+fn derive_jobserver_tokens(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: JobserverConfig) -> HardwareThreadCount {
   let cpu_bound = hardware_thread_count_value(t: cpu_cores_available(nproc: nproc, margin: cfg.margin))
   let mem_for_builds = byte_size_saturating_sub(total: mem_total, reserved: cfg.mem_reserve)
   let mem_bound = measure_fit_count_floor(capacity: mem_for_builds, each: cfg.mib_per_job)
   hardware_thread_count(count: nat_min(a: cpu_bound, b: mem_bound))
 }
 
-fn jobserver_build_pool_bytes(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: CtrlJobserverConfig) -> ByteSize {
+fn jobserver_build_pool_bytes(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: JobserverConfig) -> ByteSize {
   let tokens = derive_jobserver_tokens(nproc: nproc, mem_total: mem_total, cfg: cfg)
   measure_scale_fraction_floor(m: cfg.mib_per_job, num: hardware_thread_count_value(t: tokens), den: 1)
 }
 
-type CtrlJobserverCitation
-  = CtrlJobserverCited { config: CtrlJobserverConfig, provenance: String }
-  | CtrlJobserverAbsent
+type JobserverCitation
+  = JobserverCited { config: JobserverConfig, provenance: String }
+  | JobserverAbsent
 
-data ctrl_jobserver_config: CtrlJobserverCitation = CtrlJobserverAbsent
+data jobserver_config: JobserverCitation = JobserverAbsent
 

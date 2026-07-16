@@ -1,4 +1,4 @@
-module ctrl.process_algebra
+module gunbc.process_algebra
 
 import std.algebra { FreeMonoid }
 import std.effects { OperationEffect }
