@@ -8,36 +8,25 @@ import extdeps.gunbc
 import std.logic { Bool }
 import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
 
-data peh_doc: String = "Wave 2 Band A (parse_engine_hooks self-emit): shim-free behavioral receipt mirroring tools.self_host_use_site_verdict_behavioral_transport without dep shims — the entry module is 100% data Symbol=^atom accessors (value-expression / B0 path). Emit ONLY v2.compiler.parse_engine_hooks via gunbc compile --entry; compile the emitted crate (lib.rs + transitive emit closure) linked against v1-compiler seed oracle. Behavioral bar: cargo-green witness pairs v1_compiled::v2_compiler_parse_engine_hooks with v1_compiler::v2_compiler_parse_engine_hooks (plain + --inject-fault RED) plus supplementary claim-run on parse_engine_hooks_test."
+data peh_doc: String = "Wave 2 Band A (parse_engine_hooks self-emit): seed-linked behavioral receipt mirroring tools.self_host_use_site_verdict_behavioral_transport. Emit ONLY v2.compiler.parse_engine_hooks via gunbc compile --entry; compile the gunbc-emitted entry module in a v1_compiled driver crate linked against the v1-compiler seed path dependency. Seed-retained import dep (v2.std.node Symbol surface) is NOT re-emitted — minimal typed shim under dag/tools/self_host_parse_engine_hooks_shims/ supplies the ABI until v2.std.node self-emits on its own lane (DESIGN section 7 typed frontier). Behavioral bar: cargo-green witness pairs v1_compiled::v2_compiler_parse_engine_hooks (gunbc-emitted rs, not overwritten) with v1_compiler::v2_compiler_parse_engine_hooks (plain + --inject-fault RED) plus supplementary claim-run on parse_engine_hooks_test. Shim bytes read via Filesystem.Read at run time (provenance)."
 
-data peh_seed_retained_note: String = "Seed oracle: v1_compiler::v2_compiler_parse_engine_hooks in src/v1/stage0 (hand-retained, independent of emitted artifact). Symbol matches emitted v2_std_node::Symbol newtype (pub struct Symbol(pub String)) for equals-seed comparison."
-
-data peh_minimal_lib_rs: String = "// shim-free: gunbc-emitted entry module + Symbol carrier only (no hand v2_std_node surface fork)\n#![allow(clippy::all, dead_code, unused_imports)]\n#![recursion_limit = \"256\"]\npub mod v2_std_node {\n    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]\n    pub struct Symbol(pub String);\n}\npub mod v2_compiler_parse_engine_hooks;\n"
+data peh_seed_retained_note: String = "Seed oracle: v1_compiler::v2_compiler_parse_engine_hooks in src/v1/stage0 (hand-retained, independent of the emitted artifact). Dissolve-on: same as peh_scaffold_dissolution_trigger."
 
 data peh_source_rel: String = "src/v2/compiler/parse_engine_hooks.dag"
 
 data peh_test_entry_rel: String = "src/v2/test/claim/parse_engine_hooks_test.dag"
 
-data peh_scaffold_dissolution_trigger: String = "dissolve-on: peh_cargo_toml + peh_driver_main_source + peh_minimal_lib_rs — driver-crate manifest, equals-seed witness driver, and minimal lib.rs (Symbol carrier + mod mount for gunbc-emitted entry rs only; NOT a full v2_std_node hand fork). DISSOLVES WHEN a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest + linkage (parallel to ssuv_scaffold_dissolution_trigger / slb_scaffold_dissolution_trigger)."
+data peh_shim_lib_rel: String = "dag/tools/self_host_parse_engine_hooks_shims/lib.rs"
 
-data peh_emitted_module_rel: String = "src/v2_compiler_parse_engine_hooks.rs"
+data peh_shim_node_rel: String = "dag/tools/self_host_parse_engine_hooks_shims/v2_std_node.rs"
 
-data peh_scrubbed_hooks_module: String = "// gunbc-emitted v2.compiler.parse_engine_hooks (value-expression / B0 path) — linkage scrubbed for driver crate\npub use crate::v2_std_node::Symbol;\n\npub fn parse_engine_match_arm_body_production() -> Symbol {\n    Symbol(\"dag_production_match_arm_body\".to_string())\n}\n\npub fn parse_engine_match_arm_stmt_body_production() -> Symbol {\n    Symbol(\"dag_production_match_arm_stmt_body\".to_string())\n}\n\npub fn parse_engine_expr_production() -> Symbol {\n    Symbol(\"dag_production_expr\".to_string())\n}\n"
+data peh_shim_driver_rel: String = "dag/tools/self_host_parse_engine_hooks_shims/witness_main.rs"
+
+data peh_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_parse_engine_hooks_shims/* + peh_cargo_toml + witness driver — seed-linked dep shim files (Symbol-only v2_std_node), driver-crate manifest (peh_cargo_toml fn, mirrors ssuv_cargo_toml), and witness driver. DISSOLVES WHEN v2.std.node self-emits and gunbc emits seed-linked extern imports against v1-compiler for seed-retained modules without hand shims, and a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest (parallel to ssuv_scaffold_dissolution_trigger)."
 
 data peh_receipt_pass_marker: String = "SELF_HOST_PARSE_ENGINE_HOOKS_BEHAVIORAL_RECEIPT: PASS"
 
 data peh_cargo_features_note: String = "Mirrors ssuv_cargo_features_note: text_lookup_work_counter feature declared for -D warnings consumers."
-
-data peh_driver_main_source: String = "use v1_compiled::v2_compiler_parse_engine_hooks as emitted;\nuse v1_compiler::v2_compiler_parse_engine_hooks as seed;\n\nfn sym_eq(e: &emitted::Symbol, s: &seed::Symbol) -> bool {\n    e.0 == s.0\n}\n\nfn main() {\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let cases: [(&str, emitted::Symbol, seed::Symbol); 3] = [\n        (\n            \"match_arm_body\",\n            emitted::parse_engine_match_arm_body_production(),\n            seed::parse_engine_match_arm_body_production(),\n        ),\n        (\n            \"match_arm_stmt_body\",\n            emitted::parse_engine_match_arm_stmt_body_production(),\n            seed::parse_engine_match_arm_stmt_body_production(),\n        ),\n        (\n            \"expr\",\n            emitted::parse_engine_expr_production(),\n            seed::parse_engine_expr_production(),\n        ),\n    ];\n    let mut all_pass = true;\n    for (i, (label, e, s)) in cases.iter().enumerate() {\n        let e_cmp = if inject_fault && i == 0 {\n            emitted::Symbol(\"INJECTED_FAULT\".to_string())\n        } else {\n            e.clone()\n        };\n        let ok = sym_eq(&e_cmp, s);\n        println!(\"{} emitted={} seed={} eq={}\", label, e_cmp.0, s.0, ok);\n        all_pass &= ok;\n    }\n    if all_pass {\n        println!(\"SELF_HOST_PARSE_ENGINE_HOOKS_BEHAVIORAL_RECEIPT: PASS\");\n        std::process::exit(0);\n    }\n    println!(\"SELF_HOST_PARSE_ENGINE_HOOKS_BEHAVIORAL_RECEIPT: FAIL\");\n    std::process::exit(1);\n}\n"
-
-fn peh_emitted_module_content_holds(content: String) -> Bool {
-  string_contains(s: content, pattern: "parse_engine_match_arm_body_production")
-    && string_contains(s: content, pattern: "dag_production_match_arm_body")
-    && string_contains(s: content, pattern: "parse_engine_match_arm_stmt_body_production")
-    && string_contains(s: content, pattern: "dag_production_match_arm_stmt_body")
-    && string_contains(s: content, pattern: "parse_engine_expr_production")
-    && string_contains(s: content, pattern: "dag_production_expr")
-}
 
 fn peh_repo_path(root: String, rel: String) -> String {
   concat(root, concat("/", rel))
@@ -45,7 +34,7 @@ fn peh_repo_path(root: String, rel: String) -> String {
 
 fn peh_cargo_toml(root: String) -> String {
   concat(
-    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/witness_main.rs\"\n\n[dependencies]\nim-rc = { version = \"15.1\", features = [\"serde\"] }\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nclap = { version = \"4\", features = [\"derive\"] }\nlazy_static = \"1\"\nureq = { version = \"2\", features = [\"json\"] }\nv1-compiler = { path = \"",
+    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim-rc = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
     concat(root, "/src/v1/stage0\" }\n")
   )
 }
@@ -53,6 +42,9 @@ fn peh_cargo_toml(root: String) -> String {
 fn peh_behavioral_receipt_holds() -> Bool {
   let root = git.Core.Toplevel()
   let module_read = Filesystem.Read(path: peh_repo_path(root: root.path, rel: peh_source_rel))
+  let lib_read = Filesystem.Read(path: peh_repo_path(root: root.path, rel: peh_shim_lib_rel))
+  let node_read = Filesystem.Read(path: peh_repo_path(root: root.path, rel: peh_shim_node_rel))
+  let driver_read = Filesystem.Read(path: peh_repo_path(root: root.path, rel: peh_shim_driver_rel))
 
   let out_dir = shell.Mktemp.Dir()
   let gunbc_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
@@ -71,14 +63,11 @@ fn peh_behavioral_receipt_holds() -> Bool {
     ]
   )
 
-  let emitted_module_read = Filesystem.Read(path: concat(out_dir.path, concat("/", peh_emitted_module_rel)))
-  let lib_written = Filesystem.Write(path: concat(out_dir.path, "/src/lib.rs"), content: peh_minimal_lib_rs)
-  let module_written = Filesystem.Write(
-    path: concat(out_dir.path, concat("/", peh_emitted_module_rel)),
-    content: peh_scrubbed_hooks_module
-  )
+  let src_dir = shell.Mkdir.Parents(path: concat(out_dir.path, "/src"))
+  let lib_written = Filesystem.Write(path: concat(out_dir.path, "/src/lib.rs"), content: lib_read.content)
+  let node_shim_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_std_node.rs"), content: node_read.content)
   let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: peh_cargo_toml(root: root.path))
-  let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/witness_main.rs"), content: peh_driver_main_source)
+  let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: driver_read.content)
 
   let build = cargo.Build.BuildManifest(
     workdir: out_dir.path,
@@ -106,10 +95,10 @@ fn peh_behavioral_receipt_holds() -> Bool {
   let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
 
   module_read.success
+    && lib_read.success && node_read.success && driver_read.success
     && out_dir.success && gunbc_built && emit.success
-    && emitted_module_read.success
-    && peh_emitted_module_content_holds(content: emitted_module_read.content)
-    && lib_written.success && module_written.success
+    && src_dir.success
+    && lib_written.success && node_shim_written.success
     && manifest.success && main_rs.success
     && build.success
     && pass_run.success && string_contains(s: pass_run.stdout, pattern: peh_receipt_pass_marker)
