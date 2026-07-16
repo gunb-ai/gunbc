@@ -93,18 +93,20 @@ fn host_converge_from_policy(policy: ConvergePolicy, host: HostIdentity) -> Host
 fn host_converge_slice1_srv1_per_slot_memory_max_knob() -> ConvergeKnob? {
   match host_converge_from_policy(policy: fleet_converge_policy(), host: operator_host_srv1) {
     Present { value: host } =>
-      converge_knob_by_name(host: host, name: host_converge_slice1_knob_name)
+      match converge_knob_by_name(host: host, name: host_converge_slice1_knob_name) {
+        Present { value: knob } =>
+          match knob.target {
+            PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: p, bytes_value: b } =>
+              if p == systemd_memory_max_property && b == knob.desired {
+                Present { value: knob }
+              } else {
+                none
+              }
+            _ => none
+          }
+        _ => none
+      }
     _ => none
-  }
-}
-
-fn host_converge_slice1_knob_is_per_slot_memory_max(knob: ConvergeKnob) -> Bool {
-  match knob.target {
-    PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: p, bytes_value: b } =>
-      knob.name == host_converge_slice1_knob_name
-        && p == systemd_memory_max_property
-        && b == knob.desired
-    _ => false
   }
 }
 
@@ -263,11 +265,6 @@ fn host_converge_slice1_receipt_is_valid(receipt: HostConvergeSlice1MemoryCapRec
 fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
   match host_converge_slice1_srv1_per_slot_memory_max_knob() {
     Present { value: knob } =>
-      if !host_converge_slice1_knob_is_per_slot_memory_max(knob: knob) {
-        HostConvergeSlice1Refused {
-          reason: "host_converge_slice1: srv1 per_slot_memory_max_bytes is not a MemoryMax PerSlotMemoryCap row; fail-closed",
-        }
-      } else {
         match host_converge_slice1_probed_at() {
           Present { value: probed_at } =>
             match host_converge_slice1_live_read(unit: host_converge_slice1_probe_unit, probed_at: probed_at) {
@@ -390,7 +387,6 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
           _ =>
             HostConvergeSlice1Refused { reason: host_converge_slice1_probed_at_refusal_reason }
         }
-      }
     _ =>
       HostConvergeSlice1Refused {
         reason: "host_converge_slice1: per_slot_memory_max_bytes knob absent from fleet_converge_policy for srv1; fail-closed",
