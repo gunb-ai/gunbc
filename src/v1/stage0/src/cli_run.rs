@@ -4655,6 +4655,10 @@ fn reconcile_with_typed_cache(
         }
     }
 
+    if global_bare_receipt_instrumentation_active() {
+        v1_compiler_infer::eprint_merge_global_bare_per_module_receipt(closure_modules.len());
+    }
+
     if global_bare_q2_bisect_active() {
         let scans = v1_compiler_infer::take_merge_global_bare_variant_key_scans();
         eprintln!(
@@ -4666,6 +4670,19 @@ fn reconcile_with_typed_cache(
         return Err(
             "GUNBC_GLOBAL_BARE_Q2_BISECT: diagnostic bisect subset-filtered global_bare per module; \
              refusing green resolve after receipt (DESIGN §5 — diagnostic modes report, never green starved inputs)"
+                .to_string(),
+        );
+    }
+
+    if std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok() {
+        let scans = v1_compiler_infer::take_merge_global_bare_variant_key_scans();
+        eprintln!(
+            "[global-bare-receipt] baseline_legacy merge_global_bare_variant_key_scans={scans}"
+        );
+        return Err(
+            "GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE: replayed legacy per-module global_bare fold \
+             for cost-shape receipt; refusing green resolve after receipt (DESIGN §5 — diagnostic \
+             modes report, never green starved inputs)"
                 .to_string(),
         );
     }

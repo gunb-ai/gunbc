@@ -194,14 +194,26 @@ thread_local! {
         RefCell::new(std::vec::Vec::new());
 }
 
+fn global_bare_receipt_instrumentation_active() -> bool {
+    std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok()
+        || std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok()
+}
+
+fn record_merge_global_bare_variant_key_scans(key_count: usize) {
+    if !global_bare_receipt_instrumentation_active() {
+        return;
+    }
+    MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
+        c.set(c.get() + key_count);
+    });
+}
+
 fn record_merge_global_bare_per_module_scan(
     module_name: String,
     keys_visited: usize,
     has_child_named_calls: usize,
 ) {
-    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_err()
-        && std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_err()
-    {
+    if !global_bare_receipt_instrumentation_active() {
         return;
     }
     MERGE_GLOBAL_BARE_PER_MODULE_SCANS.with(|rows| {
@@ -218,10 +230,8 @@ pub fn take_merge_global_bare_per_module_scans() -> std::vec::Vec<(String, usize
     })
 }
 
-fn eprint_merge_global_bare_per_module_receipt(module_count: usize) {
-    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_err()
-        && std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_err()
-    {
+pub fn eprint_merge_global_bare_per_module_receipt(module_count: usize) {
+    if !global_bare_receipt_instrumentation_active() {
         return;
     }
     let rows = take_merge_global_bare_per_module_scans();
