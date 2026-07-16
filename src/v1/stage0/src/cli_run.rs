@@ -798,6 +798,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn global_bare_wiring_oracle_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_GLOBAL_BARE_WIRING_ORACLE_SCAFFOLD_MARKER,
+            "cli_run_global_bare_wiring_oracle"
+        );
+    }
+
+    #[test]
     fn truncate_histogram_label_respects_utf8_boundaries() {
         let max = 80;
         let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
@@ -917,6 +925,228 @@ mod process_workspace_root_tests {
         let _ = repo_relative_path_normalized(Path::new(
             "no-such-dir/no-such-file-gunbc-red-control.dag",
         ));
+    }
+}
+
+// SCAFFOLD (§7 seed-retained HAND-RUST — authority: quiet-gull-833 namespace-strip oracle lane;
+// receipt: docs/plans/namespace-resolution-design.md §8 PR-4 / PR-5c).
+// 🟡 dissolve-on: typed-cache purity oracle + census gate audit locate root cause for
+// global_bare wiring residues; delete when ROADMAP §1 namespace-only lane closes
+// (import strip + global_bare wiring fixed) or a floor-enrolled lens subsumes the probes.
+// DELETE WHEN dissolved: `global_bare_wiring_oracle_tests` module, `PURITY_ORACLE_IGNORE_TYPED_CACHE`
+// thread-local + `set_purity_oracle_ignore_typed_cache`, and `#[cfg(test)]` guards in
+// `index_get_typed` / `index_contains_typed` (~250 LOC).
+// Receipt: `rg CLI_RUN_GLOBAL_BARE_WIRING_ORACLE_SCAFFOLD_MARKER src/v1/stage0` == 1 until deletion.
+pub(crate) const CLI_RUN_GLOBAL_BARE_WIRING_ORACLE_SCAFFOLD_MARKER: &str =
+    "cli_run_global_bare_wiring_oracle";
+
+/// INTERIM hand-Rust scaffold (`CLI_RUN_GLOBAL_BARE_WIRING_ORACLE_SCAFFOLD_MARKER` / §7):
+/// locate-only oracle tests for census-gate + typed-cache purity hypotheses. Not floor-enrolled.
+#[cfg(test)]
+mod global_bare_wiring_oracle_tests {
+    use super::{
+        anchor_source_root, build_corpus_global_bare_census_from_index, build_module_graph_facts_live,
+        build_module_index_primary_precedence, build_multi_entry_index, census_module_path_included,
+        compile_clean_diagnostic_histogram_key, compile_clean_diagnostic_is_hard,
+        disable_floor_compile_clean_lazy_install_for_test, load_compile_clean_entry_sources,
+        merge_source_indices, reconcile_with_typed_cache, set_census_eval_overlay,
+        set_purity_oracle_ignore_typed_cache, v1_compiler_compile, v1_compiler_normalize, v1_rt,
+        witness_layer_roots, workspace_relative_repo_path, MultiEntryIndex,
+    };
+    use std::collections::BTreeMap;
+    use std::rc::Rc;
+
+    fn hard_diag_stats(result: &v1_compiler_compile::ResolvedPipelineResult) -> (usize, BTreeMap<String, usize>) {
+        let mut by_class = BTreeMap::new();
+        let mut total = 0usize;
+        for d in result.diagnostics.iter().filter(|d| compile_clean_diagnostic_is_hard(d)) {
+            total += 1;
+            let (class, _) = compile_clean_diagnostic_histogram_key(d);
+            *by_class.entry(class).or_default() += 1;
+        }
+        (total, by_class)
+    }
+
+    fn whole_tree_on_shared_index(
+        index: &MultiEntryIndex,
+        clear_typed_cache: bool,
+        ignore_typed_cache_reads: bool,
+    ) -> Result<(usize, BTreeMap<String, usize>), String> {
+        use super::{
+            merge_source_indices, reconcile_with_typed_cache, v1_compiler_compile,
+            v1_compiler_normalize, v1_rt,
+        };
+
+        set_purity_oracle_ignore_typed_cache(ignore_typed_cache_reads);
+        if clear_typed_cache {
+            index.typed_module_cache.borrow_mut().clear();
+        }
+        let (global_bare, census_source_indices, overlay) =
+            build_corpus_global_bare_census_from_index(index)?;
+        set_census_eval_overlay(overlay);
+        let anchored_roots: Vec<String> = witness_layer_roots()
+            .iter()
+            .map(|r| anchor_source_root(r))
+            .collect();
+        let index_module = build_module_index_primary_precedence(&anchored_roots);
+        let facts = build_module_graph_facts_live(&anchored_roots);
+        let sources = load_compile_clean_entry_sources(
+            &anchored_roots,
+            &index_module,
+            &facts,
+            None,
+        )?;
+        let sources_rc: Rc<im_rc::Vector<Rc<v1_compiler_compile::SourceFile>>> =
+            Rc::new(sources.into());
+        let frontend = v1_compiler_compile::front_end_sources(sources_rc.clone());
+        let newline_indices = frontend.newline_indices.clone();
+        let graph = match frontend.graph.clone() {
+            Some(g) => g,
+            None => {
+                return Ok(hard_diag_stats(&v1_compiler_compile::ResolvedPipelineResult {
+                    graph: None,
+                    diagnostics: frontend.diagnostics.clone(),
+                    source_indices: v1_rt::rc_empty_map(),
+                    complexity: v1_compiler_compile::empty_complexity_report(),
+                    ownership: Rc::new(im_rc::Vector::new()),
+                    newline_indices: newline_indices.clone(),
+                }));
+            }
+        };
+        let source_indices = newline_indices.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>(),
+            |acc, idx| v1_rt::rc_map_insert(acc, idx.file.clone(), idx.clone()),
+        );
+        let source_indices = merge_source_indices(source_indices, census_source_indices);
+        let norm = v1_compiler_normalize::normalize_graph(graph.clone(), source_indices.clone());
+        let typed = reconcile_with_typed_cache(
+            norm.graph.clone(),
+            source_indices.clone(),
+            frontend.intern_table.clone(),
+            index,
+            global_bare,
+        )?;
+        let diags = v1_rt::concat(
+            v1_rt::concat(frontend.diagnostics.clone(), norm.diagnostics.clone()),
+            typed.diagnostics.clone(),
+        );
+        let result = v1_compiler_compile::ResolvedPipelineResult {
+            graph: Some(typed.clone()),
+            diagnostics: diags,
+            source_indices,
+            complexity: v1_compiler_compile::empty_complexity_report(),
+            ownership: Rc::new(im_rc::Vector::new()),
+            newline_indices,
+        };
+        Ok(hard_diag_stats(&result))
+    }
+
+    /// Discriminating gate probes — fast, no whole-tree load.
+    /// Paths where inclusion/exclusion is unambiguous on both contribute and receive axes.
+    #[test]
+    fn census_module_path_included_gate_probes() {
+        assert!(census_module_path_included("dag/std/types.dag"));
+        assert!(census_module_path_included("dag/gunbc/workflow_escalation.dag"));
+        assert!(census_module_path_included("dag/gunbc/fleet_posix_accounts.dag"));
+        assert!(census_module_path_included("src/v2/compiler/04_infer.dag"));
+        assert!(!census_module_path_included("dag/test/claim/parse_test.dag"));
+        assert!(!census_module_path_included("dag/extdeps/docker/container_stats.dag"));
+    }
+
+    /// Characterizes the §3 conflation defect (quiet-gull-833 msg_a06c5010): one predicate
+    /// answers both "contributes declarations to census" and "receives census" in
+    /// `global_bare_for_decl_file`. Excluding `src/v2/std/*` homonyms is correct for Q1
+    /// but catastrophic for Q2 — this pins current defective receive-path behavior until
+    /// `census_module_contributes_declarations` / `census_module_receives_census` de-fork.
+    /// DELETE WHEN dissolved: this test must flip red when receive path is fixed.
+    #[test]
+    fn census_module_path_included_receive_path_conflation_defect() {
+        assert!(
+            !census_module_path_included("src/v2/std/algebra.dag"),
+            "defect characterization: receive path wrongly excludes src/v2/std homonym"
+        );
+    }
+
+    /// Whole-tree closure audit: which modules fail `census_module_path_included`?
+    #[test]
+    #[ignore = "whole-tree entry closure load; run with --ignored for locate-only census"]
+    fn census_module_path_included_gate_closure_audit() {
+        disable_floor_compile_clean_lazy_install_for_test();
+        std::env::remove_var("GITHUB_ACTIONS");
+        std::env::remove_var("GUNBC_CI_DIFF_BASE");
+
+        let anchored_roots: Vec<String> = witness_layer_roots()
+            .iter()
+            .map(|r| anchor_source_root(r))
+            .collect();
+        let index_module = build_module_index_primary_precedence(&anchored_roots);
+        let facts = build_module_graph_facts_live(&anchored_roots);
+        let sources = load_compile_clean_entry_sources(
+            &anchored_roots,
+            &index_module,
+            &facts,
+            None,
+        )
+        .expect("whole-tree entry closure sources");
+
+        let mut gate_false = 0usize;
+        for sf in &sources {
+            let rel = workspace_relative_repo_path(&sf.path);
+            if !census_module_path_included(&rel) {
+                gate_false += 1;
+                eprintln!("GATE_FALSE\t{rel}");
+            }
+        }
+        eprintln!("GATE_SUMMARY\twhole_tree_modules\t{}\tgate_false\t{gate_false}", sources.len());
+        assert!(
+            census_module_path_included("dag/std/types.dag"),
+            "probe dag/std/types.dag must pass gate"
+        );
+    }
+
+    /// DESIGN.md cache-purity oracle: cold (typed cache cleared / reads ignored) vs warm (reuse).
+    #[test]
+    #[ignore = "whole-tree resolve ~minutes; run with --ignored"]
+    fn typed_cache_purity_oracle_cold_vs_warm() {
+        disable_floor_compile_clean_lazy_install_for_test();
+        std::env::remove_var("GITHUB_ACTIONS");
+        std::env::remove_var("GUNBC_CI_DIFF_BASE");
+        set_purity_oracle_ignore_typed_cache(false);
+
+        let roots: Vec<String> = witness_layer_roots()
+            .iter()
+            .map(|r| anchor_source_root(r))
+            .collect();
+        let index = build_multi_entry_index(&roots);
+
+        // Establish typed cache (normal whole-tree pass).
+        let (n_first, class_first) = whole_tree_on_shared_index(&index, true, false)
+            .expect("first pass");
+        eprintln!("PURITY_ORACLE\tpass=first_clear\tN={n_first}");
+        for (class, count) in &class_first {
+            eprintln!("PURITY_CLASS\tfirst\t{class}\t{count}");
+        }
+
+        // Warm: reuse typed_module_cache from first pass (production path).
+        let (n_warm, class_warm) =
+            whole_tree_on_shared_index(&index, false, false).expect("warm pass");
+        eprintln!("PURITY_ORACLE\tpass=warm_cache\tN={n_warm}");
+        for (class, count) in &class_warm {
+            eprintln!("PURITY_CLASS\twarm\t{class}\t{count}");
+        }
+
+        // Cold: clear cache and force cache-miss reads (re-typecheck every module).
+        let (n_cold, class_cold) =
+            whole_tree_on_shared_index(&index, true, true).expect("cold pass");
+        eprintln!("PURITY_ORACLE\tpass=cold_recompute\tN={n_cold}");
+        for (class, count) in &class_cold {
+            eprintln!("PURITY_CLASS\tcold\t{class}\t{count}");
+        }
+
+        eprintln!(
+            "PURITY_VERDICT\tfirst={n_first}\twarm={n_warm}\tcold={n_cold}\twarm_ne_cold={}",
+            n_warm != n_cold
+        );
     }
 }
 
@@ -3629,7 +3859,7 @@ fn global_bare_for_decl_file(
 /// Non-test `dag/**` is the stripped namespace authority surface; `src/v2/std/**`
 /// contributes only non-homonym modules (dag/std and v2/std share 11 basenames that
 /// would mark census keys ambiguous); other `src/v2/**` is included.
-fn census_module_path_included(path: &str) -> bool {
+pub fn census_module_path_included(path: &str) -> bool {
     let p = path.replace('\\', "/");
     // PR-5c bare census: all non-test dag modules that gunbc may reference after
     // import strip (std, extdeps, product, ctrl, tools, …).
@@ -3986,6 +4216,12 @@ fn index_get_typed(
     index: &MultiEntryIndex,
     mod_name: &str,
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+    // INTERIM hand-Rust scaffold (`CLI_RUN_GLOBAL_BARE_WIRING_ORACLE_SCAFFOLD_MARKER` / §7):
+    // test-only typed-cache bypass for purity oracle cold vs warm comparison.
+    #[cfg(test)]
+    if PURITY_ORACLE_IGNORE_TYPED_CACHE.with(|c| c.get()) {
+        return Ok(None);
+    }
     if let Some(hit) = index.typed_module_cache.borrow().get(mod_name).cloned() {
         return Ok(Some(hit));
     }
@@ -4003,6 +4239,12 @@ fn index_get_typed(
 }
 
 fn index_contains_typed(index: &MultiEntryIndex, mod_name: &str) -> Result<bool, String> {
+    // INTERIM hand-Rust scaffold (`CLI_RUN_GLOBAL_BARE_WIRING_ORACLE_SCAFFOLD_MARKER` / §7):
+    // test-only typed-cache bypass for purity oracle cold vs warm comparison.
+    #[cfg(test)]
+    if PURITY_ORACLE_IGNORE_TYPED_CACHE.with(|c| c.get()) {
+        return Ok(false);
+    }
     if index.typed_module_cache.borrow().contains_key(mod_name) {
         return Ok(true);
     }
@@ -4247,6 +4489,20 @@ thread_local! {
             reconcile_assembly: 0,
             ownership: 0,
         }) };
+}
+
+// INTERIM hand-Rust scaffold (`CLI_RUN_GLOBAL_BARE_WIRING_ORACLE_SCAFFOLD_MARKER` / §7):
+// test-only thread-local bypass for typed-cache purity oracle.
+#[cfg(test)]
+thread_local! {
+    static PURITY_ORACLE_IGNORE_TYPED_CACHE: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+}
+
+/// INTERIM hand-Rust scaffold (`CLI_RUN_GLOBAL_BARE_WIRING_ORACLE_SCAFFOLD_MARKER` / §7).
+#[cfg(test)]
+fn set_purity_oracle_ignore_typed_cache(ignore: bool) {
+    PURITY_ORACLE_IGNORE_TYPED_CACHE.with(|c| c.set(ignore));
 }
 
 fn resolve_stage_slot_reset() {
