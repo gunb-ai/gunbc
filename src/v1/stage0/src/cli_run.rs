@@ -11337,7 +11337,7 @@ mod module_grain_affected_equivalence_tests {
         vec![
             "dag/test/claim/card_intake_risk_witness_test.dag",
             "dag/test/claim/ebay_listing_witness_test.dag",
-            "dag/test/claim/bash_serializer_witness_test.dag",
+            "src/v2/test/claim/bash_program_fold_test.dag",
             "dag/test/claim/v1_dag_parse_witness_test.dag",
             "dag/tools/host_prelude.dag",
             "dag/tools/build_step.dag",
