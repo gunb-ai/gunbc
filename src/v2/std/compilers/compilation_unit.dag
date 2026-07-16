@@ -34,11 +34,16 @@ type ModuleDagEdge {
   to: ModuleId
 }
 
+type ModuleTypeDefinitionRow {
+  identity: Symbol
+  definition: Node
+}
+
 type ModuleDag {
   modules: List<ModuleId>
   edges: List<ModuleDagEdge>
   exports: Map<ModuleId, List<Node>>
-  type_definitions: Map<ModuleId, List<Node>>
+  type_definitions: Map<ModuleId, List<ModuleTypeDefinitionRow>>
 }
 
 type CompilationUnit {
@@ -48,6 +53,10 @@ type CompilationUnit {
   deps: List<CompilationUnitId>
   artifact: CompilationUnitArtifactId
 }
+
+type PartitionInterfaceClosureResult
+  = PartitionInterfaceClosed { nodes: List<Node> }
+  | PartitionInterfaceTruncated
 
 type PartitionR4ValidityCause {
   tag: NonEmptyStr
@@ -60,7 +69,7 @@ type PartitionR4ValidityVerdict
 
 data compilation_unit_home_note: String = "Shared home for the agnostic unit of separate compilation and linkage (crate / translation-unit / package / assembly are target nicknames). partition_fold is the sole producer of interface + deps; members and artifact identity are inputs via the assignment map. interface carries declaration CONTENT as Node carriers (not name lists), including the transitive by-value type-definition closure needed to render cross-unit boundaries (Rust crate visibility, C header struct layout). Default: home supplies the full referenced-declaration set; each target R3 projects what it needs from that superset. R4 validity is an interface only — each target realization supplies validate_partition_r4."
 
-data partition_interface_derivation_note: String = "interface derivation (partition_fold): (1) collect exported declaration Nodes from member modules referenced across the partition boundary; (2) close transitively under by-value type references — for each declaration, walk its type subtree for grounded type atoms and include the matching type-definition Nodes from member modules even when the type is not itself exported; (3) canonicalize as a set (dedupe by content_hash, sort by hash). Reference-only targets may project a subset at R3; the home default is full content + by-value type defs."
+data partition_interface_derivation_note: String = "interface derivation (partition_fold): (1) collect exported declaration Nodes from member modules referenced across the partition boundary; (2) close transitively under by-value type references using ModuleTypeDefinitionRow { identity, definition } rows (definition may be Conj-bodied or Atom-rooted; identity is authoritative, not inferred from shape); (3) canonicalize as a set (dedupe by content_hash, sort by hash). Closure budget = member export+type-def row count + 1; PartitionInterfaceTruncated if budget exhausts without fixpoint. Default: home supplies full referenced-declaration set + by-value type defs; each target R3 may project a subset."
 
 data partition_r4_validity_interface_note: String = "R4 validity interface (locked 2026-07-16, eager-ferret-110): realizations implement fn validate_partition_r4(module_dag: ModuleDag, assignment: Map<ModuleId, CompilationUnitId>, units: List<CompilationUnit>) -> PartitionR4ValidityVerdict. Rust realization refuses SCC-split and cyclic unit graphs; C realization is permissive on linkage cycles. The home exposes only PartitionR4ValidityVerdict + PartitionR4ValidityCause carriers — never a hardcoded acyclic check here."
 
@@ -198,15 +207,19 @@ fn module_export_declarations(module_dag: ModuleDag, module: ModuleId) -> List<N
   module_list_from_map(module_dag: module_dag, module: module, field: module_dag.exports)
 }
 
-fn module_type_definitions(module_dag: ModuleDag, module: ModuleId) -> List<Node> {
-  module_list_from_map(module_dag: module_dag, module: module, field: module_dag.type_definitions)
+fn module_type_definition_rows(module_dag: ModuleDag, module: ModuleId) -> List<ModuleTypeDefinitionRow> {
+  match map_get(module_dag.type_definitions, module) {
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: rows } => rows
+        Absent => []
+      }
+    Rejected { diagnostics: _ } => []
+  }
 }
 
-fn type_definition_root_identity(defn: Node) -> Optional<Symbol> {
-  match defn.kind {
-    TypeNode { connective: Atom { identity: id } } => Present { value: id }
-    _ => Absent
-  }
+fn type_definition_row_identity(row: ModuleTypeDefinitionRow) -> Symbol {
+  row.identity
 }
 
 fn type_atom_identity(node: Node) -> Optional<Symbol> {
@@ -321,20 +334,16 @@ fn type_definition_for_identity_in_module(
   identity: Symbol
 ) -> Optional<Node> {
   fold_list(
-    xs: module_type_definitions(module_dag: module_dag, module: member),
+    xs: module_type_definition_rows(module_dag: module_dag, module: member),
     empty: Absent,
-    cons: fn(acc, defn) {
+    cons: fn(acc, row) {
       match acc {
         Present { value: _ } => acc
         Absent =>
-          match type_definition_root_identity(defn: defn) {
-            Present { value: id } =>
-              if id == identity {
-                optional_present(value: defn)
-              } else {
-                Absent
-              }
-            Absent => Absent
+          if type_definition_row_identity(row: row) == identity {
+            optional_present(value: row.definition)
+          } else {
+            Absent
           }
       }
     }
@@ -384,14 +393,24 @@ fn partition_interface_closure_grow_once(
     })
 }
 
-fn partition_interface_closure_fixpoint(
+fn partition_member_declaration_budget(
+  module_dag: ModuleDag,
+  members: List<ModuleId>
+) -> Int {
+  members
+    |> fold(init: 0, f: fn(acc, member) {
+      acc + length(xs: module_export_declarations(module_dag: module_dag, module: member)) + length(xs: module_type_definition_rows(module_dag: module_dag, module: member))
+    })
+}
+
+fn partition_interface_closure_fixpoint_result(
   seeds: List<Node>,
   module_dag: ModuleDag,
   members: List<ModuleId>,
   depth: Int
-) -> List<Node> {
+) -> PartitionInterfaceClosureResult {
   if depth <= 0 {
-    list_unique_sorted_nodes(items: seeds)
+    PartitionInterfaceTruncated
   } else {
     let grown = partition_interface_closure_grow_once(
       seeds: seeds,
@@ -399,15 +418,47 @@ fn partition_interface_closure_fixpoint(
       members: members
     )
     if length(xs: grown) == length(xs: seeds) {
-      list_unique_sorted_nodes(items: grown)
+      PartitionInterfaceClosed { nodes: list_unique_sorted_nodes(items: grown) }
     } else {
-      partition_interface_closure_fixpoint(
+      partition_interface_closure_fixpoint_result(
         seeds: grown,
         module_dag: module_dag,
         members: members,
         depth: depth - 1
       )
     }
+  }
+}
+
+fn partition_interface_closure_converged(
+  seeds: List<Node>,
+  module_dag: ModuleDag,
+  members: List<ModuleId>
+) -> Bool {
+  match partition_interface_closure_fixpoint_result(
+    seeds: seeds,
+    module_dag: module_dag,
+    members: members,
+    depth: partition_member_declaration_budget(module_dag: module_dag, members: members) + 1
+  ) {
+    PartitionInterfaceClosed { nodes: _ } => true
+    PartitionInterfaceTruncated => false
+  }
+}
+
+fn partition_interface_closure_fixpoint(
+  seeds: List<Node>,
+  module_dag: ModuleDag,
+  members: List<ModuleId>
+) -> List<Node> {
+  match partition_interface_closure_fixpoint_result(
+    seeds: seeds,
+    module_dag: module_dag,
+    members: members,
+    depth: partition_member_declaration_budget(module_dag: module_dag, members: members) + 1
+  ) {
+    PartitionInterfaceClosed { nodes: nodes } => nodes
+    PartitionInterfaceTruncated => []
   }
 }
 
@@ -426,8 +477,7 @@ fn partition_unit_interface(
   partition_interface_closure_fixpoint(
     seeds: seeds,
     module_dag: module_dag,
-    members: members,
-    depth: 16
+    members: members
   )
 }
 

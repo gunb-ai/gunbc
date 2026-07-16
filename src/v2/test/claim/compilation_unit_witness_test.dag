@@ -10,12 +10,14 @@ import v2.std.compilers.compilation_unit {
   ModuleDag,
   ModuleDagEdge,
   ModuleId,
+  ModuleTypeDefinitionRow,
   PartitionR4Refused,
   PartitionR4Valid,
   PolicyDerived,
   compilation_unit_artifact_id,
   partition_fold,
   partition_fold_deps_match_boundary_edges,
+  partition_interface_closure_converged,
   partition_interface_contains_node,
   partition_provenance_eq,
   partition_provenance_hand_explicit,
@@ -56,9 +58,9 @@ fn witness_type_atom(sym: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
 }
 
-fn witness_point_struct_def() -> Node {
+fn witness_point_struct_conj_body() -> Node {
   node_synthetic(
-    kind: TypeNode { connective: Atom { identity: witness_type_point } },
+    kind: TypeNode { connective: Conj },
     children: [
       Edge {
         label: Named { name: ^x },
@@ -90,8 +92,13 @@ fn witness_exports_for_c() -> List<Node> {
   [witness_fn_taking_point_by_value()]
 }
 
-fn witness_type_defs_for_c() -> List<Node> {
-  [witness_point_struct_def()]
+fn witness_type_defs_for_c() -> List<ModuleTypeDefinitionRow> {
+  [
+    ModuleTypeDefinitionRow {
+      identity: witness_type_point,
+      definition: witness_point_struct_conj_body(),
+    }
+  ]
 }
 
 fn witness_triangle_dag() -> ModuleDag {
@@ -177,11 +184,26 @@ fn witness_unit_two_interface_carries_declaration_content() -> Bool {
 
 fn witness_unit_two_interface_includes_by_value_type_def() -> Bool {
   let units = witness_partition_fold_two_units()
-  let point_def = witness_point_struct_def()
+  let point_def = witness_point_struct_conj_body()
   match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
     Present { value: unit } =>
       partition_interface_contains_node(interface: unit.interface, needle: point_def)
         && ((unit.interface |> count) >= 2)
+    Absent => false
+  }
+}
+
+fn witness_interface_closure_converges_on_triangle() -> Bool {
+  let dag = witness_triangle_dag()
+  let assignment = witness_two_unit_assignment()
+  let units = partition_fold(module_dag: dag, assignment: assignment)
+  match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
+    Present { value: unit } =>
+      partition_interface_closure_converged(
+        seeds: [witness_fn_taking_point_by_value()],
+        module_dag: dag,
+        members: unit.members
+      )
     Absent => false
   }
 }
@@ -269,7 +291,7 @@ test fn compilation_unit_witnesses() -> Bool {
   witness_unit_one_members_and_deps()
     && witness_unit_two_interface_carries_declaration_content()
     && witness_unit_two_interface_includes_by_value_type_def()
-    && witness_single_unit_partition_has_no_cross_unit_deps()
+    && witness_interface_closure_converges_on_triangle()
     && witness_intra_unit_edges_do_not_become_deps()
     && witness_fold_deps_match_boundary_edges_two_unit()
     && witness_fold_deps_match_boundary_edges_single_unit()
