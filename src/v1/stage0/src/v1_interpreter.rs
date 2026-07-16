@@ -9118,6 +9118,31 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
 }
 
 #[cfg(test)]
+mod base64_std_tests {
+    use super::base64_encode_std;
+
+    #[test]
+    fn rfc4648_test_vectors() {
+        // RFC 4648 §10 test vectors — the fixed alphabet + padding a Basic credential relies on.
+        assert_eq!(base64_encode_std(b""), "");
+        assert_eq!(base64_encode_std(b"f"), "Zg==");
+        assert_eq!(base64_encode_std(b"fo"), "Zm8=");
+        assert_eq!(base64_encode_std(b"foo"), "Zm9v");
+        assert_eq!(base64_encode_std(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode_std(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode_std(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn basic_credential_shape() {
+        // The exact header value a BMC Basic auth op must send for user:pass.
+        assert_eq!(base64_encode_std(b"bmcadmin:s3cret"), "Ym1jYWRtaW46czNjcmV0");
+        // Bytes with high bits set exercise the +/ tail of the alphabet.
+        assert_eq!(base64_encode_std(&[0xfb, 0xff, 0xfe]), "+//+");
+    }
+}
+
+#[cfg(test)]
 mod shell_completion_trace_tests {
     use super::hermetic_checkout_read_disposition_under;
     use super::shell_completion_stderr_trace_block;
