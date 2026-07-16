@@ -2,7 +2,7 @@ module test.claim.host_converge_slice1_witness
 
 import std.types { Bool }
 import extdeps.os.systemd { systemd_memory_max_property }
-import gunbc.host_converge { Drifted, PerSlotMemoryCap }
+import gunbc.host_converge { Drifted }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.runner_unit_live_read {
   gunbc_srv1_runner_unit_live_read_fixture,
