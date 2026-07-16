@@ -698,6 +698,17 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
     }
 }
 
+pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
+    match v1_rt::map_get(&env.global_bare.clone(), name.clone())
+        .as_deref()
+        .cloned()
+    {
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => true,
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding: _, .. }) => false,
+        None => false,
+    }
+}
+
 pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
         Some(binding) => Some(binding.clone()),
