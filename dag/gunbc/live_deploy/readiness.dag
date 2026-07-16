@@ -28,6 +28,7 @@ import gunbc.live_deploy.intent {
   live_deploy_health_probe_curl_command,
   live_deploy_health_url_for_port,
 }
+import gunbc.roadmap_static_site { roadmap_site_healthz_body_groundable }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
   deployment_spec_srv1,
@@ -78,9 +79,7 @@ fn live_deploy_healthz_probe_script_for_port(port: Int) -> String {
 }
 
 fn healthz_body_groundable(body: String) -> Bool {
-  starts_with(s: body, prefix: "{")
-    && ends_with(s: body, suffix: "}")
-    && string_contains(s: body, pattern: "\"status\"")
+  roadmap_site_healthz_body_groundable(body: body)
 }
 
 fn ground_service_ready_from_healthz(read: HealthzEffectiveRead) -> Grounding<ServiceReadyEvidence> {

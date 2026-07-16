@@ -27,12 +27,12 @@ import gunbc.roadmap_static_site {
 }
 import gunbc.live_deploy.spec { DeploymentSpec, deployment_plan_listen_port }
 
-type RestGetHealthzProbe {
+type TransportCurlHealthzProbe {
   health_url: NonEmptyStr
 }
 
 type ServiceReadyGate {
-  probe: RestGetHealthzProbe
+  probe: TransportCurlHealthzProbe
   timeout: Second
   on_not_ready: ServiceNotReady
 }
@@ -49,7 +49,7 @@ fn live_deploy_health_url_for_port(port: Int) -> NonEmptyStr {
 fn live_deploy_service_ready_gate_for_spec(spec: DeploymentSpec) -> ServiceReadyGate {
   let port = deployment_plan_listen_port(spec: spec)
   ServiceReadyGate {
-    probe: RestGetHealthzProbe {
+    probe: TransportCurlHealthzProbe {
       health_url: live_deploy_health_url_for_port(port: port),
     },
     timeout: live_deploy_service_ready_poll_bound,

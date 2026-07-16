@@ -15,7 +15,6 @@ import gunbc.live_deploy.service_ready {
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
 import gunbc.roadmap_static_site { roadmap_site_health_path }
-import gunbc.roadmap_health { roadmap_health_probe_path }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { second, second_count }
@@ -50,7 +49,7 @@ fn witness_readiness_poll_bound_grounded_on_std_measure_second() -> Bool {
 }
 
 fn witness_health_probe_path_matches_service_ready_endpoint() -> Bool {
-  roadmap_health_probe_path() == roadmap_site_health_path
+  live_deploy_service_ready_endpoint_authority == roadmap_site_health_path
 }
 
 fn witness_scaffold_dissolution_trigger_binds_readiness_poll() -> Bool {
