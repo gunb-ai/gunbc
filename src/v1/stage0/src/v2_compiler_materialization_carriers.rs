@@ -104,49 +104,111 @@ fn compile_stage_memo_provider() -> CacheProvider {
     }
 }
 
-fn provider_covers_site(provider: &CacheProvider, site: &[Frame]) -> bool {
-    if provider.scope.len() > site.len() {
-        return false;
+fn frame_path_lca(a: &[Frame], b: &[Frame]) -> Vec<Frame> {
+    let mut lca = Vec::new();
+    for (fa, fb) in a.iter().zip(b.iter()) {
+        if fa == fb {
+            lca.push(fa.clone());
+        } else {
+            break;
+        }
     }
-    provider.scope == site[..provider.scope.len()]
+    lca
 }
 
-fn verdict_for_demand(demand: &FrameDemand, providers: &[CacheProvider]) -> LadderVerdict {
-    let matching: Vec<&CacheProvider> = providers
+fn distinct_identities(demands: &[FrameDemand]) -> Vec<String> {
+    let mut out = Vec::new();
+    for d in demands {
+        if !out.iter().any(|id| id == &d.identity) {
+            out.push(d.identity.clone());
+        }
+    }
+    out
+}
+
+fn ladder_group<'a>(demands: &'a [FrameDemand], identity: &str) -> Vec<&'a FrameDemand> {
+    demands
         .iter()
-        .filter(|p| provider_covers_site(p, &demand.site))
-        .collect();
-    if matching.is_empty() {
-        return LadderVerdict::RefusedNoProvider {
-            identity: demand.identity.clone(),
+        .filter(|d| d.identity == identity)
+        .collect()
+}
+
+fn group_obligation_lca(group: &[FrameDemand]) -> Vec<Frame> {
+    if group.is_empty() {
+        return Vec::new();
+    }
+    if group.len() == 1 {
+        return group[0].site.clone();
+    }
+    group[1..]
+        .iter()
+        .fold(group[0].site.clone(), |acc, d| frame_path_lca(&acc, &d.site))
+}
+
+fn group_is_redundant(group: &[&FrameDemand]) -> bool {
+    group.len() > 1
+}
+
+fn discharge_verdict(
+    identity: &str,
+    lca: &[Frame],
+    providers: &[CacheProvider],
+) -> LadderVerdict {
+    if providers.iter().any(|p| p.scope == lca) {
+        return LadderVerdict::AcceptedSingleRecompute {
+            identity: identity.to_string(),
         };
     }
-    if matching.len() == 1 && matching[0].scope == demand.site {
-        return LadderVerdict::AcceptedSingleRecompute {
-            identity: demand.identity.clone(),
+    if providers.is_empty() {
+        return LadderVerdict::RefusedNoProvider {
+            identity: identity.to_string(),
         };
     }
     LadderVerdict::RefusedScopeTooNarrow {
-        provider_id: matching[0].id.clone(),
+        provider_id: providers[0].id.clone(),
+    }
+}
+
+fn group_redundant_verdict(
+    identity: &str,
+    group: &[&FrameDemand],
+    providers: &[CacheProvider],
+) -> LadderVerdict {
+    let owned: Vec<FrameDemand> = group.iter().map(|d| (*d).clone()).collect();
+    let lca = group_obligation_lca(&owned);
+    discharge_verdict(identity, &lca, providers)
+}
+
+fn group_verdict(
+    identity: &str,
+    group: &[&FrameDemand],
+    providers: &[CacheProvider],
+) -> LadderVerdict {
+    let owned: Vec<FrameDemand> = group.iter().map(|d| (*d).clone()).collect();
+    let lca = group_obligation_lca(&owned);
+    if group_is_redundant(group) {
+        group_redundant_verdict(identity, group, providers)
+    } else {
+        discharge_verdict(identity, &lca, providers)
     }
 }
 
 fn materialization_ladder_holds(demands: &[FrameDemand], providers: &[CacheProvider]) -> bool {
-    demands.iter().all(|d| {
-        matches!(
-            verdict_for_demand(d, providers),
-            LadderVerdict::AcceptedSingleRecompute { .. }
-        )
-    })
+    materialization_ladder(demands, providers)
+        .iter()
+        .all(|v| matches!(v, LadderVerdict::AcceptedSingleRecompute { .. }))
 }
 
 fn materialization_ladder(
     demands: &[FrameDemand],
     providers: &[CacheProvider],
 ) -> Vec<LadderVerdict> {
-    demands
+    distinct_identities(demands)
         .iter()
-        .map(|d| verdict_for_demand(d, providers))
+        .map(|identity| {
+            let group = ladder_group(demands, identity);
+            group_verdict(identity, &group, providers)
+        })
         .collect()
 }
 
