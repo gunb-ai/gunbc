@@ -1,11 +1,13 @@
 module tools.build_step
 
 import extdeps.languages.bash.program {
-  ShellStmt, ShellWord, ShellProgram,
+  ShellStmt, ShellWord,
   Command, If, Exit, WithRedir,
   Lit, Concat, StdoutToStderr,
-  lit, command, serialize_bash
+  lit, command
 }
+
+data build_step_serialize_dissolution_note: String = "Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer). This module retains ShellStmt construction only."
 
 type BuildArtifact {
   path: ShellWord
@@ -52,11 +54,4 @@ fn verify_artifact(art: BuildArtifact) -> List<ShellStmt> {
 
 fn emit_verifications(produces: List<BuildArtifact>) -> List<ShellStmt> {
   fold(produces, init: [], f: (acc, art) => concat(acc, verify_artifact(art: art)))
-}
-
-fn verifications_script(produces: List<BuildArtifact>) -> String {
-  serialize_bash(p: ShellProgram {
-    set_e: false,
-    statements: emit_verifications(produces: produces)
-  })
 }
