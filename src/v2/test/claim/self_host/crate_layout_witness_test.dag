@@ -1,0 +1,121 @@
+module v2.test.claim.self_host.crate_layout_witness
+
+import gunbc.stage0_crate_layout_generated {
+  generated_pub_mod_basenames,
+  generated_pub_mod_block,
+  generated_stage0_dirs,
+  generated_stage0_filenames
+}
+import v2.compiler.self_host.frontier {
+  SelfEmitted,
+  SeedRetained,
+  compiler_frontier_crate_layout_holds,
+  compiler_frontier_row_use_site_verdict,
+  compiler_frontier_self_emitted_baseline,
+  compiler_frontier_self_emitted_count,
+  compiler_frontier_self_emitted_stage0_mod_basenames,
+  emit_hand_maintained_pub_mod_block,
+  frontier_row_stage0_mod_basename,
+  hand_maintained_pub_mod_basenames,
+  hand_maintained_stage0_dirs,
+  hand_maintained_stage0_filenames
+}
+import v2.std.algebra { any, fold_list, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data witness_red_control_note: String = "Discriminating RED (both directions): (1) OMIT — drop v2_compiler_use_site_verdict from generated_pub_mod_basenames while frontier row stays SelfEmitted → witness_generated_includes_every_self_emitted_basename_holds false; (2) INCLUDE — append phantom_module to generated_pub_mod_basenames absent from frontier hand_maintained_pub_mod_basenames → witness_generated_has_no_phantom_registration_holds false. Byte drift RED: generated_artifact_drift_gate perturb suffix on dag/gunbc/stage0_crate_layout_generated.dag."
+
+fn string_list_contains(xs: List<String>, needle: String) -> Bool {
+  any(xs, x => x == needle)
+}
+
+fn lists_have_same_members(a: List<String>, b: List<String>) -> Bool {
+  length(xs: a) == length(xs: b)
+    && fold_list(xs: a, empty: true, cons: fn(ok, item) { ok && string_list_contains(xs: b, needle: item) })
+    && fold_list(xs: b, empty: true, cons: fn(ok, item) { ok && string_list_contains(xs: a, needle: item) })
+}
+
+fn witness_use_site_verdict_derived_from_frontier_holds() -> Bool {
+  match compiler_frontier_row_use_site_verdict.disposition {
+    SelfEmitted =>
+      string_list_contains(
+        xs: compiler_frontier_self_emitted_stage0_mod_basenames(),
+        needle: frontier_row_stage0_mod_basename(row: compiler_frontier_row_use_site_verdict)
+      )
+    SeedRetained { reason: _, migration_trigger: _ } => false
+  }
+}
+
+fn witness_generated_pub_mod_block_matches_frontier_holds() -> Bool {
+  generated_pub_mod_block == emit_hand_maintained_pub_mod_block()
+}
+
+fn witness_generated_basenames_match_frontier_holds() -> Bool {
+  lists_have_same_members(a: generated_pub_mod_basenames, b: hand_maintained_pub_mod_basenames())
+}
+
+fn witness_generated_filenames_match_frontier_holds() -> Bool {
+  lists_have_same_members(a: generated_stage0_filenames, b: hand_maintained_stage0_filenames())
+}
+
+fn witness_generated_dirs_match_frontier_holds() -> Bool {
+  lists_have_same_members(a: generated_stage0_dirs, b: hand_maintained_stage0_dirs())
+}
+
+fn witness_generated_includes_every_self_emitted_basename_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_self_emitted_stage0_mod_basenames(),
+    empty: true,
+    cons: fn(ok, basename) {
+      ok && string_list_contains(xs: generated_pub_mod_basenames, needle: basename)
+    }
+  )
+}
+
+fn witness_generated_has_no_phantom_registration_holds() -> Bool {
+  fold_list(
+    xs: generated_pub_mod_basenames,
+    empty: true,
+    cons: fn(ok, basename) {
+      ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(), needle: basename)
+    }
+  )
+}
+
+fn witness_hand_maintained_filenames_include_self_emitted_holds() -> Bool {
+  string_list_contains(
+    xs: generated_stage0_filenames,
+    needle: "v2_compiler_use_site_verdict.rs"
+  )
+}
+
+fn witness_self_emitted_count_matches_derived_basenames_holds() -> Bool {
+  length(xs: compiler_frontier_self_emitted_stage0_mod_basenames()) == compiler_frontier_self_emitted_count()
+}
+
+fn witness_no_orphan_self_emitted_basename_holds() -> Bool {
+  fold_list(
+    xs: compiler_frontier_self_emitted_stage0_mod_basenames(),
+    empty: true,
+    cons: fn(ok, basename) {
+      ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(), needle: basename)
+    }
+  )
+}
+
+test fn crate_layout_witnesses() -> Bool {
+  compiler_frontier_crate_layout_holds()
+    && witness_use_site_verdict_derived_from_frontier_holds()
+    && witness_generated_pub_mod_block_matches_frontier_holds()
+    && witness_generated_basenames_match_frontier_holds()
+    && witness_generated_filenames_match_frontier_holds()
+    && witness_generated_dirs_match_frontier_holds()
+    && witness_generated_includes_every_self_emitted_basename_holds()
+    && witness_generated_has_no_phantom_registration_holds()
+    && witness_hand_maintained_filenames_include_self_emitted_holds()
+    && witness_self_emitted_count_matches_derived_basenames_holds()
+    && witness_no_orphan_self_emitted_basename_holds()
+    && (compiler_frontier_self_emitted_count() == compiler_frontier_self_emitted_baseline)
+}
