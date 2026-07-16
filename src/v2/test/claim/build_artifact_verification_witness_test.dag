@@ -1,4 +1,4 @@
-module test.claim.build_artifact_verification_witness
+module v2.test.claim.build_artifact_verification_witness
 
 import std.logic { Bool }
 import extdeps.languages.bash.program {
