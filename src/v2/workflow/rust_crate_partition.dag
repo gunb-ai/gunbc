@@ -79,6 +79,59 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
 
+type Stage0ModuleDagInterfaceGrounding
+  = Stage0ModuleDagInterfaceFrontierGrounded
+  | Stage0ModuleDagInterfaceUngrounded {
+      exports_map: ExportsMapNotFrontierGrounded
+      type_definitions_map: TypeDefinitionsMapNotFrontierGrounded
+    }
+
+type ExportsMapNotFrontierGrounded {
+  dissolve_target: DeclarationRef
+}
+
+type TypeDefinitionsMapNotFrontierGrounded {
+  dissolve_target: DeclarationRef
+}
+
+data stage0_module_dag_interface_grounding_debt_dissolve_on: String = "dissolve-on: stage0_module_dag_interface_grounding — populate ModuleDag.exports + ModuleDag.type_definitions from frontier.dag cross-module export Nodes and by-value ModuleTypeDefinitionRow rows; REQUIRED before stage0_crate_plan cutover (empty maps yield empty interface -> empty pub/use surface -> fail-open broken crates at emission, §5)."
+
+fn stage0_frontier_grounding_target() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "v2.compiler.self_host.frontier" as NonEmptyStr,
+    decl_name: "compiler_frontier" as NonEmptyStr,
+    field: WholeDeclaration,
+  }
+}
+
+fn stage0_module_dag_interface_grounding() -> Stage0ModuleDagInterfaceGrounding {
+  Stage0ModuleDagInterfaceUngrounded {
+    exports_map: ExportsMapNotFrontierGrounded {
+      dissolve_target: stage0_frontier_grounding_target()
+    },
+    type_definitions_map: TypeDefinitionsMapNotFrontierGrounded {
+      dissolve_target: stage0_frontier_grounding_target()
+    },
+  }
+}
+
+fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
+  match stage0_module_dag_interface_grounding() {
+    Stage0ModuleDagInterfaceFrontierGrounded => false
+    Stage0ModuleDagInterfaceUngrounded { exports_map: _, type_definitions_map: _ } => true
+  }
+}
+
+fn stage0_module_dag_edges_only_ungrounded() -> ModuleDag {
+  ModuleDag {
+    modules: stage0_all_partitioned_modules()
+      |> map(basename => stage0_module_id(basename: basename)),
+    edges: stage0_cross_unit_import_edges(),
+    exports: empty_map(),
+    type_definitions: empty_map(),
+  }
+}
+
 fn stage0_module_id(basename: String) -> ModuleId {
   basename as NonEmptyStr
 }
@@ -280,12 +333,10 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
 }
 
 fn stage0_module_dag() -> ModuleDag {
-  ModuleDag {
-    modules: stage0_all_partitioned_modules()
-      |> map(basename => stage0_module_id(basename: basename)),
-    edges: stage0_cross_unit_import_edges(),
-    exports: empty_map(),
-    type_definitions: empty_map(),
+  if !stage0_module_dag_interface_grounding_is_debt() {
+    stage0_module_dag_edges_only_ungrounded()
+  } else {
+    stage0_module_dag_edges_only_ungrounded()
   }
 }
 
