@@ -210,6 +210,38 @@ fn host_converge_slice1_apply_memory_max(unit: NonEmptyStr, bytes_value: String)
   result.success
 }
 
+fn host_converge_slice1_prove_reapply_noop(unit: NonEmptyStr, knob: ConvergeKnob) -> String? {
+  if !host_converge_slice1_apply_memory_max(unit: unit, bytes_value: knob.desired) {
+    Present {
+      value: "host_converge_slice1: reapply-noop second apply (systemctl set-property) failed; fail-closed",
+    }
+  } else {
+    let reapply_at = host_converge_slice1_probed_at()
+    match host_converge_slice1_live_read(unit: unit, probed_at: reapply_at) {
+      Absent =>
+        Present {
+          value: "host_converge_slice1: reapply-noop independent read after second apply absent; fail-closed",
+        }
+      Present { value: reapply_read } =>
+        match host_converge_slice1_memory_cap_verdict(read: reapply_read, knob: knob) {
+          Present { value: VerdictConverged } => none
+          Present { value: Drifted } =>
+            Present {
+              value: "host_converge_slice1: reapply-noop failed — still drifted after second apply; fail-closed",
+            }
+          Present { value: Absent } =>
+            Present {
+              value: "host_converge_slice1: reapply-noop read returned Absent verdict after second apply; fail-closed",
+            }
+          Absent =>
+            Present {
+              value: "host_converge_slice1: reapply-noop verdict missing after second apply; fail-closed",
+            }
+        }
+    }
+  }
+}
+
 fn host_converge_slice1_receipt_is_valid(receipt: HostConvergeSlice1MemoryCapReceipt) -> Bool {
   receipt.read_back_converged
     && receipt.reapply_noop
@@ -240,18 +272,26 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
           Present { value: precondition_read } =>
             match host_converge_slice1_memory_cap_verdict(read: precondition_read, knob: knob) {
               Present { value: VerdictConverged } =>
-                match host_converge_slice1_receipt_from_read(
-                  read: precondition_read,
+                match host_converge_slice1_prove_reapply_noop(
+                  unit: host_converge_slice1_probe_unit,
                   knob: knob,
-                  applied: false,
-                  read_back_converged: true,
-                  reapply_noop: true,
                 ) {
-                  Present { value: receipt } =>
-                    HostConvergeSlice1Converged { applied_knobs: 0, receipt: receipt }
+                  Present { value: why } =>
+                    HostConvergeSlice1Refused { reason: why }
                   Absent =>
-                    HostConvergeSlice1Refused {
-                      reason: "host_converge_slice1: converged read failed receipt construction; fail-closed",
+                    match host_converge_slice1_receipt_from_read(
+                      read: precondition_read,
+                      knob: knob,
+                      applied: false,
+                      read_back_converged: true,
+                      reapply_noop: true,
+                    ) {
+                      Present { value: receipt } =>
+                        HostConvergeSlice1Converged { applied_knobs: 0, receipt: receipt }
+                      Absent =>
+                        HostConvergeSlice1Refused {
+                          reason: "host_converge_slice1: converged read failed receipt construction; fail-closed",
+                        }
                     }
                 }
               Present { value: Drifted } =>
@@ -278,40 +318,25 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
                     Present { value: read_back } =>
                       match host_converge_slice1_memory_cap_verdict(read: read_back, knob: knob) {
                         Present { value: VerdictConverged } =>
-                          let reapply_at = host_converge_slice1_probed_at()
-                          match host_converge_slice1_live_read(unit: host_converge_slice1_probe_unit, probed_at: reapply_at) {
+                          match host_converge_slice1_prove_reapply_noop(
+                            unit: host_converge_slice1_probe_unit,
+                            knob: knob,
+                          ) {
+                            Present { value: why } =>
+                              HostConvergeSlice1Refused { reason: why }
                             Absent =>
-                              HostConvergeSlice1Refused {
-                                reason: "host_converge_slice1: reapply precondition read absent; fail-closed",
-                              }
-                            Present { value: reapply_read } =>
-                              match host_converge_slice1_memory_cap_verdict(read: reapply_read, knob: knob) {
-                                Present { value: VerdictConverged } =>
-                                  match host_converge_slice1_receipt_from_read(
-                                    read: read_back,
-                                    knob: knob,
-                                    applied: true,
-                                    read_back_converged: true,
-                                    reapply_noop: true,
-                                  ) {
-                                    Present { value: receipt } =>
-                                      HostConvergeSlice1Converged { applied_knobs: 1, receipt: receipt }
-                                    Absent =>
-                                      HostConvergeSlice1Refused {
-                                        reason: "host_converge_slice1: post-apply receipt construction failed; fail-closed",
-                                      }
-                                  }
-                                Present { value: Drifted } =>
-                                  HostConvergeSlice1Refused {
-                                    reason: "host_converge_slice1: reapply-noop failed — post-apply read still drifted; fail-closed",
-                                  }
-                                Present { value: Absent } =>
-                                  HostConvergeSlice1Refused {
-                                    reason: "host_converge_slice1: reapply-noop read returned Absent verdict; fail-closed",
-                                  }
+                              match host_converge_slice1_receipt_from_read(
+                                read: read_back,
+                                knob: knob,
+                                applied: true,
+                                read_back_converged: true,
+                                reapply_noop: true,
+                              ) {
+                                Present { value: receipt } =>
+                                  HostConvergeSlice1Converged { applied_knobs: 1, receipt: receipt }
                                 Absent =>
                                   HostConvergeSlice1Refused {
-                                    reason: "host_converge_slice1: reapply-noop verdict missing; fail-closed",
+                                    reason: "host_converge_slice1: post-apply receipt construction failed; fail-closed",
                                   }
                               }
                           }
