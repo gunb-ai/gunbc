@@ -40,8 +40,9 @@ pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
     lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
-    write as cross_process_write, CacheLookupResult,
+    transform_content_digest, write as cross_process_write, CacheLookupResult,
 };
+use crate::std_interface_summary::{module_key, typed_module_key};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResolveTypecheckGate {
@@ -2599,6 +2600,165 @@ mod shared_cache_collision_guard_tests {
     }
 }
 
+#[cfg(test)]
+mod typed_module_content_key_tests {
+    //! Typed-module content-key RED controls (cross-entry-typed-module-memo-sketch.md
+    //! §1/§3, operator-signed 2026-07-16; PR-α — the store re-key).
+    //!
+    //! The typed store keys on `std.interface_summary.typed_module_key` — module source
+    //! hash ⊕ direct-import interface hashes ⊕ compiler identity — never on authored
+    //! module name. Each test is a discriminating control for one live key term, proven
+    //! BY EXECUTION against the store (`typecheck_compute_count` counts genuine
+    //! typechecks — a stale serve shows up as a missing compute):
+    //!
+    //!  - **source term**: mutate a module's source (same path, same authored name)
+    //!    between two indexes sharing one cross-worker store → the mutated module MUST
+    //!    recompute. Under the dissolved name key this control goes RED (stale serve,
+    //!    0 computes).
+    //!  - **import-interface term**: change an imported module's export surface (its v0
+    //!    interface hash) without touching the dependent → the dependent MUST recompute.
+    //!    RED under the name key the same way.
+    //!  - **interface-grain minimality** (signed decision 1): a body-only edit in the
+    //!    import leaves its v0 interface hash unchanged → the dependent must HIT (only
+    //!    the edited module recomputes). A conservative source-transitive key would go
+    //!    RED here by over-invalidating the dependent.
+    //!
+    //! The compiler-identity term cannot vary within one test process; it is witnessed
+    //! at the algebra level by the PR1 .dag witnesses
+    //! (`src/v2/test/claim/interface_summary/typed_module_key_test.dag`). Warm==cold
+    //! byte-equivalence stays owned by `resolve_typed_cache_equivalence_test`.
+    //!
+    //! Mutations rewrite the SAME file path so the `module_source_identity` collision
+    //! wall (name→file, unchanged by the re-key) never fires.
+
+    use super::{
+        build_multi_entry_index_with_shared_caches, new_shared_typecheck_caches,
+        reset_typecheck_compute_count, resolve_entry_with_index, typecheck_compute_count,
+        with_typecheck_compute_count_receipt, workspace_root,
+    };
+    use crate::shared_typecheck_store::SharedTypecheckCaches;
+    use std::fs;
+    use std::sync::{Arc, RwLock};
+
+    const IMPORT_MODULE: &str = "module k.imp\nfn base() -> Int { 10 }\n";
+    const IMPORT_MODULE_BODY_EDIT: &str = "module k.imp\nfn base() -> Int { 4 + 6 }\n";
+    const IMPORT_MODULE_SURFACE_EDIT: &str =
+        "module k.imp\nfn base() -> Int { 10 }\nfn extra() -> Int { 1 }\n";
+    const DEPENDENT_MODULE: &str =
+        "module k.dep\nimport k.imp { base }\nfn wit() -> Bool { base() == 10 }\n";
+
+    struct Fixture {
+        dir: std::path::PathBuf,
+        roots: Vec<String>,
+        entry: String,
+    }
+
+    impl Fixture {
+        fn new(tag: &str) -> Fixture {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+            let dir = workspace_root().join("target").join(format!(
+                "typed-module-content-key-{tag}-{}-{seq}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("create fixture dir");
+            fs::write(dir.join("imp.dag"), IMPORT_MODULE).expect("write imp.dag");
+            fs::write(dir.join("dep.dag"), DEPENDENT_MODULE).expect("write dep.dag");
+            let roots = vec![dir.to_string_lossy().into_owned()];
+            let entry = dir.join("dep.dag").to_string_lossy().into_owned();
+            Fixture { dir, roots, entry }
+        }
+
+        fn rewrite_import(&self, src: &str) {
+            fs::write(self.dir.join("imp.dag"), src).expect("rewrite imp.dag");
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// Resolve `entry` against a fresh index bound to `store`, returning how many genuine
+    /// typecheck computes the resolve performed (misses; hits don't count).
+    fn computes_with_store(
+        store: &Arc<RwLock<SharedTypecheckCaches>>,
+        roots: &[String],
+        entry: &str,
+    ) -> usize {
+        let index = build_multi_entry_index_with_shared_caches(roots, store.clone());
+        reset_typecheck_compute_count();
+        resolve_entry_with_index(&index, entry).expect("resolve");
+        typecheck_compute_count()
+    }
+
+    #[test]
+    fn source_term_recomputes_mutated_module() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new("source-term");
+            let store = new_shared_typecheck_caches();
+
+            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(cold, 2, "cold resolve computes both closure modules");
+
+            // Unchanged snapshot, fresh index: full hit — the content key is stable.
+            let warm = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(warm, 0, "unchanged snapshot must be a full store hit");
+
+            // Body-only mutation of the import: its source hash moves, so its key moves.
+            fx.rewrite_import(IMPORT_MODULE_BODY_EDIT);
+            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert!(
+                after_edit >= 1,
+                "mutated module must recompute (a stale serve is a §5 fail-open); \
+                 got {after_edit} computes"
+            );
+        });
+    }
+
+    #[test]
+    fn import_interface_term_recomputes_dependent() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new("import-term");
+            let store = new_shared_typecheck_caches();
+
+            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(cold, 2, "cold resolve computes both closure modules");
+
+            // Export-surface edit: a new exported fn changes k.imp's interface rollup.
+            fx.rewrite_import(IMPORT_MODULE_SURFACE_EDIT);
+            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(
+                after_edit, 2,
+                "an interface change in the import must recompute the import AND its \
+                 dependent (the dependent's typed result consumed that interface)"
+            );
+        });
+    }
+
+    #[test]
+    fn body_only_edit_leaves_dependent_warm() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new("minimality");
+            let store = new_shared_typecheck_caches();
+
+            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(cold, 2, "cold resolve computes both closure modules");
+
+            fx.rewrite_import(IMPORT_MODULE_BODY_EDIT);
+            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(
+                after_edit, 1,
+                "body-only import edit: import recomputes, dependent stays warm \
+                 (interface-grain minimality, signed decision 1)"
+            );
+        });
+    }
+}
+
 thread_local! {
     static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
         RefCell::new(HashMap::new());
@@ -3389,9 +3549,21 @@ pub fn resolve_entry_graph_shared(
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
-    /// Per-index typed results — always `Rc` (main memory path).
+    /// Per-index typed results, keyed by the typed-module CONTENT key
+    /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import
+    /// interface hashes ⊕ compiler identity) — never by authored module name. The
+    /// content key is the soundness license for eviction (PR-β) and the S2b-ready
+    /// backend shape (cross-entry-typed-module-memo-sketch.md §1, operator-signed
+    /// 2026-07-16); within one process it also makes a same-name/different-file
+    /// collision structurally unable to serve the wrong typecheck (the name-keyed
+    /// store relied on `module_source_identity` failing loud instead).
     typed_module_cache:
         RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    /// Source-content hashes by file path, recorded in the parse loop (where the
+    /// `SourceFile.content` is in hand) — the source-hash key term for
+    /// `typed_module_content_key`. A reconcile of a module whose file never passed
+    /// the parse loop is a fail-closed error, never a silently keyless entry.
+    source_hash_by_file: RefCell<std::collections::HashMap<String, String>>,
     /// Per-index collision registry when `cross_worker_store` is absent.
     module_source_identity: RefCell<std::collections::HashMap<String, String>>,
     /// Cross-worker serde-byte transport when increment C is explicitly armed (tests / future Arc).
@@ -3452,6 +3624,7 @@ fn new_multi_entry_index_shell(
         source_files,
         module_graph_facts: build_module_graph_facts_live(source_roots),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
+        source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
         cross_worker_store,
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
@@ -3506,24 +3679,89 @@ fn shared_caches_write<'a>(
         .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))
 }
 
-/// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
-/// cross-worker store is armed (no local duplicate — serde transport is one authority).
-fn index_get_typed(
+/// The typed-module content key for `resolved` — the Rust realization of
+/// `std.interface_summary.typed_module_key` over the live store's inputs
+/// (cross-entry-typed-module-memo-sketch.md §1, operator-signed 2026-07-16):
+///
+///   key = typed_module_key(module_key(source_hash, direct-import interface hashes),
+///                          compiler identity)
+///
+/// - `source_hash` was recorded by `note_source_hash` in the parse loop; a module whose
+///   file never passed that loop REFUSES (fail-closed) — the key never silently drops a
+///   term.
+/// - Direct-import interface hashes come from `interface_hash_by_name`, filled in
+///   dependency order as import results are obtained (hit or computed); a missing import
+///   hash likewise refuses — it would mean the schedule dispatched a dependent before
+///   its import. The interface hash is the Inc-B `ModuleInterface.summary.interface_hash`
+///   (v0 fingerprint; its declared-weak grain and upgrade trigger live at
+///   `src/v1/04_infer.dag` `interface_signature_fingerprint_v0_note`).
+/// - Compiler identity is `resolved_graph_cache::transform_content_digest` — the same
+///   single authority the resolved-graph subject digest consumes (§3: one concept, one
+///   authority; a seed rebuild invalidates both stores through one term).
+fn typed_module_content_key(
     index: &MultiEntryIndex,
+    resolved: &Rc<v1_compiler_resolve::ResolvedModule>,
     mod_name: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-    let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(index.typed_module_cache.borrow().get(mod_name).cloned());
-    };
-    shared_get_typed(store, mod_name)
+    interface_hash_by_name: &std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let file = &resolved.module.span.file;
+    let source_hash = index
+        .source_hash_by_file
+        .borrow()
+        .get(file)
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "typed-module content key refused: no source hash recorded for '{file}' \
+                 (module '{mod_name}') — every reconciled module must pass the parse loop \
+                 in this process before its typed result is keyed"
+            )
+        })?;
+    let mut import_hashes: im_rc::Vector<String> = im_rc::Vector::new();
+    for import in resolved.resolved_imports.iter() {
+        let hash = interface_hash_by_name
+            .get(&import.module_path)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "typed-module content key refused: direct import '{}' of module \
+                     '{mod_name}' has no interface hash yet — imports must be typechecked \
+                     (or cache-served) before their dependents are keyed",
+                    import.module_path
+                )
+            })?;
+        import_hashes.push_back(hash);
+    }
+    Ok(typed_module_key(
+        module_key(source_hash, Rc::new(import_hashes)),
+        transform_content_digest(),
+    ))
 }
 
-fn index_contains_typed(index: &MultiEntryIndex, mod_name: &str) -> Result<bool, String> {
+/// Record `mod_name`'s interface hash for downstream key derivation (one entry per
+/// module per reconcile; the interface is a pure projection of the typed result).
+fn note_interface_hash(
+    interface_hash_by_name: &mut std::collections::HashMap<String, String>,
+    mod_name: &str,
+    tc_result: &Rc<v1_compiler_infer::TypecheckModuleResult>,
+) {
+    interface_hash_by_name.insert(
+        mod_name.to_string(),
+        tc_result.typed.interface.summary.interface_hash.clone(),
+    );
+}
+
+/// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
+/// cross-worker store is armed (no local duplicate — serde transport is one authority).
+/// `typed_key` is the content key from `typed_module_content_key`, never a module name.
+fn index_get_typed(
+    index: &MultiEntryIndex,
+    typed_key: &str,
+) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(index.typed_module_cache.borrow().contains_key(mod_name));
+        return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
     };
-    let caches = shared_caches_read(store)?;
-    Ok(caches.contains_typed(mod_name))
+    shared_get_typed(store, typed_key)
 }
 
 fn check_index_module_source_identity(
@@ -3545,29 +3783,29 @@ fn check_index_module_source_identity(
 
 fn index_insert_typed(
     index: &MultiEntryIndex,
-    mod_name: String,
+    typed_key: String,
     result: Rc<v1_compiler_infer::TypecheckModuleResult>,
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         index
             .typed_module_cache
             .borrow_mut()
-            .insert(mod_name, result.clone());
+            .insert(typed_key, result.clone());
         return Ok(result);
     };
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
-        caches.clone_typed_bytes(&mod_name)
+        caches.clone_typed_bytes(&typed_key)
     } {
         return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
     }
     let encoded = SharedTypecheckCaches::encode_typed_snapshot(&result)?;
     let raced_bytes = {
         let mut caches = shared_caches_write(store)?;
-        if let Some(existing) = caches.clone_typed_bytes(&mod_name) {
+        if let Some(existing) = caches.clone_typed_bytes(&typed_key) {
             Some(existing)
         } else {
-            caches.insert_typed_preencoded(mod_name.clone(), encoded);
+            caches.insert_typed_preencoded(typed_key.clone(), encoded);
             None
         }
     };
@@ -3581,11 +3819,11 @@ fn index_insert_typed(
 /// Read the shared typed cache with a brief lock hold; decode happens after the guard drops.
 fn shared_get_typed(
     shared_caches: &Arc<RwLock<SharedTypecheckCaches>>,
-    mod_name: &str,
+    typed_key: &str,
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let bytes = {
         let caches = shared_caches_read(shared_caches)?;
-        caches.clone_typed_bytes(mod_name)
+        caches.clone_typed_bytes(typed_key)
     };
     match bytes {
         Some(snapshot) => {
@@ -3821,6 +4059,7 @@ fn resolve_entry_with_parse_cache(
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
+        note_source_hash(index, source);
         let cached = index.parse_cache.borrow().get(&source.path).cloned();
 
         let (parse_result, nl_index) = match cached {
@@ -4211,27 +4450,39 @@ fn finish_resolved_graph_assembly(
 /// emit). The assembled output matches the serial dispatch path because
 /// variant surfaces are not consulted on a cache hit and parent-env diagnostics
 /// are empty when every import parent is already in the store.
-fn reconcile_all_cache_hits(
+///
+/// Under the content key this is also the all-hits PROBE: the closure is walked
+/// in resolver order (imports precede importers), each module's key derived from
+/// its imports' interface hashes as their cached results are read. Returns
+/// `Ok(None)` on the first store miss — the caller falls through to the schedule
+/// loop, which recomputes keys the same way (hits are cheap Rc clones, so the
+/// repeated lookups cost nothing over the old name-keyed precheck).
+fn try_reconcile_all_cache_hits(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
-) -> Result<Rc<ResolvedGraph>, String> {
+) -> Result<Option<Rc<ResolvedGraph>>, String> {
     let mut modules_vec = im_rc::Vector::new();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> =
         Vec::with_capacity(closure_modules.len() * 2);
     let mut same_tree_fork_count: usize = 0;
     let mut cross_tree_fork_count: usize = 0;
     let empty_parent_diags = Rc::new(im_rc::Vector::new());
+    let mut interface_hash_by_name: std::collections::HashMap<String, String> =
+        std::collections::HashMap::with_capacity(closure_modules.len());
 
     for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
         let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
         {
             check_index_module_source_identity(index, mod_name, &decl_file)?;
         }
-        let tc_result = index_get_typed(index, mod_name)?.ok_or_else(|| {
-            format!("reconcile all-cache-hit path: module '{mod_name}' missing from typed store")
-        })?;
+        let typed_key =
+            typed_module_content_key(index, resolved, mod_name, &interface_hash_by_name)?;
+        let Some(tc_result) = index_get_typed(index, &typed_key)? else {
+            return Ok(None);
+        };
+        note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
@@ -4250,6 +4501,7 @@ fn reconcile_all_cache_hits(
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
+    .map(Some)
 }
 
 fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
@@ -4332,10 +4584,26 @@ fn merge_symbol_indices(left: Rc<SymbolIndex>, right: Rc<SymbolIndex>) -> Rc<Sym
     })
 }
 
+/// Record the source-content hash for `source` (insert-if-absent: the tree is a fixed
+/// snapshot within a process, so first sight is authoritative). This is the source-hash
+/// key term of `typed_module_content_key`; it is recorded exactly where the content is
+/// already in hand — never re-read from disk at key-derivation time (purity: the key
+/// derives from declared inputs, not a fresh WorldRead).
+fn note_source_hash(index: &MultiEntryIndex, source: &Rc<v1_compiler_compile::SourceFile>) {
+    let mut map = index.source_hash_by_file.borrow_mut();
+    if !map.contains_key(&source.path) {
+        map.insert(
+            source.path.clone(),
+            v1_rt::atom_identity_hash(source.content.clone()),
+        );
+    }
+}
+
 fn parse_module_node_from_index_source(
     index: &MultiEntryIndex,
     source: Rc<v1_compiler_compile::SourceFile>,
 ) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
+    note_source_hash(index, &source);
     let cached = index.parse_cache.borrow().get(&source.path).cloned();
     let (parse_result, nl_index) = match cached {
         Some(entry) => entry,
@@ -4451,20 +4719,20 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
-    let all_cached = {
-        let mut cached = true;
-        for name in &closure_names {
-            if !index_contains_typed(index, name)? {
-                cached = false;
-                break;
-            }
-        }
-        cached
-    };
-    if all_cached {
-        return reconcile_all_cache_hits(&closure_modules, &closure_names, source_indices, index);
+    if let Some(assembled) = try_reconcile_all_cache_hits(
+        &closure_modules,
+        &closure_names,
+        source_indices.clone(),
+        index,
+    )? {
+        return Ok(assembled);
     }
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
+    // Interface hashes of processed modules, for dependents' content keys — filled in
+    // batch order (a batch's imports all live in earlier batches), read by
+    // `typed_module_content_key` at each module's store lookup.
+    let mut interface_hash_by_name: std::collections::HashMap<String, String> =
+        std::collections::HashMap::with_capacity(closure_modules.len());
     let mut dispatched: Vec<
         Option<(
             Rc<im_rc::Vector<Rc<ErrorNode>>>,
@@ -4491,7 +4759,9 @@ fn reconcile_with_typed_cache(
             {
                 check_index_module_source_identity(index, &mod_name, &decl_file)?;
             }
-            let cached = index_get_typed(index, &mod_name)?;
+            let typed_key =
+                typed_module_content_key(index, &resolved, &mod_name, &interface_hash_by_name)?;
+            let cached = index_get_typed(index, &typed_key)?;
             let was_cache_hit = cached.is_some();
             let parent_diags = if was_cache_hit {
                 Rc::new(im_rc::Vector::new())
@@ -4535,10 +4805,11 @@ fn reconcile_with_typed_cache(
                     if module_tc_ms >= 2_000 {
                         eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
                     }
-                    let computed = index_insert_typed(index, mod_name.clone(), computed)?;
+                    let computed = index_insert_typed(index, typed_key.clone(), computed)?;
                     computed
                 }
             };
+            note_interface_hash(&mut interface_hash_by_name, &mod_name, &tc_result);
             let typed = tc_result.typed.clone();
             let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
             variant_surfaces = v1_rt::rc_map_insert(
@@ -11337,7 +11608,7 @@ mod module_grain_affected_equivalence_tests {
         vec![
             "dag/test/claim/card_intake_risk_witness_test.dag",
             "dag/test/claim/ebay_listing_witness_test.dag",
-            "dag/test/claim/bash_serializer_witness_test.dag",
+            "src/v2/test/claim/bash_program_fold_test.dag",
             "dag/test/claim/v1_dag_parse_witness_test.dag",
             "dag/tools/host_prelude.dag",
             "dag/tools/build_step.dag",
