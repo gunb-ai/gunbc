@@ -44,6 +44,8 @@ fresh_artifact_path() {
     .github/fleet-converge.sh*) return 0 ;;
     dag/gunbc/stage0_crate_layout_generated.dag*) return 0 ;;
     src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs*) return 0 ;;
+    .github/live-deploy-srv1-apply.sh*) return 0 ;;
+    .github/live-deploy-srv1-retract.sh*) return 0 ;;
     docs/plans/idea-machine.md*) return 0 ;;
     docs/plans/algebraic-rewrite-optimization.md*) return 0 ;;
     docs/plans/dag-v2-defork-audit.md*) return 0 ;;

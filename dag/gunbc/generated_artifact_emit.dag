@@ -66,6 +66,8 @@ fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
     FleetConvergeArtifact => true
     Stage0CrateLayoutGeneratedDagArtifact => true
     Stage0CrateLayoutGeneratedRsArtifact => true
+    LiveDeployApplyScriptArtifact => true
+    LiveDeployRetractScriptArtifact => true
     AutoinstallUserDataArtifact { spec: _ } => true
     ProxyDhcpDnsmasqArtifact { spec: _ } => true
     PlanArtifact { plan: _ } => true
