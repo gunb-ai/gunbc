@@ -155,6 +155,33 @@ fn module_unit_id(
   }
 }
 
+fn module_assigned_unit_fold(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  module: ModuleId
+) -> Optional<PartitionFoldRefusalCause> {
+  match module_unit_id_outcome(assignment: assignment, module: module) {
+    Rejected { diagnostics: _ } =>
+      optional_present(value: ModuleAssignmentLookupRejected { module: module })
+    Accepted { value: _, diagnostics: _ } => Absent
+  }
+}
+
+fn partition_assignment_lookup_cause_if_rejected(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  modules: List<ModuleId>
+) -> Optional<PartitionFoldRefusalCause> {
+  fold_list(
+    xs: modules,
+    empty: Absent,
+    cons: fn(acc, module) {
+      match acc {
+        Present { value: _ } => acc
+        Absent => module_assigned_unit_fold(assignment: assignment, module: module)
+      }
+    }
+  )
+}
+
 fn module_in_unit(
   assignment: Map<ModuleId, CompilationUnitId>,
   module: ModuleId,
@@ -163,6 +190,27 @@ fn module_in_unit(
   match module_unit_id(assignment: assignment, module: module) {
     Present { value: assigned } => assigned == unit_id
     Absent => false
+  }
+}
+
+fn module_in_unit_fold(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  module: ModuleId,
+  unit_id: CompilationUnitId
+) -> Optional<PartitionFoldRefusalCause> {
+  match module_unit_id_outcome(assignment: assignment, module: module) {
+    Rejected { diagnostics: _ } =>
+      optional_present(value: ModuleAssignmentLookupRejected { module: module })
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: assigned } =>
+          if assigned == unit_id {
+            Absent
+          } else {
+            Absent
+          }
+        Absent => Absent
+      }
   }
 }
 
@@ -278,6 +326,27 @@ fn partition_unit_members(
     |> sort_by(module => module)
 }
 
+fn partition_unit_dep_from_edge_fold(
+  assignment: Map<ModuleId, CompilationUnitId>,
+  unit_id: CompilationUnitId,
+  edge: ModuleDagEdge
+) -> Optional<PartitionFoldRefusalCause> {
+  match module_in_unit_fold(assignment: assignment, module: edge.from, unit_id: unit_id) {
+    Present { value: cause } => optional_present(value: cause)
+    Absent =>
+      match module_in_unit_fold(assignment: assignment, module: edge.to, unit_id: unit_id) {
+        Present { value: cause } => optional_present(value: cause)
+        Absent =>
+          if module_in_unit(assignment: assignment, module: edge.from, unit_id: unit_id)
+            && !module_in_unit(assignment: assignment, module: edge.to, unit_id: unit_id) {
+            module_assigned_unit_fold(assignment: assignment, module: edge.to)
+          } else {
+            Absent
+          }
+      }
+  }
+}
+
 fn partition_unit_dep_from_edge(
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
@@ -288,6 +357,45 @@ fn partition_unit_dep_from_edge(
     module_unit_id(assignment: assignment, module: edge.to)
   } else {
     Absent
+  }
+}
+
+type PartitionDepsBuild
+  = DepsBuildOk { deps: List<CompilationUnitId> }
+  | DepsBuildRefused { cause: PartitionFoldRefusalCause }
+
+fn partition_unit_deps_fold(
+  module_dag: ModuleDag,
+  assignment: Map<ModuleId, CompilationUnitId>,
+  unit_id: CompilationUnitId
+) -> PartitionDepsBuild {
+  let built = module_dag.edges
+    |> fold(init: DepsBuildOk { deps: [] }, f: fn(acc, edge) {
+      match acc {
+        DepsBuildRefused { cause: _ } => acc
+        DepsBuildOk { deps: deps } =>
+          match partition_unit_dep_from_edge_fold(
+            assignment: assignment,
+            unit_id: unit_id,
+            edge: edge
+          ) {
+            Present { value: cause } => DepsBuildRefused { cause: cause }
+            Absent =>
+              match partition_unit_dep_from_edge(
+                assignment: assignment,
+                unit_id: unit_id,
+                edge: edge
+              ) {
+                Present { value: dep } =>
+                  DepsBuildOk { deps: list_snoc_unique(items: deps, item: dep) }
+                Absent => DepsBuildOk { deps: deps }
+              }
+          }
+      }
+    })
+  match built {
+    DepsBuildOk { deps: deps } => DepsBuildOk { deps: deps |> sort_by(id => id) }
+    DepsBuildRefused { cause: cause } => DepsBuildRefused { cause: cause }
   }
 }
 
@@ -306,15 +414,42 @@ fn partition_unit_deps(
     |> sort_by(id => id)
 }
 
-fn module_referenced_from_outside_unit(
+fn module_referenced_from_outside_unit_fold(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
   member: ModuleId
-) -> Bool {
-  module_dag.edges |> any(edge =>
-    (edge.to == member)
-      && !module_in_unit(assignment: assignment, module: edge.from, unit_id: unit_id)
+) -> Optional<PartitionFoldRefusalCause> {
+  fold_list(
+    xs: module_dag.edges,
+    empty: Absent,
+    cons: fn(acc, edge) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if edge.to == member {
+            match module_in_unit_fold(
+              assignment: assignment,
+              module: edge.from,
+              unit_id: unit_id
+            ) {
+              Present { value: cause } => optional_present(value: cause)
+              Absent =>
+                if !module_in_unit(
+                  assignment: assignment,
+                  module: edge.from,
+                  unit_id: unit_id
+                ) {
+                  optional_present(value: ModuleAssignmentLookupRejected { module: edge.from })
+                } else {
+                  Absent
+                }
+            }
+          } else {
+            Absent
+          }
+      }
+    }
   )
 }
 
