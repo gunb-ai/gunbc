@@ -33,6 +33,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node {
   Arrow,
   Atom,
+  Conj,
   Edge,
   Named,
   Node,
