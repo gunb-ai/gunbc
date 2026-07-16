@@ -42,9 +42,10 @@ import std.realization_schedule {
   runnable_heavy_whole_tree_resolve,
   runnable_forbids_corpus_co_residence,
   cost_account_predicted_zero,
-  schedule_lens_verdict_for_ci_floor,
   runnable_selection_applied
 }
+import v2.lens.schedule_lens { schedule_lens_verdict_for_ci_floor }
+import v2.std.lens_verdict { Holds, NotApplicable, Unrealized, Violation }
 import v2.workflow.executor {
   ExecutorBatch
 }
