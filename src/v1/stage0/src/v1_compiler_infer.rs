@@ -14736,6 +14736,9 @@ pub fn typecheck_module(
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<TypecheckModuleResult> {
     {
+        // [LOCAL MEASUREMENT PROBE — do not commit] within-module attribution
+        let __probe_total_started = std::time::Instant::now();
+        let __probe_bte_started = std::time::Instant::now();
         let env_result = build_type_env(
             resolved.clone(),
             parent_index.clone(),
@@ -14744,6 +14747,7 @@ pub fn typecheck_module(
             global_bare.clone(),
             symbol_index.clone(),
         );
+        let __probe_bte_us = __probe_bte_started.elapsed().as_micros();
         let env = env_result.env.clone();
         let env_cache = env_result.cache.clone();
         let env_diags = env_result.diagnostics.clone();
@@ -14783,6 +14787,7 @@ pub fn typecheck_module(
         }
         let resolved_module_name =
             authored_name_at(source_indices.clone(), resolved.module.clone());
+        let __probe_an_started = std::time::Instant::now();
         let contributions = Rc::new({
             let mut __result = Vec::new();
             for item in module_items(resolved.module.clone()).iter().cloned() {
@@ -14794,6 +14799,8 @@ pub fn typecheck_module(
             }
             __result
         });
+        let __probe_an_us = __probe_an_started.elapsed().as_micros();
+        let __probe_bmc_started = std::time::Instant::now();
         let ctx = build_module_context(
             contributions.clone(),
             parent_index.clone(),
@@ -14802,6 +14809,7 @@ pub fn typecheck_module(
             env.clone(),
             resolved_module_name.clone(),
         );
+        let __probe_bmc_us = __probe_bmc_started.elapsed().as_micros();
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
             |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
@@ -14833,7 +14841,9 @@ pub fn typecheck_module(
             item_registry: ctx.item_registry.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         });
+        let __probe_infer_started = std::time::Instant::now();
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
+        let __probe_infer_us = __probe_infer_started.elapsed().as_micros();
         let typed_items = Rc::new({
             let mut __result = Vec::new();
             for tir in typed_item_results.clone().iter().cloned() {
@@ -14848,12 +14858,15 @@ pub fn typecheck_module(
             }
             __result
         });
+        let __probe_pop_started = std::time::Instant::now();
         let updated_func_env = populate_output_provenance(
             typed_items.clone(),
             ctx.func_env.clone(),
             env.clone(),
             data_locals.clone(),
         );
+        let __probe_pop_us = __probe_pop_started.elapsed().as_micros();
+        let __probe_reann_started = std::time::Instant::now();
         let reannotated_items = Rc::new({
             let mut __result = Vec::new();
             for item in typed_items.clone().iter().cloned() {
@@ -14893,6 +14906,7 @@ pub fn typecheck_module(
             }
             __result
         });
+        let __probe_reann_us = __probe_reann_started.elapsed().as_micros();
         let typed_base = module_node(
             resolved_module_name.clone(),
             module_imports(resolved.module.clone()),
@@ -14903,7 +14917,8 @@ pub fn typecheck_module(
             ident_span: resolved.module.clone().ident_span.clone(),
             ..(*typed_base.clone()).clone()
         });
-        Rc::new(TypecheckModuleResult {
+        let __probe_iface_started = std::time::Instant::now();
+        let __probe_result = Rc::new(TypecheckModuleResult {
             typed: Rc::new(TypedModule {
                 module: typed_module.clone(),
                 items: reannotated_items.clone(),
@@ -14937,7 +14952,24 @@ pub fn typecheck_module(
                 seed_diags.clone(),
             ),
             binding_forks: env_result.binding_forks.clone(),
-        })
+        });
+        // [LOCAL MEASUREMENT PROBE — do not commit] within-module split for modules ≥ 1s
+        let __probe_total_us = __probe_total_started.elapsed().as_micros();
+        if __probe_total_us >= 1_000_000 {
+            eprintln!(
+                "[tc-split] module={} total_us={} bte_us={} analyze_us={} bmc_us={} infer_us={} pop_us={} reann_us={} tail_us={}",
+                resolved_module_name,
+                __probe_total_us,
+                __probe_bte_us,
+                __probe_an_us,
+                __probe_bmc_us,
+                __probe_infer_us,
+                __probe_pop_us,
+                __probe_reann_us,
+                __probe_iface_started.elapsed().as_micros()
+            );
+        }
+        __probe_result
     }
 }
 
