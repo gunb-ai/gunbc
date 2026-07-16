@@ -890,6 +890,7 @@ type SeedRetainedScaffoldRegistration {
 data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistration> = [
   SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "cli_run", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "global_bare_receipt", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
