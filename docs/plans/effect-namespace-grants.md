@@ -29,6 +29,17 @@ Status: DRAFT for operator review (2026-07-16, session lively-heron-615). Origin
   - `LiveTreeDisposition` ⇔ "does any Read grant root intersect the repo tree" — computed, no longer stamped (retiring the machine-stamped-false class that let #6654's orphan wall get skipped);
   - `ExecutionMode = Hermetic | Wet | Record` ⇔ three common envelope presets, kept as *names for envelopes* during migration, deleted at the end.
 
+**The containment law (operator refinement, 2026-07-16 — the basic cases that keep the model honest):** a write is **frame-contained** iff (target ⊑ a namespace the frame controls) ∧ (**target lifecycle ⊑ frame lifecycle**). The second conjunct is what the old "hermetic" intuition was actually about, and it is graded on the §5 construction/validation axis:
+
+- `LifecycleByConstruction` — the target's persistence is *unwritable past the frame*: an ephemeral container's filesystem (teardown erases it, kernel-guaranteed), a network-namespaced loopback receiver that dies with the frame. Writes here are frame-contained in the strongest sense: the packet leaves the process, the file persists — and none of it can outlive the frame.
+- `LifecycleByConvention` — a cleanup that can fail or be forgotten (`/tmp` scratch + deletion). Admissible, honestly weaker; the grade is part of the grant, never conflated.
+
+**Acceptance cases the model must decide correctly (named up front so we don't mislead ourselves):**
+1. *Loopback send to a controlled, netns-scoped receiver* → frame-contained (netns IS a namespace tree; receiver lifecycle ⊑ frame) — "hermetic" in today's terms despite being a real network send.
+2. *File write inside an ephemeral container* → frame-contained by construction — "hermetic" despite real persistence during the frame.
+3. *File write to `/tmp` scratch with trap cleanup* → frame-contained **by convention only** (the artifact-store witnesses' current honest grade).
+4. *POST to a BMC / write into the repo tree* → not frame-contained under any grade; wet by any name.
+
 **What this is not** (scope walls): quantities are not positions — memory/time budgets stay in the measure/CostAccount lane (an envelope bounds *reach*, a budget bounds *amount*); auth/identity is who-you-are, not what-you-may-touch (AuthScope converges only where it encodes reach); mutable keyed state stays a database (ladder's standing exclusion).
 
 ## 3. Convergence map (§2/§3 — DFS'd before minting; every element to its existing carrier)
