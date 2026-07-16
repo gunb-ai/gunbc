@@ -181,6 +181,20 @@ fn ci_floor_spec_from_roster() -> CiSpec {
   }
 }
 
+fn ci_fmt_gate_step() -> Step {
+  RunStep {
+    name: Present { value: "cargo fmt --all --check (fast gate; fails in seconds, before the release build)" },
+    id: none,
+    run: ci_fmt_gate_line(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
 fn ci_release_build_step() -> Step {
   RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
@@ -429,7 +443,7 @@ data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
 
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_aux_step_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
@@ -466,7 +480,7 @@ fn ci_build_job() -> Job {
     id: "build",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
+    steps: concat(ci_prelude_steps(), [ci_fmt_gate_step(), ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()]),
     needs: [],
     env: none,
     outputs: none,
