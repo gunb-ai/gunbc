@@ -24593,6 +24593,38 @@ pub fn emit_cargo_dep(name: String, version: String, features: Rc<Vec<String>>) 
     }
 }
 
+pub fn emit_cargo_dep_no_default_features(
+    name: String,
+    version: String,
+    features: Rc<Vec<String>>,
+) -> String {
+    {
+        let feat_strs = Rc::new({
+            let mut __result = Vec::new();
+            for f in features.clone().iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat("\"".to_string(), f.clone()),
+                    "\"".to_string(),
+                ));
+            }
+            __result
+        });
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(name.clone(), " = { version = \"".to_string()),
+                        version.clone(),
+                    ),
+                    "\", default-features = false, features = [".to_string(),
+                ),
+                feat_strs.clone().join(&", ".to_string()),
+            ),
+            "] }\n".to_string(),
+        )
+    }
+}
+
 pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
     {
         let header = v1_rt::concat(
@@ -24642,10 +24674,15 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
                     "1".to_string(),
                     Rc::new(vec!["full".to_string()]),
                 ),
-                emit_cargo_dep(
+                emit_cargo_dep_no_default_features(
                     "reqwest".to_string(),
                     "0.12".to_string(),
-                    Rc::new(vec!["json".to_string()]),
+                    Rc::new(vec![
+                        "json".to_string(),
+                        "rustls-tls".to_string(),
+                        "http2".to_string(),
+                        "charset".to_string(),
+                    ]),
                 ),
                 emit_cargo_dep(
                     "async-trait".to_string(),
