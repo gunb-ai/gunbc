@@ -94,6 +94,9 @@ fn render_refusal_reason(reason: AcceleratorRefusalReason) -> String {
     NotElementwisePure => "NotElementwisePure"
     CarriesEffects => "CarriesEffects"
     FmaContractionViolatesContract => "FmaContractionViolatesContract"
+    ReductionOrderViolatesContract => "ReductionOrderViolatesContract"
+    AssociativityNotWitnessedForFold => "AssociativityNotWitnessedForFold"
+    AssociativityCombineMismatch => "AssociativityCombineMismatch"
     AcceleratorUnsupportedNumericalDomain => "AcceleratorUnsupportedNumericalDomain"
   }
 }
