@@ -78,15 +78,13 @@ fn assert_not_census_ambiguous(
     census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
     name: &str,
 ) {
-    match census.get(name).map(|s| &**s) {
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => panic!(
+    if let Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) =
+        census.get(name).map(|s| &**s)
+    {
+        panic!(
             "{name}: global bare census is AMBIGUOUS — this was construction protocol / \
              subtree-local resolution; a new homonym authority now exists; triage before consolidating"
-        ),
-        None => panic!(
-            "{name}: absent from global bare census — unexpected; triage before consolidating"
-        ),
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {}
+        );
     }
 }
 
