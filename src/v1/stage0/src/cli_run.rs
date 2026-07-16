@@ -4428,7 +4428,14 @@ fn build_symbol_index_for_reconcile(
 // `is_std_homonym_v2_std_path`, `global_bare_q2_bisect_allows`, `global_bare_for_decl_file`,
 // `global_bare_variant_locals_for_decl_file`, and the reconcile receipt eprint (~90 LOC).
 // Receipt: `rg GLOBAL_BARE_Q2_BISECT_SCAFFOLD_MARKER src/v1/stage0/src/cli_run.rs` == 1 until deletion.
+// §5: when `GUNBC_GLOBAL_BARE_Q2_BISECT` is set the mode subset-filters census inputs (diagnostic
+// population bisect only) and `reconcile_with_typed_cache` refuses green resolve after printing
+// its receipt — diagnostic modes read state and report; they do not green a starved typecheck.
 pub(crate) const GLOBAL_BARE_Q2_BISECT_SCAFFOLD_MARKER: &str = "global_bare_q2_bisect_receipt";
+
+fn global_bare_q2_bisect_active() -> bool {
+    std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok()
+}
 
 /// Q2 consumption predicate (namespace PR-5c): may this module's typecheck read the corpus census.
 fn census_module_path_q2_consumption(path: &str) -> bool {
@@ -4648,13 +4655,18 @@ fn reconcile_with_typed_cache(
         }
     }
 
-    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_ok() {
+    if global_bare_q2_bisect_active() {
         let scans = v1_compiler_infer::take_merge_global_bare_variant_key_scans();
         eprintln!(
             "[global-bare-q2-bisect] mode={} merge_global_bare_variant_key_scans={scans} \
              variant_locals_keys={}",
             std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").unwrap_or_else(|_| "all".to_string()),
             global_bare_variant_locals.len(),
+        );
+        return Err(
+            "GUNBC_GLOBAL_BARE_Q2_BISECT: diagnostic bisect subset-filtered global_bare per module; \
+             refusing green resolve after receipt (DESIGN §5 — diagnostic modes report, never green starved inputs)"
+                .to_string(),
         );
     }
 
