@@ -75,6 +75,8 @@ mod interpreted_parse_termination_test;
 #[cfg(test)]
 mod ir_fixture_seam_soundness_test;
 #[cfg(test)]
+mod c_compilation_unit_witness_exec_test;
+#[cfg(test)]
 mod kernel_shadow_seams_test;
 #[cfg(test)]
 mod lexical_base_env_test;
