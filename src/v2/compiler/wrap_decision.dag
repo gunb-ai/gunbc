@@ -1,7 +1,5 @@
 module v2.compiler.wrap_decision
 
-data wrap_decision_design_doc_provenance: String = "bind: docs/plans/rc-ownership-wrap-decision-design.md"
-
 import v2.std.compilers.target_model {
   TargetModel,
   TargetOwnershipUseSite,
@@ -27,6 +25,8 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+
+data wrap_decision_design_doc_provenance: String = "bind: docs/plans/rc-ownership-wrap-decision-design.md"
 
 type WrapDecisionBundleChildLookup
   = WrapDecisionBundleChildMissing
