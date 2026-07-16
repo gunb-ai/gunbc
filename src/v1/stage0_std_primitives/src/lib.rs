@@ -17,29 +17,38 @@
     clippy::all
 )]
 
-#![rustfmt::skip]
-
 pub use v1_stage0_runtime::*;
 
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_content_hash.rs"]
 pub mod std_content_hash;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_coercion.rs"]
 pub mod std_coercion;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_decl_ref.rs"]
 pub mod std_decl_ref;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_disposition.rs"]
 pub mod std_disposition;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_error_primitives.rs"]
 pub mod std_error_primitives;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_http_path.rs"]
 pub mod std_http_path;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_emit_model.rs"]
 pub mod std_emit_model;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_magnitude.rs"]
 pub mod std_magnitude;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_measure.rs"]
 pub mod std_measure;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_types.rs"]
 pub mod std_types;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_lens_verdict.rs"]
 pub mod std_lens_verdict;

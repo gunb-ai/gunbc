@@ -17,8 +17,6 @@
     clippy::all
 )]
 
-#![rustfmt::skip]
-
 pub use v1_stage0_runtime::{NonEmptyBTreeSet, NonEmptyVec};
 
 pub mod v1_compiler_artifact {
@@ -46,9 +44,10 @@ pub mod v1_rt {
 }
 
 pub mod v1_std_core {
-    pub use v1_stage0_runtime::v1_std_core::*;
+    pub use v1_stage0_std_core::v1_std_core::*;
 }
 
+#[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_emit_core_support.rs"]
 pub mod v1_compiler_emit_core_support;
 

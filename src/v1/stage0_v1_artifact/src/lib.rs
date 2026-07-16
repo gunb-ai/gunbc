@@ -17,16 +17,16 @@
     clippy::all
 )]
 
-#![rustfmt::skip]
-
-pub use v1_stage0_runtime::*;
-pub use v1_stage0_std_primitives::*;
-pub use v1_stage0_std_core::*;
-pub use v1_stage0_std_surface::*;
 pub use v1_stage0_extdeps::*;
+pub use v1_stage0_runtime::*;
+pub use v1_stage0_std_core::*;
+pub use v1_stage0_std_primitives::*;
+pub use v1_stage0_std_surface::*;
 pub use v1_stage0_v1_infer::*;
 
+#[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_artifact.rs"]
 pub mod v1_compiler_artifact;
+#[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_languages.rs"]
 pub mod v1_compiler_languages;

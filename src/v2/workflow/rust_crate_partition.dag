@@ -160,7 +160,7 @@ fn stage0_module_id(basename: String) -> ModuleId {
 }
 
 fn stage0_runtime_modules() -> List<String> {
-  ["v1_rt", "v1_std_core"]
+  ["v1_rt"]
 }
 
 fn stage0_std_primitive_modules() -> List<String> {
@@ -189,7 +189,8 @@ fn stage0_std_core_modules() -> List<String> {
     "std_termination",
     "std_induction",
     "std_iteration",
-    "std_graph"
+    "std_graph",
+    "v1_std_core"
   ]
 }
 
@@ -346,6 +347,11 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "extdeps_languages_go_syntax", to: "std_syntax"),
     stage0_module_dag_edge(from: "extdeps_languages_python_syntax", to: "std_syntax"),
     stage0_module_dag_edge(from: "extdeps_languages_rust_syntax", to: "std_syntax"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_algebra"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_induction"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_syntax"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "v1_rt"),
     stage0_module_dag_edge(from: "v1_compiler_infer_sigs", to: "std_induction"),
     stage0_module_dag_edge(from: "v1_compiler_infer_service", to: "v1_compiler_infer_items"),
     stage0_module_dag_edge(from: "v1_compiler_infer_types", to: "v1_compiler_infer_items"),

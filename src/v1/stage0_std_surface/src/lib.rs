@@ -17,19 +17,22 @@
     clippy::all
 )]
 
-#![rustfmt::skip]
-
 pub use v1_stage0_runtime::*;
-pub use v1_stage0_std_primitives::*;
 pub use v1_stage0_std_core::*;
+pub use v1_stage0_std_primitives::*;
 
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_effects.rs"]
 pub mod std_effects;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_execution_mode.rs"]
 pub mod std_execution_mode;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_interface_summary.rs"]
 pub mod std_interface_summary;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_pareto.rs"]
 pub mod std_pareto;
+#[rustfmt::skip]
 #[path = "../../stage0/src/std_realization_schedule.rs"]
 pub mod std_realization_schedule;

@@ -24,8 +24,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
       crate_dir: "src/v1/stage0_runtime",
       kind: GeneratedFoundationCrate,
       modules: [
-  "v1_rt",
-  "v1_std_core"
+  "v1_rt"
 ],
       reexport_packages: [],
       carries_non_empty_wrappers: true
@@ -65,7 +64,8 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
   "std_termination",
   "std_induction",
   "std_iteration",
-  "std_graph"
+  "std_graph",
+  "v1_std_core"
 ],
       reexport_packages: [
   "v1-stage0-runtime",

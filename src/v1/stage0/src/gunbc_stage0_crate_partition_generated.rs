@@ -49,7 +49,7 @@ pub fn generated_partition_crate_rows() -> Rc<Vec<Rc<GeneratedPartitionCrateRow>
         package_name: "v1-stage0-runtime".to_string(),
         crate_dir: "src/v1/stage0_runtime".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedFoundationCrate,
-        modules: Rc::new(vec!["v1_rt".to_string(), "v1_std_core".to_string()]),
+        modules: Rc::new(vec!["v1_rt".to_string()]),
         reexport_packages: Rc::new(vec![]),
         carries_non_empty_wrappers: true,
     }), Rc::new(GeneratedPartitionCrateRow {
@@ -63,7 +63,7 @@ pub fn generated_partition_crate_rows() -> Rc<Vec<Rc<GeneratedPartitionCrateRow>
         package_name: "v1-stage0-std-core".to_string(),
         crate_dir: "src/v1/stage0_std_core".to_string(),
         kind: GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate,
-        modules: Rc::new(vec!["std_algebra".to_string(), "std_nat".to_string(), "std_node".to_string(), "std_syntax".to_string(), "std_computation".to_string(), "std_termination".to_string(), "std_induction".to_string(), "std_iteration".to_string(), "std_graph".to_string()]),
+        modules: Rc::new(vec!["std_algebra".to_string(), "std_nat".to_string(), "std_node".to_string(), "std_syntax".to_string(), "std_computation".to_string(), "std_termination".to_string(), "std_induction".to_string(), "std_iteration".to_string(), "std_graph".to_string(), "v1_std_core".to_string()]),
         reexport_packages: Rc::new(vec!["v1-stage0-runtime".to_string(), "v1-stage0-std-primitives".to_string()]),
         carries_non_empty_wrappers: false,
     }), Rc::new(GeneratedPartitionCrateRow {
