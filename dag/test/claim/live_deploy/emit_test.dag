@@ -18,11 +18,15 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.emit {
   expected_live_deploy_apply_script,
   expected_live_deploy_retract_script,
-  live_deploy_apply_script_drifted,
-  live_deploy_retract_script_drifted,
   live_deploy_systemd_unit_for,
   deployment_ensure_dependency_script,
 }
+import gunbc.generated_artifact {
+  LiveDeployApplyScriptArtifact,
+  LiveDeployRetractScriptArtifact,
+  artifact_path,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.node_http_server_emit {
   roadmap_dashboard_served_static_route_table,
   roadmap_dashboard_node_http_server_source,
@@ -185,11 +189,18 @@ fn witness_systemd_unit_emitted() -> Bool {
     && string_contains(s: unit, pattern: "Environment=PORT=8080")
 }
 
-fn witness_drift_gates() -> Bool {
-  !live_deploy_apply_script_drifted(committed: expected_live_deploy_apply_script())
-    && live_deploy_apply_script_drifted(committed: concat(expected_live_deploy_apply_script(), "x"))
-    && !live_deploy_retract_script_drifted(committed: expected_live_deploy_retract_script())
-    && live_deploy_retract_script_drifted(committed: concat(expected_live_deploy_retract_script(), "x"))
+fn witness_apply_script_matches_committed_golden() -> Bool {
+  let r = Filesystem.Read(path: artifact_path(a: LiveDeployApplyScriptArtifact))
+  r.success
+    && r.content == expected_live_deploy_apply_script()
+    && !(concat(r.content, "x") == expected_live_deploy_apply_script())
+}
+
+fn witness_retract_script_matches_committed_golden() -> Bool {
+  let r = Filesystem.Read(path: artifact_path(a: LiveDeployRetractScriptArtifact))
+  r.success
+    && r.content == expected_live_deploy_retract_script()
+    && !(concat(r.content, "x") == expected_live_deploy_retract_script())
 }
 
 test fn live_deploy_emit_holds() -> Bool {
@@ -210,5 +221,6 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_static_site_routes_in_dashboard_route_table()
     && witness_static_site_paths_only_in_retracted_server()
     && witness_systemd_unit_emitted()
-    && witness_drift_gates()
+    && witness_apply_script_matches_committed_golden()
+    && witness_retract_script_matches_committed_golden()
 }
