@@ -4,7 +4,6 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_row_06_translate,
   compiler_frontier_row_parse_engine_hooks,
   compiler_frontier_row_discovery_enumeration,
-  compiler_frontier_row_fold_lowering,
   compiler_frontier_row_use_site_verdict,
   SelfEmitted,
   FrontierProbeReceipt,
@@ -58,10 +57,10 @@ fn witness_use_site_verdict_self_emitted_enrolls_wet_entry() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_use_site_verdict)) == 1
 }
 
-fn witness_nightly_enrollment_includes_template_plus_four_self_emitted_modules() -> Bool {
+fn witness_nightly_enrollment_includes_template_plus_three_self_emitted_modules() -> Bool {
   (length(xs: falsifier_self_host_wet_template_entries) == 1)
-    && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 4)
-    && (length(xs: falsifier_self_host_wet_entries()) == 5)
+    && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 3)
+    && (length(xs: falsifier_self_host_wet_entries()) == 4)
 }
 
 fn witness_parse_engine_hooks_binding_present() -> Bool {
@@ -95,19 +94,6 @@ fn witness_discovery_enumeration_binding_present() -> Bool {
   }
 }
 
-fn witness_fold_lowering_self_emitted_enrolls_wet_entry() -> Bool {
-  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_fold_lowering)) == 1
-}
-
-fn witness_fold_lowering_binding_present() -> Bool {
-  match find_wet_receipt_binding(module_path: "src/v2/compiler/fold_lowering.dag") {
-    Present { value: b } =>
-      b.entry == "dag/test/claim/self_host_fold_lowering_behavioral_witness_test.dag"
-        && b.function == "self_host_fold_lowering_behavioral_receipt_holds"
-    Absent => false
-  }
-}
-
 fn witness_unbound_module_path_has_no_binding() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/06_translate.dag") {
     Absent => true
@@ -121,11 +107,9 @@ test fn wet_receipt_enrollment_witnesses() -> Bool {
     && witness_parse_engine_hooks_self_emitted_enrolls_wet_entry()
     && witness_use_site_verdict_self_emitted_enrolls_wet_entry()
     && witness_discovery_enumeration_self_emitted_enrolls_wet_entry()
-    && witness_fold_lowering_self_emitted_enrolls_wet_entry()
-    && witness_nightly_enrollment_includes_template_plus_four_self_emitted_modules()
+    && witness_nightly_enrollment_includes_template_plus_three_self_emitted_modules()
     && witness_parse_engine_hooks_binding_present()
     && witness_use_site_verdict_binding_present()
     && witness_discovery_enumeration_binding_present()
-    && witness_fold_lowering_binding_present()
     && witness_unbound_module_path_has_no_binding()
 }

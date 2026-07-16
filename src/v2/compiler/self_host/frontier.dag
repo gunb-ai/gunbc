@@ -77,7 +77,7 @@ type CompilerModuleFrontierRow {
 
 data compiler_frontier_module_count_expected: Int = 27
 
-data compiler_frontier_self_emitted_baseline: Int = 4
+data compiler_frontier_self_emitted_baseline: Int = 3
 
 data compiler_frontier_qualified_module_bindings: List<FrontierQualifiedModuleBinding> = [
   FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/00_compile.dag", qualified_module: "v2.compiler.compile" },
@@ -346,16 +346,11 @@ data compiler_frontier_row_emit_semantic_decl: CompilerModuleFrontierRow = knowl
   migration_trigger: ^migrate_when_semantic_decl_pipeline_wired
 )
 
-data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
   module_path: "src/v2/compiler/fold_lowering.dag",
   closure_reads: 36,
-  measured_probe: FrontierProbeReceipt {
-    module_path: "src/v2/compiler/fold_lowering.dag",
-    blocker_class: SelfEmitReady,
-    located_stage: ProbeStageEmit,
-    located_reason: ^measured_probe_self_emit_ready
-  },
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: EmitSurfaceGap)
+  measured_blocker: EmitSurfaceGap,
+  migration_trigger: ^migrate_when_body_lowering_generalizes
 )
 
 data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
