@@ -333,7 +333,7 @@ fn falsifier_predict_only_batch_holds(r: Runnable) -> Bool {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, profile: p } =>
       falsifier_batch_selection(mode: mode)
         && (length(xs: entries) == 0)
-        && (length(xs: dirs) == 2)
+        && (length(xs: dirs) == 3)
         && execution_mode_eq(left: p.execution_mode, right: Hermetic)
     RunnableSingleClaim { entry: _, function: _, profile: _ } => false
     RunnableKernelWorkload { fused_op_count: _, fold_parallelism: _ } => false
