@@ -26,3 +26,19 @@ func artifact_fs_get(store_root: String, key: ContentHash) -> ArtifactFsLookup {
   }
   return ArtifactFsMiss { path: path }
 }
+
+func artifact_fs_delete(store_root: String, key: ContentHash) -> Bool {
+  let d = Filesystem.Delete(path: artifact_fs_path(store_root: store_root, key: key))
+  return d.success
+}
+
+func artifact_fs_list(store_root: String) -> List<String> {
+  let l = Filesystem.List(path: store_root)
+  if l.success {
+    if l.entries == "" {
+      return []
+    }
+    return split(l.entries, separator: "\n")
+  }
+  return []
+}

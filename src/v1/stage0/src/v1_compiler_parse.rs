@@ -7156,13 +7156,14 @@ pub fn parse_file_binding_body(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<TransportResult> {
-    parse_file_fields(tokens.clone(), ctx.clone(), None)
+    parse_file_fields(tokens.clone(), ctx.clone(), None, None)
 }
 
 pub fn parse_file_fields(
     mut tokens: Rc<TokenStream>,
     mut ctx: Rc<ParseContext>,
     mut base_path: Option<Rc<Node>>,
+    mut verb: Option<Rc<Node>>,
 ) -> Rc<TransportResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -7185,7 +7186,7 @@ pub fn parse_file_fields(
                 ),
             };
             break Rc::new(TransportResult {
-                transport: file_transport_node(bp.clone(), span.clone()),
+                transport: file_transport_node(bp.clone(), verb.clone(), span.clone()),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
                 err: None,
@@ -7233,10 +7234,20 @@ pub fn parse_file_fields(
                     continue;
                 }
             } else {
-                {
-                    let __tco_0 = r3.ctx.clone();
-                    ctx = __tco_0;
-                    continue;
+                if (fname.clone() == "verb".to_string()) {
+                    {
+                        let __tco_0 = r3.ctx.clone();
+                        let __tco_1 = Some(r3.expr.clone());
+                        ctx = __tco_0;
+                        verb = __tco_1;
+                        continue;
+                    }
+                } else {
+                    {
+                        let __tco_0 = r3.ctx.clone();
+                        ctx = __tco_0;
+                        continue;
+                    }
                 }
             }
         }

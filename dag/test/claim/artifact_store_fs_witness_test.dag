@@ -5,7 +5,8 @@ import std.types { ContentHash, String }
 import std.content_hash { content_hash_atom }
 import std.artifact_store { ArtifactKey, artifact_key_hash }
 import extdeps.realization.artifact_store_fs {
-  artifact_fs_put, artifact_fs_get, ArtifactFsLookup, ArtifactFsHit, ArtifactFsMiss,
+  artifact_fs_put, artifact_fs_get, artifact_fs_delete, artifact_fs_list,
+  ArtifactFsLookup, ArtifactFsHit, ArtifactFsMiss,
 }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
@@ -33,6 +34,19 @@ test fn artifact_fs_roundtrip_holds() -> Bool {
     ArtifactFsMiss { path: _ } => false
   }
   put_ok && served
+}
+
+test fn artifact_fs_delete_then_misses_holds() -> Bool {
+  let key = stored_key(toolchain: "delete-case")
+  let put_ok = artifact_fs_put(store_root: fs_store_root, key: key, payload: "to-be-evicted")
+  let listed = artifact_fs_list(store_root: fs_store_root) |> any(e => string_contains(e, key))
+  let deleted = artifact_fs_delete(store_root: fs_store_root, key: key)
+  let missed = match artifact_fs_get(store_root: fs_store_root, key: key) {
+    ArtifactFsHit { payload: _ } => false
+    ArtifactFsMiss { path: _ } => true
+  }
+  let unlisted = (artifact_fs_list(store_root: fs_store_root) |> any(e => string_contains(e, key))) == false
+  put_ok && listed && deleted && missed && unlisted
 }
 
 test fn artifact_fs_mutated_input_misses_holds() -> Bool {

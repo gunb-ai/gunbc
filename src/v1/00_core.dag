@@ -890,9 +890,14 @@ fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: S
   }
 }
 
-fn file_transport_node(base_path: Node, span: SourceSpan) -> Node {
+fn file_transport_node(base_path: Node, verb: Node?, span: SourceSpan) -> Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
-  make_transport_node(properties: [path_field], children: [], body: none, span: span)
+  let props = match verb {
+    Present { value: verb_expr } =>
+      [path_field, make_field_init_node(name: "verb", value: verb_expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))]
+    Absent => [path_field]
+  }
+  make_transport_node(properties: props, children: [], body: none, span: span)
 }
 
 fn find_property(props: List<Node>, prop_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
