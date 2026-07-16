@@ -9,15 +9,29 @@ import v2.compiler.emit_host {
 }
 import v2.compiler.eval { Inputs, inputs_root_only }
 import v2.extdeps.languages.c {
+  c_emit_host_runtime_primitive_type_node,
   c_inject_fault_runtime_row,
   c_source_text,
   c_target_model
 }
 import v2.std.diagnostic { Accepted, Rejected, None }
 import v2.std.host_run { HostLogicalRun }
-import v2.std.host_transport { HostRuntimeRowAbsent, HostRuntimeRowPresent }
+import v2.std.host_transport {
+  EmitHostRuntimeRow,
+  FixedText,
+  FixedWidthBytes,
+  HostRuntimeRowAbsent,
+  HostRuntimeRowPresent,
+  HostToolProgram,
+  HostTransportDescriptor,
+  LiteralArg,
+  ProcessInvocation,
+  ProducedProgram,
+  WorkspaceFile
+}
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -40,6 +54,32 @@ fn c_run_source() -> Medium<String> {
 
 fn c_expected_add_stdout_octets() -> List<Int> {
   [0, 5, 0, 0, 0]
+}
+
+fn c_fixed_source_row(source_text: String) -> EmitHostRuntimeRow {
+  EmitHostRuntimeRow {
+    transport: HostTransportDescriptor {
+      identity: ^c_emit_host_run_probe_fixed,
+      workspace: [
+        WorkspaceFile {
+          path: "fixture.c",
+          content: FixedText { text: source_text }
+        }
+      ],
+      build: [
+        ProcessInvocation {
+          program: HostToolProgram { executable: "cc" },
+          args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+        }
+      ],
+      run: ProcessInvocation {
+        program: ProducedProgram { path: "fixture" },
+        args: []
+      },
+      runtime_value_codec: FixedWidthBytes { width: 5 }
+    },
+    runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+  }
 }
 
 test fn c_add_emit_host_green_run_holds() -> Bool {
@@ -87,7 +127,45 @@ test fn c_add_emit_host_inject_fault_refuses_holds() -> Bool {
   }
 }
 
+test fn c_add_emit_host_nonzero_exit_refuses_holds() -> Bool {
+  match run_host_process(
+    row: c_fixed_source_row(source_text: "int main(void) { return 3; }"),
+    target: c_target_model(),
+    source: c_run_source(),
+    fixture_inputs: c_run_inputs()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_add_emit_host_byte_width_mismatch_refuses_holds() -> Bool {
+  match run_host_process(
+    row: c_fixed_source_row(source_text: "extern long write(int, const void *, unsigned long);\nint main(void) { unsigned char b[4] = {0, 0, 0, 0}; write(1, b, 4); return 0; }"),
+    target: c_target_model(),
+    source: c_run_source(),
+    fixture_inputs: c_run_inputs()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted { value: HostLogicalRun { stdout: stdout }, diagnostics: None } =>
+          match runtime_value_parse(target: c_target_model(), stdout: stdout) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn c_add_emit_host_run_all_holds() -> Bool {
   c_add_emit_host_green_run_holds()
     && c_add_emit_host_inject_fault_refuses_holds()
+    && c_add_emit_host_nonzero_exit_refuses_holds()
+    && c_add_emit_host_byte_width_mismatch_refuses_holds()
 }
