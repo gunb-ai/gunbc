@@ -33,7 +33,6 @@ fn witness_claim_batch_wired() -> Bool {
   has(s: sh, p: "claim_batch")
     && has(s: sh, p: "run_generated_artifact_drift_gate_body")
     && has(s: sh, p: "main_wet")
-    // doc/artifact witnesses import v2.std.* — the batch must carry both source roots or it fails-closed on unresolved imports
     && has(s: sh, p: "--source-root dag --source-root src/v2 --entry")
 }
 
