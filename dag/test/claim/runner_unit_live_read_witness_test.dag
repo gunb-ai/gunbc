@@ -37,6 +37,7 @@ import gunbc.runner_unit_live_read {
   runner_unit_live_read_typed,
   memory_limit_to_cap_effectiveness,
   memory_limit_converge_verdict,
+  memory_limit_converge_verdict_for_bytes_value,
   converge_target_live_verdict,
   runner_unit_memory_max_drifts_against_cap,
   runner_unit_swap_max_converged,
@@ -234,6 +235,13 @@ fn witness_perturbed_fixture_read_diff_red_on_memory_max() -> Bool {
     && witness_drift_read_fails_memory_max_target()
 }
 
+fn witness_memory_limit_absent_routes_to_absent_verdict() -> Bool {
+  memory_limit_converge_verdict_for_bytes_value(
+    observed: MemoryLimitAbsent,
+    bytes_value: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
+  ) == Absent
+}
+
 fn witness_cap_effectiveness_projection_matches_runner_slot_type() -> Bool {
   let read = runner_unit_live_read_typed(row: matching_memory_max_row())
   match memory_limit_to_cap_effectiveness(lim: read.memory_max) {
@@ -259,5 +267,6 @@ test fn runner_unit_live_read_grounds_converge_target() -> Bool {
     && witness_matching_high_read_converges_on_desired()
     && witness_perturbed_fixture_read_diff_red_on_memory_max()
     && witness_target_bytes_value_is_single_authority()
+    && witness_memory_limit_absent_routes_to_absent_verdict()
     && witness_cap_effectiveness_projection_matches_runner_slot_type()
 }

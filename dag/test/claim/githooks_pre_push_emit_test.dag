@@ -2,7 +2,8 @@ module test.claim.githooks_pre_push_emit
 
 import gunbc.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.local_tidy_spec {
-  doc_reachability_trigger_globs, generated_artifact_trigger_globs, cargo_fmt_trigger_globs
+  doc_reachability_trigger_globs, generated_artifact_trigger_globs, cargo_fmt_trigger_globs,
+  layer_root_glob_prefixes
 }
 import extdeps.git.hooks { pre_push_zero_sha, pre_push_stdin_read_vars }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -33,12 +34,25 @@ fn witness_claim_batch_wired() -> Bool {
   has(s: sh, p: "claim_batch")
     && has(s: sh, p: "run_generated_artifact_drift_gate_body")
     && has(s: sh, p: "main_wet")
+    && has(s: sh, p: "--source-root dag --source-root src/v2 --entry")
 }
 
-fn witness_fmt_subsumed() -> Bool {
+fn witness_fmt_checked_non_invasive() -> Bool {
   let sh = expected_githooks_pre_push_sh()
   has(s: sh, p: "cargo fmt --all --check")
-    && has(s: sh, p: "chore: apply cargo fmt")
+    && !has(s: sh, p: "chore: apply cargo fmt")
+}
+
+fn witness_no_auto_commit() -> Bool {
+  !has(s: expected_githooks_pre_push_sh(), p: "git commit")
+}
+
+fn witness_affected_test_gate_wired() -> Bool {
+  let sh = expected_githooks_pre_push_sh()
+  has(s: sh, p: "NEED_WITNESS")
+    && has(s: sh, p: "ensure_executor")
+    && has(s: sh, p: "gunbc_ci_witness_corpus_only_batches")
+    && has(s: sh, p: "git push --no-verify")
 }
 
 fn witness_doc_witness_wired() -> Bool {
@@ -54,12 +68,20 @@ fn witness_trigger_globs_derived() -> Bool {
     && all(cargo_fmt_trigger_globs(), g => has(s: sh, p: concat(g, "*")))
 }
 
+fn witness_witness_trigger_globs() -> Bool {
+  let sh = expected_githooks_pre_push_sh()
+  all(layer_root_glob_prefixes(), g => has(s: sh, p: g))
+}
+
 test fn githooks_pre_push_emit_witnesses() -> Bool {
   witness_generated_header()
     && witness_zero_sha_from_authority()
     && witness_pre_push_stdin_row_fold()
     && witness_claim_batch_wired()
-    && witness_fmt_subsumed()
+    && witness_fmt_checked_non_invasive()
+    && witness_no_auto_commit()
+    && witness_affected_test_gate_wired()
     && witness_doc_witness_wired()
     && witness_trigger_globs_derived()
+    && witness_witness_trigger_globs()
 }
