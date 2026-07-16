@@ -1,24 +1,13 @@
-module std.compilation_unit
+module v2.std.compilers.compilation_unit
 
 import std.types { ContentHash, NonEmptyStr, List, Bool, String }
-import std.decl_ref { DeclarationRef }
-import std.interface_summary {
-  InterfaceSummary,
-  ExportEntry,
-  ExportFn,
-  contract_absent,
-}
-import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
-import std.graph {
-  CallGraph,
-  GraphEdge,
-  graph_has_multi_node_scc,
-  DfsFinishAcc,
-  SccComponentAcc,
-  build_adjacency_views,
-  dfs_finish_order,
-  dfs_collect_component,
-}
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.interface_summary { InterfaceSummary, ExportEntry }
+import std.disposition { SingleAuthority }
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import v2.std.algebra { any }
+import v2.std.collection { Absent, Optional, Present, map_get }
+import v2.std.diagnostic { Accepted, Rejected }
 
 type ModuleId = NonEmptyStr where brand("ModuleId")
 type CompilationUnitId = ContentHash where brand("CompilationUnitId")
@@ -47,20 +36,29 @@ type CompilationUnit {
   artifact: CompilationUnitArtifactId
 }
 
-type PartitionValidityCause
-  = UnmappedModule { module: ModuleId }
-  | UnlistedAssignmentModule { module: ModuleId }
-  | UnitDependencyCycle
-  | StronglyConnectedComponentSplit {
-      component: List<ModuleId>
-      unit_ids: List<CompilationUnitId>
+type PartitionR4ValidityCause {
+  tag: NonEmptyStr
+  detail: String
+}
+
+type PartitionR4ValidityVerdict
+  = PartitionR4Valid
+  | PartitionR4Refused { cause: PartitionR4ValidityCause }
+
+data compilation_unit_home_note: String = "Shared home for the agnostic unit of separate compilation and linkage (crate / translation-unit / package / assembly are target nicknames). partition_fold is the sole producer of interface + deps; members and artifact identity are inputs via the assignment map. R4 validity is an interface only — each target realization supplies validate_partition_r4; this module never bakes acyclicity or SCC policy."
+
+data partition_r4_validity_interface_note: String = "R4 validity interface (locked 2026-07-16, eager-ferret-110): realizations implement fn validate_partition_r4(module_dag: ModuleDag, assignment: Map<ModuleId, CompilationUnitId>, units: List<CompilationUnit>) -> PartitionR4ValidityVerdict. Rust realization refuses SCC-split and cyclic unit graphs; C realization is permissive on linkage cycles. The home exposes only PartitionR4ValidityVerdict + PartitionR4ValidityCause carriers — never a hardcoded acyclic check here."
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallNow {
+    mechanism: SingleAuthority,
+    authority: DeclarationRef {
+      module_path: "v2.std.compilers.compilation_unit",
+      decl_name: "partition_fold",
+      field: WholeDeclaration,
     }
-
-type PartitionValidityVerdict
-  = PartitionValid
-  | PartitionRefused { cause: PartitionValidityCause }
-
-data partition_r4_validity_interface_note: String = "Shared R4 validity interface (emitted-crate-partition-design §2/§5/§13): realizations supply target-specific predicates on top of partition_validity_shared. Rust R4 adds StronglyConnectedComponentSplit refusal (SCC atoms must not span units) via partition_validity_scc_atoms_coherent; C realization permits link cycles and omits acyclicity. The verdict/cause carriers are agnostic; only which checks run is realization-specific."
+  }
+}
 
 fn partition_provenance_hand_explicit() -> PartitionProvenance {
   HandExplicit
@@ -85,18 +83,25 @@ fn partition_provenance_eq(left: PartitionProvenance, right: PartitionProvenance
   }
 }
 
+fn partition_r4_validity_verdict_valid(verdict: PartitionR4ValidityVerdict) -> Bool {
+  match verdict {
+    PartitionR4Valid => true
+    PartitionR4Refused { cause: _ } => false
+  }
+}
+
 fn compilation_unit_artifact_id(unit_id: CompilationUnitId) -> CompilationUnitArtifactId {
-  content_hash_tagged(
-    tag: "compilation-unit-artifact",
-    payload: unit_id
-  )
+  unit_id as CompilationUnitArtifactId
 }
 
 fn module_unit_id(
   assignment: Map<ModuleId, CompilationUnitId>,
   module: ModuleId
-) -> CompilationUnitId? {
-  map_get(assignment, module)
+) -> Optional<CompilationUnitId> {
+  match map_get(assignment, module) {
+    Accepted { value: opt, diagnostics: _ } => opt
+    Rejected { diagnostics: _ } => Absent
+  }
 }
 
 fn module_in_unit(
@@ -104,14 +109,14 @@ fn module_in_unit(
   module: ModuleId,
   unit_id: CompilationUnitId
 ) -> Bool {
-  match map_get(assignment, module) {
+  match module_unit_id(assignment: assignment, module: module) {
     Present { value: assigned } => assigned == unit_id
     Absent => false
   }
 }
 
 fn list_snoc_unique(items: List<CompilationUnitId>, item: CompilationUnitId) -> List<CompilationUnitId> {
-  if items |> any(id => id == item) {
+  if any(xs: items, predicate: fn(id) { id == item }) {
     items
   } else {
     items |> list_push(item)
@@ -119,7 +124,7 @@ fn list_snoc_unique(items: List<CompilationUnitId>, item: CompilationUnitId) -> 
 }
 
 fn list_snoc_unique_module(items: List<ModuleId>, item: ModuleId) -> List<ModuleId> {
-  if items |> any(id => id == item) {
+  if any(xs: items, predicate: fn(id) { id == item }) {
     items
   } else {
     items |> list_push(item)
@@ -127,7 +132,7 @@ fn list_snoc_unique_module(items: List<ModuleId>, item: ModuleId) -> List<Module
 }
 
 fn list_snoc_unique_export(items: List<ExportEntry>, item: ExportEntry) -> List<ExportEntry> {
-  if items |> any(entry => entry.name == item.name) {
+  if any(xs: items, predicate: fn(entry) { entry.name == item.name }) {
     items
   } else {
     items |> list_push(item)
@@ -137,12 +142,6 @@ fn list_snoc_unique_export(items: List<ExportEntry>, item: ExportEntry) -> List<
 fn list_unique_sorted_ids(items: List<CompilationUnitId>) -> List<CompilationUnitId> {
   items
     |> fold(init: [], f: fn(acc, item) { list_snoc_unique(items: acc, item: item) })
-    |> sort_by(id => id)
-}
-
-fn list_unique_sorted_modules(items: List<ModuleId>) -> List<ModuleId> {
-  items
-    |> fold(init: [], f: fn(acc, item) { list_snoc_unique_module(items: acc, item: item) })
     |> sort_by(id => id)
 }
 
@@ -160,12 +159,12 @@ fn partition_unit_dep_from_edge(
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
   edge: ModuleDagEdge
-) -> CompilationUnitId? {
+) -> Optional<CompilationUnitId> {
   if module_in_unit(assignment: assignment, module: edge.from, unit_id: unit_id)
     && !module_in_unit(assignment: assignment, module: edge.to, unit_id: unit_id) {
     module_unit_id(assignment: assignment, module: edge.to)
   } else {
-    none
+    Absent
   }
 }
 
@@ -189,17 +188,24 @@ fn module_interface_exports(
   module: ModuleId
 ) -> List<ExportEntry> {
   match map_get(module_dag.interfaces, module) {
-    Present { value: summary } => summary.exports
-    Absent => []
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: summary } => summary.exports
+        Absent => []
+      }
+    Rejected { diagnostics: _ } => []
   }
+}
+
+fn export_entry_sort_key(entry: ExportEntry) -> NonEmptyStr {
+  entry.name
 }
 
 fn export_referenced_from_outside_unit(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
-  member: ModuleId,
-  export_entry: ExportEntry
+  member: ModuleId
 ) -> Bool {
   module_dag.edges |> any(edge =>
     (edge.to == member)
@@ -220,8 +226,7 @@ fn partition_unit_interface_exports_for_member(
         module_dag: module_dag,
         assignment: assignment,
         unit_id: unit_id,
-        member: member,
-        export_entry: export_entry
+        member: member
       ) {
         list_snoc_unique_export(items: inner, item: export_entry)
       } else {
@@ -246,7 +251,7 @@ fn partition_unit_interface(
         acc: acc
       )
     })
-    |> sort_by(entry => entry.name)
+    |> sort_by(export_entry_sort_key)
 }
 
 fn compilation_unit_from_partition(
@@ -291,130 +296,49 @@ fn partition_fold(
     )
 }
 
-fn partition_validity_verdict_valid(verdict: PartitionValidityVerdict) -> Bool {
-  match verdict {
-    PartitionValid => true
-    PartitionRefused { cause: _ } => false
-  }
-}
-
-fn partition_validity_assignment_complete(
-  module_dag: ModuleDag,
-  assignment: Map<ModuleId, CompilationUnitId>
-) -> PartitionValidityVerdict {
-  let unmapped = module_dag.modules |> filter(module =>
-    match map_get(assignment, module) {
-      Absent => true
-      Present { value: _ } => false
-    }
-  )
-  match unmapped |> first {
-    Present { value: module } =>
-      PartitionRefused { cause: UnmappedModule { module: module } }
-    Absent =>
-      match (map_keys(assignment) |> filter(module =>
-        !module_dag.modules |> any(declared => declared == module)
-      )) |> first {
-        Present { value: module } =>
-          PartitionRefused { cause: UnlistedAssignmentModule { module: module } }
-        Absent => PartitionValid
-      }
-  }
-}
-
-fn unit_dependency_graph_edges(units: List<CompilationUnit>) -> List<GraphEdge> {
-  units |> flat_map(unit =>
-    unit.deps |> map(dep => GraphEdge { caller: unit.id, callee: dep })
-  )
-}
-
-fn partition_validity_unit_dependency_acyclic(
-  units: List<CompilationUnit>
-) -> PartitionValidityVerdict {
-  let names = units |> map(unit => unit.id)
-  if graph_has_multi_node_scc(
-    names: names,
-    graph: CallGraph { edges: unit_dependency_graph_edges(units: units) }
-  ) {
-    PartitionRefused { cause: UnitDependencyCycle }
-  } else {
-    PartitionValid
-  }
-}
-
-fn partition_validity_shared(
+fn partition_boundary_dep_targets(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
-  units: List<CompilationUnit>
-) -> PartitionValidityVerdict {
-  match partition_validity_assignment_complete(module_dag: module_dag, assignment: assignment) {
-    PartitionRefused { cause: cause } => PartitionRefused { cause: cause }
-    PartitionValid =>
-      partition_validity_unit_dependency_acyclic(units: units)
+  unit_id: CompilationUnitId
+) -> List<CompilationUnitId> {
+  partition_unit_deps(
+    module_dag: module_dag,
+    assignment: assignment,
+    unit_id: unit_id
+  )
+}
+
+fn partition_unit_by_id(
+  units: List<CompilationUnit>,
+  unit_id: CompilationUnitId
+) -> Optional<CompilationUnit> {
+  match units |> filter(unit => unit.id == unit_id) |> first {
+    Present { value: unit } => Present { value: unit }
+    Absent => Absent
   }
 }
 
-type SccCoherenceAcc {
-  visited: Set<String>
-  verdict: PartitionValidityVerdict
-}
-
-fn scc_component_unit_ids(
-  component: List<String>,
-  assignment: Map<ModuleId, CompilationUnitId>
-) -> List<CompilationUnitId> {
-  component
-    |> fold(init: [], f: fn(acc, member) {
-      match module_unit_id(assignment: assignment, module: member) {
-        Present { value: unit_id } => list_snoc_unique(items: acc, item: unit_id)
-        Absent => acc
-      }
-    })
-    |> sort_by(id => id)
-}
-
-fn partition_validity_scc_atoms_coherent(
+fn partition_fold_deps_match_boundary_edges(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>
-) -> PartitionValidityVerdict {
-  let names = module_dag.modules |> map(module => module)
-  let graph = CallGraph {
-    edges: module_dag.edges |> map(edge => GraphEdge { caller: edge.from, callee: edge.to })
-  }
-  let adjacency = build_adjacency_views(names: names, graph: graph)
-  let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
-    dfs_finish_order(node: name, adjacency: adjacency.forward, acc: acc)
-  )
-  finish.order |> reverse |> fold(
-    init: SccCoherenceAcc { visited: empty_set(), verdict: PartitionValid },
-    f: (acc, name) => {
-      match acc.verdict {
-        PartitionRefused { cause: _ } => acc
-        PartitionValid =>
-          if set_contains(acc.visited, name) {
-            acc
-          } else {
-            let component = dfs_collect_component(
-              node: name,
-              adjacency: adjacency.reverse,
-              acc: SccComponentAcc { visited: acc.visited, members: [] }
+) -> Bool {
+  let units = partition_fold(module_dag: module_dag, assignment: assignment)
+  list_unique_sorted_ids(items: assignment |> map_values)
+    |> fold(init: true, f: fn(ok, unit_id) {
+      if !ok {
+        false
+      } else {
+        match partition_unit_by_id(units: units, unit_id: unit_id) {
+          Present { value: unit } => {
+            let expected = partition_boundary_dep_targets(
+              module_dag: module_dag,
+              assignment: assignment,
+              unit_id: unit_id
             )
-            let members = component.members
-            let unit_ids = scc_component_unit_ids(component: members, assignment: assignment)
-            let next_verdict =
-              if (members |> count) > 1 && (unit_ids |> count) > 1 {
-                PartitionRefused {
-                  cause: StronglyConnectedComponentSplit {
-                    component: members |> sort_by(member => member),
-                    unit_ids: unit_ids
-                  }
-                }
-              } else {
-                PartitionValid
-              }
-            SccCoherenceAcc { visited: component.visited, verdict: next_verdict }
+            unit.deps == expected
           }
+          Absent => false
+        }
       }
-    }
-  ).verdict
+    })
 }
