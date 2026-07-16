@@ -1,28 +1,48 @@
 module v2.std.algebra
 
 import v2.std.node { Atom, Arrow, Conj, Disj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import std.algebra {
-  AbelianGroup,
-  BooleanAlgebra,
-  BoundedLattice,
-  CommutativeMonoid,
-  CommutativeSemiring,
-  Cons,
-  Empty,
-  Equal,
-  Field,
-  FreeMonoid,
-  Greater,
-  Group,
-  Lattice,
-  Less,
-  Magma,
-  Monoid,
-  OrderedRing,
-  Ordering,
-  Ring,
-  Semigroup,
-  Semiring,
+import std.algebra { FreeMonoid, Empty, Cons }
+type Magma<T> {
+  op: fn(T, T) -> T
+}
+type Semigroup<T> {
+  magma: Magma<T>
+}
+type Monoid<T> {
+  semigroup: Semigroup<T>
+  identity: T
+}
+type CommutativeMonoid<T> {
+  monoid: Monoid<T>
+}
+type Group<T> {
+  monoid: Monoid<T>
+  inverse: fn(T) -> T
+}
+type AbelianGroup<T> {
+  group: Group<T>
+}
+type Semiring<T> {
+  add: CommutativeMonoid<T>
+  mul: Monoid<T>
+}
+type CommutativeSemiring<T> {
+  semiring: Semiring<T>
+}
+type Ring<T> {
+  add: AbelianGroup<T>
+  mul: Monoid<T>
+}
+type CommutativeRing<T> {
+  ring: Ring<T>
+}
+type OrderedRing<T> {
+  ring: Ring<T>
+  compare: fn(T, T) -> Ordering
+}
+type Field<T> {
+  commutative_ring: CommutativeRing<T>
+  reciprocal: fn(T) -> T
 }
 
 type ApproximateField<T> {
@@ -32,6 +52,19 @@ type ApproximateField<T> {
   mul: fn(T, T) -> T
   one: T
   compare: fn(T, T) -> Ordering
+}
+type Lattice<T> {
+  meet: fn(T, T) -> T
+  join: fn(T, T) -> T
+}
+type BoundedLattice<T> {
+  lattice: Lattice<T>
+  top: T
+  bottom: T
+}
+type BooleanAlgebra<T> {
+  bounded_lattice: BoundedLattice<T>
+  complement: fn(T) -> T
 }
 
 type Equivalence<T> {
@@ -779,6 +812,10 @@ type PointwisePower<T> {
   member: fn(T) -> Bool
 }
 
+type Ordering
+  = Less
+  | Equal
+  | Greater
 type Homomorphism<C, Source, Target> {
   source: C<Source>
   target: C<Target>
