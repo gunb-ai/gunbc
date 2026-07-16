@@ -25,6 +25,7 @@ import v2.workflow.locality_affinity {
   AffinityRefused,
   ConsumerBatch,
   TrafficAffinityRefused,
+  TrafficBatchAssignmentConflict,
   TrafficBatchAssignmentMissing,
   TrafficPriced,
   TrafficPricingRefused,
@@ -176,6 +177,12 @@ data locality_missing_assignment: List<ConsumerBatch> = [
   ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 }
 ]
 
+data locality_conflicting_assignment: List<ConsumerBatch> = [
+  ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 },
+  ConsumerBatch { consumer: locality_consumer_b_hash, batch: 1 },
+  ConsumerBatch { consumer: locality_consumer_b_hash, batch: 0 }
+]
+
 fn witness_derive_affinity_claims_smallest_fitting_level() -> Bool {
   match derive_affinity(operand: locality_shared_hash, flows: locality_flows, domain: locality_domain) {
     AffinityClaim { operand: op, level: lvl, footprint: fp, consumers: cs } =>
@@ -300,6 +307,26 @@ fn witness_missing_batch_assignment_refuses_typed() -> Bool {
   }
 }
 
+fn witness_conflicting_batch_assignment_refuses_typed() -> Bool {
+  match price_operand_traffic(
+    operand: locality_shared_hash,
+    flows: locality_flows,
+    domain: locality_domain,
+    assignment: locality_conflicting_assignment
+  ) {
+    TrafficPricingRefused {
+      operand: op,
+      cause: TrafficBatchAssignmentConflict { operand: _, consumer: conflicted, first: f, second: s }
+    } =>
+      op == locality_shared_hash
+        && conflicted == locality_consumer_b_hash
+        && f == 1
+        && s == 0
+    TrafficPricingRefused { operand: _, cause: _ } => false
+    TrafficPriced { account: _, crossings: _ } => false
+  }
+}
+
 fn witness_refused_affinity_propagates_typed() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
@@ -326,5 +353,6 @@ test fn locality_affinity_witnesses() -> Bool {
     && witness_co_batch_prices_single_load()
     && witness_split_batch_prices_double_load()
     && witness_missing_batch_assignment_refuses_typed()
+    && witness_conflicting_batch_assignment_refuses_typed()
     && witness_refused_affinity_propagates_typed()
 }

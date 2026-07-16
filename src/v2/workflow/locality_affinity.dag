@@ -112,14 +112,25 @@ type ConsumerBatch {
   batch: Int
 }
 
-fn batch_for_consumer(assignment: List<ConsumerBatch>, consumer: ContentHash) -> Optional<Int> {
-  fold(assignment, init: optional_absent(), f: fn(found, cb) {
+type BatchLookup
+  = BatchLookupFound { batch: Int }
+  | BatchLookupMissing
+  | BatchLookupConflict { first: Int, second: Int }
+
+fn batch_for_consumer(assignment: List<ConsumerBatch>, consumer: ContentHash) -> BatchLookup {
+  fold(assignment, init: BatchLookupMissing, f: fn(found, cb) {
     match found {
-      Present { value: _ } => found
-      Absent => if cb.consumer == consumer {
-        optional_present(value: cb.batch)
+      BatchLookupConflict { first: _, second: _ } => found
+      BatchLookupFound { batch: b } =>
+        if cb.consumer == consumer && !(cb.batch == b) {
+          BatchLookupConflict { first: b, second: cb.batch }
+        } else {
+          found
+        }
+      BatchLookupMissing => if cb.consumer == consumer {
+        BatchLookupFound { batch: cb.batch }
       } else {
-        optional_absent()
+        BatchLookupMissing
       }
     }
   })
@@ -132,18 +143,21 @@ fn list_contains_int(xs: List<Int>, v: Int) -> Bool {
 type BatchCollectResult
   = BatchCollectOk { batches: List<Int> }
   | BatchCollectMissing { consumer: ContentHash }
+  | BatchCollectConflict { consumer: ContentHash, first: Int, second: Int }
 
 fn distinct_batches_for_consumers(consumers: List<ContentHash>, assignment: List<ConsumerBatch>) -> BatchCollectResult {
   fold(consumers, init: BatchCollectOk { batches: [] }, f: fn(acc, consumer) {
     match acc {
       BatchCollectMissing { consumer: c } => BatchCollectMissing { consumer: c }
+      BatchCollectConflict { consumer: c, first: f, second: s } => BatchCollectConflict { consumer: c, first: f, second: s }
       BatchCollectOk { batches: bs } =>
         match batch_for_consumer(assignment: assignment, consumer: consumer) {
-          Present { value: b } =>
+          BatchLookupFound { batch: b } =>
             BatchCollectOk {
               batches: if list_contains_int(xs: bs, v: b) { bs } else { concat(bs, [b]) }
             }
-          Absent => BatchCollectMissing { consumer: consumer }
+          BatchLookupMissing => BatchCollectMissing { consumer: consumer }
+          BatchLookupConflict { first: f, second: s } => BatchCollectConflict { consumer: consumer, first: f, second: s }
         }
     }
   })
@@ -157,6 +171,7 @@ type TrafficAccountRow {
 type TrafficPricingRefusalCause
   = TrafficAffinityRefused { operand: ContentHash, cause: AffinityRefusalCause }
   | TrafficBatchAssignmentMissing { operand: ContentHash, consumer: ContentHash }
+  | TrafficBatchAssignmentConflict { operand: ContentHash, consumer: ContentHash, first: Int, second: Int }
 
 type TrafficPricing
   = TrafficPriced { account: TrafficAccountRow, crossings: Int }
@@ -175,6 +190,11 @@ fn price_operand_traffic(
       match distinct_batches_for_consumers(consumers: cs, assignment: assignment) {
         BatchCollectMissing { consumer: missing } =>
           TrafficPricingRefused { operand: op, cause: TrafficBatchAssignmentMissing { operand: op, consumer: missing } }
+        BatchCollectConflict { consumer: conflicted, first: f, second: s } =>
+          TrafficPricingRefused {
+            operand: op,
+            cause: TrafficBatchAssignmentConflict { operand: op, consumer: conflicted, first: f, second: s }
+          }
         BatchCollectOk { batches: bs } =>
           let crossings = length(xs: bs)
           let bytes = fold(bs, init: byte_size(count: 0), f: fn(acc, _b) { measure_add(a: acc, b: fp) })
