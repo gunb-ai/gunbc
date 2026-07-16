@@ -25,6 +25,8 @@ pub type ModuleKey = NonEmptyStr;
 
 pub type SignatureFingerprint = NonEmptyStr;
 
+pub type TypedModuleKey = NonEmptyStr;
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum InterfaceContract {
@@ -148,6 +150,23 @@ pub fn module_key(
                 content_hash_combine(acc, import_hash.clone()),
             )
         },
+    )
+}
+
+pub fn typed_module_key_note() -> NonEmptyStr {
+    thread_local! {
+        static CACHED: NonEmptyStr = {
+            serde_json::from_value(serde_json::json!("A typed module's content-key = its interface module_key (source hash + direct-import interface hashes) + the compiler's own identity. The compiler is itself an input to the typed result (a seed regen changes inference), so a memo keyed on module_key alone would serve a stale typed module across a rebuild. compiler_identity is consumed here, not authored here — its derivation is the store realization's concern. This is the pure key for the cross-entry typed-module memo (docs/plans/cross-entry-typed-module-memo-sketch.md); the store, eviction, and ComputationIdentity wrapping land downstream."))
+                .expect("valid data definition")
+        };
+    }
+    CACHED.with(|c: &NonEmptyStr| c.clone())
+}
+
+pub fn typed_module_key(interface_key: ContentHash, compiler_identity: NonEmptyStr) -> ContentHash {
+    content_hash_tagged(
+        "typed-module-compiler".to_string(),
+        content_hash_combine(interface_key.clone(), compiler_identity.clone()),
     )
 }
 
