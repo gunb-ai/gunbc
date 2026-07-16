@@ -3,19 +3,16 @@ module v2.workflow.locality_affinity
 import std.machine_shape { ExecutionDomain, LevelId, MemoryLevel }
 import std.measure { ByteSize, byte_size, measure_add, measure_le }
 import std.types { ContentHash, Int }
-import v2.std.algebra { length }
+import v2.std.algebra { any, length }
 import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.dependency { DependencyView }
 import v2.std.logic { Bool }
+import v2.std.materialize { hashes_contain }
 import v2.std.node { content_hash }
 import v2.workflow.operand_flow { OperandFlow, OperandFlowRefused, OperandFlowRefusalCause, OperandFlowRow }
 
-fn list_contains_hash(xs: List<ContentHash>, v: ContentHash) -> Bool {
-  fold(xs, init: false, f: fn(acc, x) { acc || (x == v) })
-}
-
 fn list_add_distinct_hash(xs: List<ContentHash>, v: ContentHash) -> List<ContentHash> {
-  if list_contains_hash(xs: xs, v: v) { xs } else { concat(xs, [v]) }
+  if hashes_contain(hs: xs, h: v) { xs } else { concat(xs, [v]) }
 }
 
 data locality_affinity_module_note: String = "Phase 3 of machine-shape-orthogonal-scheduling.md §5: affinity is derived topology, never a stored preference. derive_affinity groups a shared operand's OperandFlow rows against one ExecutionDomain's memory tower and claims the smallest level (walked outward per MemoryShape's ordering) whose capacity admits the whole footprint -- the operand's residency window. price_operand_traffic then prices a concrete batch assignment against that claim: consumers landing in the same batch cross the level boundary once (the operand stays resident across their execution, one TrafficAccountRow at footprint bytes); consumers split across batches each force a fresh crossing, so the double load is visible in the account's bytes, not merely asserted (§5 acceptance). Every refusal is typed and located (DESIGN §5): an unresolved operand edge, a footprint that fits no level in the tower, or a consumer missing from the batch assignment each refuse rather than default to a guessed placement -- no affinity claim and no priced account survive a refused input."
@@ -136,10 +133,6 @@ fn batch_for_consumer(assignment: List<ConsumerBatch>, consumer: ContentHash) ->
   })
 }
 
-fn list_contains_int(xs: List<Int>, v: Int) -> Bool {
-  fold(xs, init: false, f: fn(acc, x) { acc || (x == v) })
-}
-
 type BatchCollectResult
   = BatchCollectOk { batches: List<Int> }
   | BatchCollectMissing { consumer: ContentHash }
@@ -154,7 +147,7 @@ fn distinct_batches_for_consumers(consumers: List<ContentHash>, assignment: List
         match batch_for_consumer(assignment: assignment, consumer: consumer) {
           BatchLookupFound { batch: b } =>
             BatchCollectOk {
-              batches: if list_contains_int(xs: bs, v: b) { bs } else { concat(bs, [b]) }
+              batches: if any(xs: bs, predicate: fn(x) { x == b }) { bs } else { concat(bs, [b]) }
             }
           BatchLookupMissing => BatchCollectMissing { consumer: consumer }
           BatchLookupConflict { first: f, second: s } => BatchCollectConflict { consumer: consumer, first: f, second: s }
