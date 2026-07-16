@@ -15,6 +15,8 @@ mod body_producer_infer_perf_witness_test;
 #[cfg(test)]
 mod bug_sentinel_ratchet;
 #[cfg(test)]
+mod c_compilation_unit_witness_exec_test;
+#[cfg(test)]
 mod cache_purity_oracle_test;
 #[cfg(test)]
 mod compile_clean_diagnostic_authority_test;
@@ -74,8 +76,6 @@ mod interp_wire_serialize_test;
 mod interpreted_parse_termination_test;
 #[cfg(test)]
 mod ir_fixture_seam_soundness_test;
-#[cfg(test)]
-mod c_compilation_unit_witness_exec_test;
 #[cfg(test)]
 mod kernel_shadow_seams_test;
 #[cfg(test)]
