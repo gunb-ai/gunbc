@@ -5939,8 +5939,7 @@ fn map_file_outputs(
 /// credential requires (RFC 7617). Hand-rolled to keep the shrinking bootstrap seed free of a
 /// direct base64 dependency; deterministic and total over any byte slice.
 fn base64_encode_std(input: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
     for chunk in input.chunks(3) {
         let b0 = chunk[0] as u32;
@@ -6075,6 +6074,36 @@ fn dispatch_rest(
     )
     .unwrap_or_else(|| "Json".to_string());
 
+    // TLS posture (extdeps.transports.rest TlsPosture). Absent = VerifyPeer, the fail-closed
+    // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution of
+    // curl's `-k` for self-signed BMC endpoints; its interpreter realization (a no-verify rustls
+    // agent) is STAGED pending the operator's realization-approach decision (accept-any verifier
+    // in-seed vs. emit-only vs. pinned-cert). Until then a present InsecureAcceptAnyCert is a typed
+    // refusal — the axis fails closed and is witnessable, never a silent no-op that would send
+    // under VerifyPeer while the row asked for insecure. An unrecognized posture also refuses.
+    if let Some(tls_node) =
+        find_property(transport.properties.clone(), "tls".to_string(), si.clone())
+    {
+        let posture = authored_name_at(si.clone(), tls_node);
+        match posture.as_str() {
+            "VerifyPeer" => {}
+            "InsecureAcceptAnyCert" => {
+                return Err(InterpError::TypeError {
+                    msg:
+                        "rest transport tls: InsecureAcceptAnyCert is modeled but its interpreter \
+                          realization is staged pending the realization-approach decision — the \
+                          axis fails closed rather than send under VerifyPeer or bypass silently"
+                            .to_string(),
+                });
+            }
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!("rest transport tls: unrecognized posture '{}'", other),
+                });
+            }
+        }
+    }
+
     trace_emit(
         OutputChannel::ShellTrace,
         &format!("[rest] {} {}", method, url),
@@ -6115,9 +6144,11 @@ fn dispatch_rest(
     // present `auth_basic` with a non-record shape, a missing username/password field, or a
     // non-Str credential value is a typed refusal, never an unauthenticated send or a
     // stringified-debug header.
-    if let Some(basic_node) =
-        find_property(transport.properties.clone(), "auth_basic".to_string(), si.clone())
-    {
+    if let Some(basic_node) = find_property(
+        transport.properties.clone(),
+        "auth_basic".to_string(),
+        si.clone(),
+    ) {
         if let AuthResolution::Resolved { .. } = auth {
             return Err(InterpError::TypeError {
                 msg: "rest transport declares both config-level auth and auth_basic — one auth \
@@ -6146,7 +6177,10 @@ fn dispatch_rest(
         }
         match (username, password) {
             (Some(u), Some(p)) => {
-                let header_val = format!("Basic {}", base64_encode_std(format!("{}:{}", u, p).as_bytes()));
+                let header_val = format!(
+                    "Basic {}",
+                    base64_encode_std(format!("{}:{}", u, p).as_bytes())
+                );
                 request = request.set("Authorization", &header_val);
             }
             _ => {

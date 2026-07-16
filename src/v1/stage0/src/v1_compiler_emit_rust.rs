@@ -140,10 +140,11 @@ pub use crate::v1_std_core::{
     module_items, param_node_default_value, param_node_name_at, param_node_type_expr,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value,
     service_config_auth, service_config_auth_input, service_config_auth_source,
-    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_header_name,
-    transport_auth_token, transport_base_url, transport_env, transport_has_auth, transport_headers,
-    transport_method, transport_path_template, transport_query, transport_request_body,
-    transport_response_format, transport_stdin, tuple_type_name, with_required_cardinality,
+    service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_basic,
+    transport_auth_header_name, transport_auth_token, transport_base_url, transport_env,
+    transport_has_auth, transport_headers, transport_method, transport_path_template,
+    transport_query, transport_request_body, transport_response_format, transport_stdin,
+    transport_tls_posture, tuple_type_name, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -21542,9 +21543,7 @@ pub fn emit_rest_call(
     env: Rc<TypeEnv>,
 ) -> String {
     {
-        let client_init =
-            "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
-                .to_string();
+        let client_init = emit_rest_client_init(transport.clone(), source_indices.clone());
         let url_line =
             emit_rest_url_line(transport.clone(), op_name.clone(), source_indices.clone());
         let http_method = emit_rest_http_method(transport.clone(), source_indices.clone());
@@ -21554,6 +21553,7 @@ pub fn emit_rest_call(
             http_method.clone(),
             source_indices.clone(),
         );
+        let basic_auth_line = emit_rest_basic_auth_line(transport.clone(), source_indices.clone());
         let query_line = emit_rest_query_line(
             transport.clone(),
             corpus_repr.clone(),
@@ -21602,6 +21602,7 @@ pub fn emit_rest_call(
                         client_init.clone(),
                         url_line.clone(),
                         auth_line.clone(),
+                        basic_auth_line.clone(),
                     ]),
                     header_lines.clone(),
                 ),
@@ -21622,6 +21623,102 @@ pub fn emit_rest_call(
             __result
         });
         all_lines.clone().join(&"\n".to_string())
+    }
+}
+
+pub fn emit_rest_client_init(
+    transport: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match transport_tls_posture(transport.clone(), source_indices.clone()) {
+        Some(p) => {
+            if (p.clone() == "InsecureAcceptAnyCert".to_string()) {
+                "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").danger_accept_invalid_certs(true).build()?;".to_string()
+            } else {
+                if (p.clone() == "VerifyPeer".to_string()) {
+                    "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
+                        .to_string()
+                } else {
+                    v1_rt::concat(v1_rt::concat("compile_error!(\"rest transport tls: unrecognized posture '".to_string(), p.clone()), "'\"); let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;".to_string())
+                }
+            }
+        }
+        None => "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
+            .to_string(),
+    }
+}
+
+pub fn emit_rest_basic_auth_line(
+    transport: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match transport_auth_basic(transport.clone(), source_indices.clone()) {
+        Some(b) => {
+            let user_field = Rc::new({
+                let mut __result = Vec::new();
+                for fi in b.children.clone().iter().cloned() {
+                    if (field_init_node_name_at(fi.clone(), source_indices.clone())
+                        == "username".to_string())
+                    {
+                        __result.push(fi);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned();
+            let pass_field = Rc::new({
+                let mut __result = Vec::new();
+                for fi in b.children.clone().iter().cloned() {
+                    if (field_init_node_name_at(fi.clone(), source_indices.clone())
+                        == "password".to_string())
+                    {
+                        __result.push(fi);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned();
+            match user_field.clone() {
+                Some(uf) => match pass_field.clone() {
+                    Some(pf) => {
+                        let user_expr = emit_simple_expr(
+                            field_init_node_value(uf.clone()),
+                            RenderTarget::Rust,
+                            source_indices.clone(),
+                        );
+                        let pass_expr = emit_simple_expr(
+                            field_init_node_value(pf.clone()),
+                            RenderTarget::Rust,
+                            source_indices.clone(),
+                        );
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "let request = request.basic_auth(".to_string(),
+                                        user_expr.clone(),
+                                    ),
+                                    ", Some(".to_string(),
+                                ),
+                                pass_expr.clone(),
+                            ),
+                            "));".to_string(),
+                        )
+                    }
+                    None => {
+                        "compile_error!(\"auth_basic requires both username and password fields\");"
+                            .to_string()
+                    }
+                },
+                None => {
+                    "compile_error!(\"auth_basic requires both username and password fields\");"
+                        .to_string()
+                }
+            }
+        }
+        None => "".to_string(),
     }
 }
 
