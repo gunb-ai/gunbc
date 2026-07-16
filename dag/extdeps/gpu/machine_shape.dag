@@ -11,6 +11,15 @@ import std.machine_shape {
   execution_shape_independent_lanes,
 }
 import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities"
+  }
+}
 
 type ShapeFromCatalogInput
   = FromGpuModelCatalog { domain: DomainId, device_level: LevelId, row: GpuModelCatalogRow }
