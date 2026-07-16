@@ -27,15 +27,19 @@ type AffinityCollectAcc
   = AffinityCollectOk { footprint: Optional<ByteSize>, consumers: List<ContentHash> }
   | AffinityCollectRefused { cause: AffinityRefusalCause }
 
-fn affinity_collect_step(acc: AffinityCollectAcc, row: OperandFlowRow) -> AffinityCollectAcc {
+fn affinity_collect_step(expected: ContentHash, acc: AffinityCollectAcc, row: OperandFlowRow) -> AffinityCollectAcc {
   match acc {
     AffinityCollectRefused { cause: c } => AffinityCollectRefused { cause: c }
     AffinityCollectOk { footprint: fp, consumers: cs } =>
       match row {
-        OperandFlow { edge: e, operand: _, footprint: f } =>
-          AffinityCollectOk {
-            footprint: optional_present(value: f),
-            consumers: concat(cs, [content_hash(n: e.dependent)])
+        OperandFlow { edge: e, operand: op, footprint: f } =>
+          if op == expected {
+            AffinityCollectOk {
+              footprint: optional_present(value: f),
+              consumers: concat(cs, [content_hash(n: e.dependent)])
+            }
+          } else {
+            AffinityCollectRefused { cause: AffinityOperandMismatch { expected: expected, found: op } }
           }
         OperandFlowRefused { edge: e, cause: c } =>
           AffinityCollectRefused { cause: AffinityFlowRefused { edge: e, cause: c } }
@@ -57,7 +61,9 @@ fn find_fitting_level(levels: List<MemoryLevel>, footprint: ByteSize) -> Optiona
 }
 
 fn derive_affinity(operand: ContentHash, flows: List<OperandFlowRow>, domain: ExecutionDomain) -> AffinityDecision {
-  match fold(flows, init: AffinityCollectOk { footprint: optional_absent(), consumers: [] }, f: affinity_collect_step) {
+  match fold(flows, init: AffinityCollectOk { footprint: optional_absent(), consumers: [] }, f: fn(acc, row) {
+    affinity_collect_step(expected: operand, acc: acc, row: row)
+  }) {
     AffinityCollectRefused { cause: c } => AffinityRefused { operand: operand, cause: c }
     AffinityCollectOk { footprint: fp, consumers: cs } =>
       if length(xs: cs) < 2 {

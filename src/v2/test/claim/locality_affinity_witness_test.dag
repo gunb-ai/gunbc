@@ -11,14 +11,16 @@ import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count
 import std.types { ContentHash }
 import v2.std.algebra { length }
 import v2.std.collection { List }
-import v2.std.dependency { DataDependsOn, DependencyView }
+import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode, content_hash }
 import v2.workflow.locality_affinity {
   AffinityClaim,
+  AffinityFlowRefused,
   AffinityInsufficientConsumers,
   AffinityNoFittingLevel,
+  AffinityOperandMismatch,
   AffinityRefused,
   ConsumerBatch,
   TrafficAffinityRefused,
@@ -28,7 +30,7 @@ import v2.workflow.locality_affinity {
   derive_affinity,
   price_operand_traffic,
 }
-import v2.workflow.operand_flow { OperandFlow, OperandFlowRow }
+import v2.workflow.operand_flow { OperandFlow, OperandFlowNoOperand, OperandFlowRefused, OperandFlowRow }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -84,6 +86,36 @@ data locality_flow_b: OperandFlowRow = OperandFlow {
 }
 
 data locality_flows: List<OperandFlowRow> = [locality_flow_a, locality_flow_b]
+
+data locality_edge_unresolved: DependencyView = DependencyView {
+  source: locality_shared_node,
+  dependent: locality_consumer_b_node,
+  kind: BarrierBefore,
+  usage_site: locality_consumer_b_node
+}
+
+data locality_flow_unresolved: OperandFlowRow = OperandFlowRefused {
+  edge: locality_edge_unresolved,
+  cause: OperandFlowNoOperand { edge: locality_edge_unresolved }
+}
+
+data locality_flows_with_unresolved: List<OperandFlowRow> = [locality_flow_a, locality_flow_unresolved]
+
+data locality_other_shared_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^locality_other_shared } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data locality_other_shared_hash: ContentHash = content_hash(n: locality_other_shared_node)
+
+data locality_flow_mismatched: OperandFlowRow = OperandFlow {
+  edge: locality_edge_a,
+  operand: locality_other_shared_hash,
+  footprint: locality_footprint
+}
+
+data locality_flows_with_mismatch: List<OperandFlowRow> = [locality_flow_mismatched, locality_flow_b]
 
 data locality_domain_id: DomainId = "locality-domain" as DomainId
 data locality_l1_id: LevelId = "l1" as LevelId
@@ -160,6 +192,26 @@ fn witness_derive_affinity_refuses_single_consumer() -> Bool {
   }
 }
 
+fn witness_derive_affinity_refuses_unresolved_operand_edge() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_unresolved, domain: locality_domain) {
+    AffinityRefused { operand: op, cause: AffinityFlowRefused { edge: e, cause: OperandFlowNoOperand { edge: _ } } } =>
+      op == locality_shared_hash && e == locality_edge_unresolved
+    AffinityRefused { operand: _, cause: _ } => false
+    AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
+  }
+}
+
+fn witness_derive_affinity_refuses_operand_mismatch() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_mismatch, domain: locality_domain) {
+    AffinityRefused { operand: op, cause: AffinityOperandMismatch { expected: expected, found: found } } =>
+      op == locality_shared_hash
+        && expected == locality_shared_hash
+        && found == locality_other_shared_hash
+    AffinityRefused { operand: _, cause: _ } => false
+    AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
+  }
+}
+
 fn witness_co_batch_prices_single_load() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
@@ -222,6 +274,8 @@ test fn locality_affinity_witnesses() -> Bool {
   witness_derive_affinity_claims_smallest_fitting_level()
     && witness_derive_affinity_refuses_no_fitting_level()
     && witness_derive_affinity_refuses_single_consumer()
+    && witness_derive_affinity_refuses_unresolved_operand_edge()
+    && witness_derive_affinity_refuses_operand_mismatch()
     && witness_co_batch_prices_single_load()
     && witness_split_batch_prices_double_load()
     && witness_missing_batch_assignment_refuses_typed()
