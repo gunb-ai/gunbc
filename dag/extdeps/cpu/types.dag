@@ -37,6 +37,7 @@ type CpuL2CacheGeometry {
 
 type CpuL3CacheGeometry {
   capacity: ByteSize
+  line_size: ByteSize
 }
 
 type CacheGeometryCitation {
