@@ -2,6 +2,10 @@
 //! (both refuted by probe), so ask the census what it actually thinks of the names
 //! that red: are they ABSENT (never censused) or AMBIGUOUS (homonym → correct refusal)?
 //! Those have opposite remedies — widen the census vs qualify the reference.
+//!
+//! Diagnostic instrument only — these tests print histograms/rosters via eprintln/println
+//! and do not assert census shape beyond `sources.is_empty()`. They are not enrolled as
+//! regression gates; a census logic regression would pass silently until a human reads output.
 
 use std::rc::Rc;
 
