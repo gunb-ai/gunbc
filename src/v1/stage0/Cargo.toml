@@ -222,3 +222,8 @@ path = "src/bin/compile_clean_diagnostic_histogram.rs"
 [[bin]]
 name = "emit_leg_probe"
 path = "src/bin/emit_leg_probe.rs"
+
+# [PROTOTYPE — lever 1, PR #6766]
+[[bin]]
+name = "gate_via_index_probe"
+path = "src/bin/gate_via_index_probe.rs"

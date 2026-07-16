@@ -2399,6 +2399,70 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
     }
 }
 
+/// [PROTOTYPE — lever 1, PR #6766] The roots vector the via-index gate shares with
+/// entry-file consumers (`resolve_entry_graph_shared`): same vector → same
+/// `process_shared_index` roots key → one typed-module universe per process.
+pub fn compile_clean_via_index_roots() -> Vec<String> {
+    witness_layer_roots()
+}
+
+/// [PROTOTYPE — lever 1, PR #6766] Whole-tree `--target dag` compile-clean routed
+/// through the shared `MultiEntryIndex` cached path instead of the raw
+/// `compile_to_resolved` pipeline. Same source closure as the receipt path
+/// (`witness_layer_roots_compile_clean_sources_for_plan`, WholeTree — including the
+/// `GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED` RED-control inject), but every
+/// module's typecheck lands in the process's content-keyed `typed_module_cache`, so
+/// later entry-file resolves in the same process (batch-2 witnesses, the plan
+/// prelude) are warm — the in-process double-pay from the typecheck investigation
+/// dies here. Verdict semantics: red iff the cached path refuses with hard
+/// diagnostics (parse/resolve/normalize/typecheck/ownership — the same classes the
+/// raw gate filters with `compile_clean_diagnostic_is_hard`) or the emit set is
+/// empty; the refusal message carries the located diagnostics.
+/// NOT yet the floor's gate authority — landing requires the verdict-equivalence
+/// witness (green==green on main, red==red on the planted inject) and the
+/// diagnostic-authority unification noted in #6766.
+pub fn compile_clean_whole_tree_via_index_probe() -> Result<bool, String> {
+    use crate::v1_compiler_artifact::RenderTarget;
+    use crate::v1_compiler_complexity::empty_complexity_report;
+    let plan = CompileCleanScopePlan::WholeTree;
+    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
+        None => return Err("compile-clean via-index: no sources (unexpected skip)".to_string()),
+        Some(s) => s,
+    };
+    let roots = compile_clean_via_index_roots();
+    let index = process_shared_index(&roots);
+    let (graph, si) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        "compile-clean-gate-via-index",
+    ) {
+        Ok(resolved) => resolved,
+        Err(msg) => {
+            eprintln!("compile-clean via-index: hard diagnostics:\n{msg}");
+            return Ok(false);
+        }
+    };
+    // Emit leg over the already-typed graph — the receipt's `--target dag` render,
+    // fed from the cached path's ResolvedGraph instead of a second raw compile.
+    let newline_indices: Rc<im_rc::Vector<Rc<NewlineIndex>>> =
+        Rc::new(si.values().cloned().collect::<im_rc::Vector<_>>());
+    let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+        graph: Some(graph),
+        diagnostics: Rc::new(im_rc::Vector::new()),
+        source_indices: si,
+        complexity: empty_complexity_report(),
+        ownership: Rc::new(im_rc::Vector::new()),
+        newline_indices,
+    });
+    let result = v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
+    if result.files.is_empty() {
+        eprintln!("compile-clean via-index: refused — compile produced zero files (empty emit set)");
+        return Ok(false);
+    }
+    Ok(true)
+}
+
 /// Emit leg: `--target dag` compile over witness layer roots without shell or disk write.
 /// Direct-run oracle for non-floor contexts (cargo tests, enrolled witnesses). The CI
 /// floor gate consumes `consume_floor_compile_clean_gate_verdict` instead (Lever A).
