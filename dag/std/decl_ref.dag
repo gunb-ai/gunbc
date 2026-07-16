@@ -1,6 +1,6 @@
 module std.decl_ref
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Bool }
 
 type DeclField
   = WholeDeclaration
@@ -10,4 +10,23 @@ type DeclarationRef {
   module_path: NonEmptyStr
   decl_name: NonEmptyStr
   field: DeclField
+}
+
+fn decl_field_eq(left: DeclField, right: DeclField) -> Bool {
+  match left {
+    WholeDeclaration => match right {
+      WholeDeclaration => true
+      NamedField { field_name: _ } => false
+    }
+    NamedField { field_name: ln } => match right {
+      WholeDeclaration => false
+      NamedField { field_name: rn } => ln == rn
+    }
+  }
+}
+
+fn decl_ref_eq(left: DeclarationRef, right: DeclarationRef) -> Bool {
+  (left.module_path == right.module_path)
+    && (left.decl_name == right.decl_name)
+    && decl_field_eq(left: left.field, right: right.field)
 }

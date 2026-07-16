@@ -1,7 +1,7 @@
 module std.associativity_evidence
 
 import std.types { Bool, NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration, DeclField }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref_eq }
 import std.cache_identity { ExecutionReceiptDigest }
 
 data associativity_evidence_plan_doc_provenance: String = "bind: docs/plans/machine-shape-orthogonal-scheduling.md §6 — subject-bound associativity license carrier; combine must structurally match the scheduled combine (fail-closed on mismatch)"
