@@ -18,6 +18,7 @@ import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode, content_hash }
 import v2.workflow.locality_affinity {
   AffinityClaim,
   AffinityFlowRefused,
+  AffinityFootprintMismatch,
   AffinityInsufficientConsumers,
   AffinityNoFittingLevel,
   AffinityOperandMismatch,
@@ -117,6 +118,14 @@ data locality_flow_mismatched: OperandFlowRow = OperandFlow {
 
 data locality_flows_with_mismatch: List<OperandFlowRow> = [locality_flow_mismatched, locality_flow_b]
 
+data locality_flow_a_wrong_footprint: OperandFlowRow = OperandFlow {
+  edge: locality_edge_a,
+  operand: locality_shared_hash,
+  footprint: byte_size(count: 128)
+}
+
+data locality_flows_with_footprint_mismatch: List<OperandFlowRow> = [locality_flow_a_wrong_footprint, locality_flow_b]
+
 data locality_domain_id: DomainId = "locality-domain" as DomainId
 data locality_l1_id: LevelId = "l1" as LevelId
 data locality_l2_id: LevelId = "l2" as LevelId
@@ -212,6 +221,17 @@ fn witness_derive_affinity_refuses_operand_mismatch() -> Bool {
   }
 }
 
+fn witness_derive_affinity_refuses_footprint_mismatch() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_footprint_mismatch, domain: locality_domain) {
+    AffinityRefused { operand: op, cause: AffinityFootprintMismatch { operand: _, expected: exp, found: fnd } } =>
+      op == locality_shared_hash
+        && byte_size_count(b: exp) == 128
+        && byte_size_count(b: fnd) == 64
+    AffinityRefused { operand: _, cause: _ } => false
+    AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
+  }
+}
+
 fn witness_co_batch_prices_single_load() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
@@ -276,6 +296,7 @@ test fn locality_affinity_witnesses() -> Bool {
     && witness_derive_affinity_refuses_single_consumer()
     && witness_derive_affinity_refuses_unresolved_operand_edge()
     && witness_derive_affinity_refuses_operand_mismatch()
+    && witness_derive_affinity_refuses_footprint_mismatch()
     && witness_co_batch_prices_single_load()
     && witness_split_batch_prices_double_load()
     && witness_missing_batch_assignment_refuses_typed()

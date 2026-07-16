@@ -18,6 +18,7 @@ type AffinityRefusalCause
   | AffinityNoFittingLevel { operand: ContentHash, footprint: ByteSize }
   | AffinityFootprintUnresolved { operand: ContentHash }
   | AffinityOperandMismatch { expected: ContentHash, found: ContentHash }
+  | AffinityFootprintMismatch { operand: ContentHash, expected: ByteSize, found: ByteSize }
 
 type AffinityDecision
   = AffinityClaim { operand: ContentHash, level: LevelId, footprint: ByteSize, consumers: List<ContentHash> }
@@ -34,9 +35,23 @@ fn affinity_collect_step(expected: ContentHash, acc: AffinityCollectAcc, row: Op
       match row {
         OperandFlow { edge: e, operand: op, footprint: f } =>
           if op == expected {
-            AffinityCollectOk {
-              footprint: optional_present(value: f),
-              consumers: concat(cs, [content_hash(n: e.dependent)])
+            match fp {
+              Present { value: prior } =>
+                if measure_le(a: prior, b: f) && measure_le(a: f, b: prior) {
+                  AffinityCollectOk {
+                    footprint: fp,
+                    consumers: concat(cs, [content_hash(n: e.dependent)])
+                  }
+                } else {
+                  AffinityCollectRefused {
+                    cause: AffinityFootprintMismatch { operand: expected, expected: prior, found: f }
+                  }
+                }
+              Absent =>
+                AffinityCollectOk {
+                  footprint: optional_present(value: f),
+                  consumers: concat(cs, [content_hash(n: e.dependent)])
+                }
             }
           } else {
             AffinityCollectRefused { cause: AffinityOperandMismatch { expected: expected, found: op } }
