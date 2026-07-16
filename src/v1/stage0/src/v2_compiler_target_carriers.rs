@@ -70,7 +70,9 @@ fn fidelity_disposition_node_has_named_kind(root: Rc<Node>, name: String) -> boo
 fn fidelity_disposition_node_decode_fidelity(node: Rc<Node>) -> Outcome<DecodeFidelity> {
     match &*node.kind {
         NodeKind::TypeNode { connective } => match &**connective {
-            Connective::Atom { identity } if identity == "dag_fidelity_disposition_kind_modeled" => {
+            Connective::Atom { identity }
+                if identity == "dag_fidelity_disposition_kind_modeled" =>
+            {
                 Outcome::Accepted {
                     value: DecodeFidelity::Lossless,
                 }
@@ -111,14 +113,16 @@ fn fidelity_quotient_decode_fidelity(quotient: Rc<Node>) -> Outcome<DecodeFideli
                 },
                 |acc, edge| match acc {
                     Outcome::Rejected { reason } => Outcome::Rejected { reason },
-                    Outcome::Accepted { value: current_fidelity } => {
-                        match fidelity_disposition_node_decode_fidelity(edge.target.clone()) {
-                            Outcome::Rejected { reason } => Outcome::Rejected { reason },
-                            Outcome::Accepted { value: next_fidelity } => Outcome::Accepted {
-                                value: decode_fidelity_merge(current_fidelity, next_fidelity),
-                            },
-                        }
-                    }
+                    Outcome::Accepted {
+                        value: current_fidelity,
+                    } => match fidelity_disposition_node_decode_fidelity(edge.target.clone()) {
+                        Outcome::Rejected { reason } => Outcome::Rejected { reason },
+                        Outcome::Accepted {
+                            value: next_fidelity,
+                        } => Outcome::Accepted {
+                            value: decode_fidelity_merge(current_fidelity, next_fidelity),
+                        },
+                    },
                 },
             ),
             _ => Outcome::Rejected {
@@ -161,10 +165,7 @@ pub fn decode_fidelity_from_target(target: Rc<TargetModel>) -> Outcome<DecodeFid
     }
 }
 
-pub fn target_source_medium(
-    text: String,
-    target: Rc<TargetModel>,
-) -> Outcome<Medium<String>> {
+pub fn target_source_medium(text: String, target: Rc<TargetModel>) -> Outcome<Medium<String>> {
     match decode_fidelity_from_target(target) {
         Outcome::Rejected { reason } => Outcome::Rejected { reason },
         Outcome::Accepted { value: fidelity } => Outcome::Accepted {

@@ -1,6 +1,8 @@
 use im_rc::{vector as vec, Vector as Vec};
 use std::rc::Rc;
-use v1_compiled::extdeps_communication_medium::{DecodeFidelity as EDecodeFidelity, Medium as EMedium};
+use v1_compiled::extdeps_communication_medium::{
+    DecodeFidelity as EDecodeFidelity, Medium as EMedium,
+};
 use v1_compiled::std_algebra::FreeMonoid;
 use v1_compiled::v2_compiler_target_carriers as emitted;
 use v1_compiled::v2_std_nat::Nat;
@@ -36,8 +38,7 @@ fn medium_text_eq_emitted_seed(
     e: &EMedium<Rc<FreeMonoid<Char>>>,
     s: &seed::Medium<String>,
 ) -> bool {
-    decode_fidelity_eq(e.fidelity, s.fidelity)
-        && free_monoid_to_string(&e.carried) == s.carried
+    decode_fidelity_eq(e.fidelity, s.fidelity) && free_monoid_to_string(&e.carried) == s.carried
 }
 
 fn free_monoid_to_string(fm: &Rc<FreeMonoid<Char>>) -> String {
