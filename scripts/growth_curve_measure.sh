@@ -9,21 +9,26 @@ run_point() {
   local entry="$2"
   local outdir="/tmp/gunbc-growth-${label}"
   rm -rf "$outdir"
+  local start end elapsed
+  start=$(date +%s.%N)
   echo "=== POINT $label entry=$entry ==="
-  /usr/bin/time -f "wall_s=%e" env GUNBC_GLOBAL_BARE_Q2_BISECT=all \
-    "$GUNBC" compile --target dag --output-dir "$outdir" "$entry" 2>&1 \
-    | rg "global-bare-q2-bisect|resolved [0-9]+ sources|modules to reconcile|error:" || true
+  set +e
+  env GUNBC_GLOBAL_BARE_Q2_BISECT=all \
+    "$GUNBC" compile --target dag --output-dir "$outdir" "$entry" >"/tmp/gunbc-growth-${label}.out" 2>&1
+  local ec=$?
+  set -e
+  end=$(date +%s.%N)
+  elapsed=$(python3 -c "print(round($end - $start, 3))")
+  rg "global-bare-q2-bisect|resolved [0-9]+ sources|error:" "/tmp/gunbc-growth-${label}.out" || true
+  echo "wall_s=${elapsed} exit=${ec}"
   echo
 }
 
 export GUNBC_GLOBAL_BARE_Q2_BISECT=all
 
-# 8 std homonym modules (single-module closures)
 run_point "std-algebra" "src/v2/std/algebra.dag"
 run_point "std-node" "src/v2/std/node.dag"
 run_point "std-integer" "src/v2/std/integer.dag"
-
-# Growing importer closures
 run_point "v2-infer" "src/v2/compiler/04_infer.dag"
 run_point "v2-compile" "src/v2/compiler/compile.dag"
 run_point "ci-spec" "dag/gunbc/ci_spec.dag"
