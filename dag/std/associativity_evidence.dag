@@ -1,0 +1,74 @@
+module std.associativity_evidence
+
+import std.types { Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration, DeclField }
+import std.cache_identity { ExecutionReceiptDigest }
+
+data associativity_evidence_plan_doc_provenance: String = "bind: docs/plans/machine-shape-orthogonal-scheduling.md §6 — subject-bound associativity license carrier; combine must structurally match the scheduled combine (fail-closed on mismatch)"
+
+type AssociativityEvidence
+  = WitnessedAssociative {
+      combine: DeclarationRef
+      inhabitant: DeclarationRef
+      law: DeclarationRef
+      receipt: ExecutionReceiptDigest
+    }
+  | NotWitnessed
+
+type AssociativityLicenseVerdict
+  = AssociativityLicensed
+  | AssociativityNotWitnessed
+  | AssociativityCombineMismatch
+
+fn associativity_decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
+  DeclarationRef {
+    module_path: module_path as NonEmptyStr
+    decl_name: decl_name as NonEmptyStr
+    field: WholeDeclaration
+  }
+}
+
+fn decl_ref_eq(left: DeclarationRef, right: DeclarationRef) -> Bool {
+  (left.module_path == right.module_path)
+    && (left.decl_name == right.decl_name)
+    && decl_field_eq(left: left.field, right: right.field)
+}
+
+fn decl_field_eq(left: DeclField, right: DeclField) -> Bool {
+  match left {
+    WholeDeclaration => match right {
+      WholeDeclaration => true
+      NamedField { field_name: _ } => false
+    }
+    NamedField { field_name: ln } => match right {
+      WholeDeclaration => false
+      NamedField { field_name: rn } => ln == rn
+    }
+  }
+}
+
+fn associativity_evidence_not_witnessed() -> AssociativityEvidence {
+  NotWitnessed
+}
+
+fn associativity_license_verdict(
+  evidence: AssociativityEvidence,
+  scheduled_combine: DeclarationRef
+) -> AssociativityLicenseVerdict {
+  match evidence {
+    NotWitnessed => AssociativityNotWitnessed
+    WitnessedAssociative { combine: combine, inhabitant: _, law: _, receipt: _ } =>
+      if decl_ref_eq(left: combine, right: scheduled_combine) {
+        AssociativityLicensed
+      } else {
+        AssociativityCombineMismatch
+      }
+  }
+}
+
+fn associativity_evidence_is_witnessed(evidence: AssociativityEvidence) -> Bool {
+  match evidence {
+    WitnessedAssociative { combine: _, inhabitant: _, law: _, receipt: _ } => true
+    NotWitnessed => false
+  }
+}
