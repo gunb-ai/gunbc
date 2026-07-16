@@ -355,19 +355,38 @@ fn render_stage0_layered_core_lib(spec: Stage0CrateSpec) -> String {
   )
 }
 
-fn stage0_emit_shell_module_reexport(module_basename: String) -> String {
-  let owner = stage0_module_owner_package_name(module_basename: module_basename)
-  concat(
-    "pub mod ", module_basename, " {\n    pub use ",
-    stage0_package_name_to_rust_ident(package_name: owner),
-    "::", module_basename, "::*;\n}"
-  )
+fn stage0_emit_shell_module_reexports_outcome(
+  modules: List<String>
+) -> Stage0EmitShellReexportsOutcome {
+  modules
+    |> fold(init: Stage0EmitShellReexportsOk { lines: [] }, f: fn(acc, module_basename) {
+      match acc {
+        Stage0EmitShellReexportsRefused { cause: cause } =>
+          Stage0EmitShellReexportsRefused { cause: cause }
+        Stage0EmitShellReexportsOk { lines: lines } =>
+          match stage0_lookup_module_owner_package_name(module_basename: module_basename) {
+            Stage0ModuleOwnerFound { package_name: owner } =>
+              Stage0EmitShellReexportsOk {
+                lines: lines |> concat([
+                  concat(
+                    "pub mod ", module_basename, " {\n    pub use ",
+                    stage0_package_name_to_rust_ident(package_name: owner),
+                    "::", module_basename, "::*;\n}"
+                  )
+                ])
+              }
+            Stage0ModuleOwnerRefused { cause: cause } =>
+              Stage0EmitShellReexportsRefused { cause: cause }
+          }
+      }
+    })
 }
 
 fn render_stage0_emit_core_lib(spec: Stage0CrateSpec) -> String {
-  let reexports = spec.modules
-    |> map(m => stage0_emit_shell_module_reexport(module_basename: m))
-    |> join(separator: "\n\n")
+  let reexports = match stage0_emit_shell_module_reexports_outcome(modules: spec.modules) {
+    Stage0EmitShellReexportsOk { lines: lines } => lines |> join(separator: "\n\n")
+    Stage0EmitShellReexportsRefused { cause: _ } => ""
+  }
   concat(
     spec.header_doc, "\n\n",
     stage0_crate_allow_block(), "\n\n",
@@ -376,6 +395,32 @@ fn render_stage0_emit_core_lib(spec: Stage0CrateSpec) -> String {
     "#[rustfmt::skip]\n#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;", "\n\n",
     "pub use v1_compiler_emit_core_support::*;", "\n"
   )
+}
+
+fn stage0_partition_lookups_valid() -> Bool {
+  generated_partition_crate_rows
+    |> fold(init: true, f: fn(ok, row) {
+      let row_ok = match row.kind {
+        GeneratedEmitCoreCrate =>
+          row.modules
+            |> fold(init: true, f: fn(m_ok, module_basename) {
+              m_ok && match stage0_lookup_module_owner_package_name(module_basename: module_basename) {
+                Stage0ModuleOwnerFound { package_name: _ } => true
+                Stage0ModuleOwnerRefused { cause: _ } => false
+              }
+            })
+        GeneratedLayeredCoreCrate =>
+          row.reexport_packages
+            |> fold(init: true, f: fn(p_ok, package_name) {
+              p_ok && match stage0_lookup_package_crate_dir(package_name: package_name) {
+                Stage0PackageCrateDirFound { crate_dir: _ } => true
+                Stage0PackageCrateDirRefused { cause: _ } => false
+              }
+            })
+        GeneratedFoundationCrate => true
+      }
+      ok && row_ok
+    })
 }
 
 fn emit_stage0_crate_lib(spec: Stage0CrateSpec) -> TextFile {

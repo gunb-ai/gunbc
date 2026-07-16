@@ -387,26 +387,6 @@ fn stage0_module_dag() -> ModuleDag {
   }
 }
 
-fn stage0_module_owner_package_name(module_basename: String) -> String {
-  stage0_module_bearing_crate_rows()
-    |> filter(row => row.modules |> any(m => m == module_basename))
-    |> map(row => row.package_name)
-    |> fold(init: "", f: fn(acc, pkg) { if acc == "" { pkg } else { acc } })
-}
-
-fn stage0_emit_shell_reexport_source_packages() -> List<String> {
-  let pkgs = stage0_r3_emit_reexport_surface_modules()
-    |> map(m => stage0_module_owner_package_name(module_basename: m))
-  pkgs
-    |> fold(init: [], f: fn(acc, pkg) {
-      if pkg == "" || (acc |> any(p => p == pkg)) {
-        acc
-      } else {
-        acc |> list_push(pkg)
-      }
-    })
-}
-
 fn resolve_partition_outcome(
   parameter: PartitionParameter,
   module_dag: ModuleDag
@@ -676,6 +656,31 @@ fn stage0_physical_crate_count() -> Int {
 
 fn stage0_module_bearing_unit_count() -> Int {
   stage0_module_bearing_crate_rows() |> count
+}
+
+fn stage0_module_owner_resolved_in_module_bearing_rows(module_basename: String) -> Bool {
+  stage0_module_bearing_crate_rows()
+    |> any(row => row.modules |> any(m => m == module_basename))
+}
+
+fn stage0_package_resolved_in_partition_rows(package_name: String) -> Bool {
+  stage0_partition_crate_rows()
+    |> any(row => row.package_name == package_name)
+}
+
+fn stage0_partition_row_lookups_resolved() -> Bool {
+  let layered_ok = stage0_module_bearing_crate_rows()
+    |> fold(init: true, f: fn(ok, row) {
+      ok && row.reexport_packages
+        |> fold(init: true, f: fn(p_ok, pkg) {
+          p_ok && stage0_package_resolved_in_partition_rows(package_name: pkg)
+        })
+    })
+  let emit_shell_ok = stage0_r3_emit_reexport_surface_modules()
+    |> fold(init: true, f: fn(m_ok, module_basename) {
+      m_ok && stage0_module_owner_resolved_in_module_bearing_rows(module_basename: module_basename)
+    })
+  layered_ok && emit_shell_ok
 }
 
 fn stage0_partition_r4_valid() -> Bool {

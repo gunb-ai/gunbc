@@ -49,6 +49,7 @@ import v2.workflow.rust_crate_partition {
   Stage0PartitionReceiptResolveRefused,
   stage0_partition_receipt_outcome,
   stage0_physical_crate_count,
+  stage0_partition_row_lookups_resolved,
   stage0_single_crate_fold_outcome,
   stage0_partition_parameter,
   stage0_partition_provenance,
@@ -262,6 +263,10 @@ fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
   }
 }
 
+fn witness_stage0_partition_row_lookups_resolved_holds() -> Bool {
+  stage0_partition_row_lookups_resolved()
+}
+
 fn witness_dissolve_on_note_present_holds() -> Bool {
   (rust_crate_partition_dissolve_on |> count) > 0
 }
@@ -291,5 +296,6 @@ test fn rust_crate_partition_witnesses() -> Bool {
     && witness_partition_perturbation_member_coverage_holds()
     && witness_stage0_module_dag_interface_grounding_debt_declared_holds()
     && witness_stage0_module_dag_interface_grounding_debt_dissolve_on_present_holds()
+    && witness_stage0_partition_row_lookups_resolved_holds()
     && witness_dissolve_on_note_present_holds()
 }

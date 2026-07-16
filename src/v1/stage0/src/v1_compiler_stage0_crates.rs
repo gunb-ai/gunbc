@@ -2,6 +2,12 @@
 // Source module: v1.compiler.stage0_crates
 
 use self::Stage0CrateKind::*;
+use self::Stage0EmitShellReexportsOutcome::*;
+use self::Stage0ModuleOwnerLookup::*;
+use self::Stage0ModuleOwnerRefusalCause::*;
+use self::Stage0PackageCrateDirLookup::*;
+use self::Stage0PackageCrateDirRefusalCause::*;
+use self::Stage0ReexportPathDepsOutcome::*;
 use crate::extdeps_cargo::CargoDepSource::{LocalPathDep, RegistryDep};
 pub use crate::extdeps_cargo::{CargoDepSource, CargoDependency, CargoFeature};
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
@@ -130,10 +136,87 @@ pub fn stage0_partition_row_is_module_bearing(row: Rc<GeneratedPartitionCrateRow
     }
 }
 
-pub fn stage0_module_owner_package_name(module_basename: String) -> String {
-    Rc::new({
-        let mut __result = Vec::new();
-        for row in Rc::new({
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum Stage0ModuleOwnerRefusalCause {
+    Stage0ModuleOwnerMissing { module_basename: String },
+}
+impl Stage0ModuleOwnerRefusalCause {
+    pub fn module_basename(&self) -> String {
+        match self {
+            Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
+                module_basename: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum Stage0ModuleOwnerLookup {
+    Stage0ModuleOwnerFound {
+        package_name: String,
+    },
+    Stage0ModuleOwnerRefused {
+        cause: Rc<Stage0ModuleOwnerRefusalCause>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum Stage0PackageCrateDirRefusalCause {
+    Stage0PackageCrateDirMissing { package_name: String },
+}
+impl Stage0PackageCrateDirRefusalCause {
+    pub fn package_name(&self) -> String {
+        match self {
+            Stage0PackageCrateDirRefusalCause::Stage0PackageCrateDirMissing {
+                package_name: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum Stage0PackageCrateDirLookup {
+    Stage0PackageCrateDirFound {
+        crate_dir: String,
+    },
+    Stage0PackageCrateDirRefused {
+        cause: Rc<Stage0PackageCrateDirRefusalCause>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum Stage0ReexportPathDepsOutcome {
+    Stage0ReexportPathDepsOk {
+        deps: Rc<Vec<Rc<CargoDependency>>>,
+    },
+    Stage0ReexportPathDepsRefused {
+        cause: Rc<Stage0PackageCrateDirRefusalCause>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum Stage0EmitShellReexportsOutcome {
+    Stage0EmitShellReexportsOk {
+        lines: Rc<Vec<String>>,
+    },
+    Stage0EmitShellReexportsRefused {
+        cause: Rc<Stage0ModuleOwnerRefusalCause>,
+    },
+}
+
+pub fn stage0_lookup_module_owner_package_name(
+    module_basename: String,
+) -> Rc<Stage0ModuleOwnerLookup> {
+    {
+        let matches = Rc::new({
             let mut __result = Vec::new();
             for row in generated_partition_crate_rows().iter().cloned() {
                 if (stage0_partition_row_is_module_bearing(row.clone()) && {
@@ -150,23 +233,72 @@ pub fn stage0_module_owner_package_name(module_basename: String) -> String {
                 }
             }
             __result
+        });
+        let package_name = Rc::new({
+            let mut __result = Vec::new();
+            for row in matches.clone().iter().cloned() {
+                __result.push(row.package_name.clone());
+            }
+            __result
         })
         .iter()
         .cloned()
-        {
-            __result.push(row.package_name.clone());
-        }
-        __result
-    })
-    .iter()
-    .cloned()
-    .fold("".to_string(), |acc: String, pkg: String| {
-        if (acc.clone() == "".to_string()) {
-            pkg.clone()
+        .fold("".to_string(), |acc: String, pkg: String| {
+            if (acc.clone() == "".to_string()) {
+                pkg.clone()
+            } else {
+                acc.clone()
+            }
+        });
+        if (package_name.clone() == "".to_string()) {
+            Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
+                cause: Rc::new(Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
+                    module_basename: module_basename.clone(),
+                }),
+            })
         } else {
-            acc.clone()
+            Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
+                package_name: package_name.clone(),
+            })
         }
-    })
+    }
+}
+
+pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0PackageCrateDirLookup> {
+    {
+        let matches = Rc::new({
+            let mut __result = Vec::new();
+            for row in generated_partition_crate_rows().iter().cloned() {
+                if (row.package_name.clone() == package_name.clone()) {
+                    __result.push(row);
+                }
+            }
+            __result
+        });
+        let crate_dir = matches.clone().iter().cloned().fold(
+            "".to_string(),
+            |acc: String, row: Rc<GeneratedPartitionCrateRow>| {
+                if (acc.clone() == "".to_string()) {
+                    row.crate_dir.clone()
+                } else {
+                    acc.clone()
+                }
+            },
+        );
+        if (crate_dir.clone() == "".to_string()) {
+            Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
+                cause: Rc::new(
+                    Stage0PackageCrateDirRefusalCause::Stage0PackageCrateDirMissing {
+                        package_name: package_name.clone(),
+                    },
+                ),
+            })
+        } else {
+            Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
+                crate_dir: crate_dir.clone(),
+            })
+        }
+    }
 }
 
 pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
@@ -242,43 +374,49 @@ pub fn stage0_emit_shell_registry_dependencies() -> Rc<Vec<Rc<CargoDependency>>>
     ])
 }
 
-pub fn stage0_reexport_path_dependencies(
+pub fn stage0_reexport_path_dependencies_outcome(
     reexport_packages: Rc<Vec<String>>,
-) -> Rc<Vec<Rc<CargoDependency>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for pkg in reexport_packages.clone().iter().cloned() {
-            __result.push(Rc::new(CargoDependency {
-                name: pkg.clone(),
-                source: Rc::new(CargoDepSource::LocalPathDep {
-                    path: stage0_crate_dir_to_sibling_dep_path(
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for row in generated_partition_crate_rows().iter().cloned() {
-                                if (row.package_name.clone() == pkg.clone()) {
-                                    __result.push(row);
-                                }
-                            }
-                            __result
-                        })
-                        .iter()
-                        .cloned()
-                        .fold(
-                            "".to_string(),
-                            |acc: String, row: Rc<GeneratedPartitionCrateRow>| {
-                                if (acc.clone() == "".to_string()) {
-                                    row.crate_dir.clone()
-                                } else {
-                                    acc.clone()
-                                }
-                            },
+) -> Rc<Stage0ReexportPathDepsOutcome> {
+    reexport_packages.clone().iter().cloned().fold(
+        Rc::new(Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
+            deps: Rc::new(vec![]),
+        }),
+        |acc: Rc<Stage0ReexportPathDepsOutcome>, pkg: String| match (*acc).clone() {
+            Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
+                cause: cause, ..
+            } => Rc::new(
+                Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
+                    cause: cause.clone(),
+                },
+            ),
+            Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk { deps: deps, .. } => {
+                match (*stage0_lookup_package_crate_dir(pkg.clone())).clone() {
+                    Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
+                        crate_dir: crate_dir,
+                        ..
+                    } => Rc::new(Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
+                        deps: v1_rt::concat(
+                            deps.clone(),
+                            Rc::new(vec![Rc::new(CargoDependency {
+                                name: pkg.clone(),
+                                source: Rc::new(CargoDepSource::LocalPathDep {
+                                    path: stage0_crate_dir_to_sibling_dep_path(crate_dir.clone()),
+                                }),
+                            })]),
                         ),
+                    }),
+                    Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
+                        cause: cause,
+                        ..
+                    } => Rc::new(
+                        Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
+                            cause: cause.clone(),
+                        },
                     ),
-                }),
-            }));
-        }
-        __result
-    })
+                }
+            }
+        },
+    )
 }
 
 pub fn stage0_emit_shell_path_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
@@ -330,10 +468,22 @@ pub fn stage0_partition_row_dependencies(
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
             stage0_foundation_runtime_dependencies()
         }
-        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => v1_rt::concat(
-            stage0_foundation_runtime_dependencies(),
-            stage0_reexport_path_dependencies(row.reexport_packages.clone()),
-        ),
+        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => {
+            match (*stage0_reexport_path_dependencies_outcome(row.reexport_packages.clone()))
+                .clone()
+            {
+                Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
+                    deps: reexport_deps,
+                    ..
+                } => v1_rt::concat(
+                    stage0_foundation_runtime_dependencies(),
+                    reexport_deps.clone(),
+                ),
+                Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
+                    cause: _, ..
+                } => Rc::new(vec![]),
+            }
+        }
         GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => v1_rt::concat(
             stage0_foundation_runtime_dependencies(),
             stage0_emit_shell_path_dependencies(),
@@ -575,40 +725,138 @@ pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
     }
 }
 
-pub fn stage0_emit_shell_module_reexport(module_basename: String) -> String {
-    {
-        let owner = stage0_module_owner_package_name(module_basename.clone());
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("pub mod ".to_string(), module_basename.clone()),
-                            " {\n    pub use ".to_string(),
-                        ),
-                        stage0_package_name_to_rust_ident(owner.clone()),
-                    ),
-                    "::".to_string(),
-                ),
-                module_basename.clone(),
+pub fn stage0_emit_shell_module_reexports_outcome(
+    modules: Rc<Vec<String>>,
+) -> Rc<Stage0EmitShellReexportsOutcome> {
+    modules.clone().iter().cloned().fold(
+        Rc::new(
+            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
+                lines: Rc::new(vec![]),
+            },
+        ),
+        |acc: Rc<Stage0EmitShellReexportsOutcome>, module_basename: String| match (*acc).clone() {
+            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
+                cause: cause,
+                ..
+            } => Rc::new(
+                Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
+                    cause: cause.clone(),
+                },
             ),
-            "::*;\n}".to_string(),
-        )
-    }
+            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
+                lines: lines, ..
+            } => {
+                match (*stage0_lookup_module_owner_package_name(module_basename.clone())).clone() {
+                    Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
+                        package_name: owner,
+                        ..
+                    } => Rc::new(
+                        Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
+                            lines: v1_rt::concat(
+                                lines.clone(),
+                                Rc::new(vec![v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        "pub mod ".to_string(),
+                                                        module_basename.clone(),
+                                                    ),
+                                                    " {\n    pub use ".to_string(),
+                                                ),
+                                                stage0_package_name_to_rust_ident(owner.clone()),
+                                            ),
+                                            "::".to_string(),
+                                        ),
+                                        module_basename.clone(),
+                                    ),
+                                    "::*;\n}".to_string(),
+                                )]),
+                            ),
+                        },
+                    ),
+                    Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused { cause: cause, .. } => {
+                        Rc::new(
+                            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
+                                cause: cause.clone(),
+                            },
+                        )
+                    }
+                }
+            }
+        },
+    )
 }
 
 pub fn render_stage0_emit_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
     {
-        let reexports = Rc::new({
-            let mut __result = Vec::new();
-            for m in spec.modules.clone().iter().cloned() {
-                __result.push(stage0_emit_shell_module_reexport(m.clone()));
-            }
-            __result
-        })
-        .join(&"\n\n".to_string());
+        let reexports = match (*stage0_emit_shell_module_reexports_outcome(spec.modules.clone()))
+            .clone()
+        {
+            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsOk {
+                lines: lines, ..
+            } => lines.clone().join(&"\n\n".to_string()),
+            Stage0EmitShellReexportsOutcome::Stage0EmitShellReexportsRefused {
+                cause: _, ..
+            } => "".to_string(),
+        };
         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()), stage0_crate_allow_block()), "\n\n".to_string()), "pub use v1_stage0_runtime::{NonEmptyBTreeSet, NonEmptyVec};".to_string()), "\n\n".to_string()), reexports.clone()), "\n\n".to_string()), "#[rustfmt::skip]\n#[path = \"../../stage0/src/v1_compiler_emit_core_support.rs\"]\npub mod v1_compiler_emit_core_support;".to_string()), "\n\n".to_string()), "pub use v1_compiler_emit_core_support::*;".to_string()), "\n".to_string())
     }
+}
+
+pub fn stage0_partition_lookups_valid() -> bool {
+    generated_partition_crate_rows().iter().cloned().fold(
+        true,
+        |ok: bool, row: Rc<GeneratedPartitionCrateRow>| {
+            let row_ok = match row.kind.clone() {
+                GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => {
+                    row.modules.clone().iter().cloned().fold(
+                        true,
+                        |m_ok: bool, module_basename: String| {
+                            (m_ok
+                                && match (*stage0_lookup_module_owner_package_name(
+                                    module_basename.clone(),
+                                ))
+                                .clone()
+                                {
+                                    Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
+                                        package_name: _,
+                                        ..
+                                    } => true,
+                                    Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
+                                        cause: _,
+                                        ..
+                                    } => false,
+                                })
+                        },
+                    )
+                }
+                GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => {
+                    row.reexport_packages.clone().iter().cloned().fold(
+                        true,
+                        |p_ok: bool, package_name: String| {
+                            (p_ok
+                                && match (*stage0_lookup_package_crate_dir(package_name.clone()))
+                                    .clone()
+                                {
+                                    Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
+                                        crate_dir: _,
+                                        ..
+                                    } => true,
+                                    Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
+                                        cause: _,
+                                        ..
+                                    } => false,
+                                })
+                        },
+                    )
+                }
+                GeneratedPartitionCrateKind::GeneratedFoundationCrate => true,
+            };
+            (ok && row_ok.clone())
+        },
+    )
 }
 
 pub fn emit_stage0_crate_lib(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
