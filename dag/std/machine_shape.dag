@@ -133,16 +133,27 @@ fn machine_shape_domain_lane_count(shape: MachineShape) -> HardwareThreadCount? 
     })
 }
 
+fn first_memory_level_capacity(levels: List<MemoryLevel>) -> ByteSize? {
+  fold(levels, init: Absent, f: (lvl_found, m) =>
+    match lvl_found {
+      Present { value: _ } => lvl_found
+      Absent => Present { value: m.capacity }
+    })
+}
+
+fn first_memory_level_bandwidth(levels: List<MemoryLevel>) -> Bandwidth? {
+  fold(levels, init: Absent, f: (lvl_found, m) =>
+    match lvl_found {
+      Present { value: _ } => lvl_found
+      Absent => m.bandwidth
+    })
+}
+
 fn machine_shape_device_level_capacity(shape: MachineShape) -> ByteSize? {
   fold(shape.domains, init: Absent, f: (found, d) =>
     match found {
       Present { value: _ } => found
-      Absent =>
-        fold(d.memory, init: Absent, f: (lvl_found, m) =>
-          match lvl_found {
-            Present { value: _ } => lvl_found
-            Absent => Present { value: m.capacity }
-          })
+      Absent => first_memory_level_capacity(levels: d.memory)
     })
 }
 
@@ -150,11 +161,6 @@ fn machine_shape_device_level_bandwidth(shape: MachineShape) -> Bandwidth? {
   fold(shape.domains, init: Absent, f: (found, d) =>
     match found {
       Present { value: _ } => found
-      Absent =>
-        fold(d.memory, init: Absent, f: (lvl_found, m) =>
-          match lvl_found {
-            Present { value: _ } => lvl_found
-            Absent => m.bandwidth
-          })
+      Absent => first_memory_level_bandwidth(levels: d.memory)
     })
 }
