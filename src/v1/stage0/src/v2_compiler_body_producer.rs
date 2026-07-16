@@ -98,18 +98,21 @@ pub fn body_producer_diagnostic(reason: Symbol, n: Rc<Node>) -> Rc<Diagnostic> {
 pub fn attach_arrow_body(arrow: Rc<Node>, body: Rc<Node>) -> Rc<Outcome<Rc<Node>>> {
     match &*arrow.kind {
         NodeKind::TypeNode { connective } => match &**connective {
-            Connective::Arrow => outcome_accepted(node_rebuild(
-                arrow,
-                list_snoc_item(
-                    arrow.children.clone(),
-                    Rc::new(Edge {
-                        label: Rc::new(EdgeLabel::Named {
-                            name: "arrow_body_edge".to_string(),
+            Connective::Arrow => {
+                let children = arrow.children.clone();
+                outcome_accepted(node_rebuild(
+                    arrow,
+                    list_snoc_item(
+                        children,
+                        Rc::new(Edge {
+                            label: Rc::new(EdgeLabel::Named {
+                                name: "arrow_body_edge".to_string(),
+                            }),
+                            target: body,
                         }),
-                        target: body,
-                    }),
-                ),
-            )),
+                    ),
+                ))
+            }
             _ => outcome_rejected(body_producer_diagnostic(
                 "body_producer_reason_malformed_attachment".to_string(),
                 arrow,
@@ -147,8 +150,10 @@ pub fn produce_arrow_with_structured_body(
     signature: Rc<Node>,
     structured_body: Rc<Node>,
 ) -> Rc<Outcome<Rc<Node>>> {
-    bind_outcome(
-        body_producer_dispatch_structured_body(structured_body),
-        |validated| attach_arrow_body(signature, validated),
-    )
+    match &*body_producer_dispatch_structured_body(structured_body) {
+        Outcome::Accepted { value, .. } => attach_arrow_body(signature, value.clone()),
+        Outcome::Rejected { diagnostics } => Rc::new(Outcome::Rejected {
+            diagnostics: diagnostics.clone(),
+        }),
+    }
 }
