@@ -119,12 +119,18 @@ fn ci_selection_control_skip_prefix_command() -> String {
   )
 }
 
+fn ci_selection_control_tail_command() -> String {
+  concat(
+    ci_selection_control_skip_prefix_command(),
+    ci_selection_control_witness_invoke_command
+  )
+}
+
 fn ci_selection_control_intent() -> Pipeline {
   Pipeline {
     steps: [
       ci_workflow_do(command: ci_selection_control_root_command()),
-      ci_workflow_do(command: ci_selection_control_skip_prefix_command()),
-      ci_workflow_do(command: ci_selection_control_witness_invoke_command)
+      ci_workflow_do(command: ci_selection_control_tail_command())
     ],
     on_failure: FailFast
   }
