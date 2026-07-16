@@ -2696,6 +2696,41 @@ mod typed_module_content_key_tests {
     }
 
     #[test]
+    fn tmp_probe_interface_hash_and_imports() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new("probe");
+            let store = new_shared_typecheck_caches();
+            let index = build_multi_entry_index_with_shared_caches(&fx.roots, store.clone());
+            reset_typecheck_compute_count();
+            let (graph, si) = resolve_entry_with_index(&index, &fx.entry).expect("resolve");
+            for m in graph.modules.iter() {
+                let name = super::authored_name_at(si.clone(), m.module.clone());
+                eprintln!(
+                    "PROBE module={} interface_hash={} exports={}",
+                    name,
+                    m.interface.summary.interface_hash,
+                    m.interface.summary.exports.len()
+                );
+            }
+            eprintln!("PROBE computes={}", typecheck_compute_count());
+            fx.rewrite_import(IMPORT_MODULE_SURFACE_EDIT);
+            let index2 = build_multi_entry_index_with_shared_caches(&fx.roots, store.clone());
+            reset_typecheck_compute_count();
+            let (graph2, si2) = resolve_entry_with_index(&index2, &fx.entry).expect("resolve2");
+            for m in graph2.modules.iter() {
+                let name = super::authored_name_at(si2.clone(), m.module.clone());
+                eprintln!(
+                    "PROBE2 module={} interface_hash={} exports={}",
+                    name,
+                    m.interface.summary.interface_hash,
+                    m.interface.summary.exports.len()
+                );
+            }
+            eprintln!("PROBE2 computes={}", typecheck_compute_count());
+        });
+    }
+
+    #[test]
     fn source_term_recomputes_mutated_module() {
         with_typecheck_compute_count_receipt(|| {
             let fx = Fixture::new("source-term");
