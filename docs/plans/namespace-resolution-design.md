@@ -214,9 +214,10 @@ highest-rank roster ghosts; consolidating either would destroy information.
   not a per-fn construction stamp.
 
 **Enforcement:** `src/v1/tests/src/global_bare_corpus_census_test.rs`
-`tier2_namespace_homonym_invariants` — fail-closed on reachability invariants (0 ambiguous
-bare refs for the construction-protocol names; 0 cross-subtree bare `emit` refs), not
-declaration counts. Reds with triage-before-consolidating guidance when a carrier changes.
+`tier2_namespace_homonym_invariants` — two legs: (1) census ambiguity — UNIQUE
+proceeds, AMBIGUOUS reds, ABSENT refuses the census leg (not treated as non-ambiguous;
+precedent: `fold`); (2) reachability — 0 ambiguous bare refs for construction-protocol
+names, 0 cross-subtree bare `emit` refs (always evaluated). Not declaration counts.
 
 ## 6. Resolution mechanics carried from §1c (unchanged, re-homed)
 
