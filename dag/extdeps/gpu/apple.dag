@@ -29,4 +29,7 @@ data apple_m5_gpu_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
   tdp_watts: none,
   compute_capability: none,
   supported_runtimes: [Metal],
+  interconnect: none,
+  sm_cache: none,
+  sm_cache_citations: [],
 }

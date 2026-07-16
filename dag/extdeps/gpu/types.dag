@@ -1,12 +1,14 @@
 module extdeps.gpu.types
 
 import std.types { Int, NonEmptyStr, String, List }
-import std.measure { HardwareThreadCount, Hertz, Watt, Bandwidth }
+import std.measure { ByteSize, HardwareThreadCount, Hertz, Watt, Bandwidth }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
 import extdeps.memory.types { MemoryFacts }
 import extdeps.vendor.nvidia { nvidia }
 import extdeps.vendor.amd { amd }
+import extdeps.storage.types { PcieLink }
+import extdeps.cpu.types { CacheGeometryCitation }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -63,6 +65,11 @@ type AcceleratorFacts {
   model: NonEmptyStr
 }
 
+type GpuSmCacheGeometry {
+  shared_memory_per_sm: ByteSize
+  register_file_per_sm: ByteSize
+}
+
 type GpuModelCatalogRow {
   vendor: Vendor<Hardware>
   model: NonEmptyStr
@@ -74,4 +81,7 @@ type GpuModelCatalogRow {
   tdp_watts: Watt?
   compute_capability: GpuComputeCapability?
   supported_runtimes: List<GpuRuntime>
+  interconnect: PcieLink?
+  sm_cache: GpuSmCacheGeometry?
+  sm_cache_citations: List<CacheGeometryCitation>
 }

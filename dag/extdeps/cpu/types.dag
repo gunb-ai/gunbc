@@ -30,7 +30,16 @@ type CpuL1CacheGeometry {
   line_size: ByteSize
 }
 
-type CpuCacheGeometryCitation {
+type CpuL2CacheGeometry {
+  capacity_per_core: ByteSize
+  line_size: ByteSize
+}
+
+type CpuL3CacheGeometry {
+  capacity: ByteSize
+}
+
+type CacheGeometryCitation {
   field: NonEmptyStr
   authority: ExternalAuthority
 }
@@ -46,7 +55,11 @@ type CpuModelCatalogRow {
   socket: CpuSocket
   tdp_watts: Watt
   l1_cache: CpuL1CacheGeometry
-  l1_cache_citations: List<CpuCacheGeometryCitation>
+  l1_cache_citations: List<CacheGeometryCitation>
+  l2_cache: CpuL2CacheGeometry
+  l2_cache_citations: List<CacheGeometryCitation>
+  l3_cache: CpuL3CacheGeometry
+  l3_cache_citations: List<CacheGeometryCitation>
 }
 
 type CpuDeploymentFacts {
