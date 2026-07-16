@@ -11,6 +11,7 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "recorded_fixture.rs",
     "main.rs",
     "phase_profile.rs",
+    "pre_push.rs",
     "memory_governor.rs",
     "std_lens_verdict.rs",
     "usv_pilot_v2_std_algebra.rs",
