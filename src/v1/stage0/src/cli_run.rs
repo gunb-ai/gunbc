@@ -1902,8 +1902,7 @@ pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &st
 /// or a floor-enrolled diagnostic-histogram lens subsumes this host transport.
 /// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
 /// (`compile_to_resolved` on the whole-tree source closure).
-pub fn compile_clean_whole_tree_hard_diagnostics(
-) -> Result<im_rc::Vector<Rc<ErrorNode>>, String> {
+pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im_rc::Vector<Rc<ErrorNode>>, String> {
     let plan = CompileCleanScopePlan::WholeTree;
     let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
         None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),

@@ -75,8 +75,8 @@ fn main() -> ExitCode {
     let mut ranked: Vec<((String, String), usize)> = by_class_name.into_iter().collect();
     ranked.sort_by(|a, b| {
         b.1.cmp(&a.1)
-            .then_with(|| a.0.0.cmp(&b.0.0))
-            .then_with(|| a.0.1.cmp(&b.0.1))
+            .then_with(|| a.0 .0.cmp(&b.0 .0))
+            .then_with(|| a.0 .1.cmp(&b.0 .1))
     });
     for ((class, name), count) in ranked.iter().take(50) {
         println!("NAME\t{class}\t{name}\t{count}");
