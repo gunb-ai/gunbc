@@ -1931,7 +1931,9 @@ fn regen_path_affects_regen(changed: &str, dag_closure: &HashSet<String>) -> boo
 /// CI label for the regen self-host fixed-point step's affected-set skip arm.
 /// `regen_not_affected_skip` iff the merge-base diff touches no regen input;
 /// `run_regen` on any intersection, empty diff, or observation/closure failure
-/// (fail-closed — main and the 4-hourly falsifier are the cold control).
+/// (fail-closed). This computes the label only; the CI shell (ci_spec.dag) gates
+/// the skip to pull_request events, so push-to-main runs regen unconditionally as
+/// the cold control that surfaces a wrong closure on the next merge.
 pub fn regen_floor_skip_label_for_ci() -> String {
     let (changed_paths, _departed) = match floor_git_diff_name_status_range() {
         Ok(v) => v,
@@ -1968,7 +1970,7 @@ pub fn regen_floor_skip_label_for_ci() -> String {
         }
         None => {
             eprintln!(
-                "regen floor skip: {} changed path(s), none intersect the regen input closure (src/v1/** ∪ v1 dag import-closure ∪ Cargo/toolchain config) — self-host fixed-point provably unchanged; skipping (main + 4-hourly falsifier run it cold)",
+                "regen floor skip: {} changed path(s), none intersect the regen input closure (src/v1/** ∪ v1 dag import-closure ∪ Cargo/toolchain config) — self-host fixed-point provably unchanged (push-to-main runs regen unconditionally as the cold control)",
                 changed_paths.len()
             );
             REGEN_NOT_AFFECTED_SKIP_LABEL.to_string()
