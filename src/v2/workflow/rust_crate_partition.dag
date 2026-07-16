@@ -118,9 +118,9 @@ type TypeDefinitionsMapNotFrontierGrounded {
   dissolve_target: DeclarationRef
 }
 
-data stage0_module_dag_interface_grounding_debt_dissolve_on: String = "dissolve-on: stage0_module_dag_interface_grounding — LANDED at cutover: ModuleDag.exports + type_definitions populated per-module (empty Node/row lists; full pub-mod surface via R3 path includes). Remaining: ingest frontier cross-module export Nodes + by-value ModuleTypeDefinitionRow rows when stage0 module ingest provides them."
+data stage0_module_dag_interface_grounding_debt_dissolve_on: String = "dissolve-on: stage0_module_dag_interface_grounding — populate ModuleDag.exports with frontier-derived cross-module export Nodes and type_definitions with by-value ModuleTypeDefinitionRow rows when stage0 module ingest provides them; until then R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain (not CompilationUnit.interface Nodes)."
 
-data rust_crate_partition_interface_deferred_note: String = "Cutover state: ModuleDag.exports + type_definitions populated per-module (structural grounding for partition_fold); R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain (not CompilationUnit.interface Nodes yet). Full Node-carrier exports land when stage0 module ingest provides them."
+data rust_crate_partition_interface_deferred_note: String = "Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural scaffold for partition_fold only). R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes. Full Node-carrier exports blocked on stage0 module ingest (frontier-grounding dependency)."
 
 data rust_crate_partition_r4_by_value_type_cycle_note: String = "Rust R4 primary refusals on current main: SccSplit + UnitGraphCycle (LinkageCycle permissive). ByValueTypeCycle arm lands with #6744 rebase — refuse type-layout cycles via ByValueTypeCycle { detail } ONLY, never SccSplit. Exhaustive PartitionR4ValidityCause matches must add the 4th arm on rebase."
 
@@ -133,7 +133,14 @@ fn stage0_frontier_grounding_target() -> DeclarationRef {
 }
 
 fn stage0_module_dag_interface_grounding() -> Stage0ModuleDagInterfaceGrounding {
-  Stage0ModuleDagInterfaceFrontierGrounded
+  Stage0ModuleDagInterfaceUngrounded {
+    exports_map: ExportsMapNotFrontierGrounded {
+      dissolve_target: stage0_frontier_grounding_target()
+    },
+    type_definitions_map: TypeDefinitionsMapNotFrontierGrounded {
+      dissolve_target: stage0_frontier_grounding_target()
+    }
+  }
 }
 
 fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
