@@ -1,6 +1,6 @@
 module v1.compiler.infer
 
-import std.types { SourceSpan, container_param_name }
+import std.types { SourceSpan, ContentHash, NonEmptyStr, container_param_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
@@ -5758,7 +5758,7 @@ fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv
 
 data interface_summary_consumer_note: String = "S2a move 2 increment B (resolver-graph-major-design.md §7): build_type_env reads a direct import's ModuleInterface (std.interface_summary carrier + interface-grain env/cache realization) — never the parent's full TypeEnv+TypeEnvCache chains. interface.env is the export surface with parents: [] (ancestry-complete via flattened str_bindings/ancestry maps and merged inductive/recursive sets); interface.cache is the flattened import-union grain (variant_locals stripped — interpretation-local). Consumption still runs interface_env_for_import for importer-specific std.types filtering. Discriminating receipt: transitive_interface_binding_test."
 
-data interface_signature_fingerprint_v0_note: String = "Interim v0 export signature fingerprint (export_entry_from_item): content_hash of export name + authored_name_at(binding.resolved) under tag v1-interface-sig-v0 — NOT yet structural type shape. Two exports with the same name and resolved authored-name string collide in interface_hash even if types differ; increment-B receipt is binding transitivity (transitive_interface_binding_test), not hash-discriminated signature change. Structural fingerprint authority: std.interface_summary.interface_summary_v0_dissolution_trigger → export_entry_fingerprint when type-structure hashing lands."
+data interface_signature_fingerprint_v0_note: String = "Interim v0 export signature fingerprint (export_entry_from_item): name-grain, NOT yet structural type shape. Type/data/service exports fingerprint name + authored_name_at(binding.resolved) under tag v1-interface-sig-v0; fn/func exports fingerprint name + param resolved-type names + return-type authored name under tag v1-interface-fn-sig-v0 (the fn arm landed with the typed-module content key, PR-alpha — before it, fn exports produced NO entry, so a fn-only module's interface_hash was the constant empty rollup and the content key's import term was vacuous; the key's import-term RED control is the discriminating receipt). Two exports whose names and resolved authored-name strings all match still collide even if type STRUCTURE differs; increment-B receipt is binding transitivity (transitive_interface_binding_test), not hash-discriminated deep structure. Structural fingerprint authority: std.interface_summary.interface_summary_v0_dissolution_trigger → export_entry_fingerprint when type-structure hashing lands."
 
 fn interface_env_surface(env: TypeEnv) -> TypeEnv {
   TypeEnv {
@@ -5797,29 +5797,65 @@ fn export_kind_of_item_kind(kind: ItemKind) -> ExportKind? {
   }
 }
 
+fn fn_signature_fingerprint(item: Node, source_indices: Map<String, NewlineIndex>) -> ContentHash {
+  let params_acc = fold(item.params, init: content_hash_atom(value: "v1-interface-fn-sig-v0"), f: (acc, p) =>
+    content_hash_combine(
+      left: acc,
+      right: content_hash_atom(value: resolved_type_name(n: p, source_indices: source_indices))
+    )
+  )
+  match item.inferred {
+    Present { value: Resolved { node: rt } } =>
+      content_hash_combine(
+        left: params_acc,
+        right: content_hash_atom(value: authored_name_at(source_indices: source_indices, node: rt))
+      )
+    _ => params_acc
+  }
+}
+
 fn export_entry_from_item(item: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> ExportEntry? {
   let name = authored_name_at(source_indices: source_indices, node: item)
   match export_kind_of_item_kind(kind: item_kind(item: item)) {
     Absent => Absent
     Present { value: kind } =>
-      match map_get(env.str_bindings, name) {
-        Present { value: binding } =>
+      match kind {
+        ExportFn =>
           Present {
             value: ExportEntry {
               name: name,
               kind: kind,
               contract: signature_contract(
                 signature: content_hash_tagged(
-                  tag: "v1-interface-sig-v0",
+                  tag: "v1-interface-fn-sig-v0",
                   payload: content_hash_combine(
-                    left: content_hash_atom(value: binding.name),
-                    right: content_hash_atom(value: authored_name_at(source_indices: source_indices, node: binding.resolved))
+                    left: content_hash_atom(value: name),
+                    right: fn_signature_fingerprint(item: item, source_indices: source_indices)
                   )
                 )
               )
             }
           }
-        Absent => Absent
+        _ =>
+          match map_get(env.str_bindings, name) {
+            Present { value: binding } =>
+              Present {
+                value: ExportEntry {
+                  name: name,
+                  kind: kind,
+                  contract: signature_contract(
+                    signature: content_hash_tagged(
+                      tag: "v1-interface-sig-v0",
+                      payload: content_hash_combine(
+                        left: content_hash_atom(value: binding.name),
+                        right: content_hash_atom(value: authored_name_at(source_indices: source_indices, node: binding.resolved))
+                      )
+                    )
+                  )
+                }
+              }
+            Absent => Absent
+          }
       }
   }
 }
