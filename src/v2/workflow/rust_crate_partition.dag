@@ -387,50 +387,11 @@ fn stage0_module_dag() -> ModuleDag {
   }
 }
 
-fn stage0_package_name_to_rust_ident(package_name: String) -> String {
-  replace(package_name, "-", "_")
-}
-
-fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
-  if crate_dir == "src/v1/stage0_runtime" {
-    "../stage0_runtime"
-  } else if crate_dir == "src/v1/stage0_std_core" {
-    "../stage0_std_core"
-  } else if crate_dir == "src/v1/stage0_std_surface" {
-    "../stage0_std_surface"
-  } else if crate_dir == "src/v1/stage0_extdeps_base" {
-    "../stage0_extdeps_base"
-  } else if crate_dir == "src/v1/stage0_extdeps_languages" {
-    "../stage0_extdeps_languages"
-  } else if crate_dir == "src/v1/stage0_v1_infer" {
-    "../stage0_v1_infer"
-  } else if crate_dir == "src/v1/stage0_v1_artifact" {
-    "../stage0_v1_artifact"
-  } else if crate_dir == "src/v1/stage0_emit_core" {
-    "../stage0_emit_core"
-  } else {
-    ""
-  }
-}
-
 fn stage0_module_owner_package_name(module_basename: String) -> String {
-  if stage0_runtime_modules() |> any(m => m == module_basename) {
-    "v1-stage0-runtime"
-  } else if stage0_std_core_modules() |> any(m => m == module_basename) {
-    "v1-stage0-std-core"
-  } else if stage0_std_surface_modules() |> any(m => m == module_basename) {
-    "v1-stage0-std-surface"
-  } else if stage0_extdeps_base_modules() |> any(m => m == module_basename) {
-    "v1-stage0-extdeps-base"
-  } else if stage0_extdeps_language_modules() |> any(m => m == module_basename) {
-    "v1-stage0-extdeps-languages"
-  } else if stage0_v1_infer_modules() |> any(m => m == module_basename) {
-    "v1-stage0-v1-infer"
-  } else if stage0_v1_artifact_modules() |> any(m => m == module_basename) {
-    "v1-stage0-v1-artifact"
-  } else {
-    ""
-  }
+  stage0_module_bearing_crate_rows()
+    |> filter(row => row.modules |> any(m => m == module_basename))
+    |> map(row => row.package_name)
+    |> fold(init: "", f: fn(acc, pkg) { if acc == "" { pkg } else { acc } })
 }
 
 fn stage0_emit_shell_reexport_source_packages() -> List<String> {
