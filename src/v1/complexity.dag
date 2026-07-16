@@ -30,6 +30,7 @@ import std.induction {
   ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent,
+  cost_constant, cost_poly,
   sub_value_to_evidence, sub_value_to_call_pattern, sub_value_to_lowering_target, catamorphism_bound, derive_bound,
 }
 import v1.std.core {
@@ -3419,6 +3420,64 @@ fn space_of(work: CostExpr) -> CostExpr {
 
 fn fold_peak_space(body_peak: CostExpr, output_size: CostExpr) -> CostExpr {
   cost_seq(a: output_size, b: space_of(work: body_peak))
+}
+
+data cost_expr_degree_note: String = "Asymptotic reading (space-complexity increment 2): the polynomial degree of a CostExpr. A CostSum over a size variable is one factor of n (+1 degree); sequential/parallel take the MAX degree; products ADD degrees; a bare log is below linear (degree 0 for the polynomial reading). Absent = the frontier (CostExtern/CostUnknown) — fail-closed, never a fabricated degree. Applied to space_of(work) it yields the SPACE order, which is <= the TIME order by construction (space_of collapses the CostSum that a reducing fold's TIME carries): the headline O(n)-time / O(1)-space, decided asymptotically."
+
+fn cost_expr_degree(e: CostExpr) -> Int? {
+  match e {
+    CostConst { value: _ } => Present { value: 0 }
+    CostAdd { left: l, right: r } =>
+      match cost_expr_degree(e: l) {
+        Present { value: ld } => match cost_expr_degree(e: r) {
+          Present { value: rd } => Present { value: if ld >= rd { ld } else { rd } }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostMax { left: l, right: r } =>
+      match cost_expr_degree(e: l) {
+        Present { value: ld } => match cost_expr_degree(e: r) {
+          Present { value: rd } => Present { value: if ld >= rd { ld } else { rd } }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostMul { left: l, right: r } =>
+      match cost_expr_degree(e: l) {
+        Present { value: ld } => match cost_expr_degree(e: r) {
+          Present { value: rd } => Present { value: ld + rd }
+          Absent => none
+        }
+        Absent => none
+      }
+    CostSum { binder: _, upper: _, body: bd } =>
+      match cost_expr_degree(e: bd) {
+        Present { value: bdeg } => Present { value: 1 + bdeg }
+        Absent => none
+      }
+    CostLog { base: _, argument: _ } => Present { value: 0 }
+    CostExtern { name: _ } => none
+    CostUnknown { reason: _ } => none
+  }
+}
+
+fn degree_to_bound(degree: Int, param: String) -> CostBound {
+  if degree == 0 { cost_constant() } else { cost_poly(param: param, degree: degree) }
+}
+
+fn space_asymptotic_bound(work: CostExpr, param: String) -> CostBound {
+  match cost_expr_degree(e: space_of(work: work)) {
+    Present { value: d } => degree_to_bound(degree: d, param: param)
+    Absent => ForeverBound
+  }
+}
+
+fn time_asymptotic_bound(work: CostExpr, param: String) -> CostBound {
+  match cost_expr_degree(e: work) {
+    Present { value: d } => degree_to_bound(degree: d, param: param)
+    Absent => ForeverBound
+  }
 }
 
 fn eval_size_expr_concrete(s: SizeExpr, env: Map<String, Int>) -> Int? {

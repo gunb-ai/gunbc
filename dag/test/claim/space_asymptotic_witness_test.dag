@@ -1,0 +1,50 @@
+module test.claim.space_asymptotic_witness
+
+import std.logic { Bool }
+import std.types { Int }
+import std.induction { CostBound, ConstantBound, AtomicBound, ForeverBound, PolyCost, PolynomialExponent, IntegerExpPos, PositiveDescentAmount, OneStep }
+import v1.compiler.complexity {
+  CostExpr, CostConst, CostAdd, CostMul, CostMax, CostSum, CostUnknown,
+  SizeExpr, SizeVar,
+  cost_expr_degree, space_asymptotic_bound, time_asymptotic_bound,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data space_asymptotic_witness_note: String = "Space-complexity increment 2 ACCEPT: the asymptotic reading. The polynomial degree of space_of(work) is the SPACE order, <= the TIME order by construction. Headline decided asymptotically: a reducing fold is O(n) TIME (degree 1) but O(1) SPACE (degree 0); a nested reducing loop is O(n^2) time but still O(1) space; a fail-closed frontier maps to ForeverBound, never a fabricated degree."
+
+data reducing_fold: CostExpr = CostSum { binder: "i", upper: SizeVar { name: "n" }, body: CostConst { value: 1 } }
+
+test fn reducing_fold_time_linear_space_constant_holds() -> Bool {
+  let time_deg = match cost_expr_degree(e: reducing_fold) { Present { value: d } => d  Absent => 0 - 1 }
+  let space_bound = space_asymptotic_bound(work: reducing_fold, param: "n")
+  let time_bound = time_asymptotic_bound(work: reducing_fold, param: "n")
+  time_deg == 1
+    && match space_bound { ConstantBound => true  _ => false }
+    && match time_bound { AtomicBound { cost: _ } => true  _ => false }
+}
+
+test fn nested_reducing_loop_time_quadratic_space_constant_holds() -> Bool {
+  let inner = CostSum { binder: "j", upper: SizeVar { name: "n" }, body: CostConst { value: 1 } }
+  let nested = CostSum { binder: "i", upper: SizeVar { name: "n" }, body: inner }
+  let time_deg = match cost_expr_degree(e: nested) { Present { value: d } => d  Absent => 0 - 1 }
+  let space_bound = space_asymptotic_bound(work: nested, param: "n")
+  time_deg == 2
+    && match space_bound { ConstantBound => true  _ => false }
+}
+
+test fn parallel_region_space_is_additive_degree_holds() -> Bool {
+  let par = CostMax {
+    left: CostSum { binder: "i", upper: SizeVar { name: "n" }, body: CostConst { value: 1 } },
+    right: CostSum { binder: "j", upper: SizeVar { name: "n" }, body: CostConst { value: 1 } }
+  }
+  let space_bound = space_asymptotic_bound(work: par, param: "n")
+  match space_bound { ConstantBound => true  _ => false }
+}
+
+test fn frontier_maps_to_forever_bound_holds() -> Bool {
+  let work = CostAdd { left: CostConst { value: 1 }, right: CostUnknown { reason: "unmodeled" } }
+  let space_bound = space_asymptotic_bound(work: work, param: "n")
+  match space_bound { ForeverBound => true  _ => false }
+}
