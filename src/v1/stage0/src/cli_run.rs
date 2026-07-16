@@ -858,6 +858,38 @@ mod process_workspace_root_tests {
         }
     }
 
+    /// cli_run census authority (CI floor path): fold must stay ABSENT; residue fns UNIQUE.
+    #[test]
+    fn corpus_global_bare_census_fold_and_residue_names() {
+        let roots = super::witness_layer_roots();
+        let index = super::build_multi_entry_index(&roots);
+        let (census, _, _) =
+            super::build_corpus_global_bare_census_from_index(&index).expect("census build");
+        use crate::v1_compiler_infer_env::GlobalBareLookupState::{
+            GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
+        };
+        for (name, expect) in [
+            ("fold", "absent"),
+            ("integer_exact_contract", "unique"),
+            ("gunbhub_hostile_page", "unique"),
+            ("int_max", "unique"),
+            ("bandwidth_count", "ambiguous"),
+        ] {
+            match (census.get(name).map(|s| s.as_ref()), expect) {
+                (None, "absent") => {}
+                (Some(GlobalBareUniqueBinding { .. }), "unique") => {}
+                (Some(GlobalBareAmbiguousBinding), "ambiguous") => {}
+                (got, want) => panic!("{name}: expected {want}, got {got:?}"),
+            }
+            let label = match census.get(name).map(|s| s.as_ref()) {
+                None => "ABSENT",
+                Some(GlobalBareUniqueBinding { .. }) => "UNIQUE",
+                Some(GlobalBareAmbiguousBinding) => "AMBIGUOUS",
+            };
+            eprintln!("[cli-run-census] {name:30} -> {label}");
+        }
+    }
+
     #[test]
     fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();

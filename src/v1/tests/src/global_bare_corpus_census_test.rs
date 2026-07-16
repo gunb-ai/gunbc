@@ -248,3 +248,79 @@ fn witness() -> HostilePage {
         "record-return nullary fn bare-call should not type-mismatch: {d:?}"
     );
 }
+
+/// CI floor path: resolve real corpus entries with cli_run census overlay (not
+/// `compile_sources` alone). Receipt for whether fold / type-mismatch reproduce.
+#[test]
+fn cli_run_resolve_residue_entry_receipt() {
+    use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
+    use v1_compiler::v1_std_core::diagnostic_to_message;
+
+    let ws = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .canonicalize()
+        .expect("workspace root");
+    std::env::set_current_dir(&ws).expect("chdir workspace");
+    let roots = vec![
+        ws.join("dag").to_string_lossy().into_owned(),
+        ws.join("src/v2").to_string_lossy().into_owned(),
+    ];
+    let index = build_multi_entry_index(&roots);
+
+    let mut fold_not_found = 0usize;
+    let mut type_mismatch_residue = 0usize;
+    let mut total_hard = 0usize;
+
+    for entry in [
+        "dag/tools/rust_stage0_gates.dag",
+        "dag/test/claim/react_jsx_emit_test.dag",
+        "dag/test/claim/accelerator_demo_model_witness_test.dag",
+    ] {
+        let hard: Vec<String> = match resolve_entry_with_index(&index, entry) {
+            Ok((graph, _)) => graph
+                .diagnostics
+                .iter()
+                .filter(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()))
+                .map(|d| diagnostic_to_message(d.diagnostic.clone()))
+                .collect(),
+            Err(msg) => vec![msg],
+        };
+        total_hard += hard.len();
+        let fold_hits: Vec<_> = hard
+            .iter()
+            .filter(|m| m.contains("function 'fold' not found in scope"))
+            .cloned()
+            .collect();
+        let tm_hits: Vec<_> = hard
+            .iter()
+            .filter(|m| {
+                (m.contains("integer_exact_contract") || m.contains("gunbhub_hostile_page"))
+                    && m.contains("type mismatch")
+            })
+            .cloned()
+            .collect();
+        fold_not_found += fold_hits.len();
+        type_mismatch_residue += tm_hits.len();
+        eprintln!(
+            "[cli-resolve] {entry}: hard={} fold_not_found={} type_mismatch_residue={}",
+            hard.len(),
+            fold_hits.len(),
+            tm_hits.len()
+        );
+        for m in &hard {
+            eprintln!("  {m}");
+        }
+    }
+
+    eprintln!(
+        "[cli-resolve] TOTAL hard={total_hard} fold_not_found={fold_not_found} type_mismatch_residue={type_mismatch_residue}"
+    );
+    assert_eq!(
+        fold_not_found, 0,
+        "real entries must not hit fold scope-lookup on cli_run path"
+    );
+    assert_eq!(
+        type_mismatch_residue, 0,
+        "real entries must not hit integer_exact_contract/gunbhub_hostile_page type-mismatch on cli_run path"
+    );
+}
