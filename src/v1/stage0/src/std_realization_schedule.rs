@@ -10,6 +10,9 @@ use self::WitnessSpan::*;
 pub use crate::std_execution_mode::execution_mode_eq;
 pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::Hermetic;
+pub use crate::std_fold_parallelism::FoldParallelism;
+use crate::std_fold_parallelism::FoldParallelism::{SerialFold, TreeReduce};
+pub use crate::std_fold_parallelism::{fold_parallelism_eq, serial_fold_parallelism};
 use crate::std_measure::Quantity::Time;
 pub use crate::std_measure::{byte_size, byte_size_count, measure_count, time_measure, watt};
 pub use crate::std_measure::{ByteSize, Measure, Quantity, Watt};
@@ -228,9 +231,7 @@ pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
     match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
         Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
-        Runnable::RunnableKernelWorkload {
-            fused_op_count: _, ..
-        } => runnable_resource_profile_negligible(),
+        Runnable::RunnableKernelWorkload { .. } => runnable_resource_profile_negligible(),
     }
 }
 
@@ -240,9 +241,7 @@ pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
         Runnable::RunnableSingleClaim { profile: p, .. } => {
             runnable_excludes_corpus_co_residence(p.clone())
         }
-        Runnable::RunnableKernelWorkload {
-            fused_op_count: _, ..
-        } => false,
+        Runnable::RunnableKernelWorkload { .. } => false,
     }
 }
 
@@ -298,7 +297,25 @@ pub enum Runnable {
     },
     RunnableKernelWorkload {
         fused_op_count: i64,
+        fold_parallelism: Rc<FoldParallelism>,
     },
+}
+
+pub fn runnable_kernel_workload_elementwise(fused_op_count: i64) -> Rc<Runnable> {
+    Rc::new(Runnable::RunnableKernelWorkload {
+        fused_op_count: fused_op_count.clone(),
+        fold_parallelism: serial_fold_parallelism(),
+    })
+}
+
+pub fn runnable_kernel_workload_associative_fold(
+    fused_op_count: i64,
+    fold_parallelism: Rc<FoldParallelism>,
+) -> Rc<Runnable> {
+    Rc::new(Runnable::RunnableKernelWorkload {
+        fused_op_count: fused_op_count.clone(),
+        fold_parallelism: fold_parallelism.clone(),
+    })
 }
 
 pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {
@@ -316,9 +333,7 @@ pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
             ..
         } => node_frontier_selection_applied(sel.clone()),
         Runnable::RunnableSingleClaim { .. } => false,
-        Runnable::RunnableKernelWorkload {
-            fused_op_count: _, ..
-        } => false,
+        Runnable::RunnableKernelWorkload { .. } => false,
     }
 }
 
@@ -337,9 +352,7 @@ pub fn runnable_step_label(r: Rc<Runnable>) -> String {
     match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
         Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
-        Runnable::RunnableKernelWorkload {
-            fused_op_count: _, ..
-        } => "__kernel_workload__".to_string(),
+        Runnable::RunnableKernelWorkload { .. } => "__kernel_workload__".to_string(),
     }
 }
 
@@ -438,9 +451,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
             Runnable::RunnableDiscoveryBatch { .. } => false,
-            Runnable::RunnableKernelWorkload {
-                fused_op_count: _, ..
-            } => false,
+            Runnable::RunnableKernelWorkload { .. } => false,
         },
         Runnable::RunnableDiscoveryBatch {
             source_roots: lsr,
@@ -471,20 +482,23 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                     && string_list_eq(lsc.clone(), rsc.clone()))
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
-            Runnable::RunnableKernelWorkload {
-                fused_op_count: _, ..
-            } => false,
+            Runnable::RunnableKernelWorkload { .. } => false,
         },
         Runnable::RunnableKernelWorkload {
             fused_op_count: lleft,
+            fold_parallelism: lfold,
             ..
         } => match (*right.clone()).clone() {
             Runnable::RunnableSingleClaim { .. } => false,
             Runnable::RunnableDiscoveryBatch { .. } => false,
             Runnable::RunnableKernelWorkload {
                 fused_op_count: rcount,
+                fold_parallelism: rfold,
                 ..
-            } => (lleft.clone() == rcount.clone()),
+            } => {
+                ((lleft.clone() == rcount.clone())
+                    && fold_parallelism_eq(lfold.clone(), rfold.clone()))
+            }
         },
     }
 }

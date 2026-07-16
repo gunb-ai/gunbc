@@ -2,7 +2,8 @@
 // Source module: std.decl_ref
 
 use self::DeclField::*;
-pub use crate::std_types::NonEmptyStr;
+use crate::std_types::Bool::*;
+pub use crate::std_types::{Bool, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -34,4 +35,23 @@ pub struct DeclarationRef {
     pub module_path: NonEmptyStr,
     pub decl_name: NonEmptyStr,
     pub field: Rc<DeclField>,
+}
+
+pub fn decl_field_eq(left: Rc<DeclField>, right: Rc<DeclField>) -> bool {
+    match (*left.clone()).clone() {
+        DeclField::WholeDeclaration => match (*right.clone()).clone() {
+            DeclField::WholeDeclaration => true,
+            DeclField::NamedField { field_name: _, .. } => false,
+        },
+        DeclField::NamedField { field_name: ln, .. } => match (*right.clone()).clone() {
+            DeclField::WholeDeclaration => false,
+            DeclField::NamedField { field_name: rn, .. } => (ln.clone() == rn.clone()),
+        },
+    }
+}
+
+pub fn decl_ref_eq(left: Rc<DeclarationRef>, right: Rc<DeclarationRef>) -> bool {
+    (((left.module_path.clone() == right.module_path.clone())
+        && (left.decl_name.clone() == right.decl_name.clone()))
+        && decl_field_eq(left.field.clone(), right.field.clone()))
 }
