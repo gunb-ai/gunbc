@@ -2625,6 +2625,9 @@ fn compile_to_resolved_with_corpus_global_bare(
 
     let sources_rc: Rc<im_rc::Vector<Rc<v1_compiler_compile::SourceFile>>> =
         Rc::new(sources.into());
+    for source in sources_rc.iter() {
+        note_source_hash(index.as_ref(), source);
+    }
     let frontend = v1_compiler_compile::front_end_sources(sources_rc.clone());
     let newline_indices = frontend.newline_indices.clone();
 
@@ -3966,6 +3969,7 @@ fn build_corpus_global_bare_census_from_index(
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     for source in &corpus_sources {
+        note_source_hash(index, source);
         let cached = index.parse_cache.borrow().get(&source.path).cloned();
         let (parse_result, nl_index) = match cached {
             Some(entry) => entry,
