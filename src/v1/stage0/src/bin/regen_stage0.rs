@@ -51,6 +51,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
     "gunbc_stage0_crate_layout_generated.rs",
+    "gunbc_stage0_crate_partition_generated.rs",
     "lib.rs",
     "std_algebra.rs",
     "std_coercion.rs",
@@ -895,16 +896,31 @@ fn rustfmt_workspace(manifest_dir: &Path) -> Result<(), String> {
     }
 }
 
-fn stage0_split_crate_boundaries(workspace: &Path) -> Vec<(PathBuf, String)> {
-    v1_compiler::v1_compiler_stage0_crates::stage0_crate_boundary_files()
-        .iter()
-        .map(|file| (workspace.join(&file.path), file.content.clone()))
-        .collect()
+fn stage0_split_crate_boundaries(workspace: &Path) -> Result<Vec<(PathBuf, String)>, String> {
+    if !v1_compiler::v1_compiler_stage0_crates::stage0_partition_lookups_valid() {
+        return Err(
+            "stage0 partition emit refused: lookup validation failed (missing module owner or package crate_dir)"
+                .to_string(),
+        );
+    }
+    match v1_compiler::v1_compiler_stage0_crates::stage0_crate_boundary_emit_outcome().as_ref() {
+        v1_compiler::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
+            files,
+        } => Ok(files
+            .iter()
+            .map(|file| (workspace.join(&file.path), file.content.clone()))
+            .collect()),
+        v1_compiler::v1_compiler_stage0_crates::Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
+            cause,
+        } => Err(v1_compiler::v1_compiler_stage0_crates::stage0_crate_boundary_emit_refusal_message(
+            cause.clone(),
+        )),
+    }
 }
 
 fn verify_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> {
     let mut mismatches = Vec::new();
-    for (path, expected) in stage0_split_crate_boundaries(workspace) {
+    for (path, expected) in stage0_split_crate_boundaries(workspace)? {
         let committed =
             fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
         if committed != expected {
@@ -924,7 +940,7 @@ fn verify_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> 
 }
 
 fn write_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> {
-    for (path, contents) in stage0_split_crate_boundaries(workspace) {
+    for (path, contents) in stage0_split_crate_boundaries(workspace)? {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
