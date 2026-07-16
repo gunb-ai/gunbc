@@ -4424,7 +4424,8 @@ fn build_symbol_index_for_reconcile(
 // receipt: PR #6743 / quiet-gull-833 defork blowup investigation).
 // 🟡 dissolve-on: cost-shape receipt landed (located root + n-vs-time growth curve on bounded
 // corpus); namespace unblock lands cost fix then de-fork from defork-preserve-quiet-gull-833.
-// DELETE WHEN dissolved: `GUNBC_GLOBAL_BARE_Q2_BISECT`, `census_module_path_q2_consumption`,
+// DELETE WHEN dissolved: `GUNBC_GLOBAL_BARE_Q2_BISECT`, `GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE`,
+// `census_module_path_q2_consumption`,
 // `is_std_homonym_v2_std_path`, `global_bare_q2_bisect_allows`, `global_bare_for_decl_file`,
 // `global_bare_variant_locals_for_decl_file`, and the reconcile receipt eprint (~90 LOC).
 // Receipt: `rg GLOBAL_BARE_Q2_BISECT_SCAFFOLD_MARKER src/v1/stage0/src/cli_run.rs` == 1 until deletion.

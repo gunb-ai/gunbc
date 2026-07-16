@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# SCAFFOLD (§7 seed-retained HAND-SHELL — authority: sleek-wolf-190 global_bare cost-shape receipt;
+# receipt: PR #6743 / quiet-gull-833 defork blowup investigation).
+# 🟡 dissolve-on: cost-shape receipt landed (located root + n-vs-time growth curve on bounded
+# corpus); namespace unblock lands cost fix then de-fork from defork-preserve-quiet-gull-833.
+# DELETE WHEN dissolved: this script and `GROWTH_CURVE_MEASURE_SCAFFOLD_MARKER`.
+# Receipt: `rg GROWTH_CURVE_MEASURE_SCAFFOLD_MARKER scripts/growth_curve_measure.sh` == 1
+# Local investigation helper only — NOT a CI gate (§3: no shell-as-authority).
+# §5: `GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE` refuses green compile after receipt.
+GROWTH_CURVE_MEASURE_SCAFFOLD_MARKER=growth_curve_measure_receipt
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 cargo build --release -p v1-compiler --bin gunbc >/dev/null 2>&1
@@ -21,7 +30,7 @@ run_point() {
   set -e
   end=$(date +%s.%N)
   elapsed=$(python3 -c "print(round($end - $start, 3))")
-  echo "wall_s=${elapsed} exit=${ec}"
+  echo "wall_s=${elapsed} exit=${ec} (non-zero expected — receipt mode refuses green compile)"
   echo
 }
 

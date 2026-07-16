@@ -14664,9 +14664,7 @@ pub fn merge_global_bare_variant_locals(
 ) -> Rc<VariantFoldState> {
     let keys = Rc::new(v1_rt::map_keys(&precomputed));
     let key_count = keys.len();
-    MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
-        c.set(c.get() + key_count);
-    });
+    record_merge_global_bare_variant_key_scans(key_count);
     record_merge_global_bare_per_module_scan(module_name.clone(), key_count, 0);
     keys.iter()
         .cloned()
@@ -14702,9 +14700,7 @@ fn merge_global_bare_variant_locals_baseline_legacy(
     let keys = Rc::new(v1_rt::map_keys(&global_bare));
     let key_count = keys.len();
     let has_child_named_calls = Cell::new(0usize);
-    MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
-        c.set(c.get() + key_count);
-    });
+    record_merge_global_bare_variant_key_scans(key_count);
     let folded =
         keys.iter()
             .cloned()
