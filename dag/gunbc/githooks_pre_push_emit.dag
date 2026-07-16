@@ -12,6 +12,7 @@ import gunbc.local_tidy_spec {
   generated_artifact_drift_gate_check_fn
 }
 import gunbc.ci_gate { GeneratedArtifactDriftGate }
+import gunbc.ci_layer_roots { witness_layer_roots }
 import extdeps.git.hooks { pre_push_zero_sha, pre_push_stdin_read_vars }
 
 data bash_at: String = "@"
@@ -95,7 +96,7 @@ fn emit_freshness_fmt() -> String {
 
 fn emit_freshness_witness() -> String {
   concat(
-    emit_freshness_path_fn(label: "fresh_witness", globs: ["dag/", "src/v2/"]),
+    emit_freshness_path_fn(label: "fresh_witness", globs: map(witness_layer_roots, r => concat(r, "/"))),
     concat(
       "fresh_witness() {\n  local p\n  for p in \"",
       concat(bash_positional_all(), "\"; do fresh_witness_path \"$p\" && return 0; done\n  return 1\n}\n")
