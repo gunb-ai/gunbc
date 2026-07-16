@@ -1778,6 +1778,7 @@ mod compiler_tests {
                         std::rc::Rc::new(HashMap::new()),
                         std::rc::Rc::new(HashMap::new()),
                         crate::v1_compiler_infer_env::empty_symbol_index(),
+                        false,
                     );
                     let full_elapsed = t_full.elapsed();
                     let rss_after = get_rss_bytes();

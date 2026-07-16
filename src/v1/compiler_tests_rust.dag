@@ -1205,6 +1205,7 @@ fn ct_profile_reconcile_test() -> String {
     "                        std::rc::Rc::new(HashMap::new()),\n",
     "                        std::rc::Rc::new(HashMap::new()),\n",
     "                        crate::v1_compiler_infer_env::empty_symbol_index(),\n",
+    "                        false,\n",
     "                    );\n",
     "                    let full_elapsed = t_full.elapsed();\n",
     "                    let rss_after = get_rss_bytes();\n",
