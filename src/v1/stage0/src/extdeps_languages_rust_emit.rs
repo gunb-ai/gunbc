@@ -562,3 +562,21 @@ pub fn rust_higher_order_methods() -> Rc<Vec<Rc<HigherOrderMethodSpec>>> {
     }
     CACHED.with(|c: &Rc<Vec<Rc<HigherOrderMethodSpec>>>| c.clone())
 }
+
+pub fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
+    Rc::new(
+        qualified_module
+            .clone()
+            .split(&".".to_string())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .join(&"_".to_string())
+}
+
+pub fn rust_qualified_module_mod_filename(qualified_module: String) -> String {
+    v1_rt::concat(
+        rust_qualified_module_mod_basename(qualified_module.clone()),
+        ".rs".to_string(),
+    )
+}
