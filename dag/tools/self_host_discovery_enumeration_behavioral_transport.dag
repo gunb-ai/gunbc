@@ -1,0 +1,95 @@
+module tools.self_host_discovery_enumeration_behavioral_transport
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.cargo_build
+import extdeps.git
+import extdeps.gunbc
+import std.logic { Bool }
+import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
+
+data sde_doc: String = "Wave 2 Band A (discovery_enumeration self-emit): shim-free seed-linked behavioral receipt. Emit ONLY v2.compiler.discovery_enumeration via gunbc compile --entry; the emitted lib.rs carries its std import closure (no hand dep shims). Seed oracle: v1_compiler::v2_compiler_discovery_enumeration (hand-retained in src/v1/stage0). Behavioral bar: cargo-green witness pairs emitted vs seed on data constants + OwnedDataDeclInitializer / OwnedDataDiscoveryReceipt shapes (plain + --inject-fault RED). String authority: std.string_type (not v2.std.text) keeps the emit closure free of v2.std.nat diagnostic debt."
+
+data sde_seed_retained_note: String = "Seed oracle: v1_compiler::v2_compiler_discovery_enumeration in src/v1/stage0 (hand-retained, independent of emitted artifact). Dissolve-on: same as sde_scaffold_dissolution_trigger."
+
+data sde_source_rel: String = "src/v2/compiler/discovery_enumeration.dag"
+
+data sde_test_entry_rel: String = "src/v2/test/claim/discovery_enumeration_test.dag"
+
+data sde_scaffold_dissolution_trigger: String = "dissolve-on: sde_driver_main_source + sde_cargo_toml — hand-written equivalence driver + driver-crate manifest (mirrors slb/ssuv scaffold debt). DISSOLVES WHEN a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest without string carriers."
+
+data sde_receipt_pass_marker: String = "SELF_HOST_DISCOVERY_ENUMERATION_BEHAVIORAL_RECEIPT: PASS"
+
+data sde_cargo_features_note: String = "Mirrors slb_cargo_features_note: text_lookup_work_counter feature declared for -D warnings consumers."
+
+data sde_driver_main_source: String = "use std::rc::Rc;\nuse v1_compiled::v2_compiler_discovery_enumeration as emitted;\nuse v1_compiler::v2_compiler_discovery_enumeration as seed;\n\nfn rc_text_eq(e: &Rc<String>, s: &str) -> bool {\n    e.as_str() == s\n}\n\nfn resolved_eq(e: &emitted::ResolvedDeclRef, s: &seed::ResolvedDeclRef) -> bool {\n    rc_text_eq(&e.module, &s.module) && e.name == s.name\n}\n\nfn init_eq(e: &emitted::OwnedDataDeclInitializer, s: &seed::OwnedDataDeclInitializer) -> bool {\n    use emitted::OwnedDataDeclInitializer as E;\n    use seed::OwnedDataDeclInitializer as S;\n    match (e, s) {\n        (E::OwnedNodeCorpusInit, S::OwnedNodeCorpusInit) => true,\n        (\n            E::OwnedBoolWitnessClaimInit {\n                witness_entry: ee,\n                witness_function: ef,\n            },\n            S::OwnedBoolWitnessClaimInit {\n                witness_entry: se,\n                witness_function: sf,\n            },\n        ) => rc_text_eq(ee, se) && rc_text_eq(ef, sf),\n        (E::OwnedOtherInit { resolved: er }, S::OwnedOtherInit { resolved: sr }) => {\n            resolved_eq(er, sr)\n        }\n        _ => false,\n    }\n}\n\nfn receipt_eq(e: &emitted::OwnedDataDiscoveryReceipt, s: &seed::OwnedDataDiscoveryReceipt) -> bool {\n    e.unified_claim_arm_count == s.unified_claim_arm_count\n        && e.bool_witness_claim_arm_count == s.bool_witness_claim_arm_count\n        && e.illegal_other_init_count == s.illegal_other_init_count\n        && e.bool_witness_transport_row_count == s.bool_witness_transport_row_count\n        && e.transport_projection_complete == s.transport_projection_complete\n}\n\nfn main() {\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let mut all_pass = true;\n\n    let e_bool_mod = emitted::unified_claim_arm_bool_witness_claim_module();\n    let s_bool_mod = seed::unified_claim_arm_bool_witness_claim_module();\n    let bool_mod_ok = rc_text_eq(&e_bool_mod, &s_bool_mod) && !inject_fault;\n    println!(\"bool_module emitted={e_bool_mod:?} seed={s_bool_mod:?} eq={bool_mod_ok}\");\n    all_pass &= bool_mod_ok;\n\n    let e_corpus_mod = emitted::unified_claim_arm_node_corpus_module();\n    let s_corpus_mod = seed::unified_claim_arm_node_corpus_module();\n    let corpus_mod_ok = rc_text_eq(&e_corpus_mod, &s_corpus_mod);\n    println!(\"corpus_module emitted={e_corpus_mod:?} seed={s_corpus_mod:?} eq={corpus_mod_ok}\");\n    all_pass &= corpus_mod_ok;\n\n    let cases: [(emitted::OwnedDataDeclInitializer, seed::OwnedDataDeclInitializer); 3] = [\n        (\n            emitted::OwnedDataDeclInitializer::OwnedNodeCorpusInit,\n            seed::OwnedDataDeclInitializer::OwnedNodeCorpusInit,\n        ),\n        (\n            emitted::OwnedDataDeclInitializer::OwnedBoolWitnessClaimInit {\n                witness_entry: Rc::new(\"entry.dag\".to_string()),\n                witness_function: Rc::new(\"witness_fn\".to_string()),\n            },\n            seed::OwnedDataDeclInitializer::OwnedBoolWitnessClaimInit {\n                witness_entry: \"entry.dag\".to_string(),\n                witness_function: \"witness_fn\".to_string(),\n            },\n        ),\n        (\n            emitted::OwnedDataDeclInitializer::OwnedOtherInit {\n                resolved: Rc::new(emitted::ResolvedDeclRef {\n                    module: Rc::new(\"v2.example.mod\".to_string()),\n                    name: \"sym\".to_string(),\n                }),\n            },\n            seed::OwnedDataDeclInitializer::OwnedOtherInit {\n                resolved: seed::ResolvedDeclRef {\n                    module: \"v2.example.mod\".to_string(),\n                    name: \"sym\".to_string(),\n                },\n            },\n        ),\n    ];\n\n    for (i, (ev, sv)) in cases.iter().enumerate() {\n        let ev_cmp = if inject_fault && i == 0 {\n            emitted::OwnedDataDeclInitializer::OwnedBoolWitnessClaimInit {\n                witness_entry: Rc::new(\"fault\".to_string()),\n                witness_function: Rc::new(\"fault\".to_string()),\n            }\n        } else {\n            ev.clone()\n        };\n        let ok = init_eq(&ev_cmp, sv);\n        println!(\"init({i}) emitted={ev_cmp:?} seed={sv:?} eq={ok}\");\n        all_pass &= ok;\n    }\n\n    let e_receipt = emitted::OwnedDataDiscoveryReceipt {\n        unified_claim_arm_count: 2,\n        bool_witness_claim_arm_count: 1,\n        illegal_other_init_count: 0,\n        bool_witness_transport_row_count: 1,\n        transport_projection_complete: true,\n    };\n    let s_receipt = seed::OwnedDataDiscoveryReceipt {\n        unified_claim_arm_count: 2,\n        bool_witness_claim_arm_count: 1,\n        illegal_other_init_count: 0,\n        bool_witness_transport_row_count: 1,\n        transport_projection_complete: true,\n    };\n    let receipt_ok = receipt_eq(&e_receipt, &s_receipt);\n    println!(\"receipt emitted={e_receipt:?} seed={s_receipt:?} eq={receipt_ok}\");\n    all_pass &= receipt_ok;\n\n    if all_pass {\n        println!(\"SELF_HOST_DISCOVERY_ENUMERATION_BEHAVIORAL_RECEIPT: PASS\");\n        std::process::exit(0);\n    }\n    println!(\"SELF_HOST_DISCOVERY_ENUMERATION_BEHAVIORAL_RECEIPT: FAIL\");\n    std::process::exit(1);\n}\n"
+
+fn sde_repo_path(root: String, rel: String) -> String {
+  concat(root, concat("/", rel))
+}
+
+fn sde_cargo_toml(root: String) -> String {
+  concat(
+    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim-rc = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
+    concat(root, "/src/v1/stage0\" }\n")
+  )
+}
+
+fn sde_behavioral_receipt_holds() -> Bool {
+  let root = git.Core.Toplevel()
+  let module_read = Filesystem.Read(path: sde_repo_path(root: root.path, rel: sde_source_rel))
+
+  let out_dir = shell.Mktemp.Dir()
+  let gunbc_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
+  let emit = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: gunbc_bin,
+    args: [
+      "compile",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", sde_source_rel,
+      "--output-dir", out_dir.path,
+      "--target", "rust",
+      "--dependency-pool-index", "primary-precedence"
+    ]
+  )
+
+  let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: sde_cargo_toml(root: root.path))
+  let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: sde_driver_main_source)
+
+  let build = cargo.Build.BuildManifest(
+    workdir: out_dir.path,
+    manifest_path: concat(out_dir.path, "/Cargo.toml"),
+    target_dir: concat(out_dir.path, "/target"),
+    extra_args: ["--release"]
+  )
+
+  let witness_bin_path = concat(out_dir.path, "/target/release/witness")
+  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
+  let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
+
+  let eval_constants = gunbc.WitnessBin.Run(
+    workdir: root.path,
+    bin_path: gunbc_bin,
+    args: [
+      "run", "--claim-run",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+      "--entry", sde_test_entry_rel,
+      "--function", "discovery_enumeration_unified_claim_arm_modules_holds"
+    ]
+  )
+
+  let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
+
+  module_read.success
+    && out_dir.success && gunbc_built && emit.success
+    && manifest.success && main_rs.success
+    && build.success
+    && pass_run.success && string_contains(s: pass_run.stdout, pattern: sde_receipt_pass_marker)
+    && (fault_run.success == false)
+    && eval_constants.success
+    && cleanup_out.success
+}
