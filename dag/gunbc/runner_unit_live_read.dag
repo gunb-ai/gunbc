@@ -119,7 +119,7 @@ fn converge_target_live_verdict(
       match per_slot_memory_limit_for_property(read: read, property: p) {
         Present { value: observed } =>
           Present { value: memory_limit_converge_verdict_for_bytes_value(observed: observed, bytes_value: bv) }
-        Absent => none
+        _ => none
       }
     _ => none
   }

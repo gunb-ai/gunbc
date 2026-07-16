@@ -206,7 +206,7 @@ fn host_converge_slice1_fixture_receipt() -> HostConvergeSlice1MemoryCapReceipt?
         read_back_converged: false,
         reapply_noop: false,
       )
-    Absent => none
+    _ => none
   }
 }
 
@@ -327,7 +327,7 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
                                           ) {
                                             Present { value: why } =>
                                               HostConvergeSlice1Refused { reason: why }
-                                            Absent =>
+                                            _ =>
                                               match host_converge_slice1_receipt_from_read(
                                                 read: read_back,
                                                 knob: knob,
@@ -390,6 +390,7 @@ fn host_converge_slice1_converge_loop() -> HostConvergeSlice1ConvergeResult {
           _ =>
             HostConvergeSlice1Refused { reason: host_converge_slice1_probed_at_refusal_reason }
         }
+      }
     _ =>
       HostConvergeSlice1Refused {
         reason: "host_converge_slice1: per_slot_memory_max_bytes knob absent from fleet_converge_policy for srv1; fail-closed",
