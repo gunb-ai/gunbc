@@ -14240,6 +14240,11 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/lens/parallelism.dag::parallelism_relation_eq",
     "src/v2/lens/registry.dag::lens_id_v0_eq",
     "src/v2/lens/unused_parameters.dag::use_relation_eq",
+    // 2026-07-16 backfill: vacuity lens (#6725 merge-lifecycle lane sibling) landed
+    // vacuity_evidence_eq with nested structural `==` (`_ => false` off-variant arms) — same
+    // shape as live_read_carrier_eq / std `*_eq` rows; dissolves with derived equality from
+    // inhabitance. Surfaced when Phase 4 branch merged main (vacuity.dag present, no row).
+    "src/v2/lens/vacuity.dag::vacuity_evidence_eq",
     "src/v2/program.dag::program_runtime_bool_false",
     "src/v2/program.dag::program_runtime_bool_true",
     "src/v2/std/compilers/target_model.dag::source_atom_value_as_bool",
