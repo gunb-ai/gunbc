@@ -2,9 +2,9 @@ module test.claim.cache_key_completeness
 
 import extdeps.cache.key_completeness {
   cache_key_derivation_complete,
-  cache_key_completeness_verdict,
   cache_catalog_key_completeness_holds,
 }
+import v2.extdeps.cache.key_completeness_verdict { cache_key_completeness_verdict }
 import extdeps.cache.types {
   CatalogKeyDerivationFacts,
   NativeInternal,
@@ -23,7 +23,7 @@ import std.cache_interface {
   ManualPurge,
   Org,
 }
-import std.lens_verdict { Holds, Violation }
+import v2.std.lens_verdict { Holds, Violation }
 import std.types { Bool }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
