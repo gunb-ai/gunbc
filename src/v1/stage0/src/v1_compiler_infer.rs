@@ -175,7 +175,7 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: sleek-wolf-190 global_bare cost-shape receipt;
@@ -190,6 +190,71 @@ pub(crate) const MERGE_GLOBAL_BARE_VARIANT_KEY_SCAN_SCAFFOLD_MARKER: &str =
 
 thread_local! {
     static MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS: Cell<usize> = const { Cell::new(0) };
+    static MERGE_GLOBAL_BARE_PER_MODULE_SCANS: RefCell<std::vec::Vec<(String, usize, usize)>> =
+        RefCell::new(std::vec::Vec::new());
+}
+
+fn record_merge_global_bare_per_module_scan(
+    module_name: String,
+    keys_visited: usize,
+    has_child_named_calls: usize,
+) {
+    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_err()
+        && std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_err()
+    {
+        return;
+    }
+    MERGE_GLOBAL_BARE_PER_MODULE_SCANS.with(|rows| {
+        rows.borrow_mut()
+            .push((module_name, keys_visited, has_child_named_calls));
+    });
+}
+
+pub fn take_merge_global_bare_per_module_scans() -> std::vec::Vec<(String, usize, usize)> {
+    MERGE_GLOBAL_BARE_PER_MODULE_SCANS.with(|rows| {
+        let out = rows.borrow().clone();
+        rows.borrow_mut().clear();
+        out
+    })
+}
+
+fn eprint_merge_global_bare_per_module_receipt(module_count: usize) {
+    if std::env::var("GUNBC_GLOBAL_BARE_Q2_BISECT").is_err()
+        && std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_err()
+    {
+        return;
+    }
+    let rows = take_merge_global_bare_per_module_scans();
+    if rows.is_empty() {
+        return;
+    }
+    let mut keys_per_module: std::vec::Vec<usize> = rows.iter().map(|(_, k, _)| *k).collect();
+    keys_per_module.sort_unstable();
+    let min_k = keys_per_module.first().copied().unwrap_or(0);
+    let max_k = keys_per_module.last().copied().unwrap_or(0);
+    let total_has_child: usize = rows.iter().map(|(_, _, h)| h).sum();
+    let mode = if std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok() {
+        "baseline_legacy"
+    } else {
+        "precomputed_merge"
+    };
+    eprintln!(
+        "[global-bare-receipt] mode={mode} M={module_count} modules_scanned={} \
+         keys_per_module min={min_k} max={max_k} constant_k={} total_has_child_named={total_has_child}",
+        rows.len(),
+        min_k == max_k,
+    );
+    for (name, keys, has_child) in rows.iter().take(20) {
+        eprintln!(
+            "[global-bare-receipt] module={name} keys_visited={keys} has_child_named_calls={has_child}"
+        );
+    }
+    if rows.len() > 20 {
+        eprintln!(
+            "[global-bare-receipt] ... {} more module row(s) omitted",
+            rows.len() - 20
+        );
+    }
 }
 
 /// Poor-man's profiler receipt: Σ map_keys(precomputed) iterations per reconcile pass.
@@ -14588,9 +14653,11 @@ pub fn merge_global_bare_variant_locals(
     module_name: String,
 ) -> Rc<VariantFoldState> {
     let keys = Rc::new(v1_rt::map_keys(&precomputed));
+    let key_count = keys.len();
     MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
-        c.set(c.get() + keys.len());
+        c.set(c.get() + key_count);
     });
+    record_merge_global_bare_per_module_scan(module_name.clone(), key_count, 0);
     keys.iter()
         .cloned()
         .fold(
@@ -14612,6 +14679,69 @@ pub fn merge_global_bare_variant_locals(
                 },
             },
         )
+}
+
+/// Defork-preserve baseline for receipt only: fold full `global_bare` per module with
+/// `has_child_named` inside the loop (the redundant-recomputation path under test).
+fn merge_global_bare_variant_locals_baseline_legacy(
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    state: Rc<VariantFoldState>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<VariantFoldState> {
+    let keys = Rc::new(v1_rt::map_keys(&global_bare));
+    let key_count = keys.len();
+    let has_child_named_calls = Cell::new(0usize);
+    MERGE_GLOBAL_BARE_VARIANT_KEY_SCANS.with(|c| {
+        c.set(c.get() + key_count);
+    });
+    let folded =
+        keys.iter()
+            .cloned()
+            .fold(
+                state.clone(),
+                |acc: Rc<VariantFoldState>, name: String| match v1_rt::map_get(
+                    &global_bare,
+                    name.clone(),
+                ) {
+                    Some(lookup) => match lookup.as_ref() {
+                        GlobalBareLookupState::GlobalBareUniqueBinding { binding } => {
+                            let owner = binding.resolved.clone();
+                            if owner.connective == Disj {
+                                has_child_named_calls.set(has_child_named_calls.get() + 1);
+                                if crate::v1_std_core::has_child_named(
+                                    owner.clone(),
+                                    name.clone(),
+                                    source_indices.clone(),
+                                ) {
+                                    match v1_rt::map_get(&acc.locals.clone(), name.clone()) {
+                                        Some(_) => acc.clone(),
+                                        None => insert_variant_owner_checked(
+                                            acc.clone(),
+                                            name.clone(),
+                                            owner.clone(),
+                                            source_indices.clone(),
+                                            module_name.clone(),
+                                        ),
+                                    }
+                                } else {
+                                    acc.clone()
+                                }
+                            } else {
+                                acc.clone()
+                            }
+                        }
+                        GlobalBareLookupState::GlobalBareAmbiguousBinding => acc.clone(),
+                    },
+                    None => acc.clone(),
+                },
+            );
+    record_merge_global_bare_per_module_scan(
+        module_name.clone(),
+        key_count,
+        has_child_named_calls.get(),
+    );
+    folded
 }
 
 pub fn build_imported_variants(
@@ -14701,19 +14831,29 @@ pub fn build_module_context(
                 collision_errors: Rc::new(vec![]),
             }),
         );
-        let variant_fold = merge_global_bare_variant_locals(
-            global_bare_variant_locals.clone(),
-            build_imported_variants(
-                resolved_imports.clone(),
-                parent_index.clone(),
-                variant_surfaces.clone(),
-                env.source_indices.clone(),
-                module_name.clone(),
-                local_variant_fold.clone(),
-            ),
+        let imported = build_imported_variants(
+            resolved_imports.clone(),
+            parent_index.clone(),
+            variant_surfaces.clone(),
             env.source_indices.clone(),
             module_name.clone(),
+            local_variant_fold.clone(),
         );
+        let variant_fold = if std::env::var("GUNBC_GLOBAL_BARE_RECEIPT_BASELINE_MERGE").is_ok() {
+            merge_global_bare_variant_locals_baseline_legacy(
+                env.global_bare.clone(),
+                imported,
+                env.source_indices.clone(),
+                module_name.clone(),
+            )
+        } else {
+            merge_global_bare_variant_locals(
+                global_bare_variant_locals.clone(),
+                imported,
+                env.source_indices.clone(),
+                module_name.clone(),
+            )
+        };
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
             merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
@@ -15689,6 +15829,7 @@ pub fn typecheck(
         });
         let expanded_registry =
             expand_transitive_services(modules.clone(), state.item_registry.clone(), 5);
+        eprint_merge_global_bare_per_module_receipt(graph.modules.len());
         Rc::new(TypedGraph {
             modules: modules.clone(),
             item_registry: expanded_registry.clone(),
