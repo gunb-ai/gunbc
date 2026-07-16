@@ -35,7 +35,7 @@ pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
 };
 pub use crate::std_types::container_param_name;
-pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{ContentHash, NonEmptyStr, SourceSpan};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
@@ -12426,7 +12426,7 @@ pub fn interface_summary_consumer_note() -> String {
 pub fn interface_signature_fingerprint_v0_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Interim v0 export signature fingerprint (export_entry_from_item): content_hash of export name + authored_name_at(binding.resolved) under tag v1-interface-sig-v0 — NOT yet structural type shape. Two exports with the same name and resolved authored-name string collide in interface_hash even if types differ; increment-B receipt is binding transitivity (transitive_interface_binding_test), not hash-discriminated signature change. Structural fingerprint authority: std.interface_summary.interface_summary_v0_dissolution_trigger → export_entry_fingerprint when type-structure hashing lands.".to_string()
+            "Interim v0 export signature fingerprint (export_entry_from_item): name-grain, NOT yet structural type shape. Type/data/service exports fingerprint name + authored_name_at(binding.resolved) under tag v1-interface-sig-v0; fn/func exports fingerprint name + param resolved-type names + return-type authored name under tag v1-interface-fn-sig-v0 (the fn arm landed with the typed-module content key, PR-alpha — before it, fn exports produced NO entry, so a fn-only module's interface_hash was the constant empty rollup and the content key's import term was vacuous; the key's import-term RED control is the discriminating receipt). Two exports whose names and resolved authored-name strings all match still collide even if type STRUCTURE differs; increment-B receipt is binding transitivity (transitive_interface_binding_test), not hash-discriminated deep structure. Structural fingerprint authority: std.interface_summary.interface_summary_v0_dissolution_trigger → export_entry_fingerprint when type-structure hashing lands.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -12469,6 +12469,30 @@ pub fn export_kind_of_item_kind(kind: ItemKind) -> Option<ExportKind> {
     }
 }
 
+pub fn fn_signature_fingerprint(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> NonEmptyStr {
+    {
+        let params_acc = item.params.clone().iter().cloned().fold(
+            content_hash_atom("v1-interface-fn-sig-v0".to_string()),
+            |acc: NonEmptyStr, p: Rc<Node>| {
+                content_hash_combine(
+                    acc,
+                    content_hash_atom(resolved_type_name(p.clone(), source_indices.clone())),
+                )
+            },
+        );
+        match item.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => content_hash_combine(
+                params_acc.clone(),
+                content_hash_atom(authored_name_at(source_indices.clone(), rt.clone())),
+            ),
+            _ => params_acc.clone(),
+        }
+    }
+}
+
 pub fn export_entry_from_item(
     item: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -12478,22 +12502,35 @@ pub fn export_entry_from_item(
         let name = authored_name_at(source_indices.clone(), item.clone());
         match export_kind_of_item_kind(item_kind(item.clone())) {
             None => None,
-            Some(kind) => match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
-                Some(binding) => Some(Rc::new(ExportEntry {
+            Some(kind) => match kind.clone() {
+                ExportKind::ExportFn => Some(Rc::new(ExportEntry {
                     name: name.clone(),
                     kind: kind.clone(),
                     contract: signature_contract(content_hash_tagged(
-                        "v1-interface-sig-v0".to_string(),
+                        "v1-interface-fn-sig-v0".to_string(),
                         content_hash_combine(
-                            content_hash_atom(binding.name.clone()),
-                            content_hash_atom(authored_name_at(
-                                source_indices.clone(),
-                                binding.resolved.clone(),
-                            )),
+                            content_hash_atom(name.clone()),
+                            fn_signature_fingerprint(item.clone(), source_indices.clone()),
                         ),
                     )),
                 })),
-                None => None,
+                _ => match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
+                    Some(binding) => Some(Rc::new(ExportEntry {
+                        name: name.clone(),
+                        kind: kind.clone(),
+                        contract: signature_contract(content_hash_tagged(
+                            "v1-interface-sig-v0".to_string(),
+                            content_hash_combine(
+                                content_hash_atom(binding.name.clone()),
+                                content_hash_atom(authored_name_at(
+                                    source_indices.clone(),
+                                    binding.resolved.clone(),
+                                )),
+                            ),
+                        )),
+                    })),
+                    None => None,
+                },
             },
         }
     }

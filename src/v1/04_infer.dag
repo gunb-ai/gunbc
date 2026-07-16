@@ -1,6 +1,6 @@
 module v1.compiler.infer
 
-import std.types { SourceSpan, ContentHash, container_param_name }
+import std.types { SourceSpan, ContentHash, NonEmptyStr, container_param_name }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
