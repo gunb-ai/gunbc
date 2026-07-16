@@ -12,7 +12,7 @@ import v2.std.orchestration {
   PipelineStep,
   Run
 }
-import v2.std.collection { Absent, Present }
+import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
 
 data ci_workflow_run_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ ci_workflow run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
@@ -29,7 +29,12 @@ data ci_isolate_echo_makeflags_command: String = "echo \"MAKEFLAGS=\" >> \"$GITH
 
 data ci_selection_control_witness_invoke_command: String = "\"$ROOT/target/release/floor_skip_discovery_witness\""
 
-data ci_pin_rustup_default_command: String = "rustup default \"$(rustup show active-toolchain | awk '{print $1; exit}')\""
+fn ci_pin_rustup_default_command() -> String {
+  concat(
+    "rustup default \"$(rustup show active-toolchain | awk '",
+    concat(concat("{", "print $1; exit"), concat("}", "')\""))
+  )
+}
 
 data ci_pin_rustup_cargo_bin_resolve_command: String = "if [ -x \"$CARGO_HOME/bin/cargo\" ]; then CARGO_BIN=\"$CARGO_HOME/bin/cargo\"; else CARGO_BIN=\"$(command -v cargo || true)\"; fi"
 
@@ -101,7 +106,7 @@ fn ci_isolate_toolchain_script(build_jobs_count: Int) -> String {
 fn ci_pin_rustup_default_intent() -> Pipeline {
   Pipeline {
     steps: [
-      ci_workflow_do(command: ci_pin_rustup_default_command),
+      ci_workflow_do(command: ci_pin_rustup_default_command()),
       ci_workflow_do(command: ci_pin_rustup_cargo_bin_resolve_command),
       ci_workflow_do(command: ci_pin_rustup_cargo_bin_missing_command),
       ci_workflow_do(command: ci_pin_rustup_echo_cargo_bin_command)
