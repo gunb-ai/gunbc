@@ -3,6 +3,7 @@ module std.associativity_evidence
 import std.types { NonEmptyStr }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref_eq }
 import std.cache_identity { ExecutionReceiptDigest }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 
 data associativity_evidence_plan_doc_provenance: String = "bind: docs/plans/machine-shape-orthogonal-scheduling.md §6 — subject-bound associativity license carrier; combine must structurally match the scheduled combine (fail-closed on mismatch)"
 
@@ -44,5 +45,16 @@ fn associativity_license_verdict(
       } else {
         AssociativityLicenseMismatch
       }
+  }
+}
+
+data associativity_license_verdict_receipt_scaffold_note: String = "bind: docs/plans/witness-realization-plan.md — grant arm is combine-ref equality only until witness-realization stamps Evidence.MeasuredBy from executed law-claim receipts (receipt/law/inhabitant fields carried but not verified). Refusal arms (NotWitnessed, combine mismatch) are honest today; dissolves when associativity_license_verdict wires receipt-backed licensing."
+
+data associativity_license_verdict_receipt_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.associativity_evidence",
+    decl_name: "associativity_license_verdict",
+    field: WholeDeclaration
   }
 }
