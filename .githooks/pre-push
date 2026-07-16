@@ -15,6 +15,17 @@ ensure_bins() {
     CLAIM_BATCH="$ROOT/target/debug/claim_batch"
   fi
 }
+ensure_executor() {
+  if [[ -x "$ROOT/target/release/claim_executor" ]]; then
+    CLAIM_EXECUTOR="$ROOT/target/release/claim_executor"
+  elif [[ -x "$ROOT/target/debug/claim_executor" ]]; then
+    CLAIM_EXECUTOR="$ROOT/target/debug/claim_executor"
+  else
+    echo "[pre-push] claim_executor not built; compiling release (one-time, minutes)..."
+    (cd "$ROOT" && CTRL_BUILD_WRAP_CARGO=0 cargo build -p v1-compiler --release --bin claim_executor)
+    CLAIM_EXECUTOR="$ROOT/target/release/claim_executor"
+  fi
+}
 fresh_doc_path() {
   case "$1" in
     dag/**) return 0 ;;
@@ -123,6 +134,18 @@ fresh_fmt() {
   for p in "$@"; do fresh_fmt_path "$p" && return 0; done
   return 1
 }
+fresh_witness_path() {
+  case "$1" in
+    dag/*) return 0 ;;
+    src/v2/*) return 0 ;;
+  esac
+  return 1
+}
+fresh_witness() {
+  local p
+  for p in "$@"; do fresh_witness_path "$p" && return 0; done
+  return 1
+}
 HEAD_REF="$(git symbolic-ref HEAD 2>/dev/null || echo "")"
 HEAD_BRANCH_IN_PUSH=0
 PUSHES_CONTENT=0
@@ -152,11 +175,12 @@ if [[ "$HEAD_BRANCH_IN_PUSH" == "1" ]]; then
   fi
 fi
 ensure_bins
-NEED_DOC=0 NEED_ARTIFACT=0 NEED_FMT=0
+NEED_DOC=0 NEED_ARTIFACT=0 NEED_FMT=0 NEED_WITNESS=0
 if fresh_doc "${PUSH_CHANGED[@]}"; then NEED_DOC=1; fi
 if fresh_artifact "${PUSH_CHANGED[@]}"; then NEED_ARTIFACT=1; fi
 if fresh_fmt "${PUSH_CHANGED[@]}"; then NEED_FMT=1; fi
-if [[ "$NEED_DOC" == "0" && "$NEED_ARTIFACT" == "0" && "$NEED_FMT" == "0" ]]; then exit 0; fi
+if fresh_witness "${PUSH_CHANGED[@]}"; then NEED_WITNESS=1; fi
+if [[ "$NEED_DOC" == "0" && "$NEED_ARTIFACT" == "0" && "$NEED_FMT" == "0" && "$NEED_WITNESS" == "0" ]]; then exit 0; fi
 if [[ "$NEED_DOC" == "1" ]]; then
 echo "[pre-push] doc reachability: doc_graph_has_no_orphan_docs"
 "$CLAIM_BATCH" --source-root dag --entry dag/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_orphan_docs --claim-run
@@ -165,49 +189,24 @@ echo "[pre-push] doc reachability: doc_graph_has_no_dangling_links"
 fi
 if [[ "$NEED_ARTIFACT" == "1" ]]; then
 echo "[pre-push] generated-artifact drift gate"
-if "$CLAIM_BATCH" --source-root dag --entry dag/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet; then :; else
-  echo "[pre-push] drift detected; running main_wet"
-  "$CLAIM_BATCH" --source-root dag --entry dag/tools/generated_artifact_gate.dag --function main_wet --wet
-  echo "[pre-push] staging regen outputs:"
-  git diff --name-only --diff-filter=ACMR | while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    echo "  + $p"
-    git add -u -- "$p"
-  done
-  git ls-files --others --exclude-standard | while IFS= read -r p; do
-    [ -n "$p" ] || continue
-    echo "  + $p (untracked)"
-    git add -- "$p"
-  done
-  echo "[pre-push] re-checking drift after regen"
-  "$CLAIM_BATCH" --source-root dag --entry dag/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet
+if ! "$CLAIM_BATCH" --source-root dag --entry dag/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet 2>/dev/null; then
+  echo "[pre-push] generated artifacts are stale — run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/generated_artifact_gate.dag --function main_wet   (then commit the regenerated files and re-push, or 'git push --no-verify' to skip)" >&2
+  exit 1
 fi
 fi
-if [[ "$NEED_ARTIFACT" == "1" ]]; then
-  if ! git diff --cached --quiet; then
-    if [[ "$HEAD_BRANCH_IN_PUSH" != "1" ]]; then echo "[pre-push] regen staged but HEAD branch not in push" >&2; exit 1; fi
-    echo "[pre-push] staged after regen:"
-    git diff --cached --name-only | while IFS= read -r p; do echo "  + $p"; done
-    git commit -m "chore: regenerate committed projections"
-    echo "[pre-push] regen committed locally; re-run git push."
-    exit 1
-  fi
+if [[ "$NEED_WITNESS" == "1" ]]; then
+echo "[pre-push] affected-set witness corpus (claim_executor; scoped to origin/main...HEAD)"
+ensure_executor
+if ! "$CLAIM_EXECUTOR" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_witness_corpus_only_batches; then
+  echo "[pre-push] affected tests FAILED — fix them and re-push, or 'git push --no-verify' to override (CI still gates)." >&2
+  exit 1
+fi
 fi
 if [[ "$NEED_FMT" == "1" ]]; then
 echo "[pre-push] cargo fmt --all --check"
-if cargo fmt --all --check 2>/dev/null; then
-  exit 0
-fi
-if [[ "$HEAD_BRANCH_IN_PUSH" != "1" ]]; then
-  echo "[pre-push] fmt drift detected; auto-fix out of scope for this push." >&2
+if ! cargo fmt --all --check 2>/dev/null; then
+  echo "[pre-push] rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)" >&2
   exit 1
 fi
-echo "[pre-push] running cargo fmt --all"
-cargo fmt --all
-git add -u
-if git diff --cached --quiet; then echo "[pre-push] fmt reported drift but produced no diff" >&2; exit 1; fi
-git commit -m "chore: apply cargo fmt"
-echo "[pre-push] fmt committed locally; re-run git push."
-exit 1
 fi
 exit 0
