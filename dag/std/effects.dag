@@ -17,6 +17,9 @@ type EffectShape
 type CreateCause
   = PostAlways
   | CreateIfAbsent { key_source: KeySource }
+  | KeylessFallback { method: HttpMethod }
+
+data keyless_fallback_cause_note: String = "KeylessFallback de-conflates PostAlways. derive_effect_shape maps a PUT/PATCH/DELETE whose path carries no key onto CreateEffect, and before this variant that arm answered PostAlways -- so one cause meant BOTH 'the spec said POST' AND 'we fell back because there was no key', losing the originating method (state-space conflation, DESIGN failure-mode list). The conflation was observable: check_modifier_vs_derivation could only hedge 'idempotency may be spec-declared' on a keyless PUT because it could not see which case it held. RESIDUE (deliberate, not oversight): is_idempotent_effect still answers false for KeylessFallback, preserving the pre-variant verdict exactly. RFC 9110 makes PUT and DELETE idempotent BY METHOD, so the method-derived refinement (keyless PUT declared idempotent => Agrees, not DerivationUnknown) is the correct end state -- it changes live verdicts and generate_idempotency_obligations output, so it lands with its own discriminating witness rather than riding this de-conflation. Discriminating control: test.claim.effects_witness_test.effects_keyless_fallback_is_not_post_witnesses."
 
 type KeySource
   = PathParam { param: String }
@@ -37,6 +40,7 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
       match cause {
         CreateIfAbsent { key_source: key_source } => true
         PostAlways => false
+        KeylessFallback { method: method } => false
       }
     AppendEffect => false
   }
@@ -65,6 +69,7 @@ fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
       match cause {
         CreateIfAbsent { key_source: key_source } => true
         PostAlways => false
+        KeylessFallback { method: method } => false
       }
     _ => false
   }
@@ -80,10 +85,12 @@ fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
               match cause_b {
                 CreateIfAbsent { key_source: kb } => key_source_eq(left: ka, right: kb)
                 PostAlways => false
+                KeylessFallback { method: method } => false
               }
             _ => false
           }
         PostAlways => false
+        KeylessFallback { method: method } => false
       }
     _ => false
   }
@@ -142,17 +149,17 @@ fn derive_effect_shape(
     DELETE =>
       match last_path_param(template: path) {
         Present { value: p } => DeleteEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: PostAlways }
+        Absent => CreateEffect { cause: KeylessFallback { method: DELETE } }
       }
     PUT =>
       match last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: PostAlways }
+        Absent => CreateEffect { cause: KeylessFallback { method: PUT } }
       }
     PATCH =>
       match last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: PostAlways }
+        Absent => CreateEffect { cause: KeylessFallback { method: PATCH } }
       }
   }
 }
@@ -194,15 +201,27 @@ fn check_modifier_vs_derivation(
     Agrees
   } else if declared_idempotent && !derived_idempotent {
     match op.shape {
-      CreateEffect { cause: PostAlways } =>
-        DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
+      CreateEffect { cause: cause } =>
+        match cause {
+          PostAlways =>
+            DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
+          KeylessFallback { method: method } =>
+            DerivationUnknown { reason: "keyless PUT/PATCH/DELETE derives CreateEffect; idempotency may be method-derived" }
+          CreateIfAbsent { key_source: key_source } =>
+            Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+        }
       _ =>
         Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
     }
   } else if !declared_idempotent && derived_idempotent {
     match op.shape {
-      CreateEffect { cause: CreateIfAbsent { key_source: key_source } } =>
-        Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
+      CreateEffect { cause: cause } =>
+        match cause {
+          CreateIfAbsent { key_source: key_source } =>
+            Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
+          PostAlways => Agrees
+          KeylessFallback { method: method } => Agrees
+        }
       _ =>
         Agrees
     }
