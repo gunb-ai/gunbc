@@ -1,8 +1,9 @@
 module gunbc.accelerator_demo_fold
 
 import std.types { Int, List, Bool }
-import std.decl_ref { DeclarationRef }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.cache_identity { ExecutionReceiptDigest }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.associativity_evidence {
   AssociativityEvidence,
   WitnessedAssociative,
@@ -48,6 +49,17 @@ data demo_int_sum_law_ref: DeclarationRef = associativity_decl_ref(
 )
 
 data demo_int_sum_associativity_receipt: ExecutionReceiptDigest = "accelerator-demo-int-sum-associativity-receipt-v1"
+
+data demo_int_sum_associativity_receipt_dissolution_note: String = "bind: v2.test.algebra_laws.nat_semiring claim_nat_add_associativity — demo hand-receipt placeholder for AssociativityLicenseGranted; dissolves when witness-realization stamps Evidence.MeasuredBy from executed law-claim receipts (ManualNatAddAssociativity anchor). License gate RED arms (NotWitnessed/mismatch) remain the honest refusal path until then."
+
+data demo_int_sum_associativity_receipt_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.test.algebra_laws.nat_semiring",
+    decl_name: "claim_nat_add_associativity",
+    field: WholeDeclaration
+  }
+}
 
 fn demo_int_sum_witnessed_associativity_evidence() -> AssociativityEvidence {
   WitnessedAssociative {
