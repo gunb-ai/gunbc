@@ -5938,6 +5938,50 @@ pub fn zero_field_variant_tag_reference_frontier_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn record_lit_homonym_fork_field_mismatch(
+    field_inits: Rc<Vec<Rc<Node>>>,
+    presence_fields: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if (((field_inits.clone().len() as i64) == 0)
+        || ((presence_fields.clone().len() as i64) == 0))
+    {
+        false
+    } else {
+        let mut provided_not_required = false;
+        'provided: for fi in field_inits.clone().iter().cloned() {
+            let pn = field_init_node_name_at(fi.clone(), source_indices.clone());
+            let mut found = false;
+            for sf in presence_fields.clone().iter().cloned() {
+                if (authored_name_at(source_indices.clone(), sf.clone()) == pn.clone()) {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                provided_not_required = true;
+                break 'provided;
+            }
+        }
+        let mut required_not_provided = false;
+        'required: for sf in presence_fields.clone().iter().cloned() {
+            let rn = authored_name_at(source_indices.clone(), sf.clone());
+            let mut found = false;
+            for fi in field_inits.clone().iter().cloned() {
+                if (field_init_node_name_at(fi.clone(), source_indices.clone()) == rn.clone()) {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                required_not_provided = true;
+                break 'required;
+            }
+        }
+        (provided_not_required && required_not_provided)
+    }
+}
+
 pub fn infer_record_lit(
     type_name: Option<String>,
     field_inits: Rc<Vec<Rc<Node>>>,
@@ -6037,9 +6081,15 @@ pub fn infer_record_lit(
         };
         let is_zero_field_variant_tag_reference = (((field_inits.clone().len() as i64) == 0)
             && (variant_owner_node(scope.clone(), tn_str.clone()) != None));
+        let homonym_fork_field_mismatch = record_lit_homonym_fork_field_mismatch(
+            field_inits.clone(),
+            presence_fields.clone(),
+            si_presence.clone(),
+        );
         let missing_field_diags = if (((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
-            || is_zero_field_variant_tag_reference.clone())
+            || is_zero_field_variant_tag_reference.clone()
+            || homonym_fork_field_mismatch.clone())
         {
             Rc::new(vec![])
         } else {
