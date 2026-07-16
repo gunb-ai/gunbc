@@ -1,0 +1,53 @@
+module gunbc.plans.namespace_homonym_triage_tier2
+
+import v2.std.collection { List }
+import v2.std.text { String }
+
+data namespace_homonym_triage_tier2_note: String = "Wave-0 (c) homonym triage — tier 2 of the dag/+src/v2 ambiguous roster (parent quiet-gull-833 namespace migration). Three high-rank names triaged 2026-07-16 (quiet-carp-507): emit, extdeps_external_authority_anchor, live_tree_disposition (roster shorthand: live_tree). Method: declared-module census over dag/** + src/v2/**, bare-ref site scan, global_bare_census (corpus_ambiguous_roster: emit/extdeps/live_tree NOT in the 99-name GlobalBareAmbiguousBinding set), REFAMBIG_DUMP reference-edge probe (35 AmbiguousBare ties total; none for these three), decl reading + namespace-resolution-design §5 file-local / subtree-nearest-wins rules."
+
+type AmbiguousNameDisposition
+  = ForkConsolidate
+  | GenuineHomonymQualify
+  | ConstructionProtocolNoAction
+
+type AmbiguousNameTriageRow {
+  bare_name: String
+  roster_decl_rank: Int
+  decl_module_count: Int
+  roster_at_risk_bare_occurrences: Int
+  disposition: AmbiguousNameDisposition
+  rationale: String
+  action: String
+}
+
+data namespace_homonym_triage_tier2_rows: List<AmbiguousNameTriageRow> = [
+  AmbiguousNameTriageRow {
+    bare_name: "live_tree_disposition",
+    roster_decl_rank: 1,
+    decl_module_count: 691,
+    roster_at_risk_bare_occurrences: 0,
+    disposition: ConstructionProtocolNoAction,
+    rationale: "Entry-grain witness disposition stamp (v2.std.live_tree): each witness file declares its OWN data row; lexical same-module binding resolves the bare reference (cli_run reference producer same-module guard; live_tree_collision_test proves two-module closure). Values differ by entry (633 SubstrateInputsOnly / 67 ReadsLiveTree) — not one concept forked 691 ways.",
+    action: "No consolidate, no qualify. Dissolves when G2 call-reachability live-read classification re-derives stamps from proven runtime-read closure (live_tree_disposition_stamp_provenance dissolve trigger)."
+  },
+  AmbiguousNameTriageRow {
+    bare_name: "extdeps_external_authority_anchor",
+    roster_decl_rank: 2,
+    decl_module_count: 285,
+    roster_at_risk_bare_occurrences: 6,
+    disposition: ConstructionProtocolNoAction,
+    rationale: "Per-extdeps-module construction mark (cite upstream spec URI) — same fixed leaf name as construction_justification uses on lenses. 219 distinct locator values across 285 modules; NOT a §3 fork (not one concept with two authorities). Cross-module bare refs ~6; same-module wins for the rest.",
+    action: "No consolidate, no qualify. Keep the extdeps_external_authority lens enforcement; exempt machinery modules per module_refs.dag."
+  },
+  AmbiguousNameTriageRow {
+    bare_name: "emit",
+    roster_decl_rank: 70,
+    decl_module_count: 4,
+    roster_at_risk_bare_occurrences: 364,
+    disposition: GenuineHomonymQualify,
+    rationale: "Four fn authorities: v2.compiler.emit (translate+serialize pipeline), v1.compiler.tokenize.emit (lexer token emission), plus two file-local roadmap test fixtures. Genuine homonym (different arities/concepts) BUT zero cross-subtree bare emit( sites (v1 calls are self-contained in tokenize.dag; v2 corpus imports v2.compiler.emit). Twelve *.emit modules are path-disambiguated, not bare collisions.",
+    action: "No consolidate. No Wave-0 qualify work — nearest-wins subtree resolution handles today. Optional seed-shrink hygiene (out of namespace lane): rename v1.compiler.tokenize emit → emit_token when touching tokenize."
+  }
+]
+
+data namespace_homonym_triage_tier2_dissolve_trigger: String = "Dissolve when the namespace homonym triage roster is folded into a single std authority (rows consumed by Wave-0 (c) qualify work and §3 fork consolidation lanes) and this interim tier-2 carrier is redundant."
