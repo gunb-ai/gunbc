@@ -628,6 +628,12 @@ fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan().schedule
 }
 
+data gunbc_ci_witness_corpus_only_batches_note: String = "The pre-push local test gate (consumer: dag/gunbc/githooks_pre_push_emit.dag NEED_WITNESS). It is the SAME affected-set witness corpus CI runs (corpus_runnable_for(gunbc_ci_spec), SelectionApplied scoped to the push diff via the executor's git-diff observation), MINUS two lanes on purpose: (1) the whole-tree --target dag compile-clean gate (batch 1 of gunbc_ci_floor_batches) - infeasible per-push (~72min emit), CI-owned; and (2) the Wet execution + bin-witness lanes (execution_corpus_node / bin_witness_corpus_node) - they need prebuilt release witness bins and spawn a host compiler, so they stay CI-owned. This is a DECLARED scope narrowing, not a silent one (the enforcement-intent rule): the hermetic discovery corpus is the affected-set bulk and catches the resolve / typecheck / witness-logic red class before push; CI remains the whole wall. Selection stays fail-closed exactly as the floor: a diff-observation gap widens to the full hermetic corpus (slower, never a silent skip)."
+
+fn gunbc_ci_witness_corpus_only_batches() -> List<List<Runnable>> {
+  [[corpus_runnable_for(spec: gunbc_ci_spec)]]
+}
+
 fn runnable_scan_dir_count(r: Runnable) -> Int {
   match r {
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, profile: _ } => length(xs: dirs)
