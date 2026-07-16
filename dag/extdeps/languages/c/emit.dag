@@ -1,0 +1,30 @@
+module extdeps.languages.c.emit
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.types { String }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/74528.html"
+  }
+}
+
+data c_header_extension: String = ".h"
+data c_source_extension: String = ".c"
+data c_object_extension: String = ".o"
+
+data c_include_directive_open: String = "#include \""
+data c_include_directive_close: String = "\""
+
+fn c_path_with_extension(basename: String, extension: String) -> String {
+  concat(basename, extension)
+}
+
+fn c_include_directive_for_header_path(header_path: String) -> String {
+  concat(
+    c_include_directive_open,
+    concat(header_path, c_include_directive_close)
+  )
+}
