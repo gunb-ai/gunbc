@@ -1,0 +1,229 @@
+module v2.compiler.wrap_decision
+
+import v2.std.compilers.target_model {
+  TargetModel,
+  TargetOwnershipUseSite,
+  WrapDecision,
+  WrapDecisionGate,
+  WrapGateDecided,
+  WrapGateInapplicable,
+  wrap_decision_lookup_in_catalog_node,
+  target_value_semantics_carriers_from_node
+}
+import std.algebra { Empty }
+import v2.std.collection { Absent, List, Optional, Present, Symbol, optional_absent, optional_present }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode }
+
+type WrapDecisionBundleChildLookup
+  = WrapDecisionBundleChildMissing
+  | WrapDecisionBundleChildFound { value: Node }
+  | WrapDecisionBundleChildDuplicate
+  | WrapDecisionBundleChildInvalidEdge
+
+fn wrap_decision_bundle_child_lookup_step(
+  acc: WrapDecisionBundleChildLookup,
+  e: Edge,
+  edge_name: Symbol
+) -> WrapDecisionBundleChildLookup {
+  match acc {
+    WrapDecisionBundleChildInvalidEdge => acc
+    WrapDecisionBundleChildDuplicate => acc
+    WrapDecisionBundleChildMissing =>
+      match e.label {
+        Named { name: n } =>
+          if n == edge_name {
+            WrapDecisionBundleChildFound { value: e.target }
+          } else {
+            acc
+          }
+        Positional => WrapDecisionBundleChildInvalidEdge
+      }
+    WrapDecisionBundleChildFound { value: _ } =>
+      match e.label {
+        Named { name: n } =>
+          if n == edge_name {
+            WrapDecisionBundleChildDuplicate
+          } else {
+            acc
+          }
+        Positional => WrapDecisionBundleChildInvalidEdge
+      }
+  }
+}
+
+fn wrap_decision_bundle_optional_child(
+  target: TargetModel,
+  edge_name: Symbol
+) -> Outcome<Optional<Node>> {
+  match target.bundle.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        target.bundle.children,
+        init: WrapDecisionBundleChildMissing,
+        f: fn(acc, e) {
+          wrap_decision_bundle_child_lookup_step(
+            acc: acc,
+            e: e,
+            edge_name: edge_name
+          )
+        }
+      ) {
+        WrapDecisionBundleChildFound { value: child } =>
+          outcome_accepted(optional_present(value: child))
+        WrapDecisionBundleChildMissing =>
+          outcome_accepted(optional_absent())
+        WrapDecisionBundleChildDuplicate =>
+          outcome_rejected(
+            Diagnostic {
+              reason: ^wrap_decision_bundle_duplicate_edge,
+              at: node_locus(node: target.bundle),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        WrapDecisionBundleChildInvalidEdge =>
+          outcome_rejected(
+            Diagnostic {
+              reason: ^wrap_decision_bundle_malformed,
+              at: node_locus(node: target.bundle),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+      }
+    _ =>
+      outcome_rejected(
+        Diagnostic {
+          reason: ^wrap_decision_bundle_malformed,
+          at: node_locus(node: target.bundle),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
+  }
+}
+
+fn wrap_decision_bundle_edge_present(
+  target: TargetModel,
+  edge_name: Symbol
+) -> Outcome<Bool> {
+  match wrap_decision_bundle_optional_child(target: target, edge_name: edge_name) {
+    Accepted { value: optional_child, diagnostics: _ } =>
+      match optional_child {
+        Absent => outcome_accepted(false)
+        Present { value: _ } => outcome_accepted(true)
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn wrap_decision_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^wrap_decision_sg_rc_bundle_partial,
+    at: node_locus(node: source_carrier),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn wrap_decision_sg_rc_bundle_apply_disposition(
+  target: TargetModel,
+  source_carrier: Node
+) -> Outcome<Bool> {
+  bind_outcome(
+    o: wrap_decision_bundle_edge_present(
+      target: target,
+      edge_name: ^target_model_edge_use_site_ownership_realizations
+    ),
+    f: fn(has_catalog) {
+      bind_outcome(
+        o: wrap_decision_bundle_edge_present(
+          target: target,
+          edge_name: ^target_model_edge_reference_layer_tokens
+        ),
+        f: fn(has_tokens) {
+          if has_catalog == false && has_tokens == false {
+            outcome_accepted(false)
+          } else {
+            if has_catalog && has_tokens {
+              outcome_accepted(true)
+            } else {
+              outcome_rejected(
+                wrap_decision_sg_rc_bundle_partial_diagnostic(
+                  source_carrier: source_carrier
+                )
+              )
+            }
+          }
+        }
+      )
+    }
+  )
+}
+
+fn wrap_decision_gate(
+  target: TargetModel,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<WrapDecisionGate> {
+  match wrap_decision_sg_rc_bundle_apply_disposition(
+    target: target,
+    source_carrier: source_carrier
+  ) {
+    Accepted { value: false, diagnostics: _ } =>
+      outcome_accepted(WrapGateInapplicable)
+    Accepted { value: true, diagnostics: _ } =>
+      bind_outcome(
+        o: wrap_decision_bundle_optional_child(
+          target: target,
+          edge_name: ^target_model_edge_use_site_ownership_realizations
+        ),
+        f: fn(optional_catalog) {
+          match optional_catalog {
+            Absent =>
+              outcome_rejected(
+                wrap_decision_sg_rc_bundle_partial_diagnostic(
+                  source_carrier: source_carrier
+                )
+              )
+            Present { value: catalog_node } =>
+              bind_outcome(
+                o: wrap_decision_bundle_optional_child(
+                  target: target,
+                  edge_name: ^target_model_edge_value_semantics_carriers
+                ),
+                f: fn(optional_carriers) {
+                  let value_semantics_carriers = match optional_carriers {
+                    Absent => Empty
+                    Present { value: node } =>
+                      target_value_semantics_carriers_from_node(node: node)
+                  }
+                  bind_outcome(
+                    o: wrap_decision_lookup_in_catalog_node(
+                      catalog: catalog_node,
+                      value_semantics_carriers: value_semantics_carriers,
+                      source_carrier: source_carrier,
+                      use_site: use_site
+                    ),
+                    f: fn(decision) {
+                      outcome_accepted(
+                        WrapGateDecided { decision: decision }
+                      )
+                    }
+                  )
+                }
+              )
+          }
+        }
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
