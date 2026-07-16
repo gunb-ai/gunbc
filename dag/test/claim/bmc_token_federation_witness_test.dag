@@ -1,24 +1,5 @@
 module test.claim.bmc_token_federation_witness
 
-import std.logic { Bool }
-import gunbc.assimilate.bmc_token_federation {
-  SecretAccessBinding,
-  bmc_assimilator_bindings,
-  bmc_assimilator_sa_member,
-  bmc_srv3_secret_name,
-  bmc_secrets_project_id,
-  bmc_assimilator_allowed_roles,
-  bmc_role_allowed,
-  bmc_wif_provider_resource,
-  bmc_wif_principal_set,
-  bmc_wif_attribute_condition,
-  emit_bmc_token_smoke_workflow_yaml
-}
-import extdeps.cloud.gcp.iam {
-  role_secretmanager_secret_accessor,
-  role_secretmanager_secret_version_adder
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

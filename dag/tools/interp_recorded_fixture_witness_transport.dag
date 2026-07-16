@@ -1,7 +1,5 @@
 module tools.interp_recorded_fixture_witness_transport
 
-import tools.host_prelude { run_witness_bin_program, witness_bin }
-import std.logic { Bool }
 
 fn run_interp_recorded_fixture_witness() -> Bool {
   run_witness_bin_program(

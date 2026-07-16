@@ -1,10 +1,5 @@
 module gunbc.ci_oom_reclassify
 
-import gunbc.ci_failure_class {
-  FloorOutcome, NoFailure, FloorFailed,
-  FloorFailureClass, Infra, Structural,
-  InfraSignature, ClusteredOutOfMemoryKill
-}
 
 type OomKillSource
   = CgroupMemoryEvents

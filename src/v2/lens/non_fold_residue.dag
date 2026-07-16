@@ -1,8 +1,5 @@
 module v2.lens.non_fold_residue
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SubstrateMandatoryTag }
-import v2.std.logic { Bool }
 
 fn non_fold_residue_clean_holds() -> Bool {
   non_fold_residue_unrostered_count() == 0 && non_fold_residue_stale_roster_count() == 0

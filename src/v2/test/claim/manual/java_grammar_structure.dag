@@ -1,13 +1,5 @@
 module v2.test.manual.java_grammar_structure
-import v2.std.language_model { LanguageModel }
 
-import v2.extdeps.languages.java {
-  java_language_model,
-  java_lex_rules
-}
-import v2.std.grammar { grammar_carries_symbol }
-import v2.std.compilers.lexing { lex_rule_set_token_class_member }
-import v2.std.logic { Bool }
 
 fn java_grammar_structure_satisfied(lm: LanguageModel) -> Bool {
   lex_rule_set_token_class_member(rules: java_lex_rules(), token_class: ^java_token_kw_void) &&

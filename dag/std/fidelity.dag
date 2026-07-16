@@ -1,7 +1,5 @@
 module std.fidelity
 
-import std.types { FermiDepth }
-import std.fermi { fermi_max_of }
 
 type TransportClass = LocalDirect | ShellLocal | FileBoundary | RestNetwork | InterfaceStub | Unknown
 

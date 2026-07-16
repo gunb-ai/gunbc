@@ -1,9 +1,5 @@
 module std.float
 
-import std.algebra { Field, FieldOfFractions }
-import std.integer { Int }
-import std.machine_constraints { Compose, MachineWidth }
-import std.approximate_field { ApproximateField }
 
 type Ieee754Float
 

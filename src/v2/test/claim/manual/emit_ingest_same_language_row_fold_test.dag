@@ -1,50 +1,5 @@
 module v2.test.manual.emit_ingest_same_language_row_fold
 
-import v2.compiler.ingest { grammar_relation_row_forward_selection }
-import v2.compiler.translate { grammar_relation_row_for_emitted }
-import v2.extdeps.languages.dag {
-  dag_fixture_emitted_add_fn,
-  dag_add_grammar_relation_row_node,
-  dag_translation_rules_node
-}
-import v2.extdeps.languages.python {
-  python_grammar_relation_row_node,
-  python_emitted_add_fn_node,
-  python_grammar_relation_row,
-  python_translation_rules_node
-}
-import std.algebra { Empty }
-import v2.std.algebra { list_append }
-import v2.std.collection { List }
-import v2.std.compilers.target_model {
-  concrete_syntax_token_class,
-  concrete_syntax_token_list_from_node,
-}
-import v2.std.diagnostic {
-  Accepted,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.node_query { find_named_child }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

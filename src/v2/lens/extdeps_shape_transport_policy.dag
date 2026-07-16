@@ -1,17 +1,5 @@
 module v2.lens.extdeps_shape_transport_policy
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { RealizationDispatch }
 
-import v2.std.algebra {
-  any,
-  fold_list,
-  length,
-  list_snoc_item
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName }
-import v2.std.text { String }
 
 type ExtdepsTransportKind
   = Shell

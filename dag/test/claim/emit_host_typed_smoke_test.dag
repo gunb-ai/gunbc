@@ -1,9 +1,5 @@
 module test.claim.emit_host_typed_smoke_test
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.python
-import tools.emit_host_transport { expected_stdout_nul_run }
 
 data emit_host_typed_smoke_red_doc: String = "Discriminating controls for the typed emit-host smokes (tools.emit_host_transport). The smokes assert CONTENT equality against the in-substrate NUL golden; the control below emits five SPACES - byte-count-identical to the golden - and asserts inequality, so a regression of the mechanism back to count comparison (the old wc -c check) or an equality that fabricates true goes RED here. The pure shape tests pin the golden itself so repeat_string/from_code_point cannot silently degenerate to the empty string (which trailing-whitespace trims would then match)."
 

@@ -1,12 +1,5 @@
 module v2.test.lens_idempotency.family_receipt
 
-import v2.compiler.eval { TestClaimRun }
-import v2.std.collection { List }
-import v2.std.node { Node }
-import v2.std.runtime { RuntimeValue }
-import v2.test.lens_idempotency.write_effect {
-  run_idempotency_write_effect_receipt
-}
 
 data lens_idempotency_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>> = [
   run_idempotency_write_effect_receipt

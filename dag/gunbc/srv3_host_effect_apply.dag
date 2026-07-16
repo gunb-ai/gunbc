@@ -1,47 +1,5 @@
 module gunbc.srv3_host_effect_apply
 
-import gunbc.host_effect {
-  HostEffect,
-  NodeControlPlane,
-  HostOs,
-  HostEffectIntent,
-  HostEffectEvidence,
-  ShellEffectApplied,
-  ConvergePlanApplied,
-  Srv3InstallReconcileObserve,
-  DurableApprovalGrantRecord,
-  DurableApprovalGrantRead,
-  Srv3InstallMediaFetch,
-  Srv3SeededInstallMediaRemaster,
-  Srv3SeededInstallMediaToolchainEnsure,
-  Srv3SolConsoleCapture,
-  Srv3BmcwebSessionLogin,
-  Srv3BmcwebTokenExtract,
-  Srv3NbdProxyServe,
-  Srv3BootOnceReadBackSleep,
-  Srv3ReceiptEmit,
-  host_effect_read_evidence,
-  host_effect_identity_evidence,
-  LocalShell,
-}
-import gunbc.host_effect_realize { host_effect_apply, host_effect_apply_gated }
-import gunbc.ci_deploy_access {
-  ci_deploy_srv1_access,
-  DeployAccess,
-  deploy_access_check,
-  deploy_access_unprivileged_fixture_actor,
-  Deny,
-}
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import gunbc.srv3_nbd_proxy_serve_intent { srv3_nbd_proxy_serve_host_effect }
-import std.realization_reconcile {
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconciliation_converged,
-}
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { String, List, Bool }
 
 type Srv3TypedReceipt {
   lines: List<String>

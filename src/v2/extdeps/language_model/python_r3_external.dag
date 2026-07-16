@@ -1,36 +1,5 @@
 module v2.test.language_model.python_r3_external
 
-import v2.lens.leaf_model_verification {
-  python_r3_external_fixture,
-  python_r3_external_falsification_fixture_source,
-  python_r3_external_happy_fixture_source
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile,
-  outcome_rejected
-}
-import v2.std.leaf_model_verification {
-  LeafModelVerificationRunReceipt,
-  leaf_model_claim_python_r3_external_symbol_projection,
-  TargetPythonExerciseVerdict,
-  TargetPythonExecRejected,
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verdict { verdict_fail }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Boundary,
-  manual_claim_anchor
-}
 fn python_r3_external_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^python_r3_external_claim_bool_true } }, children: [],

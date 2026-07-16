@@ -1,25 +1,5 @@
 module v2.test.claim.body_lowering.wave1_gate1_a1_symbol_index_helpers
 
-import v2.compiler.body_lowering_fold {
-  body_lower_arrow_domain_binding_symbols,
-  body_lower_arrow_domain_matches_frontend_symbol_index,
-  body_lower_arrow_domain_matches_ingest_param_bindings,
-  body_lower_find_captured,
-  body_lower_fn_decl_ident_from_captured,
-  body_lower_param_binding_symbols_from_fn_decl_module
-}
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  dag_language_model,
-  ParseSubtreeFound
-}
-import v2.std.algebra { length }
-import v2.std.collection { Absent, Optional, Present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Arrow, Conj, Node, TypeNode }
 
 data wave1_gate1_a1_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 

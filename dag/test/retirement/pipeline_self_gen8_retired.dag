@@ -1,6 +1,5 @@
 module test.retirement.pipeline_self_gen8_retired
 
-import test.retirement.model { TestModuleRetirement, DeleteRedundant, DeleteLowValue }
 
 data pipeline_self_gen8_green_retirement: TestModuleRetirement = TestModuleRetirement {
   module: "pipeline.rs self_gen8 cluster, 22 green fns of 31 (the file survives, so this row is a triage receipt, not a delete-guard stem: pipeline.rs itself still needs its own coverage when the file is finally deleted)",

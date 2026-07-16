@@ -1,34 +1,5 @@
 module v2.test.language_model.python_r2b
 
-import v2.extdeps.languages.python { python_integer_algebra_inhabitance_python_facts_int }
-import v2.lens.leaf_model_verification {
-  python_r2b_fixture,
-  python_r2b_runtime_fixture_source
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile,
-  outcome_rejected
-}
-import v2.std.leaf_model_verification {
-  LeafModelVerificationRunReceipt,
-  leaf_model_claim_python_r2b_int_arbitrary_precision_add
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verdict { verdict_fail }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Boundary,
-  manual_claim_anchor
-}
 fn python_r2b_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^python_r2b_claim_bool_true } }, children: [],

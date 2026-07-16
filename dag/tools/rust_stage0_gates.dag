@@ -1,13 +1,5 @@
 module tools.rust_stage0_gates
 
-import std.types { List }
-import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.lens.affected_set.corpus_dependency_view {
-  corpus_dependency_view_per_pr_substrate_ready
-}
-import v2.lens.affected_set.entry_selection { entry_affected_by_dependency_view }
-import gunbc.ci_layer_roots { witness_layer_roots }
 
 fn rust_monolith_suffixes() -> List<String> {
   [".rs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",

@@ -1,9 +1,5 @@
 module v2.test.workflow.host_frontier_probe_survey_manifest
 
-import v2.compiler.self_host.frontier_probe_types { FrontierProbeReceipt }
-import v2.std.algebra { Empty }
-import v2.std.collection { List }
-import v2.std.logic { Int }
 
 data host_frontier_probe_survey_module_count: Int = 0
 

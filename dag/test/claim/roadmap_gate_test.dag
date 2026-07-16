@@ -1,13 +1,5 @@
 module test.claim.roadmap_gate
 
-import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.roadmap_document { RoadmapDocument, RoadmapSection, project_roadmap_to_markdown }
-import gunbc.roadmap_model { RoadmapNode, SectionElement, section_group }
-import gunbc.roadmap_authority {
-  expected_roadmap_md, roadmap_drifted,
-  derivable, sign, signed,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
