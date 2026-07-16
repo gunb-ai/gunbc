@@ -1,0 +1,56 @@
+module test.claim.live_deploy.service_ready
+
+import gunbc.live_deploy.service_ready {
+  ServiceReadyPredicate,
+  ServiceNotReady,
+  live_deploy_service_ready_predicate,
+  service_ready_predicate_unit,
+  service_ready_predicate_endpoint,
+  service_not_ready_reason,
+  live_deploy_readiness_poll_bound_is_positive,
+  live_deploy_readiness_poll_bound_seconds,
+}
+import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
+import gunbc.roadmap_static_site { roadmap_site_health_path }
+import gunbc.roadmap_health { roadmap_health_probe_path }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_service_ready_predicate_targets_roadmap_unit() -> Bool {
+  service_ready_predicate_unit(predicate: live_deploy_service_ready_predicate()) == gunbc_roadmap_unit_name
+}
+
+fn witness_service_ready_predicate_health_endpoint_is_authority() -> Bool {
+  service_ready_predicate_endpoint(predicate: live_deploy_service_ready_predicate()) == roadmap_site_health_path
+}
+
+fn witness_service_not_ready_reason_is_located() -> Bool {
+  let reason = service_not_ready_reason(refusal: ServiceNotReady {
+    unit: gunbc_roadmap_unit_name,
+    endpoint: roadmap_site_health_path,
+    waited: 1,
+    last_probe: "connection refused",
+  })
+  string_contains(s: reason, pattern: "ServiceNotReady")
+    && string_contains(s: reason, pattern: "gunbc-roadmap.service")
+    && string_contains(s: reason, pattern: "/healthz")
+    && string_contains(s: reason, pattern: "connection refused")
+}
+
+fn witness_readiness_poll_bound_is_positive() -> Bool {
+  live_deploy_readiness_poll_bound_is_positive()
+    && live_deploy_readiness_poll_bound_seconds() == 30
+}
+
+fn witness_health_probe_path_matches_service_ready_endpoint() -> Bool {
+  roadmap_health_probe_path() == roadmap_site_health_path
+}
+
+test fn live_deploy_service_ready_witnesses() -> Bool {
+  witness_service_ready_predicate_targets_roadmap_unit()
+    && witness_service_ready_predicate_health_endpoint_is_authority()
+    && witness_service_not_ready_reason_is_located()
+    && witness_readiness_poll_bound_is_positive()
+    && witness_health_probe_path_matches_service_ready_endpoint()
+}

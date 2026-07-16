@@ -1,0 +1,22 @@
+module test.claim.roadmap_health
+
+import gunbc.roadmap_health { roadmap_health_probe_path, HealthOk }
+import gunbc.roadmap_static_site { roadmap_site_health_path }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_health_probe_path_is_authority() -> Bool {
+  roadmap_health_probe_path() == roadmap_site_health_path
+}
+
+fn witness_health_ok_body_shape() -> Bool {
+  let sample = HealthOk { body: "{\"status\":\"ok\"}" }
+  starts_with(s: sample.body, prefix: "{")
+    && ends_with(s: sample.body, suffix: "}")
+}
+
+test fn roadmap_health_witnesses() -> Bool {
+  witness_health_probe_path_is_authority()
+    && witness_health_ok_body_shape()
+}

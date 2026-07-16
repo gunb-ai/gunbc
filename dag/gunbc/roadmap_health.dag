@@ -1,0 +1,50 @@
+module gunbc.roadmap_health
+
+import std.types { String, HttpStatus, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Http }
+import gunbc.roadmap_static_site { roadmap_site_health_path }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Http
+    locator: "127.0.0.1:8080/healthz"
+  }
+}
+
+type HealthOk {
+  body: String
+}
+
+type HealthUnavailable {
+  message: String
+  status: HttpStatus
+}
+
+service roadmap.Health {
+  config {
+    endpoint: "http://127.0.0.1:8080"
+  }
+
+  operation GetHealthz {
+    output {
+      body: String from "body"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/healthz"
+    }
+    response {
+      200 => HealthOk
+      5xx => HealthUnavailable
+    }
+    mock_response {
+      200 => { body: "{\"status\":\"ok\"}" } "body"
+    }
+  }
+}
+
+fn roadmap_health_probe_path() -> NonEmptyStr {
+  roadmap_site_health_path
+}
