@@ -1,6 +1,6 @@
 module gunbc.roadmap_site_health_probe
 
-import std.types { NonEmptyStr, Port, String }
+import std.types { Port, String }
 import extdeps.http.client {
   HealthProbeGetSpec,
   HealthProbeEndpoint,
@@ -33,24 +33,4 @@ fn roadmap_site_health_probe_get_spec(port: Port) -> HealthProbeGetSpec {
 
 fn roadmap_site_health_probe_url(port: Port) -> String {
   health_probe_get_url(spec: roadmap_site_health_probe_get_spec(port: port))
-}
-
-service gunbc.RoadmapSiteHealthProbe {
-  config {
-    endpoint: "http://127.0.0.1:8080"
-  }
-
-  operation GetHealthz {
-    output {
-      body: String from "payload"
-    }
-    readonly
-    transport rest {
-      method: GET,
-      path: "/healthz"
-    }
-    response {
-      200 => extdeps.http.client.HealthProbeGetBody
-    }
-  }
 }

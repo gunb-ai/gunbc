@@ -49,27 +49,36 @@ fn deployment_readiness_edges() -> List<DeploymentReadinessEdge> {
   ]
 }
 
+type DeploymentStepIndexSearch {
+  cursor: Int
+  hit: Int?
+}
+
 fn deployment_step_key_index(order: List<DeploymentStepKey>, key: DeploymentStepKey) -> Int? {
-  fold(order, init: (idx: 0, found: none), f: (acc, step) =>
-    match acc.found {
-      Present { value: _ } => acc
-      Absent =>
-        if step == key {
-          { idx: acc.idx, found: Present { value: acc.idx } }
-        } else {
-          { idx: acc.idx + 1, found: none }
-        }
-    }
-  ).found
+  fold(
+    order,
+    init: DeploymentStepIndexSearch { cursor: 0, hit: none },
+    f: (acc, step) =>
+      match acc.hit {
+        Present { value: _ } => acc
+        Absent =>
+          if step == key {
+            DeploymentStepIndexSearch { cursor: acc.cursor, hit: Present { value: acc.cursor } }
+          } else {
+            DeploymentStepIndexSearch { cursor: acc.cursor + 1, hit: none }
+          }
+      }
+  ).hit
 }
 
 fn deployment_readiness_edge_respected(edge: DeploymentReadinessEdge, order: List<DeploymentStepKey>) -> Bool {
-  match (
-    deployment_step_key_index(order: order, key: edge.dependent),
-    deployment_step_key_index(order: order, key: edge.prerequisite)
-  ) {
-    (Present { value: dep_idx }, Present { value: pre_idx }) => dep_idx > pre_idx
-    _ => false
+  match deployment_step_key_index(order: order, key: edge.dependent) {
+    Present { value: dep_idx } =>
+      match deployment_step_key_index(order: order, key: edge.prerequisite) {
+        Present { value: pre_idx } => dep_idx > pre_idx
+        Absent => false
+      }
+    Absent => false
   }
 }
 
