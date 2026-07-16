@@ -48,7 +48,9 @@ import v2.std.runtime {
   LoopInterpreter,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.verdict { Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed }
 import v2.std.verification {
@@ -140,7 +142,10 @@ fn idempotent_operation_eval_context() -> EvalContext {
       },
       bind: BindInterpreter {
         bind_value: idempotent_operation_bind_value
-      }
+      },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
+    }
     },
     structure_witness: idempotent_operation_interpretation_structure_witness()
   )

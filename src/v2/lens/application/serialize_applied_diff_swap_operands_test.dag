@@ -166,18 +166,6 @@ fn serialize_applied_diff_loop_body_claim_holds() -> Bool {
     && serialize_loop_patch_carrier_holds()
 }
 
-fn serialize_applied_diff_loop_body_claim_rhs() -> Bool {
-  serialize_applied_diff_loop_body_claim_holds()
-}
-
-data claim_serialize_applied_diff_loop_body: TestClaim = EqualsClaim {
-  label: "lens.application_serializer/serialize_diff_as_source_patch: loop body edit re-emits distinct canonical source",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: true,
-  rhs: serialize_applied_diff_loop_body_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
 test fn serialize_applied_diff_loop_body_holds() -> Bool {
   serialize_applied_diff_loop_body_claim_holds()
 }

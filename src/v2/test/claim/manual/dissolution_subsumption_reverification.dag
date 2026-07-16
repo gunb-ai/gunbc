@@ -62,7 +62,9 @@ import v2.std.runtime {
   RuntimeUnitValue,
   RuntimeValue,
   TransformInterpreter,
-  ValueInterpreter
+  ValueInterpreter,
+  MatchInterpreter,
+  runtime_reject_match_arm
 }
 import v2.std.verification {
   EqualsClaim,
@@ -350,6 +352,9 @@ fn subsumption_interpretation() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: subsumption_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }

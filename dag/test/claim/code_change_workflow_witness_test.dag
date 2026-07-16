@@ -1,6 +1,6 @@
 module test.claim.code_change_workflow_witness_test
 
-import ctrl.code_change_workflow {
+import gunbc.code_change_workflow {
   CodeChangeFacts, CodeChangeStage, CodeChangeActiveStage, CodeChangeTerminalStage,
   CodeChangeBinding, CodeChangeTransitionRequest, CodeChangeGithubPrContext,
   CodeChangeEventTag, MarkReadyForReview, RecordMergeReady,
@@ -13,9 +13,9 @@ import ctrl.code_change_workflow {
   CanTransition, TransitionRefused,
   decide_code_change_transition, classify_github_pr_terminal_anchor,
 }
-import ctrl.pr_digests { Ready, NotReady }
-import ctrl.review_verdict { MergeReadinessTally }
-import ctrl.process_algebra { ProcessNodeId }
+import gunbc.pr_digests { Ready, NotReady }
+import gunbc.review_verdict { MergeReadinessTally }
+import gunbc.process_algebra { ProcessNodeId }
 import extdeps.github.pulls {
   PullRequest, PullRequestRef, PullRequestState, Open, Closed,
 }

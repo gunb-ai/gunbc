@@ -22,7 +22,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound, MissingField,
   resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -83,6 +83,7 @@ import v1.compiler.infer_env {
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
   str_bindings_from_bindings,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
+  global_bare_is_ambiguous,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
@@ -643,7 +644,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
                       Absent => acc
                     }
                   )
-                  let template_fields = record_lit_expected_fields(type_name: type_name, scope: scope)
+                  let template_fields = decl.children
                   Present { value: template_fields |> map(sf =>
                     Node {
                       name: sf.name, span: sf.span, ident_span: sf.ident_span,
@@ -739,6 +740,46 @@ fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, source_indices: M
     && !is_declared_container_alias_spelling(name: actual_name)
 }
 
+fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
+    false
+  } else {
+    let formal_base = if formal.connective == Conj && formal.type_annotation != none && (formal.children |> count) == 1 {
+      match formal.children |> first {
+        Present { value: refinement_base } => refinement_base
+        Absent => formal
+      }
+    } else { formal }
+    let actual_name = authored_name_at(source_indices: source_indices, node: actual)
+    if is_kernel_type(name: actual_name) == false || actual_name == "Unit" {
+      false
+    } else {
+      let formal_name = authored_name_at(source_indices: source_indices, node: formal_base)
+      if formal_name == "" || formal_name == actual_name || dag_can_cast(source_type: actual_name, target_type: formal_name) {
+        false
+      } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
+        false
+      } else {
+        if is_kernel_type(name: formal_name) {
+          true
+        } else {
+          match lookup_type_by_name(env: type_env, name: formal_name) {
+            Present { value: decl } =>
+              let decl_is_refinement_over_actual = decl.connective == Conj && (decl.children |> count) == 1
+                && (decl.type_annotation != none
+                  || (match decl.children |> first {
+                    Present { value: refinement_child } => authored_name_at(source_indices: source_indices, node: refinement_child) == actual_name
+                    Absent => false
+                  }))
+              (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0 && decl_is_refinement_over_actual == false
+            Absent => false
+          }
+        }
+      }
+    }
+  }
+}
+
 fn container_element_nominal_brand_mismatch(
   formal: Node,
   actual: Node,
@@ -777,6 +818,8 @@ fn direct_call_arg_type_mismatch(
     nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
+      || kernel_value_declared_type_mismatch(
+        formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
   }
 }
 
@@ -794,7 +837,12 @@ fn direct_call_arg_mismatch_diags(
       let formal_raw = param_node_type_expr(n: pair.second)
       let formal_subst = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
       let formal = peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name)
-      match typed_args |> skip(pair.first) |> first {
+      let param_name = authored_name_at(source_indices: source_indices, node: pair.second)
+      let matched_arg = match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
+        Present { value: named_ta } => Present { value: named_ta }
+        Absent => typed_args |> skip(pair.first) |> first
+      }
+      match matched_arg {
         Present { value: ta } =>
           let actual_raw = resolved_type(n: arg_value(n: ta))
           let actual = peel_nominal_alias_identity(n: actual_raw, env: type_env, module_name: module_name)
@@ -2881,6 +2929,10 @@ fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
   }
 }
 
+data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): a ZERO-field literal of a coproduct VARIANT (field_inits empty AND variant_owner_node != none) is sanctioned as a TAG REFERENCE, not a construction — the `discriminant(v: PrefixToken {})` idiom (16+ sites in src/v2/std/compilers/target_model.dag) names a variant to obtain its stable tag identity without materializing a value. Presence checking is skipped for exactly this shape; PARTIAL literals (any field present) stay red, and zero-field literals of NON-variant records (variant_owner_node == none) stay red — so the audit F1 probes (CacheProvider/CostAccount partial literals) are unaffected. This is a decidable structural exemption (not an absorbing fallback: it refuses precisely, never widens on failure). DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the exemption is deleted and the sites migrate to the carrier."
+
+data presence_check_census_gate_note: String = "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus). Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate."
+
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let struct_fields = match type_name {
     Present { value: tn } =>
@@ -2918,6 +2970,56 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     Present { value: tn } => tn
     Absent => ""
   }
+  let si_presence = scope.type_env.source_indices
+  let presence_fields = if tn_str == "" {
+    []
+  } else {
+    match variant_owner_node(scope: scope, name: tn_str) {
+      Present { value: variant_owner } =>
+        match variant_owner.children |> filter(v => authored_name_at(source_indices: si_presence, node: v) == tn_str) |> first {
+          Present { value: variant_node } => variant_node.children
+          Absent => []
+        }
+      Absent =>
+        match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+          Present { value: inst_fields } => inst_fields
+          Absent =>
+            match lookup_type_by_name(env: scope.type_env, name: tn_str) {
+              Present { value: decl } =>
+                if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
+                  decl.children
+                } else {
+                  []
+                }
+              Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+            }
+        }
+    }
+  }
+  let is_zero_field_variant_tag_reference = (field_inits |> count) == 0
+    && variant_owner_node(scope: scope, name: tn_str) != none
+  let presence_name_is_ambiguous = global_bare_is_ambiguous(env: scope.type_env, name: tn_str)
+  let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || is_zero_field_variant_tag_reference || presence_name_is_ambiguous {
+      []
+    } else {
+      presence_fields
+        |> filter(sf =>
+          let sf_type = match sf.inferred {
+            Present { value: Resolved { node: rt } } => rt
+            _ => field_node_type_expr(n: sf)
+          }
+          sf_type.return_cardinality != CardOptional
+            && sf.body == none
+            && (field_inits |> any(fi => field_init_node_name_at(n: fi, source_indices: si_presence) == authored_name_at(source_indices: si_presence, node: sf))) == false)
+        |> map(sf => make_error_node(
+          diagnostic: MissingField {
+            field: authored_name_at(source_indices: si_presence, node: sf),
+            type_name: tn_str,
+            span: name_span
+          },
+          module_name: scope.module_name
+        ))
+    }
   let fi_infer_results = map(field_inits, fi =>
     let fi_name = field_init_node_name_at(n: fi, source_indices: scope.type_env.source_indices)
 
@@ -2964,7 +3066,22 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
             module_name: scope.module_name
           )]
         } else {
-          []
+          let expected_required = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: expected_node)) {
+            Present { value: resolved } => resolved
+            Absent => with_required_cardinality(n: expected_node)
+          }
+          let formal_peeled = peel_nominal_alias_identity(n: expected_required, env: scope.type_env, module_name: scope.module_name)
+          let actual_peeled = peel_nominal_alias_identity(n: got_node, env: scope.type_env, module_name: scope.module_name)
+          if kernel_value_declared_type_mismatch(formal: formal_peeled, actual: actual_peeled, type_env: scope.type_env, source_indices: scope.type_env.source_indices) {
+            [type_mismatch_error(
+              expected: node_type_shape(n: formal_peeled, source_indices: scope.type_env.source_indices),
+              got: node_type_shape(n: actual_peeled, source_indices: scope.type_env.source_indices),
+              span: ar_typed.span,
+              module_name: scope.module_name
+            )]
+          } else {
+            []
+          }
         }
       Absent => []
     }
@@ -3053,7 +3170,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     )
     InferResult {
       typed: texpr,
-      diagnostics: concat(concat(fi_diags, type_diags), sole_ctor_diags)
+      diagnostics: concat(concat(concat(fi_diags, type_diags), sole_ctor_diags), missing_field_diags)
     }
   }
 }
@@ -5885,6 +6002,42 @@ fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<
   )
 }
 
+data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields; ledger arm = the fork row is still recorded)."
+
+fn overlay_skips_kernel_name(name: String) -> Bool {
+  is_kernel_type(name: name)
+    || is_container_type(name: name)
+    || name == "Unit"
+    || name == "Optional"
+    || name == "Present"
+    || name == "Absent"
+}
+
+fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>, resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>) -> Map<String, TypeBinding> {
+  fold(resolved_imports, init: ancestry_str_bindings, f: (acc, imp) =>
+    match map_get(parent_index, imp.module_path) {
+      Present { value: typed_parent } =>
+        let export_surface = interface_env_for_import(module_path: imp.module_path, parent_env: typed_parent.interface.env)
+        let selected = if imp.is_all {
+          export_surface.str_bindings |> map_keys |> filter(name => is_type_variable_name(name: name) == false)
+        } else {
+          imp.specific_names
+        }
+        fold(selected, init: acc, f: (bacc, name) =>
+          if overlay_skips_kernel_name(name: name) {
+            bacc
+          } else {
+            match map_get(export_surface.str_bindings, name) {
+              Present { value: binding } => map_insert(bacc, name, binding)
+              Absent => bacc
+            }
+          }
+        )
+      Absent => acc
+    }
+  )
+}
+
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, global_bare: Map<String, GlobalBareLookupState>, symbol_index: SymbolIndex) -> BuildTypeEnvResult {
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
@@ -5985,7 +6138,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     Absent => empty_map()
   }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
-  let ancestry_str_bindings = ancestry_cache.str_bindings
+  let ancestry_str_bindings = overlay_direct_import_exports(
+    ancestry_str_bindings: ancestry_cache.str_bindings,
+    resolved_imports: module.resolved_imports,
+    parent_index: parent_index
+  )
   let svn_local = fold(map_keys(local_str_bindings), init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
   let svn_kernel = fold(map_keys(kernel_type_set), init: svn_local, f: (acc, n) => map_insert(acc, n, true))
   let source_visible_names = fold(module.resolved_imports, init: svn_kernel, f: (acc, imp) =>

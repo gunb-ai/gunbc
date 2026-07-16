@@ -12,6 +12,12 @@ use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::stage0_self_compile_refusal_message;
 use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
 
+#[path = "../bootstrap_stage0_crate_layout_generated.rs"]
+mod bootstrap_stage0_crate_layout_generated;
+use bootstrap_stage0_crate_layout_generated::{
+    HAND_MAINTAINED_STAGE0_DIRS, HAND_MAINTAINED_STAGE0_FILES,
+};
+
 const BOOTSTRAP_TIMING_RECEIPT_VERSION: u32 = 2;
 const BOOTSTRAP_TIMING_RECEIPT_SCHEMA: &str = "gunbc.bootstrap_timing_receipt.v2";
 const BOOTSTRAP_TIMING_RECEIPT_ENV: &str = "GUNBC_BOOTSTRAP_TIMING_RECEIPT";
@@ -19,6 +25,9 @@ const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
     "target/bootstrap_timing/v1_regen_stage0_receipt.json";
 
 // Registry authority: gunbc.stage0_emit_model.generated_stage0_files.
+// Hand-maintained registry authority: gunbc.stage0_crate_layout_generated
+// (frontier-derived; regen via generated_artifact_gate main_wet).
+// Witness: stage0_crate_layout_witness_test.dag + self_host/crate_layout_witness_test.dag.
 // Dissolve-on: regen_stage0 reads emitted gunbc_stage0_emit_model.rs roster.
 const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
@@ -41,6 +50,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_uri_path.rs",
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
+    "gunbc_stage0_crate_layout_generated.rs",
     "lib.rs",
     "std_algebra.rs",
     "std_coercion.rs",
@@ -59,7 +69,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_integer.rs",
     "std_interface_summary.rs",
     "std_iteration.rs",
-    "std_lens_verdict.rs",
     "std_logic.rs",
     "std_machine_constraints.rs",
     "std_magnitude.rs",
@@ -117,37 +126,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "wt_b.rs",
     "wt_common.rs",
 ];
-
-const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
-    "cli_run.rs",
-    "coproduct_reflection.rs",
-    "recorded_fixture.rs",
-    "resolved_graph_cache.rs",
-    "shared_typecheck_store.rs",
-    // dag_collect split (#6053) removed Ci-subcommand / extract_module_path emission from
-    // 05_emit_rust.dag; without those, the emitter no longer produces byte-identical main.rs,
-    // so main.rs parks here until those gaps are restored in .dag. Registry flip deferred until
-    // regen_stage0 --verify confirms byte-identical output vs this committed file.
-    // Dissolution: run regen_stage0 --verify; on green, move to GENERATED_STAGE0_FILES.
-    "main.rs",
-    "v1_interpreter.rs",
-    // Phase-local heartbeat for long floor walks (2026-07-04); its own header
-    // carries the dissolution trigger (realization_measurement_loop Phase 0).
-    "phase_profile.rs",
-    // AIMD memory governor (2026-07-12): run-time adaptive width against the slot's
-    // cgroup budget; replaced the plan-pinned spawn-width constants. Hand-maintained
-    // beside cli_run/v1_interpreter until host-effect modules migrate to .dag.
-    "memory_governor.rs",
-    // Wave 2 use_site_verdict pilot seed oracle (hand-retained until v2.std.node self-emits).
-    // Dissolve-on: ssuv_scaffold_dissolution_trigger — retire when modeled harness lands.
-    "usv_pilot_v2_std_algebra.rs",
-    "usv_pilot_v2_std_collection.rs",
-    "usv_pilot_v2_std_node.rs",
-    "v2_compiler_use_site_verdict.rs",
-];
-
-/// Hand-maintained stage0 support living in subdirectories (not flat `.rs` files).
-const HAND_MAINTAINED_STAGE0_DIRS: &[&str] = &["module_path_index"];
 
 fn main() -> ExitCode {
     match run() {

@@ -657,6 +657,24 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn compile_clean_diagnostic_histogram_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER,
+            "cli_run_compile_clean_diagnostic_histogram"
+        );
+    }
+
+    #[test]
+    fn truncate_histogram_label_respects_utf8_boundaries() {
+        let max = 80;
+        let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
+        let out = super::truncate_histogram_label(&s, max);
+        assert!(out.ends_with('…'));
+        assert!(out.is_char_boundary(out.len()));
+        assert!(out.len() <= max);
+    }
+
+    #[test]
     fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();
         let baked = workspace_root();
@@ -1875,6 +1893,121 @@ fn reset_floor_compile_clean_receipt_for_test() {
 fn install_floor_compile_clean_receipt_fixture(receipt: FloorCompileCleanReceipt) {
     let mut guard = FLOOR_COMPILE_CLEAN_RECEIPT.lock().unwrap();
     *guard = Some(receipt);
+}
+
+// DELETE WHEN dissolved: `compile_clean_whole_tree_hard_diagnostics`,
+// `compile_clean_diagnostic_histogram_key`, `truncate_histogram_label`,
+// `compile_clean_internal_error_histogram_name`, and the `compile_clean_diagnostic_histogram` bin
+// (~200 LOC).
+// Receipt: `rg cli_run_compile_clean_diagnostic_histogram src/v1/stage0` == 1 until deletion;
+// ROADMAP §1 namespace-only lane (docs/plans/namespace-resolution-design.md).
+pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &str =
+    "cli_run_compile_clean_diagnostic_histogram";
+
+/// Whole-tree `--target dag` compile-clean (witness_layer_roots closure).
+/// Instrument path for diagnostic histogram — not for cargo tests.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
+/// dissolves when ROADMAP §1 namespace-only lane closes (import strip + global_bare wiring fixed)
+/// or a floor-enrolled diagnostic-histogram lens subsumes this host transport.
+/// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
+/// (`compile_to_resolved` on the whole-tree source closure).
+pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im_rc::Vector<Rc<ErrorNode>>, String> {
+    let plan = CompileCleanScopePlan::WholeTree;
+    let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
+        None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
+        Some(s) => s,
+    };
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    Ok(result
+        .diagnostics
+        .iter()
+        .filter(|d| compile_clean_diagnostic_is_hard(d))
+        .cloned()
+        .collect())
+}
+
+/// `(class, name)` key for histogram aggregation over hard diagnostics.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER` / §7):
+/// total match over `CompilerDiagnostic` variants — no silent widening.
+pub fn compile_clean_diagnostic_histogram_key(d: &Rc<ErrorNode>) -> (String, String) {
+    use crate::v1_std_core::CompilerDiagnostic;
+    let class = match d.diagnostic.as_ref() {
+        CompilerDiagnostic::UnresolvedImport { .. } => "UnresolvedImport",
+        CompilerDiagnostic::MissingExport { .. } => "MissingExport",
+        CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
+        CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
+        CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
+        CompilerDiagnostic::VariantNotFound { .. } => "VariantNotFound",
+        CompilerDiagnostic::FieldNotFound { .. } => "FieldNotFound",
+        CompilerDiagnostic::MissingField { .. } => "MissingField",
+        CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
+        CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
+        CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
+        CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
+        CompilerDiagnostic::ParseError { .. } => "ParseError",
+        CompilerDiagnostic::InternalError { .. } => "InternalError",
+        CompilerDiagnostic::ComplexityUnknown { .. } => "ComplexityUnknown",
+        CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
+        CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
+        CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
+        CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
+    };
+    let name = match d.diagnostic.as_ref() {
+        CompilerDiagnostic::UnresolvedImport { module_path, .. } => module_path.clone(),
+        CompilerDiagnostic::MissingExport { name, .. } => name.clone(),
+        CompilerDiagnostic::UnresolvedType { name, .. } => name.clone(),
+        CompilerDiagnostic::TypeMismatch { got, .. } => got.clone(),
+        CompilerDiagnostic::ArityMismatch { name, .. } => name.clone(),
+        CompilerDiagnostic::VariantNotFound { variant, .. } => variant.clone(),
+        CompilerDiagnostic::FieldNotFound { field, .. } => field.clone(),
+        CompilerDiagnostic::MissingField { field, .. } => field.clone(),
+        CompilerDiagnostic::NonExhaustiveMatch { .. } => "(non-exhaustive)".to_string(),
+        CompilerDiagnostic::CircularDependency { .. } => "(cycle)".to_string(),
+        CompilerDiagnostic::DuplicateModule { name, .. } => name.clone(),
+        CompilerDiagnostic::MissingAnnotation { fn_name, .. } => fn_name.clone(),
+        CompilerDiagnostic::ParseError { message, .. } => truncate_histogram_label(message, 80),
+        CompilerDiagnostic::InternalError { message, .. } => {
+            compile_clean_internal_error_histogram_name(message)
+        }
+        CompilerDiagnostic::ComplexityUnknown { func_name, .. } => func_name.clone(),
+        CompilerDiagnostic::OwnershipViolation { binding, .. } => binding.clone(),
+        CompilerDiagnostic::VariantCollision { variant, .. } => variant.clone(),
+        CompilerDiagnostic::SoleConstructorViolation { type_name, .. } => type_name.clone(),
+        CompilerDiagnostic::UnlistedImportUse { name, .. } => name.clone(),
+    };
+    (class.to_string(), name)
+}
+
+fn truncate_histogram_label(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        let ellipsis = '…';
+        let budget = max.saturating_sub(ellipsis.len_utf8());
+        let end = s
+            .char_indices()
+            .map(|(i, c)| i + c.len_utf8())
+            .take_while(|&end| end <= budget)
+            .last()
+            .unwrap_or(0);
+        format!("{s_prefix}{ellipsis}", s_prefix = &s[..end])
+    }
+}
+
+fn compile_clean_internal_error_histogram_name(message: &str) -> String {
+    if let Some(rest) = message.strip_prefix("function '") {
+        if let Some(name) = rest.split_once('\'').map(|(n, _)| n) {
+            return format!("function:{name}");
+        }
+    }
+    if let Some(rest) = message.strip_prefix("undefined variable '") {
+        if let Some(name) = rest.split_once('\'').map(|(n, _)| n) {
+            return format!("variable:{name}");
+        }
+    }
+    truncate_histogram_label(message, 80)
 }
 
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
@@ -13449,6 +13582,143 @@ pub fn reference_resolution_facts(
     edges
 }
 
+/// Reachability stats for bare references to one declared export name (namespace homonym triage).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BareRefReachability {
+    /// Nearest-wins ties among declarers (AmbiguousBare — needs qualification).
+    pub ambiguous_sites: usize,
+    /// Unique nearest declarer shares zero module-path prefix with the referrer (disjoint subtree).
+    pub cross_subtree_unique_sites: usize,
+}
+
+/// Count bare-reference reachability for `name` using the same nearest-wins producer as
+/// `reference_resolution_facts` (import-less files only).
+pub fn bare_ref_reachability_for_name(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+    name: &str,
+) -> BareRefReachability {
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let abs_importer_roots = pool_roots_abs(importer_roots);
+    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
+        HashMap::new();
+    for root in &abs_pool_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let module_name = match extract_module_path(&content) {
+                Some(m) => m,
+                None => continue,
+            };
+            let tree = match parse_module_node_tolerant(&rel, &content) {
+                Some(t) => t,
+                None => continue,
+            };
+            let has_imports = !extract_import_paths(&content).is_empty();
+            if seen_modules.insert(module_name.clone()) {
+                module_names.insert(module_name.clone());
+                for decl_name in collect_module_decl_names(&tree) {
+                    decl_index
+                        .entry(decl_name)
+                        .or_default()
+                        .insert(module_name.clone());
+                }
+            }
+            pool_trees
+                .entry(rel)
+                .or_insert((module_name, tree, has_imports));
+        }
+    }
+
+    let mut stats = BareRefReachability::default();
+    for root in &abs_importer_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let (self_module, tree) = match pool_trees.get(&rel) {
+                Some((_, _, true)) => continue,
+                Some((m, t, false)) => (m.clone(), t.clone()),
+                None => {
+                    let content = match std::fs::read_to_string(&file) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    if !extract_import_paths(&content).is_empty() {
+                        continue;
+                    }
+                    let module_name = match extract_module_path(&content) {
+                        Some(m) => m,
+                        None => continue,
+                    };
+                    match parse_module_node_tolerant(&rel, &content) {
+                        Some(t) => (module_name, t),
+                        None => continue,
+                    }
+                }
+            };
+            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut chains: Vec<Vec<String>> = Vec::new();
+            for item in tree.children.iter() {
+                collect_node_refs(item, &mut bare, &mut chains);
+            }
+            if !bare.contains(name) {
+                continue;
+            }
+            let Some(mods) = decl_index.get(name) else {
+                continue;
+            };
+            if mods.contains(&self_module) {
+                continue;
+            }
+            let mut best_len = 0usize;
+            let mut winners: Vec<&String> = Vec::new();
+            for m in mods.iter() {
+                let shared = module_prefix_shared_len(&self_module, m);
+                if winners.is_empty() || shared > best_len {
+                    best_len = shared;
+                    winners.clear();
+                    winners.push(m);
+                } else if shared == best_len {
+                    winners.push(m);
+                }
+            }
+            match winners.len() {
+                0 => {}
+                1 => {
+                    if module_prefix_shared_len(&self_module, winners[0]) == 0 {
+                        stats.cross_subtree_unique_sites += 1;
+                    }
+                }
+                _ => stats.ambiguous_sites += 1,
+            }
+        }
+    }
+    stats
+}
+
 #[cfg(test)]
 mod reference_edge_producer_tests {
     use super::reference_resolution_facts;
@@ -13534,8 +13804,6 @@ mod reference_edge_producer_tests {
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
-    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
-    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
     // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
     // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
     // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
@@ -13564,6 +13832,12 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // the std eq rows; dissolve with derived equality from inhabitance (dag/std/algebra).
     "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
     "src/v2/lens/live_read_classification.dag::path_pattern_eq",
+    // 2026-07-15 backfill: #6680 merge landed bash_composition_recognizer.dag::apply_role
+    // with a two-special-variant dispatch (IfFraming / UnmodeledKeyword mutate ScanState;
+    // every other TokenRole through close_run unchanged). The nfr witness is corpus-read;
+    // the landing PR predict-skipped it and the red surfaced on the next cold sweep. Burns
+    // down with the bash composition recognizer fold migration.
+    "src/v2/lens/bash_composition_recognizer.dag::apply_role",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.
@@ -13636,7 +13910,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
     "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
-    "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
     "src/v2/compiler/emit_host.dag::runtime_value_signed_i32_le_as_int",
     "src/v2/compiler/self_host/frontier_probe_types.dag::frontier_blocker_class_matches",
     "src/v2/test/claim/manual/eval_runtime.dag::eval_arg_is_two_literal",
@@ -14076,6 +14349,36 @@ mod nfr_tests {
             !sites.contains(&"m.dag::f".to_string()),
             "an exhaustive match (no wildcard) must NOT be flagged; got {sites:?}"
         );
+    }
+
+    #[test]
+    fn nfr_roster_receipt() {
+        let live: std::collections::BTreeSet<&str> = nfr_build_report()
+            .sites
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        eprintln!(
+            "nfr_roster_receipt: unrostered={} stale={} live={}",
+            non_fold_residue_unrostered_count(),
+            non_fold_residue_stale_roster_count(),
+            live.len()
+        );
+        for site in nfr_build_report().sites.iter() {
+            if !non_fold_residue_site_is_rostered(site) {
+                eprintln!("unrostered live site: {site}");
+            }
+            assert!(
+                non_fold_residue_site_is_rostered(site),
+                "unrostered: {site}"
+            );
+        }
+        for entry in NON_FOLD_RESIDUE_ROSTER {
+            if !live.contains(entry) {
+                eprintln!("stale roster entry: {entry}");
+            }
+            assert!(live.contains(entry), "stale roster: {entry}");
+        }
     }
 
     #[test]
@@ -14889,7 +15192,6 @@ fn cla_triage_complexity(site: &str) -> &'static str {
         return "kernel-permanent";
     }
     if site.starts_with("dag/extdeps/")
-        || site.starts_with("dag/ctrl/")
         || site.starts_with("dag/gunbc/plans/")
         || site.starts_with("dag/test/")
     {

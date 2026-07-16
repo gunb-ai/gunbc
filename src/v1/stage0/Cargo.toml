@@ -195,3 +195,16 @@ path = "src/bin/dag_collect_fingerprint_witness.rs"
 [[bin]]
 name = "parse_witness"
 path = "src/bin/parse_witness.rs"
+
+# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / P5) — whole-tree compile-clean hard-diagnostic
+# histogram host transport for namespace migration burndown
+# (docs/plans/namespace-resolution-design.md · ROADMAP §1 namespace-only lane).
+# NOT floor-enrolled — run standalone (whole-tree resolve OOM risk in cargo test).
+# DISSOLUTION: delete this bin and `CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER`
+# plumbing in cli_run.rs when the namespace-only lane closes (import strip + global_bare wiring
+# fixed; whole-tree compile-clean quiet on the strip tree) OR a floor-enrolled diagnostic-histogram
+# lens subsumes this host transport; receipt:
+# `rg cli_run_compile_clean_diagnostic_histogram src/v1/stage0` == 1 until deletion.
+[[bin]]
+name = "compile_clean_diagnostic_histogram"
+path = "src/bin/compile_clean_diagnostic_histogram.rs"
