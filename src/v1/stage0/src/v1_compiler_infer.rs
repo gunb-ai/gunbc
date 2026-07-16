@@ -56,7 +56,7 @@ pub use crate::v1_compiler_infer_env::{
     is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name,
     lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
     put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
-    symbol_index_insert,
+    symbol_index_insert, union_variant_locals_into_acc,
 };
 pub use crate::v1_compiler_infer_env::{
     lookup_binding_by_name, GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex,
@@ -12661,6 +12661,36 @@ pub fn build_global_bare_census(
     )
 }
 
+pub fn build_global_bare_variant_locals(
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    global_bare.clone().iter().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, (name, lookup)| match lookup.as_ref() {
+            GlobalBareLookupState::GlobalBareUniqueBinding { binding } => {
+                let owner = binding.resolved.clone();
+                if owner.connective == Connective::Disj
+                    && has_child_named(owner.clone(), name.clone(), source_indices.clone())
+                {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        name.clone(),
+                        Rc::new(TypeBinding {
+                            name: name.clone(),
+                            resolved: owner.clone(),
+                            provenance: SubValueUnknown.into(),
+                        }),
+                    )
+                } else {
+                    acc
+                }
+            }
+            GlobalBareLookupState::GlobalBareAmbiguousBinding => acc,
+        },
+    )
+}
+
 pub fn symbol_index_insert_item(
     index: Rc<SymbolIndex>,
     module_path: String,
@@ -14372,40 +14402,6 @@ pub fn bind_imported_name_from_surface(
     }
 }
 
-pub fn merge_global_bare_variant_locals(
-    env: Rc<TypeEnv>,
-    state: Rc<VariantFoldState>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_name: String,
-) -> Rc<VariantFoldState> {
-    env.global_bare.clone().iter().fold(
-        state.clone(),
-        |acc: Rc<VariantFoldState>, (name, lookup)| match lookup.as_ref() {
-            GlobalBareLookupState::GlobalBareUniqueBinding { binding } => {
-                let owner = binding.resolved.clone();
-                if owner.connective == Connective::Disj
-                    && has_child_named(owner.clone(), name.clone(), source_indices.clone())
-                {
-                    if v1_rt::map_get(&acc.locals, name.clone()).is_some() {
-                        acc.clone()
-                    } else {
-                        insert_variant_owner_checked(
-                            acc.clone(),
-                            name.clone(),
-                            owner.clone(),
-                            source_indices.clone(),
-                            module_name.clone(),
-                        )
-                    }
-                } else {
-                    acc.clone()
-                }
-            }
-            GlobalBareLookupState::GlobalBareAmbiguousBinding => acc.clone(),
-        },
-    )
-}
-
 pub fn build_imported_variants(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -14471,6 +14467,7 @@ pub fn build_module_context(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     env: Rc<TypeEnv>,
     module_name: String,
+    global_bare_variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<ModuleContext> {
     {
         let local = fold_module_contributions(
@@ -14492,22 +14489,21 @@ pub fn build_module_context(
                 collision_errors: Rc::new(vec![]),
             }),
         );
-        let variant_fold = merge_global_bare_variant_locals(
-            env.clone(),
-            build_imported_variants(
-                resolved_imports.clone(),
-                parent_index.clone(),
-                variant_surfaces.clone(),
-                env.source_indices.clone(),
-                module_name.clone(),
-                local_variant_fold.clone(),
-            ),
+        let variant_fold = build_imported_variants(
+            resolved_imports.clone(),
+            parent_index.clone(),
+            variant_surfaces.clone(),
             env.source_indices.clone(),
             module_name.clone(),
+            local_variant_fold.clone(),
         );
         let variant_collision_errors = variant_fold.collision_errors.clone();
+        let variant_locals_with_shared = union_variant_locals_into_acc(
+            global_bare_variant_locals.clone(),
+            variant_fold.locals.clone(),
+        );
         let env_variant_locals =
-            merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
+            merge_kernel_variant_locals_low_priority(env.clone(), variant_locals_with_shared);
         let merged_scope = merge_scope_from_imports(
             resolved_imports.clone(),
             parent_index.clone(),
