@@ -3,21 +3,31 @@
 //! that red: are they ABSENT (never censused) or AMBIGUOUS (homonym → correct refusal)?
 //! Those have opposite remedies — widen the census vs qualify the reference.
 //!
-//! Diagnostic instrument only — these tests print histograms/rosters via eprintln/println
-//! and do not assert census shape beyond `sources.is_empty()`. They are not enrolled as
-//! regression gates; a census logic regression would pass silently until a human reads output.
-//!
-//! SEED-RETAINED diagnostic probe (DESIGN §7): bind
-//! `dag/gunbc/plans/namespace_homonym_triage_tier2.dag`
-//! (`namespace_homonym_triage_tier2_census_probe_note`). Dissolve-on: when
-//! `namespace_homonym_triage_tier2_dissolve_trigger` fires and roster sizing is owned
-//! by the namespace lane's single authority — delete this module.
+//! SEED-RETAINED namespace homonym triage probe (DESIGN §7): diagnostic histogram/roster
+//! tests plus `tier2_namespace_homonym_invariants` — fail-closed gates on the tier-2
+//! triage invariants (not declaration counts). Dissolve-on: namespace lane owns roster
+//! sizing in a single authority and these gates move there — delete this module.
 
 use std::rc::Rc;
 
+use v1_compiler::cli_run::{bare_ref_reachability_for_name, BareRefReachability};
 use v1_compiler::v1_compiler_compile::{front_end_sources, SourceFile};
 use v1_compiler::v1_compiler_infer::build_global_bare_census;
 use v1_compiler::v1_compiler_infer_env::GlobalBareLookupState;
+
+fn workspace_root() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .canonicalize()
+        .expect("workspace root")
+}
+
+fn floor_source_roots(ws: &std::path::Path) -> Vec<String> {
+    vec![
+        ws.join("dag").to_string_lossy().into_owned(),
+        ws.join("src/v2").to_string_lossy().into_owned(),
+    ]
+}
 
 fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Rc<SourceFile>>) {
     let mut entries: Vec<_> = match std::fs::read_dir(dir) {
@@ -45,12 +55,82 @@ fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Rc<Sourc
     }
 }
 
+fn load_floor_census(
+    ws: &std::path::Path,
+) -> Rc<im_rc::HashMap<String, Rc<GlobalBareLookupState>>> {
+    let mut sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect(ws, &ws.join("dag"), &mut sources);
+    collect(ws, &ws.join("src/v2"), &mut sources);
+    assert!(!sources.is_empty(), "no dag sources found");
+    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im_rc::Vector<_>>()));
+    let graph = frontend.graph.as_ref().expect("graph");
+    let source_indices = frontend
+        .newline_indices
+        .iter()
+        .cloned()
+        .fold(im_rc::HashMap::new(), |acc, si| {
+            acc.update(si.file.clone(), si)
+        });
+    build_global_bare_census(graph.modules.clone(), Rc::new(source_indices))
+}
+
+fn assert_not_census_ambiguous(
+    census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
+    name: &str,
+) {
+    match census.get(name).map(|s| &**s) {
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => panic!(
+            "{name}: global bare census is AMBIGUOUS — this was construction protocol / \
+             subtree-local resolution; a new homonym authority now exists; triage before consolidating"
+        ),
+        None => panic!(
+            "{name}: absent from global bare census — unexpected; triage before consolidating"
+        ),
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {}
+    }
+}
+
+fn assert_zero_ambiguous_bare_sites(name: &str, stats: BareRefReachability) {
+    assert_eq!(
+        stats.ambiguous_sites, 0,
+        "{name}: tier-2 triage established construction protocol with 0 reachable ambiguous bare \
+         refs (nearest-wins ties); found {} AmbiguousBare site(s) — a cross-module bare ref now \
+         needs qualification; triage before consolidating",
+        stats.ambiguous_sites
+    );
+}
+
+fn assert_zero_cross_subtree_bare_sites(name: &str, stats: BareRefReachability) {
+    assert_eq!(
+        stats.cross_subtree_unique_sites, 0,
+        "{name}: tier-2 triage established 0 cross-subtree bare refs (nearest-wins resolves \
+         within subtree); found {} cross-subtree site(s) — triage before consolidating or qualifying",
+        stats.cross_subtree_unique_sites
+    );
+}
+
+/// Tier-2 triage proved ConstructionProtocolNoAction on the two highest-rank roster ghosts;
+/// consolidating either would destroy information. These gates encode that finding durably.
+#[test]
+fn tier2_namespace_homonym_invariants() {
+    let ws = workspace_root();
+    let roots = floor_source_roots(&ws);
+    let census = load_floor_census(&ws);
+
+    for name in ["live_tree_disposition", "extdeps_external_authority_anchor"] {
+        assert_not_census_ambiguous(&census, name);
+        let stats = bare_ref_reachability_for_name(&roots, &roots, &[], name);
+        assert_zero_ambiguous_bare_sites(name, stats);
+    }
+
+    assert_not_census_ambiguous(&census, "emit");
+    let emit_stats = bare_ref_reachability_for_name(&roots, &roots, &[], "emit");
+    assert_zero_cross_subtree_bare_sites("emit", emit_stats);
+}
+
 #[test]
 fn corpus_census_state_of_failing_names() {
-    let ws = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("workspace root");
+    let ws = workspace_root();
     let mut sources: Vec<Rc<SourceFile>> = Vec::new();
     collect(&ws, &ws.join("dag"), &mut sources);
     eprintln!(
@@ -74,7 +154,6 @@ fn corpus_census_state_of_failing_names() {
     eprintln!("[corpus] census keys = {}", census.len());
     eprintln!("[corpus] modules     = {}", graph.modules.len());
 
-    // The exact names still reding on #6640 batch-1 (run 29450667128).
     for name in [
         "PullRequest",
         "ExitSuccess",
@@ -95,7 +174,6 @@ fn corpus_census_state_of_failing_names() {
         eprintln!("[census] {name:30} -> {state}");
     }
 
-    // Histogram the whole census so the shape is visible, not sampled.
     let mut unique = 0usize;
     let mut ambiguous = 0usize;
     for (_k, v) in census.iter() {
@@ -111,15 +189,9 @@ fn corpus_census_state_of_failing_names() {
 }
 
 /// Emit the AMBIGUOUS roster — the forced-qualification worklist (§8 residue).
-/// These are names the census REFUSES because they are declared more than once;
-/// no census widening can fix them (widening would make them guess, violating §5).
-/// The only remedy is qualifying the reference. This is Wave-0 (c), sized.
 #[test]
 fn corpus_ambiguous_roster() {
-    let ws = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("workspace root");
+    let ws = workspace_root();
     let mut sources: Vec<Rc<SourceFile>> = Vec::new();
     collect(&ws, &ws.join("dag"), &mut sources);
     collect(&ws, &ws.join("src/v2"), &mut sources);
