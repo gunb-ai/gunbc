@@ -12,7 +12,7 @@ import gunbc.local_tidy_spec {
   generated_artifact_drift_gate_check_fn
 }
 import gunbc.ci_gate { GeneratedArtifactDriftGate }
-import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags, witness_layer_source_flags_rooted }
 import extdeps.git.hooks { pre_push_zero_sha, pre_push_stdin_read_vars }
 
 data bash_at: String = "@"
@@ -36,7 +36,7 @@ fn emit_glob_case_arms(globs: List<String>) -> String {
 }
 
 fn emit_claim_batch(entry: String, function: String, suffix: String) -> String {
-  let roots = fold(witness_layer_roots, init: "", f: fn(acc, r) { concat(acc, concat(" --source-root ", r)) })
+  let roots = witness_layer_source_flags(roots: witness_layer_roots)
   concat(
     concat("\"$CLAIM_BATCH\"", concat(roots, " --entry ")),
     concat(entry, concat(" --function ", concat(function, suffix)))
@@ -109,7 +109,10 @@ fn emit_run_witness() -> String {
   concat(
     "echo \"[pre-push] affected-set witness corpus (claim_executor; scoped to origin/main...HEAD)\"\nensure_executor\n",
     concat(
-      "if ! \"$CLAIM_EXECUTOR\" --source-root \"$ROOT/dag\" --source-root \"$ROOT/src/v2\" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_witness_corpus_only_batches; then\n",
+      concat(
+        concat("if ! \"$CLAIM_EXECUTOR\"", witness_layer_source_flags_rooted(roots: witness_layer_roots)),
+        " --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_witness_corpus_only_batches; then\n"
+      ),
       "  echo \"[pre-push] affected tests FAILED — fix them and re-push, or 'git push --no-verify' to override (CI still gates).\" >&2\n  exit 1\nfi\n"
     )
   )
