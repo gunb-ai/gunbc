@@ -5986,7 +5986,10 @@ fn rest_tls_posture_interp_disposition(posture: &str) -> Result<(), String> {
              a cert-verification bypass into the retiring seed — run such ops through emitted code"
                 .to_string(),
         ),
-        other => Err(format!("rest transport tls: unrecognized posture '{}'", other)),
+        other => Err(format!(
+            "rest transport tls: unrecognized posture '{}'",
+            other
+        )),
     }
 }
 
@@ -9161,6 +9164,44 @@ mod base64_std_tests {
         );
         // Bytes with high bits set exercise the +/ tail of the alphabet.
         assert_eq!(base64_encode_std(&[0xfb, 0xff, 0xfe]), "+//+");
+    }
+}
+
+#[cfg(test)]
+mod dispatch_rest_decision_tests {
+    use super::rest_auth_authority_conflict;
+    use super::rest_basic_auth_header_value;
+    use super::rest_tls_posture_interp_disposition;
+
+    #[test]
+    fn basic_auth_header_is_exact_rfc7617_value() {
+        // The header dispatch_rest sets for auth_basic — discriminating: the exact Base64(user:pass).
+        assert_eq!(
+            rest_basic_auth_header_value("bmcadmin", "s3cret"),
+            "Basic Ym1jYWRtaW46czNjcmV0"
+        );
+        // A different credential must produce a different header (no fixed/empty header).
+        assert_ne!(
+            rest_basic_auth_header_value("bmcadmin", "s3cret"),
+            rest_basic_auth_header_value("bmcadmin", "wrong")
+        );
+    }
+
+    #[test]
+    fn tls_posture_disposition_fails_closed() {
+        // VerifyPeer proceeds; InsecureAcceptAnyCert and unknown refuse (emit-only decision).
+        assert!(rest_tls_posture_interp_disposition("VerifyPeer").is_ok());
+        assert!(rest_tls_posture_interp_disposition("InsecureAcceptAnyCert").is_err());
+        assert!(rest_tls_posture_interp_disposition("TrustEveryone").is_err());
+    }
+
+    #[test]
+    fn dual_auth_conflict_rule() {
+        // Both authorities present is the only conflict; either alone (or neither) is fine.
+        assert!(rest_auth_authority_conflict(true, true));
+        assert!(!rest_auth_authority_conflict(true, false));
+        assert!(!rest_auth_authority_conflict(false, true));
+        assert!(!rest_auth_authority_conflict(false, false));
     }
 }
 
