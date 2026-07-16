@@ -8,15 +8,6 @@ import std.measure {
   byte_size, byte_size_count, watt, time_measure, measure_count
 }
 import std.pareto { AxisGoal }
-import std.lens_verdict {
-  LensVerdict,
-  LensVerdictDiagnostic,
-  Holds,
-  Violation,
-  ModuleWholeFile,
-}
-
-
 
 type CostBasis
   = Predicted
