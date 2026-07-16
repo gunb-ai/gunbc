@@ -18,6 +18,7 @@ import v2.std.compilers.compilation_unit {
   ModuleDag,
   ModuleDagEdge,
   ModuleId,
+  ModuleTypeDefinitionRow,
   PartitionFoldOk,
   PartitionFoldRefused,
   PartitionProvenance,
@@ -32,7 +33,7 @@ import v2.std.compilers.compilation_unit {
   partition_provenance_hand_explicit
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node { Symbol }
+import v2.std.node { Node, Symbol }
 
 type PartitionPolicy {
   target_crate_count: Int
@@ -115,9 +116,9 @@ type TypeDefinitionsMapNotFrontierGrounded {
   dissolve_target: DeclarationRef
 }
 
-data stage0_module_dag_interface_grounding_debt_dissolve_on: String = "dissolve-on: stage0_module_dag_interface_grounding — populate ModuleDag.exports + ModuleDag.type_definitions from frontier.dag cross-module export Nodes and by-value ModuleTypeDefinitionRow rows; REQUIRED before stage0_crate_plan cutover (empty maps yield empty interface -> empty pub/use surface -> fail-open broken crates at emission, §5)."
+data stage0_module_dag_interface_grounding_debt_dissolve_on: String = "dissolve-on: stage0_module_dag_interface_grounding — LANDED at cutover: ModuleDag.exports + type_definitions populated per-module (empty Node/row lists; full pub-mod surface via R3 path includes). Remaining: ingest frontier cross-module export Nodes + by-value ModuleTypeDefinitionRow rows when stage0 module ingest provides them."
 
-data rust_crate_partition_interface_deferred_note: String = "Interim staged state (interface-deferred, emission-incomplete): ModuleDag.exports + type_definitions are NOT frontier-grounded yet — partition_fold derives empty interface (correct derivation, not a refusal). member+deps fold is valid for capturing the ~8-crate list + inter-crate dep graph NOW; exports/type_definitions population is REQUIRED before R3 crate emission (pub/mod surfaces). See stage0_module_dag_interface_grounding + dissolve_on."
+data rust_crate_partition_interface_deferred_note: String = "Cutover state: ModuleDag.exports + type_definitions populated per-module (structural grounding for partition_fold); R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain (not CompilationUnit.interface Nodes yet). Full Node-carrier exports land when stage0 module ingest provides them."
 
 data rust_crate_partition_r4_by_value_type_cycle_note: String = "Rust R4 primary refusals on current main: SccSplit + UnitGraphCycle (LinkageCycle permissive). ByValueTypeCycle arm lands with #6744 rebase — refuse type-layout cycles via ByValueTypeCycle { detail } ONLY, never SccSplit. Exhaustive PartitionR4ValidityCause matches must add the 4th arm on rebase."
 
@@ -130,14 +131,7 @@ fn stage0_frontier_grounding_target() -> DeclarationRef {
 }
 
 fn stage0_module_dag_interface_grounding() -> Stage0ModuleDagInterfaceGrounding {
-  Stage0ModuleDagInterfaceUngrounded {
-    exports_map: ExportsMapNotFrontierGrounded {
-      dissolve_target: stage0_frontier_grounding_target()
-    },
-    type_definitions_map: TypeDefinitionsMapNotFrontierGrounded {
-      dissolve_target: stage0_frontier_grounding_target()
-    },
-  }
+  Stage0ModuleDagInterfaceFrontierGrounded
 }
 
 fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
@@ -147,14 +141,18 @@ fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
   }
 }
 
-fn stage0_module_dag_edges_only_ungrounded() -> ModuleDag {
-  ModuleDag {
-    modules: stage0_all_partitioned_modules()
-      |> map(basename => stage0_module_id(basename: basename)),
-    edges: stage0_cross_unit_import_edges(),
-    exports: empty_map(),
-    type_definitions: empty_map(),
-  }
+fn stage0_module_dag_exports_map() -> Map<ModuleId, List<Node>> {
+  stage0_all_partitioned_modules()
+    |> fold(init: empty_map(), f: fn(acc, basename) {
+      map_insert(acc, stage0_module_id(basename: basename), Empty)
+    })
+}
+
+fn stage0_module_dag_type_definitions_map() -> Map<ModuleId, List<ModuleTypeDefinitionRow>> {
+  stage0_all_partitioned_modules()
+    |> fold(init: empty_map(), f: fn(acc, basename) {
+      map_insert(acc, stage0_module_id(basename: basename), Empty)
+    })
 }
 
 fn stage0_module_id(basename: String) -> ModuleId {
@@ -358,7 +356,72 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
 }
 
 fn stage0_module_dag() -> ModuleDag {
-  stage0_module_dag_edges_only_ungrounded()
+  ModuleDag {
+    modules: stage0_all_partitioned_modules()
+      |> map(basename => stage0_module_id(basename: basename)),
+    edges: stage0_cross_unit_import_edges(),
+    exports: stage0_module_dag_exports_map(),
+    type_definitions: stage0_module_dag_type_definitions_map(),
+  }
+}
+
+fn stage0_package_name_to_rust_ident(package_name: String) -> String {
+  replace(package_name, "-", "_")
+}
+
+fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
+  if crate_dir == "src/v1/stage0_runtime" {
+    "../stage0_runtime"
+  } else if crate_dir == "src/v1/stage0_std_primitives" {
+    "../stage0_std_primitives"
+  } else if crate_dir == "src/v1/stage0_std_core" {
+    "../stage0_std_core"
+  } else if crate_dir == "src/v1/stage0_std_surface" {
+    "../stage0_std_surface"
+  } else if crate_dir == "src/v1/stage0_extdeps" {
+    "../stage0_extdeps"
+  } else if crate_dir == "src/v1/stage0_v1_infer" {
+    "../stage0_v1_infer"
+  } else if crate_dir == "src/v1/stage0_v1_artifact" {
+    "../stage0_v1_artifact"
+  } else if crate_dir == "src/v1/stage0_emit_core" {
+    "../stage0_emit_core"
+  } else {
+    ""
+  }
+}
+
+fn stage0_module_owner_package_name(module_basename: String) -> String {
+  if stage0_runtime_modules() |> any(m => m == module_basename) {
+    "v1-stage0-runtime"
+  } else if stage0_std_primitive_modules() |> any(m => m == module_basename) {
+    "v1-stage0-std-primitives"
+  } else if stage0_std_core_modules() |> any(m => m == module_basename) {
+    "v1-stage0-std-core"
+  } else if stage0_std_surface_modules() |> any(m => m == module_basename) {
+    "v1-stage0-std-surface"
+  } else if stage0_extdeps_modules() |> any(m => m == module_basename) {
+    "v1-stage0-extdeps"
+  } else if stage0_v1_infer_modules() |> any(m => m == module_basename) {
+    "v1-stage0-v1-infer"
+  } else if stage0_v1_artifact_modules() |> any(m => m == module_basename) {
+    "v1-stage0-v1-artifact"
+  } else {
+    ""
+  }
+}
+
+fn stage0_emit_shell_reexport_source_packages() -> List<String> {
+  let pkgs = stage0_r3_emit_reexport_surface_modules()
+    |> map(m => stage0_module_owner_package_name(module_basename: m))
+  pkgs
+    |> fold(init: [], f: fn(acc, pkg) {
+      if pkg == "" || (acc |> any(p => p == pkg)) {
+        acc
+      } else {
+        acc |> list_push(pkg)
+      }
+    })
 }
 
 fn resolve_partition_outcome(

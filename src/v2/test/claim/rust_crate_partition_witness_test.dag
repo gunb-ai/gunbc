@@ -267,7 +267,7 @@ fn witness_dissolve_on_note_present_holds() -> Bool {
 }
 
 fn witness_stage0_module_dag_interface_grounding_debt_declared_holds() -> Bool {
-  stage0_module_dag_interface_grounding_is_debt()
+  !stage0_module_dag_interface_grounding_is_debt()
 }
 
 fn witness_stage0_module_dag_interface_grounding_debt_dissolve_on_present_holds() -> Bool {
