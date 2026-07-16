@@ -1,9 +1,10 @@
 module extdeps.os.exec_arg_limit
 
-import std.measure { ByteSize, byte_size }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import std.types { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.runtime.architecture.x86_64_linux { x86_64_linux_architecture_profile }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -12,6 +13,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data host_exec_arg_max_strlen_note: String = "Linux execve(2) MAX_ARG_STRLEN = 32 * PAGE_SIZE (4096) = 131072 bytes: a single argument (or environment) string longer than this makes execve fail with E2BIG (\"Argument list too long\"). This is the per-argument ceiling that turns a large `sh -c <script>` into an opaque OS error — distinct from ARG_MAX (~2 MiB total argv+envp, `getconf ARG_MAX`), which is a larger, separate limit and is NOT modeled here (modeling it as this value would be an over-approximation). Single authority for the argv-size wall realized in the v1 interpreter's shell dispatch (src/v1/stage0/src/v1_interpreter.rs — const HOST_ARG_MAX_STRLEN_BYTES mirrors this value; the floor witness exec_arg_limit_witness_test reads the interpreter source and asserts that const line carries THIS authority's byte value — a cross-check derived from the authority, not a second independent literal — and v1_interpreter argv_arg_limit_test::mirror_matches_extdeps_authority pins the Rust side, so the two representations cannot drift): an invocation whose largest single argv token exceeds this refuses with a typed, located InterpError::ArgvExceedsHostArgMax rather than letting execve die with os error 7. The deploy fix routes large shell scripts through stdin instead of argv so they never reach this ceiling; this authority is the general host-boundary guard for every remaining argv-embedding site, so the next over-embed fails loud and typed instead of opaque E2BIG."
+data linux_execve_max_arg_strlen_page_factor: Nat = 32
 
-data host_exec_arg_max_strlen: ByteSize = byte_size(131072)
+fn host_exec_arg_max_strlen_from_page(page: ByteSize, page_factor: Nat) -> ByteSize {
+  byte_size(count: byte_size_count(page) * page_factor)
+}
+
+data host_exec_arg_max_strlen: ByteSize = host_exec_arg_max_strlen_from_page(
+  page: x86_64_linux_architecture_profile.page_size,
+  page_factor: linux_execve_max_arg_strlen_page_factor,
+)
+
+data host_exec_arg_max_strlen_note: String = "Linux execve(2) per-argument ceiling: MAX_ARG_STRLEN = linux_execve_max_arg_strlen_page_factor (32) * PAGE_SIZE. host_exec_arg_max_strlen is DERIVED from extdeps.runtime.architecture.x86_64_linux.page_size — not an independent 131072 literal. A single argv or envp string longer than this makes execve fail with E2BIG (\"Argument list too long\") — the opaque os error 7 the srv1 deploy hit when a >128KB script was embedded in one sh -c argv element. Distinct from ARG_MAX (~2 MiB total argv+envp; getconf ARG_MAX) — not modeled here (using MAX_ARG_STRLEN as ARG_MAX would be an over-approximation, §5). Consumer seam: extdeps.shell shell.Exec.Check embeds the command input as one argv token (sh -c); shell.Exec.Run routes payload via stdin (sh -s) and does not hit this ceiling. The v1 interpreter shell dispatch (dispatch_shell) realizes the wall: refuse with InterpError::ArgvExceedsHostArgMax before spawn. Part A (route deploy scripts through Run/stdin) is #6711; this authority is the general host-boundary guard for every remaining argv-embedding site."
