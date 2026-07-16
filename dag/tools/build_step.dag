@@ -8,6 +8,8 @@ import extdeps.languages.bash.program {
 }
 import v2.workflow.bash_program_emit { bash_program_serialize_required }
 
+data build_step_emit_authority_note: String = "verifications_script emits through v2.workflow.bash_program_emit (grammar rows), not extdeps.languages.bash.program serialize_bash. Byte-identity vs v1 is witnessed in test.claim.build_artifact_verification_witness."
+
 type BuildArtifact {
   path: ShellWord
 
