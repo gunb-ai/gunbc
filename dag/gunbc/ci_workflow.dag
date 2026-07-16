@@ -11,17 +11,14 @@ import gunbc.ci_spec {
   ci_release_build_script,
   ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
-  ci_repo_root_shell,
 }
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
-  ci_documentation_only_gate_skip_prefix,
 }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.ci_runner_target { gunbc_ci_selected_runner_spec, ci_runner_target_ram_speed_budget, selected_ci_runner_target }
 import gunbc.ci_materialization {
-  ci_sccache_provider_shell_injection,
   ci_floor_resolve_receipt_gate_script,
   ci_floor_materialization_receipt_gate_script
 }
@@ -31,6 +28,11 @@ import v2.workflow.ci_floor_peak_emit {
   ci_cgroup_peak_locate_shell,
   ci_floor_peak_pre_script,
   ci_floor_peak_post_script
+}
+import v2.workflow.ci_workflow_run_emit {
+  ci_isolate_toolchain_script,
+  ci_pin_rustup_default_script,
+  ci_selection_control_script
 }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -67,36 +69,11 @@ fn ci_cargo_build_jobs_count() -> Int {
   ))
 }
 
-fn ci_cargo_build_jobs_line() -> String {
-  concat(
-    "echo \"CARGO_BUILD_JOBS=",
-    concat(to_string(ci_cargo_build_jobs_count()), "\" >> \"$GITHUB_ENV\"\n")
-  )
-}
-
 fn ci_isolate_toolchain_step() -> Step {
   RunStep {
     name: Present { value: "Isolate toolchain dirs" },
     id: none,
-    run: concat(
-      concat(
-        concat(
-          concat(
-            "rm -rf \"$RUNNER_TEMP/rustup\" \"$RUNNER_TEMP/cargo\"\n",
-            "echo \"HOME=$RUNNER_TEMP\" >> \"$GITHUB_ENV\"\n"
-          ),
-          concat(
-            "echo \"CARGO_HOME=$RUNNER_TEMP/cargo\" >> \"$GITHUB_ENV\"\n",
-            "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n"
-          )
-        ),
-        concat(
-          "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\"\n",
-          ci_cargo_build_jobs_line()
-        )
-      ),
-      ci_sccache_provider_shell_injection()
-    ),
+    run: ci_isolate_toolchain_script(build_jobs_count: ci_cargo_build_jobs_count()),
     shell: none,
     env: none,
     working_directory: none,
@@ -131,19 +108,7 @@ fn ci_prelude_steps() -> List<Step> {
     RunStep {
       name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
       id: none,
-      run: concat(
-        concat(
-          "rustup default \"$(rustup show active-toolchain | awk '",
-          concat(concat("{", "print $1; exit"), concat("}", "')\""))
-        ),
-        concat(
-          concat(
-            "\nif [ -x \"$CARGO_HOME/bin/cargo\" ]; then CARGO_BIN=\"$CARGO_HOME/bin/cargo\"; else CARGO_BIN=\"$(command -v cargo || true)\"; fi\n",
-            "if [ -z \"$CARGO_BIN\" ]; then echo \"::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one\"; exit 1; fi\n"
-          ),
-          "echo \"CARGO_BIN=$CARGO_BIN\" >> \"$GITHUB_ENV\""
-        )
-      ),
+      run: ci_pin_rustup_default_script(),
       shell: none,
       env: none,
       working_directory: none,
@@ -368,19 +333,6 @@ fn ci_merge_admission_gate_step() -> Step {
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
-}
-
-fn ci_selection_control_script() -> String {
-  concat(
-    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
-    concat(
-      ci_documentation_only_gate_skip_prefix(
-        gate_name: "Affected-set selection control",
-        skip_reason: "floor not run; hermetic selection suite requires full floor context"
-      ),
-      "\"$ROOT/target/release/floor_skip_discovery_witness\""
-    )
-  )
 }
 
 fn ci_selection_control_step() -> Step {
