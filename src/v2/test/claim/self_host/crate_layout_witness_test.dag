@@ -12,6 +12,7 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_crate_layout_holds,
   compiler_frontier_row_parse_engine_hooks,
   compiler_frontier_row_discovery_enumeration,
+  compiler_frontier_row_materialization_carriers,
   compiler_frontier_row_use_site_verdict,
   compiler_frontier_self_emitted_baseline,
   compiler_frontier_self_emitted_count,
@@ -72,6 +73,17 @@ fn witness_discovery_enumeration_derived_from_frontier_holds() -> Bool {
   }
 }
 
+fn witness_materialization_carriers_derived_from_frontier_holds() -> Bool {
+  match compiler_frontier_row_materialization_carriers.disposition {
+    SelfEmitted =>
+      string_list_contains(
+        xs: compiler_frontier_self_emitted_stage0_mod_basenames(),
+        needle: frontier_row_stage0_mod_basename(row: compiler_frontier_row_materialization_carriers)
+      )
+    SeedRetained { reason: _, migration_trigger: _ } => false
+  }
+}
+
 fn witness_generated_pub_mod_block_matches_frontier_holds() -> Bool {
   generated_pub_mod_block == emit_hand_maintained_pub_mod_block()
 }
@@ -119,6 +131,10 @@ fn witness_hand_maintained_filenames_include_self_emitted_holds() -> Bool {
     )
     && string_list_contains(
       xs: generated_stage0_filenames,
+      needle: "v2_compiler_materialization_carriers.rs"
+    )
+    && string_list_contains(
+      xs: generated_stage0_filenames,
       needle: "v2_compiler_use_site_verdict.rs"
     )
 }
@@ -142,6 +158,7 @@ test fn crate_layout_witnesses() -> Bool {
     && witness_parse_engine_hooks_derived_from_frontier_holds()
     && witness_use_site_verdict_derived_from_frontier_holds()
     && witness_discovery_enumeration_derived_from_frontier_holds()
+    && witness_materialization_carriers_derived_from_frontier_holds()
     && witness_generated_pub_mod_block_matches_frontier_holds()
     && witness_generated_basenames_match_frontier_holds()
     && witness_generated_filenames_match_frontier_holds()
