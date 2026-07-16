@@ -1,0 +1,66 @@
+module v2.test.claim.discovery_enumeration_test
+
+import v2.compiler.discovery_enumeration {
+  OwnedBoolWitnessClaimInit,
+  OwnedDataDeclInitializer,
+  OwnedDataDiscoveryReceipt,
+  OwnedNodeCorpusInit,
+  OwnedOtherInit,
+  ResolvedDeclRef,
+  unified_claim_arm_bool_witness_claim_module,
+  unified_claim_arm_node_corpus_module
+}
+import std.types { Bool }
+
+test fn discovery_enumeration_unified_claim_arm_modules_holds() -> Bool {
+  unified_claim_arm_bool_witness_claim_module == "v2.std.verification"
+    && unified_claim_arm_node_corpus_module == "v2.std.verification"
+}
+
+fn corpus_init_round_trips() -> Bool {
+  let init: OwnedDataDeclInitializer = OwnedNodeCorpusInit
+  match init {
+    OwnedNodeCorpusInit => true
+    _ => false
+  }
+}
+
+fn bool_witness_init_round_trips() -> Bool {
+  let init: OwnedDataDeclInitializer = OwnedBoolWitnessClaimInit {
+    witness_entry: "entry.dag",
+    witness_function: "witness_fn"
+  }
+  match init {
+    OwnedBoolWitnessClaimInit { witness_entry: e, witness_function: f } =>
+      (e == "entry.dag") && (f == "witness_fn")
+    _ => false
+  }
+}
+
+fn other_init_round_trips() -> Bool {
+  let init: OwnedDataDeclInitializer = OwnedOtherInit {
+    resolved: ResolvedDeclRef { module: "v2.example", name: ^sym }
+  }
+  match init {
+    OwnedOtherInit { resolved: d } =>
+      (d.module == "v2.example") && (d.name == ^sym)
+    _ => false
+  }
+}
+
+test fn discovery_enumeration_initializer_variants_constructible() -> Bool {
+  corpus_init_round_trips()
+    && bool_witness_init_round_trips()
+    && other_init_round_trips()
+}
+
+test fn discovery_enumeration_receipt_zero_default_holds() -> Bool {
+  let receipt = OwnedDataDiscoveryReceipt {
+    unified_claim_arm_count: 0,
+    bool_witness_claim_arm_count: 0,
+    illegal_other_init_count: 0,
+    bool_witness_transport_row_count: 0,
+    transport_projection_complete: false
+  }
+  receipt.unified_claim_arm_count == 0 && receipt.transport_projection_complete == false
+}

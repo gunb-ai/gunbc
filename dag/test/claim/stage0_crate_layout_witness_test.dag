@@ -9,9 +9,13 @@ import v2.compiler.self_host.frontier {
 }
 import std.types { Bool, Int }
 
-fn w_hand_maintained_stage0_filenames_include_use_site_verdict() -> Bool {
+fn w_hand_maintained_stage0_filenames_include_self_emitted() -> Bool {
   generated_stage0_filenames
     |> any(f => f == "v2_compiler_use_site_verdict.rs")
+    && generated_stage0_filenames
+      |> any(f => f == "v2_compiler_parse_engine_hooks.rs")
+    && generated_stage0_filenames
+      |> any(f => f == "v2_compiler_discovery_enumeration.rs")
 }
 
 fn w_generated_stage0_filenames_match_frontier() -> Bool {
@@ -31,7 +35,7 @@ fn w_self_emitted_derived_count() -> Bool {
 }
 
 test fn stage0_crate_layout_witnesses() -> Bool {
-  w_hand_maintained_stage0_filenames_include_use_site_verdict()
+  w_hand_maintained_stage0_filenames_include_self_emitted()
     && w_generated_stage0_filenames_match_frontier()
     && w_generated_stage0_dirs_match_frontier()
     && w_self_emitted_derived_count()
