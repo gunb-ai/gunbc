@@ -1,0 +1,40 @@
+module v2.test.emit.semantic_decl_emit_substrings_test
+
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.rust { rust_target_model }
+import extdeps.languages.rust.emit { rust_enum_derives_copy }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Disj, Edge, Named, Node, SyntheticOccurrence, Symbol, TypeNode }
+import v2.std.text { String }
+import std.algebra { Empty }
+
+fn sdr_empty_conj() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+}
+
+fn sdr_variant_edge(name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: sdr_empty_conj() }
+}
+
+fn semantic_bool_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [ sdr_variant_edge(name: ^True), sdr_variant_edge(name: ^False) ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
+
+test fn emit_eq_golden() -> Bool {
+  match emit_semantic_type_decl(
+    name: ^Bool,
+    params: Empty,
+    node: semantic_bool_coproduct(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: m, diagnostics: _ } => m.carried == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
