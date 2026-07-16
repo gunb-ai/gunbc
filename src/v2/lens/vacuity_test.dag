@@ -4,6 +4,7 @@ import v2.lens.vacuity {
   EmitVsEval,
   EvalOnly,
   HelperAlias,
+  IndependentTranscription,
   LiteralOracle,
   OperandProvenanceUnknown,
   ProvenDuplicate,
@@ -17,6 +18,7 @@ import v2.lens.vacuity {
   classify_unified_test_claim_vacuity,
   vacuity_advisory_census_from_rows,
   vacuity_advisory_census_matches_row_count,
+  vacuity_carries_parallel_authority_debt,
   vacuity_census_row,
   vacuity_evidence_eq
 }
@@ -149,6 +151,14 @@ data vacuity_test_structural_equals_claim: TestClaim = StructuralEqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
+data vacuity_test_datasheet_transcription_claim: TestClaim = EqualsClaim {
+  label: "vacuity_test: independent datasheet transcriptions",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: vacuity_test_readback_lhs,
+  rhs: vacuity_test_literal_rhs,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
 data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
   vacuity_census_row(
     label: "rung_5_emit_vs_eval",
@@ -158,7 +168,8 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: OperandProvenanceUnknown,
       rhs_provenance: OperandProvenanceUnknown,
       operand_provenance: OperandProvenanceUnknown
-    )
+    ),
+    carries_parallel_authority_debt: false
   ),
   vacuity_census_row(
     label: "single_eval_readback",
@@ -168,7 +179,8 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: ReadBack,
       rhs_provenance: LiteralOracle,
       operand_provenance: OperandProvenanceUnknown
-    )
+    ),
+    carries_parallel_authority_debt: false
   ),
   vacuity_census_row(
     label: "unknown_provenance",
@@ -178,7 +190,8 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: OperandProvenanceUnknown,
       rhs_provenance: OperandProvenanceUnknown,
       operand_provenance: OperandProvenanceUnknown
-    )
+    ),
+    carries_parallel_authority_debt: false
   ),
   vacuity_census_row(
     label: "constant_inequality_taxonomy",
@@ -188,6 +201,21 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: LiteralOracle,
       rhs_provenance: LiteralOracle,
       operand_provenance: OperandProvenanceUnknown
+    ),
+    carries_parallel_authority_debt: false
+  ),
+  vacuity_census_row(
+    label: "datasheet_independent_transcriptions",
+    evidence: classify_test_claim_vacuity(
+      claim: vacuity_test_datasheet_transcription_claim,
+      transport: EvalOnly,
+      lhs_provenance: IndependentTranscription,
+      rhs_provenance: IndependentTranscription,
+      operand_provenance: OperandProvenanceUnknown
+    ),
+    carries_parallel_authority_debt: vacuity_carries_parallel_authority_debt(
+      lhs_provenance: IndependentTranscription,
+      rhs_provenance: IndependentTranscription
     )
   ),
   vacuity_census_row(
@@ -198,7 +226,8 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: RenderingTransform,
       rhs_provenance: LiteralOracle,
       operand_provenance: OperandProvenanceUnknown
-    )
+    ),
+    carries_parallel_authority_debt: false
   ),
   vacuity_census_row(
     label: "temporal_external_authority",
@@ -208,7 +237,8 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: TemporalExternalAuthority,
       rhs_provenance: LiteralOracle,
       operand_provenance: OperandProvenanceUnknown
-    )
+    ),
+    carries_parallel_authority_debt: false
   ),
   vacuity_census_row(
     label: "helper_alias_duplicate",
@@ -218,7 +248,8 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: HelperAlias,
       rhs_provenance: LiteralOracle,
       operand_provenance: OperandProvenanceUnknown
-    )
+    ),
+    carries_parallel_authority_debt: false
   ),
   vacuity_census_row(
     label: "diagnostic_behavioral",
@@ -228,7 +259,8 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: OperandProvenanceUnknown,
       rhs_provenance: OperandProvenanceUnknown,
       operand_provenance: OperandProvenanceUnknown
-    )
+    ),
+    carries_parallel_authority_debt: false
   ),
   vacuity_census_row(
     label: "round_trip_behavioral",
@@ -238,7 +270,8 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: OperandProvenanceUnknown,
       rhs_provenance: OperandProvenanceUnknown,
       operand_provenance: OperandProvenanceUnknown
-    )
+    ),
+    carries_parallel_authority_debt: false
   ),
   vacuity_census_row(
     label: "compiles_unknown_provenance",
@@ -248,7 +281,8 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: OperandProvenanceUnknown,
       rhs_provenance: OperandProvenanceUnknown,
       operand_provenance: OperandProvenanceUnknown
-    )
+    ),
+    carries_parallel_authority_debt: false
   ),
   vacuity_census_row(
     label: "structural_equals_single_eval",
@@ -258,7 +292,8 @@ data vacuity_falsification_suite_rows: List<VacuityCensusRow> = [
       lhs_provenance: LiteralOracle,
       rhs_provenance: LiteralOracle,
       operand_provenance: OperandProvenanceUnknown
-    )
+    ),
+    carries_parallel_authority_debt: false
   )
 ]
 
@@ -342,6 +377,23 @@ test fn vacuity_unified_node_corpus_matches_transport_classifier() -> Bool {
   )
 }
 
+test fn vacuity_datasheet_transcriptions_classify_proven_independent_with_parallel_debt() -> Bool {
+  return vacuity_evidence_eq(
+    a: classify_test_claim_vacuity(
+      claim: vacuity_test_datasheet_transcription_claim,
+      transport: EvalOnly,
+      lhs_provenance: IndependentTranscription,
+      rhs_provenance: IndependentTranscription,
+      operand_provenance: OperandProvenanceUnknown
+    ),
+    b: ProvenIndependent
+  )
+    && vacuity_carries_parallel_authority_debt(
+      lhs_provenance: IndependentTranscription,
+      rhs_provenance: IndependentTranscription
+    )
+}
+
 test fn vacuity_advisory_census_partitions_falsification_suite() -> Bool {
   let census = vacuity_advisory_census_from_rows(rows: vacuity_falsification_suite_rows)
   return vacuity_advisory_census_matches_row_count(
@@ -349,7 +401,7 @@ test fn vacuity_advisory_census_partitions_falsification_suite() -> Bool {
       census: census
     )
     && census.proven_duplicate_count == 4
-    && census.proven_independent_count == 5
+    && census.proven_independent_count == 6
     && census.unknown_count == 2
 }
 
