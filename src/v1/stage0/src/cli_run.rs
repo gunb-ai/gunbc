@@ -759,6 +759,98 @@ mod workspace_root_discovery_tests {
     }
 }
 
+#[cfg(test)]
+mod regen_input_closure_tests {
+    use super::{regen_input_sources, regen_path_affects_regen};
+    use std::collections::HashSet;
+    use std::path::{Path, PathBuf};
+
+    fn fixture_root(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("gunbc-regen-closure-{tag}-{}", std::process::id()))
+    }
+
+    fn write(root: &Path, rel: &str, content: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir fixture");
+        std::fs::write(p, content).expect("write fixture");
+    }
+
+    /// The regen input closure is exactly the `src/v1` entries plus their transitive
+    /// `import` closure through `[src/v1, dag]` — a `dag` module nobody imports is
+    /// EXCLUDED. This is the RED control: without the exclusion the skip is vacuous
+    /// (every dag change would appear in-closure and the shortcut would never fire).
+    #[test]
+    fn closure_is_imports_only_unimported_dag_excluded() {
+        let root = fixture_root("imports-only");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "src/v1/a.dag",
+            "module v1.a\nimport v1.b { T }\nimport std.x { Y }\n",
+        );
+        write(&root, "src/v1/b.dag", "module v1.b\n");
+        write(&root, "dag/std/x.dag", "module std.x\n");
+        write(&root, "dag/std/y.dag", "module std.y\n"); // unimported — excluded
+        write(&root, "dag/gunbc/u.dag", "module gunbc.u\n"); // unimported — excluded
+
+        let relpaths: HashSet<String> = regen_input_sources(&root)
+            .expect("closure computes")
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            relpaths.contains("src/v1/a.dag"),
+            "entry seed: {relpaths:?}"
+        );
+        assert!(
+            relpaths.contains("src/v1/b.dag"),
+            "imported v1 module present"
+        );
+        assert!(
+            relpaths.contains("dag/std/x.dag"),
+            "imported dag module present"
+        );
+        assert!(
+            !relpaths.contains("dag/std/y.dag"),
+            "unimported dag module must be EXCLUDED: {relpaths:?}"
+        );
+        assert!(
+            !relpaths.contains("dag/gunbc/u.dag"),
+            "unimported dag module must be EXCLUDED: {relpaths:?}"
+        );
+    }
+
+    #[test]
+    fn path_predicate_covers_src_v1_manifest_and_closure_only() {
+        let closure: HashSet<String> = ["dag/std/x.dag".to_string()].into_iter().collect();
+        // src/v1/** = emitter source + committed stage0 outputs + dag entry seeds.
+        assert!(regen_path_affects_regen(
+            "src/v1/stage0/src/cli_run.rs",
+            &closure
+        ));
+        assert!(regen_path_affects_regen("src/v1/03_resolve.dag", &closure));
+        // Cargo / toolchain build config (emitter binary inputs).
+        assert!(regen_path_affects_regen("Cargo.lock", &closure));
+        assert!(regen_path_affects_regen(
+            "src/v1/stage0/Cargo.toml",
+            &closure
+        ));
+        assert!(regen_path_affects_regen("rust-toolchain.toml", &closure));
+        assert!(regen_path_affects_regen(".cargo/config.toml", &closure));
+        // dag file in v1's transitive import closure.
+        assert!(regen_path_affects_regen("dag/std/x.dag", &closure));
+        // NOT affecting: v2 sources, unimported dag, docs — the skip-eligible surface.
+        assert!(!regen_path_affects_regen(
+            "src/v2/compiler/frontier.dag",
+            &closure
+        ));
+        assert!(!regen_path_affects_regen("dag/gunbc/ci_spec.dag", &closure));
+        assert!(!regen_path_affects_regen("docs/plans/x.md", &closure));
+    }
+}
+
 /// Empty ingest-manifest placeholder excluded from the module index when a later
 /// source root carries the host-emitted manifest (source-root ingest / closure gates).
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
@@ -1675,6 +1767,213 @@ pub fn documentation_only_floor_skip_label_for_ci() -> String {
                 eprintln!("documentation-only floor skip: full floor (non-docs-only diff)");
                 RUN_FULL_FLOOR_LABEL.to_string()
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Regen (self-host fixed-point) affected-set scoping.
+//
+// `regen_stage0` compiles `[src/v1, dag]` into the committed stage0 seed; both the
+// RegenVerifyGate and the SelfHostStalenessGate compare that emit against the
+// committed crate. The emit is a pure function of exactly one input set: every
+// `src/v1/**.dag` entry plus its transitive `import` closure through `[src/v1, dag]`
+// (`regen_input_sources` below — the single authority `regen_stage0` also consumes),
+// the emitter binary (all `src/v1/**` Rust, covered by the path prefix), the committed
+// stage0 outputs (all written under `src/v1/stage0/src`, same prefix), and the Cargo
+// manifest/lockfile. A PR whose diff touches none of those provably cannot change the
+// regen outcome, so the regen CI step can skip. Fail-closed: any uncertainty runs.
+// Main pushes and the 4-hourly falsifier run regen unconditionally as the cold control.
+// ---------------------------------------------------------------------------
+
+pub const REGEN_NOT_AFFECTED_SKIP_LABEL: &str = "regen_not_affected_skip";
+pub const RUN_REGEN_LABEL: &str = "run_regen";
+
+/// Relativize an absolute source path against the workspace root for regen display /
+/// closure identity. Single authority: consumed by `regen_stage0` and the skip witness.
+pub fn regen_workspace_relpath(path: &Path, workspace: &Path) -> String {
+    path.strip_prefix(workspace)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
+}
+
+// Distinct from `collect_dag_files` above (which panics on IO error and skips cargo
+// `target/` output dirs): regen needs the fail-closed Result variant and the exact
+// whole-tree walk `regen_stage0` has always used, so the closure stays byte-identical
+// to the committed seed (guarded by `regen_stage0 --verify`).
+fn regen_collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| format!("read dir {}: {e}", dir.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("read dir entry in {}: {e}", dir.display()))?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            regen_collect_dag_files(&path, files)?;
+        } else if path.extension().is_some_and(|ext| ext == "dag") {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn regen_build_module_index(
+    roots: &[PathBuf],
+) -> Result<std::collections::HashMap<String, PathBuf>, String> {
+    let mut index: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
+    for root in roots {
+        if !root.exists() {
+            return Err(format!("source root does not exist: {}", root.display()));
+        }
+        let mut dag_paths = Vec::new();
+        regen_collect_dag_files(root, &mut dag_paths)?;
+        for path in dag_paths {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            if let Some(module_path) = extract_module_path(&content) {
+                if let Some(existing) = index.get(&module_path) {
+                    return Err(format!(
+                        "duplicate module path `{module_path}`: {} and {}",
+                        existing.display(),
+                        path.display()
+                    ));
+                }
+                index.insert(module_path, path);
+            }
+        }
+    }
+    Ok(index)
+}
+
+/// The two source roots the self-host regen compiles: `src/v1` entry seeds and `dag`
+/// (the import-resolution index). Single authority for both `regen_stage0` and the
+/// regen affected-set skip witness.
+pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
+    vec![workspace.join("src/v1"), workspace.join("dag")]
+}
+
+/// Every `.dag` source `regen_stage0` reads to emit the stage0 seed: all `src/v1/**.dag`
+/// entries plus their transitive `import` closure through `[src/v1, dag]`, returned as
+/// sorted `(workspace-relpath, content)`. This IS the set `regen_stage0` compiles — it
+/// consumes this function — so the regen compile and the skip witness share one closure
+/// authority (no forked "what regen reads"). The dedup is by module path, mirroring the
+/// original seed-collection semantics; `regen_stage0 --verify` is the byte-identical
+/// oracle guarding that equivalence.
+pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
+    let roots = regen_source_roots(workspace);
+    let index = regen_build_module_index(&roots)?;
+    let entry_root = roots
+        .first()
+        .ok_or_else(|| "regen source root list must not be empty".to_string())?;
+    let mut entry_paths = Vec::new();
+    regen_collect_dag_files(entry_root, &mut entry_paths)?;
+
+    // module_path -> (relpath, content); the first occurrence of a module path wins, so
+    // src/v1 entry seeds and their import closure resolve to exactly the set regen emits.
+    let mut seen: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
+    let mut queue: Vec<String> = Vec::new(); // module contents whose imports remain to walk
+    for path in &entry_paths {
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let rel = regen_workspace_relpath(path, workspace);
+        if let Some(module_path) = extract_module_path(&content) {
+            seen.insert(module_path, (rel, content.clone()));
+        }
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(file_path) = index.get(&module_path) {
+                let file_content = std::fs::read_to_string(file_path)
+                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
+                let rel = regen_workspace_relpath(file_path, workspace);
+                seen.insert(module_path, (rel, file_content.clone()));
+                queue.push(file_content);
+            }
+        }
+    }
+    let mut result: Vec<(String, String)> = seen.into_values().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(result)
+}
+
+/// Does a diff-changed path belong to the regen input surface (fail-closed superset)?
+fn regen_path_affects_regen(changed: &str, dag_closure: &HashSet<String>) -> bool {
+    let p = normalize_repo_path(changed);
+    // src/v1/** = the emitter binary source (.rs), every committed stage0 output
+    // (all under src/v1/stage0/src), and the src/v1 .dag entry seeds.
+    if p.starts_with("src/v1/") {
+        return true;
+    }
+    // Cargo/toolchain build config: the emitter binary is built from these; a
+    // dependency, pinned-toolchain, or cargo-config change could in principle alter
+    // emitted bytes. Rare in practice; fail-closed (whole-file matches, no substring).
+    if p == "Cargo.lock"
+        || p == "Cargo.toml"
+        || p.ends_with("/Cargo.toml")
+        || p == "rust-toolchain.toml"
+        || p == "rust-toolchain"
+        || p == ".cargo/config.toml"
+        || p == ".cargo/config"
+    {
+        return true;
+    }
+    // dag/** files in v1's transitive import closure.
+    dag_closure.contains(&p)
+}
+
+/// CI label for the regen self-host fixed-point step's affected-set skip arm.
+/// `regen_not_affected_skip` iff the merge-base diff touches no regen input;
+/// `run_regen` on any intersection, empty diff, or observation/closure failure
+/// (fail-closed). This computes the label only; the CI shell (ci_spec.dag) gates
+/// the skip to pull_request events, so push-to-main runs regen unconditionally as
+/// the cold control that surfaces a wrong closure on the next merge.
+pub fn regen_floor_skip_label_for_ci() -> String {
+    let (changed_paths, _departed) = match floor_git_diff_name_status_range() {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!("regen floor skip: diff observation failed ({msg}) — run regen");
+            return RUN_REGEN_LABEL.to_string();
+        }
+    };
+    if changed_paths.is_empty() {
+        eprintln!("regen floor skip: empty diff — run regen (fail-closed cold control)");
+        return RUN_REGEN_LABEL.to_string();
+    }
+    let workspace = workspace_root();
+    let dag_closure: HashSet<String> = match regen_input_sources(&workspace) {
+        Ok(sources) => sources
+            .into_iter()
+            .map(|(p, _)| normalize_repo_path(&p))
+            .collect(),
+        Err(msg) => {
+            eprintln!("regen floor skip: input-closure computation failed ({msg}) — run regen");
+            return RUN_REGEN_LABEL.to_string();
+        }
+    };
+    match changed_paths
+        .iter()
+        .find(|p| regen_path_affects_regen(p, &dag_closure))
+    {
+        Some(example) => {
+            eprintln!(
+                "regen floor skip: diff intersects regen inputs (e.g. {}) — run regen",
+                normalize_repo_path(example)
+            );
+            RUN_REGEN_LABEL.to_string()
+        }
+        None => {
+            eprintln!(
+                "regen floor skip: {} changed path(s), none intersect the regen input closure (src/v1/** ∪ v1 dag import-closure ∪ Cargo/toolchain config) — self-host fixed-point provably unchanged (push-to-main runs regen unconditionally as the cold control)",
+                changed_paths.len()
+            );
+            REGEN_NOT_AFFECTED_SKIP_LABEL.to_string()
         }
     }
 }
