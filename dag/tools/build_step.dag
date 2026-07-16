@@ -4,8 +4,9 @@ import extdeps.languages.bash.program {
   ShellStmt, ShellWord, ShellProgram,
   Command, If, Exit, WithRedir,
   Lit, Concat, StdoutToStderr,
-  lit, command, serialize_bash
+  lit, command
 }
+import v2.workflow.bash_program_emit { bash_program_serialize_required }
 
 type BuildArtifact {
   path: ShellWord
@@ -55,7 +56,7 @@ fn emit_verifications(produces: List<BuildArtifact>) -> List<ShellStmt> {
 }
 
 fn verifications_script(produces: List<BuildArtifact>) -> String {
-  serialize_bash(p: ShellProgram {
+  bash_program_serialize_required(p: ShellProgram {
     set_e: false,
     statements: emit_verifications(produces: produces)
   })

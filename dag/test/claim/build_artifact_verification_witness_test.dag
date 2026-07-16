@@ -4,8 +4,9 @@ import std.logic { Bool }
 import extdeps.languages.bash.program {
   ShellStmt, ShellWord, ShellProgram,
   If, Command, Concat, VarRef, Lit,
-  lit, var_ref, serialize_bash
+  lit, var_ref
 }
+import v2.workflow.bash_program_emit { bash_program_serialize_stmt_required }
 import tools.build_step { BuildArtifact, emit_verifications, verifications_script }
 import gunbc.ci_spec { ci_floor_build_verify_script }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -24,7 +25,7 @@ fn probe_stmts() -> List<ShellStmt> {
 }
 
 fn stmt_text(s: ShellStmt) -> String {
-  serialize_bash(p: ShellProgram { set_e: false, statements: [s] })
+  bash_program_serialize_stmt_required(stmt: s)
 }
 
 fn is_if(s: ShellStmt) -> Bool {
