@@ -1,0 +1,144 @@
+module v2.test.claim.operand_flow_witness
+
+import std.measure { byte_size, byte_size_count }
+import std.types { ContentHash }
+import v2.std.algebra { length }
+import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode, content_hash }
+import v2.workflow.operand_flow {
+  OperandFlow,
+  OperandFlowFootprintMissingRow,
+  OperandFlowNoOperand,
+  OperandFlowRefused,
+  OperandRoot,
+  OperandRootUnresolved,
+  operand_flow_for_edge,
+  operand_flows,
+  operand_root
+}
+import v2.workflow.realization_runner {
+  NodeKeyedGraphArtifact,
+  NodeKeyedGraphRow
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data operand_flow_shared_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^operand_flow_shared } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data operand_flow_consumer_a_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^operand_flow_consumer_a } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data operand_flow_consumer_b_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^operand_flow_consumer_b } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data operand_flow_shared_hash: ContentHash = content_hash(n: operand_flow_shared_node)
+
+data operand_flow_edge_a: DependencyView = DependencyView {
+  source: operand_flow_shared_node,
+  dependent: operand_flow_consumer_a_node,
+  kind: DataDependsOn,
+  usage_site: operand_flow_consumer_a_node
+}
+
+data operand_flow_edge_b: DependencyView = DependencyView {
+  source: operand_flow_shared_node,
+  dependent: operand_flow_consumer_b_node,
+  kind: DataDependsOn,
+  usage_site: operand_flow_consumer_b_node
+}
+
+data operand_flow_edge_non_data: DependencyView = DependencyView {
+  source: operand_flow_shared_node,
+  dependent: operand_flow_consumer_a_node,
+  kind: BarrierBefore,
+  usage_site: operand_flow_consumer_a_node
+}
+
+data operand_flow_settled_artifact: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
+  rows: [
+    NodeKeyedGraphRow {
+      content_hash: operand_flow_shared_hash,
+      encoded_length: byte_size(count: 9),
+      child_refs: []
+    }
+  ],
+  entries: []
+}
+
+data operand_flow_missing_row_artifact: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
+  rows: [],
+  entries: []
+}
+
+fn witness_operand_root_resolves_data_depends_on() -> Bool {
+  match operand_root(edge: operand_flow_edge_a) {
+    OperandRoot { root: root } => root == operand_flow_shared_node
+    OperandRootUnresolved { edge: _ } => false
+  }
+}
+
+fn witness_operand_root_refuses_non_data_kind() -> Bool {
+  match operand_root(edge: operand_flow_edge_non_data) {
+    OperandRootUnresolved { edge: edge } => edge == operand_flow_edge_non_data
+    OperandRoot { root: _ } => false
+  }
+}
+
+fn witness_shared_operand_consumers_agree() -> Bool {
+  match operand_flow_for_edge(artifact: operand_flow_settled_artifact, edge: operand_flow_edge_a) {
+    OperandFlow { edge: _, operand: operand_a, footprint: footprint_a } =>
+      match operand_flow_for_edge(artifact: operand_flow_settled_artifact, edge: operand_flow_edge_b) {
+        OperandFlow { edge: _, operand: operand_b, footprint: footprint_b } =>
+          (operand_a == operand_b)
+            && (operand_a == operand_flow_shared_hash)
+            && (byte_size_count(b: footprint_a) == byte_size_count(b: footprint_b))
+        OperandFlowRefused { edge: _, cause: _ } => false
+      }
+    OperandFlowRefused { edge: _, cause: _ } => false
+  }
+}
+
+fn witness_non_data_edge_refuses_typed() -> Bool {
+  match operand_flow_for_edge(artifact: operand_flow_settled_artifact, edge: operand_flow_edge_non_data) {
+    OperandFlowRefused { edge: _, cause: OperandFlowNoOperand { edge: _ } } => true
+    OperandFlowRefused { edge: _, cause: _ } => false
+    OperandFlow { edge: _, operand: _, footprint: _ } => false
+  }
+}
+
+fn witness_missing_row_refuses_typed() -> Bool {
+  match operand_flow_for_edge(artifact: operand_flow_missing_row_artifact, edge: operand_flow_edge_a) {
+    OperandFlowRefused { edge: _, cause: OperandFlowFootprintMissingRow { missing: missing } } =>
+      missing == operand_flow_shared_hash
+    OperandFlowRefused { edge: _, cause: _ } => false
+    OperandFlow { edge: _, operand: _, footprint: _ } => false
+  }
+}
+
+fn witness_operand_flows_is_total_over_edges() -> Bool {
+  let rows = operand_flows(
+    artifact: operand_flow_settled_artifact,
+    edges: [operand_flow_edge_a, operand_flow_edge_b, operand_flow_edge_non_data]
+  )
+  length(xs: rows) == 3
+}
+
+test fn operand_flow_witnesses() -> Bool {
+  witness_operand_root_resolves_data_depends_on()
+    && witness_operand_root_refuses_non_data_kind()
+    && witness_shared_operand_consumers_agree()
+    && witness_non_data_edge_refuses_typed()
+    && witness_missing_row_refuses_typed()
+    && witness_operand_flows_is_total_over_edges()
+}

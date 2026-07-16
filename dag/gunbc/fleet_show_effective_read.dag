@@ -9,6 +9,8 @@ import std.realization_reconcile {
   ReadObserved,
   ReadAbsent,
   Reconciliation,
+  Converged,
+  NotConverged,
 }
 import product.placement_supply { HostIdentity }
 import extdeps.os.systemd {
@@ -18,6 +20,8 @@ import extdeps.os.systemd {
   MemoryLimitAbsent,
   parse_systemd_memory_limit_show,
   systemd_memory_max_property,
+  systemd_memory_swap_max_property,
+  systemd_memory_high_property,
 }
 import extdeps.os.oomd {
   parse_managed_oom_pressure_limit_show,
@@ -25,6 +29,7 @@ import extdeps.os.oomd {
 import gunbc.fleet_intent { srv1_host, srv2_host }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.host_converge {
+  ConvergeTarget,
   ConvergeVerdict,
   VerdictConverged,
   Drifted,
@@ -32,6 +37,7 @@ import gunbc.host_converge {
 }
 import gunbc.host_effect {
   ShellCommand,
+  ShellEffectApplied,
   NodeControlPlane,
   HostOs,
   HostEffectTransport,
@@ -52,6 +58,7 @@ import gunbc.runner_unit_live_read {
   runner_unit_live_read_typed,
   memory_limit_to_cap_effectiveness,
   memory_limit_converge_verdict,
+  converge_target_live_verdict,
 }
 
 type RunnerSliceCapLiveReadRow {
@@ -135,6 +142,106 @@ fn fleet_runner_unit_property_read_script(unit: NonEmptyStr, property: NonEmptyS
     concat(concat("systemctl show \"", unit, "\" --property="), property),
     " --value 2>/dev/null || true"
   )
+}
+
+fn fleet_runner_unit_memory_props_read_script(unit: NonEmptyStr) -> String {
+  concat(
+    concat(
+      concat("u=\"", unit, "\"; printf '%s\\n' \"$(systemctl show \"$u\" --property="),
+      systemd_memory_max_property
+    ),
+    concat(
+      concat(" --value 2>/dev/null || true)\" \"$(systemctl show \"$u\" --property=", systemd_memory_swap_max_property),
+      concat(
+        concat(" --value 2>/dev/null || true)\" \"$(systemctl show \"$u\" --property=", systemd_memory_high_property),
+        " --value 2>/dev/null || true)\""
+      )
+    )
+  )
+}
+
+fn runner_unit_live_read_row_from_stdout(
+  unit: NonEmptyStr,
+  stdout: String,
+  probed_at: NonEmptyStr,
+) -> RunnerUnitLiveReadRow? {
+  let parts = split(s: stdout, delimiter: "\n")
+  if length(parts) >= 3 {
+    Present {
+      value: RunnerUnitLiveReadRow {
+        unit: unit,
+        memory_max_raw: trim(parts.first()),
+        memory_swap_max_raw: trim(parts.skip(n: 1).first()),
+        memory_high_raw: trim(parts.skip(n: 2).first()),
+        probed_at: probed_at,
+      }
+    }
+  } else {
+    none
+  }
+}
+
+fn runner_unit_memory_live_read_from_stdout(
+  unit: NonEmptyStr,
+  stdout: String,
+  probed_at: NonEmptyStr,
+) -> RunnerUnitMemoryLiveRead? {
+  match runner_unit_live_read_row_from_stdout(unit: unit, stdout: stdout, probed_at: probed_at) {
+    Present { value: row } => Present { value: runner_unit_live_read_typed(row: row) }
+    Absent => none
+  }
+}
+
+fn fleet_runner_unit_memory_read_apply(
+  host: HostIdentity,
+  unit: NonEmptyStr,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
+  match fleet_host_control_plane(host: host) {
+    Present { value: cp } =>
+      match fleet_host_ssh_transport(host: host) {
+        Present { value: transport } =>
+          Present {
+            value: host_effect_apply(
+              target: cp,
+              effect: ShellCommand { script: fleet_runner_unit_memory_props_read_script(unit: unit) },
+              evidence: host_effect_read_evidence,
+              transport: transport,
+            )
+          }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn runner_unit_memory_live_read_from_apply(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  unit: NonEmptyStr,
+  probed_at: NonEmptyStr,
+) -> RunnerUnitMemoryLiveRead? {
+  match r {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: out, exit_code: _ } =>
+          runner_unit_memory_live_read_from_stdout(unit: unit, stdout: out, probed_at: probed_at)
+        ConvergePlanApplied { stdout: _, exit_code: _ } => none
+      }
+    NotConverged { reason: _, applied: _ } => none
+  }
+}
+
+fn show_effective_read_from_unit_row(
+  host: HostIdentity,
+  row: RunnerUnitLiveReadRow,
+) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
+  show_effective_read_from_runner_units(host: host, rows: [row])
+}
+
+fn per_slot_memory_cap_verdict_from_unit_read(
+  read: RunnerUnitMemoryLiveRead,
+  target: ConvergeTarget,
+) -> ConvergeVerdict? {
+  converge_target_live_verdict(read: read, target: target)
 }
 
 fn fleet_runner_width_count_read_script(instance_glob: NonEmptyStr) -> String {

@@ -8,7 +8,7 @@ fn compile_clean_source_roots() -> List<String> {
   concat(witness_layer_roots, ["src/v1"])
 }
 
-data witness_discovery_scan_dirs: List<String> = ["dag/test/claim", "src/v2/test/claim/manual"]
+data witness_discovery_scan_dirs: List<String> = ["dag/test/claim", "src/v2/test/claim/manual", "src/v2/test/claim/emit"]
 
 data witness_exclusion_substrings: List<String> = [
   "impossible_bug",
@@ -35,6 +35,7 @@ data witness_exclusion_substrings: List<String> = [
   "emit_host_typed_smoke_test.dag",
   "build_artifact_corruption_probe_witness_test.dag",
   "self_host_logic_behavioral_witness_test.dag",
+  "self_host_parse_engine_hooks_behavioral_witness_test.dag",
   "self_host_use_site_verdict_behavioral_witness_test.dag",
   "dag_collect_fingerprint_witness_test.dag",
   "dag_compile_clean_perturb_receipts_test.dag",

@@ -150,7 +150,7 @@ fn orch_retry_perturbed_intent() -> PipelineStep {
     Do { run: _ } => retry_eagain_intent()
     If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
     For { binder: _, over: _, body: _ } => retry_eagain_intent()
-    While { cond: _, body: _, bound: _ } => retry_eagain_intent()
+    While { cond: _, body: _ } => retry_eagain_intent()
     Let { name: _, value: _ } => retry_eagain_intent()
     Call { callee: _, args: _ } => retry_eagain_intent()
   }
@@ -192,7 +192,7 @@ fn orch_retry_perturbed_exhausted_intent() -> PipelineStep {
     Do { run: _ } => retry_eagain_intent()
     If { cond: _, then_: _, else_: _ } => retry_eagain_intent()
     For { binder: _, over: _, body: _ } => retry_eagain_intent()
-    While { cond: _, body: _, bound: _ } => retry_eagain_intent()
+    While { cond: _, body: _ } => retry_eagain_intent()
     Let { name: _, value: _ } => retry_eagain_intent()
     Call { callee: _, args: _ } => retry_eagain_intent()
   }
