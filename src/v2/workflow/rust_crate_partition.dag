@@ -5,10 +5,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.graph {
   CallGraph,
   GraphEdge,
-  build_call_graph_from_proof_edges,
   graph_has_multi_node_scc
 }
-import std.termination { ProofEdge }
 import std.types { ContentHash, List, String, Bool, Int }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.std.algebra { any, fold_list, length }
@@ -276,39 +274,60 @@ fn resolve_partition(
   }
 }
 
-fn proof_edge_from_module_edge(edge: ModuleDagEdge) -> ProofEdge {
-  ProofEdge {
-    caller: edge.from as String,
-    callee: edge.to as String,
-    evidence: [],
+  edges: List<ModuleDagEdge>,
+  from: ModuleId,
+  to: ModuleId
+) -> Bool {
+  edges |> any(edge => (edge.from == from) && (edge.to == to))
+}
+
+fn module_dag_reaches(
+  edges: List<ModuleDagEdge>,
+  from: ModuleId,
+  to: ModuleId
+) -> Bool {
+  if from == to {
+    true
+  } else {
+    edges
+      |> filter(edge => edge.from == from)
+      |> any(edge => module_dag_reaches(edges: edges, from: edge.to, to: to))
   }
+}
+
+fn module_pair_in_same_scc(
+  edges: List<ModuleDagEdge>,
+  left: ModuleId,
+  right: ModuleId
+) -> Bool {
+  (left != right)
+    && module_dag_reaches(edges: edges, from: left, to: right)
+    && module_dag_reaches(edges: edges, from: right, to: left)
 }
 
 fn assignment_has_scc_split(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>
 ) -> Bool {
-  let proof_edges = module_dag.edges |> map(proof_edge_from_module_edge)
-  let members = module_dag.modules |> map(module => module as String)
-  if !graph_has_multi_node_scc(names: members, graph: build_call_graph_from_proof_edges(names: members, edges: proof_edges)) {
-    false
-  } else {
-    let scc_probe = module_dag.edges
-      |> any(edge => {
-        match map_get(assignment, edge.from) {
-          Accepted { value: Present { value: from_unit }, diagnostics: _ } =>
-            match map_get(assignment, edge.to) {
-              Accepted { value: Present { value: to_unit }, diagnostics: _ } =>
-                from_unit != to_unit
+  module_dag.modules |> any(left =>
+    module_dag.modules |> any(right => {
+      if !module_pair_in_same_scc(edges: module_dag.edges, left: left, right: right) {
+        false
+      } else {
+        match map_get(assignment, left) {
+          Accepted { value: Present { value: left_unit }, diagnostics: _ } =>
+            match map_get(assignment, right) {
+              Accepted { value: Present { value: right_unit }, diagnostics: _ } =>
+                left_unit != right_unit
               Rejected { diagnostics: _ } => false
               Accepted { value: Absent, diagnostics: _ } => false
             }
           Rejected { diagnostics: _ } => false
           Accepted { value: Absent, diagnostics: _ } => false
         }
-      })
-    scc_probe
-  }
+      }
+    })
+  )
 }
 
 fn unit_graph_has_cycle(units: List<CompilationUnit>) -> Bool {

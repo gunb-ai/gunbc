@@ -216,7 +216,7 @@ fn stage0_reexport_path_deps(packages: List<String>) -> List<CargoDependency> {
   packages
     |> map(pkg => stage0_local_path_dep(
       name: pkg,
-      path: concat("../", pkg |> replace(old: "v1-stage0-", new: "stage0_"))
+      path: concat("../", pkg |> replace("v1-stage0-", "stage0_"))
     ))
 }
 

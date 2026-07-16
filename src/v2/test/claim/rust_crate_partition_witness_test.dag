@@ -6,6 +6,8 @@ import v2.std.collection { Absent, Present, empty_map, map_insert }
 import v2.std.compilers.compilation_unit {
   CompilationUnitId,
   HandExplicit,
+  ModuleDag,
+  ModuleDagEdge,
   ModuleId,
   PolicyDerived,
   PartitionR4Refused,
@@ -37,18 +39,34 @@ import v2.workflow.rust_crate_partition {
 
 data witness_red_control_note: String = "Discriminating RED: (1) assign std_algebra and std_nat to different units while keeping std_nat -> std_algebra edge → validate_partition_r4 returns SccSplit refusal; (2) fabricate a cyclic unit dep graph → UnitGraphCycle refusal; (3) drop a module from explicit assignment → partition_fold_outcome refuses or unit member count diverges."
 
-fn witness_module_id(name: String) -> ModuleId {
-  name as NonEmptyStr
+data witness_mod_a: ModuleId = "witness.scc.a" as NonEmptyStr
+data witness_mod_b: ModuleId = "witness.scc.b" as NonEmptyStr
+data witness_mod_c: ModuleId = "witness.scc.c" as NonEmptyStr
+data witness_unit_x: CompilationUnitId = "witness-unit-x" as ContentHash
+data witness_unit_y: CompilationUnitId = "witness-unit-y" as ContentHash
+
+fn witness_triangle_scc_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_a, witness_mod_b, witness_mod_c],
+    edges: [
+      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
+      ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
+    ],
+    exports: empty_map(),
+    type_definitions: empty_map(),
+  }
 }
 
 fn witness_forced_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
-  stage0_interim_explicit_assignment()
-    |> map_insert(witness_module_id(name: "std_algebra"), "witness-unit-a" as ContentHash)
-    |> map_insert(witness_module_id(name: "std_nat"), "witness-unit-b" as ContentHash)
+  empty_map()
+    |> map_insert(witness_mod_a, witness_unit_x)
+    |> map_insert(witness_mod_b, witness_unit_x)
+    |> map_insert(witness_mod_c, witness_unit_y)
 }
 
 fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
-  let dag = stage0_module_dag()
+  let dag = witness_triangle_scc_dag()
   let assignment = witness_forced_scc_split_assignment()
   let units = partition_fold(module_dag: dag, assignment: assignment)
   match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
