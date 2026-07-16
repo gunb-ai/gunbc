@@ -20,7 +20,7 @@ import v2.std.witness { Witness }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data machine_shape_wall_witness_note: String = "RED/GREEN controls for MachineShape single-constructor compile gate (synthetic fixtures). A Transform call with callee Atom ^MachineShape is unsanctioned outside std.machine_shape and extdeps.gpu.machine_shape; ^shape_from_catalog is the sanctioned producer path."
+data machine_shape_wall_witness_note: String = "RED/GREEN controls for MachineShape single-constructor compile gate (synthetic fixtures). A Transform call with callee Atom ^MachineShape is unsanctioned outside std.machine_shape and extdeps.*.machine_shape; ^shape_from_catalog is the sanctioned producer path."
 
 fn ms_atom(id: Symbol) -> Node {
   Node {
