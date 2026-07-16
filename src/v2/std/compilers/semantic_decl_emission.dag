@@ -81,6 +81,12 @@ type TargetSemanticDeclCoproductDecorationRule {
 type TargetSemanticDeclSurfaceProjection {
   record_decoration_lines: List<TargetSemanticDeclDecorationLine>
   coproduct_decoration_rules: List<TargetSemanticDeclCoproductDecorationRule>
+  field_type_before_name: Bool
+  typedef_alias_repeats_tag_name: Bool
+  enum_name_after_variants: Bool
+  coproduct_tagged_union_struct_layout: Bool
+  tagged_union_tag_field: Symbol
+  tagged_union_union_field: Symbol
 }
 
 type TargetSemanticDeclSerializeProfile {
@@ -890,9 +896,97 @@ fn semantic_decl_surface_projection_bundle(
         target: semantic_decl_coproduct_decoration_rules_catalog(
           rules: projection.coproduct_decoration_rules
         )
+      ),
+      target_model_named_edge(
+        name: ^semantic_decl_surface_field_type_before_name,
+        target: semantic_decl_surface_projection_bool_flag_node(
+          enabled: projection.field_type_before_name,
+          true_id: ^semantic_decl_field_type_before_name_true,
+          false_id: ^semantic_decl_field_type_before_name_false
+        )
+      ),
+      target_model_named_edge(
+        name: ^semantic_decl_surface_field_typedef_alias_repeats_tag_name,
+        target: semantic_decl_surface_projection_bool_flag_node(
+          enabled: projection.typedef_alias_repeats_tag_name,
+          true_id: ^semantic_decl_typedef_alias_repeats_tag_name_true,
+          false_id: ^semantic_decl_typedef_alias_repeats_tag_name_false
+        )
+      ),
+      target_model_named_edge(
+        name: ^semantic_decl_surface_field_enum_name_after_variants,
+        target: semantic_decl_surface_projection_bool_flag_node(
+          enabled: projection.enum_name_after_variants,
+          true_id: ^semantic_decl_enum_name_after_variants_true,
+          false_id: ^semantic_decl_enum_name_after_variants_false
+        )
+      ),
+      target_model_named_edge(
+        name: ^semantic_decl_surface_field_coproduct_tagged_union_struct_layout,
+        target: semantic_decl_surface_projection_bool_flag_node(
+          enabled: projection.coproduct_tagged_union_struct_layout,
+          true_id: ^semantic_decl_coproduct_tagged_union_struct_layout_true,
+          false_id: ^semantic_decl_coproduct_tagged_union_struct_layout_false
+        )
+      ),
+      target_model_named_edge(
+        name: ^semantic_decl_surface_field_tagged_union_tag_field,
+        target: target_model_type_atom_node(identity: projection.tagged_union_tag_field)
+      ),
+      target_model_named_edge(
+        name: ^semantic_decl_surface_field_tagged_union_union_field,
+        target: target_model_type_atom_node(identity: projection.tagged_union_union_field)
       )
     ]
   )
+}
+
+fn semantic_decl_surface_projection_bool_flag_node(
+  enabled: Bool,
+  true_id: Symbol,
+  false_id: Symbol
+) -> Node {
+  target_model_type_atom_node(identity: if enabled { true_id } else { false_id })
+}
+
+fn decode_semantic_decl_surface_projection_bool_flag(
+  bundle: Node,
+  field: Symbol,
+  true_id: Symbol
+) -> Bool {
+  match find_named_child(root: bundle, name: field) {
+    Accepted { value: flag, diagnostics: _ } =>
+      match flag.kind {
+        TypeNode { connective: Atom { identity: id } } => id == true_id
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn decode_semantic_decl_surface_projection_field_type_before_name(
+  bundle: Node
+) -> Bool {
+  decode_semantic_decl_surface_projection_bool_flag(
+    bundle: bundle,
+    field: ^semantic_decl_surface_field_type_before_name,
+    true_id: ^semantic_decl_field_type_before_name_true
+  )
+}
+
+fn decode_semantic_decl_surface_projection_symbol_field(
+  bundle: Node,
+  field: Symbol,
+  absent: Symbol
+) -> Symbol {
+  match find_named_child(root: bundle, name: field) {
+    Accepted { value: flag, diagnostics: _ } =>
+      match flag.kind {
+        TypeNode { connective: Atom { identity: id } } => id
+        _ => absent
+      }
+    Rejected { diagnostics: _ } => absent
+  }
 }
 
 fn decode_semantic_decl_surface_projection_bundle(
@@ -919,7 +1013,35 @@ fn decode_semantic_decl_surface_projection_bundle(
                   outcome_accepted(
                     TargetSemanticDeclSurfaceProjection {
                       record_decoration_lines: record_decoration_lines,
-                      coproduct_decoration_rules: coproduct_decoration_rules
+                      coproduct_decoration_rules: coproduct_decoration_rules,
+                      field_type_before_name: decode_semantic_decl_surface_projection_field_type_before_name(
+                        bundle: bundle
+                      ),
+                      typedef_alias_repeats_tag_name: decode_semantic_decl_surface_projection_bool_flag(
+                        bundle: bundle,
+                        field: ^semantic_decl_surface_field_typedef_alias_repeats_tag_name,
+                        true_id: ^semantic_decl_typedef_alias_repeats_tag_name_true
+                      ),
+                      enum_name_after_variants: decode_semantic_decl_surface_projection_bool_flag(
+                        bundle: bundle,
+                        field: ^semantic_decl_surface_field_enum_name_after_variants,
+                        true_id: ^semantic_decl_enum_name_after_variants_true
+                      ),
+                      coproduct_tagged_union_struct_layout: decode_semantic_decl_surface_projection_bool_flag(
+                        bundle: bundle,
+                        field: ^semantic_decl_surface_field_coproduct_tagged_union_struct_layout,
+                        true_id: ^semantic_decl_coproduct_tagged_union_struct_layout_true
+                      ),
+                      tagged_union_tag_field: decode_semantic_decl_surface_projection_symbol_field(
+                        bundle: bundle,
+                        field: ^semantic_decl_surface_field_tagged_union_tag_field,
+                        absent: ^semantic_decl_tagged_union_tag_field_unused
+                      ),
+                      tagged_union_union_field: decode_semantic_decl_surface_projection_symbol_field(
+                        bundle: bundle,
+                        field: ^semantic_decl_surface_field_tagged_union_union_field,
+                        absent: ^semantic_decl_tagged_union_union_field_unused
+                      )
                     }
                   )
                 }
@@ -1113,13 +1235,53 @@ fn target_semantic_decl_surface_type_expr(t: Symbol) -> Node {
   )
 }
 
-fn target_semantic_decl_surface_field(name: Symbol, t: Symbol) -> Node {
-  target_semantic_decl_surface_conj(
-    children: [
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_type_expr(t: t))
-    ]
-  )
+fn target_semantic_decl_surface_field(name: Symbol, t: Symbol, type_before_name: Bool) -> Node {
+  if type_before_name {
+    target_semantic_decl_surface_conj(
+      children: [
+        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_type_expr(t: t)),
+        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
+      ]
+    )
+  } else {
+    target_semantic_decl_surface_conj(
+      children: [
+        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_type_expr(t: t))
+      ]
+    )
+  }
+}
+
+fn target_semantic_decl_field_surface_from_edge(
+  edge: Edge,
+  projection: TargetSemanticDeclSurfaceProjection
+) -> Outcome<Node> {
+  match edge.label {
+    Named { name: fname } =>
+      match edge.target.kind {
+        TypeNode { connective: Atom { identity: tid } } =>
+          outcome_accepted(
+            value: target_semantic_decl_surface_field(
+              name: fname,
+              t: tid,
+              type_before_name: projection.field_type_before_name
+            )
+          )
+        _ =>
+          outcome_rejected(d: Diagnostic {
+                reason: ^target_semantic_decl_field_type_not_atom,
+                at: node_locus(node: edge.target),
+                correction: Unavailable { reason: ExternalContractUnknown }
+              })
+      }
+    Positional =>
+      outcome_rejected(d: Diagnostic {
+            reason: ^target_semantic_decl_field_not_named,
+            at: node_locus(node: edge.target),
+            correction: Unavailable { reason: ExternalContractUnknown }
+          })
+  }
 }
 
 fn target_semantic_decl_surface_field_block(fields: List<Node>) -> Node {
@@ -1155,54 +1317,39 @@ fn target_semantic_decl_surface_decoration_pos_edges(
   )
 }
 
-fn target_semantic_decl_surface_enum_nongeneric(
+fn target_semantic_decl_surface_struct_trailing_edges(
   name: Symbol,
-  decoration_lines: List<TargetSemanticDeclDecorationLine>,
-  variants: List<Node>
-) -> Node {
-  target_semantic_decl_surface_conj(
-    children: list_append(
-      left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-      right: [
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_variant_block(variants: variants))
-      ]
+  typedef_alias_repeats_tag_name: Bool
+) -> List<Edge> {
+  if typedef_alias_repeats_tag_name {
+    list_snoc_item(
+      xs: Empty,
+      item: target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
     )
-  )
-}
-
-fn target_semantic_decl_surface_enum_generic(
-  name: Symbol,
-  decoration_lines: List<TargetSemanticDeclDecorationLine>,
-  params: List<Symbol>,
-  variants: List<Node>
-) -> Node {
-  target_semantic_decl_surface_conj(
-    children: list_append(
-      left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-      right: [
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-        target_semantic_decl_surface_pos(
-          target: target_semantic_decl_surface_generic_params(params: params)
-        ),
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_variant_block(variants: variants))
-      ]
-    )
-  )
+  } else {
+    Empty
+  }
 }
 
 fn target_semantic_decl_surface_struct_nongeneric(
   name: Symbol,
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
-  fields: List<Node>
+  fields: List<Node>,
+  typedef_alias_repeats_tag_name: Bool
 ) -> Node {
   target_semantic_decl_surface_conj(
     children: list_append(
-      left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-      right: [
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
-      ]
+      left: list_append(
+        left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
+        right: [
+          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
+        ]
+      ),
+      right: target_semantic_decl_surface_struct_trailing_edges(
+        name: name,
+        typedef_alias_repeats_tag_name: typedef_alias_repeats_tag_name
+      )
     )
   )
 }
@@ -1211,18 +1358,177 @@ fn target_semantic_decl_surface_struct_generic(
   name: Symbol,
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
   params: List<Symbol>,
-  fields: List<Node>
+  fields: List<Node>,
+  typedef_alias_repeats_tag_name: Bool
+) -> Node {
+  target_semantic_decl_surface_conj(
+    children: list_append(
+      left: list_append(
+        left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
+        right: [
+          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+          target_semantic_decl_surface_pos(
+            target: target_semantic_decl_surface_generic_params(params: params)
+          ),
+          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
+        ]
+      ),
+      right: target_semantic_decl_surface_struct_trailing_edges(
+        name: name,
+        typedef_alias_repeats_tag_name: typedef_alias_repeats_tag_name
+      )
+    )
+  )
+}
+
+fn target_semantic_decl_surface_enum_name_variant_edges(
+  name: Symbol,
+  variants: List<Node>,
+  enum_name_after_variants: Bool
+) -> List<Edge> {
+  if enum_name_after_variants {
+    list_append(
+      left: [
+        target_semantic_decl_surface_pos(
+          target: target_semantic_decl_surface_variant_block(variants: variants)
+        )
+      ],
+      right: [
+        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
+      ]
+    )
+  } else {
+    list_append(
+      left: [
+        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
+      ],
+      right: [
+        target_semantic_decl_surface_pos(
+          target: target_semantic_decl_surface_variant_block(variants: variants)
+        )
+      ]
+    )
+  }
+}
+
+fn target_semantic_decl_surface_enum_nongeneric(
+  name: Symbol,
+  decoration_lines: List<TargetSemanticDeclDecorationLine>,
+  variants: List<Node>,
+  enum_name_after_variants: Bool
 ) -> Node {
   target_semantic_decl_surface_conj(
     children: list_append(
       left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-      right: [
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-        target_semantic_decl_surface_pos(
-          target: target_semantic_decl_surface_generic_params(params: params)
+      right: target_semantic_decl_surface_enum_name_variant_edges(
+        name: name,
+        variants: variants,
+        enum_name_after_variants: enum_name_after_variants
+      )
+    )
+  )
+}
+
+fn target_semantic_decl_surface_enum_generic(
+  name: Symbol,
+  decoration_lines: List<TargetSemanticDeclDecorationLine>,
+  params: List<Symbol>,
+  variants: List<Node>,
+  enum_name_after_variants: Bool
+) -> Node {
+  if enum_name_after_variants {
+    target_semantic_decl_surface_conj(
+      children: list_append(
+        left: list_append(
+          left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
+          right: [
+            target_semantic_decl_surface_pos(
+              target: target_semantic_decl_surface_generic_params(params: params)
+            )
+          ]
         ),
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
-      ]
+        right: target_semantic_decl_surface_enum_name_variant_edges(
+          name: name,
+          variants: variants,
+          enum_name_after_variants: true
+        )
+      )
+    )
+  } else {
+    target_semantic_decl_surface_conj(
+      children: list_append(
+        left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
+        right: [
+          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+          target_semantic_decl_surface_pos(
+            target: target_semantic_decl_surface_generic_params(params: params)
+          ),
+          target_semantic_decl_surface_pos(
+            target: target_semantic_decl_surface_variant_block(variants: variants)
+          )
+        ]
+      )
+    )
+  }
+}
+
+fn target_semantic_decl_surface_tagged_union_union_body(
+  variants: List<Node>,
+  union_field: Symbol
+) -> Node {
+  target_semantic_decl_surface_conj(
+    children: [
+      target_semantic_decl_surface_pos(
+        target: target_semantic_decl_surface_variant_block(variants: variants)
+      ),
+      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: union_field))
+    ]
+  )
+}
+
+fn target_semantic_decl_surface_tagged_union_body_fields(
+  projection: TargetSemanticDeclSurfaceProjection,
+  variants: List<Node>
+) -> List<Node> {
+  [
+    target_semantic_decl_surface_field(
+      name: projection.tagged_union_tag_field,
+      t: ^Int,
+      type_before_name: projection.field_type_before_name
+    ),
+    target_semantic_decl_surface_tagged_union_union_body(
+      variants: variants,
+      union_field: projection.tagged_union_union_field
+    )
+  ]
+}
+
+fn target_semantic_decl_surface_tagged_union_nongeneric(
+  name: Symbol,
+  decoration_lines: List<TargetSemanticDeclDecorationLine>,
+  projection: TargetSemanticDeclSurfaceProjection,
+  variants: List<Node>
+) -> Node {
+  target_semantic_decl_surface_conj(
+    children: list_append(
+      left: list_append(
+        left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
+        right: [
+          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+          target_semantic_decl_surface_pos(
+            target: target_semantic_decl_surface_field_block(
+              fields: target_semantic_decl_surface_tagged_union_body_fields(
+                projection: projection,
+                variants: variants
+              )
+            )
+          )
+        ]
+      ),
+      right: target_semantic_decl_surface_struct_trailing_edges(
+        name: name,
+        typedef_alias_repeats_tag_name: projection.typedef_alias_repeats_tag_name
+      )
     )
   )
 }
@@ -1406,32 +1712,10 @@ fn target_semantic_decl_coproduct_decoration_lines(
     )
   }
 }
-
-fn target_semantic_decl_field_surface_from_edge(edge: Edge) -> Outcome<Node> {
-  match edge.label {
-    Named { name: fname } =>
-      match edge.target.kind {
-        TypeNode { connective: Atom { identity: tid } } =>
-          outcome_accepted(
-            value: target_semantic_decl_surface_field(name: fname, t: tid)
-          )
-        _ =>
-          outcome_rejected(d: Diagnostic {
-                reason: ^target_semantic_decl_field_type_not_atom,
-                at: node_locus(node: edge.target),
-                correction: Unavailable { reason: ExternalContractUnknown }
-              })
-      }
-    Positional =>
-      outcome_rejected(d: Diagnostic {
-            reason: ^target_semantic_decl_field_not_named,
-            at: node_locus(node: edge.target),
-            correction: Unavailable { reason: ExternalContractUnknown }
-          })
-  }
-}
-
-fn target_semantic_decl_field_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
+fn target_semantic_decl_field_surfaces(
+  edges: List<Edge>,
+  projection: TargetSemanticDeclSurfaceProjection
+) -> Outcome<List<Node>> {
   fold_list(
     xs: edges,
     empty: outcome_accepted(value: Empty),
@@ -1440,7 +1724,10 @@ fn target_semantic_decl_field_surfaces(edges: List<Edge>) -> Outcome<List<Node>>
         o: acc_o,
         f: fn(acc) {
           bind_outcome(
-            o: target_semantic_decl_field_surface_from_edge(edge: edge),
+            o: target_semantic_decl_field_surface_from_edge(
+              edge: edge,
+              projection: projection
+            ),
             f: fn(fnode) {
               outcome_accepted(value: list_snoc_item(xs: acc, item: fnode))
             }
@@ -1451,12 +1738,18 @@ fn target_semantic_decl_field_surfaces(edges: List<Edge>) -> Outcome<List<Node>>
   )
 }
 
-fn target_semantic_decl_variant_surface_from_edge(edge: Edge) -> Outcome<Node> {
+fn target_semantic_decl_variant_surface_from_edge(
+  edge: Edge,
+  projection: TargetSemanticDeclSurfaceProjection
+) -> Outcome<Node> {
   match edge.label {
     Named { name: vname } =>
       if target_semantic_decl_variant_edge_has_payload(edge: edge) {
         bind_outcome(
-          o: target_semantic_decl_field_surfaces(edges: edge.target.children),
+          o: target_semantic_decl_field_surfaces(
+            edges: edge.target.children,
+            projection: projection
+          ),
           f: fn(fields) {
             outcome_accepted(
               value: target_semantic_decl_surface_variant_payload(name: vname, fields: fields)
@@ -1475,7 +1768,10 @@ fn target_semantic_decl_variant_surface_from_edge(edge: Edge) -> Outcome<Node> {
   }
 }
 
-fn target_semantic_decl_variant_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
+fn target_semantic_decl_variant_surfaces(
+  edges: List<Edge>,
+  projection: TargetSemanticDeclSurfaceProjection
+) -> Outcome<List<Node>> {
   fold_list(
     xs: edges,
     empty: outcome_accepted(value: Empty),
@@ -1484,7 +1780,10 @@ fn target_semantic_decl_variant_surfaces(edges: List<Edge>) -> Outcome<List<Node
         o: acc_o,
         f: fn(acc) {
           bind_outcome(
-            o: target_semantic_decl_variant_surface_from_edge(edge: edge),
+            o: target_semantic_decl_variant_surface_from_edge(
+              edge: edge,
+              projection: projection
+            ),
             f: fn(vnode) {
               outcome_accepted(value: list_snoc_item(xs: acc, item: vnode))
             }
@@ -1510,14 +1809,37 @@ fn target_semantic_enum_surface_from_coproduct(
         ),
         f: fn(decoration_lines) {
           bind_outcome(
-            o: target_semantic_decl_variant_surfaces(edges: coproduct.children),
+            o: target_semantic_decl_variant_surfaces(
+              edges: coproduct.children,
+              projection: projection
+            ),
             f: fn(variants) {
-              if is_empty(xs: params) {
+              if projection.coproduct_tagged_union_struct_layout
+                && !target_semantic_decl_coproduct_all_variants_nullary(edges: coproduct.children)
+              {
+                if is_empty(xs: params) {
+                  outcome_accepted(
+                    value: target_semantic_decl_surface_tagged_union_nongeneric(
+                      name: name,
+                      decoration_lines: decoration_lines,
+                      projection: projection,
+                      variants: variants
+                    )
+                  )
+                } else {
+                  outcome_rejected(d: Diagnostic {
+                        reason: ^target_semantic_decl_tagged_union_generic_unsupported,
+                        at: node_locus(node: coproduct),
+                        correction: Unavailable { reason: ExternalContractUnknown }
+                      })
+                }
+              } else if is_empty(xs: params) {
                 outcome_accepted(
                   value: target_semantic_decl_surface_enum_nongeneric(
                     name: name,
                     decoration_lines: decoration_lines,
-                    variants: variants
+                    variants: variants,
+                    enum_name_after_variants: projection.enum_name_after_variants
                   )
                 )
               } else {
@@ -1526,7 +1848,8 @@ fn target_semantic_enum_surface_from_coproduct(
                     name: name,
                     decoration_lines: decoration_lines,
                     params: params,
-                    variants: variants
+                    variants: variants,
+                    enum_name_after_variants: projection.enum_name_after_variants
                   )
                 )
               }
@@ -1552,14 +1875,18 @@ fn target_semantic_struct_surface_from_record(
   match record.kind {
     TypeNode { connective: Conj } =>
       bind_outcome(
-        o: target_semantic_decl_field_surfaces(edges: record.children),
+        o: target_semantic_decl_field_surfaces(
+          edges: record.children,
+          projection: projection
+        ),
         f: fn(fields) {
           if is_empty(xs: params) {
             outcome_accepted(
               value: target_semantic_decl_surface_struct_nongeneric(
                 name: name,
                 decoration_lines: projection.record_decoration_lines,
-                fields: fields
+                fields: fields,
+                typedef_alias_repeats_tag_name: projection.typedef_alias_repeats_tag_name
               )
             )
           } else {
@@ -1568,7 +1895,8 @@ fn target_semantic_struct_surface_from_record(
                 name: name,
                 decoration_lines: projection.record_decoration_lines,
                 params: params,
-                fields: fields
+                fields: fields,
+                typedef_alias_repeats_tag_name: projection.typedef_alias_repeats_tag_name
               )
             )
           }

@@ -2457,6 +2457,12 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
         surface_binding: ^rust_decl_derive_struct_binding
       }
     ],
+    field_type_before_name: false,
+    typedef_alias_repeats_tag_name: false,
+    enum_name_after_variants: false,
+    coproduct_tagged_union_struct_layout: false,
+    tagged_union_tag_field: ^semantic_decl_tagged_union_tag_field_unused,
+    tagged_union_union_field: ^semantic_decl_tagged_union_union_field_unused,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_default,

@@ -1,7 +1,13 @@
 module v2.test.emit.c_semantic_decl_routing
 
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.compiler.translate { grammar_relation_row_for_emitted }
 import v2.extdeps.languages.c { c_target_model }
+import v2.extdeps.languages.c_decl { c_struct_general_decl_productions_only_translation_rules }
+import v2.std.compilers.semantic_decl_emission {
+  semantic_decl_emission_from_target,
+  target_semantic_struct_surface_from_record
+}
 import std.algebra { Empty }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
@@ -89,6 +95,59 @@ fn cdr_answer_coproduct() -> Node {
       cdr_variant_edge_payload(name: ^No, fields: [ cdr_field_edge(name: ^code, type_name: ^Int) ])
     ],
     occurrence_id: SyntheticOccurrence
+  }
+}
+
+test fn c_semantic_point_surface_builds_holds() -> Bool {
+  match semantic_decl_emission_from_target(target: c_target_model()) {
+    Accepted { value: emission, diagnostics: _ } =>
+      match target_semantic_struct_surface_from_record(
+        projection: emission.surface,
+        name: ^Point,
+        params: Empty,
+        record: cdr_point_record()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_point_grammar_row_holds() -> Bool {
+  match semantic_decl_emission_from_target(target: c_target_model()) {
+    Accepted { value: emission, diagnostics: _ } =>
+      match target_semantic_struct_surface_from_record(
+        projection: emission.surface,
+        name: ^Point,
+        params: Empty,
+        record: cdr_point_record()
+      ) {
+        Accepted { value: surface, diagnostics: _ } =>
+          match grammar_relation_row_for_emitted(
+            rules: emission.struct_translation_rules,
+            emitted: surface
+          ) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_bundle_wired_holds() -> Bool {
+  match semantic_decl_emission_from_target(target: c_target_model()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_point_emit_not_rejected_holds() -> Bool {
+  match cdr_emit_text(name: ^Point, node: cdr_point_record()) {
+    Accepted { value: text, diagnostics: _ } => text != ""
+    Rejected { diagnostics: _ } => false
   }
 }
 

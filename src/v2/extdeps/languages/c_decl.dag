@@ -46,7 +46,7 @@ fn c_decl_shape_productions() -> List<FormalProduction> {
       lhs: ^c_decl_shape_enum,
       rhs: [
         grammar_formal_terminal_bound(
-          identity: ^c_token_shape_enum,
+          identity: ^c_decl_shape_enum_marker,
           binding: ^c_decl_shape_enum_binding
         )
       ]
@@ -55,7 +55,7 @@ fn c_decl_shape_productions() -> List<FormalProduction> {
       lhs: ^c_decl_shape_tagged,
       rhs: [
         grammar_formal_terminal_bound(
-          identity: ^c_token_shape_tagged,
+          identity: ^c_decl_shape_tagged_marker,
           binding: ^c_decl_shape_tagged_binding
         )
       ]
@@ -179,9 +179,7 @@ fn c_decl_tagged_union_member_productions() -> List<FormalProduction> {
       lhs: ^c_decl_union_body,
       rhs: [
         grammar_formal_terminal(identity: ^c_token_kw_union),
-        grammar_formal_terminal(identity: ^c_token_lbrace),
-        grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_member_list),
-        grammar_formal_terminal(identity: ^c_token_rbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant_block),
         grammar_formal_terminal_free(identity: ^c_token_union_field)
       ]
     )
@@ -211,7 +209,6 @@ fn c_decl_enum_top_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_shape_enum),
         grammar_formal_terminal(identity: ^c_token_kw_typedef_enum),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant_block),
-        grammar_formal_terminal(identity: ^c_token_rbrace),
         grammar_formal_terminal_free(identity: ^c_token_ident),
         grammar_formal_terminal(identity: ^c_token_semicolon)
       ]
@@ -227,13 +224,7 @@ fn c_decl_tagged_union_top_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_shape_tagged),
         grammar_formal_terminal(identity: ^c_token_kw_typedef_struct),
         grammar_formal_terminal_free(identity: ^c_token_ident),
-        grammar_formal_terminal(identity: ^c_token_lbrace),
-        grammar_formal_terminal(identity: ^c_token_ty_int),
-        grammar_formal_terminal_free(identity: ^c_token_tag_field),
-        grammar_formal_terminal(identity: ^c_token_semicolon_field),
-        grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_body),
-        grammar_formal_terminal(identity: ^c_token_semicolon_field),
-        grammar_formal_terminal(identity: ^c_token_rbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_block),
         grammar_formal_terminal_free(identity: ^c_token_ident),
         grammar_formal_terminal(identity: ^c_token_semicolon)
       ]
@@ -291,10 +282,8 @@ fn c_enum_general_decl_productions_only_translation_rules() -> Node {
 fn c_semantic_decl_lex_rows() -> List<Node> {
   [
     semantic_decl_lex_whitespace_trivia_row(),
-    semantic_decl_lex_literal_row(token_class: ^c_token_shape_enum, text: ""),
-    semantic_decl_lex_literal_row(token_class: ^c_token_shape_tagged, text: ""),
     semantic_decl_lex_literal_row(token_class: ^c_token_kw_typedef_struct, text: "typedef struct "),
-    semantic_decl_lex_literal_row(token_class: ^c_token_kw_typedef_enum, text: "typedef enum { "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_kw_typedef_enum, text: "typedef enum "),
     semantic_decl_lex_literal_row(token_class: ^c_token_kw_struct, text: "struct { "),
     semantic_decl_lex_literal_row(token_class: ^c_token_kw_union, text: "union { "),
     semantic_decl_lex_literal_row(token_class: ^c_token_ty_int, text: "int "),
@@ -304,14 +293,14 @@ fn c_semantic_decl_lex_rows() -> List<Node> {
     semantic_decl_lex_literal_row(token_class: ^c_token_semicolon_field, text: "; "),
     semantic_decl_lex_literal_row(token_class: ^c_token_semicolon, text: ";"),
     semantic_decl_lex_literal_row(token_class: ^c_token_tag_field, text: "tag"),
+    semantic_decl_lex_literal_row(token_class: ^c_decl_shape_enum_marker, text: ""),
+    semantic_decl_lex_literal_row(token_class: ^c_decl_shape_tagged_marker, text: ""),
     semantic_decl_lex_ident_row(token_class: ^c_token_ident)
   ]
 }
 
 fn c_semantic_decl_binding_spelling_rows() -> List<Node> {
   [
-    semantic_decl_binding_spelling_row(binding: ^c_decl_shape_enum_binding, spelling: ""),
-    semantic_decl_binding_spelling_row(binding: ^c_decl_shape_tagged_binding, spelling: ""),
     semantic_decl_binding_spelling_row(binding: ^Int, spelling: "int"),
     semantic_decl_binding_spelling_row(binding: ^c_token_union_field, spelling: "u"),
     semantic_decl_binding_spelling_row(binding: ^c_token_tag_field, spelling: "tag")
@@ -328,6 +317,12 @@ fn c_semantic_decl_serialize_profile_bundle_node() -> Node {
 fn c_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
   TargetSemanticDeclSurfaceProjection {
     record_decoration_lines: [],
+    field_type_before_name: true,
+    typedef_alias_repeats_tag_name: true,
+    enum_name_after_variants: true,
+    coproduct_tagged_union_struct_layout: true,
+    tagged_union_tag_field: ^c_token_tag_field,
+    tagged_union_union_field: ^c_token_union_field,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_all_variants_nullary,
