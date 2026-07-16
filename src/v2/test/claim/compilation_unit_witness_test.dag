@@ -1,14 +1,8 @@
 module v2.test.claim.compilation_unit_witness
 
+import std.algebra { Empty }
 import std.types { NonEmptyStr, ContentHash, List }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.interface_summary {
-  InterfaceSummary,
-  ExportEntry,
-  ExportFn,
-  InterfaceHash,
-  contract_absent,
-}
 import v2.std.compilers.compilation_unit {
   CompilationUnit,
   CompilationUnitId,
@@ -22,6 +16,7 @@ import v2.std.compilers.compilation_unit {
   compilation_unit_artifact_id,
   partition_fold,
   partition_fold_deps_match_boundary_edges,
+  partition_interface_contains_node,
   partition_provenance_eq,
   partition_provenance_hand_explicit,
   partition_provenance_policy_derived,
@@ -29,6 +24,18 @@ import v2.std.compilers.compilation_unit {
   partition_unit_by_id,
 }
 import v2.std.collection { empty_map, map_insert }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  content_hash,
+  node_synthetic,
+}
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -41,29 +48,50 @@ data witness_unit_one: CompilationUnitId = "cu-one" as ContentHash
 data witness_unit_two: CompilationUnitId = "cu-two" as ContentHash
 data witness_unit_all: CompilationUnitId = "cu-all" as ContentHash
 
-data witness_interface_hash: InterfaceHash = "witness-interface-hash-v0" as ContentHash
+data witness_type_point: Symbol = ^witness_cu_point
+data witness_type_int: Symbol = ^witness_cu_int
+data witness_fn_use_point: Symbol = ^witness_cu_use_point
 
-fn witness_export(name: NonEmptyStr) -> ExportEntry {
-  ExportEntry {
-    name: name,
-    kind: ExportFn,
-    contract: contract_absent(),
-  }
+fn witness_type_atom(sym: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
 }
 
-fn witness_interface(module_path: NonEmptyStr, export_name: NonEmptyStr) -> InterfaceSummary {
-  InterfaceSummary {
-    module_path: module_path,
-    exports: [witness_export(name: export_name)],
-    interface_hash: witness_interface_hash,
-  }
+fn witness_point_struct_def() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: witness_type_point } },
+    children: [
+      Edge {
+        label: Named { name: ^x },
+        target: witness_type_atom(sym: witness_type_int),
+      }
+    ]
+  )
 }
 
-fn witness_interfaces() -> Map<ModuleId, InterfaceSummary> {
-  empty_map()
-    |> map_insert(witness_mod_a, witness_interface(module_path: "mod.a" as NonEmptyStr, export_name: "fn_a" as NonEmptyStr))
-    |> map_insert(witness_mod_b, witness_interface(module_path: "mod.b" as NonEmptyStr, export_name: "fn_b" as NonEmptyStr))
-    |> map_insert(witness_mod_c, witness_interface(module_path: "mod.c" as NonEmptyStr, export_name: "fn_c" as NonEmptyStr))
+fn witness_fn_taking_point_by_value() -> Node {
+  node_synthetic(
+    kind: TypeNode {
+      connective: Arrow,
+    },
+    children: [
+      Edge {
+        label: Named { name: ^domain },
+        target: witness_type_atom(sym: witness_type_point),
+      },
+      Edge {
+        label: Named { name: ^codomain },
+        target: witness_type_atom(sym: witness_type_int),
+      }
+    ]
+  )
+}
+
+fn witness_exports_for_c() -> List<Node> {
+  [witness_fn_taking_point_by_value()]
+}
+
+fn witness_type_defs_for_c() -> List<Node> {
+  [witness_point_struct_def()]
 }
 
 fn witness_triangle_dag() -> ModuleDag {
@@ -74,7 +102,14 @@ fn witness_triangle_dag() -> ModuleDag {
       ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
       ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
     ],
-    interfaces: witness_interfaces(),
+    exports: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_c, witness_exports_for_c()),
+    type_definitions: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_c, witness_type_defs_for_c()),
   }
 }
 
@@ -85,7 +120,14 @@ fn witness_chain_dag() -> ModuleDag {
       ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
       ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
     ],
-    interfaces: witness_interfaces(),
+    exports: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_c, Empty),
+    type_definitions: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_c, Empty),
   }
 }
 
@@ -121,17 +163,25 @@ fn witness_unit_one_members_and_deps() -> Bool {
   }
 }
 
-fn witness_unit_two_members_interface_and_deps() -> Bool {
+fn witness_unit_two_interface_carries_declaration_content() -> Bool {
   let units = witness_partition_fold_two_units()
+  let export_decl = witness_fn_taking_point_by_value()
   match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
     Present { value: unit } =>
       (unit.members == [witness_mod_c])
         && (unit.deps == [witness_unit_one])
-        && ((unit.interface |> count) == 1)
-        && (match unit.interface |> first {
-          Present { value: export } => export.name == ("fn_c" as NonEmptyStr)
-          Absent => false
-        })
+        && partition_interface_contains_node(interface: unit.interface, needle: export_decl)
+    Absent => false
+  }
+}
+
+fn witness_unit_two_interface_includes_by_value_type_def() -> Bool {
+  let units = witness_partition_fold_two_units()
+  let point_def = witness_point_struct_def()
+  match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
+    Present { value: unit } =>
+      partition_interface_contains_node(interface: unit.interface, needle: point_def)
+        && ((unit.interface |> count) >= 2)
     Absent => false
   }
 }
@@ -217,7 +267,8 @@ fn witness_r4_interface_carriers_only() -> Bool {
 
 test fn compilation_unit_witnesses() -> Bool {
   witness_unit_one_members_and_deps()
-    && witness_unit_two_members_interface_and_deps()
+    && witness_unit_two_interface_carries_declaration_content()
+    && witness_unit_two_interface_includes_by_value_type_def()
     && witness_single_unit_partition_has_no_cross_unit_deps()
     && witness_intra_unit_edges_do_not_become_deps()
     && witness_fold_deps_match_boundary_edges_two_unit()
