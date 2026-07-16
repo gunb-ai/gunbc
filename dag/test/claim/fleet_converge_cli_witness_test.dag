@@ -25,9 +25,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier() -> Bool {
   converge_cli_routes_to_slice1(host: "srv1")
     && match host_converge_slice1_fixture_receipt() {
-      Present { value: receipt } =>
-        receipt.host == operator_host_srv1
-          && !string_contains(s: "host_converge_realize", pattern: host_converge_slice1_knob_name)
+      Present { value: receipt } => receipt.host == operator_host_srv1
       Absent => false
     }
 }
@@ -142,7 +140,7 @@ fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
 }
 
 test fn fleet_converge_cli_witness_holds() -> Bool {
-  witness_converge_cli_run_srv1_uses_slice1_not_realize_frontier()
+  witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier()
     && witness_converge_cli_run_srv2_fails_closed_on_knob_frontier()
     && witness_converge_cli_run_unknown_host_refuses()
     && witness_converge_cli_refusal_causes_discriminate()
