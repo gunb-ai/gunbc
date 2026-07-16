@@ -1,0 +1,100 @@
+module test.claim.merge_lifecycle_interleaving_witness
+
+import gunbc.merge_lifecycle {
+  PrIdentity,
+  LifecycleEvent, RunPrCi, MergePr, RosterBump,
+  simulate_lifecycle,
+  lifecycle_admits_unverified_tip,
+  squash_result_tree,
+  initial_lifecycle_state,
+  event_sequences_of_length_4,
+  count_unverified_admitting_sequences,
+}
+import gunbc.merge_admission {
+  AdmissionPolicy,
+  PerPrGateOnly, RequireUpToDateBase, KeyedReceipt,
+}
+import std.types { List, Bool, Int, String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data incident_fixture_note: String = "The two PRs of the 2026-07-16 main-red, as symbolic identities (real receipts cited in gunbc.merge_lifecycle.merge_lifecycle_incident_note: #6663 green run 29459154549, first union red run 29461044828, root fix #6701). pr_a is #6663 (the P0 field wall), pr_b is #6686 (the std.types import edge). Zero file overlap, both green in isolation, union red — the judge-x-evidence squash race."
+
+data pr_a: PrIdentity = PrIdentity {
+  number: 6663,
+  head_sha: "pr-6663-head-sha-fixture",
+  squash_tag: "squash-pr-6663",
+}
+
+data pr_b: PrIdentity = PrIdentity {
+  number: 6686,
+  head_sha: "pr-6686-head-sha-fixture",
+  squash_tag: "squash-pr-6686",
+}
+
+fn incident_trace() -> List<LifecycleEvent> {
+  [
+    RunPrCi { pr: pr_a },
+    RunPrCi { pr: pr_b },
+    MergePr { pr: pr_b },
+    MergePr { pr: pr_a },
+  ]
+}
+
+test fn incident_trace_reds_main_under_per_pr_gate_only() -> Bool {
+  lifecycle_admits_unverified_tip(policy: PerPrGateOnly, events: incident_trace())
+}
+
+test fn incident_trace_final_merge_refused_under_keyed_receipt() -> Bool {
+  let end_state = simulate_lifecycle(policy: KeyedReceipt, events: incident_trace())
+  let tip_after_b_only = squash_result_tree(pr: pr_b, base: initial_lifecycle_state().main_tip)
+  !end_state.unverified_tip_seen && end_state.main_tip == tip_after_b_only
+}
+
+test fn incident_trace_lands_verified_when_pr_a_reruns_ci_first() -> Bool {
+  let refreshed = [
+    RunPrCi { pr: pr_a },
+    RunPrCi { pr: pr_b },
+    MergePr { pr: pr_b },
+    RunPrCi { pr: pr_a },
+    MergePr { pr: pr_a },
+  ]
+  let end_state = simulate_lifecycle(policy: KeyedReceipt, events: refreshed)
+  let tip_b = squash_result_tree(pr: pr_b, base: initial_lifecycle_state().main_tip)
+  !end_state.unverified_tip_seen && end_state.main_tip == squash_result_tree(pr: pr_a, base: tip_b)
+}
+
+data interleaving_alphabet_note: String = "Alphabet = both incident PRs' RunPrCi and MergePr plus RosterBump (criteria drift). MergePr(pr_b) is enabled only by pr_b's own receipts, so the enumeration exercises fresh merges, stale merges, re-runs, double-merges, and roster drift in every order of length 4 — 5^4 = 625 sequences, all enumerated, none sampled."
+
+fn interleaving_alphabet() -> List<LifecycleEvent> {
+  [
+    RunPrCi { pr: pr_a },
+    RunPrCi { pr: pr_b },
+    MergePr { pr: pr_a },
+    MergePr { pr: pr_b },
+    RosterBump,
+  ]
+}
+
+fn window_4_sequences() -> List<List<LifecycleEvent>> {
+  event_sequences_of_length_4(alphabet: interleaving_alphabet())
+}
+
+test fn window_4_enumerates_all_625_sequences() -> Bool {
+  length(window_4_sequences()) == 625
+}
+
+test fn keyed_receipt_admits_no_unverified_tip_across_window_4() -> Bool {
+  count_unverified_admitting_sequences(policy: KeyedReceipt, seqs: window_4_sequences()) == 0
+}
+
+test fn per_pr_gate_only_admits_unverified_tips_in_window_4() -> Bool {
+  count_unverified_admitting_sequences(policy: PerPrGateOnly, seqs: window_4_sequences()) > 0
+}
+
+test fn require_up_to_date_base_misses_the_roster_axis_in_window_4() -> Bool {
+  count_unverified_admitting_sequences(policy: RequireUpToDateBase, seqs: window_4_sequences()) > 0
+}
+
+data policy_discrimination_note: String = "The three counts quantify gunbc.plans.branch_merge_admission_model section 4 over EVERY length-4 lifecycle instead of two authored scenarios: PerPrGateOnly (the live policy — GitHub strict flag false, no queue) admits unverified tips (the incident is one such sequence, and the positive count proves the enumerator can see violations — the discriminating control for the zero-count claim); RequireUpToDateBase (GitHub's strict boolean, tree axis only) still admits landing a tree verified under a superseded gate roster; KeyedReceipt admits zero across the whole window — green-stays-green as a bounded-exhaustive theorem, not a scenario."

@@ -1,6 +1,7 @@
 module extdeps.shell
 
 import std.types { FilePath, NonEmptyStr }
+import std.measure { ByteSize, byte_size }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -10,6 +11,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
   }
 }
+
+data extdeps_shell_argv_strlen_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "elixir.bootlin.com/linux/latest/source/include/uapi/linux/binfmts.h"
+  }
+}
+
+data shell_argv_max_arg_strlen: ByteSize = byte_size(131072)
 
 service shell.Find {
   operation ListDirs {

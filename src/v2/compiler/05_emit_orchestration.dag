@@ -498,7 +498,7 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<M
       orch_emit_if_step(cond: c, then_: t, else_: e, medium: medium)
     For { binder: _, over: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_for_unsupported))
-    While { cond: _, body: _, bound: _ } =>
+    While { cond: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_while_unsupported))
     Retry { body: b, escalations: e, on_exhausted: x } =>
       orch_emit_retry(body: b, escalations: e, on_exhausted: x, medium: medium)
@@ -514,7 +514,7 @@ fn orch_retry_step_command(s: PipelineStep) -> Optional<String> {
     Do { run: r } => Present { value: r.command }
     If { cond: _, then_: _, else_: _ } => Absent
     For { binder: _, over: _, body: _ } => Absent
-    While { cond: _, body: _, bound: _ } => Absent
+    While { cond: _, body: _ } => Absent
     Retry { body: _, escalations: _, on_exhausted: _ } => Absent
     Let { name: _, value: _ } => Absent
     Call { callee: _, args: _ } => Absent
