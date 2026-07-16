@@ -126,6 +126,10 @@ data locality_flow_a_wrong_footprint: OperandFlowRow = OperandFlow {
 
 data locality_flows_with_footprint_mismatch: List<OperandFlowRow> = [locality_flow_a_wrong_footprint, locality_flow_b]
 
+data locality_flows_duplicate_edge_single_consumer: List<OperandFlowRow> = [locality_flow_a, locality_flow_a]
+
+data locality_flows_duplicate_edge_two_consumers: List<OperandFlowRow> = [locality_flow_a, locality_flow_a, locality_flow_b]
+
 data locality_domain_id: DomainId = "locality-domain" as DomainId
 data locality_l1_id: LevelId = "l1" as LevelId
 data locality_l2_id: LevelId = "l2" as LevelId
@@ -232,6 +236,26 @@ fn witness_derive_affinity_refuses_footprint_mismatch() -> Bool {
   }
 }
 
+fn witness_derive_affinity_dedupes_consumers_from_duplicate_edges() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows_duplicate_edge_two_consumers, domain: locality_domain) {
+    AffinityClaim { operand: op, level: lvl, footprint: fp, consumers: cs } =>
+      op == locality_shared_hash
+        && lvl == locality_l2_id
+        && byte_size_count(b: fp) == 64
+        && length(xs: cs) == 2
+    AffinityRefused { operand: _, cause: _ } => false
+  }
+}
+
+fn witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consumer() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows_duplicate_edge_single_consumer, domain: locality_domain) {
+    AffinityRefused { operand: op, cause: AffinityInsufficientConsumers { operand: _ } } =>
+      op == locality_shared_hash
+    AffinityRefused { operand: _, cause: _ } => false
+    AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
+  }
+}
+
 fn witness_co_batch_prices_single_load() -> Bool {
   match price_operand_traffic(
     operand: locality_shared_hash,
@@ -297,6 +321,8 @@ test fn locality_affinity_witnesses() -> Bool {
     && witness_derive_affinity_refuses_unresolved_operand_edge()
     && witness_derive_affinity_refuses_operand_mismatch()
     && witness_derive_affinity_refuses_footprint_mismatch()
+    && witness_derive_affinity_dedupes_consumers_from_duplicate_edges()
+    && witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consumer()
     && witness_co_batch_prices_single_load()
     && witness_split_batch_prices_double_load()
     && witness_missing_batch_assignment_refuses_typed()

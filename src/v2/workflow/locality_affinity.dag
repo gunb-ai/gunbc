@@ -10,6 +10,14 @@ import v2.std.logic { Bool }
 import v2.std.node { content_hash }
 import v2.workflow.operand_flow { OperandFlow, OperandFlowRefused, OperandFlowRefusalCause, OperandFlowRow }
 
+fn list_contains_hash(xs: List<ContentHash>, v: ContentHash) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || (x == v) })
+}
+
+fn list_add_distinct_hash(xs: List<ContentHash>, v: ContentHash) -> List<ContentHash> {
+  if list_contains_hash(xs: xs, v: v) { xs } else { concat(xs, [v]) }
+}
+
 data locality_affinity_module_note: String = "Phase 3 of machine-shape-orthogonal-scheduling.md §5: affinity is derived topology, never a stored preference. derive_affinity groups a shared operand's OperandFlow rows against one ExecutionDomain's memory tower and claims the smallest level (walked outward per MemoryShape's ordering) whose capacity admits the whole footprint -- the operand's residency window. price_operand_traffic then prices a concrete batch assignment against that claim: consumers landing in the same batch cross the level boundary once (the operand stays resident across their execution, one TrafficAccountRow at footprint bytes); consumers split across batches each force a fresh crossing, so the double load is visible in the account's bytes, not merely asserted (§5 acceptance). Every refusal is typed and located (DESIGN §5): an unresolved operand edge, a footprint that fits no level in the tower, or a consumer missing from the batch assignment each refuse rather than default to a guessed placement -- no affinity claim and no priced account survive a refused input."
 
 type AffinityRefusalCause
@@ -40,7 +48,7 @@ fn affinity_collect_step(expected: ContentHash, acc: AffinityCollectAcc, row: Op
                 if measure_le(a: prior, b: f) && measure_le(a: f, b: prior) {
                   AffinityCollectOk {
                     footprint: fp,
-                    consumers: concat(cs, [content_hash(n: e.dependent)])
+                    consumers: list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))
                   }
                 } else {
                   AffinityCollectRefused {
@@ -50,7 +58,7 @@ fn affinity_collect_step(expected: ContentHash, acc: AffinityCollectAcc, row: Op
               Absent =>
                 AffinityCollectOk {
                   footprint: optional_present(value: f),
-                  consumers: concat(cs, [content_hash(n: e.dependent)])
+                  consumers: list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))
                 }
             }
           } else {
