@@ -19,7 +19,6 @@ import gunbc.live_deploy.spec {
   gunbc_roadmap_systemd_unit_path,
 }
 import gunbc.node_http_server_emit { roadmap_dashboard_node_http_server_source }
-import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -63,7 +62,6 @@ fn deployment_ensured_steps_from_spec(spec: DeploymentSpec) -> List<DeploymentEn
 }
 
 fn emit_apply_script_body(spec: DeploymentSpec) -> Doc {
-  let port = deployment_plan_listen_port(spec: spec)
   let dep_lines = map(
     deployment_ensured_steps_from_spec(spec: spec),
     d => doc_line_of(text: concat("ensure_apt_package ", sh_arg(s: d.package)))
@@ -107,8 +105,6 @@ fn emit_apply_script_body(spec: DeploymentSpec) -> Doc {
       doc_line_of(text: concat("if ! sudo -n tailscale serve status 2>/dev/null | grep -q ':", to_string(port), "'; then")),
       doc_line_of(text: concat("  sudo -n tailscale serve --bg ", to_string(port))),
       doc_line_of(text: "fi"),
-      doc_line_of(text: ""),
-      doc_line_of(text: roadmap_site_digest_readback_script(port: port)),
       doc_line_of(text: ""),
       doc_line_of(text: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=apply verdict=converged")),
     ]
@@ -196,4 +192,4 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
   }
 }
 
-data live_deploy_golden_freeze_note: String = "The apply/retract scripts rendered here are frozen as committed golden artifacts (gunbc.generated_artifact LiveDeployApplyScriptArtifact / LiveDeployRetractScriptArtifact, gated byte-for-byte in test.claim.live_deploy.emit) so live_deploy's current shell-emission behavior is provable (green by execution + a discriminating RED), killing the #6023-class self-referential drift check that compared expected_live_deploy_apply_script() to itself. This is a SCAFFOLD, not the end-state: live_deploy is RUNTIME-PRESENT (docs/plans/shell-emission-model.md Slice 3) and dissolves when heredoc file bodies become typed orchestration intent emitted via orch_emit. Transport-aware remote mutation service-op realization is OUT OF SCOPE for Slice 3 — live_deploy_remote_mutation_service_op_realization_dissolution_trigger. Dependency-graph topo-order emit deriving poll-wait from Node/Edge graph (alternative to required-field ServiceReadyGate lowering) is OUT OF SCOPE for Slice 3 — live_deploy_intent_dependency_graph_emit_dissolution_trigger binds v2.compiler.emit_orchestration.orch_emit_pipeline. Healthz readiness is on the DAG reconcile spine (live_deploy.readiness transport curl poll); apply script ships digest read-back only (no in-script healthz curl)."
+data live_deploy_golden_freeze_note: String = "The apply/retract scripts rendered here are frozen as committed golden artifacts (gunbc.generated_artifact LiveDeployApplyScriptArtifact / LiveDeployRetractScriptArtifact, gated byte-for-byte in test.claim.live_deploy.emit) so live_deploy's current shell-emission behavior is provable (green by execution + a discriminating RED), killing the #6023-class self-referential drift check that compared expected_live_deploy_apply_script() to itself. This is a SCAFFOLD, not the end-state: live_deploy is RUNTIME-PRESENT (docs/plans/shell-emission-model.md Slice 3) and dissolves when heredoc file bodies become typed orchestration intent emitted via orch_emit. Transport-aware remote mutation service-op realization is OUT OF SCOPE for Slice 3 — live_deploy_remote_mutation_service_op_realization_dissolution_trigger. Dependency-graph topo-order emit deriving poll-wait from Node/Edge graph (alternative to required-field ServiceReadyGate lowering) is OUT OF SCOPE for Slice 3 — live_deploy_intent_dependency_graph_emit_dissolution_trigger binds v2.compiler.emit_orchestration.orch_emit_pipeline. Healthz readiness and digest read-back run on the DAG reconcile spine after mutation (live_deploy.readiness transport curl poll with per-probe --connect-timeout/--max-time, then live_deploy.apply digest read-back); apply script ships mutation only (no in-script curl read-back)."

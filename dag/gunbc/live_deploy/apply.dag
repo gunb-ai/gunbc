@@ -4,7 +4,9 @@ import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentEnsuredStep,
   deployment_spec_srv1,
+  deployment_plan_listen_port,
 }
+import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
 import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
@@ -170,21 +172,60 @@ fn live_deploy_apply_readiness_gate_with_readiness(
   }
 }
 
+fn live_deploy_apply_digest_readback_via_transport(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport,
+  access: DeployAccess,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold(
+    spec: spec,
+    script: roadmap_site_digest_readback_script(port: deployment_plan_listen_port(spec: spec)),
+    transport: transport,
+    access: access,
+    fixture_actor: Absent,
+    fixture_host: Absent
+  )
+}
+
 fn live_deploy_apply_via_transport(
   spec: DeploymentSpec,
   transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_apply_readiness_gate(
+  let mutation = live_deploy_apply_mutation_via_transport(
     spec: spec,
     transport: transport,
     access: access,
-    mutation: live_deploy_apply_mutation_via_transport(
+  )
+  let gated = live_deploy_apply_readiness_gate(
+    spec: spec,
+    transport: transport,
+    access: access,
+    mutation: mutation,
+  )
+  if !reconciliation_converged(r: gated) {
+    gated
+  } else {
+    let digest = live_deploy_apply_digest_readback_via_transport(
       spec: spec,
       transport: transport,
       access: access,
-    ),
-  )
+    )
+    if reconciliation_converged(r: digest) {
+      gated
+    } else {
+      match digest {
+        NotConverged { reason: why, applied: _ } =>
+          match gated {
+            Converged { evidence: _, applied: intent } =>
+              NotConverged { reason: why, applied: intent }
+            NotConverged { reason: _, applied: intent } =>
+              NotConverged { reason: why, applied: intent }
+          }
+        Converged { evidence: _, applied: _ } => gated
+      }
+    }
+  }
 }
 
 fn live_deploy_retract_via_transport(

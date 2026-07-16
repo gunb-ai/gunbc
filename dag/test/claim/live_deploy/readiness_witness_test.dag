@@ -82,8 +82,22 @@ fn witness_transport_probe_script_targets_localhost_healthz() -> Bool {
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let script = live_deploy_healthz_probe_script_for_port(port: port)
   string_contains(s: script, pattern: "curl -sf")
+    && string_contains(s: script, pattern: "--connect-timeout")
+    && string_contains(s: script, pattern: "--max-time")
     && string_contains(s: script, pattern: "127.0.0.1:")
     && string_contains(s: script, pattern: "/healthz")
+}
+
+fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
+  match ground_service_ready_from_healthz(
+    read: HealthzEffectiveRead {
+      body: "",
+      probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
+    }
+  ) {
+    DoesNotGround { reason: _ } => true
+    Grounds { evidence: _ } => false
+  }
 }
 
 fn witness_transport_curl_probe_over_ssh_does_not_ground_mock_stdout() -> Bool {
@@ -198,6 +212,7 @@ test fn live_deploy_readiness_witnesses() -> Bool {
     && witness_healthz_bad_body_not_groundable()
     && witness_ssh_mock_stdout_is_discriminating_red()
     && witness_transport_probe_script_targets_localhost_healthz()
+    && witness_accept_no_response_probe_fails_fast_not_hangs()
     && witness_transport_curl_probe_over_ssh_does_not_ground_mock_stdout()
     && witness_service_ready_once_converges_on_healthy_fixture()
     && witness_reconcile_grounds_healthy_fixture_read()

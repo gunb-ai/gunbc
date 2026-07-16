@@ -146,15 +146,13 @@ fn witness_apply_script_serves_roadmap_page() -> Bool {
     && !string_contains(s: sh, pattern: ">Browse<")
 }
 
-fn witness_apply_script_includes_digest_readback_without_healthz() -> Bool {
+fn witness_apply_script_excludes_readback_curls() -> Bool {
   let sh = expected_live_deploy_apply_script()
-  string_contains(s: sh, pattern: roadmap_site_roadmap_url_path)
-    && string_contains(s: sh, pattern: roadmap_site_dispatch_url_path)
-    && string_contains(s: sh, pattern: "roadmap-site-readback")
-    && string_contains(s: sh, pattern: "roadmap-site-receipt")
-    && string_contains(s: sh, pattern: "dispatch json parse failed")
-    && !string_contains(s: sh, pattern: "healthz json parse failed")
+  !string_contains(s: sh, pattern: "roadmap-site-readback")
+    && !string_contains(s: sh, pattern: "roadmap-site-receipt")
+    && !string_contains(s: sh, pattern: "dispatch json parse failed")
     && !string_contains(s: sh, pattern: "curl -sf 'http://127.0.0.1:8080/healthz'")
+    && !string_contains(s: sh, pattern: "--connect-timeout")
 }
 
 fn witness_retract_owned_process_removes_static_site_server() -> Bool {
@@ -253,7 +251,7 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_retract_script_owned_only()
     && witness_apply_script_contains_node_server()
     && witness_apply_script_serves_roadmap_page()
-    && witness_apply_script_includes_digest_readback_without_healthz()
+    && witness_apply_script_excludes_readback_curls()
     && witness_retract_owned_process_removes_static_site_server()
     && witness_static_site_routes_in_dashboard_route_table()
     && witness_static_site_paths_only_in_retracted_server()

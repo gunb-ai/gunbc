@@ -42,6 +42,10 @@ data live_deploy_service_ready_poll_bound: Second = live_deploy_roadmap_unit_exp
 
 data live_deploy_service_ready_poll_cadence: Second = second(count: 1)
 
+data live_deploy_health_probe_connect_timeout: Second = second(count: 2)
+
+data live_deploy_health_probe_max_time: Second = second(count: 5)
+
 data live_deploy_host_sleep_generalization_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
