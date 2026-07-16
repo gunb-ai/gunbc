@@ -4031,9 +4031,22 @@ fn build_corpus_global_bare_census_from_index(
 ///
 /// This is NOT "may this module's references CONSUME the census?" (Q2). Q2 is total
 /// and has no predicate — see the `typecheck_module` call in the reconcile loop, which
-/// passes `global_bare.clone()` unconditionally.
+/// passes `global_bare.clone()` unconditionally. Conflating the two was the wiring bug:
+/// one predicate answered both, so `src/v2/std` homonym modules typechecked against an
+/// EMPTY census and every bare reference in them failed, while the names they referenced
+/// sat in that same census marked unique (the ~9.3k "name not found" on #6640).
+///
+/// The homonym exclusions this predicate used to carry (a `src/v2/std` basename list and
+/// the `dag/extdeps/docker/container_stats.dag` special-case) are removed by operator
+/// ruling (2026-07-16, option A). When `dag/std/algebra.dag` and `src/v2/std/algebra.dag`
+/// both contribute, their shared keys go `GlobalBareAmbiguousBinding` and bare lookup
+/// REFUSES (§5) rather than binding to whichever tree a list happened to favour. Hiding
+/// one authority so the other silently wins is overlay-wins — the fork
+/// `binding_forks_channel_note` exists to surface, not a resolution of it.
 pub fn census_module_contributes_declarations(path: &str) -> bool {
     let p = path.replace('\\', "/");
+    // Non-test `dag/**` is the stripped namespace authority surface; `src/v2/**` peers it.
+    // `src/v2/std/algebra.dag` has no `dag/` segment — the extension is not a directory.
     if p.contains("dag/") && !p.contains("dag/test/") {
         return true;
     }
@@ -5410,6 +5423,8 @@ fn reconcile_with_typed_cache(
     index: &MultiEntryIndex,
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
+    let global_bare_variant_locals =
+        v1_compiler_infer::build_global_bare_variant_locals(global_bare.clone(), source_indices.clone());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
@@ -5505,7 +5520,14 @@ fn reconcile_with_typed_cache(
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        // Q2 "may this module CONSUME the census?" is TOTAL — no predicate.
+                        // Withholding the census is not a conservative fallback: the strip
+                        // removed this module's imports, so an empty map leaves it unable to
+                        // resolve anything (§5 — refuse loudly, never hand back a plausible
+                        // nothing). Q1 (which declarations FEED the census) is separate, and
+                        // is answered by `census_module_contributes_declarations`.
                         global_bare.clone(),
+                        global_bare_variant_locals.clone(),
                         symbol_index.clone(),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
