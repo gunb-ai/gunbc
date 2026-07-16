@@ -897,6 +897,119 @@ mod process_workspace_root_tests {
         }
     }
 
+    /// Census-state partition for top-50 histogram names (quiet-gull-833 keystone).
+    /// Uses cli_run census authority (same as compile-clean gate).
+    #[test]
+    fn census_state_partition_top50_histogram_names() {
+        let roots = super::witness_layer_roots();
+        let index = super::build_multi_entry_index(&roots);
+        let (census, _, _) =
+            super::build_corpus_global_bare_census_from_index(&index).expect("census build");
+        use crate::v1_compiler_infer_env::GlobalBareLookupState::{
+            GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
+        };
+
+        // (histogram_class, bare_name, diag_count, shape) — top 50 from N=9342 run.
+        // Shapes: S1=brand/refinement alias, S2=disj/record type name, S3=disj variant,
+        // S4=fn params+body, S4b=fn nullary+body, S5=ambiguous homonym, S6=builtin,
+        // S7=data decl, S8=other (resource/transport/imported).
+        let top50: [(&str, &str, usize, &str); 50] = [
+            ("UnresolvedType", "LiveTreeDisposition", 236, "S2"),
+            ("InternalError", "cell", 234, "S5"),
+            ("InternalError", "SubstrateInputsOnly", 230, "S3"),
+            ("InternalError", "byte_size", 146, "S4"),
+            ("InternalError", "byte_size_count", 122, "S4"),
+            ("UnresolvedType", "NonEmptyStr", 105, "S1"),
+            ("InternalError", "row", 74, "S4"),
+            ("InternalError", "li", 69, "S4"),
+            ("InternalError", "fold", 53, "S6"),
+            ("InternalError", "commonmark_gfm_spellings", 53, "S7"),
+            ("InternalError", "p", 50, "S4"),
+            ("InternalError", "ci_deploy_srv1_access", 46, "S7"),
+            ("UnresolvedType", "TextInline", 46, "S3"),
+            ("UnresolvedType", "ContentHash", 42, "S1"),
+            ("InternalError", "LocalShell", 34, "S3"),
+            ("UnresolvedType", "CapEffective", 29, "S3"),
+            ("UnresolvedType", "ParagraphBlock", 29, "S3"),
+            ("InternalError", "operator_host_srv1", 28, "S7"),
+            ("InternalError", "srv3_os_install_attempt_intent", 28, "S7"),
+            ("UnresolvedType", "OomdEffectiveRead", 28, "S2"),
+            ("UnresolvedType", "ElementNode", 27, "S3"),
+            ("InternalError", "parse_path_template", 26, "S4"),
+            ("UnresolvedType", "Frame", 26, "S2"),
+            ("InternalError", "host_effect_apply", 25, "S4"),
+            ("InternalError", "ExitSuccess", 25, "S3"),
+            ("InternalError", "shell", 25, "S3"),
+            ("UnresolvedType", "MarkdownDocument", 25, "S2"),
+            ("InternalError", "artifact_is_committed", 24, "S4"),
+            ("InternalError", "Filesystem", 24, "S2"),
+            ("InternalError", "host_effect_identity_evidence", 24, "S7"),
+            ("UnresolvedType", "Network", 24, "S8"),
+            ("UnresolvedType", "TextNode", 24, "S3"),
+            ("InternalError", "no_cost_floor_exemptions", 22, "S7"),
+            ("InternalError", "h2", 20, "S4"),
+            ("InternalError", "hardware_thread_count", 20, "S4"),
+            ("InternalError", "watt", 20, "S4"),
+            ("InternalError", "render", 19, "S4"),
+            ("InternalError", "list_length", 18, "S4"),
+            ("InternalError", "Success", 18, "S3"),
+            ("InternalError", "current_gate_roster_hash", 18, "S7"),
+            ("UnresolvedType", "MarkupNode", 18, "S2"),
+            ("UnresolvedType", "ShellCommand", 18, "S3"),
+            ("InternalError", "expected_ci_yml", 17, "S4b"),
+            ("InternalError", "kv", 17, "S4"),
+            ("InternalError", "Open", 17, "S3"),
+            ("InternalError", "POST", 17, "S3"),
+            ("InternalError", "operator_host_srv3", 17, "S7"),
+            ("InternalError", "srv3_seeded_install_media_content_hash", 17, "S7"),
+            ("UnresolvedType", "MarkupAttr", 17, "S2"),
+            ("InternalError", "path_is_ignored", 16, "S4"),
+        ];
+
+        let mut cross: std::collections::BTreeMap<(String, String), (usize, usize)> =
+            std::collections::BTreeMap::new();
+
+        eprintln!("PARTITION\tclass\tbare_name\tdiag_count\tcensus_state\tshape\tbucket");
+        for (class, bare, count, shape) in top50 {
+            let state = match census.get(bare).map(|s| s.as_ref()) {
+                None => "ABSENT",
+                Some(GlobalBareUniqueBinding { .. }) => "UNIQUE",
+                Some(GlobalBareAmbiguousBinding) => "AMBIGUOUS",
+            };
+            let bucket = match state {
+                "UNIQUE" => "(a) unique-yet-reds",
+                "ABSENT" => "(b) absent-from-census",
+                "AMBIGUOUS" => "(c) ambiguous",
+                _ => "unknown",
+            };
+            eprintln!("PARTITION\t{class}\t{bare}\t{count}\t{state}\t{shape}\t{bucket}");
+            let entry = cross
+                .entry((state.to_string(), shape.to_string()))
+                .or_insert((0, 0));
+            entry.0 += 1;
+            entry.1 += count;
+        }
+
+        let top50_diag: usize = top50.iter().map(|(_, _, c, _)| c).sum();
+        eprintln!("PARTITION_SUMMARY\ttop50_diag_total\t{top50_diag}");
+        eprintln!("CROSSTAB\tcensus_state\tshape\tnames\tdiag_sum");
+        for ((state, shape), (names, diag)) in &cross {
+            eprintln!("CROSSTAB\t{state}\t{shape}\t{names}\t{diag}");
+        }
+
+        // Highlight the cell parent flagged: Absent x S4 (fn-with-params-and-body).
+        let absent_s4: usize = top50
+            .iter()
+            .filter(|(_, bare, _, shape)| *shape == "S4" && census.get(bare).is_none())
+            .map(|(_, _, c, _)| c)
+            .sum();
+        let absent_s4_names: usize = top50
+            .iter()
+            .filter(|(_, bare, _, shape)| *shape == "S4" && census.get(bare).is_none())
+            .count();
+        eprintln!("PARTITION_HIGHLIGHT\tAbsent_x_S4_fn_body\tnames\t{absent_s4_names}\tdiag_sum\t{absent_s4}");
+    }
+
     #[test]
     fn repo_relative_path_normalized_reanchors_baked_absolute_file() {
         let ws = process_workspace_root();
@@ -16113,18 +16226,6 @@ mod witness_layer_roots_compile_clean_tests {
             if witness_layer_roots_compile_clean_emit_check() {
                 assert!(witness_layer_roots_compile_clean_check());
             }
-        });
-    }
-
-    /// Ephemeral receipt probe; delete after measurement.
-    #[test]
-    fn probe_compile_clean_n_receipt() {
-        with_env_test_lock(|| {
-            with_workspace_cwd(|| {
-                let _ga = EnvGuard::remove("GITHUB_ACTIONS");
-                let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
-                witness_layer_roots_compile_clean_check();
-            });
         });
     }
 
