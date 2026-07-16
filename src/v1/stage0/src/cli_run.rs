@@ -945,8 +945,9 @@ pub(crate) const CLI_RUN_GLOBAL_BARE_WIRING_ORACLE_SCAFFOLD_MARKER: &str =
 #[cfg(test)]
 mod global_bare_wiring_oracle_tests {
     use super::{
-        anchor_source_root, build_corpus_global_bare_census_from_index, build_module_graph_facts_live,
-        build_module_index_primary_precedence, build_multi_entry_index, census_module_path_included,
+        anchor_source_root, build_corpus_global_bare_census_from_index,
+        build_module_graph_facts_live, build_module_index_primary_precedence,
+        build_multi_entry_index, census_module_path_included,
         compile_clean_diagnostic_histogram_key, compile_clean_diagnostic_is_hard,
         disable_floor_compile_clean_lazy_install_for_test, load_compile_clean_entry_sources,
         merge_source_indices, reconcile_with_typed_cache, set_census_eval_overlay,
@@ -956,10 +957,16 @@ mod global_bare_wiring_oracle_tests {
     use std::collections::BTreeMap;
     use std::rc::Rc;
 
-    fn hard_diag_stats(result: &v1_compiler_compile::ResolvedPipelineResult) -> (usize, BTreeMap<String, usize>) {
+    fn hard_diag_stats(
+        result: &v1_compiler_compile::ResolvedPipelineResult,
+    ) -> (usize, BTreeMap<String, usize>) {
         let mut by_class = BTreeMap::new();
         let mut total = 0usize;
-        for d in result.diagnostics.iter().filter(|d| compile_clean_diagnostic_is_hard(d)) {
+        for d in result
+            .diagnostics
+            .iter()
+            .filter(|d| compile_clean_diagnostic_is_hard(d))
+        {
             total += 1;
             let (class, _) = compile_clean_diagnostic_histogram_key(d);
             *by_class.entry(class).or_default() += 1;
@@ -990,12 +997,8 @@ mod global_bare_wiring_oracle_tests {
             .collect();
         let index_module = build_module_index_primary_precedence(&anchored_roots);
         let facts = build_module_graph_facts_live(&anchored_roots);
-        let sources = load_compile_clean_entry_sources(
-            &anchored_roots,
-            &index_module,
-            &facts,
-            None,
-        )?;
+        let sources =
+            load_compile_clean_entry_sources(&anchored_roots, &index_module, &facts, None)?;
         let sources_rc: Rc<im_rc::Vector<Rc<v1_compiler_compile::SourceFile>>> =
             Rc::new(sources.into());
         let frontend = v1_compiler_compile::front_end_sources(sources_rc.clone());
@@ -1003,14 +1006,16 @@ mod global_bare_wiring_oracle_tests {
         let graph = match frontend.graph.clone() {
             Some(g) => g,
             None => {
-                return Ok(hard_diag_stats(&v1_compiler_compile::ResolvedPipelineResult {
-                    graph: None,
-                    diagnostics: frontend.diagnostics.clone(),
-                    source_indices: v1_rt::rc_empty_map(),
-                    complexity: v1_compiler_compile::empty_complexity_report(),
-                    ownership: Rc::new(im_rc::Vector::new()),
-                    newline_indices: newline_indices.clone(),
-                }));
+                return Ok(hard_diag_stats(
+                    &v1_compiler_compile::ResolvedPipelineResult {
+                        graph: None,
+                        diagnostics: frontend.diagnostics.clone(),
+                        source_indices: v1_rt::rc_empty_map(),
+                        complexity: v1_compiler_compile::empty_complexity_report(),
+                        ownership: Rc::new(im_rc::Vector::new()),
+                        newline_indices: newline_indices.clone(),
+                    },
+                ));
             }
         };
         let source_indices = newline_indices.iter().cloned().fold(
@@ -1046,11 +1051,19 @@ mod global_bare_wiring_oracle_tests {
     #[test]
     fn census_module_path_included_gate_probes() {
         assert!(census_module_path_included("dag/std/types.dag"));
-        assert!(census_module_path_included("dag/gunbc/workflow_escalation.dag"));
-        assert!(census_module_path_included("dag/gunbc/fleet_posix_accounts.dag"));
+        assert!(census_module_path_included(
+            "dag/gunbc/workflow_escalation.dag"
+        ));
+        assert!(census_module_path_included(
+            "dag/gunbc/fleet_posix_accounts.dag"
+        ));
         assert!(census_module_path_included("src/v2/compiler/04_infer.dag"));
-        assert!(!census_module_path_included("dag/test/claim/parse_test.dag"));
-        assert!(!census_module_path_included("dag/extdeps/docker/container_stats.dag"));
+        assert!(!census_module_path_included(
+            "dag/test/claim/parse_test.dag"
+        ));
+        assert!(!census_module_path_included(
+            "dag/extdeps/docker/container_stats.dag"
+        ));
     }
 
     /// Characterizes the §3 conflation defect (quiet-gull-833 msg_a06c5010): one predicate
@@ -1081,13 +1094,9 @@ mod global_bare_wiring_oracle_tests {
             .collect();
         let index_module = build_module_index_primary_precedence(&anchored_roots);
         let facts = build_module_graph_facts_live(&anchored_roots);
-        let sources = load_compile_clean_entry_sources(
-            &anchored_roots,
-            &index_module,
-            &facts,
-            None,
-        )
-        .expect("whole-tree entry closure sources");
+        let sources =
+            load_compile_clean_entry_sources(&anchored_roots, &index_module, &facts, None)
+                .expect("whole-tree entry closure sources");
 
         let mut gate_false = 0usize;
         for sf in &sources {
@@ -1097,7 +1106,10 @@ mod global_bare_wiring_oracle_tests {
                 eprintln!("GATE_FALSE\t{rel}");
             }
         }
-        eprintln!("GATE_SUMMARY\twhole_tree_modules\t{}\tgate_false\t{gate_false}", sources.len());
+        eprintln!(
+            "GATE_SUMMARY\twhole_tree_modules\t{}\tgate_false\t{gate_false}",
+            sources.len()
+        );
         assert!(
             census_module_path_included("dag/std/types.dag"),
             "probe dag/std/types.dag must pass gate"
@@ -1120,8 +1132,8 @@ mod global_bare_wiring_oracle_tests {
         let index = build_multi_entry_index(&roots);
 
         // Establish typed cache (normal whole-tree pass).
-        let (n_first, class_first) = whole_tree_on_shared_index(&index, true, false)
-            .expect("first pass");
+        let (n_first, class_first) =
+            whole_tree_on_shared_index(&index, true, false).expect("first pass");
         eprintln!("PURITY_ORACLE\tpass=first_clear\tN={n_first}");
         for (class, count) in &class_first {
             eprintln!("PURITY_CLASS\tfirst\t{class}\t{count}");
