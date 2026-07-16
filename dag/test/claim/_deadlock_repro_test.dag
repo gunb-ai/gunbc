@@ -1,0 +1,16 @@
+module test.claim._deadlock_repro
+
+import std.types { Int }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.filesystem.filesystem_io
+import extdeps.shell
+
+fn main() -> ProcessExit {
+  let r = filesystem_read(path: "dag/test/claim/_deadlock_big_script.sh")
+  let result = shell.Exec.Run(script: r.content)
+  if result.success {
+    ExitSuccess {}
+  } else {
+    ExitFailure { code: 1, reason: result.stderr }
+  }
+}
