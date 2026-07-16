@@ -20,7 +20,11 @@ import gunbc.live_deploy.emit {
   expected_live_deploy_retract_script,
   live_deploy_systemd_unit_for,
   deployment_ensure_dependency_script,
+  live_deploy_emit_shell_dissolution_trigger,
+  live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
 }
+import std.disposition { Scaffold, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.generated_artifact {
   LiveDeployApplyScriptArtifact,
   LiveDeployRetractScriptArtifact,
@@ -189,6 +193,25 @@ fn witness_systemd_unit_emitted() -> Bool {
     && string_contains(s: unit, pattern: "Environment=PORT=8080")
 }
 
+fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis() -> Bool {
+  match live_deploy_remote_mutation_service_op_realization_dissolution_trigger {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+    } =>
+      m == "gunbc.live_deploy.emit"
+        && n == "live_deploy_emit_shell_dissolution_trigger"
+    Terminal { reason: _ } => false
+  }
+}
+
+fn witness_emit_shell_dissolution_trigger_is_scaffold() -> Bool {
+  match live_deploy_emit_shell_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
 fn witness_apply_script_matches_committed_golden() -> Bool {
   let r = Filesystem.Read(path: artifact_path(a: LiveDeployApplyScriptArtifact))
   r.success
@@ -223,4 +246,6 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_systemd_unit_emitted()
     && witness_apply_script_matches_committed_golden()
     && witness_retract_script_matches_committed_golden()
+    && witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis()
+    && witness_emit_shell_dissolution_trigger_is_scaffold()
 }
