@@ -71,9 +71,13 @@ fn main() {
 
     let probe = "fn add(x:Int, y:Int) -> Int { x + y }";
     let e_text = free_monoid_from_str(probe);
-    let e_lossless = emitted::lossless_source(e_text.clone());
+    let e_lossless = if inject_fault {
+        emitted::source_medium(e_text.clone(), EDecodeFidelity::Lossy)
+    } else {
+        emitted::lossless_source(e_text.clone())
+    };
     let s_lossless = seed::lossless_source(probe.to_string());
-    let lossless_ok = medium_text_eq_emitted_seed(&e_lossless, &s_lossless) && !inject_fault;
+    let lossless_ok = medium_text_eq_emitted_seed(&e_lossless, &s_lossless);
     println!(
         "lossless_source probe={probe:?} eq={lossless_ok} fidelity emitted={:?} seed={:?}",
         e_lossless.fidelity, s_lossless.fidelity
