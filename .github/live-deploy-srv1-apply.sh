@@ -310,4 +310,3 @@ echo roadmap-site-receipt host=srv1 port=8080 url=http://127.0.0.1:8080/healthz 
 
 
 echo live-deploy-receipt host=srv1 fold=apply verdict=converged
-
