@@ -49,7 +49,7 @@ import gunbc.host_effect {
   ConvergePlanApplied,
 }
 import gunbc.host_effect_realize { host_effect_apply_gated }
-import extdeps.tools.sleep
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 
 type ServiceReadyEvidence {
   body: String

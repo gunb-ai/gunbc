@@ -1,6 +1,9 @@
 module extdeps.tools.sleep
 
 import std.types { NonEmptyStr, Bool }
+import std.measure { Second, second_count }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
@@ -16,6 +19,19 @@ data sleep_cli_tool: CliTool = CliTool {
   name: "sleep",
   min_version: none,
   installable_via: [SourceCoreutils],
+}
+
+data sleep_delay_seconds_flat_scalar_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.tools.sleep",
+    decl_name: "sleep_delay_seconds_second_carrier_projection",
+    field: WholeDeclaration,
+  }
+}
+
+fn sleep_delay_seconds_second_carrier_projection(duration: Second) -> Bool {
+  sleep.Delay.Seconds(seconds: to_string(second_count(s: duration)) as NonEmptyStr).success
 }
 
 service sleep.Delay {
