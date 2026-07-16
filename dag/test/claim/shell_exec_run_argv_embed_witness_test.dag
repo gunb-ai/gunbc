@@ -5,7 +5,7 @@ import std.measure { byte_size_count }
 import gunbc.live_deploy.emit { live_deploy_apply_script_for }
 import gunbc.live_deploy.spec { deployment_spec_srv1 }
 import extdeps.filesystem.filesystem_io
-import extdeps.shell { shell_argv_max_arg_strlen }
+import extdeps.os.exec_arg_limit { host_exec_arg_max_strlen }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -19,7 +19,7 @@ fn src_has(path: String, needle: String) -> Bool {
 
 fn witness_apply_script_exceeds_local_argv_embed_budget() -> Bool {
   let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1()))
-  let budget = byte_size_count(b: shell_argv_max_arg_strlen)
+  let budget = byte_size_count(b: host_exec_arg_max_strlen)
   script_len > budget
 }
 
