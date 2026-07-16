@@ -251,11 +251,13 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
-          # Affected-set-scoped regen admission: regen_floor_skip_witness intersects the merge-base diff with the [src/v1, dag] regen input closure (shared authority cli_run::regen_input_sources — the exact set regen_stage0 compiles; both the RegenVerifyGate and the SelfHostStalenessGate invoke regen_stage0, so the closure covers both). A diff touching none of src/v1/** (emitter source + committed stage0 outputs), v1's transitive dag import-closure, or the Cargo manifest cannot change the self-host fixed-point, so the regen step exits 0 (a required step that passes because regen is provably not stale — no floor disposition needed; merge-admission ran before this trailing step). Empty diff / diff failure / closure failure runs regen (fail-closed). The cold control is unconditional: main pushes and the 4-hourly falsifier run regen with no diff scoping, so a wrong closure surfaces as a counted divergence within one cadence window (the discovery-flip acceptance shape, operator 2026-07-09).
-          _ci_regen_skip=$("$ROOT/target/release/regen_floor_skip_witness" 2>/dev/null || echo run_regen)
-          if [ "$_ci_regen_skip" = "regen_not_affected_skip" ]; then
-              echo "gunbc ci regen: diff does not intersect the [src/v1, dag] regen input closure — self-host fixed-point provably unchanged; skipping (main + 4-hourly falsifier run regen cold as the control)"
-              exit 0
+          # Affected-set-scoped regen admission (pull_request only): on a pull_request event, regen_floor_skip_witness intersects the merge-base diff with the [src/v1, dag] regen input closure (shared authority cli_run::regen_input_sources — the exact set regen_stage0 compiles; both the RegenVerifyGate and the SelfHostStalenessGate invoke regen_stage0, so the closure covers both). A PR diff touching none of src/v1/** (emitter source + committed stage0 outputs), v1's transitive dag import-closure, or the Cargo/toolchain build config cannot change the self-host fixed-point, so the regen step exits 0 (a required step that passes because regen is provably not stale — merge-admission ran before this trailing step). Empty diff / diff failure / closure failure runs regen (fail-closed). COLD CONTROL: the skip is gated to pull_request events via GITHUB_EVENT_NAME, so push-to-main and workflow_dispatch run regen UNCONDITIONALLY (no witness). A wrong closure that lets a PR wrongly skip therefore surfaces as a counted divergence on the very next merge to main — the squash-merge main-push run has an empty diff and runs regen cold, reding main if the seed is stale (a one-merge acceptance window, the discovery-flip shape). The 4-hourly falsifier does NOT run regen_stage0; the unconditional main-push regen is the cold control.
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            _ci_regen_skip=$("$ROOT/target/release/regen_floor_skip_witness" 2>/dev/null || echo run_regen)
+            if [ "$_ci_regen_skip" = "regen_not_affected_skip" ]; then
+                echo "gunbc ci regen: pull_request diff does not intersect the [src/v1, dag] regen input closure — self-host fixed-point provably unchanged; skipping (push-to-main runs regen unconditionally as the cold control)"
+                exit 0
+            fi
           fi
           "$ROOT/target/release/claim_executor" --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_regen_floor_batches --notice-title "self-host fixed-point (regen + staleness) — required; folded into ci job"
         timeout-minutes: 270

@@ -481,7 +481,7 @@ fn ci_regen_floor_skip_shortcut_script() -> String {
   concat(
     concat("# ", concat(ci_regen_floor_skip_policy_note, "\n")),
     concat(
-      "if [ \"${GITHUB_EVENT_NAME:-}\" = \"pull_request\" ]; then\n",
+      "if [ \"$GITHUB_EVENT_NAME\" = \"pull_request\" ]; then\n",
       concat(
         concat(
           concat("  _ci_regen_skip=$(", concat(artifact_shell_path(name: regen_floor_skip_witness_bin), " 2>/dev/null || echo run_regen)")),
