@@ -13449,6 +13449,143 @@ pub fn reference_resolution_facts(
     edges
 }
 
+/// Reachability stats for bare references to one declared export name (namespace homonym triage).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BareRefReachability {
+    /// Nearest-wins ties among declarers (AmbiguousBare — needs qualification).
+    pub ambiguous_sites: usize,
+    /// Unique nearest declarer shares zero module-path prefix with the referrer (disjoint subtree).
+    pub cross_subtree_unique_sites: usize,
+}
+
+/// Count bare-reference reachability for `name` using the same nearest-wins producer as
+/// `reference_resolution_facts` (import-less files only).
+pub fn bare_ref_reachability_for_name(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+    name: &str,
+) -> BareRefReachability {
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let abs_importer_roots = pool_roots_abs(importer_roots);
+    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
+    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
+        HashMap::new();
+    for root in &abs_pool_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            let content = match std::fs::read_to_string(&file) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let module_name = match extract_module_path(&content) {
+                Some(m) => m,
+                None => continue,
+            };
+            let tree = match parse_module_node_tolerant(&rel, &content) {
+                Some(t) => t,
+                None => continue,
+            };
+            let has_imports = !extract_import_paths(&content).is_empty();
+            if seen_modules.insert(module_name.clone()) {
+                module_names.insert(module_name.clone());
+                for decl_name in collect_module_decl_names(&tree) {
+                    decl_index
+                        .entry(decl_name)
+                        .or_default()
+                        .insert(module_name.clone());
+                }
+            }
+            pool_trees
+                .entry(rel)
+                .or_insert((module_name, tree, has_imports));
+        }
+    }
+
+    let mut stats = BareRefReachability::default();
+    for root in &abs_importer_roots {
+        let root_path = Path::new(root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files: Vec<PathBuf> = Vec::new();
+        collect_dag_files_tolerant(root_path, &mut files);
+        files.sort();
+        for file in files {
+            let rel = rel_path_for_layer_import(&file);
+            if is_excluded_import_path(&rel, exclude_substrings) {
+                continue;
+            }
+            let (self_module, tree) = match pool_trees.get(&rel) {
+                Some((_, _, true)) => continue,
+                Some((m, t, false)) => (m.clone(), t.clone()),
+                None => {
+                    let content = match std::fs::read_to_string(&file) {
+                        Ok(c) => c,
+                        Err(_) => continue,
+                    };
+                    if !extract_import_paths(&content).is_empty() {
+                        continue;
+                    }
+                    let module_name = match extract_module_path(&content) {
+                        Some(m) => m,
+                        None => continue,
+                    };
+                    match parse_module_node_tolerant(&rel, &content) {
+                        Some(t) => (module_name, t),
+                        None => continue,
+                    }
+                }
+            };
+            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
+            let mut chains: Vec<Vec<String>> = Vec::new();
+            for item in tree.children.iter() {
+                collect_node_refs(item, &mut bare, &mut chains);
+            }
+            if !bare.contains(name) {
+                continue;
+            }
+            let Some(mods) = decl_index.get(name) else {
+                continue;
+            };
+            if mods.contains(&self_module) {
+                continue;
+            }
+            let mut best_len = 0usize;
+            let mut winners: Vec<&String> = Vec::new();
+            for m in mods.iter() {
+                let shared = module_prefix_shared_len(&self_module, m);
+                if winners.is_empty() || shared > best_len {
+                    best_len = shared;
+                    winners.clear();
+                    winners.push(m);
+                } else if shared == best_len {
+                    winners.push(m);
+                }
+            }
+            match winners.len() {
+                0 => {}
+                1 => {
+                    if module_prefix_shared_len(&self_module, winners[0]) == 0 {
+                        stats.cross_subtree_unique_sites += 1;
+                    }
+                }
+                _ => stats.ambiguous_sites += 1,
+            }
+        }
+    }
+    stats
+}
+
 #[cfg(test)]
 mod reference_edge_producer_tests {
     use super::reference_resolution_facts;
