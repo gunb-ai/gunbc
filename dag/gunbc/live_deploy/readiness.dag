@@ -1,0 +1,91 @@
+module gunbc.live_deploy.readiness
+
+import std.types { List, Bool, Int }
+import gunbc.live_deploy.spec {
+  EnsuredDependencyKind,
+  OwnedArtifactKind,
+  TailscalePackage,
+  NodeJsPackage,
+  ServerScript,
+  SystemdUnit,
+  TailscaleServeMapping,
+}
+
+type DeploymentStepKey
+  = StepEnsuredTailscale
+  | StepEnsuredNodeJs
+  | StepOwnedServerScript
+  | StepOwnedSystemdUnit
+  | StepOwnedTailscaleServe
+  | StepDeployReadback
+
+type DeploymentReadinessEdge {
+  dependent: DeploymentStepKey
+  prerequisite: DeploymentStepKey
+}
+
+fn deployment_step_key_for_ensured(kind: EnsuredDependencyKind) -> DeploymentStepKey {
+  match kind {
+    TailscalePackage => StepEnsuredTailscale
+    NodeJsPackage => StepEnsuredNodeJs
+  }
+}
+
+fn deployment_step_key_for_owned(kind: OwnedArtifactKind) -> DeploymentStepKey {
+  match kind {
+    ServerScript => StepOwnedServerScript
+    SystemdUnit => StepOwnedSystemdUnit
+    TailscaleServeMapping => StepOwnedTailscaleServe
+  }
+}
+
+fn deployment_readiness_edges() -> List<DeploymentReadinessEdge> {
+  [
+    DeploymentReadinessEdge { dependent: StepOwnedServerScript, prerequisite: StepEnsuredTailscale },
+    DeploymentReadinessEdge { dependent: StepOwnedServerScript, prerequisite: StepEnsuredNodeJs },
+    DeploymentReadinessEdge { dependent: StepOwnedSystemdUnit, prerequisite: StepOwnedServerScript },
+    DeploymentReadinessEdge { dependent: StepOwnedTailscaleServe, prerequisite: StepOwnedSystemdUnit },
+    DeploymentReadinessEdge { dependent: StepDeployReadback, prerequisite: StepOwnedTailscaleServe },
+  ]
+}
+
+fn deployment_step_key_index(order: List<DeploymentStepKey>, key: DeploymentStepKey) -> Int? {
+  fold(order, init: (idx: 0, found: none), f: (acc, step) =>
+    match acc.found {
+      Present { value: _ } => acc
+      Absent =>
+        if step == key {
+          { idx: acc.idx, found: Present { value: acc.idx } }
+        } else {
+          { idx: acc.idx + 1, found: none }
+        }
+    }
+  ).found
+}
+
+fn deployment_readiness_edge_respected(edge: DeploymentReadinessEdge, order: List<DeploymentStepKey>) -> Bool {
+  match (
+    deployment_step_key_index(order: order, key: edge.dependent),
+    deployment_step_key_index(order: order, key: edge.prerequisite)
+  ) {
+    (Present { value: dep_idx }, Present { value: pre_idx }) => dep_idx > pre_idx
+    _ => false
+  }
+}
+
+fn deployment_readiness_order_valid(order: List<DeploymentStepKey>) -> Bool {
+  all(deployment_readiness_edges(), edge =>
+    deployment_readiness_edge_respected(edge: edge, order: order)
+  )
+}
+
+fn deployment_readiness_apply_order() -> List<DeploymentStepKey> {
+  [
+    StepEnsuredTailscale,
+    StepEnsuredNodeJs,
+    StepOwnedServerScript,
+    StepOwnedSystemdUnit,
+    StepOwnedTailscaleServe,
+    StepDeployReadback,
+  ]
+}

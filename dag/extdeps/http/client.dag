@@ -1,0 +1,56 @@
+module extdeps.http.client
+
+import std.types { NonEmptyStr, String, HttpStatus, HttpMethod, Port }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https, Http }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110"
+  }
+}
+
+type HealthProbeGetBody {
+  payload: String
+}
+
+type HealthProbeEndpoint {
+  base_url: NonEmptyStr
+}
+
+type HealthProbeGetSpec {
+  endpoint: HealthProbeEndpoint
+  path: NonEmptyStr
+}
+
+fn health_probe_endpoint_for(host: String, port: Port) -> HealthProbeEndpoint {
+  HealthProbeEndpoint {
+    base_url: concat(concat(concat("http://", host), ":"), to_string(port)) as NonEmptyStr
+  }
+}
+
+fn health_probe_get_url(spec: HealthProbeGetSpec) -> String {
+  concat(spec.endpoint.base_url as String, spec.path as String)
+}
+
+service http.HealthProbe {
+  operation Get {
+    input {
+      endpoint: HealthProbeEndpoint
+      path: NonEmptyStr
+    }
+    output {
+      body: String from "payload"
+      status: HttpStatus
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "{path}"
+    }
+    response {
+      200 => HealthProbeGetBody
+    }
+  }
+}

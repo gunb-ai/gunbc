@@ -1,0 +1,56 @@
+module gunbc.roadmap_site_health_probe
+
+import std.types { NonEmptyStr, Port, String }
+import extdeps.http.client {
+  HealthProbeGetSpec,
+  HealthProbeEndpoint,
+  health_probe_endpoint_for,
+  health_probe_get_url,
+}
+import gunbc.roadmap_static_site {
+  roadmap_site_health_path,
+  roadmap_site_web_service_shape,
+}
+
+fn roadmap_site_health_probe_host() -> String {
+  "127.0.0.1"
+}
+
+fn roadmap_site_health_probe_port() -> Port {
+  roadmap_site_web_service_shape().port
+}
+
+fn roadmap_site_health_probe_endpoint(port: Port) -> HealthProbeEndpoint {
+  health_probe_endpoint_for(host: roadmap_site_health_probe_host(), port: port)
+}
+
+fn roadmap_site_health_probe_get_spec(port: Port) -> HealthProbeGetSpec {
+  HealthProbeGetSpec {
+    endpoint: roadmap_site_health_probe_endpoint(port: port),
+    path: roadmap_site_health_path,
+  }
+}
+
+fn roadmap_site_health_probe_url(port: Port) -> String {
+  health_probe_get_url(spec: roadmap_site_health_probe_get_spec(port: port))
+}
+
+service gunbc.RoadmapSiteHealthProbe {
+  config {
+    endpoint: "http://127.0.0.1:8080"
+  }
+
+  operation GetHealthz {
+    output {
+      body: String from "payload"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/healthz"
+    }
+    response {
+      200 => extdeps.http.client.HealthProbeGetBody
+    }
+  }
+}
