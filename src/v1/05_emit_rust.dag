@@ -7471,7 +7471,7 @@ fn emit_rest_client_init(transport: Node, source_indices: Map<String, NewlineInd
       } else if p == "VerifyPeer" {
         "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
       } else {
-        concat("compile_error!(\"rest transport tls: unrecognized posture '", p, "'\"); let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;")
+        concat("compile_error!(\"rest transport tls: unrecognized posture '", p, "'\");")
       }
     Absent => "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
   }
