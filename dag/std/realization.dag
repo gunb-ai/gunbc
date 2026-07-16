@@ -17,11 +17,9 @@ import std.realization_schedule {
   cost_account_measured,
   cost_account_predicted_zero,
   cost_account_time_count,
-  schedule_lens_verdict_for_ci_floor,
   schedule_generates_same_batch_count,
   schedule_generates_identical_schedule,
   schedule_eq,
-  ScheduleLensViolation,
   runnable_step_label,
   schedule_batch_contains_label,
 }
@@ -59,8 +57,6 @@ import std.realization_width {
   witness_unreadable_pids_budget_falls_back_conservative,
   witness_subunit_pids_budget_admits_one,
 }
-
-
 
 type Independence = Independent | Dependent | Unknown
 
