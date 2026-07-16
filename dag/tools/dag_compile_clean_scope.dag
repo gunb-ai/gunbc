@@ -3,12 +3,7 @@ module tools.dag_compile_clean_scope
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
 import tools.dag_compile_clean_shard_roster { compile_clean_shard_entry_paths }
-import v2.lens.affected_set.corpus_dependency_view {
-  corpus_dependency_view_per_pr_substrate_ready
-}
-import v2.lens.affected_set.entry_selection {
-  entry_affected_by_dependency_view
-}
+import v2.lens.module_graph { entry_affected_by_touched_paths }
 import std.types { String, Bool, List, list_length }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -42,6 +37,33 @@ fn compile_clean_all_touched_paths_docs_universe(touched_paths: List<String>) ->
     )
 }
 
+fn compile_clean_touched_path_is_dag_source(path: String) -> Bool {
+  ends_with(s: compile_clean_touched_path_norm(path: path), suffix: ".dag")
+}
+
+fn compile_clean_touched_path_selectable(path: String) -> Bool {
+  compile_clean_touched_path_is_docs_only(path: path)
+    || compile_clean_touched_path_is_dag_source(path: path)
+}
+
+fn compile_clean_all_touched_paths_selectable(touched_paths: List<String>) -> Bool {
+  fold(
+    touched_paths,
+    init: true,
+    f: fn(ok, p) { ok && compile_clean_touched_path_selectable(path: p) }
+  )
+}
+
+fn compile_clean_departed_paths_outside_docs(departed_paths: List<String>) -> Bool {
+  fold(
+    departed_paths,
+    init: false,
+    f: fn(found, p) { found || (compile_clean_touched_path_is_docs_only(path: p) == false) }
+  )
+}
+
+data compile_clean_scope_import_closure_reground_note: String = "2026-07-16 reground (channel 2 of operator fork (c), 2026-07-10): compile-clean per-PR selection consumes v2.lens.module_graph.entry_affected_by_touched_paths (import-closure grain, edge-source-agnostic) — the same authority the discovery-corpus entry_file_touched channel regrounded onto. The fn-arrow DependencyView chain (entry_affected_by_dependency_view, gated on corpus_dependency_view_per_pr_substrate_ready / #6239) is no longer a consumer here; it remains in tree as the decl-level candidate only. Two guards keep the whole-tree baseline where import-closure selection cannot answer: (a) any touched path outside the selectable universe (docs/** or *.dag) is a compiler/infra change — whole-tree; (b) any non-docs departed path (deletion/rename-from) is invisible to current-tree adjacency (a dangling import drops the edge, so the broken importer would not be selected) — whole-tree."
+
 data compile_clean_docs_universe_path_grain_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -51,7 +73,7 @@ data compile_clean_docs_universe_path_grain_scaffold: Disposition = Scaffold {
   }
 }
 
-data compile_clean_docs_universe_path_grain_dissolve_trigger: String = "🟡 dissolve-on: compile_clean_docs_universe_path_grain — docs/** path-prefix predicate short-circuits floor admission before #6239 substrate-ready affected-set scoping; DISSOLVES WHEN corpus_dependency_view_per_pr_substrate_ready and entry_affected_by_dependency_view over the merge-base diff are the sole authority for docs-only skip (witness bin reads scope disposition without pre-substrate short-circuit)"
+data compile_clean_docs_universe_path_grain_dissolve_trigger: String = "🟡 dissolve-on: compile_clean_docs_universe_path_grain — docs/** path-prefix predicate short-circuits floor admission ahead of import-closure entry selection; DISSOLVES WHEN v2.lens.module_graph.entry_affected_by_touched_paths over the merge-base diff is the sole authority for the docs-only skip (docs paths fall out of every entry closure structurally, so the prefix predicate becomes a redundant second representation and the witness bin reads the scope disposition without a path-grain short-circuit)"
 
 fn compile_clean_pool_roots() -> List<String> {
   compile_clean_partition_boundary().pool_roots
@@ -70,7 +92,7 @@ fn compile_clean_affected_entry_paths_from_roster(
     roster,
     init: [],
     f: fn(acc, entry_path) {
-      if entry_affected_by_dependency_view(
+      if entry_affected_by_touched_paths(
         entry_path: entry_path,
         pool_roots: pool_roots,
         touched_paths: touched_paths
@@ -94,8 +116,9 @@ fn compile_clean_affected_entry_paths(
   )
 }
 
-fn compile_clean_scope_disposition_from_touched_with_roster(
+fn compile_clean_scope_disposition_from_diff_with_roster(
   touched_paths: List<String>,
+  departed_paths: List<String>,
   roster: List<String>
 ) -> CompileCleanScopeDisposition {
   if list_length(items: touched_paths) == 0 {
@@ -106,9 +129,13 @@ fn compile_clean_scope_disposition_from_touched_with_roster(
     SkipNoAffectedEntries {
       reason: "docs-only diff — no compile-clean entry selection required (Ruling 1 path grain)"
     }
-  } else if corpus_dependency_view_per_pr_substrate_ready() == false {
+  } else if compile_clean_all_touched_paths_selectable(touched_paths: touched_paths) == false {
     RequireWholeTree {
-      reason: "DependencyView per-PR selection blocked-on-#6239 (fn_arrow_decl_substrate_is_whole_tree false)"
+      reason: "touched path outside the selectable universe (docs/** or *.dag) — compiler/infra change, whole-tree baseline"
+    }
+  } else if compile_clean_departed_paths_outside_docs(departed_paths: departed_paths) {
+    RequireWholeTree {
+      reason: "departed non-docs path in diff (deletion/rename) — current-tree adjacency cannot see broken importers, whole-tree baseline"
     }
   } else {
     let pool_roots = compile_clean_pool_roots()
@@ -127,12 +154,34 @@ fn compile_clean_scope_disposition_from_touched_with_roster(
   }
 }
 
+fn compile_clean_scope_disposition_from_touched_with_roster(
+  touched_paths: List<String>,
+  roster: List<String>
+) -> CompileCleanScopeDisposition {
+  compile_clean_scope_disposition_from_diff_with_roster(
+    touched_paths: touched_paths,
+    departed_paths: [],
+    roster: roster
+  )
+}
+
+fn compile_clean_scope_disposition_from_diff(
+  touched_paths: List<String>,
+  departed_paths: List<String>
+) -> CompileCleanScopeDisposition {
+  compile_clean_scope_disposition_from_diff_with_roster(
+    touched_paths: touched_paths,
+    departed_paths: departed_paths,
+    roster: compile_clean_shard_entry_paths()
+  )
+}
+
 fn compile_clean_scope_disposition_from_touched(
   touched_paths: List<String>
 ) -> CompileCleanScopeDisposition {
-  compile_clean_scope_disposition_from_touched_with_roster(
+  compile_clean_scope_disposition_from_diff(
     touched_paths: touched_paths,
-    roster: compile_clean_shard_entry_paths()
+    departed_paths: []
   )
 }
 
@@ -200,8 +249,7 @@ fn touched_path_disposition_matches_with_roster(
     RequireWholeTree { reason: _ } =>
       match row.expect {
         ExpectSkip => false
-        ExpectScopedContaining { required_entry: _ } =>
-          !corpus_dependency_view_per_pr_substrate_ready()
+        ExpectScopedContaining { required_entry: _ } => false
         ExpectWholeTree => true
       }
   }
@@ -221,9 +269,48 @@ fn witness_touched_path_dispositions_hold() -> Bool {
   })
 }
 
+fn witness_mixed_rs_and_dag_requires_whole_tree() -> Bool {
+  match compile_clean_scope_disposition_from_diff_with_roster(
+    touched_paths: ["src/v1/stage0/src/cli_run.rs", "dag/std/logic.dag"],
+    departed_paths: [],
+    roster: []
+  ) {
+    RequireWholeTree { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
+    SkipNoAffectedEntries { reason: _ } => false
+  }
+}
+
+fn witness_departed_dag_path_requires_whole_tree() -> Bool {
+  match compile_clean_scope_disposition_from_diff_with_roster(
+    touched_paths: ["dag/std/logic.dag"],
+    departed_paths: ["dag/std/logic.dag"],
+    roster: []
+  ) {
+    RequireWholeTree { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
+    SkipNoAffectedEntries { reason: _ } => false
+  }
+}
+
+fn witness_docs_only_departure_still_skips() -> Bool {
+  match compile_clean_scope_disposition_from_diff_with_roster(
+    touched_paths: ["docs/plans/example.md"],
+    departed_paths: ["docs/plans/example.md"],
+    roster: []
+  ) {
+    SkipNoAffectedEntries { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
+    RequireWholeTree { reason: _ } => false
+  }
+}
+
 fn lever_a_local_receipts_hold() -> Bool {
   witness_empty_touched_skips()
     && witness_touched_path_dispositions_hold()
     && witness_entry_root_is_first_witness_layer_root()
     && witness_pool_roots_match_witness_layer_roots()
+    && witness_mixed_rs_and_dag_requires_whole_tree()
+    && witness_departed_dag_path_requires_whole_tree()
+    && witness_docs_only_departure_still_skips()
 }
