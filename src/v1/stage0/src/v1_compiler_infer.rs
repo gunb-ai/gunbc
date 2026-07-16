@@ -52,11 +52,11 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    empty_symbol_index, empty_type_env_cache, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
-    symbol_index_insert,
+    empty_symbol_index, empty_type_env_cache, global_bare_is_ambiguous, inductive_fields_for,
+    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
+    lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
+    merge_type_env_cache_guarded, put_inductive_field, put_inductive_field_cross,
+    str_bindings_from_bindings, symbol_index_insert,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
@@ -1073,10 +1073,7 @@ match exp.children.clone().get(pair.0.clone() as usize).cloned() {
     None => acc.clone(),
 }
 });
-                                        let template_fields = record_lit_expected_fields(
-                                            type_name.clone(),
-                                            scope.clone(),
-                                        );
+                                        let template_fields = decl.children.clone();
                                         Some(Rc::new({
                                             let mut __result = Vec::new();
                                             for sf in template_fields.clone().iter().cloned() {
@@ -5938,6 +5935,15 @@ pub fn zero_field_variant_tag_reference_frontier_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn presence_check_census_gate_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus). Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn infer_record_lit(
     type_name: Option<String>,
     field_inits: Rc<Vec<Rc<Node>>>,
@@ -6037,9 +6043,12 @@ pub fn infer_record_lit(
         };
         let is_zero_field_variant_tag_reference = (((field_inits.clone().len() as i64) == 0)
             && (variant_owner_node(scope.clone(), tn_str.clone()) != None));
-        let missing_field_diags = if (((tn_str.clone() == "".to_string())
+        let presence_name_is_ambiguous =
+            global_bare_is_ambiguous(scope.type_env.clone(), tn_str.clone());
+        let missing_field_diags = if ((((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
             || is_zero_field_variant_tag_reference.clone())
+            || presence_name_is_ambiguous.clone())
         {
             Rc::new(vec![])
         } else {
