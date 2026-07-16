@@ -8,7 +8,8 @@ import gunbc.roadmap_model {
   Sized,
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
-import gunbc.roadmap_spawner { SpawnFrontier }
+import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_belt {
   BeltRunState, Running, Paused,
   BeltCapacity,
@@ -17,6 +18,8 @@ import gunbc.roadmap_belt {
   belt_action_is_spawn,
   belt_spawn_count,
   belt_spawns_node,
+  belt_plan,
+  roadmap_belt_status_json,
 }
 
 fn nid(s: String) -> RoadmapNodeId { s }
@@ -80,10 +83,42 @@ fn witness_at_capacity_reports_backlog() -> Bool {
   belt_spawn_count(actions: actions) == 0 && at_capacity_waiting(actions: actions) == 2
 }
 
+fn witness_belt_plan_equals_step_composition() -> Bool {
+  let doc = roadmap_authority()
+  let merged = authored_merged_prs()
+  let f = spawn_frontier(doc: doc, merged: merged)
+  let via_plan = belt_plan(state: Running, doc: doc, merged: merged, occupied: [], cap: cap(n: 3))
+  let via_step = belt_step(state: Running, frontier: f, occupied: [], cap: cap(n: 3))
+  belt_spawn_count(actions: via_plan) == belt_spawn_count(actions: via_step)
+}
+
+fn witness_belt_plan_paused_holds_on_authority() -> Bool {
+  let actions = belt_plan(
+    state: Paused,
+    doc: roadmap_authority(),
+    merged: authored_merged_prs(),
+    occupied: [],
+    cap: cap(n: 3),
+  )
+  belt_spawn_count(actions: actions) == 0 && any_paused(actions: actions)
+}
+
+fn witness_belt_status_json_shape() -> Bool {
+  let j = roadmap_belt_status_json()
+  string_contains(s: j, pattern: "roadmap-belt/v1")
+    && string_contains(s: j, pattern: "run_state")
+    && string_contains(s: j, pattern: "running")
+    && string_contains(s: j, pattern: "would_spawn")
+    && string_contains(s: j, pattern: "max_concurrent")
+}
+
 test fn roadmap_belt_witnesses() -> Bool {
   witness_paused_spawns_nothing()
     && witness_running_spawns_ready_within_capacity()
     && witness_capacity_limits_spawns()
     && witness_occupied_node_not_respawned()
     && witness_at_capacity_reports_backlog()
+    && witness_belt_plan_equals_step_composition()
+    && witness_belt_plan_paused_holds_on_authority()
+    && witness_belt_status_json_shape()
 }
