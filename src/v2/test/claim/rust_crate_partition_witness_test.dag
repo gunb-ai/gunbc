@@ -1,0 +1,123 @@
+module v2.test.claim.rust_crate_partition_witness
+
+import v2.std.compilers.compilation_unit {
+  HandExplicit,
+  PolicyDerived,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  SccSplit,
+  UnitGraphCycle,
+  partition_fold,
+  partition_unit_by_id,
+  partition_provenance_eq,
+  partition_provenance_hand_explicit,
+  partition_provenance_policy_derived,
+  ModuleId,
+  CompilationUnitId
+}
+import v2.workflow.rust_crate_partition {
+  stage0_interim_explicit_assignment,
+  stage0_module_dag,
+  stage0_partition_fold_ok,
+  stage0_partition_parameter,
+  stage0_partition_provenance,
+  stage0_partition_r4_valid,
+  stage0_partition_unit_count,
+  stage0_compilation_units,
+
+data witness_red_control_note: String = "Discriminating RED: (1) assign std_algebra and std_nat to different units while keeping std_nat -> std_algebra edge → validate_partition_r4 returns SccSplit refusal; (2) fabricate a cyclic unit dep graph → UnitGraphCycle refusal; (3) drop a module from explicit assignment → partition_fold_outcome refuses or unit member count diverges."
+
+fn witness_module_id(name: String) -> ModuleId {
+  name as NonEmptyStr
+}
+
+fn witness_forced_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
+  let base = stage0_interim_explicit_assignment()
+  base
+    |> map_insert(witness_module_id(name: "std_algebra"), "witness-unit-a" as ContentHash)
+    |> map_insert(witness_module_id(name: "std_nat"), "witness-unit-b" as ContentHash)
+}
+
+fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
+  let dag = stage0_module_dag()
+  let assignment = witness_forced_scc_split_assignment()
+  let units = partition_fold(module_dag: dag, assignment: assignment)
+  match validate_partition_r4(module_dag: dag, assignment: assignment, units: units) {
+    PartitionR4Refused { cause: SccSplit { detail: _ } } => true
+    PartitionR4Refused { cause: UnitGraphCycle { detail: _ } } => false
+    PartitionR4Valid => false
+  }
+}
+
+fn witness_interim_explicit_unit_count_holds() -> Bool {
+  stage0_partition_unit_count() == rust_crate_partition_declared_core_target
+}
+
+fn witness_interim_provenance_is_hand_explicit_holds() -> Bool {
+  match stage0_partition_provenance() {
+    HandExplicit => true
+    PolicyDerived { policy: _ } => false
+  }
+}
+
+fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
+  let explicit = partition_provenance_hand_explicit()
+  let derived = partition_provenance_policy_derived(
+    policy: DeclarationRef {
+      module_path: "v2.workflow.rust_crate_partition" as NonEmptyStr,
+      decl_name: "resolve_partition" as NonEmptyStr,
+      field: WholeDeclaration,
+    }
+  )
+  !partition_provenance_eq(left: explicit, right: derived)
+}
+
+fn witness_runtime_unit_members_holds() -> Bool {
+  let units = stage0_compilation_units()
+  match partition_unit_by_id(units: units, unit_id: stage0_unit_runtime) {
+    Present { value: unit } =>
+      (unit.members |> count) == 2
+    Absent => false
+  }
+}
+
+fn witness_v1_compiler_unit_members_holds() -> Bool {
+  let units = stage0_compilation_units()
+  match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_compiler) {
+    Present { value: unit } =>
+      (unit.members |> count) == 8
+    Absent => false
+  }
+}
+
+fn witness_partition_fold_unit_count_holds() -> Bool {
+  stage0_partition_fold_ok()
+}
+
+fn witness_partition_r4_valid_on_interim_holds() -> Bool {
+  stage0_partition_r4_valid()
+}
+
+fn witness_resolve_partition_explicit_returns_assignment_holds() -> Bool {
+  let dag = stage0_module_dag()
+  let resolved = resolve_partition(parameter: stage0_partition_parameter(), module_dag: dag)
+  let expected = stage0_interim_explicit_assignment()
+  (resolved |> count) == (expected |> count)
+}
+
+fn witness_dissolve_on_note_present_holds() -> Bool {
+  (rust_crate_partition_dissolve_on |> count) > 0
+}
+
+test fn rust_crate_partition_witnesses() -> Bool {
+  witness_interim_explicit_unit_count_holds()
+    && witness_interim_provenance_is_hand_explicit_holds()
+    && witness_provenance_distinct_from_policy_derived_holds()
+    && witness_runtime_unit_members_holds()
+    && witness_v1_compiler_unit_members_holds()
+    && witness_partition_fold_unit_count_holds()
+    && witness_partition_r4_valid_on_interim_holds()
+    && witness_resolve_partition_explicit_returns_assignment_holds()
+    && witness_r4_refuses_forced_scc_split_holds()
+    && witness_dissolve_on_note_present_holds()
+}
