@@ -232,15 +232,17 @@ data srv1_memory_population_deferral: FleetHostMemoryPopulationDeferral = FleetH
   host: operator_host_srv1,
   bmc_host: "192.168.1.183",
   cause: "per-DIMM Redfish observation refused: factory BMC credential returns HTTP 401 (rotated secret required)",
-  dissolution_trigger: "BMC_NETRC_FILE with rotated credentials for 192.168.1.183 — read /redfish/v1/Systems/system/Memory, cite srv1_memory_population rows, replace srv1_host.memory literal with memory_devices_from_population(pop: srv1_memory_population)",
+  dissolution_trigger: "BMC_NETRC_FILE with rotated credentials for 192.168.1.183 — read /redfish/v1/Systems/system/Memory, cite srv1_memory_population rows, replace srv1_host.memory literal with memory_devices_from_population(pop: srv1_memory_population). Fold-in site: gunbc.ci_fleet gunbc_ci_host.memory is NOMINALLY coupled to srv1/srv2 observation (see fleet_host_memory_nominal_vs_usable_note) but carries OS-MemTotal-shaped 125 GiB until independently observed — do NOT blind-rewrite to nominal 128 GiB.",
 }
 
 data srv2_memory_population_deferral: FleetHostMemoryPopulationDeferral = FleetHostMemoryPopulationDeferral {
   host: operator_host_srv2,
   bmc_host: "192.168.1.184",
   cause: "per-DIMM Redfish observation refused: factory BMC credential returns HTTP 401 (rotated secret required)",
-  dissolution_trigger: "BMC_NETRC_FILE with rotated credentials for 192.168.1.184 — read /redfish/v1/Systems/system/Memory, cite srv2_memory_population rows, replace srv2_host.memory literal with memory_devices_from_population(pop: srv2_memory_population)",
+  dissolution_trigger: "BMC_NETRC_FILE with rotated credentials for 192.168.1.184 — read /redfish/v1/Systems/system/Memory, cite srv2_memory_population rows, replace srv2_host.memory literal with memory_devices_from_population(pop: srv2_memory_population). Fold-in site: gunbc.ci_fleet gunbc_ci_host.memory is NOMINALLY coupled to srv1/srv2 observation (see fleet_host_memory_nominal_vs_usable_note) but carries OS-MemTotal-shaped 125 GiB until independently observed — do NOT blind-rewrite to nominal 128 GiB.",
 }
+
+data fleet_host_memory_nominal_vs_usable_note: String = "Two DISTINCT memory facts for srv1/srv2 hosts, must not be conflated: (1) NOMINAL DIMM population — srv1_host/srv2_host gibibyte(128) placeholders dissolve via per-DIMM BMC Redfish observation into HostMemoryPopulation rows (module × stick_count); (2) OS-USABLE budget — gunbc_ci_host.memory byte_size(134217728000) = exactly 125 GiB, MemTotal-shaped CI runner budget authority (roadmap 128c/125GiB; floor peak receipts from srv1/srv2). When rotated BMC creds ground nominal population, gunbc_ci_host.memory requires its OWN OS MemTotal provenance — never a blind rewrite from 125 GiB usable to 128 GiB nominal."
 
 data fleet_host_memory_population_deferrals: List<FleetHostMemoryPopulationDeferral> = [
   srv1_memory_population_deferral,

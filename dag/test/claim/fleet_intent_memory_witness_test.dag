@@ -5,7 +5,9 @@ import std.types { list_length }
 import std.measure {
   byte_size_count,
   gibibyte,
+  gibibyte_to_byte_size,
   Gibibyte,
+  byte_size,
 }
 import gunbc.fleet_intent {
   srv3_host,
@@ -13,9 +15,11 @@ import gunbc.fleet_intent {
   srv3_memory_population_observation_note,
   compute_host_ram_bytes_total,
   fleet_host_memory_population_deferrals,
+  fleet_host_memory_nominal_vs_usable_note,
   srv1_memory_population_deferral,
   srv2_memory_population_deferral,
 }
+import gunbc.ci_fleet { gunbc_ci_host, gunbc_ci_host_memory_deferral_note }
 import extdeps.memory {
   host_memory_population_nominal_bytes,
   memory_population_row_bytes,
@@ -83,6 +87,20 @@ test fn srv1_srv2_deferrals_are_counted_and_named() -> Bool {
       s: srv1_memory_population_deferral.dissolution_trigger,
       pattern: "srv1_memory_population"
     )
+    && string_contains(
+      s: srv1_memory_population_deferral.dissolution_trigger,
+      pattern: "gunbc_ci_host.memory"
+    )
+}
+
+test fn nominal_population_and_os_usable_budget_are_distinct_facts() -> Bool {
+  let nominal_128gib = byte_size_count(gibibyte_to_byte_size(g: gibibyte(128)))
+  let usable_125gib = byte_size_count(byte_size(134217728000))
+  let ci_host_ram = byte_size_count(compute_host_ram_bytes_total(host: gunbc_ci_host))
+  nominal_128gib != usable_125gib
+    && ci_host_ram == usable_125gib
+    && string_contains(s: fleet_host_memory_nominal_vs_usable_note, pattern: "125 GiB")
+    && string_contains(s: gunbc_ci_host_memory_deferral_note, pattern: "MemTotal-shaped")
 }
 
 test fn srv3_observation_note_records_raw_redfish_fields() -> Bool {
