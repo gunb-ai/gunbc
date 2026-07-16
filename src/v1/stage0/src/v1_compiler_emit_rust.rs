@@ -3991,7 +3991,7 @@ pub fn emit_module_full(
             }
             __result
         });
-        let prelude = emit_prelude(prelude_imported_names.clone());
+        let prelude = emit_prelude(prelude_imported_names.clone(), shared_types.clone());
         let local_type_names = Rc::new({
             let mut __result = Vec::new();
             for item in Rc::new({
@@ -7325,7 +7325,13 @@ pub fn emit_imports(
     }
 }
 
-pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
+pub fn shared_types_need_text_prelude(shared_types: Rc<BTreeSet<String>>) -> bool {
+    ((v1_rt::set_contains(&shared_types, "FreeMonoid".to_string())
+        || v1_rt::set_contains(&shared_types, "FreeMonoid<Char>".to_string()))
+        || v1_rt::set_contains(&shared_types, "Char".to_string()))
+}
+
+pub fn emit_prelude(imported_names: Rc<Vec<String>>, shared_types: Rc<BTreeSet<String>>) -> String {
     {
         let base = v1_rt::concat(
             v1_rt::concat(
@@ -7387,12 +7393,20 @@ pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
             }
         };
         let wrapper_use = "\nuse crate::NonEmptyVec;\nuse crate::NonEmptyBTreeSet;".to_string();
+        let text_prelude = if shared_types_need_text_prelude(shared_types.clone()) {
+            "\nuse crate::std_algebra::FreeMonoid;\nuse crate::std_types::Char;\nuse crate::std_types::NonEmptyStr;".to_string()
+        } else {
+            "".to_string()
+        };
         v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(base.clone(), witness_line.clone()),
-                variant_line.clone(),
+                v1_rt::concat(
+                    v1_rt::concat(base.clone(), witness_line.clone()),
+                    variant_line.clone(),
+                ),
+                wrapper_use.clone(),
             ),
-            wrapper_use.clone(),
+            text_prelude.clone(),
         )
     }
 }
