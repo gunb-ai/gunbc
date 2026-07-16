@@ -7,14 +7,14 @@ import std.graph {
   GraphEdge,
   graph_has_multi_node_scc
 }
-import std.types { ContentHash, List, String, Bool, Int }
+import std.disposition { RealizationDispatch }
+import std.types { ContentHash, List, String, Bool, Int, NonEmptyStr }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { Absent, Optional, Present, empty_map, map_get, map_insert, optional_present }
 import v2.std.compilers.compilation_unit {
   CompilationUnit,
   CompilationUnitId,
-  HandExplicit,
   ModuleDag,
   ModuleDagEdge,
   ModuleId,
@@ -23,7 +23,6 @@ import v2.std.compilers.compilation_unit {
   PartitionProvenance,
   PartitionR4Refused,
   PartitionR4Valid,
-  PartitionR4ValidityCause,
   PartitionR4ValidityVerdict,
   SccSplit,
   UnitGraphCycle,
@@ -32,9 +31,7 @@ import v2.std.compilers.compilation_unit {
   partition_provenance_hand_explicit
 }
 import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.disposition { RealizationDispatch }
 import v2.std.node { Symbol }
-import std.types { NonEmptyStr }
 
 type PartitionPolicy {
   target_crate_count: Int
@@ -190,14 +187,35 @@ fn stage0_assign_modules_to_unit(
 }
 
 fn stage0_interim_explicit_assignment() -> Map<ModuleId, CompilationUnitId> {
-  empty_map()
-    |> stage0_assign_modules_to_unit(modules: stage0_runtime_modules(), unit_id: stage0_unit_runtime)
-    |> stage0_assign_modules_to_unit(modules: stage0_std_primitive_modules(), unit_id: stage0_unit_std_primitives)
-    |> stage0_assign_modules_to_unit(modules: stage0_std_structure_modules(), unit_id: stage0_unit_std_structure)
-    |> stage0_assign_modules_to_unit(modules: stage0_std_compute_modules(), unit_id: stage0_unit_std_compute)
-    |> stage0_assign_modules_to_unit(modules: stage0_std_surface_modules(), unit_id: stage0_unit_std_surface)
-    |> stage0_assign_modules_to_unit(modules: stage0_extdeps_modules(), unit_id: stage0_unit_extdeps)
-    |> stage0_assign_modules_to_unit(modules: stage0_v1_compiler_modules(), unit_id: stage0_unit_v1_compiler)
+  stage0_assign_modules_to_unit(
+    assignment: stage0_assign_modules_to_unit(
+      assignment: stage0_assign_modules_to_unit(
+        assignment: stage0_assign_modules_to_unit(
+          assignment: stage0_assign_modules_to_unit(
+            assignment: stage0_assign_modules_to_unit(
+              assignment: stage0_assign_modules_to_unit(
+                assignment: empty_map(),
+                modules: stage0_runtime_modules(),
+                unit_id: stage0_unit_runtime
+              ),
+              modules: stage0_std_primitive_modules(),
+              unit_id: stage0_unit_std_primitives
+            ),
+            modules: stage0_std_structure_modules(),
+            unit_id: stage0_unit_std_structure
+          ),
+          modules: stage0_std_compute_modules(),
+          unit_id: stage0_unit_std_compute
+        ),
+        modules: stage0_std_surface_modules(),
+        unit_id: stage0_unit_std_surface
+      ),
+      modules: stage0_extdeps_modules(),
+      unit_id: stage0_unit_extdeps
+    ),
+    modules: stage0_v1_compiler_modules(),
+    unit_id: stage0_unit_v1_compiler
+  )
 }
 
 fn stage0_interim_explicit_partition() -> ExplicitPartition {
@@ -272,13 +290,6 @@ fn resolve_partition(
     PolicyPartitionParam { policy: _ } =>
       stage0_interim_explicit_assignment()
   }
-}
-
-  edges: List<ModuleDagEdge>,
-  from: ModuleId,
-  to: ModuleId
-) -> Bool {
-  edges |> any(edge => (edge.from == from) && (edge.to == to))
 }
 
 fn module_dag_reaches(
