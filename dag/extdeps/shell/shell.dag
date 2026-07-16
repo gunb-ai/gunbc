@@ -213,7 +213,7 @@ service shell.Exec {
     }
 
     transport shell {
-      argv: ["sh", "-s"]
+      argv: ["bash", "-s"]
       stdin: script
     }
     exit {
