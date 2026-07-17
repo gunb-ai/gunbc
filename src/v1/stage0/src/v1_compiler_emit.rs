@@ -588,6 +588,7 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             symbol_index: empty_symbol_index(),
         }),
         func_env: Rc::new(ResolvedFuncEnv {
+            name: "".to_string(),
             local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
             parents: Rc::new(vec![]),
         }),

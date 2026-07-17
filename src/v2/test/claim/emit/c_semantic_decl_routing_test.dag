@@ -1,0 +1,190 @@
+module v2.test.emit.c_semantic_decl_routing
+
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.c { c_target_model }
+import v2.extdeps.languages.c_decl { c_stage1_type_decl_frontier_deferred_count }
+import std.algebra { Empty }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data c_semantic_point_golden: String = concat("typedef struct ", "{ int x; int y; } Point;")
+
+data c_semantic_point_wrong_golden: String = concat("typedef struct ", "{ int x; int z; } Point;")
+
+data c_semantic_bool_golden: String = concat("typedef enum ", "{ True, False } Bool;")
+
+data c_semantic_bool_wrong_golden: String = concat("typedef enum ", "{ False, True } Bool;")
+
+data c_semantic_answer_golden: String = concat(
+  "typedef struct ",
+  "{ int tag; union { struct { int n; } Yes; struct { int code; } No; } u; } Answer;"
+)
+
+fn cdr_empty_conj() -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+}
+
+fn cdr_atom_type(name: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+}
+
+fn cdr_field_edge(name: Symbol, type_name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: cdr_atom_type(name: type_name) }
+}
+
+fn cdr_variant_edge(name: Symbol) -> Edge {
+  Edge { label: Named { name: name }, target: cdr_empty_conj() }
+}
+
+fn cdr_variant_edge_payload(name: Symbol, fields: List<Edge>) -> Edge {
+  Edge {
+    label: Named { name: name },
+    target: Node {
+      kind: TypeNode { connective: Conj },
+      children: fields,
+      occurrence_id: SyntheticOccurrence
+    }
+  }
+}
+
+fn cdr_emit_text(name: Symbol, node: Node) -> Outcome<String> {
+  match emit_semantic_type_decl(name: name, params: Empty, node: node, target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => Accepted { value: medium.carried, diagnostics: None }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn cdr_matches(name: Symbol, node: Node, golden: String) -> Bool {
+  match cdr_emit_text(name: name, node: node) {
+    Accepted { value: text, diagnostics: _ } => text == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn cdr_point_record() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      cdr_field_edge(name: ^x, type_name: ^Int),
+      cdr_field_edge(name: ^y, type_name: ^Int)
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn cdr_bool_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [ cdr_variant_edge(name: ^True), cdr_variant_edge(name: ^False) ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn cdr_answer_coproduct() -> Node {
+  Node {
+    kind: TypeNode { connective: Disj },
+    children: [
+      cdr_variant_edge_payload(name: ^Yes, fields: [ cdr_field_edge(name: ^n, type_name: ^Int) ]),
+      cdr_variant_edge_payload(name: ^No, fields: [ cdr_field_edge(name: ^code, type_name: ^Int) ])
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+test fn c_semantic_point_record_routes_to_struct_emit() -> Bool {
+  cdr_matches(name: ^Point, node: cdr_point_record(), golden: c_semantic_point_golden)
+    && !cdr_matches(name: ^Point, node: cdr_point_record(), golden: c_semantic_point_wrong_golden)
+}
+
+test fn c_semantic_bool_coproduct_routes_to_enum_emit() -> Bool {
+  cdr_matches(name: ^Bool, node: cdr_bool_coproduct(), golden: c_semantic_bool_golden)
+    && !cdr_matches(name: ^Bool, node: cdr_bool_coproduct(), golden: c_semantic_bool_wrong_golden)
+}
+
+test fn c_semantic_answer_coproduct_routes_to_tagged_union_emit() -> Bool {
+  cdr_matches(name: ^Answer, node: cdr_answer_coproduct(), golden: c_semantic_answer_golden)
+}
+
+fn cdr_bool_field_record() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ cdr_field_edge(name: ^flag, type_name: ^Bool) ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+test fn c_semantic_non_int_field_refuses() -> Bool {
+  match emit_semantic_type_decl(
+    name: ^Bad,
+    params: [],
+    node: cdr_bool_field_record(),
+    target: c_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn c_semantic_int_field_still_emits() -> Bool {
+  cdr_matches(name: ^Point, node: cdr_point_record(), golden: c_semantic_point_golden)
+}
+
+fn cdr_arrow_type() -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    children: [ Edge { label: Positional, target: cdr_atom_type(name: ^Int) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+test fn c_semantic_generic_struct_refuses() -> Bool {
+  match emit_semantic_type_decl(
+    name: ^Pair,
+    params: [^K, ^V],
+    node: cdr_point_record(),
+    target: c_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn c_semantic_generic_tagged_union_refuses() -> Bool {
+  match emit_semantic_type_decl(
+    name: ^Answer,
+    params: [^T],
+    node: cdr_answer_coproduct(),
+    target: c_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn c_semantic_unsupported_shape_refuses() -> Bool {
+  match cdr_emit_text(name: ^Bogus, node: cdr_arrow_type()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn c_stage1_type_decl_frontier_deferred_count_holds() -> Bool {
+  c_stage1_type_decl_frontier_deferred_count() == 3
+}
+
+test fn c_semantic_decl_routing_all_holds() -> Bool {
+  c_stage1_type_decl_frontier_deferred_count_holds()
+    && c_semantic_point_record_routes_to_struct_emit()
+    && c_semantic_bool_coproduct_routes_to_enum_emit()
+    && c_semantic_answer_coproduct_routes_to_tagged_union_emit()
+    && c_semantic_non_int_field_refuses()
+    && c_semantic_int_field_still_emits()
+    && c_semantic_generic_struct_refuses()
+    && c_semantic_generic_tagged_union_refuses()
+    && c_semantic_unsupported_shape_refuses()
+}
