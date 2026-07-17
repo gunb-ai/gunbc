@@ -9462,6 +9462,14 @@ type TargetCarrierOwnership
   = CarrierOwnershipByValue
   | CarrierOwnershipByReference { realization: TargetUseSiteOwnershipRealization }
 
+type WrapDecision
+  = WrapByValue
+  | WrapByReference { layer: TargetReferenceLayer }
+
+type WrapDecisionGate
+  = WrapGateInapplicable
+  | WrapGateDecided { decision: WrapDecision }
+
 fn target_carrier_type_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
@@ -9875,6 +9883,40 @@ fn target_use_site_ownership_lookup_in_catalog_node(
         use_site: use_site
       )
   }
+}
+
+fn wrap_decision_from_carrier_ownership(
+  ownership: TargetCarrierOwnership
+) -> WrapDecision {
+  match ownership {
+    CarrierOwnershipByValue => WrapByValue
+    CarrierOwnershipByReference { realization: row } =>
+      match row.reference_layer {
+        ReferenceLayerOwned => WrapByValue
+        layer => WrapByReference { layer: layer }
+      }
+  }
+}
+
+fn wrap_decision_lookup_in_catalog_node(
+  catalog: Node,
+  value_semantics_carriers: List<Symbol>,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> Outcome<WrapDecision> {
+  bind_outcome(
+    o: target_use_site_ownership_lookup_in_catalog_node(
+      catalog: catalog,
+      value_semantics_carriers: value_semantics_carriers,
+      source_carrier: source_carrier,
+      use_site: use_site
+    ),
+    f: fn(ownership) {
+      outcome_accepted(
+        wrap_decision_from_carrier_ownership(ownership: ownership)
+      )
+    }
+  )
 }
 
 fn target_use_site_ownership_realization_to_node(row: TargetUseSiteOwnershipRealization) -> Node {

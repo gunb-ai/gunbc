@@ -77,7 +77,7 @@ type CompilerModuleFrontierRow {
 
 data compiler_frontier_module_count_expected: Int = 27
 
-data compiler_frontier_self_emitted_baseline: Int = 4
+data compiler_frontier_self_emitted_baseline: Int = 5
 
 data compiler_frontier_qualified_module_bindings: List<FrontierQualifiedModuleBinding> = [
   FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/00_compile.dag", qualified_module: "v2.compiler.compile" },
@@ -229,11 +229,16 @@ data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = knowledge_attri
   migration_trigger: ^migrate_when_parse_cursor_grounded
 )
 
-data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
+data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
   module_path: "src/v2/compiler/03_body_producer.dag",
   closure_reads: 36,
-  measured_blocker: NameResolutionGap,
-  migration_trigger: ^migrate_when_general_body_producer_lands
+  measured_probe: FrontierProbeReceipt {
+    module_path: "src/v2/compiler/03_body_producer.dag",
+    blocker_class: SelfEmitReady,
+    located_stage: ProbeStageEmit,
+    located_reason: ^measured_probe_self_emit_ready
+  },
+  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: NameResolutionGap)
 )
 
 data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
@@ -905,7 +910,8 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
 data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
-  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" }
+  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" }
 ]
 
 fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {

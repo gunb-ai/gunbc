@@ -1,0 +1,204 @@
+module v2.test.claim.bash_build_round_trip
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.bash_build {
+  bash_build_and_then,
+  bash_build_assign_lit,
+  bash_build_command_from_lits,
+  bash_build_exit,
+  bash_build_pipe
+}
+import v2.extdeps.languages.bash_command_fold {
+  bash_fold_cmd_false_emitted,
+  bash_fold_cmd_true_emitted,
+  bash_fold_cmd_wc_minus_c_emitted,
+  bash_fold_target_model_for_emitted_witness
+}
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node, Symbol }
+import v2.std.witness { Holds, Violates, Witness }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data bash_build_round_trip_cmd_echo_hi_golden: String = "'echo' 'hi'"
+data bash_build_round_trip_assign_foo_golden: String = "FOO='bar'"
+data bash_build_round_trip_exit_42_golden: String = "exit 42"
+data bash_build_round_trip_and_then_golden: String = "'true' && 'false'"
+data bash_build_round_trip_pipe_golden: String = "'echo' 'hi' | 'wc' '-c'"
+
+fn bash_build_round_trip_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^bash_build_round_trip_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn bash_build_round_trip_emit_matches_golden(
+  emitted: Node,
+  target: TargetModel,
+  golden: String
+) -> Bool {
+  match target_serialize_source_from_model(target: target, emitted: emitted) {
+    Accepted { value: source, diagnostics: d } =>
+      (source.carried == golden) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_build_round_trip_via_emit_matches_golden(
+  emitted: Node,
+  target: TargetModel,
+  golden: String
+) -> Bool {
+  let tree = InferredTree {
+    root: emitted,
+    facts: Map { lookup: bash_build_round_trip_facts_lookup }
+  }
+  match emit(tree: tree, target: target) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried == golden
+        Some { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_build_round_trip_target_for(
+  emitted: Node,
+  source_text: String,
+  production_binding: Symbol,
+  rule_name: Symbol
+) -> Witness<TargetModel> {
+  bash_fold_target_model_for_emitted_witness(
+    emitted: emitted,
+    source_literal: ^bash_fold_dynamic_source_literal,
+    source_text: source_text,
+    production_binding: production_binding,
+    rule_name: rule_name
+  )
+}
+
+fn bash_build_round_trip_command_echo_hi_holds() -> Bool {
+  let emitted = bash_build_command_from_lits(lits: ["echo", "hi"])
+  match bash_build_round_trip_target_for(
+    emitted: emitted,
+    source_text: bash_build_round_trip_cmd_echo_hi_golden,
+    production_binding: ^bash_production_fold_command,
+    rule_name: ^bash_relation_rule_fold_command
+  ) {
+    Holds { value: target } =>
+      bash_build_round_trip_emit_matches_golden(
+        emitted: emitted,
+        target: target,
+        golden: bash_build_round_trip_cmd_echo_hi_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_build_round_trip_assign_foo_bar_holds() -> Bool {
+  let emitted = bash_build_assign_lit(name: "FOO", text: "bar")
+  match bash_build_round_trip_target_for(
+    emitted: emitted,
+    source_text: bash_build_round_trip_assign_foo_golden,
+    production_binding: ^bash_production_fold_assign,
+    rule_name: ^bash_relation_rule_fold_assign
+  ) {
+    Holds { value: target } =>
+      bash_build_round_trip_via_emit_matches_golden(
+        emitted: emitted,
+        target: target,
+        golden: bash_build_round_trip_assign_foo_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_build_round_trip_exit_42_holds() -> Bool {
+  let emitted = bash_build_exit(code: "42")
+  match bash_build_round_trip_target_for(
+    emitted: emitted,
+    source_text: bash_build_round_trip_exit_42_golden,
+    production_binding: ^bash_production_fold_exit,
+    rule_name: ^bash_relation_rule_fold_exit
+  ) {
+    Holds { value: target } =>
+      bash_build_round_trip_emit_matches_golden(
+        emitted: emitted,
+        target: target,
+        golden: bash_build_round_trip_exit_42_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_build_round_trip_and_then_holds() -> Bool {
+  let emitted = bash_build_and_then(
+    left: bash_fold_cmd_true_emitted,
+    right: bash_fold_cmd_false_emitted
+  )
+  match bash_build_round_trip_target_for(
+    emitted: emitted,
+    source_text: bash_build_round_trip_and_then_golden,
+    production_binding: ^bash_production_fold_and_then,
+    rule_name: ^bash_relation_rule_fold_and_then
+  ) {
+    Holds { value: target } =>
+      bash_build_round_trip_emit_matches_golden(
+        emitted: emitted,
+        target: target,
+        golden: bash_build_round_trip_and_then_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_build_round_trip_pipe_holds() -> Bool {
+  let emitted = bash_build_pipe(
+    left: bash_build_command_from_lits(lits: ["echo", "hi"]),
+    right: bash_fold_cmd_wc_minus_c_emitted
+  )
+  match bash_build_round_trip_target_for(
+    emitted: emitted,
+    source_text: bash_build_round_trip_pipe_golden,
+    production_binding: ^bash_production_fold_pipe,
+    rule_name: ^bash_relation_rule_fold_pipe
+  ) {
+    Holds { value: target } =>
+      bash_build_round_trip_emit_matches_golden(
+        emitted: emitted,
+        target: target,
+        golden: bash_build_round_trip_pipe_golden
+      )
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn bash_build_round_trip_command_tier_holds() -> Bool {
+  bash_build_round_trip_command_echo_hi_holds()
+}
+
+test fn bash_build_round_trip_stmt_tier_holds() -> Bool {
+  bash_build_round_trip_assign_foo_bar_holds()
+  && bash_build_round_trip_exit_42_holds()
+  && bash_build_round_trip_and_then_holds()
+  && bash_build_round_trip_pipe_holds()
+}

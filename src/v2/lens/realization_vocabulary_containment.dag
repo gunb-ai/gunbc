@@ -40,6 +40,7 @@ data realization_vocab_exception_roster: List<String> = [
   "dag/tools/host_prelude.dag",
   "src/v2/lens/duplicate_computation.dag",
   "src/v2/workflow/bash_program_emit.dag",
+  "src/v2/workflow/bash_program_sidecar_fold.dag",
   "src/v2/workflow/floor_diff_observe.dag"
 ]
 
