@@ -34,7 +34,6 @@ pub struct TypeEnv {
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
     pub source_visible_names: Rc<HashMap<String, bool>>,
-    pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     pub symbol_index: Rc<SymbolIndex>,
 }
 
@@ -48,7 +47,7 @@ pub struct TypeBinding {
 pub fn global_bare_fallback_invariant() -> String {
     thread_local! {
         static CACHED: String = {
-            "Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): keyed on the bare declared name, one authority built once by build_global_bare_census over graph.modules before any module typechecks (order-independent — mirrors v2's symbol_index_global_bare, docs/plans/namespace-resolution-design.md §7.5). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss, and only a GlobalBareUniqueBinding resolves; GlobalBareAmbiguousBinding stays Absent (fail-closed, never guesses — §5). This is what unblocks the src/v1 import strip: a bare reference that used to resolve via a deleted import chain still resolves here iff its name is globally unique in the corpus.".to_string()
+            "Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): keyed on the bare declared name, one authority on SymbolIndex.global_bare built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent — mirrors v2's symbol_index_global_bare, docs/plans/namespace-resolution-design.md §7.5). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss, and only a GlobalBareUniqueBinding resolves; GlobalBareAmbiguousBinding stays Absent (fail-closed, never guesses — §5). This is what unblocks the src/v1 import strip: a bare reference that used to resolve via a deleted import chain still resolves here iff its name is globally unique in the corpus.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -96,6 +95,7 @@ pub struct ScopeBinding {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SymbolIndex {
     pub entries: Rc<HashMap<String, Rc<Node>>>,
+    pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -106,6 +106,7 @@ pub struct Scope {
 pub fn empty_symbol_index() -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
         entries: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
     })
 }
 
@@ -113,18 +114,74 @@ pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Op
     v1_rt::map_get(&index.entries.clone(), qualified_name.clone())
 }
 
+pub fn symbol_index_qualified_leaf(qualified_name: String) -> String {
+    {
+        let segs = Rc::new(
+            qualified_name
+                .clone()
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        segs.clone()
+            .iter()
+            .cloned()
+            .fold("".to_string(), |_: String, seg: String| seg.clone())
+    }
+}
+
+pub fn symbol_index_track_global_bare(
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    binding: Rc<TypeBinding>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    match v1_rt::map_get(&global_bare, binding.name.clone())
+        .as_deref()
+        .cloned()
+    {
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => global_bare.clone(),
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            binding: existing, ..
+        }) => {
+            if (existing.resolved.clone() == binding.resolved.clone()) {
+                global_bare.clone()
+            } else {
+                v1_rt::rc_map_insert(
+                    global_bare.clone(),
+                    binding.name.clone(),
+                    Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
+                )
+            }
+        }
+        None => v1_rt::rc_map_insert(
+            global_bare.clone(),
+            binding.name.clone(),
+            Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
+                binding: binding.clone(),
+            }),
+        ),
+    }
+}
+
 pub fn symbol_index_insert(
     index: Rc<SymbolIndex>,
     qualified_name: String,
     resolved: Rc<Node>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: v1_rt::rc_map_insert(
-            index.entries.clone(),
-            qualified_name.clone(),
-            resolved.clone(),
-        ),
-    })
+    {
+        let binding = Rc::new(TypeBinding {
+            name: symbol_index_qualified_leaf(qualified_name.clone()),
+            resolved: resolved.clone(),
+            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        });
+        Rc::new(SymbolIndex {
+            entries: v1_rt::rc_map_insert(
+                index.entries.clone(),
+                qualified_name.clone(),
+                resolved.clone(),
+            ),
+            global_bare: symbol_index_track_global_bare(index.global_bare.clone(), binding.clone()),
+        })
+    }
 }
 
 pub fn empty_scope() -> Rc<Scope> {
@@ -686,7 +743,7 @@ pub fn lookup_qualified_module_projection(
 }
 
 pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match v1_rt::map_get(&env.global_bare.clone(), name.clone())
+    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
     {
@@ -699,7 +756,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
 }
 
 pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
-    match v1_rt::map_get(&env.global_bare.clone(), name.clone())
+    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
         .as_deref()
         .cloned()
     {
