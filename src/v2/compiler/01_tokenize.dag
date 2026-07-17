@@ -552,3 +552,5 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
       lex_walk(source: text, file: file, rules: rule_set)
   }
 }
+
+data tokenize_module_authority_note: String = "Wave 2 Gate-A flip lane (01_tokenize self-emit): data-driven lexing via ModeledLexRules/LexRuleSet fold — no hand-rolled tokenizer. Curated seed-linked behavioral receipt compares emitted vs seed oracle constant; full token-stream equivalence oracle deferred until emit Rc/Optional surface greens (#6775)."
