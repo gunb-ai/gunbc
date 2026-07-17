@@ -7,7 +7,7 @@ import v2.lens.realization_vocabulary_containment {
   realization_vocab_leak_count_canonical
 }
 import v2.std.collection { List }
-import v2.std.layer { LayerPrefixStd, LayerPrefixExtdeps }
+import v2.std.layer { LayerPrefixStd, LayerPrefixExtdeps, LayerPrefixWorkflow }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -42,8 +42,8 @@ test fn realization_edge_import_is_not_leak_holds() -> Bool {
 
 data rostered_import_facts: List<LayerImportFact> = [
   LayerImportFact {
-    layer: LayerPrefixStd,
-    path: "dag/tools/host_prelude.dag",
+    layer: LayerPrefixWorkflow,
+    path: "src/v2/workflow/bash_program_emit.dag",
     import_module: sidecar_module
   }
 ]
@@ -52,19 +52,16 @@ test fn rostered_consumer_import_is_not_leak_holds() -> Bool {
   realization_vocab_leak_count_canonical(facts: rostered_import_facts) == 0
 }
 
-data roster_without_host_prelude: List<String> = [
-  "dag/tools/build_step.dag",
-  "dag/tools/dag_compile_clean_transport.dag",
-  "dag/tools/emit_host_transport.dag",
-  "dag/tools/layering_imports_transport.dag",
-  "src/v2/workflow/compiler_closure_ingest_transport.dag",
-  "src/v2/workflow/source_root_ingest_transport.dag"
+data roster_without_bash_program_emit: List<String> = [
+  "dag/gunbc/node_http_server_emit.dag",
+  "src/v2/lens/duplicate_computation.dag",
+  "src/v2/workflow/bash_program_sidecar_fold.dag"
 ]
 
 test fn de_rostered_consumer_import_is_leak_holds() -> Bool {
   realization_vocab_leak_count(
     facts: rostered_import_facts,
-    roster: roster_without_host_prelude
+    roster: roster_without_bash_program_emit
   ) == 1
 }
 
