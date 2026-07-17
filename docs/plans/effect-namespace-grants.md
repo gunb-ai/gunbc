@@ -73,3 +73,37 @@ Each phase green-by-execution with REDs; under-scope is a counted frontier, neve
 ## 6. FLAG A interim (unblocks P3-native without cementing the old vocabulary)
 
 A build is admissible in a replay-lane run when its envelope is: **Read ⊑ {substrate closure, pinned toolchain root (version in the artifact key)}, Write ⊑ {own workspace subtree}, no network grant**. Recorded as the first envelope row (`build_workspace_grant`), scaffold-marked, dissolve-on = P-B enforcement seam. This is the operator-reviewable form of "yes, FLAG A" — a row, not a mode exception.
+
+## 7. Ownership, de-fork sequencing, and decision log (silent-ibex-417, 2026-07-17)
+
+**Ownership.** This doc and its implementation are owned by silent-ibex-417 as of 2026-07-17 (operator handoff). Originating draft is lively-heron-615's, currently inside PR #6738; the handoff mechanics (drop from #6738 vs. land #6738 first) are Q4 below — pending, not yet executed.
+
+**The concept being decomposed (operator working session, 2026-07-17).** "Effect" is currently carried by ≥5 partial, overlapping, forked vocabularies, each a flat enum that fuses several separable grounded axes:
+
+- `std.effects.EffectShape` — CRUD verb (`Read`/`Upsert`/`Delete`/`Create`/`Append`) + `key_source` + *derived* idempotency, from HTTP method + path. **REST operation semantics.**
+- `v2.std.effects.EffectShape` — idempotency-class partition (`IsIdempotent | IsBreaking`) + `Node` projection. **Substrate witness.**
+- `std.temporal_effect.TemporalEffectPolicy` — inert third vocab (0 consumers; its `CreateIfAbsent` name-collides `std.effects.CreateCause`).
+- `std.materialization_ladder` nature gates — `FreshEffect` / `WorldRead`.
+- this doc's grant/envelope — verb × subtree × frame + handler binding. **Effect reach / permission.**
+
+Plus the proto-envelopes §0 names (`ResourceHandle`, `AuthScope`, `LiveTreeDisposition`, the `workspace_root` Rust gate). A faithful `Effect` decomposes into: **nature** (read/write; CRUD is the fine grain) · **reach** (a position in a containment tree — this doc) · **key/target** (how the position is located) · **idempotency** (retry-safety — the `std.effects` derivation) · **handler binding** (real vs replay). The two `EffectShape` forks are anemic *cuts* of this record; grants is the reach layer standing **above one** `EffectShape`, not a replacement for it.
+
+**The `std.effects` ↔ `v2.std.effects` de-fork is a PREREQUISITE, not a rival question.** §3 rules "grants reference shapes; verbs do NOT fork `EffectShape`" — grants stand on a *single* `EffectShape`, and two exist, so unifying them is the foundation grants sits on and runs first. It splits by axis:
+
+- **Operation-semantics part** (`EffectShape` verb, `CreateCause`, and the three duplicate predicates `key_source_eq` / `create_effect_is_dedupable` / `create_double_init_collapsible`) → de-forks onto `dag/std/effects.dag` now. Authority settled: 69-vs-0 consumer census, `CompositeKey` live in `fleet_host_budget` / `host_identity_converge`, #6715 precedent (v2 dissolves onto dag). Grants-independent.
+- **Key/target part** (`KeySource`) → its real home is this doc's containment tree (path-strings now → `SymbolIndex` later). A heavy rename-apart in the de-fork would be §2 redundancy — moved, not removed — so the de-fork does the *minimal* thing with `KeySource` and grants re-grounds it.
+
+This is also what dissolves the **String model↔realization fork** that blocked a naive merge (`std.effects` = kernel `String`/`Value::Str`; the intern bridge needs `v2.std.text.String = FreeMonoid<Char>`): grounding key/target on the containment tree, staged, is where it resolves — never a crossing minted at the effects seam.
+
+**Build steer (operator, 2026-07-17): model faithfully, stub what is not immediately consumed.** P-A models the whole decomposition with faithful shapes; unconsumed arms are honest stubs, each landing with a named dissolution trigger (DESIGN §6). Shape/concept fidelity is the bar — realization coverage is not.
+
+**Sequence:** (a) de-fork the operation-semantics part of effects onto dag (prerequisite) → (b) **P-A** — grant/envelope model over `Frame`, no behavior change, faithful shapes + stubs → (c) **P-B..P-D** derive the old axes and dissolve the conflations.
+
+### Decision log — operator rulings (filled as they land)
+
+| # | question | recommendation | ruling |
+|---|---|---|---|
+| Q1 | Verb set — start closed at `{Read, Write}`? (`Execute`/`Create` as later rows only when a displaced cost names them.) | Yes | _pending_ |
+| Q2 | Interim target realization — path-string prefix over the OS/URI trees now, converging onto `SymbolIndex` when the naming lane lands; the convergence row is the anti-fork commitment. | Yes, with the convergence row as a hard commitment | _pending_ |
+| Q3 | `AuthScope` — converge into the grant model where it encodes reach, or stay identity-side? | Defer: identity-side for P-A; revisit when a reach-encoding consumer names the cost (avoid speculative convergence). | _pending_ |
+| Q4 | Doc handoff from #6738 — take into this lane (drop from #6738), or land #6738 first and extend on main? | Take into this lane | _pending_ |
