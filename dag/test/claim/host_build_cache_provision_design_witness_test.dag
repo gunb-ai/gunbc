@@ -1,8 +1,8 @@
 module test.claim.host_build_cache_provision_design
 
 import std.logic { Bool }
+import extdeps.cache.sccache { sccache_local_id }
 import gunbc.host_build_cache_provision {
-  sccache_local_id,
   provision_build_cache_default_effect,
   provision_build_cache_routes_through_host_effect_apply,
   provision_refused_has_no_fallback_arm,
@@ -67,7 +67,7 @@ fn design_witness_red_simulated_widen_would_fail() -> Bool {
   }
 }
 
-test data witness_host_build_cache_provision_design_anchor: Bool =
+test fn host_build_cache_provision_design_witnesses() -> Bool {
   design_witness_routes_through_host_effect_apply()
     && design_witness_default_effect_pins_sccache_catalog()
     && design_witness_absent_daemon_fail_closed()
@@ -75,3 +75,4 @@ test data witness_host_build_cache_provision_design_anchor: Bool =
     && design_witness_cited_fatal_error_fragment()
     && design_witness_converged_not_refused_on_ok_stats()
     && design_witness_red_simulated_widen_would_fail()
+}

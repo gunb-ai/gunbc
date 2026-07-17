@@ -7,7 +7,8 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
 import extdeps.cache.cache { cache_catalog }
 
-// Design-sketch carrier — re-grounds onto gunbc.host_effect.HostEffect in implementation P-B.
+data provision_build_cache_effect_sketch_note: String = "Design-sketch carrier — re-grounds onto gunbc.host_effect.HostEffect in implementation P-B."
+
 type ProvisionBuildCache {
   catalog_id: CacheInterfaceId,
 }
