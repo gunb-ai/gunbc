@@ -122,7 +122,7 @@ import v1.compiler.infer_resolve {
 }
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, ResolveFuncSigsResult,
-  resolve_func_sigs
+  resolve_func_sigs, flatten_parent_envs
 }
 import v1.compiler.infer_emit_info {
   TypeRepr, StructRepr, EnumRepr,
@@ -2731,12 +2731,14 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
   }
 }
 
+data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). Breaking at the fixpoint returns the same answer the else arm already gives for non-alias shapes: downstream field-access inference reds with a located type error if the shape is genuinely wrong — typed and loud, never fabricated."
+
 fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
   let once = resolve_node(n: n, env: env, module_name: module_name).resolved
   if (once.connective == Conj || once.connective == Disj) {
     once
   } else if once.connective == NoConnective && once.children |> count > 0 && once.inferred == none {
-    peel_alias_once_for_field_access(n: once, env: env, module_name: module_name)
+    if once == n { once } else { peel_alias_once_for_field_access(n: once, env: env, module_name: module_name) }
   } else {
     once
   }
@@ -5175,7 +5177,7 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
         match item.body {
           Present { value: body } =>
             if !expr_has_self_call(texpr: body, fn_name: fn_name, source_indices: type_env.source_indices) {
-              let working_env = ResolvedFuncEnv { local: acc, parents: func_env.parents }
+              let working_env = ResolvedFuncEnv { name: func_env.name, local: acc, parents: func_env.parents }
               let provenance = infer_output_provenance(body: body, params: item.params, type_env: type_env, scope_locals: locals, func_env: working_env)
               let variant_prov = match item.inferred {
                 Present { value: Resolved { node: rt } } =>
@@ -5202,7 +5204,7 @@ fn populate_output_provenance(typed_items: List<Node>, func_env: ResolvedFuncEnv
       }
     } else { acc }
   )
-  ResolvedFuncEnv { local: updated_local, parents: func_env.parents }
+  ResolvedFuncEnv { name: func_env.name, local: updated_local, parents: func_env.parents }
 }
 
 fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, type_env: TypeEnv, scope_locals: Map<String, TypeBinding>, func_env: ResolvedFuncEnv) -> Node {
@@ -6692,7 +6694,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
           cache: env_cache,
           source_indices: source_indices
         ),
-        func_env: ResolvedFuncEnv { local: empty_map(), parents: [] },
+        func_env: ResolvedFuncEnv { name: authored_name_at(source_indices: source_indices, node: resolved.module), local: empty_map(), parents: [] },
         item_registry: empty_map()
       },
       diagnostics: concat(env_diags, seed_diags),
@@ -7342,7 +7344,7 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
       type_env: m.type_env,
       type_env_cache: m.type_env_cache,
       interface: m.interface,
-      func_env: ResolvedFuncEnv { local: m.func_env.local, parents: parents },
+      func_env: ResolvedFuncEnv { name: m.func_env.name, local: m.func_env.local, parents: flatten_parent_envs(direct_parents: parents) },
       item_registry: m.item_registry
     }
   )

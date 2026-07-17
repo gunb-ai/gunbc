@@ -98,7 +98,7 @@ pub use crate::v1_compiler_infer_service::{
     is_typed_service_call_receiver, service_op_entry,
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
-pub use crate::v1_compiler_infer_sigs::resolve_func_sigs;
+pub use crate::v1_compiler_infer_sigs::{flatten_parent_envs, resolve_func_sigs};
 pub use crate::v1_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
@@ -5471,6 +5471,15 @@ pub fn needs_alias_field_expansion(n: Rc<Node>, env: Rc<TypeEnv>) -> bool {
     }
 }
 
+pub fn peel_alias_fixpoint_guard_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Termination (§4 boundedness): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). Breaking at the fixpoint returns the same answer the else arm already gives for non-alias shapes: downstream field-access inference reds with a located type error if the shape is genuinely wrong — typed and loud, never fabricated.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn peel_alias_once_for_field_access(
     mut n: Rc<Node>,
     mut env: Rc<TypeEnv>,
@@ -5489,10 +5498,14 @@ pub fn peel_alias_once_for_field_access(
                 && ((once.children.clone().len() as i64) > 0))
                 && (once.inferred.clone() == None))
             {
-                {
-                    let __tco_0 = once.clone();
-                    n = __tco_0;
-                    continue;
+                if (once.clone() == n.clone()) {
+                    break once.clone();
+                } else {
+                    {
+                        let __tco_0 = once.clone();
+                        n = __tco_0;
+                        continue;
+                    }
                 }
             } else {
                 break once.clone();
@@ -11029,6 +11042,7 @@ pub fn populate_output_provenance(
                                     ) {
                                         {
                                             let working_env = Rc::new(ResolvedFuncEnv {
+                                                name: func_env.name.clone(),
                                                 local: acc.clone(),
                                                 parents: func_env.parents.clone(),
                                             });
@@ -11118,6 +11132,7 @@ pub fn populate_output_provenance(
             },
         );
         Rc::new(ResolvedFuncEnv {
+            name: func_env.name.clone(),
             local: updated_local.clone(),
             parents: func_env.parents.clone(),
         })
@@ -14772,6 +14787,7 @@ pub fn typecheck_module(
                         source_indices.clone(),
                     ),
                     func_env: Rc::new(ResolvedFuncEnv {
+                        name: authored_name_at(source_indices.clone(), resolved.module.clone()),
                         local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
                         parents: Rc::new(vec![]),
                     }),
@@ -16353,8 +16369,9 @@ pub fn rewire_func_env_parent_links(
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
                         func_env: Rc::new(ResolvedFuncEnv {
+                            name: m.func_env.clone().name.clone(),
                             local: m.func_env.clone().local.clone(),
-                            parents: parents.clone(),
+                            parents: flatten_parent_envs(parents.clone()),
                         }),
                         item_registry: m.item_registry.clone(),
                     })
