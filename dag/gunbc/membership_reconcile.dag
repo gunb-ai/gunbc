@@ -1,0 +1,88 @@
+module gunbc.membership_reconcile
+
+import std.types { String, List, Bool, Int }
+import std.change {
+  KeyedRow, KeyedPatch, KeyedDiffHunk,
+  KeyedDiffAddedHunk, KeyedDiffRemovedHunk, KeyedDiffModifiedHunk,
+  keyed_two_way_diff
+}
+import gunbc.ownership { Ownership, Owned, Ensured }
+
+type TeardownRefusalCause = MemberNotOwned | OwnershipUnknown
+
+type MemberAction<M>
+  = MemberUpsert { member: M }
+  | MemberTeardown { member: M }
+  | MemberTeardownRefused { member: M, cause: TeardownRefusalCause }
+
+type MembershipPlan<M> {
+  actions: List<MemberAction<M>>
+}
+
+data membership_reconcile_authority_note: String = "THE grain-agnostic membership-diff reconcile (R2/R3/R5/R9). Desired set vs observed set keyed by member identity: Added/Modified -> upsert, Removed -> teardown (owned-only) or refuse, Unchanged -> noop (absence of a hunk). Generic over member type M and key K: a member may be a service/unit/host OR a Session — consumers CALL this with their (key_of, key_eq, value_eq, ownership_of) bundle, they NEVER copy-adapt it (one fn, N bundles — a Realization; a forked reconcile means the genericity bought nothing). Reuses std.change.keyed_two_way_diff (the single already-generic diff engine) — no fork. R5 teardown-owned-only is a CONSTRUCTION WALL: a Removed non-owned member yields MemberTeardownRefused, which has NO effect arm in any apply dispatch, so the bad state is unwritable — never a post-check, never 'assume owned' (the absorbing fallback DESIGN §5 forbids). key_of MUST return stable IDENTITY (not content) so a content drift is Modified (re-upsert), not Remove+Add (teardown+reinstall); value_eq is presence+content so a same-key content drift re-upserts."
+
+fn member_rows<M, K>(members: List<M>, key_of: fn(M) -> K) -> List<KeyedRow<K, M>> {
+  map(members, m => KeyedRow { row_key: key_of(m), value: m })
+}
+
+fn hunk_to_action<M, K>(hunk: KeyedDiffHunk<K, M>, ownership_of: fn(M) -> Ownership?) -> MemberAction<M> {
+  match hunk {
+    KeyedDiffAddedHunk { hunk_key: _, to: m } => MemberUpsert { member: m }
+    KeyedDiffModifiedHunk { hunk_key: _, from: _, to: m } => MemberUpsert { member: m }
+    KeyedDiffRemovedHunk { hunk_key: _, from: m } =>
+      match ownership_of(m) {
+        Present { value: own } =>
+          match own {
+            Owned => MemberTeardown { member: m }
+            Ensured => MemberTeardownRefused { member: m, cause: MemberNotOwned }
+          }
+        Absent => MemberTeardownRefused { member: m, cause: OwnershipUnknown }
+      }
+  }
+}
+
+fn membership_reconcile<M, K>(
+  desired: List<M>,
+  observed: List<M>,
+  key_of: fn(M) -> K,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(M, M) -> Bool,
+  ownership_of: fn(M) -> Ownership?,
+) -> MembershipPlan<M> {
+  let patch = keyed_two_way_diff(
+    left: member_rows(members: observed, key_of: key_of),
+    right: member_rows(members: desired, key_of: key_of),
+    key_eq: key_eq,
+    value_eq: value_eq,
+  )
+  MembershipPlan {
+    actions: map(patch.hunks, h => hunk_to_action(hunk: h, ownership_of: ownership_of))
+  }
+}
+
+fn membership_upsert_count<M>(plan: MembershipPlan<M>) -> Int {
+  fold(plan.actions, init: 0, f: (acc, a) =>
+    match a {
+      MemberUpsert { member: _ } => acc + 1
+      _ => acc
+    }
+  )
+}
+
+fn membership_teardown_count<M>(plan: MembershipPlan<M>) -> Int {
+  fold(plan.actions, init: 0, f: (acc, a) =>
+    match a {
+      MemberTeardown { member: _ } => acc + 1
+      _ => acc
+    }
+  )
+}
+
+fn membership_refusal_count<M>(plan: MembershipPlan<M>) -> Int {
+  fold(plan.actions, init: 0, f: (acc, a) =>
+    match a {
+      MemberTeardownRefused { member: _, cause: _ } => acc + 1
+      _ => acc
+    }
+  )
+}
