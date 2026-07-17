@@ -22,6 +22,8 @@ type ProbeCurrency =
     ProbeEur
   | ProbeUsd
 
+type MaybeCurrency = Optional<ProbeCurrency>
+
 fn probe_minor_unit(c: ProbeCurrency) -> Int {
   match c {
     ProbeEur => 2
@@ -137,4 +139,33 @@ fn receipt_a_bounded_memo_serves_repeat_resolve_node() {
         "repeat resolve_node must hit bounded memo: {:?}",
         stats
     );
+}
+
+#[test]
+fn receipt_a_composite_resolve_reenters_memo_without_panic() {
+    std::env::remove_var("GUNBC_PER_MODULE_RESOLVE_MEMO");
+    let (resolved, source_indices, intern_table, global_bare, _) = fixture();
+    let tc = typecheck_module(
+        resolved.clone(),
+        v1_rt::rc_empty_map(),
+        v1_rt::rc_empty_map(),
+        source_indices.clone(),
+        intern_table.clone(),
+        global_bare.clone(),
+        v1_rt::rc_empty_map(),
+        empty_symbol_index(),
+    );
+    let env = tc.typed.type_env.clone();
+    let module_name = authored_name_at(source_indices.clone(), resolved.module.clone());
+    let maybe_currency: Rc<Node> = tc
+        .typed
+        .type_env
+        .str_bindings
+        .get("MaybeCurrency")
+        .expect("MaybeCurrency binding")
+        .resolved
+        .clone();
+    per_module_resolve_memo_install(&env);
+    let _ = resolve_node(maybe_currency, env, module_name);
+    per_module_resolve_memo_flush();
 }

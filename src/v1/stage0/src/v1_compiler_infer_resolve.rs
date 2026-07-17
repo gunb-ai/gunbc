@@ -493,26 +493,42 @@ pub(crate) fn per_module_scrutinee_memo_lookup_or_compute(
     if !per_module_resolve_memo_enabled() {
         return compute();
     }
-    PER_MODULE_RESOLVE_MEMO.with(|cell| {
+    enum ScrutineeProbe {
+        Hit(Rc<Node>),
+        Miss(ScrutineeMemoKey),
+        Passthrough,
+    }
+    let probe = PER_MODULE_RESOLVE_MEMO.with(|cell| {
         let mut borrow = cell.borrow_mut();
         let Some(scope) = borrow.as_mut() else {
-            return compute();
+            return ScrutineeProbe::Passthrough;
         };
         if !resolve_memo_env_matches(scope, env) {
             scope.stats.scrutinee_bypasses += 1;
-            return compute();
+            return ScrutineeProbe::Passthrough;
         }
         let node_surface_fp = resolve_memo_node_surface_fp(scope, n);
         let key = ScrutineeMemoKey { node_surface_fp };
         if let Some(hit) = scope.scrutinee.get(&key) {
             scope.stats.scrutinee_hits += 1;
-            return hit.clone();
+            return ScrutineeProbe::Hit(hit.clone());
         }
         scope.stats.scrutinee_misses += 1;
-        let result = compute();
-        scope.scrutinee.insert(key, result.clone());
-        result
-    })
+        ScrutineeProbe::Miss(key)
+    });
+    match probe {
+        ScrutineeProbe::Hit(node) => node,
+        ScrutineeProbe::Passthrough => compute(),
+        ScrutineeProbe::Miss(key) => {
+            let result = compute();
+            PER_MODULE_RESOLVE_MEMO.with(|cell| {
+                if let Some(scope) = cell.borrow_mut().as_mut() {
+                    scope.scrutinee.insert(key, result.clone());
+                }
+            });
+            result
+        }
+    }
 }
 
 fn per_module_bounded_memo_lookup_or_compute(
@@ -525,14 +541,19 @@ fn per_module_bounded_memo_lookup_or_compute(
     if !per_module_resolve_memo_enabled() {
         return compute();
     }
-    PER_MODULE_RESOLVE_MEMO.with(|cell| {
+    enum BoundedProbe {
+        Hit(Rc<NodeResolveResult>),
+        Miss(BoundedMemoKey),
+        Passthrough,
+    }
+    let probe = PER_MODULE_RESOLVE_MEMO.with(|cell| {
         let mut borrow = cell.borrow_mut();
         let Some(scope) = borrow.as_mut() else {
-            return compute();
+            return BoundedProbe::Passthrough;
         };
         if !resolve_memo_env_matches(scope, env) {
             scope.stats.bounded_bypasses += 1;
-            return compute();
+            return BoundedProbe::Passthrough;
         }
         let node_surface_fp = resolve_memo_node_surface_fp(scope, n);
         let key = BoundedMemoKey {
@@ -542,13 +563,24 @@ fn per_module_bounded_memo_lookup_or_compute(
         };
         if let Some(hit) = scope.bounded.get(&key) {
             scope.stats.bounded_hits += 1;
-            return hit.clone();
+            return BoundedProbe::Hit(hit.clone());
         }
         scope.stats.bounded_misses += 1;
-        let result = compute();
-        scope.bounded.insert(key, result.clone());
-        result
-    })
+        BoundedProbe::Miss(key)
+    });
+    match probe {
+        BoundedProbe::Hit(result) => result,
+        BoundedProbe::Passthrough => compute(),
+        BoundedProbe::Miss(key) => {
+            let result = compute();
+            PER_MODULE_RESOLVE_MEMO.with(|cell| {
+                if let Some(scope) = cell.borrow_mut().as_mut() {
+                    scope.bounded.insert(key, result.clone());
+                }
+            });
+            result
+        }
+    }
 }
 
 pub fn log_per_module_resolve_memo_stats(module_name: &str, stats: PerModuleResolveMemoStats) {
