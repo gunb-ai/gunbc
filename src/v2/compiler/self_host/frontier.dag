@@ -908,6 +908,7 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
 ]
 
 data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
+  SeedRetainedScaffoldRegistration { basename: "cssl_seed_linked_closure_assembly" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" },

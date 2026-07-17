@@ -17,7 +17,6 @@ use im_rc::{OrdSet as BTreeSet, Vector as Vec};
 
 pub mod cli_run;
 pub mod coproduct_reflection;
-pub mod cssl_seed_linked_closure_assembly;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
 pub mod extdeps_external_authority;
@@ -121,11 +120,7 @@ pub mod v1_test_non_ascii_perf_fixture;
 pub mod v2_compiler_body_producer;
 pub mod v2_compiler_discovery_enumeration;
 pub mod v2_compiler_parse_engine_hooks;
-<<<<<<< HEAD
 pub mod v2_compiler_program_assembly;
-pub mod v2_compiler_resolve;
-=======
->>>>>>> 520653db8 (fix: sort v2_compiler_program_partition mod before resolve in lib.rs)
 pub mod v2_compiler_program_partition;
 pub mod v2_compiler_resolve;
 pub mod v2_compiler_target_carriers;
