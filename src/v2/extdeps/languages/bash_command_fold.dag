@@ -1281,31 +1281,23 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
       match kind_node.kind {
         TypeNode { connective: Atom { identity: kind } } =>
           if kind == ^bash_fold_word_kind_lit {
-            match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
-              Present { value: text_node } =>
-                match text_node.kind {
-                  TypeNode { connective: Atom { identity: text } } =>
-                    bash_fold_serialize_leaf_node(
-                      emitted: word,
-                      production_binding: ^bash_production_fold_command,
-                      rule_name: ^bash_relation_rule_fold_command
-                    )
-                  _ => Rejected { diagnostics: None }
-                }
-              Absent => Rejected { diagnostics: None }
-            }
+            bash_fold_serialize_leaf_node(
+              emitted: word,
+              production_binding: ^bash_production_fold_lit_word,
+              rule_name: ^bash_production_fold_lit_word
+            )
           } else if kind == ^bash_fold_word_kind_var {
             bash_fold_serialize_leaf_node(
               emitted: word,
-              production_binding: ^bash_production_fold_command,
-              rule_name: ^bash_relation_rule_fold_command
+              production_binding: ^bash_production_fold_var_word,
+              rule_name: ^bash_production_fold_var_word
             )
           } else if kind == ^bash_fold_word_kind_concat {
-            match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
-              Present { value: parts } =>
-                bash_fold_serialize_word_list_spelling(parts: parts)
-              Absent => Rejected { diagnostics: None }
-            }
+            bash_fold_serialize_leaf_node(
+              emitted: word,
+              production_binding: ^bash_production_fold_concat_word,
+              rule_name: ^bash_production_fold_concat_word
+            )
           } else if kind == ^bash_fold_word_kind_cmdsubst {
             match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
               Present { value: body } =>
@@ -1366,19 +1358,11 @@ fn bash_fold_serialize_word_list_spelling(parts: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_command_node(stmt: Node) -> Outcome<String> {
-  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
-    Present { value: words } =>
-      bind_outcome(
-        o: bash_fold_serialize_word_list_spelling(parts: words),
-        f: fn(line) {
-          bash_fold_serialize_emit_from_node(
-            emitted: bash_word_pass_emitted,
-            target: bash_word_pass_target_model(spelling: line)
-          )
-        }
-      )
-    Absent => Rejected { diagnostics: None }
-  }
+  bash_fold_serialize_leaf_node(
+    emitted: stmt,
+    production_binding: ^bash_production_fold_command,
+    rule_name: ^bash_relation_rule_fold_command
+  )
 }
 
 fn bash_fold_serialize_assign_node(stmt: Node) -> Outcome<String> {
