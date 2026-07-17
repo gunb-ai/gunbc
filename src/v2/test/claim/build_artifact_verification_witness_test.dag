@@ -1,33 +1,51 @@
 module v2.test.claim.build_artifact_verification_witness
 
 import std.logic { Bool }
-import extdeps.languages.bash.program {
-  ShellStmt, ShellWord, ShellProgram,
-  If, Command, Concat, VarRef, Lit,
-  lit, var_ref
+import v2.extdeps.languages.bash_build {
+  bash_build_word_concat_parts,
+  bash_build_word_lit,
+  bash_build_word_var
 }
-import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.workflow.build_step_emit { verifications_script }
 import tools.build_step { BuildArtifact, emit_verifications }
 import gunbc.ci_spec { ci_floor_build_verify_script }
+import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Atom, Node, Symbol, TypeNode }
+import v2.std.node_query { node_positional_child_targets }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn probe_artifact() -> BuildArtifact {
   BuildArtifact {
-    path: Concat { parts: [var_ref(name: "ROOT"), lit(text: "/target/release/probe_bin")] },
+    path: bash_build_word_concat_parts(parts: [
+      bash_build_word_var(name: "ROOT"),
+      bash_build_word_lit(text: "/target/release/probe_bin")
+    ]),
     name: "probe_bin"
   }
 }
 
-fn probe_stmts() -> List<ShellStmt> {
+fn probe_stmts() -> List<Node> {
   emit_verifications(produces: [probe_artifact()])
 }
 
-fn stmt_text(s: ShellStmt) -> Bool {
-  match bash_program_serialize_stmt(stmt: s) {
+fn witness_stmt_is_if(s: Node) -> Bool {
+  match list_at_optional(xs: node_positional_child_targets(node: s), index: 0) {
+    Present { value: tag } =>
+      match tag.kind {
+        TypeNode { connective: Atom { identity: binding } } =>
+          binding == ^bash_production_fold_if
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn stmt_text(s: Node) -> Bool {
+  match bash_fold_serialize_node(stmt: s) {
     Accepted { value: text, diagnostics: _ } =>
       string_contains(s: text, pattern: "-x")
         && !string_contains(s: text, pattern: "-newer")
@@ -35,16 +53,9 @@ fn stmt_text(s: ShellStmt) -> Bool {
   }
 }
 
-fn is_if(s: ShellStmt) -> Bool {
-  match s {
-    If { cond: c, then: t } => true
-    _ => false
-  }
-}
-
 fn witness_single_artifact_produces_two_checks() -> Bool {
   let stmts = probe_stmts()
-  stmts.length() == 2 && is_if(s: stmts.first())
+  stmts.length() == 2 && witness_stmt_is_if(s: stmts.first())
 }
 
 fn witness_existence_check_no_mtime() -> Bool {
