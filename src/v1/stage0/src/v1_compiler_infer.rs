@@ -56,7 +56,7 @@ pub use crate::v1_compiler_infer_env::{
     inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
     lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
     merge_type_env_cache_guarded, put_inductive_field, put_inductive_field_cross,
-    str_bindings_from_bindings, symbol_index_insert,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
@@ -12733,13 +12733,13 @@ pub fn symbol_index_insert_item(
 ) -> Rc<SymbolIndex> {
     match local_binding_for_item(item.clone(), source_indices.clone()) {
         None => index,
-        Some(binding) => symbol_index_insert(
+        Some(binding) => symbol_index_insert_decl(
             index,
             v1_rt::concat(
                 v1_rt::concat(module_path.clone(), ".".to_string()),
                 binding.name.clone(),
             ),
-            binding.resolved.clone(),
+            binding.clone(),
         ),
     }
 }

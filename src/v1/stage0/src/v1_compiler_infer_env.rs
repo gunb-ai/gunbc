@@ -167,21 +167,29 @@ pub fn symbol_index_insert(
     qualified_name: String,
     resolved: Rc<Node>,
 ) -> Rc<SymbolIndex> {
-    {
-        let binding = Rc::new(TypeBinding {
-            name: symbol_index_qualified_leaf(qualified_name.clone()),
-            resolved: resolved.clone(),
-            provenance: Rc::new(SubValueRelation::SubValueUnknown),
-        });
-        Rc::new(SymbolIndex {
-            entries: v1_rt::rc_map_insert(
-                index.entries.clone(),
-                qualified_name.clone(),
-                resolved.clone(),
-            ),
-            global_bare: symbol_index_track_global_bare(index.global_bare.clone(), binding.clone()),
-        })
-    }
+    Rc::new(SymbolIndex {
+        entries: v1_rt::rc_map_insert(
+            index.entries.clone(),
+            qualified_name.clone(),
+            resolved.clone(),
+        ),
+        global_bare: index.global_bare.clone(),
+    })
+}
+
+pub fn symbol_index_insert_decl(
+    index: Rc<SymbolIndex>,
+    qualified_name: String,
+    binding: Rc<TypeBinding>,
+) -> Rc<SymbolIndex> {
+    Rc::new(SymbolIndex {
+        entries: v1_rt::rc_map_insert(
+            index.entries.clone(),
+            qualified_name.clone(),
+            binding.resolved.clone(),
+        ),
+        global_bare: symbol_index_track_global_bare(index.global_bare.clone(), binding.clone()),
+    })
 }
 
 pub fn empty_scope() -> Rc<Scope> {

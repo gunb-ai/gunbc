@@ -82,13 +82,15 @@ fn symbol_index_track_global_bare(
 }
 
 fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Node) -> SymbolIndex {
-  let binding = TypeBinding {
-    name: symbol_index_qualified_leaf(qualified_name: qualified_name),
-    resolved: resolved,
-    provenance: SubValueUnknown
-  }
   SymbolIndex {
     entries: map_insert(index.entries, qualified_name, resolved),
+    global_bare: index.global_bare
+  }
+}
+
+fn symbol_index_insert_decl(index: SymbolIndex, qualified_name: String, binding: TypeBinding) -> SymbolIndex {
+  SymbolIndex {
+    entries: map_insert(index.entries, qualified_name, binding.resolved),
     global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, binding: binding)
   }
 }
