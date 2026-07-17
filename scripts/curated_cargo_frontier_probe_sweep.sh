@@ -6,7 +6,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-REPORT="${ROOT}/docs/probes/curated_cargo_frontier_probe_sweep.tsv"
+export CSSL_STD_SEED_LINK="${CSSL_STD_SEED_LINK:-1}"
+REPORT="${ROOT}/docs/probes/curated_cargo_frontier_probe_sweep_seedlink.tsv"
 mkdir -p "$(dirname "$REPORT")"
 PROBE="$ROOT/scripts/curated_cargo_probe_one.sh"
 
