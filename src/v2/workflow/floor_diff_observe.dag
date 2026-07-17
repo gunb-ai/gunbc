@@ -42,7 +42,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var
 }
 import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_program }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Node }
 import extdeps.git {
   GitDiffNameStatusComplete,
@@ -53,7 +53,8 @@ import extdeps.git {
   git_diff_status_entries_any_unknown
 }
 
-data floor_diff_emit_refused_poison: String = "__GUNBC_BASH_EMIT_REFUSED__ floor_diff_observe script emission was rejected by bash_fold_serialize_program; this marker is not valid shell, so downstream observation refuses rather than executing a hand-spelled fallback (DESIGN §5: refuse, never widen)\n"
+data floor_unified_diff_emit_refused_reason: String = "floor_diff_observe: git-diff unified script emission rejected by bash_fold_serialize_program"
+data floor_name_status_diff_emit_refused_reason: String = "floor_diff_observe: git-diff name-status script emission rejected by bash_fold_serialize_program"
 
 type FloorUnifiedDiffResult
   = UnifiedDiffOk { text: String }
@@ -67,11 +68,8 @@ fn floor_ci_host_os() -> NodeControlPlane {
   HostOs { node: gunbc_ci_host }
 }
 
-fn floor_serialize_program(stmts: List<Node>, set_e: Bool) -> String {
-  match bash_fold_serialize_program(stmts: stmts, set_e: set_e) {
-    Accepted { value: script, diagnostics: _ } => script
-    Rejected { diagnostics: _ } => floor_diff_emit_refused_poison
-  }
+fn floor_serialize_program(stmts: List<Node>, set_e: Bool) -> Outcome<String> {
+  bash_fold_serialize_program(stmts: stmts, set_e: set_e)
 }
 
 fn floor_test_z(name: String) -> Node {
@@ -214,8 +212,20 @@ fn floor_git_diff_unified_stmts(policy: DiffPolicy) -> List<Node> {
   )
 }
 
-fn floor_git_diff_unified_script(policy: DiffPolicy) -> String {
-  floor_serialize_program(stmts: floor_git_diff_unified_stmts(policy: policy), set_e: true)
+fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult {
+  match floor_serialize_program(stmts: floor_git_diff_unified_stmts(policy: policy), set_e: true) {
+    Accepted { value: script, diagnostics: _ } =>
+      floor_unified_diff_from_reconciliation(
+        r: host_effect_apply(
+          target: floor_ci_host_os(),
+          effect: ShellCommand { script: script },
+          evidence: host_effect_read_evidence,
+          transport: LocalShell
+        )
+      )
+    Rejected { diagnostics: _ } =>
+      UnifiedDiffFail { reason: floor_unified_diff_emit_refused_reason }
+  }
 }
 
 fn floor_unified_diff_from_reconciliation(
@@ -236,17 +246,6 @@ fn floor_unified_diff_from_reconciliation(
     NotConverged { reason: why, applied: _ } =>
       UnifiedDiffFail { reason: why }
   }
-}
-
-fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult {
-  floor_unified_diff_from_reconciliation(
-    r: host_effect_apply(
-      target: floor_ci_host_os(),
-      effect: ShellCommand { script: floor_git_diff_unified_script(policy: policy) },
-      evidence: host_effect_read_evidence,
-      transport: LocalShell
-    )
-  )
 }
 
 fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
@@ -341,10 +340,6 @@ fn floor_git_diff_name_status_stmts(policy: DiffPolicy) -> List<Node> {
   )
 }
 
-fn floor_git_diff_name_status_script(policy: DiffPolicy) -> String {
-  floor_serialize_program(stmts: floor_git_diff_name_status_stmts(policy: policy), set_e: true)
-}
-
 fn floor_name_status_diff_from_reconciliation(
   r: Reconciliation<HostEffectIntent, HostEffectEvidence>
 ) -> FloorNameStatusDiffResult {
@@ -378,14 +373,19 @@ fn floor_name_status_diff_from_reconciliation(
 }
 
 fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiffResult {
-  floor_name_status_diff_from_reconciliation(
-    r: host_effect_apply(
-      target: floor_ci_host_os(),
-      effect: ShellCommand { script: floor_git_diff_name_status_script(policy: policy) },
-      evidence: host_effect_read_evidence,
-      transport: LocalShell
-    )
-  )
+  match floor_serialize_program(stmts: floor_git_diff_name_status_stmts(policy: policy), set_e: true) {
+    Accepted { value: script, diagnostics: _ } =>
+      floor_name_status_diff_from_reconciliation(
+        r: host_effect_apply(
+          target: floor_ci_host_os(),
+          effect: ShellCommand { script: script },
+          evidence: host_effect_read_evidence,
+          transport: LocalShell
+        )
+      )
+    Rejected { diagnostics: _ } =>
+      NameStatusDiffFail { reason: floor_name_status_diff_emit_refused_reason }
+  }
 }
 
 fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
@@ -393,17 +393,23 @@ fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
 }
 
 fn floor_diff_script_serializes_git_diff_unified() -> Bool {
-  let script = floor_git_diff_unified_script(policy: gunbc_ci_spec.diff_policy)
-  string_contains(s: script, pattern: "'git'")
-    && string_contains(s: script, pattern: "'diff'")
-    && string_contains(s: script, pattern: "GUNBC_CI_DIFF_UNIFIED")
+  match floor_serialize_program(stmts: floor_git_diff_unified_stmts(policy: gunbc_ci_spec.diff_policy), set_e: true) {
+    Accepted { value: script, diagnostics: _ } =>
+      string_contains(s: script, pattern: "'git'")
+        && string_contains(s: script, pattern: "'diff'")
+        && string_contains(s: script, pattern: "GUNBC_CI_DIFF_UNIFIED")
+    Rejected { diagnostics: _ } => false
+  }
 }
 
 fn floor_diff_script_serializes_git_diff_name_status() -> Bool {
-  let script = floor_git_diff_name_status_script(policy: gunbc_ci_spec.diff_policy)
-  string_contains(s: script, pattern: "'git'")
-    && string_contains(s: script, pattern: "'diff'")
-    && string_contains(s: script, pattern: "'--name-status'")
-    && string_contains(s: script, pattern: "'-z'")
-    && string_contains(s: script, pattern: "GUNBC_CI_DIFF_NAME_STATUS")
+  match floor_serialize_program(stmts: floor_git_diff_name_status_stmts(policy: gunbc_ci_spec.diff_policy), set_e: true) {
+    Accepted { value: script, diagnostics: _ } =>
+      string_contains(s: script, pattern: "'git'")
+        && string_contains(s: script, pattern: "'diff'")
+        && string_contains(s: script, pattern: "'--name-status'")
+        && string_contains(s: script, pattern: "'-z'")
+        && string_contains(s: script, pattern: "GUNBC_CI_DIFF_NAME_STATUS")
+    Rejected { diagnostics: _ } => false
+  }
 }
