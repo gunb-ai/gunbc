@@ -5,10 +5,11 @@ import extdeps.cache.sccache { sccache_local_id }
 import gunbc.host_build_cache_provision {
   provision_build_cache_default_effect,
   provision_build_cache_routes_through_host_effect_apply,
-  provision_refused_has_no_fallback_arm,
   daemon_absent_refuses_fail_closed,
   misconfigured_matches_cited_fragment,
   provision_build_cache_verdict,
+  provision_build_cache_absorbing_fallback_widen_sketch,
+  build_cache_provision_gate_accepts,
   DaemonAbsent,
   DaemonStatsOk,
   ProvisionConverged,
@@ -28,19 +29,14 @@ fn design_witness_absent_daemon_fail_closed() -> Bool {
   daemon_absent_refuses_fail_closed()
 }
 
-fn design_witness_verdict_has_no_fallback_arm() -> Bool {
-  provision_refused_has_no_fallback_arm(
+fn design_witness_authority_gate_accepts_absent_refusal() -> Bool {
+  build_cache_provision_gate_accepts(
     verdict: provision_build_cache_verdict(
       catalog_id: sccache_local_id,
       observed: DaemonAbsent,
     ),
+    observed: DaemonAbsent,
   )
-    && provision_refused_has_no_fallback_arm(
-      verdict: provision_build_cache_verdict(
-        catalog_id: sccache_local_id,
-        observed: DaemonStatsOk { stats_line: "compile_requests=1" },
-      ),
-    )
 }
 
 fn design_witness_cited_fatal_error_fragment() -> Bool {
@@ -57,22 +53,34 @@ fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
   }
 }
 
-fn design_witness_red_simulated_widen_would_fail() -> Bool {
-  match provision_build_cache_verdict(
+fn witness_widen_sketch_fabricates_converged_on_absent() -> Bool {
+  match provision_build_cache_absorbing_fallback_widen_sketch(
     catalog_id: sccache_local_id,
     observed: DaemonAbsent,
   ) {
-    ProvisionRefused { cause: RefusalDaemonAbsent, reason: _ } => true
-    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+    ProvisionConverged { catalog_id: _, stats_line: _ } => true
+    ProvisionRefused { cause: _, reason: _ } => false
   }
+}
+
+fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
+  witness_widen_sketch_fabricates_converged_on_absent()
+    && !build_cache_provision_gate_accepts(
+      verdict: provision_build_cache_absorbing_fallback_widen_sketch(
+        catalog_id: sccache_local_id,
+        observed: DaemonAbsent,
+      ),
+      observed: DaemonAbsent,
+    )
+    && design_witness_authority_gate_accepts_absent_refusal()
 }
 
 test fn host_build_cache_provision_design_witnesses() -> Bool {
   design_witness_routes_through_host_effect_apply()
     && design_witness_default_effect_pins_sccache_catalog()
     && design_witness_absent_daemon_fail_closed()
-    && design_witness_verdict_has_no_fallback_arm()
+    && design_witness_authority_gate_accepts_absent_refusal()
     && design_witness_cited_fatal_error_fragment()
     && design_witness_converged_not_refused_on_ok_stats()
-    && design_witness_red_simulated_widen_would_fail()
+    && witness_red_control_widen_on_absent_rejected_by_gate()
 }
