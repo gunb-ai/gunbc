@@ -330,3 +330,96 @@ fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
     occurrence_id: SyntheticOccurrence
   }
 }
+
+fn bash_build_negation(inner: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Positional,
+        target: bash_build_stmt_tag(binding: ^bash_build_stmt_negation)
+      },
+      Edge { label: Positional, target: inner }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn bash_build_word_list_from_nodes_suffix(
+  words: List<Node>,
+  accumulated: Node,
+  index: Int
+) -> Node {
+  match list_at_optional(xs: words, index: index) {
+    Present { value: word } =>
+      bash_build_word_list_from_nodes_suffix(
+        words: words,
+        accumulated: bash_build_command_words_pair(left: accumulated, right: word),
+        index: index + 1
+      )
+    Absent => accumulated
+  }
+}
+
+fn bash_build_word_list_from_nodes(words: List<Node>) -> Node {
+  match list_head(xs: words) {
+    HeadFound { value: first } =>
+      bash_build_word_list_from_nodes_suffix(
+        words: words,
+        accumulated: bash_build_command_words_single(word: first),
+        index: 1
+      )
+    HeadAbsent =>
+      bash_build_command_words_single(word: bash_build_word_lit(text: ""))
+  }
+}
+
+fn bash_build_word_concat_parts(parts: List<Node>) -> Node {
+  bash_build_word_concat(parts: bash_build_word_list_from_nodes(words: parts))
+}
+
+fn bash_build_command_words_from_nodes(words: List<Node>) -> Node {
+  bash_build_word_list_from_nodes(words: words)
+}
+
+fn bash_build_command_with_words(words: List<Node>) -> Node {
+  bash_build_command(words: bash_build_command_words_from_nodes(words: words))
+}
+
+fn bash_build_test_bracket(words: List<Node>) -> Node {
+  bash_build_command_with_words(
+    words: concat(
+      [bash_build_word_lit(text: "[")],
+      concat(words, [bash_build_word_lit(text: "]")])
+    )
+  )
+}
+
+fn bash_build_stmt_list_from_nodes_suffix(
+  stmts: List<Node>,
+  accumulated: Node,
+  index: Int
+) -> Node {
+  match list_at_optional(xs: stmts, index: index) {
+    Present { value: stmt } =>
+      bash_build_stmt_list_from_nodes_suffix(
+        stmts: stmts,
+        accumulated: bash_build_stmt_list_pair(left: accumulated, right: stmt),
+        index: index + 1
+      )
+    Absent => accumulated
+  }
+}
+
+fn bash_build_stmt_list_from_nodes(stmts: List<Node>) -> Node {
+  match list_head(xs: stmts) {
+    HeadFound { value: first } =>
+      bash_build_stmt_list_from_nodes_suffix(
+        stmts: stmts,
+        accumulated: bash_build_stmt_list_single(stmt: first),
+        index: 1
+      )
+    HeadAbsent =>
+      bash_build_stmt_list_single(stmt: bash_build_exit(code: "0"))
+  }
+}
