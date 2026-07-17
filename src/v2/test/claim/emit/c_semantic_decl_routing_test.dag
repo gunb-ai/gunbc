@@ -247,6 +247,21 @@ test fn c_semantic_point_emit_observed_double_space_holds() -> Bool {
   }
 }
 
+test fn c_semantic_bool_emit_contains_false_holds() -> Bool {
+  match cdr_emit_text(name: ^Bool, node: cdr_bool_coproduct()) {
+    Accepted { value: text, diagnostics: _ } => string_contains(s: text, pattern: ", False")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_point_emit_oracle_missing_int_y_holds() -> Bool {
+  match cdr_emit_text(name: ^Point, node: cdr_point_record()) {
+    Accepted { value: text, diagnostics: _ } =>
+      text == concat("typedef struct ", "{ int x; y; } Point;")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn c_semantic_point_record_routes_to_struct_emit() -> Bool {
   cdr_matches(name: ^Point, node: cdr_point_record(), golden: c_semantic_point_golden)
     && !cdr_matches(name: ^Point, node: cdr_point_record(), golden: c_semantic_point_wrong_golden)
