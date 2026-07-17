@@ -524,21 +524,17 @@ fn gunbc_ci_floor_run(spec: CiSpec) -> String {
 
 fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
     concat(
       concat(
-        concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags_rooted(roots: witness_layer_roots)),
-        concat(" --entry ", stage.entry)
+        concat(
+          concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags_rooted(roots: witness_layer_roots)),
+          concat(" --entry ", stage.entry)
+        ),
+        concat(" --function ", stage.function)
       ),
-      concat(" --function ", stage.function)
-    ),
-    "\n"
-  )
-}
-
-fn gunbc_ci_deploy_run_script(stage: DeployStage) -> String {
-  concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    gunbc_ci_deploy_invoke(stage: stage)
+      "\n"
+    )
   )
 }
 

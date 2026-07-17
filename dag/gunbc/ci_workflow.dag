@@ -7,7 +7,7 @@ import gunbc.ci_workflow_expressions {
 import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_floor_run,
   gunbc_ci_regen_spec, gunbc_ci_regen_floor_run,
-  gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
+  gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_invoke,
   ci_release_build_script,
   ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
@@ -353,7 +353,7 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
   RunStep {
     name: Present { value: stage.step_name },
     id: none,
-    run: gunbc_ci_deploy_run_script(stage: stage),
+    run: gunbc_ci_deploy_invoke(stage: stage),
     shell: none,
     env: none,
     working_directory: none,
@@ -412,7 +412,7 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     name: none,
     runner: stage.runner,
     steps: concat(
-      [ci_checkout_step()],
+      ci_prelude_steps(),
       [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_deploy_step(stage: stage)]
     ),
     needs: stage.needs,
