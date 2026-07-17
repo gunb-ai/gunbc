@@ -412,8 +412,8 @@ struct PerModuleResolveMemoScope {
     env_scope_ptr: usize,
     bounded: std::collections::HashMap<BoundedMemoKey, Rc<NodeResolveResult>>,
     scrutinee: std::collections::HashMap<ScrutineeMemoKey, Rc<Node>>,
-    /// Ptr-hint cache only — amortizes fingerprint; map equality is content String.
-    node_surface_fp_cache: std::collections::HashMap<usize, String>,
+    /// Ptr-hint cache: pins Rc<Node> so addr cannot be reused (ABA-safe); map equality is content String.
+    node_surface_fp_cache: std::collections::HashMap<usize, (Rc<Node>, String)>,
     stats: PerModuleResolveMemoStats,
 }
 
@@ -426,11 +426,13 @@ fn resolve_memo_node_surface_fp(
     n: &Rc<Node>,
 ) -> String {
     let node_ptr = Rc::as_ptr(n) as usize;
-    if let Some(cached) = scope.node_surface_fp_cache.get(&node_ptr) {
-        return cached.clone();
+    if let Some((_pinned, fp)) = scope.node_surface_fp_cache.get(&node_ptr) {
+        return fp.clone();
     }
     let fp = dag_node_surface_fingerprint(n.clone());
-    scope.node_surface_fp_cache.insert(node_ptr, fp.clone());
+    scope
+        .node_surface_fp_cache
+        .insert(node_ptr, (n.clone(), fp.clone()));
     fp
 }
 
