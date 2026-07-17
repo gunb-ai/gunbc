@@ -223,6 +223,7 @@ pub fn assemble_seed_linked_closure(
             if seed_has_pub_mod(&seed_lib_rs, &module)? {
                 write_compiler_seed_reexport(&dest, &module)?;
             } else {
+                // Former RefusedDep arm → emit-retain; cargo is the refusal surface.
                 sanitize_emitter_artifact_in_place(&dest)?;
             }
             continue;
@@ -233,6 +234,7 @@ pub fn assemble_seed_linked_closure(
             if bridge_src.is_file() {
                 copy_std_bridge(&dest, &bridge_src)?;
             } else {
+                // Former RefusedDep arm → emit-retain + optional sanitize scaffold.
                 sanitize_emitter_artifact_in_place(&dest)?;
             }
             continue;
