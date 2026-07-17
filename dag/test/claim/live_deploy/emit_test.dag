@@ -20,10 +20,13 @@ import gunbc.live_deploy.emit {
   expected_live_deploy_retract_script,
   live_deploy_systemd_unit_for,
   deployment_ensure_dependency_script,
+  emit_deploy_teardown_dependency_refusal,
+  live_deploy_wholesale_refused_poison,
   live_deploy_emit_shell_dissolution_trigger,
   live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
   live_deploy_intent_dependency_graph_emit_dissolution_trigger,
 }
+import v2.std.orchestration { Do, Run }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.generated_artifact {
@@ -238,6 +241,23 @@ fn witness_retract_script_matches_committed_golden() -> Bool {
     && !(concat(r.content, "x") == expected)
 }
 
+data emit_poison_backstop_witness_note: String = "GOLDEN-INDEPENDENT backstop (calm-ferret pass-2 flag 2): the emit-level poison markers (teardown-dependency-unreachable, wholesale-refused) are the defense-in-depth backstop to the PRIMARY typed refusal (the EffectsOrRefusal SUM, proven golden-independent by w_effects_refuses_wholesale_on_any_refusal in the spine test). But the poison backstops are golden-DEPENDENT — a regen while a refusal was buggily active could commit a poisoned golden and the drift gate would then pass. These two witnesses call the refusal producers directly and assert the marker is present, golden-INDEPENDENT, so a golden-absorption can never hide that the arm still refuses loudly."
+
+fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
+  let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: NodeJsPackage, package: package_nodejs })
+  count(steps) == 1
+    && any(steps, s => match s {
+         Do { run: r } => string_contains(s: r.command, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
+         _ => false
+       })
+}
+
+fn witness_wholesale_refused_poison_carries_marker() -> Bool {
+  let poison = live_deploy_wholesale_refused_poison(refusals: [], fold_label: "APPLY")
+  string_contains(s: poison, pattern: "__GUNBC_DEPLOY_REFUSED__")
+    && string_contains(s: poison, pattern: "APPLY refused-member-count=0")
+}
+
 test fn live_deploy_emit_holds() -> Bool {
   witness_spec_targets_srv1()
     && witness_spec_uses_apt_package_manager()
@@ -261,4 +281,6 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis()
     && witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline()
     && witness_emit_shell_dissolution_trigger_is_scaffold()
+    && witness_teardown_dependency_arm_refuses_golden_independent()
+    && witness_wholesale_refused_poison_carries_marker()
 }
