@@ -60,11 +60,6 @@ fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
   map_get(index.entries, qualified_name)
 }
 
-fn symbol_index_qualified_leaf(qualified_name: String) -> String {
-  let segs = split(qualified_name, separator: ".")
-  fold(segs, init: "", f: (_, seg) => seg)
-}
-
 fn symbol_index_track_global_bare(
   global_bare: Map<String, GlobalBareLookupState>,
   binding: TypeBinding

@@ -114,22 +114,6 @@ pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Op
     v1_rt::map_get(&index.entries.clone(), qualified_name.clone())
 }
 
-pub fn symbol_index_qualified_leaf(qualified_name: String) -> String {
-    {
-        let segs = Rc::new(
-            qualified_name
-                .clone()
-                .split(&".".to_string())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>(),
-        );
-        segs.clone()
-            .iter()
-            .cloned()
-            .fold("".to_string(), |_: String, seg: String| seg.clone())
-    }
-}
-
 pub fn symbol_index_track_global_bare(
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     binding: Rc<TypeBinding>,
