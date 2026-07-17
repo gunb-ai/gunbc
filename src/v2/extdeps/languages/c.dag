@@ -918,6 +918,8 @@ data c_emit_host_type_decl_main_suffix: String = "\n\nint main(void) {\n  Point 
 
 data c_emit_host_type_decl_inject_fault_main_suffix: String = "\n\nint main(void) {\n  Point p = { 2, 3 };\n  unsigned char out[5] = {0, 4, 0, 0, 0};\n  extern long write(int, const void *, unsigned long);\n  write(1, out, 5);\n  return 0;\n}\n"
 
+data c_emit_host_type_decl_main_suffix_dissolution_trigger: String = "🟡 dissolve-on: c_emit_host_type_decl_main_suffix + c_emit_host_type_decl_inject_fault_main_suffix — type-decl smoke-driver main harness fragments spliced after emitted Point/Bool/Answer typedefs via EmittedWithSuffix (parallel to c_emit_host_main_suffix_dissolution_trigger). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then."
+
 fn c_type_decl_host_transport_descriptor(main_suffix: String) -> HostTransportDescriptor {
   HostTransportDescriptor {
     identity: ^c_type_decl_host_transport_identity,

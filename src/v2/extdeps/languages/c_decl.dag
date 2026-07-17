@@ -2,6 +2,7 @@ module v2.extdeps.languages.c_decl
 
 import v2.std.grammar {
   grammar_formal_terminal,
+  grammar_formal_terminal_bound,
   grammar_formal_terminal_free,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
