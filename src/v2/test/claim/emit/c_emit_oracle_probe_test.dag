@@ -27,7 +27,7 @@ fn str_len(s: String) -> Int {
 test fn c_emit_len_35_holds() -> Bool { str_len(s: emit_point_text()) == 35 }
 test fn c_emit_len_39_holds() -> Bool { str_len(s: emit_point_text()) == 39 }
 
-test fn c_emit_oracle_int_y_holds() -> Bool {
+test fn c_emit_oracle_int_y_x_holds() -> Bool {
   emit_point_text() == concat("typedef struct ", "{ int y; x; } Point;")
 }
 
@@ -35,6 +35,10 @@ test fn c_emit_oracle_x_int_y_holds() -> Bool {
   emit_point_text() == concat("typedef struct ", "{ x; int y; } Point;")
 }
 
-test fn c_emit_oracle_int_semi_x_holds() -> Bool {
-  emit_point_text() == concat("typedef struct ", "{ int; x; y; } Point;")
+test fn c_emit_oracle_int_semi_x_y_holds() -> Bool {
+  emit_point_text() == concat("typedef struct ", "{ int; x y; } Point;")
+}
+
+test fn c_emit_oracle_missing_int_y_holds() -> Bool {
+  emit_point_text() == concat("typedef struct ", "{ int x; y; } Point;")
 }
