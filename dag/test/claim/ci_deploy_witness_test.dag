@@ -6,7 +6,9 @@ import gunbc.ci_spec {
   gunbc_ci_deploy_srv1_stage,
   live_deploy_apply_entry,
   live_deploy_apply_srv1_wet_function,
-  gunbc_ci_deploy_run_script,
+  gunbc_ci_deploy_invoke,
+  ci_release_build_line,
+  ci_release_build_script,
 }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
@@ -27,7 +29,6 @@ import gunbc.fleet_posix_accounts {
   grounded_posix_principal_name,
 }
 import gunbc.ci_workflow { ci_workflow }
-import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.fleet_intent { srv1_host }
 import gunbc.host_effect { LocalShell }
@@ -92,12 +93,32 @@ fn witness_ci_spec_carries_deploy_stages() -> Bool {
   gunbc_ci_spec.deploy_stages == gunbc_ci_deploy_stages
 }
 
-fn witness_deploy_run_script_invokes_gunbc_wet() -> Bool {
-  let script = gunbc_ci_deploy_run_script(stage: gunbc_ci_deploy_srv1_stage)
+fn witness_deploy_invoke_runs_gunbc_wet() -> Bool {
+  let script = gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage)
   string_contains(s: script, pattern: live_deploy_apply_entry)
     && string_contains(s: script, pattern: live_deploy_apply_srv1_wet_function)
     && string_contains(s: script, pattern: "\"$ROOT/target/release/gunbc\" run")
     && string_contains(s: script, pattern: "--source-root \"$ROOT/dag\"")
+}
+
+fn witness_deploy_invoke_does_not_rebuild_release_bins() -> Bool {
+  let script = gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage)
+  !string_contains(s: script, pattern: ci_release_build_line())
+    && !string_contains(s: script, pattern: ci_release_build_script())
+    && !string_contains(s: script, pattern: "CARGO_BIN")
+    && !string_contains(s: script, pattern: "sccache --show-stats")
+    && !string_contains(s: script, pattern: "CARGO_BUILD_JOBS=1")
+}
+
+fn witness_ci_yml_deploy_job_consumes_release_bins_artifact() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
+    && string_contains(s: yaml, pattern: "      - name: Download release-bins artifact")
+    && string_contains(s: yaml, pattern: "      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)")
+    && string_contains(s: yaml, pattern: "      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)")
+    && string_contains(s: yaml, pattern: "    timeout-minutes: 10")
+    && !string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)\n        run: |\n          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n          set -o pipefail")
+    && !string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)\n        run: |\n          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)\n          \"$CARGO_BIN\" build")
 }
 
 fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
@@ -119,7 +140,9 @@ test fn ci_deploy_witnesses() -> Bool {
     && witness_deploy_access_sudo_miss_surfaces_sudoers_hint()
     && witness_deploy_access_sudoers_line_authority()
     && witness_ci_spec_carries_deploy_stages()
-    && witness_deploy_run_script_invokes_gunbc_wet()
+    && witness_deploy_invoke_runs_gunbc_wet()
+    && witness_deploy_invoke_does_not_rebuild_release_bins()
+    && witness_ci_yml_deploy_job_consumes_release_bins_artifact()
     && witness_workflow_deploy_job_matches_enrollment()
     && witness_ci_yml_deploy_job_matches_enrollment()
 }
