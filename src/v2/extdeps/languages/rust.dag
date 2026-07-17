@@ -2095,6 +2095,110 @@ fn rust_decl_general_lex() -> LexRules {
   ModeledLexRules { root: rust_decl_general_lex_rules() }
 }
 
+fn rust_semantic_decl_lex_rows() -> List<Node> {
+  [
+    semantic_decl_lex_whitespace_trivia_row(),
+    semantic_decl_lex_literal_row(
+      token_class: ^rust_token_derive_struct,
+      text: rust_decl_derive_lex_spelling(text: rust_struct_derives)
+    ),
+    semantic_decl_lex_literal_row(
+      token_class: ^rust_token_derive_struct_copy,
+      text: rust_decl_derive_lex_spelling(text: rust_struct_derives_copy)
+    ),
+    semantic_decl_lex_literal_row(
+      token_class: ^rust_token_derive_enum,
+      text: rust_decl_derive_lex_spelling(text: rust_enum_derives)
+    ),
+    semantic_decl_lex_literal_row(
+      token_class: ^rust_token_derive_enum_copy,
+      text: rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
+    ),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_kw_struct, text: "struct "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_kw_enum, text: "enum "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_generic_lt, text: "<"),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_generic_gt, text: ">"),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_lbrace, text: " { "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_colon, text: ": "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_comma, text: ", "),
+    semantic_decl_lex_literal_row(token_class: ^rust_token_rbrace, text: " }"),
+    semantic_decl_lex_ident_row(token_class: ^rust_token_ident)
+  ]
+}
+
+fn rust_semantic_decl_binding_spelling_rows() -> List<Node> {
+  [
+    semantic_decl_binding_spelling_row(
+      binding: ^rust_decl_derive_struct_binding,
+      spelling: rust_decl_derive_lex_spelling(text: rust_struct_derives)
+    ),
+    semantic_decl_binding_spelling_row(
+      binding: ^rust_decl_derive_struct_copy_binding,
+      spelling: rust_decl_derive_lex_spelling(text: rust_struct_derives_copy)
+    ),
+    semantic_decl_binding_spelling_row(
+      binding: ^rust_decl_derive_enum_binding,
+      spelling: rust_decl_derive_lex_spelling(text: rust_enum_derives)
+    ),
+    semantic_decl_binding_spelling_row(
+      binding: ^rust_decl_derive_enum_copy_binding,
+      spelling: rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
+    )
+  ]
+}
+
+fn rust_semantic_decl_serialize_profile_bundle_node() -> Node {
+  semantic_decl_serialize_profile_bundle(
+    lex_rows: rust_semantic_decl_lex_rows(),
+    spelling_rows: rust_semantic_decl_binding_spelling_rows()
+  )
+}
+
+fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
+  TargetSemanticDeclSurfaceProjection {
+    record_decoration_lines: [
+      TargetSemanticDeclDecorationLine {
+        surface_binding: ^rust_decl_derive_struct_binding
+      }
+    ],
+    field_type_before_name: false,
+    type_expr_field_scope: false,
+    struct_typedef_name_after_fields: false,
+    enum_name_after_variants: false,
+    field_type_permit_only_int: false,
+    coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
+    coproduct_decoration_rules: [
+      TargetSemanticDeclCoproductDecorationRule {
+        shape_key: ^semantic_decl_coproduct_shape_default,
+        decoration_lines: [
+          TargetSemanticDeclDecorationLine {
+            surface_binding: ^rust_decl_derive_enum_binding
+          }
+        ]
+      },
+      TargetSemanticDeclCoproductDecorationRule {
+        shape_key: ^semantic_decl_coproduct_shape_all_variants_nullary,
+        decoration_lines: [
+          TargetSemanticDeclDecorationLine {
+            surface_binding: ^rust_decl_derive_enum_copy_binding
+          }
+        ]
+      }
+    ]
+  }
+}
+
+fn rust_semantic_decl_emission_bundle_node() -> Node {
+  semantic_decl_emission_bundle(
+    identity: ^rust_semantic_decl_emission_identity,
+    enum_translation_rules: rust_enum_general_decl_productions_only_translation_rules(),
+    struct_translation_rules: rust_struct_general_decl_productions_only_translation_rules(),
+    enum_serialize_profile: rust_semantic_decl_serialize_profile_bundle_node(),
+    struct_serialize_profile: rust_semantic_decl_serialize_profile_bundle_node(),
+    surface: rust_semantic_decl_surface_projection()
+  )
+}
+
 fn rust_enum_general_decl_structural_target_model() -> TargetModel {
   TargetModel {
     bundle: Node {

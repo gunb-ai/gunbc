@@ -7,6 +7,9 @@ import extdeps.languages.c.emit {
   c_path_with_extension,
   c_source_extension
 }
+import v2.extdeps.languages.c_decl {
+  c_semantic_decl_emission_bundle_node
+}
 import std.algebra { Empty }
 import std.graph {
   CallGraph,
@@ -818,7 +821,11 @@ fn c_target_model_node() -> Node {
       c_named_edge(name: ^target_model_edge_selection_policy, target: c_selection_policy_node()),
       c_named_edge(name: ^target_model_edge_declared_inhabitants, target: c_add_declared_inhabitants_root()),
       c_named_edge(name: ^target_model_edge_translation_rules, target: c_translation_rules_node()),
-      c_named_edge(name: ^target_model_edge_serialize_source, target: c_serialize_source_node())
+      c_named_edge(name: ^target_model_edge_serialize_source, target: c_serialize_source_node()),
+      c_named_edge(
+        name: ^target_model_edge_semantic_decl_emission,
+        target: c_semantic_decl_emission_bundle_node()
+      )
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -904,6 +911,64 @@ fn c_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
       transport: c_host_transport_descriptor(main_suffix: c_emit_host_inject_fault_main_suffix),
       runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
     }
+  }
+}
+
+data c_emit_host_type_decl_main_suffix: String = "\n\nint main(void) {\n  Point p = { 2, 3 };\n  Bool b = True;\n  if (p.x + p.y != 5) { return 1; }\n  if (b != True) { return 2; }\n  unsigned char out[5] = {0, 5, 0, 0, 0};\n  extern long write(int, const void *, unsigned long);\n  write(1, out, 5);\n  return 0;\n}\n"
+
+data c_emit_host_type_decl_inject_fault_main_suffix: String = "\n\nint main(void) {\n  Point p = { 2, 3 };\n  unsigned char out[5] = {0, 4, 0, 0, 0};\n  extern long write(int, const void *, unsigned long);\n  write(1, out, 5);\n  return 0;\n}\n"
+
+data c_emit_host_type_decl_main_suffix_dissolution_trigger: String = "🟡 dissolve-on: c_emit_host_type_decl_main_suffix + c_emit_host_type_decl_inject_fault_main_suffix — type-decl smoke-driver main harness fragments spliced after emitted Point/Bool/Answer typedefs via EmittedWithSuffix (parallel to c_emit_host_main_suffix_dissolution_trigger). DISSOLVES WHEN a modeled C main producer emits the harness from grammar rows — retire these string carriers then."
+
+fn c_type_decl_host_transport_descriptor(main_suffix: String) -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^c_type_decl_host_transport_identity,
+    workspace: [
+      WorkspaceFile {
+        path: "fixture.c",
+        content: EmittedWithSuffix { suffix: main_suffix }
+      }
+    ],
+    build: [
+      ProcessInvocation {
+        program: HostToolProgram { executable: "cc" },
+        args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
+      }
+    ],
+    run: ProcessInvocation {
+      program: ProducedProgram { path: "fixture" },
+      args: []
+    },
+    runtime_value_codec: FixedWidthBytes { width: 5 }
+  }
+}
+
+fn c_type_decl_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: c_type_decl_host_transport_descriptor(main_suffix: c_emit_host_type_decl_main_suffix),
+      runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn c_type_decl_inject_fault_runtime_row() -> TargetEmitHostRuntimeRow {
+  HostRuntimeRowPresent {
+    row: EmitHostRuntimeRow {
+      transport: c_type_decl_host_transport_descriptor(main_suffix: c_emit_host_type_decl_inject_fault_main_suffix),
+      runtime_primitive_type: c_emit_host_runtime_primitive_type_node()
+    }
+  }
+}
+
+fn c_type_decl_target_model() -> TargetModel {
+  TargetModel {
+    bundle: c_target_model_node(),
+    lex: c_lex(),
+    binding_spellings: c_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: c_type_decl_runtime_row()
   }
 }
 
