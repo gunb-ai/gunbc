@@ -1,0 +1,421 @@
+module v2.extdeps.languages.c_decl
+
+import v2.std.grammar {
+  grammar_formal_terminal,
+  grammar_formal_terminal_bound,
+  grammar_formal_terminal_free,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
+  formal_productions_catalog_to_node,
+  FormalProduction
+}
+import v2.std.compilers.semantic_decl_emission {
+  TargetSemanticDeclCoproductDecorationRule,
+  TargetSemanticDeclCoproductEnumSurface,
+  TargetSemanticDeclCoproductTaggedUnionSurface,
+  TargetSemanticDeclDecorationLine,
+  TargetSemanticDeclSurfaceProjection,
+  semantic_decl_binding_spelling_row,
+  semantic_decl_emission_bundle,
+  semantic_decl_lex_ident_row,
+  semantic_decl_lex_literal_row,
+  semantic_decl_lex_whitespace_trivia_row,
+  semantic_decl_serialize_profile_bundle
+}
+import v2.std.collection { List }
+import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.integer { Int }
+import v2.std.node {
+  Conj,
+  Edge,
+  Named,
+  Node,
+  SyntheticOccurrence,
+  Symbol,
+  TypeNode
+}
+
+type CStage1TypeDeclFrontierDisposition
+  = CStage1Deferred { migration_trigger: Symbol }
+  | CStage1Landed
+
+type CStage1TypeDeclFrontierRow {
+  topic: Symbol
+  disposition: CStage1TypeDeclFrontierDisposition
+  semantics_note: String
+}
+
+data c_stage1_frontier_row_primitive_width: CStage1TypeDeclFrontierRow = CStage1TypeDeclFrontierRow {
+  topic: ^c_stage1_primitive_width_deferred,
+  disposition: CStage1Deferred {
+    migration_trigger: ^c_stage1_dissolve_when_primitive_width_binding_lands
+  },
+  semantics_note: "Stage 1 binds ^Int→int only. MachineWidth / unsigned / non-Int field atoms refuse with ^target_semantic_decl_field_type_primitive_unsupported until extdeps primitive-width authority wires into c_decl type_expr."
+}
+
+data c_stage1_frontier_row_named_tag_enum: CStage1TypeDeclFrontierRow = CStage1TypeDeclFrontierRow {
+  topic: ^c_stage1_named_tag_enum_deferred,
+  disposition: CStage1Deferred {
+    migration_trigger: ^c_stage1_dissolve_when_named_tag_enum_typedef_lands
+  },
+  semantics_note: "Interim tagged union: int tag field inside one typedef struct. Separate Answer_Tag enum typedef deferred until grammar emits two typedefs from one surface without double-matching variant_block."
+}
+
+data c_stage1_frontier_row_surface_projection_ordering_flags: CStage1TypeDeclFrontierRow = CStage1TypeDeclFrontierRow {
+  topic: ^c_stage1_surface_projection_ordering_flags_deferred,
+  disposition: CStage1Deferred {
+    migration_trigger: ^c_stage1_dissolve_when_surface_layout_derived_from_grammar_productions
+  },
+  semantics_note: "field_type_before_name / struct_typedef_name_after_fields / enum_name_after_variants booleans duplicate child-order already encoded in c_decl FormalProduction rows and empty shape-marker lex selectors. DISSOLVES WHEN surface child order is derived from the active production RHS instead of parallel projection flags."
+}
+
+fn c_stage1_type_decl_frontier_rows() -> List<CStage1TypeDeclFrontierRow> {
+  [
+    c_stage1_frontier_row_primitive_width,
+    c_stage1_frontier_row_named_tag_enum,
+    c_stage1_frontier_row_surface_projection_ordering_flags
+  ]
+}
+
+fn c_stage1_type_decl_frontier_deferred_count() -> Int {
+  fold_list(
+    xs: c_stage1_type_decl_frontier_rows(),
+    empty: 0,
+    cons: fn(count, row) {
+      match row.disposition {
+        CStage1Deferred { migration_trigger: _ } => count + 1
+        CStage1Landed => count
+      }
+    }
+  )
+}
+
+fn c_decl_named_edge(name: Symbol, target: Node) -> Edge {
+  Edge { label: Named { name: name }, target: target }
+}
+
+fn c_decl_shape_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^c_decl_shape_enum,
+      rhs: [
+        grammar_formal_terminal_bound(
+          identity: ^c_decl_shape_enum_binding,
+          binding: ^c_decl_shape_enum_binding
+        )
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_shape_tagged,
+      rhs: [
+        grammar_formal_terminal_bound(
+          identity: ^c_decl_shape_tagged_binding,
+          binding: ^c_decl_shape_tagged_binding
+        )
+      ]
+    )
+  ]
+}
+
+fn c_decl_shared_field_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^c_decl_qualified_name,
+      rhs: [ grammar_formal_terminal_free(identity: ^c_token_ident) ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_type_expr,
+      rhs: [ grammar_formal_nonterminal_occurrence(identity: ^c_decl_qualified_name) ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_field,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_type_expr),
+        grammar_formal_terminal(identity: ^c_token_ws),
+        grammar_formal_terminal_free(identity: ^c_token_ident),
+        grammar_formal_terminal(identity: ^c_token_semicolon_field)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_field_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_field),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_field_list_suffix,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_field),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^c_decl_field_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^c_decl_field_block,
+      rhs: [
+        grammar_formal_terminal(identity: ^c_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_list),
+        grammar_formal_terminal(identity: ^c_token_rbrace)
+      ]
+    )
+  ]
+}
+
+fn c_decl_shared_variant_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^c_decl_variant,
+      rhs: [ grammar_formal_terminal_free(identity: ^c_token_ident) ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_variant,
+      rhs: [
+        grammar_formal_terminal_free(identity: ^c_token_ident),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_block)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_variant_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_variant_list_suffix,
+      rhs: [
+        grammar_formal_terminal(identity: ^c_token_comma),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^c_decl_variant_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^c_decl_variant_block,
+      rhs: [
+        grammar_formal_terminal(identity: ^c_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant_list),
+        grammar_formal_terminal(identity: ^c_token_ws),
+        grammar_formal_terminal(identity: ^c_token_rbrace)
+      ]
+    )
+  ]
+}
+
+fn c_decl_tagged_union_member_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^c_decl_field,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_body),
+        grammar_formal_terminal(identity: ^c_token_semicolon_field)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_union_member,
+      rhs: [
+        grammar_formal_terminal(identity: ^c_token_kw_struct),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_list),
+        grammar_formal_terminal(identity: ^c_token_rbrace),
+        grammar_formal_terminal_free(identity: ^c_token_ident),
+        grammar_formal_terminal(identity: ^c_token_semicolon_field)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_union_member_list,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_member),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_member_list_suffix)
+      ]
+    ),
+    grammar_formal_production(
+      lhs: ^c_decl_union_member_list_suffix,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_member),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_member_list_suffix)
+      ]
+    ),
+    grammar_formal_production(lhs: ^c_decl_union_member_list_suffix, rhs: []),
+    grammar_formal_production(
+      lhs: ^c_decl_union_body,
+      rhs: [
+        grammar_formal_terminal(identity: ^c_token_kw_union),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_member_list),
+        grammar_formal_terminal(identity: ^c_token_rbrace),
+        grammar_formal_terminal_free(identity: ^c_token_union_field)
+      ]
+    )
+  ]
+}
+
+fn c_decl_struct_top_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^c_decl_struct,
+      rhs: [
+        grammar_formal_terminal(identity: ^c_token_kw_typedef_struct),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_block),
+        grammar_formal_terminal_free(identity: ^c_token_ident),
+        grammar_formal_terminal(identity: ^c_token_semicolon)
+      ]
+    )
+  ]
+}
+
+fn c_decl_enum_top_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^c_decl_enum,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_shape_enum),
+        grammar_formal_terminal(identity: ^c_token_kw_typedef_enum),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant_block),
+        grammar_formal_terminal_free(identity: ^c_token_ident),
+        grammar_formal_terminal(identity: ^c_token_semicolon)
+      ]
+    )
+  ]
+}
+
+fn c_decl_tagged_union_top_productions() -> List<FormalProduction> {
+  [
+    grammar_formal_production(
+      lhs: ^c_decl_tagged_union,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_shape_tagged),
+        grammar_formal_terminal(identity: ^c_token_kw_typedef_struct),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_block),
+        grammar_formal_terminal_free(identity: ^c_token_ident),
+        grammar_formal_terminal(identity: ^c_token_semicolon)
+      ]
+    )
+  ]
+}
+
+fn c_decl_struct_formal_productions() -> List<FormalProduction> {
+  list_append(
+    left: c_decl_shared_field_productions(),
+    right: c_decl_struct_top_productions()
+  )
+}
+
+fn c_decl_coproduct_formal_productions() -> List<FormalProduction> {
+  list_append(
+    left: c_decl_shape_productions(),
+    right: list_append(
+      left: c_decl_shared_field_productions(),
+      right: list_append(
+        left: c_decl_shared_variant_productions(),
+        right: list_append(
+          left: c_decl_tagged_union_member_productions(),
+          right: list_append(
+            left: c_decl_enum_top_productions(),
+            right: c_decl_tagged_union_top_productions()
+          )
+        )
+      )
+    )
+  )
+}
+
+fn c_decl_productions_only_translation_rules(productions: List<FormalProduction>) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      c_decl_named_edge(
+        name: ^grammar_relation_rules_formal_productions,
+        target: formal_productions_catalog_to_node(productions: productions)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn c_struct_general_decl_productions_only_translation_rules() -> Node {
+  c_decl_productions_only_translation_rules(productions: c_decl_struct_formal_productions())
+}
+
+fn c_enum_general_decl_productions_only_translation_rules() -> Node {
+  c_decl_productions_only_translation_rules(productions: c_decl_coproduct_formal_productions())
+}
+
+fn c_semantic_decl_lex_rows() -> List<Node> {
+  [
+    semantic_decl_lex_whitespace_trivia_row(),
+    semantic_decl_lex_literal_row(token_class: ^c_token_ws, text: " "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_kw_typedef_struct, text: "typedef struct "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_kw_typedef_enum, text: "typedef enum "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_kw_struct, text: "struct { "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_kw_union, text: "union { "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_ty_int, text: "int "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_lbrace, text: "{ "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_rbrace, text: "} "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_comma, text: ", "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_semicolon_field, text: "; "),
+    semantic_decl_lex_literal_row(token_class: ^c_token_semicolon, text: ";"),
+    semantic_decl_lex_literal_row(token_class: ^c_token_tag_field, text: "tag"),
+    semantic_decl_lex_ident_row(token_class: ^c_token_ident)
+  ]
+}
+
+fn c_semantic_decl_binding_spelling_rows() -> List<Node> {
+  [
+    semantic_decl_binding_spelling_row(binding: ^Int, spelling: "int"),
+    semantic_decl_binding_spelling_row(binding: ^c_decl_shape_enum_binding, spelling: ""),
+    semantic_decl_binding_spelling_row(binding: ^c_decl_shape_tagged_binding, spelling: ""),
+    semantic_decl_binding_spelling_row(binding: ^c_token_union_field, spelling: "u"),
+    semantic_decl_binding_spelling_row(binding: ^c_token_tag_field, spelling: "tag")
+  ]
+}
+
+fn c_semantic_decl_serialize_profile_bundle_node() -> Node {
+  semantic_decl_serialize_profile_bundle(
+    lex_rows: c_semantic_decl_lex_rows(),
+    spelling_rows: c_semantic_decl_binding_spelling_rows()
+  )
+}
+
+fn c_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
+  TargetSemanticDeclSurfaceProjection {
+    record_decoration_lines: [],
+    field_type_before_name: true,
+    type_expr_field_scope: false,
+    struct_typedef_name_after_fields: true,
+    enum_name_after_variants: true,
+    field_type_permit_only_int: true,
+    coproduct_layout: TargetSemanticDeclCoproductTaggedUnionSurface {
+      tag_field: ^c_token_tag_field,
+      union_field: ^c_token_union_field
+    },
+    coproduct_decoration_rules: [
+      TargetSemanticDeclCoproductDecorationRule {
+        shape_key: ^semantic_decl_coproduct_shape_all_variants_nullary,
+        decoration_lines: [
+          TargetSemanticDeclDecorationLine {
+            surface_binding: ^c_decl_shape_enum_binding
+          }
+        ]
+      },
+      TargetSemanticDeclCoproductDecorationRule {
+        shape_key: ^semantic_decl_coproduct_shape_default,
+        decoration_lines: [
+          TargetSemanticDeclDecorationLine {
+            surface_binding: ^c_decl_shape_tagged_binding
+          }
+        ]
+      }
+    ]
+  }
+}
+
+fn c_semantic_decl_emission_bundle_node() -> Node {
+  semantic_decl_emission_bundle(
+    identity: ^c_semantic_decl_emission_identity,
+    enum_translation_rules: c_enum_general_decl_productions_only_translation_rules(),
+    struct_translation_rules: c_struct_general_decl_productions_only_translation_rules(),
+    enum_serialize_profile: c_semantic_decl_serialize_profile_bundle_node(),
+    struct_serialize_profile: c_semantic_decl_serialize_profile_bundle_node(),
+    surface: c_semantic_decl_surface_projection()
+  )
+}

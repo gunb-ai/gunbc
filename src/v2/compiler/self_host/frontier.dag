@@ -912,6 +912,7 @@ data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_assembly" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" }
 ]
 

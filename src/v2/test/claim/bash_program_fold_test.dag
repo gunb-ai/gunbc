@@ -17,13 +17,13 @@ import extdeps.languages.bash.program {
   StderrToNull,
   VarRef,
   WithRedir,
+  StdoutToStderr,
   assign,
   command,
   lit,
   var_ref,
   test_not_executable
 }
-import tools.build_step { BuildArtifact, emit_verifications }
 import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -156,6 +156,46 @@ fn bash_program_fixture_build_bin_if_absent(bin_path: ShellWord, root: ShellWord
   }
 }
 
+fn bash_program_fixture_verify_echo(msg: ShellWord) -> ShellStmt {
+  WithRedir {
+    stmt: command(words: [lit(text: "echo"), msg]),
+    redir: StdoutToStderr
+  }
+}
+
+fn bash_program_fixture_verify_artifact_exists(bin_path: ShellWord, bin_name: String) -> ShellStmt {
+  If {
+    cond: test_not_executable(path: bin_path),
+    then: [
+      bash_program_fixture_verify_echo(msg: Concat { parts: [
+        lit(text: concat("::error::build verification: declared artifact '", concat(bin_name, "' absent or not executable after a 'successful' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: "))),
+        bin_path
+      ] }),
+      Exit { code: 1 }
+    ]
+  }
+}
+
+fn bash_program_fixture_verify_artifact_nonempty(bin_path: ShellWord, bin_name: String) -> ShellStmt {
+  If {
+    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-s"), bin_path, lit(text: "]")]),
+    then: [
+      bash_program_fixture_verify_echo(msg: Concat { parts: [
+        lit(text: concat("::error::build verification: declared artifact '", concat(bin_name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: "))),
+        bin_path
+      ] }),
+      Exit { code: 1 }
+    ]
+  }
+}
+
+fn bash_program_fixture_emit_verifications(bin_path: ShellWord, bin_name: String) -> List<ShellStmt> {
+  [
+    bash_program_fixture_verify_artifact_exists(bin_path: bin_path, bin_name: bin_name),
+    bash_program_fixture_verify_artifact_nonempty(bin_path: bin_path, bin_name: bin_name)
+  ]
+}
+
 fn bash_program_fixture_ensure_bin(var_name: String, bin_name: String) -> List<ShellStmt> {
   let root = var_ref(name: "ROOT")
   let bin = var_ref(name: var_name)
@@ -165,7 +205,7 @@ fn bash_program_fixture_ensure_bin(var_name: String, bin_name: String) -> List<S
       assign(name: var_name, value: Concat { parts: [root, lit(text: concat("/target/release/", bin_name))] }),
       bash_program_fixture_build_bin_if_absent(bin_path: bin, root: root, bin_name: bin_name)
     ],
-    emit_verifications(produces: [BuildArtifact { path: bin, name: bin_name }])
+    bash_program_fixture_emit_verifications(bin_path: bin, bin_name: bin_name)
   )
 }
 
