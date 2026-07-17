@@ -78,6 +78,13 @@ type TargetSemanticDeclCoproductDecorationRule {
   decoration_lines: List<TargetSemanticDeclDecorationLine>
 }
 
+type TargetSemanticDeclCoproductSurfaceLayout
+  = TargetSemanticDeclCoproductEnumSurface
+  | TargetSemanticDeclCoproductTaggedUnionSurface {
+      tag_field: Symbol
+      union_field: Symbol
+    }
+
 type TargetSemanticDeclSurfaceProjection {
   record_decoration_lines: List<TargetSemanticDeclDecorationLine>
   coproduct_decoration_rules: List<TargetSemanticDeclCoproductDecorationRule>
@@ -85,9 +92,7 @@ type TargetSemanticDeclSurfaceProjection {
   type_expr_field_scope: Bool
   struct_typedef_name_after_fields: Bool
   enum_name_after_variants: Bool
-  coproduct_tagged_union_struct_layout: Bool
-  tagged_union_tag_field: Symbol
-  tagged_union_union_field: Symbol
+  coproduct_layout: TargetSemanticDeclCoproductSurfaceLayout
 }
 
 type TargetSemanticDeclSerializeProfile {
