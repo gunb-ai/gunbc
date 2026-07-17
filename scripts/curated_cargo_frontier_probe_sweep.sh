@@ -7,11 +7,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 REPORT="${ROOT}/docs/probes/curated_cargo_frontier_probe_sweep.tsv"
+CLASSIFIER_STAMP="rule1-dup-harness-unknown-unresolved-v1"
+FORCE_REPROBE="${CSSL_FORCE_REPROBE:-0}"
 mkdir -p "$(dirname "$REPORT")"
 PROBE="$ROOT/scripts/curated_cargo_probe_one.sh"
 
-if [[ ! -f "$REPORT" ]]; then
-  echo -e "module\temit\tcargo\tfirst_error\tmapped_gate\tverdict" >"$REPORT"
+if [[ "$FORCE_REPROBE" == "1" ]] || [[ ! -f "$REPORT" ]] || ! grep -qF "$CLASSIFIER_STAMP" "$REPORT" 2>/dev/null; then
+  {
+    echo "# classifier_stamp: $CLASSIFIER_STAMP"
+    echo -e "module\temit\tcargo\tfirst_error\tmapped_gate\tverdict"
+  } >"$REPORT"
 fi
 
 probe() {
@@ -28,7 +33,7 @@ probe() {
 run_tier() {
   local path="$1"
   local shim="${2:-}"
-  if grep -qF "$path" "$REPORT"; then
+  if [[ "$FORCE_REPROBE" != "1" ]] && grep -qF "$path" "$REPORT"; then
     echo "skip (already probed): $path" >&2
     return 0
   fi
