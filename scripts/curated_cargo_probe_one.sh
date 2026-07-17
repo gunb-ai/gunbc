@@ -19,6 +19,10 @@ cd "$ROOT"
 
 # shellcheck source=lib/render_cssl_probe_lib_cargo_toml.sh
 source "$ROOT/scripts/lib/render_cssl_probe_lib_cargo_toml.sh"
+# shellcheck source=lib/apply_std_seed_link_assembly.sh
+source "$ROOT/scripts/lib/apply_std_seed_link_assembly.sh"
+
+STD_SEED_LINK="${CSSL_STD_SEED_LINK:-0}"
 
 GUNBC="${GUNBC:-$ROOT/target/release/gunbc}"
 if [[ ! -x "$GUNBC" ]]; then
@@ -59,6 +63,18 @@ FIRST_ERROR=""
 MAPPED_GATE=""
 
 if [[ "$EMIT_OK" -eq 1 ]]; then
+  if [[ "$STD_SEED_LINK" == "1" ]]; then
+    if ! apply_std_seed_link_assembly "$OUT" "$ROOT/$MODULE_PATH" "$ROOT"; then
+      CARGO_VERDICT="harness_refuse"
+      FIRST_ERROR="std-seed-link assembly failed"
+      MAPPED_GATE="HARNESS_SEED_LINK"
+      VERDICT="HARNESS_REFUSE"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT"
+      exit 0
+    fi
+  fi
+
   if [[ -n "$SHIM_LIB_REL" && -f "$ROOT/$SHIM_LIB_REL" ]]; then
     cp "$ROOT/$SHIM_LIB_REL" "$OUT/src/lib.rs"
     shim_dir="$(dirname "$ROOT/$SHIM_LIB_REL")"

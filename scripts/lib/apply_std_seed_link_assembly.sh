@@ -42,7 +42,7 @@ dag_entry_rust_module() {
   local dag_path="$1"
   local mod_line
   mod_line="$(grep -m1 '^module ' "$dag_path" | sed 's/^module //')"
-  echo "v2_${mod_line//./_}"
+  echo "${mod_line//./_}"
 }
 
 apply_std_seed_link_assembly() {
