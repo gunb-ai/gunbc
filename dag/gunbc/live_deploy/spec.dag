@@ -18,6 +18,7 @@ import gunbc.node_http_server_emit {
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
+import gunbc.ownership { Ownership, Owned, Ensured }
 
 type OwnedArtifactKind =
     ServerScript
@@ -41,6 +42,13 @@ type DeploymentDependencyStep {
 type DeploymentStep
   = Artifact { step: DeploymentArtifactStep }
   | Dependency { step: DeploymentDependencyStep }
+
+fn deployment_step_ownership(step: DeploymentStep) -> Ownership {
+  match step {
+    Artifact { step: _ } => Owned
+    Dependency { step: _ } => Ensured
+  }
+}
 
 type DeploymentHostTarget {
   host: ComputeHost
