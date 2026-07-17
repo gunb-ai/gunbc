@@ -73,7 +73,7 @@ fn load_floor_census(
         });
     build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
         .global_bare
-        .clone().clone()
+        .clone()
 }
 
 enum CensusInvariantDisposition {
@@ -249,7 +249,9 @@ fn corpus_census_state_of_failing_names() {
         .fold(im_rc::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
-    let census = build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices)).global_bare;
+    let census = build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
+        .global_bare
+        .clone();
 
     eprintln!("[corpus] census keys = {}", census.len());
     eprintln!("[corpus] modules     = {}", graph.modules.len());
@@ -309,7 +311,9 @@ fn corpus_ambiguous_roster() {
         .fold(im_rc::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
-    let census = build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices)).global_bare;
+    let census = build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
+        .global_bare
+        .clone();
 
     let mut ambiguous: Vec<String> = census
         .iter()
