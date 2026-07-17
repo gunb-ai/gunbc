@@ -179,7 +179,9 @@ fn c_decl_tagged_union_member_productions() -> List<FormalProduction> {
       lhs: ^c_decl_union_body,
       rhs: [
         grammar_formal_terminal(identity: ^c_token_kw_union),
-        grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant_block),
+        grammar_formal_terminal(identity: ^c_token_lbrace),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_member_list),
+        grammar_formal_terminal(identity: ^c_token_rbrace),
         grammar_formal_terminal_free(identity: ^c_token_union_field)
       ]
     )
@@ -192,7 +194,6 @@ fn c_decl_struct_top_productions() -> List<FormalProduction> {
       lhs: ^c_decl_struct,
       rhs: [
         grammar_formal_terminal(identity: ^c_token_kw_typedef_struct),
-        grammar_formal_terminal_free(identity: ^c_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_block),
         grammar_formal_terminal_free(identity: ^c_token_ident),
         grammar_formal_terminal(identity: ^c_token_semicolon)
@@ -223,7 +224,6 @@ fn c_decl_tagged_union_top_productions() -> List<FormalProduction> {
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_shape_tagged),
         grammar_formal_terminal(identity: ^c_token_kw_typedef_struct),
-        grammar_formal_terminal_free(identity: ^c_token_ident),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_block),
         grammar_formal_terminal_free(identity: ^c_token_ident),
         grammar_formal_terminal(identity: ^c_token_semicolon)
@@ -318,7 +318,7 @@ fn c_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
   TargetSemanticDeclSurfaceProjection {
     record_decoration_lines: [],
     field_type_before_name: true,
-    typedef_alias_repeats_tag_name: true,
+    struct_typedef_name_after_fields: true,
     enum_name_after_variants: true,
     coproduct_tagged_union_struct_layout: true,
     tagged_union_tag_field: ^c_token_tag_field,

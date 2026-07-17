@@ -3,7 +3,6 @@ module v2.test.emit.c_semantic_decl_routing
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
 import v2.compiler.translate { grammar_relation_row_for_emitted }
 import v2.extdeps.languages.c { c_target_model }
-import v2.extdeps.languages.c_decl { c_struct_general_decl_productions_only_translation_rules }
 import v2.std.compilers.semantic_decl_emission {
   semantic_decl_emission_from_target,
   target_semantic_struct_surface_from_record
@@ -17,15 +16,15 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data c_semantic_point_golden: String = "typedef struct Point { int x; int y; } Point;"
+data c_semantic_point_golden: String = "typedef struct { int x; int y; } Point;"
 
-data c_semantic_point_wrong_golden: String = "typedef struct Point { int x; int z; } Point;"
+data c_semantic_point_wrong_golden: String = "typedef struct { int x; int z; } Point;"
 
 data c_semantic_bool_golden: String = "typedef enum { True, False } Bool;"
 
 data c_semantic_bool_wrong_golden: String = "typedef enum { False, True } Bool;"
 
-data c_semantic_answer_golden: String = "typedef struct Answer { int tag; union { struct { int n; } Yes; struct { int code; } No; } u; } Answer;"
+data c_semantic_answer_golden: String = "typedef struct { int tag; union { struct { int n; } Yes; struct { int code; } No; } u; } Answer;"
 
 fn cdr_empty_conj() -> Node {
   Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
@@ -137,20 +136,6 @@ test fn c_semantic_point_grammar_row_holds() -> Bool {
   }
 }
 
-test fn c_semantic_bundle_wired_holds() -> Bool {
-  match semantic_decl_emission_from_target(target: c_target_model()) {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn c_semantic_point_emit_not_rejected_holds() -> Bool {
-  match cdr_emit_text(name: ^Point, node: cdr_point_record()) {
-    Accepted { value: text, diagnostics: _ } => text != ""
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 test fn c_semantic_point_record_routes_to_struct_emit() -> Bool {
   cdr_matches(name: ^Point, node: cdr_point_record(), golden: c_semantic_point_golden)
     && !cdr_matches(name: ^Point, node: cdr_point_record(), golden: c_semantic_point_wrong_golden)
@@ -174,8 +159,8 @@ fn cdr_bool_field_record() -> Node {
 }
 
 test fn c_semantic_non_int_field_discriminates_from_int_holds() -> Bool {
-  cdr_matches(name: ^Bad, node: cdr_bool_field_record(), golden: "typedef struct Bad { Bool flag; } Bad;")
-    && !cdr_matches(name: ^Bad, node: cdr_bool_field_record(), golden: "typedef struct Bad { int flag; } Bad;")
+  cdr_matches(name: ^Bad, node: cdr_bool_field_record(), golden: "typedef struct { Bool flag; } Bad;")
+    && !cdr_matches(name: ^Bad, node: cdr_bool_field_record(), golden: "typedef struct { int flag; } Bad;")
 }
 
 fn cdr_arrow_type() -> Node {

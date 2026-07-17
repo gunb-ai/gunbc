@@ -2458,7 +2458,7 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
       }
     ],
     field_type_before_name: false,
-    typedef_alias_repeats_tag_name: false,
+    struct_typedef_name_after_fields: false,
     enum_name_after_variants: false,
     coproduct_tagged_union_struct_layout: false,
     tagged_union_tag_field: ^semantic_decl_tagged_union_tag_field_unused,
