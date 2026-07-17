@@ -1361,7 +1361,7 @@ fn bash_fold_serialize_word_list_spelling(parts: Node) -> Outcome<String> {
   bash_fold_serialize_word_list_spelling_from(
     acc: "",
     first: true,
-    rest: node_positional_child_targets(node: parts)
+    rest: bash_fold_flatten_stmt_list(list_node: parts)
   )
 }
 
