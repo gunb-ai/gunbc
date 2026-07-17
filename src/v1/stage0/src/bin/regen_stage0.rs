@@ -626,7 +626,9 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
 /// `compile_sources` emit still materializes a stale `compiler_tests.rs` that passes the
 /// removed `global_bare` argument; the Rust seed authority (`compiler_tests_source`) is
 /// correct and is what self-host must ship.
-fn reconcile_compiler_tests_generated_source(emitted: &mut HashMap<String, String>) -> Result<(), String> {
+fn reconcile_compiler_tests_generated_source(
+    emitted: &mut HashMap<String, String>,
+) -> Result<(), String> {
     let authority = v1_compiler::v1_compiler_compiler_tests_rust::compiler_tests_source();
     let key = emitted
         .keys()
