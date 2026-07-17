@@ -1,6 +1,7 @@
 module v1.compiler.complexity
 
 import std.types { SourceSpan }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import v1.compiler.emit_core_support { to_string }
 import v1.compiler.parse {
   ParserResultWitness,
@@ -100,6 +101,7 @@ type ComplexitySummary {
   span: CostExpr
   output_size: Map<String, CostExpr>
   certainty: Certainty
+  peak_space: CostExpr?
 }
 
 type CostInternTable {
@@ -3422,6 +3424,28 @@ fn fold_peak_space(body_peak: CostExpr, output_size: CostExpr) -> CostExpr {
   cost_seq(a: output_size, b: space_of(work: body_peak))
 }
 
+data derive_peak_space_note: String = "Summary-grain peak-space derivation (space-complexity-design.md 5): peak_space = space_of(work) for a scalar result; for a collection result the retained output co-resides with the transient working set, so it is the additive fold_peak_space(space_of(work) + output_term). The output_term is the summary's `result` output_size entry (the single convention the analysis emits: collection_output/scan_os/sort_os all key on `result`). Absent output_size (scalar) collapses to space_of(work) with no additive term. Set only at the finalized per-function summary; intermediate sub-expression summaries and the error/external/seed summaries leave peak_space absent (the SpaceBoundUnknown counted frontier, fail-closed)."
+
+fn derive_peak_space(work: CostExpr, output_size: Map<String, CostExpr>) -> CostExpr {
+  match map_get(output_size, "result") {
+    Present { value: out } => fold_peak_space(body_peak: work, output_size: out)
+    Absent => space_of(work: work)
+  }
+}
+
+data cost_account_space_from_summary_note: String = "Fill CostAccount.space (basis Derived) from a summary's derived peak_space: evaluate the peak-space CostExpr at a closed size_env to a concrete ByteSize. Absent peak_space (the frontier) or an underivable expr (CostUnknown/CostExtern/CostLog -> eval Absent) returns none — never a fabricated bound (fail-closed, space-complexity-design.md 4)."
+
+fn cost_account_space_from_summary(summary: ComplexitySummary, size_env: Map<String, Int>) -> ByteSize? {
+  match summary.peak_space {
+    Present { value: ps } =>
+      match eval_cost_expr_concrete(e: ps, env: size_env) {
+        Present { value: bytes } => Present { value: byte_size(count: bytes) }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
 data cost_expr_degree_note: String = "Asymptotic reading (space-complexity increment 2): the polynomial degree of a CostExpr. A CostSum over a size variable is one factor of n (+1 degree); sequential/parallel take the MAX degree; products ADD degrees; a bare log is below linear (degree 0 for the polynomial reading). Absent = the frontier (CostExtern/CostUnknown) — fail-closed, never a fabricated degree. Applied to space_of(work) it yields the SPACE order, which is <= the TIME order by construction (space_of collapses the CostSum that a reducing fold's TIME carries): the headline O(n)-time / O(1)-space, decided asymptotically."
 
 fn cost_expr_degree(e: CostExpr) -> Int? {
@@ -4499,11 +4523,13 @@ fn get_or_compute_summary(func_name: String, func_index: Map<String, FuncEntry>,
               }
             Absent => result.summary
           }
+          let simplified_work = simplify_cost(expr: bounded.work)
           let simplified = ComplexitySummary {
-            work: simplify_cost(expr: bounded.work),
+            work: simplified_work,
             span: simplify_cost(expr: bounded.span),
             output_size: bounded.output_size,
-            certainty: bounded.certainty
+            certainty: bounded.certainty,
+            peak_space: Present { value: derive_peak_space(work: simplified_work, output_size: bounded.output_size) }
           }
           let final_table = cache_summary(table: result.table, func_name: func_name, summary: simplified)
           SummaryResult { summary: simplified, table: final_table }
