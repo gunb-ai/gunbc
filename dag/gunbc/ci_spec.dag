@@ -536,6 +536,9 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
 }
 
 fn gunbc_ci_deploy_run_script(stage: DeployStage) -> String {
-  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_deploy_invoke(stage: stage))
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    gunbc_ci_deploy_invoke(stage: stage)
+  )
 }
 

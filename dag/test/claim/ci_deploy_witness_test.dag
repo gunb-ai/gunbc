@@ -7,6 +7,7 @@ import gunbc.ci_spec {
   live_deploy_apply_entry,
   live_deploy_apply_srv1_wet_function,
   gunbc_ci_deploy_run_script,
+  ci_release_build_line,
 }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
@@ -100,6 +101,27 @@ fn witness_deploy_run_script_invokes_gunbc_wet() -> Bool {
     && string_contains(s: script, pattern: "--source-root \"$ROOT/dag\"")
 }
 
+fn witness_deploy_run_script_does_not_rebuild_release_bins() -> Bool {
+  let script = gunbc_ci_deploy_run_script(stage: gunbc_ci_deploy_srv1_stage)
+  !string_contains(s: script, pattern: ci_release_build_line())
+    && !string_contains(s: script, pattern: "CARGO_BIN")
+    && !string_contains(s: script, pattern: "sccache --show-stats")
+}
+
+fn witness_workflow_deploy_job_consumes_release_bins_artifact() -> Bool {
+  let deploy_jobs = filter(ci_workflow.jobs, j => j.id == "deploy_dashboard_srv1")
+  length(deploy_jobs) == 1
+}
+
+fn witness_ci_yml_deploy_job_consumes_release_bins_artifact() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
+    && string_contains(s: yaml, pattern: "      - name: Download release-bins artifact")
+    && string_contains(s: yaml, pattern: "      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)")
+    && string_contains(s: yaml, pattern: "      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)")
+    && !string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)\n        run: |\n          ROOT=")
+}
+
 fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
   let deploy_jobs = filter(ci_workflow.jobs, j => j.id == "deploy_dashboard_srv1")
   length(deploy_jobs) == length(gunbc_ci_deploy_stages)
@@ -120,6 +142,9 @@ test fn ci_deploy_witnesses() -> Bool {
     && witness_deploy_access_sudoers_line_authority()
     && witness_ci_spec_carries_deploy_stages()
     && witness_deploy_run_script_invokes_gunbc_wet()
+    && witness_deploy_run_script_does_not_rebuild_release_bins()
+    && witness_workflow_deploy_job_consumes_release_bins_artifact()
+    && witness_ci_yml_deploy_job_consumes_release_bins_artifact()
     && witness_workflow_deploy_job_matches_enrollment()
     && witness_ci_yml_deploy_job_matches_enrollment()
 }

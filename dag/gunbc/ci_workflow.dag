@@ -411,7 +411,10 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     id: stage.id,
     name: none,
     runner: stage.runner,
-    steps: concat(ci_prelude_steps(), [ci_deploy_step(stage: stage)]),
+    steps: concat(
+      [ci_checkout_step()],
+      [ci_release_bins_download_step(), ci_release_bins_unpack_verify_step(), ci_deploy_step(stage: stage)]
+    ),
     needs: stage.needs,
     env: none,
     outputs: none,
