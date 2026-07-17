@@ -40,8 +40,9 @@ pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
     lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
-    write as cross_process_write, CacheLookupResult,
+    transform_content_digest, write as cross_process_write, CacheLookupResult,
 };
+use crate::std_interface_summary::{module_key, typed_module_key};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResolveTypecheckGate {
@@ -759,6 +760,98 @@ mod workspace_root_discovery_tests {
     }
 }
 
+#[cfg(test)]
+mod regen_input_closure_tests {
+    use super::{regen_input_sources, regen_path_affects_regen};
+    use std::collections::HashSet;
+    use std::path::{Path, PathBuf};
+
+    fn fixture_root(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("gunbc-regen-closure-{tag}-{}", std::process::id()))
+    }
+
+    fn write(root: &Path, rel: &str, content: &str) {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).expect("mkdir fixture");
+        std::fs::write(p, content).expect("write fixture");
+    }
+
+    /// The regen input closure is exactly the `src/v1` entries plus their transitive
+    /// `import` closure through `[src/v1, dag]` — a `dag` module nobody imports is
+    /// EXCLUDED. This is the RED control: without the exclusion the skip is vacuous
+    /// (every dag change would appear in-closure and the shortcut would never fire).
+    #[test]
+    fn closure_is_imports_only_unimported_dag_excluded() {
+        let root = fixture_root("imports-only");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "src/v1/a.dag",
+            "module v1.a\nimport v1.b { T }\nimport std.x { Y }\n",
+        );
+        write(&root, "src/v1/b.dag", "module v1.b\n");
+        write(&root, "dag/std/x.dag", "module std.x\n");
+        write(&root, "dag/std/y.dag", "module std.y\n"); // unimported — excluded
+        write(&root, "dag/gunbc/u.dag", "module gunbc.u\n"); // unimported — excluded
+
+        let relpaths: HashSet<String> = regen_input_sources(&root)
+            .expect("closure computes")
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            relpaths.contains("src/v1/a.dag"),
+            "entry seed: {relpaths:?}"
+        );
+        assert!(
+            relpaths.contains("src/v1/b.dag"),
+            "imported v1 module present"
+        );
+        assert!(
+            relpaths.contains("dag/std/x.dag"),
+            "imported dag module present"
+        );
+        assert!(
+            !relpaths.contains("dag/std/y.dag"),
+            "unimported dag module must be EXCLUDED: {relpaths:?}"
+        );
+        assert!(
+            !relpaths.contains("dag/gunbc/u.dag"),
+            "unimported dag module must be EXCLUDED: {relpaths:?}"
+        );
+    }
+
+    #[test]
+    fn path_predicate_covers_src_v1_manifest_and_closure_only() {
+        let closure: HashSet<String> = ["dag/std/x.dag".to_string()].into_iter().collect();
+        // src/v1/** = emitter source + committed stage0 outputs + dag entry seeds.
+        assert!(regen_path_affects_regen(
+            "src/v1/stage0/src/cli_run.rs",
+            &closure
+        ));
+        assert!(regen_path_affects_regen("src/v1/03_resolve.dag", &closure));
+        // Cargo / toolchain build config (emitter binary inputs).
+        assert!(regen_path_affects_regen("Cargo.lock", &closure));
+        assert!(regen_path_affects_regen(
+            "src/v1/stage0/Cargo.toml",
+            &closure
+        ));
+        assert!(regen_path_affects_regen("rust-toolchain.toml", &closure));
+        assert!(regen_path_affects_regen(".cargo/config.toml", &closure));
+        // dag file in v1's transitive import closure.
+        assert!(regen_path_affects_regen("dag/std/x.dag", &closure));
+        // NOT affecting: v2 sources, unimported dag, docs — the skip-eligible surface.
+        assert!(!regen_path_affects_regen(
+            "src/v2/compiler/frontier.dag",
+            &closure
+        ));
+        assert!(!regen_path_affects_regen("dag/gunbc/ci_spec.dag", &closure));
+        assert!(!regen_path_affects_regen("docs/plans/x.md", &closure));
+    }
+}
+
 /// Empty ingest-manifest placeholder excluded from the module index when a later
 /// source root carries the host-emitted manifest (source-root ingest / closure gates).
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
@@ -1454,6 +1547,7 @@ enum CompileCleanScopePlan {
 
 fn compile_clean_scope_plan_from_touched_paths(
     touched_paths: &[String],
+    departed_paths: &HashSet<String>,
 ) -> Result<CompileCleanScopePlan, String> {
     let roots = default_source_roots();
     let (graph, indices) = resolve_entry_graph_shared(&roots, COMPILE_CLEAN_SCOPE_ENTRY)
@@ -1463,17 +1557,29 @@ fn compile_clean_scope_plan_from_touched_paths(
         .iter()
         .map(|s| v1_interpreter::Value::Str(s.clone()))
         .collect();
-    let args = [(
-        Some("touched_paths".to_string()),
-        list_value_from_vec(paths),
-    )];
+    let mut departed_sorted: Vec<&String> = departed_paths.iter().collect();
+    departed_sorted.sort();
+    let departed: Vec<v1_interpreter::Value> = departed_sorted
+        .into_iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [
+        (
+            Some("touched_paths".to_string()),
+            list_value_from_vec(paths),
+        ),
+        (
+            Some("departed_paths".to_string()),
+            list_value_from_vec(departed),
+        ),
+    ];
     let result = v1_interpreter::run_in_context_with_args(
         &ctx,
-        "compile_clean_scope_disposition_from_touched",
+        "compile_clean_scope_disposition_from_diff",
         &args,
         false,
     )
-    .map_err(|e| format!("compile_clean_scope_disposition_from_touched: {e}"))?;
+    .map_err(|e| format!("compile_clean_scope_disposition_from_diff: {e}"))?;
     match &result {
         v1_interpreter::Value::Variant {
             variant_name,
@@ -1510,7 +1616,7 @@ fn compile_clean_scope_plan_from_touched_paths(
             Ok(CompileCleanScopePlan::WholeTree)
         }
         other => Err(format!(
-            "compile_clean_scope_disposition_from_touched returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree",
+            "compile_clean_scope_disposition_from_diff returned `{}`, expected ScopedRun | SkipNoAffectedEntries | RequireWholeTree",
             ctx.format_value(other)
         )),
     }
@@ -1554,10 +1660,35 @@ fn compile_clean_shard_entry_paths_fast() -> Vec<String> {
     paths
 }
 
-/// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_touched` (DependencyView +
-/// `#6239` substrate gate) without the Wet interpreter fold over `compile_clean_shard_entry_paths()`.
+/// Mirror of `tools.dag_compile_clean_scope.compile_clean_touched_path_selectable`:
+/// import-closure selection can only answer for `.dag` sources (and the docs universe);
+/// any other touched path (compiler seed `.rs`, workflow yml, manifests) can change
+/// compile behavior outside the module graph, so the gate keeps its whole-tree baseline.
+fn compile_clean_touched_path_selectable(path: &str) -> bool {
+    let norm = path.strip_prefix("./").unwrap_or(path);
+    norm.starts_with("docs/") || norm.ends_with(".dag")
+}
+
+/// Mirror of `tools.dag_compile_clean_scope.compile_clean_departed_paths_outside_docs`:
+/// a departed (deleted / renamed-from) non-docs path is invisible to current-tree
+/// adjacency — a dangling import drops the edge, so a broken importer would not be
+/// selected — whole-tree baseline.
+fn compile_clean_departed_paths_outside_docs(departed_paths: &HashSet<String>) -> bool {
+    departed_paths.iter().any(|p| {
+        let norm = p.strip_prefix("./").unwrap_or(p);
+        !norm.starts_with("docs/")
+    })
+}
+
+/// Floor CI hot path: mirrors `compile_clean_scope_disposition_from_diff`
+/// (`tools.dag_compile_clean_scope`, module-graph import-closure grain — channel 2 of
+/// operator fork (c) 2026-07-10) without the Wet interpreter fold over
+/// `compile_clean_shard_entry_paths()`. Selection reuses the SAME certified realization
+/// as the discovery-corpus channel (`entry_file_touched_via_import_closure`); every arm
+/// that cannot answer falls back to the gate's whole-tree baseline, loudly.
 fn compile_clean_scope_plan_from_touched_paths_floor_fast(
     touched_paths: &[String],
+    departed_paths: &HashSet<String>,
 ) -> CompileCleanScopePlan {
     if touched_paths.is_empty() {
         return CompileCleanScopePlan::SkipNoAffected {
@@ -1573,40 +1704,32 @@ fn compile_clean_scope_plan_from_touched_paths_floor_fast(
         return CompileCleanScopePlan::SkipNoAffected { reason };
     }
 
-    // `dag_compile_clean_scope.dag` — RequireWholeTree when substrate not ready.
-    // floor_fast has no whole-tree resolve context (loaded=0) until #6239; live substrate is false.
-    if !fn_arrow_decl_substrate_is_whole_tree_for_census(0) {
+    if let Some(outside) = touched_paths
+        .iter()
+        .find(|p| !compile_clean_touched_path_selectable(p))
+    {
         eprintln!(
-            "compile-clean scope: DependencyView per-PR selection blocked-on-#6239 (fn_arrow_decl_substrate_is_whole_tree false)"
+            "compile-clean scope: touched path outside the selectable universe ({outside}) — compiler/infra change, whole-tree baseline"
+        );
+        return CompileCleanScopePlan::WholeTree;
+    }
+
+    if compile_clean_departed_paths_outside_docs(departed_paths) {
+        eprintln!(
+            "compile-clean scope: departed non-docs path in diff (deletion/rename) — whole-tree baseline"
         );
         return CompileCleanScopePlan::WholeTree;
     }
 
     let pool_roots = compile_clean_source_roots();
-    let roots = default_source_roots();
-    let (graph, indices) = match resolve_entry_graph_shared(&roots, ENTRY_SELECTION_ENTRY) {
-        Ok(v) => v,
-        Err(msg) => {
-            eprintln!(
-                "compile-clean scope: entry_selection resolve failed ({msg}) — whole-tree baseline"
-            );
-            return CompileCleanScopePlan::WholeTree;
-        }
-    };
-    let es_ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    if !fn_arrow_decl_substrate_is_whole_tree_for_census(es_ctx.modules.len()) {
-        eprintln!(
-            "compile-clean scope: DependencyView per-PR selection blocked-on-#6239 (fn_arrow_decl_substrate_is_whole_tree false)"
-        );
-        return CompileCleanScopePlan::WholeTree;
-    }
-
+    let facts = build_module_graph_facts_live(&pool_roots);
+    let declared_paths = facts.declared_repo_paths();
     let mut affected = Vec::new();
     for entry_path in compile_clean_shard_entry_paths_fast() {
-        match call_entry_affected_by_dependency_view(
-            &es_ctx,
+        match entry_file_touched_via_import_closure(
             &entry_path,
-            &pool_roots,
+            &facts,
+            &declared_paths,
             touched_paths,
         ) {
             Ok(true) => affected.push(entry_path),
@@ -1679,17 +1802,256 @@ pub fn documentation_only_floor_skip_label_for_ci() -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Regen (self-host fixed-point) affected-set scoping.
+//
+// `regen_stage0` compiles `[src/v1, dag]` into the committed stage0 seed; both the
+// RegenVerifyGate and the SelfHostStalenessGate compare that emit against the
+// committed crate. The emit is a pure function of exactly one input set: every
+// `src/v1/**.dag` entry plus its transitive `import` closure through `[src/v1, dag]`
+// (`regen_input_sources` below — the single authority `regen_stage0` also consumes),
+// the emitter binary (all `src/v1/**` Rust, covered by the path prefix), the committed
+// stage0 outputs (all written under `src/v1/stage0/src`, same prefix), and the Cargo
+// manifest/lockfile. A PR whose diff touches none of those provably cannot change the
+// regen outcome, so the regen CI step can skip. Fail-closed: any uncertainty runs.
+// Main pushes and the 4-hourly falsifier run regen unconditionally as the cold control.
+// ---------------------------------------------------------------------------
+
+pub const REGEN_NOT_AFFECTED_SKIP_LABEL: &str = "regen_not_affected_skip";
+pub const RUN_REGEN_LABEL: &str = "run_regen";
+
+/// Relativize an absolute source path against the workspace root for regen display /
+/// closure identity. Single authority: consumed by `regen_stage0` and the skip witness.
+pub fn regen_workspace_relpath(path: &Path, workspace: &Path) -> String {
+    path.strip_prefix(workspace)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
+}
+
+// Distinct from `collect_dag_files` above (which panics on IO error and skips cargo
+// `target/` output dirs): regen needs the fail-closed Result variant and the exact
+// whole-tree walk `regen_stage0` has always used, so the closure stays byte-identical
+// to the committed seed (guarded by `regen_stage0 --verify`).
+fn regen_collect_dag_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .map_err(|e| format!("read dir {}: {e}", dir.display()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("read dir entry in {}: {e}", dir.display()))?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            regen_collect_dag_files(&path, files)?;
+        } else if path.extension().is_some_and(|ext| ext == "dag") {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn regen_build_module_index(
+    roots: &[PathBuf],
+) -> Result<std::collections::HashMap<String, PathBuf>, String> {
+    let mut index: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
+    for root in roots {
+        if !root.exists() {
+            return Err(format!("source root does not exist: {}", root.display()));
+        }
+        let mut dag_paths = Vec::new();
+        regen_collect_dag_files(root, &mut dag_paths)?;
+        for path in dag_paths {
+            let content = std::fs::read_to_string(&path)
+                .map_err(|e| format!("read {}: {e}", path.display()))?;
+            if let Some(module_path) = extract_module_path(&content) {
+                if let Some(existing) = index.get(&module_path) {
+                    return Err(format!(
+                        "duplicate module path `{module_path}`: {} and {}",
+                        existing.display(),
+                        path.display()
+                    ));
+                }
+                index.insert(module_path, path);
+            }
+        }
+    }
+    Ok(index)
+}
+
+/// The two source roots the self-host regen compiles: `src/v1` entry seeds and `dag`
+/// (the import-resolution index). Single authority for both `regen_stage0` and the
+/// regen affected-set skip witness.
+pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
+    vec![workspace.join("src/v1"), workspace.join("dag")]
+}
+
+/// Every `.dag` source `regen_stage0` reads to emit the stage0 seed: all `src/v1/**.dag`
+/// entries plus their transitive `import` closure through `[src/v1, dag]`, returned as
+/// sorted `(workspace-relpath, content)`. This IS the set `regen_stage0` compiles — it
+/// consumes this function — so the regen compile and the skip witness share one closure
+/// authority (no forked "what regen reads"). The dedup is by module path, mirroring the
+/// original seed-collection semantics; `regen_stage0 --verify` is the byte-identical
+/// oracle guarding that equivalence.
+pub fn regen_input_sources(workspace: &Path) -> Result<Vec<(String, String)>, String> {
+    let roots = regen_source_roots(workspace);
+    let index = regen_build_module_index(&roots)?;
+    let entry_root = roots
+        .first()
+        .ok_or_else(|| "regen source root list must not be empty".to_string())?;
+    let mut entry_paths = Vec::new();
+    regen_collect_dag_files(entry_root, &mut entry_paths)?;
+
+    // module_path -> (relpath, content); the first occurrence of a module path wins, so
+    // src/v1 entry seeds and their import closure resolve to exactly the set regen emits.
+    let mut seen: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
+    let mut queue: Vec<String> = Vec::new(); // module contents whose imports remain to walk
+    for path in &entry_paths {
+        let content =
+            std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let rel = regen_workspace_relpath(path, workspace);
+        if let Some(module_path) = extract_module_path(&content) {
+            seen.insert(module_path, (rel, content.clone()));
+        }
+        queue.push(content);
+    }
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(file_path) = index.get(&module_path) {
+                let file_content = std::fs::read_to_string(file_path)
+                    .map_err(|e| format!("read imported module {}: {e}", file_path.display()))?;
+                let rel = regen_workspace_relpath(file_path, workspace);
+                seen.insert(module_path, (rel, file_content.clone()));
+                queue.push(file_content);
+            }
+        }
+    }
+    let mut result: Vec<(String, String)> = seen.into_values().collect();
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(result)
+}
+
+/// Does a diff-changed path belong to the regen input surface (fail-closed superset)?
+fn regen_path_affects_regen(changed: &str, dag_closure: &HashSet<String>) -> bool {
+    let p = normalize_repo_path(changed);
+    // src/v1/** = the emitter binary source (.rs), every committed stage0 output
+    // (all under src/v1/stage0/src), and the src/v1 .dag entry seeds.
+    if p.starts_with("src/v1/") {
+        return true;
+    }
+    // Cargo/toolchain build config: the emitter binary is built from these; a
+    // dependency, pinned-toolchain, or cargo-config change could in principle alter
+    // emitted bytes. Rare in practice; fail-closed (whole-file matches, no substring).
+    if p == "Cargo.lock"
+        || p == "Cargo.toml"
+        || p.ends_with("/Cargo.toml")
+        || p == "rust-toolchain.toml"
+        || p == "rust-toolchain"
+        || p == ".cargo/config.toml"
+        || p == ".cargo/config"
+    {
+        return true;
+    }
+    // dag/** files in v1's transitive import closure.
+    dag_closure.contains(&p)
+}
+
+/// CI label for the regen self-host fixed-point step's affected-set skip arm.
+/// `regen_not_affected_skip` iff the merge-base diff touches no regen input;
+/// `run_regen` on any intersection, empty diff, departed non-docs path, or
+/// observation/closure failure (fail-closed). This computes the label only; the CI
+/// shell (ci_spec.dag) gates the skip to pull_request events, so push-to-main runs
+/// regen unconditionally as the cold control that surfaces a wrong closure on the
+/// next merge.
+pub fn regen_floor_skip_label_for_ci() -> String {
+    let (changed_paths, departed_paths) = match floor_git_diff_name_status_range() {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!("regen floor skip: diff observation failed ({msg}) — run regen");
+            return RUN_REGEN_LABEL.to_string();
+        }
+    };
+    if changed_paths.is_empty() {
+        eprintln!("regen floor skip: empty diff — run regen (fail-closed cold control)");
+        return RUN_REGEN_LABEL.to_string();
+    }
+    // Departed (deleted / renamed-from) non-docs paths: the closure below is computed
+    // from the CURRENT tree, so a deleted `.dag` file that WAS in the regen closure is
+    // invisible to it — the intersection test would skip a diff that provably changes
+    // the fresh emit (the deleted module no longer contributes; its importers now fail
+    // to resolve). Same guard shape as compile-clean's departed arm: run, never skip.
+    if let Some(gone) = departed_paths.iter().find(|p| {
+        let n = normalize_repo_path(p);
+        !n.starts_with("docs/")
+    }) {
+        eprintln!(
+            "regen floor skip: departed non-docs path in diff ({}) — run regen (current-tree closure cannot see deletions)",
+            normalize_repo_path(gone)
+        );
+        return RUN_REGEN_LABEL.to_string();
+    }
+    let workspace = workspace_root();
+    let dag_closure: HashSet<String> = match regen_input_sources(&workspace) {
+        Ok(sources) => sources
+            .into_iter()
+            .map(|(p, _)| normalize_repo_path(&p))
+            .collect(),
+        Err(msg) => {
+            eprintln!("regen floor skip: input-closure computation failed ({msg}) — run regen");
+            return RUN_REGEN_LABEL.to_string();
+        }
+    };
+    match changed_paths
+        .iter()
+        .find(|p| regen_path_affects_regen(p, &dag_closure))
+    {
+        Some(example) => {
+            eprintln!(
+                "regen floor skip: diff intersects regen inputs (e.g. {}) — run regen",
+                normalize_repo_path(example)
+            );
+            RUN_REGEN_LABEL.to_string()
+        }
+        None => {
+            eprintln!(
+                "regen floor skip: {} changed path(s), none intersect the regen input closure (src/v1/** ∪ v1 dag import-closure ∪ Cargo/toolchain config) — self-host fixed-point provably unchanged (push-to-main runs regen unconditionally as the cold control)",
+                changed_paths.len()
+            );
+            REGEN_NOT_AFFECTED_SKIP_LABEL.to_string()
+        }
+    }
+}
+
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
+    // Falsifier cold-control arm: force the whole-tree compile before any diff observation.
+    // Widen-to-more-checking only — this env can never skip or narrow the gate, so it is a
+    // control, not an escape hatch (the deterministic whole-tree counterpart to the scoped
+    // per-PR admission, on the falsifier cadence).
+    if std::env::var("GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        eprintln!(
+            "compile-clean scope: whole-tree cold control forced (GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1)"
+        );
+        return CompileCleanScopePlan::WholeTree;
+    }
     if !compile_clean_scoping_active() {
         eprintln!("compile-clean scope: whole-tree (ci diff scoping inactive)");
         return CompileCleanScopePlan::WholeTree;
     }
     match floor_git_diff_name_status_range() {
-        Ok((changed_paths, _departed)) => {
+        Ok((changed_paths, departed_paths)) => {
             if FLOOR_COMPILE_CLEAN_CI_SCOPING.load(Ordering::SeqCst) {
-                return compile_clean_scope_plan_from_touched_paths_floor_fast(&changed_paths);
+                return compile_clean_scope_plan_from_touched_paths_floor_fast(
+                    &changed_paths,
+                    &departed_paths,
+                );
             }
-            match compile_clean_scope_plan_from_touched_paths(&changed_paths) {
+            match compile_clean_scope_plan_from_touched_paths(&changed_paths, &departed_paths) {
                 Ok(plan) => plan,
                 Err(msg) => CompileCleanScopePlan::Refused {
                     reason: format!("compile-clean scope disposition failed: {msg}"),
@@ -1775,18 +2137,38 @@ static FLOOR_COMPILE_CLEAN_LAZY_INSTALL: AtomicBool = AtomicBool::new(false);
 /// Floor CI runs through `claim_executor`; env-based scoping detection alone missed some
 /// self-hosted runners (silent whole-tree source load → step timeout). Tied to lazy install.
 static FLOOR_COMPILE_CLEAN_CI_SCOPING: AtomicBool = AtomicBool::new(false);
+/// The executor's `--source-root` vector, stored at lazy-install arm time so the
+/// receipt compile builds/reuses the SAME `process_shared_index` (same roots key) the
+/// plan prelude and batch-2 witness resolves use — one typed-module universe per run
+/// (the in-process double-pay kill, typecheck investigation PR #6766). `None` when the
+/// gate was never armed; the receipt then REFUSES (typed reason), never falls back to
+/// a second raw whole-tree compile (§5 — no silent widen).
+static FLOOR_COMPILE_CLEAN_INDEX_ROOTS: Mutex<Option<Vec<String>>> = Mutex::new(None);
 
-pub fn enable_floor_compile_clean_lazy_install() {
+pub fn enable_floor_compile_clean_lazy_install(source_roots: &[String]) {
     FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(true, Ordering::SeqCst);
     FLOOR_COMPILE_CLEAN_CI_SCOPING.store(true, Ordering::SeqCst);
+    *FLOOR_COMPILE_CLEAN_INDEX_ROOTS
+        .lock()
+        .expect("floor compile-clean index-roots lock poisoned") = Some(source_roots.to_vec());
 }
 
 #[cfg(test)]
 fn disable_floor_compile_clean_lazy_install_for_test() {
     FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(false, Ordering::SeqCst);
     FLOOR_COMPILE_CLEAN_CI_SCOPING.store(false, Ordering::SeqCst);
+    *FLOOR_COMPILE_CLEAN_INDEX_ROOTS
+        .lock()
+        .expect("floor compile-clean index-roots lock poisoned") = None;
 }
 
+/// Raw-pipeline `--target dag` compile-clean over a source set. NOT the floor's
+/// receipt path (that is `floor_compile_clean_emit_ok_via_index`, which shares the
+/// process's typed-module universe) — this is the index-independent oracle behind
+/// `witness_layer_roots_compile_clean_emit_check` (cargo tests, enrolled witnesses),
+/// and precisely BECAUSE it shares no caches with the via-index path it is the
+/// standing second opinion for verdict equivalence
+/// (`compile_clean_via_index_verdict_equivalence` tests).
 fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
     let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
@@ -1799,14 +2181,78 @@ fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>
     !has_hard_errors && !result.files.is_empty()
 }
 
+/// The floor receipt's compile: the same source closure as the raw oracle, routed
+/// through the shared `MultiEntryIndex` cached path (`resolved_graph_from_sources_with_index`)
+/// so every module's content-keyed typecheck is computed once per process and reused
+/// by batch-2's witness resolves (PR #6766 receipts: verdict-equivalent green AND on
+/// the planted `GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED` red; warm heavy
+/// witnesses 1.0–1.4s vs 10–90s cold; red verdict at the failing stage in seconds).
+/// The emit leg (`--target dag` render) runs over the already-typed graph.
+fn floor_compile_clean_emit_ok_via_index(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index_roots: &[String],
+) -> bool {
+    use crate::v1_compiler_artifact::RenderTarget;
+    use crate::v1_compiler_complexity::empty_complexity_report;
+    let index = process_shared_index(index_roots);
+    let (graph, si) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        "floor-compile-clean-gate",
+    ) {
+        Ok(resolved) => resolved,
+        Err(msg) => {
+            eprintln!("compile-clean: hard diagnostics:\n{msg}");
+            return false;
+        }
+    };
+    let newline_indices: Rc<im_rc::Vector<Rc<NewlineIndex>>> =
+        Rc::new(si.values().cloned().collect::<im_rc::Vector<_>>());
+    let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+        graph: Some(graph),
+        diagnostics: Rc::new(im_rc::Vector::new()),
+        source_indices: si,
+        complexity: empty_complexity_report(),
+        ownership: Rc::new(im_rc::Vector::new()),
+        newline_indices,
+    });
+    let result = v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
+    if result.files.is_empty() {
+        eprintln!("floor compile-clean: refused — compile produced zero files (empty emit set)");
+        return false;
+    }
+    true
+}
+
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
+    // Index roots are armed by `enable_floor_compile_clean_lazy_install`; a receipt
+    // demanded without them is a wiring defect and REFUSES (typed reason) — never a
+    // silent fallback to a second raw whole-tree compile (§5).
+    let index_roots = match FLOOR_COMPILE_CLEAN_INDEX_ROOTS.lock() {
+        Ok(guard) => match guard.as_ref() {
+            Some(roots) => roots.clone(),
+            None => {
+                return FloorCompileCleanReceipt::Refused {
+                    reason: "compile-clean receipt demanded with no index roots armed \
+                             (enable_floor_compile_clean_lazy_install arms them)"
+                        .to_string(),
+                }
+            }
+        },
+        Err(e) => {
+            return FloorCompileCleanReceipt::Refused {
+                reason: format!("floor compile-clean index-roots lock poisoned: {e}"),
+            }
+        }
+    };
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => FloorCompileCleanReceipt::Skipped {
             reason: "no compile-clean entry affected".to_string(),
         },
         Err(msg) => FloorCompileCleanReceipt::Refused { reason: msg },
         Ok(Some(sources)) => FloorCompileCleanReceipt::Compiled {
-            ok: floor_compile_clean_emit_ok(sources),
+            ok: floor_compile_clean_emit_ok_via_index(sources, &index_roots),
         },
     }
 }
@@ -1824,7 +2270,7 @@ pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
         );
     }
     eprintln!(
-        "claim_executor: floor compile-clean — one whole-tree --target dag compile (gate consumes receipt)"
+        "claim_executor: floor compile-clean — one whole-tree --target dag compile via shared index (gate consumes receipt; batch-2 resolves reuse the typed store)"
     );
     let receipt = produce_floor_compile_clean_receipt();
     if let FloorCompileCleanReceipt::Compiled { ok } = &receipt {
@@ -2234,6 +2680,328 @@ mod shared_cache_collision_guard_tests {
         assert!(
             err.contains("co-residence collision") && err.contains("std.foo"),
             "collision error must name the module and the seam: {err}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod typed_module_content_key_tests {
+    //! Typed-module content-key RED controls (cross-entry-typed-module-memo-sketch.md
+    //! §1/§3, operator-signed 2026-07-16; PR-α — the store re-key).
+    //!
+    //! The typed store keys on `std.interface_summary.typed_module_key` — module source
+    //! hash ⊕ direct-import interface hashes ⊕ compiler identity — never on authored
+    //! module name. Each test is a discriminating control for one live key term, proven
+    //! BY EXECUTION against the store (`typecheck_compute_count` counts genuine
+    //! typechecks — a stale serve shows up as a missing compute):
+    //!
+    //!  - **source term**: mutate a module's source (same path, same authored name)
+    //!    between two indexes sharing one cross-worker store → the mutated module MUST
+    //!    recompute. Under the dissolved name key this control goes RED (stale serve,
+    //!    0 computes).
+    //!  - **import-interface term**: change an imported module's export surface (its v0
+    //!    interface hash) without touching the dependent → the dependent MUST recompute.
+    //!    RED under the name key the same way.
+    //!  - **interface-grain minimality** (signed decision 1): a body-only edit in the
+    //!    import leaves its v0 interface hash unchanged → the dependent must HIT (only
+    //!    the edited module recomputes). A conservative source-transitive key would go
+    //!    RED here by over-invalidating the dependent.
+    //!
+    //! The compiler-identity term cannot vary within one test process; it is witnessed
+    //! at the algebra level by the PR1 .dag witnesses
+    //! (`src/v2/test/claim/interface_summary/typed_module_key_test.dag`). Warm==cold
+    //! byte-equivalence stays owned by `resolve_typed_cache_equivalence_test`.
+    //!
+    //! Mutations rewrite the SAME file path so the `module_source_identity` collision
+    //! wall (name→file, unchanged by the re-key) never fires.
+
+    use super::{
+        build_multi_entry_index_with_shared_caches, new_shared_typecheck_caches,
+        reset_typecheck_compute_count, resolve_entry_with_index, typecheck_compute_count,
+        with_typecheck_compute_count_receipt, workspace_root,
+    };
+    use crate::shared_typecheck_store::SharedTypecheckCaches;
+    use std::fs;
+    use std::sync::{Arc, RwLock};
+
+    const IMPORT_MODULE: &str = "module k.imp\nfn base() -> Int { 10 }\n";
+    const IMPORT_MODULE_BODY_EDIT: &str = "module k.imp\nfn base() -> Int { 4 + 6 }\n";
+    const IMPORT_MODULE_SURFACE_EDIT: &str =
+        "module k.imp\nfn base() -> Int { 10 }\nfn extra() -> Int { 1 }\n";
+    const DEPENDENT_MODULE: &str =
+        "module k.dep\nimport k.imp { base }\nfn wit() -> Bool { base() == 10 }\n";
+
+    struct Fixture {
+        dir: std::path::PathBuf,
+        roots: Vec<String>,
+        entry: String,
+    }
+
+    impl Fixture {
+        fn new(tag: &str) -> Fixture {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+            let dir = workspace_root().join("target").join(format!(
+                "typed-module-content-key-{tag}-{}-{seq}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("create fixture dir");
+            fs::write(dir.join("imp.dag"), IMPORT_MODULE).expect("write imp.dag");
+            fs::write(dir.join("dep.dag"), DEPENDENT_MODULE).expect("write dep.dag");
+            let roots = vec![dir.to_string_lossy().into_owned()];
+            let entry = dir.join("dep.dag").to_string_lossy().into_owned();
+            Fixture { dir, roots, entry }
+        }
+
+        fn rewrite_import(&self, src: &str) {
+            fs::write(self.dir.join("imp.dag"), src).expect("rewrite imp.dag");
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    /// Resolve `entry` against a fresh index bound to `store`, returning how many genuine
+    /// typecheck computes the resolve performed (misses; hits don't count).
+    fn computes_with_store(
+        store: &Arc<RwLock<SharedTypecheckCaches>>,
+        roots: &[String],
+        entry: &str,
+    ) -> usize {
+        let index = build_multi_entry_index_with_shared_caches(roots, store.clone());
+        reset_typecheck_compute_count();
+        resolve_entry_with_index(&index, entry).expect("resolve");
+        typecheck_compute_count()
+    }
+
+    #[test]
+    fn source_term_recomputes_mutated_module() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new("source-term");
+            let store = new_shared_typecheck_caches();
+
+            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(cold, 2, "cold resolve computes both closure modules");
+
+            // Unchanged snapshot, fresh index: full hit — the content key is stable.
+            let warm = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(warm, 0, "unchanged snapshot must be a full store hit");
+
+            // Body-only mutation of the import: its source hash moves, so its key moves.
+            fx.rewrite_import(IMPORT_MODULE_BODY_EDIT);
+            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert!(
+                after_edit >= 1,
+                "mutated module must recompute (a stale serve is a §5 fail-open); \
+                 got {after_edit} computes"
+            );
+        });
+    }
+
+    #[test]
+    fn import_interface_term_recomputes_dependent() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new("import-term");
+            let store = new_shared_typecheck_caches();
+
+            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(cold, 2, "cold resolve computes both closure modules");
+
+            // Export-surface edit: a new exported fn changes k.imp's interface rollup.
+            fx.rewrite_import(IMPORT_MODULE_SURFACE_EDIT);
+            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(
+                after_edit, 2,
+                "an interface change in the import must recompute the import AND its \
+                 dependent (the dependent's typed result consumed that interface)"
+            );
+        });
+    }
+
+    #[test]
+    fn body_only_edit_leaves_dependent_warm() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new("minimality");
+            let store = new_shared_typecheck_caches();
+
+            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(cold, 2, "cold resolve computes both closure modules");
+
+            fx.rewrite_import(IMPORT_MODULE_BODY_EDIT);
+            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(
+                after_edit, 1,
+                "body-only import edit: import recomputes, dependent stays warm \
+                 (interface-grain minimality, signed decision 1)"
+            );
+        });
+    }
+}
+
+#[cfg(test)]
+mod compile_clean_via_index_verdict_equivalence {
+    //! Verdict-equivalence controls for the floor receipt's via-index compile
+    //! (lever 1, typecheck investigation PR #6766): the raw pipeline
+    //! (`floor_compile_clean_emit_ok`, still the oracle behind
+    //! `witness_layer_roots_compile_clean_emit_check`) and the shared-index receipt
+    //! path (`floor_compile_clean_emit_ok_via_index`) must agree — green on a clean
+    //! corpus, red on a planted unresolved import, red on a planted type mismatch.
+    //! The raw path shares no caches with the via-index path, so agreement is an
+    //! independent second opinion, not a self-check. Whole-tree agreement receipts
+    //! (green 377.7s vs 381.4s; planted-inject red 4.3s vs 361.6s; both agree) are
+    //! recorded in PR #6766.
+
+    use super::{floor_compile_clean_emit_ok, floor_compile_clean_emit_ok_via_index};
+    use crate::v1_compiler_compile::SourceFile;
+    use std::fs;
+    use std::rc::Rc;
+
+    struct Corpus {
+        dir: std::path::PathBuf,
+        roots: Vec<String>,
+        sources: Vec<Rc<SourceFile>>,
+    }
+
+    impl Corpus {
+        /// Write `files` under a fresh fixture dir (the via-index path builds its
+        /// `process_shared_index` from on-disk roots) and mirror them as the source
+        /// set both compile paths receive.
+        fn new(tag: &str, files: &[(&str, &str)]) -> Corpus {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+            let dir = super::workspace_root().join("target").join(format!(
+                "compile-clean-equiv-{tag}-{}-{seq}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("create fixture dir");
+            let mut sources = Vec::new();
+            for (name, content) in files {
+                let path = dir.join(name);
+                fs::write(&path, content).expect("write fixture module");
+                sources.push(Rc::new(SourceFile {
+                    path: path.to_string_lossy().into_owned(),
+                    content: (*content).to_string(),
+                }));
+            }
+            let roots = vec![dir.to_string_lossy().into_owned()];
+            Corpus {
+                dir,
+                roots,
+                sources,
+            }
+        }
+
+        fn verdicts(&self) -> (bool, bool) {
+            let raw = floor_compile_clean_emit_ok(self.sources.clone());
+            let via_index =
+                floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots);
+            (raw, via_index)
+        }
+    }
+
+    impl Drop for Corpus {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[test]
+    fn green_corpus_agrees_green() {
+        let corpus = Corpus::new(
+            "green",
+            &[
+                ("imp.dag", "module eqv.imp\nfn base() -> Int { 10 }\n"),
+                (
+                    "dep.dag",
+                    "module eqv.dep\nimport eqv.imp { base }\nfn wit() -> Bool { base() == 10 }\n",
+                ),
+            ],
+        );
+        let (raw, via_index) = corpus.verdicts();
+        assert!(raw, "raw pipeline must be green on the clean corpus");
+        assert!(
+            via_index,
+            "via-index path must be green on the clean corpus"
+        );
+    }
+
+    /// §5 discriminating RED: an unresolved import must red BOTH paths.
+    #[test]
+    fn planted_unresolved_import_agrees_red() {
+        let corpus = Corpus::new(
+            "unresolved",
+            &[(
+                "bad.dag",
+                "module eqv.unresolved\nimport totally.nonexistent.module { Foo }\nfn probe() -> Int { 42 }\n",
+            )],
+        );
+        let (raw, via_index) = corpus.verdicts();
+        assert!(!raw, "raw pipeline must red on an unresolved import");
+        assert!(
+            !via_index,
+            "via-index path must red on an unresolved import"
+        );
+    }
+
+    /// Roots-key canonicalization (review 39118): the executor's absolute CLI roots
+    /// and the plan's relative `witness_layer_roots` are the SAME pool and must
+    /// address ONE thread-local shared index — otherwise the compile-clean receipt
+    /// warms an index batch-2 silently replaces, and the whole lever-1 sharing claim
+    /// is void on the CI path. Rc pointer equality is the discriminating check: two
+    /// spellings, one universe.
+    #[test]
+    fn shared_index_roots_key_canonicalizes_absolute_and_relative_spellings() {
+        // Workspace cwd: canonical roots are repo-relative and the index build
+        // resolves them against cwd — the executor always runs from the repo root;
+        // cargo test does not.
+        let ws = super::workspace_root();
+        let prior = std::env::current_dir().ok();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let absolute = vec![
+            ws.join("dag").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let relative = vec!["dag".to_string(), "src/v2".to_string()];
+        let a = super::process_shared_index(&absolute);
+        let b = super::process_shared_index(&relative);
+        if let Some(p) = prior {
+            let _ = std::env::set_current_dir(p);
+        }
+        assert!(
+            Rc::ptr_eq(&a, &b),
+            "absolute and relative spellings of the same pool must address ONE shared \
+             index — a roots-key fork gives the receipt and batch-2 two typed universes"
+        );
+    }
+
+    /// §5 discriminating RED: a typecheck-stage red must red BOTH paths. The planted
+    /// module is the same variant-mismatch shape as the transport's canonical
+    /// `perturb_module_source` (`dag/tools/dag_compile_clean_transport.dag`) — `Some`
+    /// matched against a `Present`-constructed optional — a proven raw-pipeline red.
+    #[test]
+    fn planted_typecheck_red_agrees_red() {
+        let corpus = Corpus::new(
+            "typecheck-red",
+            &[(
+                "bad.dag",
+                "module eqv.typecheck_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}\n",
+            )],
+        );
+        let (raw, via_index) = corpus.verdicts();
+        assert!(
+            !raw,
+            "raw pipeline must red on the planted variant mismatch"
+        );
+        assert!(
+            !via_index,
+            "via-index path must red on the planted variant mismatch"
         );
     }
 }
@@ -2974,11 +3742,37 @@ thread_local! {
         const { RefCell::new(None) };
 }
 
+/// Canonical spelling for the shared-index roots — both the key AND the build
+/// inputs: an absolute root under the workspace normalizes to its repo-relative
+/// form, so the executor's CLI `$ROOT/dag` and the plan's declared `dag`
+/// (`gunbc.ci_layer_roots` witness_layer_roots) address ONE index. Without this,
+/// the compile-clean receipt (armed from CLI roots) and batch-2 discovery (plan
+/// roots) keyed two separate typed universes in CI and the gate's warm store was
+/// silently replaced before the corpus read it (review 39118 on PR #6783). Order
+/// is preserved (primary-precedence pool semantics); a root outside the workspace
+/// keeps its spelling — it is genuinely a different pool.
+fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
+    source_roots
+        .iter()
+        .map(|r| {
+            let p = Path::new(r);
+            if p.is_absolute() {
+                try_repo_relative_path_normalized(p).unwrap_or_else(|| r.replace('\\', "/"))
+            } else {
+                r.replace('\\', "/")
+            }
+        })
+        .collect()
+}
+
 /// The thread-local shared resolve index for `source_roots` (union-resolve S1). Built once
-/// per (thread, roots) and reused, so consumers that resolve distinct entries against it
-/// share one typed_module_cache — the union closure typechecks once per node.
+/// per (thread, canonical roots) and reused, so consumers that resolve distinct entries
+/// against it share one typed_module_cache — the union closure typechecks once per node.
+/// Roots are canonicalized (`canonical_shared_index_roots`) before both keying and
+/// building, so path-spelling variants of the same pool cannot fork the universe.
 fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
-    let roots_key = source_roots.join("\u{1f}");
+    let roots = canonical_shared_index_roots(source_roots);
+    let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow().as_ref().and_then(|(k, idx)| {
             if *k == roots_key {
@@ -2991,7 +3785,7 @@ fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     if let Some(idx) = existing {
         return idx;
     }
-    let idx = Rc::new(build_multi_entry_index(source_roots));
+    let idx = Rc::new(build_multi_entry_index(&roots));
     PROCESS_RESOLVE_INDEX.with(|s| {
         *s.borrow_mut() = Some((roots_key, idx.clone()));
     });
@@ -3028,9 +3822,21 @@ pub fn resolve_entry_graph_shared(
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
-    /// Per-index typed results — always `Rc` (main memory path).
+    /// Per-index typed results, keyed by the typed-module CONTENT key
+    /// (`std.interface_summary.typed_module_key`: module source hash ⊕ direct-import
+    /// interface hashes ⊕ compiler identity) — never by authored module name. The
+    /// content key is the soundness license for eviction (PR-β) and the S2b-ready
+    /// backend shape (cross-entry-typed-module-memo-sketch.md §1, operator-signed
+    /// 2026-07-16); within one process it also makes a same-name/different-file
+    /// collision structurally unable to serve the wrong typecheck (the name-keyed
+    /// store relied on `module_source_identity` failing loud instead).
     typed_module_cache:
         RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    /// Source-content hashes by file path, recorded in the parse loop (where the
+    /// `SourceFile.content` is in hand) — the source-hash key term for
+    /// `typed_module_content_key`. A reconcile of a module whose file never passed
+    /// the parse loop is a fail-closed error, never a silently keyless entry.
+    source_hash_by_file: RefCell<std::collections::HashMap<String, String>>,
     /// Per-index collision registry when `cross_worker_store` is absent.
     module_source_identity: RefCell<std::collections::HashMap<String, String>>,
     /// Cross-worker serde-byte transport when increment C is explicitly armed (tests / future Arc).
@@ -3091,6 +3897,7 @@ fn new_multi_entry_index_shell(
         source_files,
         module_graph_facts: build_module_graph_facts_live(source_roots),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
+        source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
         cross_worker_store,
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
@@ -3145,24 +3952,89 @@ fn shared_caches_write<'a>(
         .map_err(|e| format!("shared typecheck caches lock poisoned: {e}"))
 }
 
-/// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
-/// cross-worker store is armed (no local duplicate — serde transport is one authority).
-fn index_get_typed(
+/// The typed-module content key for `resolved` — the Rust realization of
+/// `std.interface_summary.typed_module_key` over the live store's inputs
+/// (cross-entry-typed-module-memo-sketch.md §1, operator-signed 2026-07-16):
+///
+///   key = typed_module_key(module_key(source_hash, direct-import interface hashes),
+///                          compiler identity)
+///
+/// - `source_hash` was recorded by `note_source_hash` in the parse loop; a module whose
+///   file never passed that loop REFUSES (fail-closed) — the key never silently drops a
+///   term.
+/// - Direct-import interface hashes come from `interface_hash_by_name`, filled in
+///   dependency order as import results are obtained (hit or computed); a missing import
+///   hash likewise refuses — it would mean the schedule dispatched a dependent before
+///   its import. The interface hash is the Inc-B `ModuleInterface.summary.interface_hash`
+///   (v0 fingerprint; its declared-weak grain and upgrade trigger live at
+///   `src/v1/04_infer.dag` `interface_signature_fingerprint_v0_note`).
+/// - Compiler identity is `resolved_graph_cache::transform_content_digest` — the same
+///   single authority the resolved-graph subject digest consumes (§3: one concept, one
+///   authority; a seed rebuild invalidates both stores through one term).
+fn typed_module_content_key(
     index: &MultiEntryIndex,
+    resolved: &Rc<v1_compiler_resolve::ResolvedModule>,
     mod_name: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-    let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(index.typed_module_cache.borrow().get(mod_name).cloned());
-    };
-    shared_get_typed(store, mod_name)
+    interface_hash_by_name: &std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let file = &resolved.module.span.file;
+    let source_hash = index
+        .source_hash_by_file
+        .borrow()
+        .get(file)
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "typed-module content key refused: no source hash recorded for '{file}' \
+                 (module '{mod_name}') — every reconciled module must pass the parse loop \
+                 in this process before its typed result is keyed"
+            )
+        })?;
+    let mut import_hashes: im_rc::Vector<String> = im_rc::Vector::new();
+    for import in resolved.resolved_imports.iter() {
+        let hash = interface_hash_by_name
+            .get(&import.module_path)
+            .cloned()
+            .ok_or_else(|| {
+                format!(
+                    "typed-module content key refused: direct import '{}' of module \
+                     '{mod_name}' has no interface hash yet — imports must be typechecked \
+                     (or cache-served) before their dependents are keyed",
+                    import.module_path
+                )
+            })?;
+        import_hashes.push_back(hash);
+    }
+    Ok(typed_module_key(
+        module_key(source_hash, Rc::new(import_hashes)),
+        transform_content_digest(),
+    ))
 }
 
-fn index_contains_typed(index: &MultiEntryIndex, mod_name: &str) -> Result<bool, String> {
+/// Record `mod_name`'s interface hash for downstream key derivation (one entry per
+/// module per reconcile; the interface is a pure projection of the typed result).
+fn note_interface_hash(
+    interface_hash_by_name: &mut std::collections::HashMap<String, String>,
+    mod_name: &str,
+    tc_result: &Rc<v1_compiler_infer::TypecheckModuleResult>,
+) {
+    interface_hash_by_name.insert(
+        mod_name.to_string(),
+        tc_result.typed.interface.summary.interface_hash.clone(),
+    );
+}
+
+/// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
+/// cross-worker store is armed (no local duplicate — serde transport is one authority).
+/// `typed_key` is the content key from `typed_module_content_key`, never a module name.
+fn index_get_typed(
+    index: &MultiEntryIndex,
+    typed_key: &str,
+) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
-        return Ok(index.typed_module_cache.borrow().contains_key(mod_name));
+        return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
     };
-    let caches = shared_caches_read(store)?;
-    Ok(caches.contains_typed(mod_name))
+    shared_get_typed(store, typed_key)
 }
 
 fn check_index_module_source_identity(
@@ -3184,29 +4056,29 @@ fn check_index_module_source_identity(
 
 fn index_insert_typed(
     index: &MultiEntryIndex,
-    mod_name: String,
+    typed_key: String,
     result: Rc<v1_compiler_infer::TypecheckModuleResult>,
 ) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         index
             .typed_module_cache
             .borrow_mut()
-            .insert(mod_name, result.clone());
+            .insert(typed_key, result.clone());
         return Ok(result);
     };
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
-        caches.clone_typed_bytes(&mod_name)
+        caches.clone_typed_bytes(&typed_key)
     } {
         return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
     }
     let encoded = SharedTypecheckCaches::encode_typed_snapshot(&result)?;
     let raced_bytes = {
         let mut caches = shared_caches_write(store)?;
-        if let Some(existing) = caches.clone_typed_bytes(&mod_name) {
+        if let Some(existing) = caches.clone_typed_bytes(&typed_key) {
             Some(existing)
         } else {
-            caches.insert_typed_preencoded(mod_name.clone(), encoded);
+            caches.insert_typed_preencoded(typed_key.clone(), encoded);
             None
         }
     };
@@ -3220,11 +4092,11 @@ fn index_insert_typed(
 /// Read the shared typed cache with a brief lock hold; decode happens after the guard drops.
 fn shared_get_typed(
     shared_caches: &Arc<RwLock<SharedTypecheckCaches>>,
-    mod_name: &str,
+    typed_key: &str,
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let bytes = {
         let caches = shared_caches_read(shared_caches)?;
-        caches.clone_typed_bytes(mod_name)
+        caches.clone_typed_bytes(typed_key)
     };
     match bytes {
         Some(snapshot) => {
@@ -3428,7 +4300,41 @@ fn resolve_entry_with_parse_cache(
         entry_file,
     )?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
+    resolved_graph_from_sources_with_index(index, sources, typecheck_gate, entry_file)
+}
 
+/// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
+/// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
+/// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
+/// resolved-graph subject memo). Extracted so a whole-tree SOURCE SET — the
+/// compile-clean gate's closure, which has no single entry file — rides the same
+/// cached path as entry-file resolves: one process, ONE typecheck universe, so the
+/// floor's gate compile and batch-2's witness resolves share every module's
+/// content-keyed typecheck instead of double-paying it (typecheck investigation,
+/// PR #6766).
+///
+/// Failure semantics: collect-then-refuse per stage — a stage gathers ALL of its
+/// diagnostics before refusing (parse errors across every file, resolve/normalize/
+/// typecheck/ownership across every module), so a multi-error tree reports its full
+/// failing-stage set in one run, never one error per run. Hardness predicates:
+/// typecheck refusals use `is_resolve_typecheck_blocking(typecheck_gate)` and the
+/// other stages use `is_error_diagnostic` — for the gate's `Strict` mode both reduce
+/// to the `00_core.dag` interpreter-blocking authority on every class those stages
+/// can produce (`ComplexityUnknown`, the sole class where the predicates differ, is
+/// only produced by complexity analysis, which does not run on this path).
+fn resolved_graph_from_sources_with_index(
+    index: &MultiEntryIndex,
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    typecheck_gate: ResolveTypecheckGate,
+    phase_label: &str,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let entry_file = phase_label;
     let subject = subject_digest_for_closure(&sources);
     // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in
     // front of the opt-in cross-process store. A subject this process has already
@@ -3457,9 +4363,11 @@ fn resolve_entry_with_parse_cache(
 
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    let mut parse_error_msgs: Vec<String> = Vec::new();
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
+        note_source_hash(index, source);
         let cached = index.parse_cache.borrow().get(&source.path).cloned();
 
         let (parse_result, nl_index) = match cached {
@@ -3487,17 +4395,23 @@ fn resolve_entry_with_parse_cache(
 
         si_map.insert(nl_index.file.clone(), nl_index.clone());
         if let Some(err) = &parse_result.error {
+            // Collect-then-refuse: gather every file's parse error before refusing,
+            // so a multi-file parse red reports its full set in one run.
             let span = diagnostic_to_span(err.diagnostic.clone());
             let loc = format_error_loc(&span.file, span.start, &si_map);
-            return Err(format!(
+            parse_error_msgs.push(format!(
                 "{}: error: {}",
                 loc,
                 diagnostic_to_message(err.diagnostic.clone())
             ));
+            continue;
         }
         if let Some(module) = &parse_result.module {
             modules.push(module.clone());
         }
+    }
+    if !parse_error_msgs.is_empty() {
+        return Err(parse_error_msgs.join("\n"));
     }
 
     let source_indices = Rc::new(si_map);
@@ -3850,27 +4764,39 @@ fn finish_resolved_graph_assembly(
 /// emit). The assembled output matches the serial dispatch path because
 /// variant surfaces are not consulted on a cache hit and parent-env diagnostics
 /// are empty when every import parent is already in the store.
-fn reconcile_all_cache_hits(
+///
+/// Under the content key this is also the all-hits PROBE: the closure is walked
+/// in resolver order (imports precede importers), each module's key derived from
+/// its imports' interface hashes as their cached results are read. Returns
+/// `Ok(None)` on the first store miss — the caller falls through to the schedule
+/// loop, which recomputes keys the same way (hits are cheap Rc clones, so the
+/// repeated lookups cost nothing over the old name-keyed precheck).
+fn try_reconcile_all_cache_hits(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
-) -> Result<Rc<ResolvedGraph>, String> {
+) -> Result<Option<Rc<ResolvedGraph>>, String> {
     let mut modules_vec = im_rc::Vector::new();
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> =
         Vec::with_capacity(closure_modules.len() * 2);
     let mut same_tree_fork_count: usize = 0;
     let mut cross_tree_fork_count: usize = 0;
     let empty_parent_diags = Rc::new(im_rc::Vector::new());
+    let mut interface_hash_by_name: std::collections::HashMap<String, String> =
+        std::collections::HashMap::with_capacity(closure_modules.len());
 
     for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
         let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
         {
             check_index_module_source_identity(index, mod_name, &decl_file)?;
         }
-        let tc_result = index_get_typed(index, mod_name)?.ok_or_else(|| {
-            format!("reconcile all-cache-hit path: module '{mod_name}' missing from typed store")
-        })?;
+        let typed_key =
+            typed_module_content_key(index, resolved, mod_name, &interface_hash_by_name)?;
+        let Some(tc_result) = index_get_typed(index, &typed_key)? else {
+            return Ok(None);
+        };
+        note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
@@ -3889,6 +4815,7 @@ fn reconcile_all_cache_hits(
         (same_tree_fork_count, cross_tree_fork_count),
         source_indices,
     )
+    .map(Some)
 }
 
 fn qualified_name_module_path_prefix(name: &str) -> Option<String> {
@@ -3971,10 +4898,26 @@ fn merge_symbol_indices(left: Rc<SymbolIndex>, right: Rc<SymbolIndex>) -> Rc<Sym
     })
 }
 
+/// Record the source-content hash for `source` (insert-if-absent: the tree is a fixed
+/// snapshot within a process, so first sight is authoritative). This is the source-hash
+/// key term of `typed_module_content_key`; it is recorded exactly where the content is
+/// already in hand — never re-read from disk at key-derivation time (purity: the key
+/// derives from declared inputs, not a fresh WorldRead).
+fn note_source_hash(index: &MultiEntryIndex, source: &Rc<v1_compiler_compile::SourceFile>) {
+    let mut map = index.source_hash_by_file.borrow_mut();
+    if !map.contains_key(&source.path) {
+        map.insert(
+            source.path.clone(),
+            v1_rt::atom_identity_hash(source.content.clone()),
+        );
+    }
+}
+
 fn parse_module_node_from_index_source(
     index: &MultiEntryIndex,
     source: Rc<v1_compiler_compile::SourceFile>,
 ) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
+    note_source_hash(index, &source);
     let cached = index.parse_cache.borrow().get(&source.path).cloned();
     let (parse_result, nl_index) = match cached {
         Some(entry) => entry,
@@ -4090,20 +5033,20 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
-    let all_cached = {
-        let mut cached = true;
-        for name in &closure_names {
-            if !index_contains_typed(index, name)? {
-                cached = false;
-                break;
-            }
-        }
-        cached
-    };
-    if all_cached {
-        return reconcile_all_cache_hits(&closure_modules, &closure_names, source_indices, index);
+    if let Some(assembled) = try_reconcile_all_cache_hits(
+        &closure_modules,
+        &closure_names,
+        source_indices.clone(),
+        index,
+    )? {
+        return Ok(assembled);
     }
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
+    // Interface hashes of processed modules, for dependents' content keys — filled in
+    // batch order (a batch's imports all live in earlier batches), read by
+    // `typed_module_content_key` at each module's store lookup.
+    let mut interface_hash_by_name: std::collections::HashMap<String, String> =
+        std::collections::HashMap::with_capacity(closure_modules.len());
     let mut dispatched: Vec<
         Option<(
             Rc<im_rc::Vector<Rc<ErrorNode>>>,
@@ -4130,7 +5073,9 @@ fn reconcile_with_typed_cache(
             {
                 check_index_module_source_identity(index, &mod_name, &decl_file)?;
             }
-            let cached = index_get_typed(index, &mod_name)?;
+            let typed_key =
+                typed_module_content_key(index, &resolved, &mod_name, &interface_hash_by_name)?;
+            let cached = index_get_typed(index, &typed_key)?;
             let was_cache_hit = cached.is_some();
             let parent_diags = if was_cache_hit {
                 Rc::new(im_rc::Vector::new())
@@ -4174,10 +5119,11 @@ fn reconcile_with_typed_cache(
                     if module_tc_ms >= 2_000 {
                         eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
                     }
-                    let computed = index_insert_typed(index, mod_name.clone(), computed)?;
+                    let computed = index_insert_typed(index, typed_key.clone(), computed)?;
                     computed
                 }
             };
+            note_interface_hash(&mut interface_hash_by_name, &mod_name, &tc_result);
             let typed = tc_result.typed.clone();
             let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
             variant_surfaces = v1_rt::rc_map_insert(
@@ -5211,6 +6157,15 @@ pub fn handle_converge(host: String) {
     if !converged {
         std::process::exit(1);
     }
+}
+
+#[path = "pre_push.rs"]
+mod pre_push;
+
+/// Thin CLI transport handler for `claim_batch --pre-push`: stdin parse and gate
+/// orchestration live in `pre_push`; disposition receipt in `gunbc.githooks_pre_push_cli`.
+pub fn handle_pre_push() -> std::process::ExitCode {
+    pre_push::run()
 }
 
 pub fn handle_run(
@@ -7863,7 +8818,6 @@ struct FloorDiffEdits {
 }
 
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
-const ENTRY_SELECTION_ENTRY: &str = "src/v2/lens/affected_set/entry_selection.dag";
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 
 // `entry_file_touched_via_dependency_view` (the fn-arrow DependencyView wrapper) was
@@ -7871,57 +8825,11 @@ const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // `Ok(true)` — a silent widen that marked every row entry-file-touched whenever any entry
 // file was touched, while its comment called that arm fail-closed. The channel's decision
 // now lives in `entry_file_touched_via_import_closure` (module-graph import-closure grain,
-// typed refusal on a facts gap). `call_entry_affected_by_dependency_view` remains below for
-// its other consumer (compile-clean scoping, gated on #6239) and as the decl-level
-// candidate when the namespace-only terminal step re-decides the grain.
-
-fn call_entry_affected_by_dependency_view(
-    ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    pool_roots: &[String],
-    touched_paths: &[String],
-) -> Result<bool, String> {
-    if !ctx
-        .item_registry
-        .contains_key("entry_affected_by_dependency_view")
-    {
-        return Err(
-            "entry_affected_by_dependency_view missing from entry_selection context".to_string(),
-        );
-    }
-    let roots: Vec<v1_interpreter::Value> = pool_roots
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
-    let touched: Vec<v1_interpreter::Value> = touched_paths
-        .iter()
-        .map(|s| v1_interpreter::Value::Str(s.clone()))
-        .collect();
-    let args = [
-        (
-            Some("entry_path".to_string()),
-            v1_interpreter::Value::Str(entry_path.to_string()),
-        ),
-        (Some("pool_roots".to_string()), list_value_from_vec(roots)),
-        (
-            Some("touched_paths".to_string()),
-            list_value_from_vec(touched),
-        ),
-    ];
-    match v1_interpreter::run_in_context_with_args(
-        ctx,
-        "entry_affected_by_dependency_view",
-        &args,
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
-        Ok(other) => Err(format!(
-            "entry_affected_by_dependency_view returned `{}`, expected Bool",
-            ctx.format_value(&other)
-        )),
-        Err(e) => Err(format!("entry_affected_by_dependency_view: {e}")),
-    }
-}
+// typed refusal on a facts gap). `call_entry_affected_by_dependency_view` was deleted
+// 2026-07-16 when its last consumer (compile-clean scoping) regrounded onto the same
+// import-closure realization; the fn-arrow chain stays in `.dag`
+// (`v2.lens.affected_set.entry_selection`) as the decl-level candidate for when the
+// namespace-only terminal step re-decides the grain.
 
 fn call_entry_affected_by_touched_paths(
     ctx: &v1_interpreter::InterpContext,
@@ -11014,7 +11922,7 @@ mod module_grain_affected_equivalence_tests {
         vec![
             "dag/test/claim/card_intake_risk_witness_test.dag",
             "dag/test/claim/ebay_listing_witness_test.dag",
-            "dag/test/claim/bash_serializer_witness_test.dag",
+            "src/v2/test/claim/bash_program_fold_test.dag",
             "dag/test/claim/v1_dag_parse_witness_test.dag",
             "dag/tools/host_prelude.dag",
             "dag/tools/build_step.dag",
@@ -16026,6 +16934,10 @@ mod witness_layer_roots_compile_clean_tests {
                 let _inject =
                     EnvGuard::set("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED", "1");
                 reset_floor_compile_clean_receipt_for_test();
+                // The receipt compile requires armed index roots (it rides the shared
+                // process index); without them install records a typed Refused receipt
+                // and this test would pass WITHOUT compiling — a masked tooth.
+                enable_floor_compile_clean_lazy_install(&["dag".to_string(), "src/v2".to_string()]);
                 install_floor_compile_clean_receipt()
                     .expect("real whole-tree compile with injected unresolved import");
                 assert!(
@@ -16069,13 +16981,14 @@ mod witness_layer_roots_compile_clean_tests {
         );
     }
 
-    /// Lever-a receipt: docs-only compile-clean scope skips at path grain (pre-#6239).
+    /// Lever-a receipt: docs-only compile-clean scope skips at path grain.
     #[test]
     fn floor_fast_scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
-                "docs/plans/example.md".to_string(),
-            ]);
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &["docs/plans/example.md".to_string()],
+                &HashSet::new(),
+            );
             assert_eq!(
                 plan,
                 CompileCleanScopePlan::SkipNoAffected {
@@ -16099,15 +17012,114 @@ mod witness_layer_roots_compile_clean_tests {
         });
     }
 
-    /// Interim #6239: substrate not ready → whole-tree (not import-closure Scoped).
+    /// Selectable-universe guard: a mixed diff carrying a non-.dag non-docs path (compiler
+    /// seed `.rs`) keeps the whole-tree baseline even though a `.dag` path also intersects.
     #[test]
-    fn floor_fast_plan_whole_tree_when_substrate_not_ready() {
+    fn floor_fast_plan_whole_tree_on_mixed_rs_and_dag_touch() {
         with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(&[
-                "dag/tools/dag_compile_clean_transport.dag".to_string(),
-                "src/v1/stage0/src/cli_run.rs".to_string(),
-            ]);
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &[
+                    "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                    "src/v1/stage0/src/cli_run.rs".to_string(),
+                ],
+                &HashSet::new(),
+            );
             assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+        });
+    }
+
+    /// Departed-path guard: a deleted/renamed-from non-docs path forces the whole-tree
+    /// baseline (current-tree adjacency cannot see the broken importers of a deleted module).
+    #[test]
+    fn floor_fast_plan_whole_tree_on_departed_dag_path() {
+        with_workspace_cwd(|| {
+            let departed: HashSet<String> = ["dag/std/logic.dag".to_string()].into_iter().collect();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &["dag/std/logic.dag".to_string()],
+                &departed,
+            );
+            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
+        });
+    }
+
+    /// Docs-only departure stays a skip — the departed guard fires only outside docs/**.
+    #[test]
+    fn floor_fast_plan_docs_only_departure_still_skips() {
+        with_workspace_cwd(|| {
+            let departed: HashSet<String> =
+                ["docs/plans/example.md".to_string()].into_iter().collect();
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &["docs/plans/example.md".to_string()],
+                &departed,
+            );
+            assert!(
+                matches!(plan, CompileCleanScopePlan::SkipNoAffected { .. }),
+                "expected SkipNoAffected, got {plan:?}"
+            );
+        });
+    }
+
+    /// Regen departed-path guard: a deleted `.dag` path must run regen even when the
+    /// current-tree closure no longer contains it (the closure is computed from the
+    /// current tree, so deletions are invisible to the intersection test). The control
+    /// below proves the same path as a modification outside the closure still skips.
+    #[test]
+    fn regen_floor_skip_runs_on_departed_dag_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "D\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(regen_floor_skip_label_for_ci(), RUN_REGEN_LABEL);
+            });
+        });
+    }
+
+    /// Control for the departed guard: the same non-closure path as a plain
+    /// modification keeps the skip arm (proves the guard discriminates on D, not path).
+    #[test]
+    fn regen_floor_skip_skips_on_modified_non_closure_path() {
+        with_env_test_lock(|| {
+            with_workspace_cwd(|| {
+                let _ns = EnvGuard::set(
+                    "GUNBC_CI_DIFF_NAME_STATUS",
+                    "M\\000src/v2/lens/machine_shape.dag\\000",
+                );
+                assert_eq!(
+                    regen_floor_skip_label_for_ci(),
+                    REGEN_NOT_AFFECTED_SKIP_LABEL
+                );
+            });
+        });
+    }
+
+    /// The unblocked scoped arm, by execution: a single touched dag entry selects at least
+    /// itself through the import-closure grain (the discriminating RED for this arm is
+    /// `floor_fast_plan_whole_tree_on_mixed_rs_and_dag_touch` — same touch set plus an `.rs`
+    /// path flips the disposition to whole-tree).
+    #[test]
+    fn floor_fast_plan_scopes_touched_dag_entry_via_import_closure() {
+        with_workspace_cwd(|| {
+            let plan = compile_clean_scope_plan_from_touched_paths_floor_fast(
+                &["dag/std/logic.dag".to_string()],
+                &HashSet::new(),
+            );
+            match plan {
+                CompileCleanScopePlan::Scoped { entry_paths } => {
+                    assert!(
+                        entry_paths.iter().any(|p| p == "dag/std/logic.dag"),
+                        "expected dag/std/logic.dag in {entry_paths:?}"
+                    );
+                    let roster_len = compile_clean_shard_entry_paths_fast().len();
+                    assert!(
+                        entry_paths.len() < roster_len,
+                        "scoped selection must be a strict subset of the roster ({} vs {roster_len})",
+                        entry_paths.len()
+                    );
+                }
+                other => panic!("expected ScopedRun, got {other:?}"),
+            }
         });
     }
 
@@ -16116,9 +17128,11 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
     fn scoped_plan_skips_docs_only_touch() {
         with_workspace_cwd(|| {
-            let plan =
-                compile_clean_scope_plan_from_touched_paths(&["docs/plans/example.md".to_string()])
-                    .expect("scope disposition");
+            let plan = compile_clean_scope_plan_from_touched_paths(
+                &["docs/plans/example.md".to_string()],
+                &HashSet::new(),
+            )
+            .expect("scope disposition");
             assert_eq!(
                 plan,
                 CompileCleanScopePlan::SkipNoAffected {
@@ -16134,10 +17148,13 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold"]
     fn scoped_plan_includes_lever_a_dag_transport_touch() {
         with_workspace_cwd(|| {
-            let plan = compile_clean_scope_plan_from_touched_paths(&[
-                "dag/tools/dag_compile_clean_transport.dag".to_string(),
-                "src/v1/stage0/src/cli_run.rs".to_string(),
-            ])
+            let plan = compile_clean_scope_plan_from_touched_paths(
+                &[
+                    "dag/tools/dag_compile_clean_transport.dag".to_string(),
+                    "src/v1/stage0/src/cli_run.rs".to_string(),
+                ],
+                &HashSet::new(),
+            )
             .expect("scope disposition");
             match plan {
                 CompileCleanScopePlan::Scoped { entry_paths } => {
@@ -16158,9 +17175,11 @@ mod witness_layer_roots_compile_clean_tests {
     #[ignore = "manual: compile_clean_shard_entry_paths live scan ~minutes cold; witness in dag/test/claim/dag_compile_clean_scope_witness_test.dag"]
     fn scoped_plan_includes_touched_dag_entry() {
         with_workspace_cwd(|| {
-            let plan =
-                compile_clean_scope_plan_from_touched_paths(&["dag/std/logic.dag".to_string()])
-                    .expect("scope disposition");
+            let plan = compile_clean_scope_plan_from_touched_paths(
+                &["dag/std/logic.dag".to_string()],
+                &HashSet::new(),
+            )
+            .expect("scope disposition");
             match plan {
                 CompileCleanScopePlan::Scoped { entry_paths } => {
                     assert!(
@@ -16197,6 +17216,18 @@ mod witness_layer_roots_compile_clean_tests {
             let _ga = EnvGuard::set("GITHUB_ACTIONS", "true");
             let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
             assert!(compile_clean_scoping_active());
+        });
+    }
+
+    /// Falsifier cold-control arm: the env forces WholeTree before any diff observation
+    /// (widen-to-more-checking only — it can never skip or narrow the gate).
+    #[test]
+    fn cold_control_env_forces_whole_tree_scope_plan() {
+        with_env_test_lock(|| {
+            let _cc = EnvGuard::set("GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL", "1");
+            let _base = EnvGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
+            let plan = compile_clean_scope_plan_for_ci();
+            assert_eq!(plan, CompileCleanScopePlan::WholeTree);
         });
     }
 

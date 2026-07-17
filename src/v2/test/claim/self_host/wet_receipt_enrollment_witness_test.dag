@@ -2,7 +2,11 @@ module v2.test.claim.self_host.wet_receipt_enrollment_witness_test
 
 import v2.compiler.self_host.frontier {
   compiler_frontier_row_06_translate,
+  compiler_frontier_row_07_target_carriers,
+  compiler_frontier_row_parse_engine_hooks,
+  compiler_frontier_row_discovery_enumeration,
   compiler_frontier_row_use_site_verdict,
+  compiler_frontier_self_emitted_baseline,
   SelfEmitted,
   FrontierProbeReceipt,
   SelfEmitReady,
@@ -47,14 +51,35 @@ fn witness_self_emitted_without_binding_enrolls_no_wet_entry() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: sample_self_emitted_row())) == 0
 }
 
+fn witness_parse_engine_hooks_self_emitted_enrolls_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_parse_engine_hooks)) == 1
+}
+
 fn witness_use_site_verdict_self_emitted_enrolls_wet_entry() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_use_site_verdict)) == 1
 }
 
-fn witness_nightly_enrollment_includes_template_plus_use_site_verdict() -> Bool {
+fn witness_discovery_enumeration_self_emitted_enrolls_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_discovery_enumeration)) == 1
+}
+
+fn witness_target_carriers_self_emitted_enrolls_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_07_target_carriers)) == 1
+}
+
+fn witness_nightly_enrollment_includes_template_plus_self_emitted_modules() -> Bool {
   (length(xs: falsifier_self_host_wet_template_entries) == 1)
-    && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == 1)
-    && (length(xs: falsifier_self_host_wet_entries()) == 2)
+    && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == compiler_frontier_self_emitted_baseline)
+    && (length(xs: falsifier_self_host_wet_entries()) == compiler_frontier_self_emitted_baseline + 1)
+}
+
+fn witness_parse_engine_hooks_binding_present() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/parse_engine_hooks.dag") {
+    Present { value: b } =>
+      b.entry == "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag"
+        && b.function == "self_host_parse_engine_hooks_behavioral_receipt_holds"
+    Absent => false
+  }
 }
 
 fn witness_use_site_verdict_binding_present() -> Bool {
@@ -62,6 +87,24 @@ fn witness_use_site_verdict_binding_present() -> Bool {
     Present { value: b } =>
       b.entry == "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag"
         && b.function == "self_host_use_site_verdict_behavioral_receipt_holds"
+    Absent => false
+  }
+}
+
+fn witness_discovery_enumeration_binding_present() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/discovery_enumeration.dag") {
+    Present { value: b } =>
+      b.entry == "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag"
+        && b.function == "self_host_discovery_enumeration_behavioral_receipt_holds"
+    Absent => false
+  }
+}
+
+fn witness_target_carriers_binding_present() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/07_target_carriers.dag") {
+    Present { value: b } =>
+      b.entry == "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag"
+        && b.function == "self_host_target_carriers_behavioral_receipt_holds"
     Absent => false
   }
 }
@@ -76,8 +119,14 @@ fn witness_unbound_module_path_has_no_binding() -> Bool {
 test fn wet_receipt_enrollment_witnesses() -> Bool {
   witness_seed_retained_row_enrolls_no_wet_entry()
     && witness_self_emitted_without_binding_enrolls_no_wet_entry()
+    && witness_parse_engine_hooks_self_emitted_enrolls_wet_entry()
     && witness_use_site_verdict_self_emitted_enrolls_wet_entry()
-    && witness_nightly_enrollment_includes_template_plus_use_site_verdict()
+    && witness_discovery_enumeration_self_emitted_enrolls_wet_entry()
+    && witness_target_carriers_self_emitted_enrolls_wet_entry()
+    && witness_nightly_enrollment_includes_template_plus_self_emitted_modules()
+    && witness_parse_engine_hooks_binding_present()
     && witness_use_site_verdict_binding_present()
+    && witness_discovery_enumeration_binding_present()
+    && witness_target_carriers_binding_present()
     && witness_unbound_module_path_has_no_binding()
 }

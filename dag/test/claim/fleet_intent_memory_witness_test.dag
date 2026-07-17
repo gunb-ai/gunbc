@@ -1,0 +1,144 @@
+module test.claim.fleet_intent_memory
+
+import std.logic { Bool }
+import std.types { list_length }
+import std.measure {
+  byte_size_count,
+  gibibyte,
+  gibibyte_to_byte_size,
+  Gibibyte,
+  byte_size,
+}
+import gunbc.fleet_intent {
+  srv1_host,
+  srv2_host,
+  srv3_host,
+  srv1_memory_population,
+  srv2_memory_population,
+  srv3_memory_population,
+  srv1_memory_population_observation_note,
+  srv2_memory_population_observation_note,
+  srv3_memory_population_observation_note,
+  compute_host_ram_bytes_total,
+  fleet_host_memory_nominal_vs_usable_note,
+}
+import gunbc.ci_fleet { gunbc_ci_host, gunbc_ci_host_memory_deferral_note }
+import extdeps.memory {
+  host_memory_population_nominal_bytes,
+  memory_population_row_bytes,
+}
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog, hma82gr7afr8n_vk_catalog }
+import extdeps.memory.types { MemoryPopulationRow, HostMemoryPopulation, dram_module_is_realizable }
+import extdeps.memory.jedec { ddr4_generation_catalog }
+import extdeps.bmc.redfish { redfish_memory_summary_from_gib }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data srv3_bmc_observed_total_gib: Gibibyte = gibibyte(128)
+
+data srv1_bmc_observed_total_gib: Gibibyte = gibibyte(128)
+
+data srv2_bmc_observed_total_gib: Gibibyte = gibibyte(128)
+
+test fn srv3_population_matches_bmc_memory_summary() -> Bool {
+  let nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
+  let bmc = byte_size_count(
+    redfish_memory_summary_from_gib(total_gib: srv3_bmc_observed_total_gib).total_memory_bytes
+  )
+  nominal == bmc
+}
+
+test fn srv3_host_memory_derives_from_cited_population() -> Bool {
+  let host_ram = byte_size_count(compute_host_ram_bytes_total(host: srv3_host))
+  let nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
+  host_ram == nominal && list_length(items: srv3_host.memory) == 2
+}
+
+test fn srv3_observed_catalog_rows_are_jedec_realizable() -> Bool {
+  dram_module_is_realizable(module: hma82gr7afr8n_vk_catalog, jedec: ddr4_generation_catalog)
+    && dram_module_is_realizable(module: hma82gr7afr4n_vk_catalog, jedec: ddr4_generation_catalog)
+}
+
+test fn srv3_population_row_bytes_match_stick_capacity() -> Bool {
+  let seven_sticks = byte_size_count(
+    memory_population_row_bytes(
+      row: MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 }
+    )
+  )
+  let one_stick = byte_size_count(
+    memory_population_row_bytes(
+      row: MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 1 }
+    )
+  )
+  seven_sticks == 7 * byte_size_count(hma82gr7afr8n_vk_catalog.capacity_bytes)
+    && one_stick == byte_size_count(hma82gr7afr4n_vk_catalog.capacity_bytes)
+}
+
+test fn red_wrong_stick_count_changes_nominal_total() -> Bool {
+  let wrong = HostMemoryPopulation {
+    rows: [
+      MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 },
+    ],
+  }
+  let wrong_total = byte_size_count(host_memory_population_nominal_bytes(pop: wrong))
+  let observed_total = byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
+  wrong_total != observed_total
+}
+
+test fn srv1_srv2_populations_match_bmc_memory_summary() -> Bool {
+  let srv1_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv1_memory_population))
+  let srv2_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv2_memory_population))
+  let srv1_bmc = byte_size_count(
+    redfish_memory_summary_from_gib(total_gib: srv1_bmc_observed_total_gib).total_memory_bytes
+  )
+  let srv2_bmc = byte_size_count(
+    redfish_memory_summary_from_gib(total_gib: srv2_bmc_observed_total_gib).total_memory_bytes
+  )
+  srv1_nominal == srv1_bmc && srv2_nominal == srv2_bmc
+}
+
+test fn srv1_srv2_host_memory_derives_from_cited_population() -> Bool {
+  let srv1_ram = byte_size_count(compute_host_ram_bytes_total(host: srv1_host))
+  let srv1_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv1_memory_population))
+  let srv2_ram = byte_size_count(compute_host_ram_bytes_total(host: srv2_host))
+  let srv2_nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv2_memory_population))
+  srv1_ram == srv1_nominal && list_length(items: srv1_host.memory) == 1
+    && srv2_ram == srv2_nominal && list_length(items: srv2_host.memory) == 1
+}
+
+test fn red_srv1_seven_stick_population_differs_from_observed() -> Bool {
+  let wrong = HostMemoryPopulation {
+    rows: [
+      MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 7 },
+    ],
+  }
+  let wrong_total = byte_size_count(host_memory_population_nominal_bytes(pop: wrong))
+  let observed_total = byte_size_count(host_memory_population_nominal_bytes(pop: srv1_memory_population))
+  wrong_total != observed_total
+}
+
+test fn srv1_srv2_observation_notes_record_raw_redfish_fields() -> Bool {
+  string_contains(s: srv1_memory_population_observation_note, pattern: "HMA82GR7AFR4N-VK RankCount=1")
+    && string_contains(s: srv1_memory_population_observation_note, pattern: "192.168.1.183")
+    && string_contains(s: srv1_memory_population_observation_note, pattern: "(×8)")
+    && string_contains(s: srv2_memory_population_observation_note, pattern: "HMA82GR7AFR4N-VK RankCount=1")
+    && string_contains(s: srv2_memory_population_observation_note, pattern: "192.168.1.184")
+    && string_contains(s: srv2_memory_population_observation_note, pattern: "(×8)")
+}
+
+test fn nominal_population_and_os_usable_budget_are_distinct_facts() -> Bool {
+  let nominal_128gib = byte_size_count(gibibyte_to_byte_size(g: gibibyte(128)))
+  let usable_125gib = byte_size_count(byte_size(134217728000))
+  let ci_host_ram = byte_size_count(compute_host_ram_bytes_total(host: gunbc_ci_host))
+  nominal_128gib != usable_125gib
+    && ci_host_ram == usable_125gib
+    && string_contains(s: fleet_host_memory_nominal_vs_usable_note, pattern: "125 GiB")
+    && string_contains(s: gunbc_ci_host_memory_deferral_note, pattern: "MemTotal-shaped")
+}
+
+test fn srv3_observation_note_records_raw_redfish_fields() -> Bool {
+  string_contains(s: srv3_memory_population_observation_note, pattern: "dimm7 HMA82GR7AFR4N-VK RankCount=1")
+    && string_contains(s: srv3_memory_population_observation_note, pattern: "dimm0 HMA82GR7AFR8N-VK RankCount=2")
+    && string_contains(s: srv3_memory_population_observation_note, pattern: "DataWidthBits=64")
+}

@@ -23,6 +23,9 @@ use crate::v1_compiler_infer::TypecheckModuleResult;
 
 /// Cross-worker share shell: typed byte cache + collision registry only.
 /// Construct once per explicit cross-worker run; clone the `Arc<RwLock<_>>` to every worker.
+/// Keys are typed-module CONTENT keys (`std.interface_summary.typed_module_key` — source
+/// hash ⊕ direct-import interface hashes ⊕ compiler identity), never authored module names;
+/// `module_source_identity` stays name→file (it guards the name-keyed graph assembly).
 pub struct SharedTypecheckCaches {
     typed_module_cache: StdHashMap<String, Arc<Vec<u8>>>,
     pub module_source_identity: StdHashMap<String, String>,
@@ -36,13 +39,9 @@ impl SharedTypecheckCaches {
         }
     }
 
-    pub fn contains_typed(&self, mod_name: &str) -> bool {
-        self.typed_module_cache.contains_key(mod_name)
-    }
-
     /// Brief read-lock helper: clone the shared byte snapshot only.
-    pub fn clone_typed_bytes(&self, mod_name: &str) -> Option<Arc<Vec<u8>>> {
-        self.typed_module_cache.get(mod_name).cloned()
+    pub fn clone_typed_bytes(&self, typed_key: &str) -> Option<Arc<Vec<u8>>> {
+        self.typed_module_cache.get(typed_key).cloned()
     }
 
     /// Decode a typed snapshot **without** holding the store lock.
@@ -61,12 +60,12 @@ impl SharedTypecheckCaches {
     }
 
     /// Insert pre-encoded bytes under a brief write lock.
-    pub fn insert_typed_preencoded(&mut self, mod_name: String, bytes: Arc<Vec<u8>>) {
-        self.typed_module_cache.insert(mod_name, bytes);
+    pub fn insert_typed_preencoded(&mut self, typed_key: String, bytes: Arc<Vec<u8>>) {
+        self.typed_module_cache.insert(typed_key, bytes);
     }
 
-    pub fn get_typed(&self, mod_name: &str) -> Result<Option<Rc<TypecheckModuleResult>>, String> {
-        let Some(bytes) = self.clone_typed_bytes(mod_name) else {
+    pub fn get_typed(&self, typed_key: &str) -> Result<Option<Rc<TypecheckModuleResult>>, String> {
+        let Some(bytes) = self.clone_typed_bytes(typed_key) else {
             return Ok(None);
         };
         Self::decode_typed_snapshot(bytes.as_slice()).map(Some)
@@ -74,11 +73,11 @@ impl SharedTypecheckCaches {
 
     pub fn insert_typed(
         &mut self,
-        mod_name: String,
+        typed_key: String,
         result: Rc<TypecheckModuleResult>,
     ) -> Result<(), String> {
         let bytes = Self::encode_typed_snapshot(&result)?;
-        self.insert_typed_preencoded(mod_name, bytes);
+        self.insert_typed_preencoded(typed_key, bytes);
         Ok(())
     }
 }

@@ -645,20 +645,53 @@ impl Env {
 
 #[derive(Debug, Clone)]
 pub enum InterpError {
-    NoSuchFunction { name: String },
+    NoSuchFunction {
+        name: String,
+    },
     NoMainFunction,
-    NoSuchVariable { name: String },
-    NoSuchField { type_name: String, field: String },
-    TypeError { msg: String },
-    CrossRepresentationEquality { detail: String },
-    StringRealizationStraddle { detail: String },
-    PatternMatchFailure { value: String },
+    NoSuchVariable {
+        name: String,
+    },
+    NoSuchField {
+        type_name: String,
+        field: String,
+    },
+    TypeError {
+        msg: String,
+    },
+    CrossRepresentationEquality {
+        detail: String,
+    },
+    StringRealizationStraddle {
+        detail: String,
+    },
+    PatternMatchFailure {
+        value: String,
+    },
     DivisionByZero,
-    Unimplemented { what: String },
-    EarlyReturn { value: Value },
-    AuthDeclaredButUnwired { service: String, reason: String },
-    EvalBudgetExceeded { elapsed_ms: u64, budget_ms: u64 },
-    WitnessWallBudgetExceeded { elapsed_ms: u64, budget_ms: u64 },
+    Unimplemented {
+        what: String,
+    },
+    EarlyReturn {
+        value: Value,
+    },
+    AuthDeclaredButUnwired {
+        service: String,
+        reason: String,
+    },
+    EvalBudgetExceeded {
+        elapsed_ms: u64,
+        budget_ms: u64,
+    },
+    WitnessWallBudgetExceeded {
+        elapsed_ms: u64,
+        budget_ms: u64,
+    },
+    ArgvExceedsHostArgMax {
+        actual_bytes: usize,
+        limit_bytes: usize,
+        argv0: String,
+    },
 }
 
 impl fmt::Display for InterpError {
@@ -707,6 +740,15 @@ impl fmt::Display for InterpError {
                 f,
                 "auth declared but unwired for '{}': {} — refusing to send unauthenticated request",
                 service, reason
+            ),
+            InterpError::ArgvExceedsHostArgMax {
+                actual_bytes,
+                limit_bytes,
+                argv0,
+            } => write!(
+                f,
+                "argv exceeds host arg limit: '{}' invocation carries a {}-byte argument > {}-byte host MAX_ARG_STRLEN — route large payloads through stdin, not argv (Linux execve(2) E2BIG; extdeps.os.exec_arg_limit.host_exec_arg_max_strlen; DESIGN §5 typed refusal in place of an opaque os error 7)",
+                argv0, actual_bytes, limit_bytes
             ),
         }
     }
@@ -5561,6 +5603,34 @@ fn shell_stdin_payload(val: &Value) -> InterpResult<Vec<u8>> {
     }
 }
 
+/// Host per-argument byte ceiling. Mirrors the single authority
+/// `extdeps.os.exec_arg_limit.host_exec_arg_max_strlen` (Linux execve(2)
+/// MAX_ARG_STRLEN = 32 * PAGE_SIZE = 131072). A single argv (or env) string
+/// longer than this makes `execve` fail with E2BIG ("Argument list too long").
+/// `argv_arg_limit_test::mirror_matches_extdeps_authority` pins this to the
+/// modeled value so the two cannot drift silently.
+pub const HOST_ARG_MAX_STRLEN_BYTES: usize = 131072;
+
+/// Pure argv-size wall: refuse (typed, located) an invocation whose largest
+/// single argv token exceeds the host per-argument ceiling, instead of handing
+/// it to `execve` and getting an opaque `os error 7`. Faithful to
+/// MAX_ARG_STRLEN — the ceiling is per single argument, not the argv total
+/// (that is the separate, larger ARG_MAX). Returns `None` when the invocation
+/// is within the limit (proceed) and `Some(err)` when it must refuse — no
+/// truncation, no widening (DESIGN §5: a failure arm refuses, never absorbs).
+fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpError> {
+    let offending = argv.iter().map(|a| a.len()).max().unwrap_or(0);
+    if offending > limit_bytes {
+        Some(InterpError::ArgvExceedsHostArgMax {
+            actual_bytes: offending,
+            limit_bytes,
+            argv0: argv.first().cloned().unwrap_or_default(),
+        })
+    } else {
+        None
+    }
+}
+
 fn dispatch_shell(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
@@ -5581,6 +5651,14 @@ fn dispatch_shell(
 
     render_shell_trace(&argv);
 
+    // Arg-size wall: a single argv token over the host MAX_ARG_STRLEN would make
+    // the spawn below die with an opaque `os error 7` (E2BIG). Refuse here with a
+    // typed, located diagnostic so the deficit is diagnosable and countable. Large
+    // payloads belong in stdin (see extdeps.shell shell.Exec.Run), not argv.
+    if let Some(err) = argv_arg_limit_refusal(&argv, HOST_ARG_MAX_STRLEN_BYTES) {
+        return Err(err);
+    }
+
     let output = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
         use std::process::Stdio;
@@ -5599,22 +5677,28 @@ fn dispatch_shell(
                 msg: format!("failed to execute '{}': {}", argv[0], e),
             })?;
 
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(&stdin_bytes)
-                .map_err(|e| InterpError::TypeError {
-                    msg: format!(
-                        "failed to write shell transport stdin for '{}': {}",
-                        argv[0], e
-                    ),
-                })?;
-        }
+        let stdin_writer = child
+            .stdin
+            .take()
+            .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
 
         let output = child
             .wait_with_output()
             .map_err(|e| InterpError::TypeError {
                 msg: format!("failed to wait on '{}': {}", argv[0], e),
             })?;
+
+        if let Some(writer) = stdin_writer {
+            // A stdin-write error (e.g. broken pipe) here is not itself the
+            // failure to report: the child may have exited (successfully or
+            // not) before consuming all of stdin, which is ordinary POSIX
+            // pipe behavior. The child's real exit_code/stdout/stderr in
+            // `output` is the authoritative result and already flows to the
+            // `exit { .. }` clause in the .dag transport declaration.
+            let _ = writer.join().map_err(|_| InterpError::TypeError {
+                msg: format!("shell transport stdin writer for '{}' panicked", argv[0]),
+            })?;
+        }
         render_shell_completion_trace(
             output.status.code().unwrap_or(-1),
             output.stdout.len(),
@@ -5934,6 +6018,70 @@ fn map_file_outputs(
     })
 }
 
+/// Standard base64 (RFC 4648 §4, with `=` padding) — the fixed alphabet an HTTP Basic
+/// credential requires (RFC 7617). Hand-rolled to keep the shrinking bootstrap seed free of a
+/// direct base64 dependency; deterministic and total over any byte slice.
+fn base64_encode_std(input: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    for chunk in input.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(ALPHABET[((n >> 18) & 0x3f) as usize] as char);
+        out.push(ALPHABET[((n >> 12) & 0x3f) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            ALPHABET[((n >> 6) & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            ALPHABET[(n & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+/// The `Authorization: Basic …` header value for RFC 7617 credentials — the single-authority
+/// derivation dispatch_rest uses for a transport `auth_basic` property. Pure so it is
+/// execution-witnessable without a live server.
+fn rest_basic_auth_header_value(username: &str, password: &str) -> String {
+    format!(
+        "Basic {}",
+        base64_encode_std(format!("{}:{}", username, password).as_bytes())
+    )
+}
+
+/// The interpreter's disposition for a rest transport `tls:` posture (extdeps.transports.rest
+/// TlsPosture). `VerifyPeer` proceeds on the stock verifier; `InsecureAcceptAnyCert` is realized
+/// emit-only (operator decision 2026-07-16) so the interpreter refuses it rather than carry a
+/// cert-verification bypass into the retiring seed; an unrecognized posture also refuses. Pure so
+/// each arm is execution-witnessable.
+fn rest_tls_posture_interp_disposition(posture: &str) -> Result<(), String> {
+    match posture {
+        "VerifyPeer" => Ok(()),
+        "InsecureAcceptAnyCert" => Err(
+            "rest transport tls: InsecureAcceptAnyCert is realized emit-only (reqwest \
+             danger_accept_invalid_certs); the interpreter refuses it by design rather than carry \
+             a cert-verification bypass into the retiring seed — run such ops through emitted code"
+                .to_string(),
+        ),
+        other => Err(format!(
+            "rest transport tls: unrecognized posture '{}'",
+            other
+        )),
+    }
+}
+
+/// The single-authority rule (§3): a rest operation must not declare both config-level auth and a
+/// transport `auth_basic` property. Pure so the conflict rule is execution-witnessable.
+fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool) -> bool {
+    config_auth_resolved && has_auth_basic
+}
+
 fn dispatch_rest(
     service_node: &Rc<Node>,
     op_node: &Rc<Node>,
@@ -5998,6 +6146,8 @@ fn dispatch_rest(
         "response_format",
         "auth_token",
         "auth_header",
+        "auth_basic",
+        "tls",
         "stdin",
     ];
     let mut headers: Vec<(String, String)> = Vec::new();
@@ -6044,6 +6194,24 @@ fn dispatch_rest(
     )
     .unwrap_or_else(|| "Json".to_string());
 
+    // TLS posture (extdeps.transports.rest TlsPosture). Absent = VerifyPeer, the fail-closed
+    // default (ureq's stock rustls verifier). InsecureAcceptAnyCert is the modeled dissolution of
+    // curl's `-k` for self-signed BMC endpoints. Realization is EMIT-ONLY by decision (operator,
+    // 2026-07-16): emitted reqwest code realizes it via `.danger_accept_invalid_certs(true)`, but
+    // the interpreter refuses it by design rather than carry an accept-any rustls verifier into the
+    // bootstrap seed the self-host is retiring. So a present InsecureAcceptAnyCert is a typed
+    // refusal here — the interp is not a realization path for insecure-TLS ops (redfish etc. run
+    // through emitted code); it fails closed, never a silent no-op that would send under VerifyPeer
+    // while the row asked for insecure. An unrecognized posture also refuses.
+    if let Some(tls_node) =
+        find_property(transport.properties.clone(), "tls".to_string(), si.clone())
+    {
+        let posture = authored_name_at(si.clone(), tls_node);
+        if let Err(msg) = rest_tls_posture_interp_disposition(&posture) {
+            return Err(InterpError::TypeError { msg });
+        }
+    }
+
     trace_emit(
         OutputChannel::ShellTrace,
         &format!("[rest] {} {}", method, url),
@@ -6074,6 +6242,57 @@ fn dispatch_rest(
                 token.clone()
             };
             request = request.set(header, &header_val);
+        }
+    }
+
+    // Basic auth (RFC 7617), realized from a `auth_basic: { username: <input>, password: <input> }`
+    // transport-block property. This is the modeled dissolution of curl's `-u user:pass` / netrc
+    // argv — the credential never touches a process argv or a temp file, and its header value is
+    // derived in exactly one place (§3 rest_auth_value_single_authority_note). Fail-closed: a
+    // present `auth_basic` with a non-record shape, a missing username/password field, or a
+    // non-Str credential value is a typed refusal, never an unauthenticated send or a
+    // stringified-debug header.
+    if let Some(basic_node) = find_property(
+        transport.properties.clone(),
+        "auth_basic".to_string(),
+        si.clone(),
+    ) {
+        if rest_auth_authority_conflict(matches!(auth, AuthResolution::Resolved { .. }), true) {
+            return Err(InterpError::TypeError {
+                msg: "rest transport declares both config-level auth and auth_basic — one auth \
+                      authority per operation (§3)"
+                    .to_string(),
+            });
+        }
+        let mut username: Option<String> = None;
+        let mut password: Option<String> = None;
+        for child in basic_node.children.iter() {
+            let fname = field_init_node_name_at(child.clone(), si.clone());
+            let fval = eval_expr(&field_init_node_value(child.clone()), param_env, ctx)?;
+            match (fname.as_str(), &fval) {
+                ("username", Value::Str(s)) => username = Some(s.clone()),
+                ("password", Value::Str(s)) => password = Some(s.clone()),
+                ("username", _) | ("password", _) => {
+                    return Err(InterpError::TypeError {
+                        msg: format!(
+                            "auth_basic.{} must resolve to a String credential, got {}",
+                            fname, fval
+                        ),
+                    });
+                }
+                _ => {}
+            }
+        }
+        match (username, password) {
+            (Some(u), Some(p)) => {
+                let header_val = rest_basic_auth_header_value(&u, &p);
+                request = request.set("Authorization", &header_val);
+            }
+            _ => {
+                return Err(InterpError::TypeError {
+                    msg: "auth_basic requires both username and password fields".to_string(),
+                });
+            }
         }
     }
 
@@ -9032,6 +9251,72 @@ fn cmp_values(a: &Value, b: &Value) -> std::cmp::Ordering {
 }
 
 #[cfg(test)]
+mod base64_std_tests {
+    use super::base64_encode_std;
+
+    #[test]
+    fn rfc4648_test_vectors() {
+        // RFC 4648 §10 test vectors — the fixed alphabet + padding a Basic credential relies on.
+        assert_eq!(base64_encode_std(b""), "");
+        assert_eq!(base64_encode_std(b"f"), "Zg==");
+        assert_eq!(base64_encode_std(b"fo"), "Zm8=");
+        assert_eq!(base64_encode_std(b"foo"), "Zm9v");
+        assert_eq!(base64_encode_std(b"foob"), "Zm9vYg==");
+        assert_eq!(base64_encode_std(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64_encode_std(b"foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn basic_credential_shape() {
+        // The exact header value a BMC Basic auth op must send for user:pass.
+        assert_eq!(
+            base64_encode_std(b"bmcadmin:s3cret"),
+            "Ym1jYWRtaW46czNjcmV0"
+        );
+        // Bytes with high bits set exercise the +/ tail of the alphabet.
+        assert_eq!(base64_encode_std(&[0xfb, 0xff, 0xfe]), "+//+");
+    }
+}
+
+#[cfg(test)]
+mod dispatch_rest_decision_tests {
+    use super::rest_auth_authority_conflict;
+    use super::rest_basic_auth_header_value;
+    use super::rest_tls_posture_interp_disposition;
+
+    #[test]
+    fn basic_auth_header_is_exact_rfc7617_value() {
+        // The header dispatch_rest sets for auth_basic — discriminating: the exact Base64(user:pass).
+        assert_eq!(
+            rest_basic_auth_header_value("bmcadmin", "s3cret"),
+            "Basic Ym1jYWRtaW46czNjcmV0"
+        );
+        // A different credential must produce a different header (no fixed/empty header).
+        assert_ne!(
+            rest_basic_auth_header_value("bmcadmin", "s3cret"),
+            rest_basic_auth_header_value("bmcadmin", "wrong")
+        );
+    }
+
+    #[test]
+    fn tls_posture_disposition_fails_closed() {
+        // VerifyPeer proceeds; InsecureAcceptAnyCert and unknown refuse (emit-only decision).
+        assert!(rest_tls_posture_interp_disposition("VerifyPeer").is_ok());
+        assert!(rest_tls_posture_interp_disposition("InsecureAcceptAnyCert").is_err());
+        assert!(rest_tls_posture_interp_disposition("TrustEveryone").is_err());
+    }
+
+    #[test]
+    fn dual_auth_conflict_rule() {
+        // Both authorities present is the only conflict; either alone (or neither) is fine.
+        assert!(rest_auth_authority_conflict(true, true));
+        assert!(!rest_auth_authority_conflict(true, false));
+        assert!(!rest_auth_authority_conflict(false, true));
+        assert!(!rest_auth_authority_conflict(false, false));
+    }
+}
+
+#[cfg(test)]
 mod shell_completion_trace_tests {
     use super::hermetic_checkout_read_disposition_under;
     use super::shell_completion_stderr_trace_block;
@@ -9139,5 +9424,140 @@ mod shell_completion_trace_tests {
             "target read must refuse as non-commit-deterministic"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod argv_arg_limit_test {
+    use std::rc::Rc;
+
+    use im_rc::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_span, make_text_part_node, shell_transport_node, Node};
+
+    use super::{
+        argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, InterpContext, InterpError,
+        HOST_ARG_MAX_STRLEN_BYTES,
+    };
+
+    fn argv_limit_test_context() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Wet)
+    }
+
+    /// `shell.Exec.Check`-shaped argv: `sh -c "<command>"` as three literal tokens.
+    fn shell_check_style_transport(command: &str) -> Rc<Node> {
+        let span = make_span(0, 0);
+        shell_transport_node(
+            Rc::new(im_vec![
+                make_text_part_node("sh".to_string(), span.clone()),
+                make_text_part_node("-c".to_string(), span.clone()),
+                make_text_part_node(command.to_string(), span.clone()),
+            ]),
+            Rc::new(im_vec![]),
+            None,
+            span,
+        )
+    }
+
+    // Pin the Rust seed mirror to the single authority modeled in
+    // extdeps/os/exec_arg_limit.dag (host_exec_arg_max_strlen = byte_size(131072),
+    // Linux execve(2) MAX_ARG_STRLEN = 32 * 4096). Drift on either side reds a test.
+    #[test]
+    fn mirror_matches_extdeps_authority() {
+        assert_eq!(HOST_ARG_MAX_STRLEN_BYTES, 131072);
+    }
+
+    // Discriminating boundary: exactly the limit passes (proceed to exec), one byte
+    // over refuses with the typed, located error — carrying the offending byte count,
+    // the modeled limit, and argv0 — never a truncation or a widen (DESIGN §5).
+    #[test]
+    fn wall_refuses_one_byte_over_and_passes_at_limit() {
+        let limit = HOST_ARG_MAX_STRLEN_BYTES;
+
+        // GREEN control: a small command-sequence argv proceeds (no refusal).
+        let small = vec!["sh".to_string(), "-c".to_string(), "echo hi".to_string()];
+        assert!(argv_arg_limit_refusal(&small, limit).is_none());
+
+        // GREEN boundary: a single argument of exactly the limit is still admitted.
+        let at_limit = vec!["sh".to_string(), "-c".to_string(), "x".repeat(limit)];
+        assert!(argv_arg_limit_refusal(&at_limit, limit).is_none());
+
+        // RED: one byte over the ceiling is refused with the typed diagnostic.
+        let over = vec!["sh".to_string(), "-c".to_string(), "x".repeat(limit + 1)];
+        match argv_arg_limit_refusal(&over, limit) {
+            Some(InterpError::ArgvExceedsHostArgMax {
+                actual_bytes,
+                limit_bytes,
+                argv0,
+            }) => {
+                assert_eq!(actual_bytes, limit + 1);
+                assert_eq!(limit_bytes, limit);
+                assert_eq!(argv0, "sh");
+            }
+            other => panic!("expected ArgvExceedsHostArgMax, got {other:?}"),
+        }
+    }
+
+    // The ceiling is per SINGLE argument (MAX_ARG_STRLEN), not the argv total: many
+    // small args summing over the limit are admitted — refusing them would be an
+    // over-approximation (ARG_MAX is a separate, larger limit not modeled here).
+    #[test]
+    fn wall_is_per_argument_not_argv_total() {
+        let limit = HOST_ARG_MAX_STRLEN_BYTES;
+        let many_small: Vec<String> = std::iter::once("echo".to_string())
+            .chain((0..8).map(|_| "y".repeat(limit / 4)))
+            .collect();
+        // total is ~2x the limit, but no single token exceeds it.
+        assert!(argv_arg_limit_refusal(&many_small, limit).is_none());
+    }
+
+    // Wiring proof: `dispatch_shell` must reach `argv_arg_limit_refusal` on the
+    // evaluated argv and refuse BEFORE any exec branch. Without that guard arm the
+    // same transport would proceed to `Command::spawn` and surface an opaque spawn
+    // error instead of `ArgvExceedsHostArgMax` (RED control — predicate-only tests
+    // do not exercise this call path).
+    #[test]
+    fn dispatch_shell_wiring_refuses_oversized_argv() {
+        let ctx = argv_limit_test_context();
+        let transport = shell_check_style_transport(&"x".repeat(HOST_ARG_MAX_STRLEN_BYTES + 1));
+        let env = Env::empty();
+        match dispatch_shell(&transport, &env, &ctx) {
+            Err(InterpError::ArgvExceedsHostArgMax {
+                actual_bytes,
+                limit_bytes,
+                argv0,
+            }) => {
+                assert_eq!(actual_bytes, HOST_ARG_MAX_STRLEN_BYTES + 1);
+                assert_eq!(limit_bytes, HOST_ARG_MAX_STRLEN_BYTES);
+                assert_eq!(argv0, "sh");
+            }
+            Err(other) => panic!(
+                "expected dispatch_shell to refuse via ArgvExceedsHostArgMax before spawn, got {other:?}"
+            ),
+            Ok(_) => panic!("expected refusal before spawn, got Ok"),
+        }
+    }
+
+    // GREEN control on the wiring path: a small argv is not refused by the wall
+    // (dispatch proceeds to spawn — wet, but the discriminating RED is pre-spawn).
+    #[test]
+    fn dispatch_shell_wiring_admits_small_argv() {
+        let ctx = argv_limit_test_context();
+        let transport = shell_check_style_transport("true");
+        let env = Env::empty();
+        match dispatch_shell(&transport, &env, &ctx) {
+            Err(InterpError::ArgvExceedsHostArgMax { .. }) => {
+                panic!("small argv must not trip the arg-size wall")
+            }
+            Ok(_) | Err(_) => {}
+        }
     }
 }

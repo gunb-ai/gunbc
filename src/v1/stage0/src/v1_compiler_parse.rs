@@ -54,10 +54,11 @@ pub use crate::v1_std_core::{
     make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
     make_resource_use_node, make_span, make_text_part_node, make_variant_node, module_node,
     no_span, node_name_span, param_node_default_value, param_node_type_expr, pre_intern_tokens,
-    rest_transport_node, service_config_properties, shell_transport_node, transport_body_key,
-    transport_headers_key, transport_method_key, transport_path_key, transport_path_template_key,
-    transport_query_key, transport_response_format_key, transport_stdin_key, transport_url_key,
-    variant_node_fields, variant_node_name_at, with_required_cardinality,
+    rest_transport_node, service_config_properties, shell_transport_node, transport_auth_basic_key,
+    transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
+    transport_path_template_key, transport_query_key, transport_response_format_key,
+    transport_stdin_key, transport_tls_key, transport_url_key, variant_node_fields,
+    variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -6994,8 +6995,27 @@ pub fn parse_rest_fields(
                                             continue;
                                         }
                                     } else {
+                                        if ((fname.clone() == transport_auth_basic_key())
+                                            || (fname.clone() == transport_tls_key()))
                                         {
-                                            continue;
+                                            let field = make_field_init_node(
+                                                fname.clone(),
+                                                r3.expr.clone(),
+                                                make_span(0, 0),
+                                                make_span(0, 0),
+                                            );
+                                            {
+                                                let __tco_0 = v1_rt::concat(
+                                                    headers,
+                                                    Rc::new(vec![field.clone()]),
+                                                );
+                                                headers = __tco_0;
+                                                continue;
+                                            }
+                                        } else {
+                                            {
+                                                continue;
+                                            }
                                         }
                                     }
                                 }

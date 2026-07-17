@@ -1,0 +1,339 @@
+module v2.test.claim.compilation_unit_witness
+
+import std.algebra { Empty }
+import std.types { NonEmptyStr, ContentHash, List }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.compilers.compilation_unit {
+  CompilationUnit,
+  CompilationUnitId,
+  HandExplicit,
+  ModuleDag,
+  ModuleDagEdge,
+  ModuleId,
+  ModuleTypeDefinitionRow,
+  InterfaceClosureUnreachedFixpoint,
+  PartitionFoldOk,
+  PartitionFoldRefused,
+  PartitionInterfaceClosed,
+  PartitionInterfaceTruncated,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  PartitionR4ValidityVerdict,
+  PolicyDerived,
+  partition_r4_witness_refused_scc_split,
+  compilation_unit_artifact_id,
+  partition_fold,
+  partition_fold_deps_match_boundary_edges,
+  partition_fold_outcome,
+  partition_fold_outcome_with_closure_fuel,
+  partition_interface_closure_saturate_result,
+  partition_interface_contains_node,
+  partition_provenance_eq,
+  partition_provenance_hand_explicit,
+  partition_provenance_policy_derived,
+  partition_unit_by_id,
+}
+import v2.std.collection { empty_map, map_insert }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  content_hash,
+  node_synthetic,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data witness_mod_a: ModuleId = "mod.a" as NonEmptyStr
+data witness_mod_b: ModuleId = "mod.b" as NonEmptyStr
+data witness_mod_c: ModuleId = "mod.c" as NonEmptyStr
+
+data witness_unit_one: CompilationUnitId = "cu-one" as ContentHash
+data witness_unit_two: CompilationUnitId = "cu-two" as ContentHash
+data witness_unit_all: CompilationUnitId = "cu-all" as ContentHash
+
+data witness_type_point: Symbol = ^witness_cu_point
+data witness_type_int: Symbol = ^witness_cu_int
+data witness_fn_use_point: Symbol = ^witness_cu_use_point
+
+fn witness_type_atom(sym: Symbol) -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
+}
+
+fn witness_point_struct_conj_body() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^x },
+        target: witness_type_atom(sym: witness_type_int),
+      }
+    ]
+  )
+}
+
+fn witness_fn_taking_point_by_value() -> Node {
+  node_synthetic(
+    kind: TypeNode {
+      connective: Arrow,
+    },
+    children: [
+      Edge {
+        label: Named { name: ^domain },
+        target: witness_type_atom(sym: witness_type_point),
+      },
+      Edge {
+        label: Named { name: ^codomain },
+        target: witness_type_atom(sym: witness_type_int),
+      }
+    ]
+  )
+}
+
+fn witness_exports_for_c() -> List<Node> {
+  [witness_fn_taking_point_by_value()]
+}
+
+fn witness_type_defs_for_c() -> List<ModuleTypeDefinitionRow> {
+  [
+    ModuleTypeDefinitionRow {
+      identity: witness_type_point,
+      definition: witness_point_struct_conj_body(),
+    }
+  ]
+}
+
+fn witness_triangle_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_a, witness_mod_b, witness_mod_c],
+    edges: [
+      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
+      ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
+    ],
+    exports: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_c, witness_exports_for_c()),
+    type_definitions: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_c, witness_type_defs_for_c()),
+  }
+}
+
+fn witness_chain_dag() -> ModuleDag {
+  ModuleDag {
+    modules: [witness_mod_a, witness_mod_b, witness_mod_c],
+    edges: [
+      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
+    ],
+    exports: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_c, Empty),
+    type_definitions: empty_map()
+      |> map_insert(witness_mod_a, Empty)
+      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_c, Empty),
+  }
+}
+
+fn witness_two_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
+  empty_map()
+    |> map_insert(witness_mod_a, witness_unit_one)
+    |> map_insert(witness_mod_b, witness_unit_one)
+    |> map_insert(witness_mod_c, witness_unit_two)
+}
+
+fn witness_single_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
+  empty_map()
+    |> map_insert(witness_mod_a, witness_unit_all)
+    |> map_insert(witness_mod_b, witness_unit_all)
+    |> map_insert(witness_mod_c, witness_unit_all)
+}
+
+fn witness_partition_fold_two_units() -> List<CompilationUnit> {
+  partition_fold(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
+  )
+}
+
+fn witness_unit_one_members_and_deps() -> Bool {
+  let units = witness_partition_fold_two_units()
+  match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
+    Present { value: unit } =>
+      (unit.members == [witness_mod_a, witness_mod_b])
+        && (unit.deps == [witness_unit_two])
+        && (unit.artifact == compilation_unit_artifact_id(unit_id: witness_unit_one))
+    Absent => false
+  }
+}
+
+fn witness_unit_two_interface_carries_declaration_content() -> Bool {
+  let units = witness_partition_fold_two_units()
+  let export_decl = witness_fn_taking_point_by_value()
+  match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
+    Present { value: unit } =>
+      (unit.members == [witness_mod_c])
+        && (unit.deps == [witness_unit_one])
+        && partition_interface_contains_node(interface: unit.interface, needle: export_decl)
+    Absent => false
+  }
+}
+
+fn witness_unit_two_interface_includes_by_value_type_def() -> Bool {
+  let units = witness_partition_fold_two_units()
+  let point_def = witness_point_struct_conj_body()
+  match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
+    Present { value: unit } =>
+      partition_interface_contains_node(interface: unit.interface, needle: point_def)
+        && ((unit.interface |> count) >= 2)
+    Absent => false
+  }
+}
+
+fn witness_interface_closure_saturates_on_triangle() -> Bool {
+  let dag = witness_triangle_dag()
+  let assignment = witness_two_unit_assignment()
+  let units = partition_fold(module_dag: dag, assignment: assignment)
+  match partition_unit_by_id(units: units, unit_id: witness_unit_two) {
+    Present { value: unit } =>
+      match partition_interface_closure_saturate_result(
+        seeds: [witness_fn_taking_point_by_value()],
+        module_dag: dag,
+        members: unit.members
+      ) {
+        PartitionInterfaceClosed { nodes: _ } => true
+        PartitionInterfaceTruncated => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_partition_fold_outcome_refuses_zero_closure_fuel() -> Bool {
+  match partition_fold_outcome_with_closure_fuel(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment(),
+    closure_fuel: 0
+  ) {
+    PartitionFoldRefused {
+      cause: InterfaceClosureUnreachedFixpoint { unit_id: _ },
+    } => true
+    PartitionFoldOk { units: _ } => false
+  }
+}
+
+fn witness_single_unit_partition_has_no_cross_unit_deps() -> Bool {
+  let units = partition_fold(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_single_unit_assignment()
+  )
+  match partition_unit_by_id(units: units, unit_id: witness_unit_all) {
+    Present { value: unit } =>
+      (unit.members == [witness_mod_a, witness_mod_b, witness_mod_c])
+        && (unit.deps == [])
+        && ((unit.interface |> count) == 0)
+    Absent => false
+  }
+}
+
+fn witness_intra_unit_edges_do_not_become_deps() -> Bool {
+  let units = partition_fold(
+    module_dag: witness_chain_dag(),
+    assignment: witness_single_unit_assignment()
+  )
+  match partition_unit_by_id(units: units, unit_id: witness_unit_all) {
+    Present { value: unit } => unit.deps == []
+    Absent => false
+  }
+}
+
+fn witness_fold_deps_match_boundary_edges_two_unit() -> Bool {
+  partition_fold_deps_match_boundary_edges(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
+  )
+}
+
+fn witness_fold_deps_match_boundary_edges_single_unit() -> Bool {
+  partition_fold_deps_match_boundary_edges(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_single_unit_assignment()
+  )
+}
+
+fn witness_misderived_deps_would_fail_receipt() -> Bool {
+  let units = witness_partition_fold_two_units()
+  match partition_unit_by_id(units: units, unit_id: witness_unit_one) {
+    Present { value: unit } =>
+      !(unit.deps == [])
+        && !(unit.deps == [witness_unit_one])
+        && (unit.deps == [witness_unit_two])
+    Absent => false
+  }
+}
+
+fn witness_provenance_variants_distinct() -> Bool {
+  let explicit = partition_provenance_hand_explicit()
+  let derived = partition_provenance_policy_derived(
+    policy: DeclarationRef {
+      module_path: "v2.std.compilers.compilation_unit" as NonEmptyStr,
+      decl_name: "partition_fold" as NonEmptyStr,
+      field: WholeDeclaration,
+    }
+  )
+  !partition_provenance_eq(left: explicit, right: derived)
+    && partition_provenance_eq(left: explicit, right: explicit)
+    && match derived {
+      PolicyDerived { policy: _ } => true
+      HandExplicit => false
+    }
+}
+
+fn witness_r4_interface_carriers_only() -> Bool {
+  let valid_verdict = PartitionR4Valid
+  let refused_verdict = partition_r4_witness_refused_scc_split
+  match valid_verdict {
+    PartitionR4Valid => true
+    PartitionR4Refused { cause: _ } => false
+  }
+    && match refused_verdict {
+      PartitionR4Valid => false
+      PartitionR4Refused { cause: _ } => true
+    }
+}
+
+fn witness_partition_fold_outcome_ok_on_triangle() -> Bool {
+  match partition_fold_outcome(
+    module_dag: witness_triangle_dag(),
+    assignment: witness_two_unit_assignment()
+  ) {
+    PartitionFoldOk { units: units } => (units |> count) == 2
+    PartitionFoldRefused { cause: _ } => false
+  }
+}
+
+test fn compilation_unit_witnesses() -> Bool {
+  witness_unit_one_members_and_deps()
+    && witness_unit_two_interface_carries_declaration_content()
+    && witness_unit_two_interface_includes_by_value_type_def()
+    && witness_interface_closure_saturates_on_triangle()
+    && witness_partition_fold_outcome_refuses_zero_closure_fuel()
+    && witness_single_unit_partition_has_no_cross_unit_deps()
+    && witness_intra_unit_edges_do_not_become_deps()
+    && witness_fold_deps_match_boundary_edges_two_unit()
+    && witness_fold_deps_match_boundary_edges_single_unit()
+    && witness_misderived_deps_would_fail_receipt()
+    && witness_provenance_variants_distinct()
+    && witness_r4_interface_carriers_only()
+    && witness_partition_fold_outcome_ok_on_triangle()
+}

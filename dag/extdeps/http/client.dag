@@ -1,0 +1,59 @@
+module extdeps.http.client
+
+import std.types { NonEmptyStr, String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110"
+  }
+}
+
+data http_client_handler_layering_note: String = "§3 shape/transport split: this module is the agnostic HTTP *client* interface (the client half of extdeps.http; extdeps.http.server is the serving half). The shell/curl argv rows below are ONE bound transport handler of the shape (the tool authority is extdeps.tools.curl); the declarative `transport rest` machinery (config modeled in extdeps.transports.rest) is the peer handler - N handlers, one shape, dispatch peripheral. REST itself is a behavioral refinement of HTTP (method semantics honored: GET safe/readonly, PUT idempotent; stateless requests over URI-named resources), not a different client - `transport rest` today carries nothing REST-specific and is honestly the native HTTP-client transport."
+
+service http.Client {
+  operation Get {
+    input { url: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-fsS", "{url}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "http client GET failed"
+    }
+  }
+
+  operation PostJsonFromFile {
+    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: [
+        "curl",
+        "-sk",
+        "-X", "POST",
+        "{url}",
+        "-H", "Content-Type: application/json",
+        "--data", "@{request_body_file}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "curl POST JSON from file failed"
+    }
+  }
+
+  operation DownloadToFile {
+    input { url: NonEmptyStr, destination: NonEmptyStr }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["curl", "-fL", "{url}", "-o", "{destination}"] }
+    exit {
+      0 => Unit
+      nonzero => String "curl download failed"
+    }
+  }
+}

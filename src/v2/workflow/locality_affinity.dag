@@ -1,0 +1,197 @@
+module v2.workflow.locality_affinity
+
+import std.machine_shape { ExecutionDomain, LevelId, MemoryLevel }
+import std.measure { ByteSize, byte_size, measure_add, measure_le }
+import std.types { ContentHash, Int }
+import v2.std.algebra { any, length }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.dependency { DependencyView }
+import v2.std.logic { Bool }
+import v2.std.materialize { hashes_contain }
+import v2.std.node { content_hash }
+import v2.workflow.operand_flow { OperandFlow, OperandFlowRefused, OperandFlowRefusalCause, OperandFlowRow }
+
+fn list_add_distinct_hash(xs: List<ContentHash>, v: ContentHash) -> List<ContentHash> {
+  if hashes_contain(hs: xs, h: v) { xs } else { concat(xs, [v]) }
+}
+
+data locality_affinity_module_note: String = "Phase 3 of machine-shape-orthogonal-scheduling.md §5: affinity is derived topology, never a stored preference. derive_affinity groups a shared operand's OperandFlow rows against one ExecutionDomain's memory tower and claims the smallest level (walked outward per MemoryShape's ordering) whose capacity admits the whole footprint -- the operand's residency window. price_operand_traffic then prices a concrete batch assignment against that claim: consumers landing in the same batch cross the level boundary once (the operand stays resident across their execution, one TrafficAccountRow at footprint bytes); consumers split across batches each force a fresh crossing, so the double load is visible in the account's bytes, not merely asserted (§5 acceptance). Every refusal is typed and located (DESIGN §5): an unresolved operand edge, a footprint that fits no level in the tower, or a consumer missing from the batch assignment each refuse rather than default to a guessed placement -- no affinity claim and no priced account survive a refused input."
+
+type AffinityRefusalCause
+  = AffinityInsufficientConsumers { operand: ContentHash }
+  | AffinityFlowRefused { edge: DependencyView, cause: OperandFlowRefusalCause }
+  | AffinityNoFittingLevel { operand: ContentHash, footprint: ByteSize }
+  | AffinityFootprintUnresolved { operand: ContentHash }
+  | AffinityOperandMismatch { expected: ContentHash, found: ContentHash }
+  | AffinityFootprintMismatch { operand: ContentHash, expected: ByteSize, found: ByteSize }
+
+type AffinityDecision
+  = AffinityClaim { operand: ContentHash, level: LevelId, footprint: ByteSize, consumers: List<ContentHash> }
+  | AffinityRefused { operand: ContentHash, cause: AffinityRefusalCause }
+
+type AffinityCollectAcc
+  = AffinityCollectOk { footprint: Optional<ByteSize>, consumers: List<ContentHash> }
+  | AffinityCollectRefused { cause: AffinityRefusalCause }
+
+fn affinity_collect_step(expected: ContentHash, acc: AffinityCollectAcc, row: OperandFlowRow) -> AffinityCollectAcc {
+  match acc {
+    AffinityCollectRefused { cause: c } => AffinityCollectRefused { cause: c }
+    AffinityCollectOk { footprint: fp, consumers: cs } =>
+      match row {
+        OperandFlow { edge: e, operand: op, footprint: f } =>
+          if op == expected {
+            match fp {
+              Present { value: prior } =>
+                if measure_le(a: prior, b: f) && measure_le(a: f, b: prior) {
+                  AffinityCollectOk {
+                    footprint: fp,
+                    consumers: list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))
+                  }
+                } else {
+                  AffinityCollectRefused {
+                    cause: AffinityFootprintMismatch { operand: expected, expected: prior, found: f }
+                  }
+                }
+              Absent =>
+                AffinityCollectOk {
+                  footprint: optional_present(value: f),
+                  consumers: list_add_distinct_hash(xs: cs, v: content_hash(n: e.dependent))
+                }
+            }
+          } else {
+            AffinityCollectRefused { cause: AffinityOperandMismatch { expected: expected, found: op } }
+          }
+        OperandFlowRefused { edge: e, cause: c } =>
+          AffinityCollectRefused { cause: AffinityFlowRefused { edge: e, cause: c } }
+      }
+  }
+}
+
+fn find_fitting_level(levels: List<MemoryLevel>, footprint: ByteSize) -> Optional<LevelId> {
+  fold(levels, init: optional_absent(), f: fn(found, level) {
+    match found {
+      Present { value: _ } => found
+      Absent => if measure_le(a: footprint, b: level.capacity) {
+        optional_present(value: level.id)
+      } else {
+        optional_absent()
+      }
+    }
+  })
+}
+
+fn derive_affinity(operand: ContentHash, flows: List<OperandFlowRow>, domain: ExecutionDomain) -> AffinityDecision {
+  match fold(flows, init: AffinityCollectOk { footprint: optional_absent(), consumers: [] }, f: fn(acc, row) {
+    affinity_collect_step(expected: operand, acc: acc, row: row)
+  }) {
+    AffinityCollectRefused { cause: c } => AffinityRefused { operand: operand, cause: c }
+    AffinityCollectOk { footprint: fp, consumers: cs } =>
+      if length(xs: cs) < 2 {
+        AffinityRefused { operand: operand, cause: AffinityInsufficientConsumers { operand: operand } }
+      } else {
+        match fp {
+          Present { value: footprint } =>
+            match find_fitting_level(levels: domain.memory, footprint: footprint) {
+              Present { value: level_id } =>
+                AffinityClaim { operand: operand, level: level_id, footprint: footprint, consumers: cs }
+              Absent =>
+                AffinityRefused { operand: operand, cause: AffinityNoFittingLevel { operand: operand, footprint: footprint } }
+            }
+          Absent =>
+            AffinityRefused { operand: operand, cause: AffinityFootprintUnresolved { operand: operand } }
+        }
+      }
+  }
+}
+
+type ConsumerBatch {
+  consumer: ContentHash
+  batch: Int
+}
+
+type BatchLookup
+  = BatchLookupFound { batch: Int }
+  | BatchLookupMissing
+  | BatchLookupConflict { first: Int, second: Int }
+
+fn batch_for_consumer(assignment: List<ConsumerBatch>, consumer: ContentHash) -> BatchLookup {
+  fold(assignment, init: BatchLookupMissing, f: fn(found, cb) {
+    match found {
+      BatchLookupConflict { first: _, second: _ } => found
+      BatchLookupFound { batch: b } =>
+        if cb.consumer == consumer && !(cb.batch == b) {
+          BatchLookupConflict { first: b, second: cb.batch }
+        } else {
+          found
+        }
+      BatchLookupMissing => if cb.consumer == consumer {
+        BatchLookupFound { batch: cb.batch }
+      } else {
+        BatchLookupMissing
+      }
+    }
+  })
+}
+
+type BatchCollectResult
+  = BatchCollectOk { batches: List<Int> }
+  | BatchCollectMissing { consumer: ContentHash }
+  | BatchCollectConflict { consumer: ContentHash, first: Int, second: Int }
+
+fn distinct_batches_for_consumers(consumers: List<ContentHash>, assignment: List<ConsumerBatch>) -> BatchCollectResult {
+  fold(consumers, init: BatchCollectOk { batches: [] }, f: fn(acc, consumer) {
+    match acc {
+      BatchCollectMissing { consumer: c } => BatchCollectMissing { consumer: c }
+      BatchCollectConflict { consumer: c, first: f, second: s } => BatchCollectConflict { consumer: c, first: f, second: s }
+      BatchCollectOk { batches: bs } =>
+        match batch_for_consumer(assignment: assignment, consumer: consumer) {
+          BatchLookupFound { batch: b } =>
+            BatchCollectOk {
+              batches: if any(xs: bs, predicate: fn(x) { x == b }) { bs } else { concat(bs, [b]) }
+            }
+          BatchLookupMissing => BatchCollectMissing { consumer: consumer }
+          BatchLookupConflict { first: f, second: s } => BatchCollectConflict { consumer: consumer, first: f, second: s }
+        }
+    }
+  })
+}
+
+type TrafficAccountRow {
+  level: LevelId
+  bytes: ByteSize
+}
+
+type TrafficPricingRefusalCause
+  = TrafficAffinityRefused { operand: ContentHash, cause: AffinityRefusalCause }
+  | TrafficBatchAssignmentMissing { operand: ContentHash, consumer: ContentHash }
+  | TrafficBatchAssignmentConflict { operand: ContentHash, consumer: ContentHash, first: Int, second: Int }
+
+type TrafficPricing
+  = TrafficPriced { account: TrafficAccountRow, crossings: Int }
+  | TrafficPricingRefused { operand: ContentHash, cause: TrafficPricingRefusalCause }
+
+fn price_operand_traffic(
+  operand: ContentHash,
+  flows: List<OperandFlowRow>,
+  domain: ExecutionDomain,
+  assignment: List<ConsumerBatch>
+) -> TrafficPricing {
+  match derive_affinity(operand: operand, flows: flows, domain: domain) {
+    AffinityRefused { operand: op, cause: c } =>
+      TrafficPricingRefused { operand: op, cause: TrafficAffinityRefused { operand: op, cause: c } }
+    AffinityClaim { operand: op, level: lvl, footprint: fp, consumers: cs } =>
+      match distinct_batches_for_consumers(consumers: cs, assignment: assignment) {
+        BatchCollectMissing { consumer: missing } =>
+          TrafficPricingRefused { operand: op, cause: TrafficBatchAssignmentMissing { operand: op, consumer: missing } }
+        BatchCollectConflict { consumer: conflicted, first: f, second: s } =>
+          TrafficPricingRefused {
+            operand: op,
+            cause: TrafficBatchAssignmentConflict { operand: op, consumer: conflicted, first: f, second: s }
+          }
+        BatchCollectOk { batches: bs } =>
+          let crossings = length(xs: bs)
+          let bytes = fold(bs, init: byte_size(count: 0), f: fn(acc, _b) { measure_add(a: acc, b: fp) })
+          TrafficPriced { account: TrafficAccountRow { level: lvl, bytes: bytes }, crossings: crossings }
+      }
+  }
+}
