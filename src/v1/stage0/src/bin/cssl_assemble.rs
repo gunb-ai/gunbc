@@ -2,7 +2,11 @@
 
 use clap::Parser;
 use std::path::PathBuf;
-use v1_compiler::cssl_seed_linked_closure_assembly::{assemble_seed_linked_closure, AssemblyError};
+
+#[path = "../cssl_seed_linked_closure_assembly.rs"]
+mod cssl_seed_linked_closure_assembly;
+
+use cssl_seed_linked_closure_assembly::{assemble_seed_linked_closure, AssemblyError};
 
 #[derive(Parser)]
 #[command(name = "cssl_assemble")]

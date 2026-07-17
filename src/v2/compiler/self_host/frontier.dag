@@ -908,13 +908,11 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
 ]
 
 data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
-  SeedRetainedScaffoldRegistration { basename: "cssl_seed_linked_closure_assembly" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_assembly" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_partition" }
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_assembly" }
 ]
 
 fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
