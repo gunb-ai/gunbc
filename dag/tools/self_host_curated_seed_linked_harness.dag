@@ -15,6 +15,8 @@ data cssl_doc: String = "Reusable curated seed-linked self-host harness (Wave 2 
 
 data cssl_cargo_features_note: String = "Mirrors slb_cargo_features_note: text_lookup_work_counter feature declared for -D warnings consumers."
 
+data cssl_std_seed_link_followup_note: String = "SCAFFOLD — dissolve-on: generic std-seed-link assembly (entry-only emit + v1_compiler std re-exports, clears HARNESS_ARTIFACT_std_dup) lands as modeled cssl_seed_linked_probe_assembly in this module post-#6782 ferret harness authority — NOT hand-shell in scripts/lib/. Probe runners stay shim-free until then; banked receipts in docs/probes/curated_cargo_frontier_probe_sweep.tsv."
+
 fn cssl_repo_path(root: String, rel: String) -> String {
   concat(root, concat("/", rel))
 }

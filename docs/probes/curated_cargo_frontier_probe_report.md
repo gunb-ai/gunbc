@@ -56,6 +56,7 @@
 
 ```bash
 # Harness authority: dag/tools/self_host_curated_seed_linked_harness.dag (in-tree; dedupes when #6782 lands on main).
+# Banked receipts: docs/probes/curated_cargo_frontier_probe_sweep.tsv (shim-free emit, CSSL_STD_SEED_LINK off).
 
 # full sweep (~45min sequential)
 ./scripts/curated_cargo_frontier_probe_sweep.sh
