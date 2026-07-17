@@ -2,8 +2,8 @@
 //! Authority: tools.self_host_curated_seed_linked_harness (5-arm design).
 //! dissolve-on: v2 std self-emits + gunbc emits seed-linked extern imports.
 
+use sha2::Digest;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const BOOTSTRAP_INLINE_MODS: &[&str] = &["NonEmptyVec", "NonEmptyBTreeSet"];
@@ -23,7 +23,10 @@ impl std::fmt::Display for AssemblyError {
         match self {
             Self::MissingEntryFile { path } => write!(f, "missing entry module file {path:?}"),
             Self::EntryMutated { before, after } => {
-                write!(f, "entry module mutated during assembly ({before} != {after})")
+                write!(
+                    f,
+                    "entry module mutated during assembly ({before} != {after})"
+                )
             }
             Self::MissingEmittedLibRs { path } => write!(f, "missing emitted lib.rs {path:?}"),
             Self::MissingSeedLibRs { path } => write!(f, "missing seed lib.rs {path:?}"),
@@ -66,7 +69,6 @@ fn sha256_hex(path: &Path) -> Result<String, AssemblyError> {
         if n == 0 {
             break;
         }
-        use sha2::Digest;
         hasher.update(&buf[..n]);
     }
     Ok(format!("{:x}", hasher.finalize()))
@@ -120,9 +122,7 @@ pub fn assemble_seed_linked_closure(
     let entry_file = src_dir.join(format!("{entry_mod}.rs"));
 
     if !entry_file.is_file() {
-        return Err(AssemblyError::MissingEntryFile {
-            path: entry_file,
-        });
+        return Err(AssemblyError::MissingEntryFile { path: entry_file });
     }
     if !emitted_lib_rs.is_file() {
         return Err(AssemblyError::MissingEmittedLibRs {
@@ -130,9 +130,7 @@ pub fn assemble_seed_linked_closure(
         });
     }
     if !seed_lib_rs.is_file() {
-        return Err(AssemblyError::MissingSeedLibRs {
-            path: seed_lib_rs,
-        });
+        return Err(AssemblyError::MissingSeedLibRs { path: seed_lib_rs });
     }
 
     let entry_hash_before = sha256_hex(&entry_file)?;
@@ -188,7 +186,8 @@ pub fn assemble_seed_linked_closure(
 
         return Err(AssemblyError::RefusedDep {
             module,
-            reason: "unroutable closure dependency (not entry/compiler/std-bridge/bootstrap)".to_string(),
+            reason: "unroutable closure dependency (not entry/compiler/std-bridge/bootstrap)"
+                .to_string(),
         });
     }
 
