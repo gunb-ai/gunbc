@@ -46,8 +46,9 @@ import v2.extdeps.languages.bash_emit {
 }
 import v2.std.algebra { list_append, fold_list, list_snoc_item }
 import v2.std.collection { List }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, NonEmptyDiagnostics }
 import v2.std.node { Node }
+import v2.std.compilers.lexing { symbol_lexeme }
 import extdeps.git {
   GitDiffNameStatusComplete,
   GitDiffNameStatusTruncated,
@@ -260,14 +261,18 @@ fn floor_git_diff_unified_emit(policy: DiffPolicy) -> List<BashEmitSpecial> {
   )
 }
 
-fn floor_git_diff_unified_script(policy: DiffPolicy) -> String {
-  match bash_emit_program(
+fn floor_diff_script_emit_failure_reason(diagnostics: NonEmptyDiagnostics) -> String {
+  concat(
+    "floor_diff_observe: bash_emit_program rejected diff script emission: ",
+    symbol_lexeme(sym: diagnostics.head.reason)
+  )
+}
+
+fn floor_git_diff_unified_script(policy: DiffPolicy) -> Outcome<String> {
+  bash_emit_program(
     statements: floor_git_diff_unified_emit(policy: policy),
     set_e: true
-  ) {
-    Accepted { value: script, diagnostics: _ } => script
-    Rejected { diagnostics: _ } => ""
-  }
+  )
 }
 
 fn floor_unified_diff_from_reconciliation(
@@ -291,14 +296,19 @@ fn floor_unified_diff_from_reconciliation(
 }
 
 fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult {
-  floor_unified_diff_from_reconciliation(
-    r: host_effect_apply(
-      target: floor_ci_host_os(),
-      effect: ShellCommand { script: floor_git_diff_unified_script(policy: policy) },
-      evidence: host_effect_read_evidence,
-      transport: LocalShell
-    )
-  )
+  match floor_git_diff_unified_script(policy: policy) {
+    Accepted { value: script, diagnostics: _ } =>
+      floor_unified_diff_from_reconciliation(
+        r: host_effect_apply(
+          target: floor_ci_host_os(),
+          effect: ShellCommand { script: script },
+          evidence: host_effect_read_evidence,
+          transport: LocalShell
+        )
+      )
+    Rejected { diagnostics: d } =>
+      UnifiedDiffFail { reason: floor_diff_script_emit_failure_reason(diagnostics: d) }
+  }
 }
 
 fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
@@ -422,14 +432,11 @@ fn floor_git_diff_name_status_emit(policy: DiffPolicy) -> List<BashEmitSpecial> 
   )
 }
 
-fn floor_git_diff_name_status_script(policy: DiffPolicy) -> String {
-  match bash_emit_program(
+fn floor_git_diff_name_status_script(policy: DiffPolicy) -> Outcome<String> {
+  bash_emit_program(
     statements: floor_git_diff_name_status_emit(policy: policy),
     set_e: true
-  ) {
-    Accepted { value: script, diagnostics: _ } => script
-    Rejected { diagnostics: _ } => ""
-  }
+  )
 }
 
 fn floor_name_status_diff_from_reconciliation(
@@ -465,16 +472,43 @@ fn floor_name_status_diff_from_reconciliation(
 }
 
 fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiffResult {
-  floor_name_status_diff_from_reconciliation(
-    r: host_effect_apply(
-      target: floor_ci_host_os(),
-      effect: ShellCommand { script: floor_git_diff_name_status_script(policy: policy) },
-      evidence: host_effect_read_evidence,
-      transport: LocalShell
-    )
-  )
+  match floor_git_diff_name_status_script(policy: policy) {
+    Accepted { value: script, diagnostics: _ } =>
+      floor_name_status_diff_from_reconciliation(
+        r: host_effect_apply(
+          target: floor_ci_host_os(),
+          effect: ShellCommand { script: script },
+          evidence: host_effect_read_evidence,
+          transport: LocalShell
+        )
+      )
+    Rejected { diagnostics: d } =>
+      NameStatusDiffFail { reason: floor_diff_script_emit_failure_reason(diagnostics: d) }
+  }
 }
 
 fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
   floor_observe_git_diff_name_status(policy: gunbc_ci_spec.diff_policy)
+}
+
+fn floor_diff_script_serializes_git_diff_unified() -> Bool {
+  match floor_git_diff_unified_script(policy: gunbc_ci_spec.diff_policy) {
+    Accepted { value: script, diagnostics: _ } =>
+      string_contains(s: script, pattern: "'git'")
+        && string_contains(s: script, pattern: "'diff'")
+        && string_contains(s: script, pattern: "GUNBC_CI_DIFF_UNIFIED")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn floor_diff_script_serializes_git_diff_name_status() -> Bool {
+  match floor_git_diff_name_status_script(policy: gunbc_ci_spec.diff_policy) {
+    Accepted { value: script, diagnostics: _ } =>
+      string_contains(s: script, pattern: "'git'")
+        && string_contains(s: script, pattern: "'diff'")
+        && string_contains(s: script, pattern: "'--name-status'")
+        && string_contains(s: script, pattern: "'-z'")
+        && string_contains(s: script, pattern: "GUNBC_CI_DIFF_NAME_STATUS")
+    Rejected { diagnostics: _ } => false
+  }
 }
