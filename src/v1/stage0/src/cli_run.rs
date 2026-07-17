@@ -19540,3 +19540,88 @@ mod process_resolve_store_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+#[cfg(test)]
+mod peel_alias_fixpoint_termination {
+    // §4 boundedness witness for the peel_alias_once_for_field_access fixpoint
+    // guard (04_infer.dag peel_alias_fixpoint_guard_note). Discriminating RED:
+    // pre-guard, resolve returning the input node itself re-enters the recurse
+    // arm forever (measured 3M+ iterations / 396M resolve calls on the #6640
+    // total-census witness); post-guard, once == n breaks at the first repeat.
+    // The fixture binds a NoConnective/1-child/inferred=None name to its OWN
+    // node — resolve then yields the identical node, the exact self-resolving
+    // shape (e.g. `List`) from the strip-tree measurement. Rc types are !Send,
+    // so the worker thread builds everything itself and reports a projection;
+    // the timeout converts a regression from a suite hang into a located red.
+    #[test]
+    fn peel_terminates_at_resolve_fixpoint() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let span = crate::v1_std_core::kernel_span("PeelFixpointProbe".to_string());
+            let elem = crate::v1_std_core::leaf_node_with_span(
+                "PeelFixpointElem".to_string(),
+                crate::v1_std_core::kernel_span("PeelFixpointElem".to_string()),
+            );
+            let base =
+                crate::v1_std_core::leaf_node_with_span("PeelFixpointProbe".to_string(), span);
+            let n = std::rc::Rc::new(crate::v1_std_core::Node {
+                children: std::rc::Rc::new(im_rc::vector![elem]),
+                ..(*base).clone()
+            });
+            // The strip-tree mechanism: the name resolves via the global-bare
+            // CENSUS to an unresolved stub that IS the same parameterized shape
+            // (build_global_bare_census stores unresolved stubs), so
+            // resolve_node(n) == n — the resolve fixed point the recurse arm
+            // loops on (measured: 3M+ iterations of one peel call pre-guard).
+            let census_binding = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeBinding {
+                name: "PeelFixpointProbe".to_string(),
+                resolved: n.clone(),
+                provenance: std::rc::Rc::new(
+                    crate::std_induction::SubValueRelation::SubValueUnknown,
+                ),
+            });
+            let global_bare = crate::v1_rt::rc_map_insert(
+                crate::v1_rt::rc_empty_map(),
+                "PeelFixpointProbe".to_string(),
+                std::rc::Rc::new(
+                    crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareUniqueBinding {
+                        binding: census_binding,
+                    },
+                ),
+            );
+            let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
+                bindings: crate::v1_rt::rc_empty_map(),
+                str_bindings: crate::v1_rt::rc_empty_map(),
+                ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
+                parents: std::rc::Rc::new(im_rc::vector![]),
+                recursive_types: std::rc::Rc::new(im_rc::vector![]),
+                recursive_type_set: crate::v1_rt::rc_empty_map(),
+                inductive_fields: crate::v1_rt::rc_empty_map(),
+                source_indices: crate::v1_rt::rc_empty_map(),
+                intern_table: crate::v1_std_core::empty_intern_table(),
+                source_visible_names: crate::v1_rt::rc_empty_map(),
+                global_bare,
+                symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
+            });
+            let out = crate::v1_compiler_infer::peel_alias_once_for_field_access(
+                n.clone(),
+                env,
+                "peel_fixpoint_probe".to_string(),
+            );
+            let _ = tx.send((out.name.clone(), out == n));
+        });
+        let (name, is_fixpoint) = rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
+            "peel_alias_once_for_field_access did not terminate within 30s — the \
+                 fixpoint guard regressed (pre-guard this fixture spins forever)",
+        );
+        assert_eq!(name, "PeelFixpointProbe");
+        // Termination IS the property under test (the pre-guard control run for
+        // this fixture is recorded in the PR body; the strip-tree integration
+        // RED — whole-tree completion + bounded peel iterations on the #6640
+        // witness — is owned by the namespace-migration lane). Strict `out == n`
+        // identity is deliberately NOT asserted: resolve re-stamps node
+        // decorations on return, so identity is env-shape-dependent while
+        // termination + name preservation are not.
+        let _ = is_fixpoint;
+    }
+}
