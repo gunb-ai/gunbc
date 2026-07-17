@@ -18563,7 +18563,6 @@ mod doc_reachability_tests {
     }
 
     #[test]
-    #[test]
     fn doc_graph_orphan_inventory_for_ci_debug() {
         let report = super::build_doc_graph_report();
         eprintln!("orphan_count={}", report.orphans.len());
@@ -18572,6 +18571,7 @@ mod doc_reachability_tests {
         }
     }
 
+    #[test]
     fn reachable_set_flags_orphan_node() {
         let roots: BTreeSet<String> = ["root.md".to_string()].into_iter().collect();
         let edges = edges_of(&[("root.md", &["linked.md"]), ("orphan.md", &[])]);
