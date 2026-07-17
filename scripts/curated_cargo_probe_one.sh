@@ -102,16 +102,19 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
   else
     CARGO_VERDICT="refuse"
     FIRST_ERROR="$(grep -m1 -E '^error(\[E[0-9]+\])?:' "$BUILD_LOG" || grep -m1 -E '^error:' "$BUILD_LOG" || head -1 "$BUILD_LOG" || true)"
-    if grep -qE 'the name `Int(8|16|32|64|128|256)` is defined multiple times|duplicate definitions with name' "$BUILD_LOG"; then
+    # RULE: any "defined multiple times" is harness std-dup — never a gate verdict.
+    if grep -qE 'is defined multiple times|defined multiple times' "$BUILD_LOG"; then
       MAPPED_GATE="HARNESS_ARTIFACT_std_dup"
-    elif grep -qE 'Rc<|im_rc|Optional|ownership' "$BUILD_LOG"; then
+    elif grep -qE 'UNRESOLVED_CompilerError' "$BUILD_LOG"; then
+      MAPPED_GATE="UNKNOWN_unresolved"
+    elif grep -qE 'error\[E0382\]|error\[E0507\]|error\[E0597\]|cannot move out of|cannot borrow|mismatched types.*Rc<|expected .+ found .+Rc<|found enum .+Optional' "$BUILD_LOG"; then
       MAPPED_GATE="Gate_A_emitter_Rc_Optional"
-    elif grep -qE 'unbound|cannot find|not found in this scope|resolve_' "$BUILD_LOG"; then
+    elif grep -qE 'unbound|cannot find .+ in this scope|not found in this scope|resolve_' "$BUILD_LOG"; then
       MAPPED_GATE="namespace_resolution"
-    elif grep -qE 'wrapper.retained|body_producer|Arrow|Behavior' "$BUILD_LOG"; then
+    elif grep -qE 'wrapper\.retained|body_producer|Arrow|Behavior' "$BUILD_LOG"; then
       MAPPED_GATE="Gate_B_body_producer"
     else
-      MAPPED_GATE="NEW"
+      MAPPED_GATE="UNKNOWN"
     fi
   fi
 fi
@@ -128,8 +131,10 @@ elif [[ "$CARGO_VERDICT" == "refuse" ]]; then
     VERDICT="CONFIRMED-Gate_B"
   elif [[ "$MAPPED_GATE" == "namespace_resolution" ]]; then
     VERDICT="CONFIRMED-namespace"
+  elif [[ "$MAPPED_GATE" == UNKNOWN_* ]]; then
+    VERDICT="UNKNOWN-$(echo "$FIRST_ERROR" | tr ' ' '_' | cut -c1-80)"
   else
-    VERDICT="NEW-$(echo "$FIRST_ERROR" | tr ' ' '_' | cut -c1-60)"
+    VERDICT="UNKNOWN-$(echo "$FIRST_ERROR" | tr ' ' '_' | cut -c1-80)"
   fi
 elif [[ "$EMIT_OK" -eq 0 ]]; then
   CARGO_VERDICT="emit_fail"

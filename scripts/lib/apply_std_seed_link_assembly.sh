@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # PROTOTYPE — generic std-seed-link assembly for curated cargo probes.
 # dissolve-on: lands in tools.self_host_curated_seed_linked_harness post-#6782 (ferret authority).
-# After gunbc emit: replace re-emitted std/v2_std and seed-resident modules with
-# `pub use v1_compiler::…` shims; keep only entry + non-seed v2_compiler/extdeps emit.
+# After gunbc emit: replace seed-resident std_* / extdeps_* / v2_compiler_* (when in seed)
+# with `pub use v1_compiler::…` shims; keep gunbc-emitted v2_std_* + non-seed closure;
+# sanitize emitter duplicate-definition artifacts (Int128…UInt8, Witness) in kept files.
 set -euo pipefail
 
 _seed_mod_exists() {
@@ -10,22 +11,26 @@ _seed_mod_exists() {
   grep -qE "^pub mod ${mod};" "$SEED_LIB_RS"
 }
 
-_v2_std_seed_target() {
-  local mod="$1"
-  case "$mod" in
-    v2_std_algebra) echo "usv_pilot_v2_std_algebra" ;;
-    v2_std_collection) echo "usv_pilot_v2_std_collection" ;;
-    v2_std_node) echo "usv_pilot_v2_std_node" ;;
-    v2_std_integer) echo "std_integer" ;;
-    *) echo "" ;;
-  esac
-}
-
 _strip_v2_std_integer_inhabitant_dupes() {
   local f="$1"
   [[ -f "$f" ]] || return 0
-  # Emitter emits type aliases + closed enum witness structs with the same names (Int128…UInt8).
   sed -i '/^pub struct Int128;$/,/^pub struct UInt8;$/d' "$f"
+}
+
+_sanitize_v2_std_witness_self_conflict() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  [[ "$(basename "$f")" == "v2_std_witness.rs" ]] || return 0
+  if grep -q '^pub enum Witness' "$f"; then
+    sed -i '/^use crate::v1_rt::Witness;$/d' "$f"
+    sed -i '/^use crate::v1_rt::Witness::/d' "$f"
+  fi
+}
+
+_sanitize_kept_v2_std_file() {
+  local f="$1"
+  _strip_v2_std_integer_inhabitant_dupes "$f"
+  _sanitize_v2_std_witness_self_conflict "$f"
 }
 
 _write_seed_reexport_shim() {
@@ -64,50 +69,39 @@ apply_std_seed_link_assembly() {
   mapfile -t all_mods < <(grep '^pub mod ' "$emitted_lib" | sed 's/pub mod \([^;]*\);/\1/')
 
   for mod in "${all_mods[@]}"; do
-  case "$mod" in
-    NonEmptyVec|NonEmptyBTreeSet)
-      continue
-      ;;
-    "$entry_mod")
-      # Entry module stays gunbc-emitted.
-      continue
-      ;;
-    std_*)
-      if _seed_mod_exists "$mod"; then
-        _write_seed_reexport_shim "$src_dir/$mod.rs" "$mod"
-      fi
-      ;;
-    v2_std_*)
-      local seed_target
-      seed_target="$(_v2_std_seed_target "$mod")"
-      if [[ -n "$seed_target" ]] && _seed_mod_exists "$seed_target"; then
-        _write_seed_reexport_shim "$src_dir/$mod.rs" "$seed_target"
-      elif [[ "$mod" == "v2_std_integer" ]] && _seed_mod_exists "std_integer"; then
-        _write_seed_reexport_shim "$src_dir/$mod.rs" "std_integer"
-      else
-        _strip_v2_std_integer_inhabitant_dupes "$src_dir/$mod.rs"
-      fi
-      ;;
-    v2_compiler_*|extdeps_*|v1_compiler_*)
-      if _seed_mod_exists "$mod"; then
-        _write_seed_reexport_shim "$src_dir/$mod.rs" "$mod"
-      fi
-      ;;
-    v1_rt)
-      if _seed_mod_exists "v1_rt"; then
-        _write_seed_reexport_shim "$src_dir/$mod.rs" "v1_rt"
-      fi
-      ;;
-    v2_extdeps_*)
-      # v2 extdeps surface — keep gunbc emit unless a seed row appears later.
-      :
-      ;;
-    *)
-      :
-      ;;
-  esac
+    case "$mod" in
+      NonEmptyVec|NonEmptyBTreeSet)
+        continue
+        ;;
+      "$entry_mod")
+        continue
+        ;;
+      std_*)
+        if _seed_mod_exists "$mod"; then
+          _write_seed_reexport_shim "$src_dir/$mod.rs" "$mod"
+        fi
+        ;;
+      v2_std_*)
+        # Keep full gunbc emit for v2_std_* (usv_pilot stubs are incomplete); sanitize dupes.
+        _sanitize_kept_v2_std_file "$src_dir/$mod.rs"
+        ;;
+      v2_compiler_*|extdeps_*|v1_compiler_*)
+        if _seed_mod_exists "$mod"; then
+          _write_seed_reexport_shim "$src_dir/$mod.rs" "$mod"
+        fi
+        ;;
+      v1_rt)
+        # Keep emitted v1_rt — seed re-export changes Witness resolution for v2_std.witness.
+        _sanitize_kept_v2_std_file "$src_dir/$mod.rs"
+        ;;
+      v2_extdeps_*)
+        :
+        ;;
+      *)
+        :
+        ;;
+    esac
   done
 
-  # Regenerate lib.rs: preserve emitted crate attrs + NonEmpty* helpers; module list unchanged.
   return 0
 }
