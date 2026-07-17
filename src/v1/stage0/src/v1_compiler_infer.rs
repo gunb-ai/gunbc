@@ -91,7 +91,11 @@ pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
     resolve_generic_use_decl, resolve_item_types, resolve_node,
 };
-pub use crate::v1_compiler_infer_resolve::{ItemResolveResult, NodeResolveResult};
+pub use crate::v1_compiler_infer_resolve::{
+    log_per_module_resolve_memo_stats, per_module_resolve_memo_flush,
+    per_module_resolve_memo_install, per_module_resolve_memo_global_snapshot,
+    ItemResolveResult, NodeResolveResult, PerModuleResolveMemoStats,
+};
 pub use crate::v1_compiler_infer_service::{
     check_service_field_access_node, check_service_method_call_node, collect_called_func_names,
     collect_typed_service_calls, expand_transitive_services, extract_typed_service_name,
@@ -14681,6 +14685,7 @@ pub fn typecheck_module(
             item_registry: ctx.item_registry.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         });
+        per_module_resolve_memo_install(&env);
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
         let typed_items = Rc::new({
             let mut __result = Vec::new();
@@ -14702,6 +14707,8 @@ pub fn typecheck_module(
             env.clone(),
             data_locals.clone(),
         );
+        let resolve_memo_stats = per_module_resolve_memo_flush();
+        log_per_module_resolve_memo_stats(resolved_module_name.as_str(), resolve_memo_stats);
         let reannotated_items = Rc::new({
             let mut __result = Vec::new();
             for item in typed_items.clone().iter().cloned() {

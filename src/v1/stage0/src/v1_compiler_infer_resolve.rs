@@ -17,6 +17,7 @@ pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
     node_is_keyed_collection, resolved_type,
 };
+use crate::v1_compiler_dag_collect_support::dag_node_surface_fingerprint;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -361,6 +362,190 @@ pub struct ParamResolveResult {
 pub struct ResourceUseResult {
     pub resource_use: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+// Per-module transient resolve memo (Option B; floor-shared-compute lane).
+// DISSOLVE-ON (live carrier): v2.std.materialize (src/v2/std/materialize.dag,
+// materialize_module_note) — spine Recompute|Memoize|Share qualification
+// (run ≜ realize ∘ materialize ∘ dependency_view; content_hash over every
+// subtree Node is the computation identity; MVP names
+// ComputationIdentity.StructurallyIdentical as the decidable wall). AND
+// std.interface_summary.typed_module_key (dag/std/interface_summary.dag,
+// typed_module_key_note: "ComputationIdentity wrapping lands downstream").
+// DESIGN AUTHORITY: docs/plans/duplicate-work-graph-lens-design.md Half B
+// (ComputationIdentity lattice: StructurallyIdentical | NormalizedIdentical |
+// ExtensionallyIdentical{bound} | IdentityUnknown{cause}) +
+// docs/plans/execution-spine-design.md §2.
+// CONDITION: dissolve when v2.std.materialize's ComputationIdentity qualification
+// reaches SUB-MODULE grain in the executed compiler — i.e. when type-grounding
+// computations (resolve_node_bounded / resolve_scrutinee_type_node_seen results)
+// are content-hash-qualified Share/Memoize by v2.std.materialize rather than
+// by this seed memo.
+// DISSOLUTION RECEIPT: delete this memo, rerun whole-tree attribution; wall time
+// unchanged (memo hits must read as zero; typecheck wall must not regress).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PerModuleResolveMemoStats {
+    pub bounded_hits: u64,
+    pub bounded_misses: u64,
+    pub scrutinee_hits: u64,
+    pub scrutinee_misses: u64,
+}
+
+// KEY: content-identity (dag_node_surface_fingerprint String), not pointer — ABA-safe
+// (no Rc::as_ptr in map keys; transient peel wrappers cannot stale-serve). Values
+// retain Rc<NodeResolveResult>/Rc<Node>. Env install pin is guardrail only.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct BoundedMemoKey {
+    node_surface_fp: String,
+    depth: i64,
+    masked: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ScrutineeMemoKey {
+    node_surface_fp: String,
+}
+
+struct PerModuleResolveMemoScope {
+    env_scope_ptr: usize,
+    bounded: std::collections::HashMap<BoundedMemoKey, Rc<NodeResolveResult>>,
+    scrutinee: std::collections::HashMap<ScrutineeMemoKey, Rc<Node>>,
+    stats: PerModuleResolveMemoStats,
+}
+
+fn resolve_memo_env_matches(scope: &PerModuleResolveMemoScope, env: &Rc<TypeEnv>) -> bool {
+    Rc::as_ptr(env) as usize == scope.env_scope_ptr
+}
+
+fn resolve_memo_node_surface_fp(n: &Rc<Node>) -> String {
+    dag_node_surface_fingerprint(n.clone())
+}
+
+thread_local! {
+    static PER_MODULE_RESOLVE_MEMO: std::cell::RefCell<Option<PerModuleResolveMemoScope>> =
+        std::cell::RefCell::new(None);
+}
+
+fn per_module_resolve_memo_enabled() -> bool {
+    match std::env::var("GUNBC_PER_MODULE_RESOLVE_MEMO") {
+        Ok(v) => !(v == "0" || v.eq_ignore_ascii_case("false")),
+        Err(_) => true,
+    }
+}
+
+pub fn per_module_resolve_memo_install(env: &Rc<TypeEnv>) {
+    if !per_module_resolve_memo_enabled() {
+        return;
+    }
+    PER_MODULE_RESOLVE_MEMO.with(|cell| {
+        assert!(
+            cell.borrow().is_none(),
+            "nested per-module resolve memo install"
+        );
+        *cell.borrow_mut() = Some(PerModuleResolveMemoScope {
+            env_scope_ptr: Rc::as_ptr(env) as usize,
+            bounded: std::collections::HashMap::new(),
+            scrutinee: std::collections::HashMap::new(),
+            stats: PerModuleResolveMemoStats::default(),
+        });
+    });
+}
+
+pub fn per_module_resolve_memo_flush() -> PerModuleResolveMemoStats {
+    PER_MODULE_RESOLVE_MEMO.with(|cell| {
+        cell.borrow_mut()
+            .take()
+            .map(|scope| scope.stats)
+            .unwrap_or_default()
+    })
+}
+
+pub fn per_module_resolve_memo_global_snapshot() -> PerModuleResolveMemoStats {
+    PER_MODULE_RESOLVE_MEMO.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map(|scope| scope.stats)
+            .unwrap_or_default()
+    })
+}
+
+pub(crate) fn per_module_scrutinee_memo_lookup_or_compute(
+    env: &Rc<TypeEnv>,
+    n: &Rc<Node>,
+    compute: impl FnOnce() -> Rc<Node>,
+) -> Rc<Node> {
+    if !per_module_resolve_memo_enabled() {
+        return compute();
+    }
+    PER_MODULE_RESOLVE_MEMO.with(|cell| {
+        let mut borrow = cell.borrow_mut();
+        let Some(scope) = borrow.as_mut() else {
+            return compute();
+        };
+        if !resolve_memo_env_matches(scope, env) {
+            return compute();
+        }
+        let node_surface_fp = resolve_memo_node_surface_fp(n);
+        let key = ScrutineeMemoKey { node_surface_fp };
+        if let Some(hit) = scope.scrutinee.get(&key) {
+            scope.stats.scrutinee_hits += 1;
+            return hit.clone();
+        }
+        scope.stats.scrutinee_misses += 1;
+        let result = compute();
+        scope.scrutinee.insert(key, result.clone());
+        result
+    })
+}
+
+fn per_module_bounded_memo_lookup_or_compute(
+    env: &Rc<TypeEnv>,
+    n: &Rc<Node>,
+    depth: i64,
+    masked: bool,
+    compute: impl FnOnce() -> Rc<NodeResolveResult>,
+) -> Rc<NodeResolveResult> {
+    if !per_module_resolve_memo_enabled() {
+        return compute();
+    }
+    PER_MODULE_RESOLVE_MEMO.with(|cell| {
+        let mut borrow = cell.borrow_mut();
+        let Some(scope) = borrow.as_mut() else {
+            return compute();
+        };
+        if !resolve_memo_env_matches(scope, env) {
+            return compute();
+        }
+        let node_surface_fp = resolve_memo_node_surface_fp(n);
+        let key = BoundedMemoKey {
+            node_surface_fp,
+            depth,
+            masked,
+        };
+        if let Some(hit) = scope.bounded.get(&key) {
+            scope.stats.bounded_hits += 1;
+            return hit.clone();
+        }
+        scope.stats.bounded_misses += 1;
+        let result = compute();
+        scope.bounded.insert(key, result.clone());
+        result
+    })
+}
+
+pub fn log_per_module_resolve_memo_stats(module_name: &str, stats: PerModuleResolveMemoStats) {
+    let bounded_lookups = stats.bounded_hits + stats.bounded_misses;
+    let scrutinee_lookups = stats.scrutinee_hits + stats.scrutinee_misses;
+    if bounded_lookups == 0 && scrutinee_lookups == 0 {
+        return;
+    }
+    eprintln!(
+        "[resolve-memo-mod] module={module_name} bounded_hits={} bounded_misses={} scrutinee_hits={} scrutinee_misses={}",
+        stats.bounded_hits,
+        stats.bounded_misses,
+        stats.scrutinee_hits,
+        stats.scrutinee_misses,
+    );
 }
 
 pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NodeResolveResult> {
@@ -734,6 +919,24 @@ pub fn resolve_node_bounded_masked_boundary() -> String {
 }
 
 pub fn resolve_node_bounded(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+    depth: i64,
+    masked: bool,
+) -> Rc<NodeResolveResult> {
+    per_module_bounded_memo_lookup_or_compute(&env, &n, depth, masked, || {
+        resolve_node_bounded_uncached(
+            n.clone(),
+            env.clone(),
+            module_name.clone(),
+            depth,
+            masked,
+        )
+    })
+}
+
+fn resolve_node_bounded_uncached(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
