@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Curated seed-linked cargo probe for one compiler frontier module.
-# Mirrors tools.self_host_curated_seed_linked_harness emit+assemble spine (probe-only).
+# SCAFFOLD — dissolve-on: tools.self_host_curated_seed_linked_harness on main post-#6782
+# (+ generic std-seed-link follow-up) retires this hand-shell probe runner; until then it
+# projects the cssl emit+assemble+cargo spine for per-module verdict TSV (probe-only).
+# dissolve-on alt: gunbc bash-emit #5828 / modeled cssl_probe transport in .dag.
+# Authority: cssl_v1_compiled_cargo_toml via dag/tools/self_host_curated_probe_cargo.dag
+# (scripts/lib/render_cssl_probe_lib_cargo_toml.sh — no parallel Cargo.toml heredoc).
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
@@ -13,11 +17,15 @@ SHIM_LIB_REL="${2:-}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# shellcheck source=lib/render_cssl_probe_lib_cargo_toml.sh
+source "$ROOT/scripts/lib/render_cssl_probe_lib_cargo_toml.sh"
+
 GUNBC="${GUNBC:-$ROOT/target/release/gunbc}"
 if [[ ! -x "$GUNBC" ]]; then
   CTRL_BUILD_WRAP_CARGO=0 cargo build --release -p v1-compiler --bin gunbc >/dev/null
   GUNBC="$ROOT/target/release/gunbc"
 fi
+export GUNBC
 
 OUT="$(mktemp -d "${TMPDIR:-/tmp}/cssl-probe.XXXXXX")"
 cleanup() { rm -rf "$OUT"; }
@@ -62,28 +70,15 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
     done
   fi
 
-  cat >"$OUT/Cargo.toml" <<EOF
-[package]
-name = "v1_compiled"
-version = "0.1.0"
-edition = "2021"
-
-[features]
-text_lookup_work_counter = []
-
-[lib]
-path = "src/lib.rs"
-
-[dependencies]
-im-rc = { version = "15.1", features = ["serde"] }
-serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
-stacker = "0.1"
-lazy_static = "1"
-unicode-ident = "1"
-unicode-properties = { version = "0.1", features = ["emoji"] }
-v1-compiler = { path = "$ROOT/src/v1/stage0" }
-EOF
+  if ! render_cssl_probe_lib_cargo_toml "$ROOT" "$OUT/Cargo.toml"; then
+    CARGO_VERDICT="harness_refuse"
+    FIRST_ERROR="cssl harness authority unavailable"
+    MAPPED_GATE="HARNESS_MISSING"
+    VERDICT="HARNESS_REFUSE"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$MODULE_PATH" "$EMIT_SUMMARY" "$CARGO_VERDICT" "$FIRST_ERROR" "$MAPPED_GATE" "$VERDICT"
+    exit 0
+  fi
 
   BUILD_LOG="$OUT/cargo.log"
   if (cd "$OUT" && RUSTC_WRAPPER= CTRL_BUILD_WRAP_CARGO=0 cargo build --release --lib 2>"$BUILD_LOG"); then

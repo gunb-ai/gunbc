@@ -55,9 +55,8 @@
 ## Reproduce
 
 ```bash
-# one-time: pull harness authority (not committed here — ferret #6782)
-git fetch origin session/snappy-ferret-198
-git checkout origin/session/snappy-ferret-198 -- dag/tools/self_host_curated_seed_linked_harness.dag
+# Harness authority: dag/tools/self_host_curated_seed_linked_harness.dag (ferret #6782).
+# Until on main, probe runner fetches it via git show origin/session/snappy-ferret-198.
 
 # full sweep (~45min sequential)
 ./scripts/curated_cargo_frontier_probe_sweep.sh

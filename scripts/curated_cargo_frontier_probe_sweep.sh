@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Run curated-cargo probe sweep in priority order; append TSV rows incrementally.
+# SCAFFOLD — dissolve-on: tools.self_host_curated_seed_linked_harness on main post-#6782
+# (+ generic std-seed-link follow-up) retires this orchestration shell; until then it
+# sequences curated_cargo_probe_one.sh over the frontier roster (probe-only).
+# dissolve-on alt: gunbc bash-emit #5828 / modeled cssl_probe sweep transport in .dag.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
