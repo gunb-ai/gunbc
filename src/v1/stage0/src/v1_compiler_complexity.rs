@@ -32,10 +32,12 @@ use crate::std_induction::SubValueRelation::{
     ArithmeticDescent, IteratedSubValue, PreservedValue, StrictSubValue, SubValueUnknown,
 };
 pub use crate::std_induction::{
-    catamorphism_bound, derive_bound, sub_value_to_call_pattern, sub_value_to_evidence,
-    sub_value_to_lowering_target,
+    catamorphism_bound, cost_constant, cost_poly, derive_bound, sub_value_to_call_pattern,
+    sub_value_to_evidence, sub_value_to_lowering_target,
 };
 pub use crate::std_induction::{AtomicCost, CostBound, PolynomialExponent, SubValueRelation};
+pub use crate::std_measure::ByteSize;
+pub use crate::std_measure::{byte_size, byte_size_count};
 use crate::std_syntax::BinOp::{Div, Sub};
 use crate::std_syntax::LiteralValue::{LitInt, LitNull};
 pub use crate::std_syntax::{BinOp, LiteralValue};
@@ -169,6 +171,7 @@ pub struct ComplexitySummary {
     pub span: Rc<CostExpr>,
     pub output_size: Rc<HashMap<String, Rc<CostExpr>>>,
     pub certainty: Certainty,
+    pub peak_space: Option<Rc<CostExpr>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -212,6 +215,7 @@ pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostIn
             span: Rc::new(CostExpr::CostConst { value: 0 }),
             output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
             certainty: Certainty::Proven,
+            peak_space: None,
         }),
     )
 }
@@ -7495,6 +7499,258 @@ pub fn cost_conditional(condition: Rc<CostExpr>, branches: Rc<Vec<Rc<CostExpr>>>
     }
 }
 
+pub fn space_of_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "space-complexity increment 1a (space-complexity-design.md): peak working-set derivation as the structural dual of the time cost-expr. Sequential steps RELEASE, so time's CostAdd (sum) becomes space's CostMax; concurrent steps CO-RESIDE, so time's CostMax becomes space's CostAdd (P1's space_measure_seq=max / space_measure_par=add lifted to CostExpr). A fold's iterations release, so CostSum collapses to its body's peak — the headline dual: a reducing fold is O(n) time but O(1) space. The accumulator/output_size additive term is added at the summary grain (peak_space = space_of(work) + output_size), not here. CostUnknown passes through fail-closed (the SpaceBoundUnknown frontier: counted now, error later).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn space_of(work: Rc<CostExpr>) -> Rc<CostExpr> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*work.clone()).clone() {
+            CostExpr::CostConst { value: v, .. } => {
+                Rc::new(CostExpr::CostConst { value: v.clone() })
+            }
+            CostExpr::CostAdd {
+                left: l, right: r, ..
+            } => cost_par(space_of(l.clone()), space_of(r.clone())),
+            CostExpr::CostMax {
+                left: l, right: r, ..
+            } => cost_seq(space_of(l.clone()), space_of(r.clone())),
+            CostExpr::CostMul {
+                left: l, right: r, ..
+            } => cost_seq(space_of(l.clone()), space_of(r.clone())),
+            CostExpr::CostSum { body: bd, .. } => space_of(bd.clone()),
+            CostExpr::CostLog {
+                base: b,
+                argument: a,
+                ..
+            } => Rc::new(CostExpr::CostLog {
+                base: b.clone(),
+                argument: a.clone(),
+            }),
+            CostExpr::CostExtern { name: n, .. } => {
+                Rc::new(CostExpr::CostExtern { name: n.clone() })
+            }
+            CostExpr::CostUnknown { reason: r, .. } => {
+                Rc::new(CostExpr::CostUnknown { reason: r.clone() })
+            }
+        }
+    })
+}
+
+pub fn fold_peak_space(body_peak: Rc<CostExpr>, output_size: Rc<CostExpr>) -> Rc<CostExpr> {
+    cost_seq(output_size.clone(), space_of(body_peak.clone()))
+}
+
+pub fn derive_peak_space_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Summary-grain peak-space derivation (space-complexity-design.md 5): peak_space = space_of(work) for a scalar result; for a collection result the retained output co-resides with the transient working set, so it is the additive fold_peak_space(space_of(work) + output_term). The output_term is the summary's `result` output_size entry (the single convention the analysis emits: collection_output/scan_os/sort_os all key on `result`). Absent output_size (scalar) collapses to space_of(work) with no additive term. Set only at the finalized per-function summary; intermediate sub-expression summaries and the error/external/seed summaries leave peak_space absent (the SpaceBoundUnknown counted frontier, fail-closed).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn derive_peak_space(
+    work: Rc<CostExpr>,
+    output_size: Rc<HashMap<String, Rc<CostExpr>>>,
+) -> Rc<CostExpr> {
+    match v1_rt::map_get(&output_size, "result".to_string()) {
+        Some(out) => fold_peak_space(work.clone(), out.clone()),
+        None => space_of(work.clone()),
+    }
+}
+
+pub fn cost_account_space_from_summary_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Fill CostAccount.space (basis Derived) from a summary's derived peak_space: evaluate the peak-space CostExpr at a closed size_env to a concrete ByteSize. Absent peak_space (the frontier) or an underivable expr (CostUnknown/CostExtern/CostLog -> eval Absent) returns none — never a fabricated bound (fail-closed, space-complexity-design.md 4).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn cost_account_space_from_summary(
+    summary: Rc<ComplexitySummary>,
+    size_env: Rc<HashMap<String, i64>>,
+) -> Option<ByteSize> {
+    match summary.peak_space.clone() {
+        Some(ps) => match eval_cost_expr_concrete(ps.clone(), size_env.clone()) {
+            Some(bytes) => Some(byte_size(bytes.clone())),
+            None => None,
+        },
+        None => None,
+    }
+}
+
+pub fn cost_expr_degree_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Asymptotic reading (space-complexity increment 2): the polynomial degree of a CostExpr. A CostSum over a size variable is one factor of n (+1 degree); sequential/parallel take the MAX degree; products ADD degrees; a bare log is below linear (degree 0 for the polynomial reading). Absent = the frontier (CostExtern/CostUnknown) — fail-closed, never a fabricated degree. Applied to space_of(work) it yields the SPACE order, which is <= the TIME order by construction (space_of collapses the CostSum that a reducing fold's TIME carries): the headline O(n)-time / O(1)-space, decided asymptotically.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn cost_expr_degree(e: Rc<CostExpr>) -> Option<i64> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*e.clone()).clone() {
+        CostExpr::CostConst { value: _, .. } => Some(0),
+        CostExpr::CostAdd {
+            left: l, right: r, ..
+        } => match cost_expr_degree(l.clone()) {
+            Some(ld) => match cost_expr_degree(r.clone()) {
+                Some(rd) => Some(if (ld.clone() >= rd.clone()) {
+                    ld.clone()
+                } else {
+                    rd.clone()
+                }),
+                None => None,
+            },
+            None => None,
+        },
+        CostExpr::CostMax {
+            left: l, right: r, ..
+        } => match cost_expr_degree(l.clone()) {
+            Some(ld) => match cost_expr_degree(r.clone()) {
+                Some(rd) => Some(if (ld.clone() >= rd.clone()) {
+                    ld.clone()
+                } else {
+                    rd.clone()
+                }),
+                None => None,
+            },
+            None => None,
+        },
+        CostExpr::CostMul {
+            left: l, right: r, ..
+        } => match cost_expr_degree(l.clone()) {
+            Some(ld) => match cost_expr_degree(r.clone()) {
+                Some(rd) => Some((ld.clone() + rd.clone())),
+                None => None,
+            },
+            None => None,
+        },
+        CostExpr::CostSum { body: bd, .. } => match cost_expr_degree(bd.clone()) {
+            Some(bdeg) => Some((1 + bdeg.clone())),
+            None => None,
+        },
+        CostExpr::CostLog { .. } => Some(0),
+        CostExpr::CostExtern { name: _, .. } => None,
+        CostExpr::CostUnknown { reason: _, .. } => None,
+    })
+}
+
+pub fn degree_to_bound(degree: i64, param: String) -> Rc<CostBound> {
+    if (degree.clone() == 0) {
+        cost_constant()
+    } else {
+        cost_poly(param.clone(), degree.clone())
+    }
+}
+
+pub fn space_asymptotic_bound(work: Rc<CostExpr>, param: String) -> Rc<CostBound> {
+    match cost_expr_degree(space_of(work.clone())) {
+        Some(d) => degree_to_bound(d.clone(), param.clone()),
+        None => Rc::new(CostBound::ForeverBound),
+    }
+}
+
+pub fn time_asymptotic_bound(work: Rc<CostExpr>, param: String) -> Rc<CostBound> {
+    match cost_expr_degree(work.clone()) {
+        Some(d) => degree_to_bound(d.clone(), param.clone()),
+        None => Rc::new(CostBound::ForeverBound),
+    }
+}
+
+pub fn eval_size_expr_concrete(s: Rc<SizeExpr>, env: Rc<HashMap<String, i64>>) -> Option<i64> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*s.clone()).clone() {
+        SizeExpr::SizeConst { value: v, .. } => Some(v.clone()),
+        SizeExpr::SizeVar { name: n, .. } => v1_rt::map_get(&env, n.clone()),
+        SizeExpr::SizeLen { collection: c, .. } => v1_rt::map_get(&env, c.clone()),
+        SizeExpr::SizeAdd {
+            left: l, right: r, ..
+        } => match eval_size_expr_concrete(l.clone(), env.clone()) {
+            Some(lv) => match eval_size_expr_concrete(r.clone(), env.clone()) {
+                Some(rv) => Some((lv.clone() + rv.clone())),
+                None => None,
+            },
+            None => None,
+        },
+        SizeExpr::SizeMax {
+            left: l, right: r, ..
+        } => match eval_size_expr_concrete(l.clone(), env.clone()) {
+            Some(lv) => match eval_size_expr_concrete(r.clone(), env.clone()) {
+                Some(rv) => Some(if (lv.clone() >= rv.clone()) {
+                    lv.clone()
+                } else {
+                    rv.clone()
+                }),
+                None => None,
+            },
+            None => None,
+        },
+    })
+}
+
+pub fn int_max2(a: i64, b: i64) -> i64 {
+    if (a.clone() >= b.clone()) {
+        a.clone()
+    } else {
+        b.clone()
+    }
+}
+
+pub fn eval_cost_expr_concrete(e: Rc<CostExpr>, env: Rc<HashMap<String, i64>>) -> Option<i64> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*e.clone()).clone() {
+        CostExpr::CostConst { value: v, .. } => Some(v.clone()),
+        CostExpr::CostAdd {
+            left: l, right: r, ..
+        } => match eval_cost_expr_concrete(l.clone(), env.clone()) {
+            Some(lv) => match eval_cost_expr_concrete(r.clone(), env.clone()) {
+                Some(rv) => Some((lv.clone() + rv.clone())),
+                None => None,
+            },
+            None => None,
+        },
+        CostExpr::CostMul {
+            left: l, right: r, ..
+        } => match eval_cost_expr_concrete(l.clone(), env.clone()) {
+            Some(lv) => match eval_cost_expr_concrete(r.clone(), env.clone()) {
+                Some(rv) => Some((lv.clone() * rv.clone())),
+                None => None,
+            },
+            None => None,
+        },
+        CostExpr::CostMax {
+            left: l, right: r, ..
+        } => match eval_cost_expr_concrete(l.clone(), env.clone()) {
+            Some(lv) => match eval_cost_expr_concrete(r.clone(), env.clone()) {
+                Some(rv) => Some(int_max2(lv.clone(), rv.clone())),
+                None => None,
+            },
+            None => None,
+        },
+        CostExpr::CostSum {
+            upper: up,
+            body: bd,
+            ..
+        } => match eval_size_expr_concrete(up.clone(), env.clone()) {
+            Some(n) => match eval_cost_expr_concrete(bd.clone(), env.clone()) {
+                Some(bv) => Some((n.clone() * bv.clone())),
+                None => None,
+            },
+            None => None,
+        },
+        CostExpr::CostLog { .. } => None,
+        CostExpr::CostExtern { name: _, .. } => None,
+        CostExpr::CostUnknown { reason: _, .. } => None,
+    })
+}
+
 pub fn collection_output(binder: String, size: Rc<SizeExpr>) -> Rc<HashMap<String, Rc<CostExpr>>> {
     {
         let result = seed_cost_map(
@@ -7664,6 +7920,7 @@ pub fn resolve_callback_cost(
                 span: Rc::new(CostExpr::CostConst { value: 1 }),
                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                 certainty: Certainty::Conservative,
+                peak_space: None,
             }),
             table: recv_r.table.clone(),
         }),
@@ -7721,6 +7978,7 @@ pub fn cost_of_method_by_shape(
                     span: cost_seq(recv_r.summary.clone().span.clone(), loop_work.clone()),
                     output_size: os.clone(),
                     certainty: body_result.summary.clone().certainty.clone(),
+                    peak_space: None,
                 }),
                 table: body_result.table.clone(),
             })
@@ -7743,6 +8001,7 @@ pub fn cost_of_method_by_shape(
                         span: Rc::new(CostExpr::CostConst { value: 1 }),
                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
+                        peak_space: None,
                     }),
                     table: recv_r.table.clone(),
                 }),
@@ -7770,6 +8029,7 @@ pub fn cost_of_method_by_shape(
                     span: cost_seq(recv_r.summary.clone().span.clone(), sort_work.clone()),
                     output_size: sort_os.clone(),
                     certainty: key_result.summary.clone().certainty.clone(),
+                    peak_space: None,
                 }),
                 table: key_result.table.clone(),
             })
@@ -7798,6 +8058,7 @@ pub fn cost_of_method_by_shape(
                     span: cost_seq(recv_r.summary.clone().span.clone(), loop_work.clone()),
                     output_size: scan_os.clone(),
                     certainty: recv_r.summary.clone().certainty.clone(),
+                    peak_space: None,
                 }),
                 table: recv_r.table.clone(),
             })
@@ -7814,6 +8075,7 @@ pub fn cost_of_method_by_shape(
                 ),
                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                 certainty: recv_r.summary.clone().certainty.clone(),
+                peak_space: None,
             }),
             table: recv_r.table.clone(),
         }),
@@ -8616,6 +8878,7 @@ pub fn cost_of_expr(
                     span: Rc::new(CostExpr::CostConst { value: 1 }),
                     output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Proven,
+                    peak_space: None,
                 }),
                 table: table.clone(),
             }),
@@ -8625,6 +8888,7 @@ pub fn cost_of_expr(
                     span: Rc::new(CostExpr::CostConst { value: 0 }),
                     output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Proven,
+                    peak_space: None,
                 }),
                 table: table.clone(),
             }),
@@ -8634,6 +8898,7 @@ pub fn cost_of_expr(
                     span: Rc::new(CostExpr::CostConst { value: 1 }),
                     output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Proven,
+                    peak_space: None,
                 }),
                 table: table.clone(),
             }),
@@ -8676,6 +8941,7 @@ pub fn cost_of_expr(
                         ),
                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
+                        peak_space: None,
                     }),
                     table: rr.table.clone(),
                 })
@@ -8698,6 +8964,7 @@ pub fn cost_of_expr(
                             span: Rc::new(CostExpr::CostConst { value: 1 }),
                             output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
+                            peak_space: None,
                         }),
                         table: table.clone(),
                     }),
@@ -8709,6 +8976,7 @@ pub fn cost_of_expr(
                             span: Rc::new(CostExpr::CostConst { value: 0 }),
                             output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
+                            peak_space: None,
                         }),
                         table: callee_result.table.clone(),
                     }),
@@ -8734,6 +9002,7 @@ pub fn cost_of_expr(
                                 ),
                                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
+                                peak_space: None,
                             }),
                             table: ar.table.clone(),
                         })
@@ -8751,6 +9020,7 @@ pub fn cost_of_expr(
                         ),
                         output_size: callee_result.summary.clone().output_size.clone(),
                         certainty: callee_result.summary.clone().certainty.clone(),
+                        peak_space: None,
                     }),
                     table: args_result.table.clone(),
                 })
@@ -8808,6 +9078,7 @@ pub fn cost_of_expr(
                                         ),
                                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                         certainty: recv_r.summary.clone().certainty.clone(),
+                                        peak_space: None,
                                     }),
                                     table: recv_r.table.clone(),
                                 })),
@@ -8826,6 +9097,7 @@ pub fn cost_of_expr(
                                     span: Rc::new(CostExpr::CostConst { value: 0 }),
                                     output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                     certainty: Certainty::Proven,
+                                    peak_space: None,
                                 }),
                                 table: recv_r.table.clone(),
                             }),
@@ -8851,6 +9123,7 @@ pub fn cost_of_expr(
                                         ),
                                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                         certainty: Certainty::Proven,
+                                        peak_space: None,
                                     }),
                                     table: ar.table.clone(),
                                 })
@@ -8874,6 +9147,7 @@ pub fn cost_of_expr(
                                 ),
                                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
+                                peak_space: None,
                             }),
                             table: args_result.table.clone(),
                         })
@@ -8900,6 +9174,7 @@ pub fn cost_of_expr(
                                 span: Rc::new(CostExpr::CostConst { value: 0 }),
                                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
+                                peak_space: None,
                             }),
                             table: s_r.table.clone(),
                         }),
@@ -8928,6 +9203,7 @@ pub fn cost_of_expr(
                                     ),
                                     output_size: ar.summary.clone().output_size.clone(),
                                     certainty: ar.summary.clone().certainty.clone(),
+                                    peak_space: None,
                                 }),
                                 table: ar.table.clone(),
                             }),
@@ -8956,6 +9232,7 @@ pub fn cost_of_expr(
                             .output_size
                             .clone(),
                         certainty: arms_accum.result.clone().summary.clone().certainty.clone(),
+                        peak_space: None,
                     }),
                     table: arms_accum.result.clone().table.clone(),
                 })
@@ -9003,6 +9280,7 @@ pub fn cost_of_expr(
                             span: Rc::new(CostExpr::CostConst { value: 0 }),
                             output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
+                            peak_space: None,
                         }),
                         table: t_r.table.clone(),
                     }),
@@ -9025,6 +9303,7 @@ pub fn cost_of_expr(
                         ),
                         output_size: t_r.summary.clone().output_size.clone(),
                         certainty: Certainty::Proven,
+                        peak_space: None,
                     }),
                     table: e_result.table.clone(),
                 })
@@ -9063,6 +9342,7 @@ pub fn cost_of_expr(
                                 ),
                                 output_size: b_r.summary.clone().output_size.clone(),
                                 certainty: b_r.summary.clone().certainty.clone(),
+                                peak_space: None,
                             }),
                             table: b_r.table.clone(),
                         })
@@ -9077,6 +9357,7 @@ pub fn cost_of_expr(
                         span: Rc::new(CostExpr::CostConst { value: 0 }),
                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
+                        peak_space: None,
                     }),
                     table: table.clone(),
                 }),
@@ -9102,6 +9383,7 @@ pub fn cost_of_expr(
                             ),
                             output_size: sr.summary.clone().output_size.clone(),
                             certainty: sr.summary.clone().certainty.clone(),
+                            peak_space: None,
                         }),
                         table: sr.table.clone(),
                     })
@@ -9141,6 +9423,7 @@ pub fn cost_of_expr(
                         span: cost_seq(c_r.summary.clone().span.clone(), loop_work.clone()),
                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: bd_r.summary.clone().certainty.clone(),
+                        peak_space: None,
                     }),
                     table: bd_r.table.clone(),
                 })
@@ -9152,6 +9435,7 @@ pub fn cost_of_expr(
                         span: Rc::new(CostExpr::CostConst { value: 0 }),
                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
+                        peak_space: None,
                     }),
                     table: table.clone(),
                 }),
@@ -9177,6 +9461,7 @@ pub fn cost_of_expr(
                             ),
                             output_size: cr.summary.clone().output_size.clone(),
                             certainty: cr.summary.clone().certainty.clone(),
+                            peak_space: None,
                         }),
                         table: cr.table.clone(),
                     })
@@ -9189,6 +9474,7 @@ pub fn cost_of_expr(
                         span: Rc::new(CostExpr::CostConst { value: 1 }),
                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
+                        peak_space: None,
                     }),
                     table: table.clone(),
                 }),
@@ -9214,6 +9500,7 @@ pub fn cost_of_expr(
                             ),
                             output_size: cr.summary.clone().output_size.clone(),
                             certainty: cr.summary.clone().certainty.clone(),
+                            peak_space: None,
                         }),
                         table: cr.table.clone(),
                     })
@@ -9266,6 +9553,7 @@ pub fn get_or_compute_summary(
                     span: Rc::new(CostExpr::CostConst { value: 0 }),
                     output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                     certainty: Certainty::Conservative,
+                    peak_space: None,
                 });
                 let table_prepped = if is_recursive.clone() {
                     cache_summary(table.clone(), func_name.clone(), zero_placeholder.clone())
@@ -9302,6 +9590,7 @@ pub fn get_or_compute_summary(
                                 ),
                                 output_size: result.summary.clone().output_size.clone(),
                                 certainty: Certainty::Conservative,
+                                peak_space: None,
                             })
                         } else {
                             Rc::new(ComplexitySummary {
@@ -9317,16 +9606,22 @@ pub fn get_or_compute_summary(
                                 ),
                                 output_size: result.summary.clone().output_size.clone(),
                                 certainty: Certainty::Conservative,
+                                peak_space: None,
                             })
                         }
                     }
                     None => result.summary.clone(),
                 };
+                let simplified_work = simplify_cost(bounded.work.clone());
                 let simplified = Rc::new(ComplexitySummary {
-                    work: simplify_cost(bounded.work.clone()),
+                    work: simplified_work.clone(),
                     span: simplify_cost(bounded.span.clone()),
                     output_size: bounded.output_size.clone(),
                     certainty: bounded.certainty.clone(),
+                    peak_space: Some(derive_peak_space(
+                        simplified_work.clone(),
+                        bounded.output_size.clone(),
+                    )),
                 });
                 let final_table =
                     cache_summary(result.table.clone(), func_name.clone(), simplified.clone());
@@ -9354,6 +9649,7 @@ pub fn get_or_compute_summary(
                             }),
                             output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Conservative,
+                            peak_space: None,
                         });
                         Rc::new(SummaryResult {
                             summary: miss_summary.clone(),
@@ -9371,6 +9667,7 @@ pub fn get_or_compute_summary(
                             }),
                             output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Conservative,
+                            peak_space: None,
                         });
                         Rc::new(SummaryResult {
                             summary: external_summary.clone(),
