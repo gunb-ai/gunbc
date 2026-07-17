@@ -134,3 +134,104 @@ test fn roadmap_belt_witnesses() -> Bool {
     && witness_belt_plan_paused_holds_on_authority()
     && witness_belt_status_json_shape()
 }
+
+fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSession {
+  DispatchLiveSession {
+    session_name: "gunbc-dispatch-{node_id}",
+    node_id: node_id,
+    windows: 1,
+    lease_verdict: verdict,
+  }
+}
+
+fn spawns_node(r: BeltReconcile, id: String) -> Bool {
+  any(belt_member_ids(ms: r.spawns), x => x == id)
+}
+
+fn tears_down_node(r: BeltReconcile, id: String) -> Bool {
+  any(belt_member_ids(ms: r.teardowns), x => x == id)
+}
+
+fn witness_reconcile_spawns_ready_missing_session() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let r = belt_reconcile(state: Running, frontier: f, live: [], cap: cap(n: 3))
+  belt_reconcile_spawn_count(r: r) == 2
+    && spawns_node(r: r, id: "a")
+    && spawns_node(r: r, id: "b")
+    && belt_reconcile_teardown_count(r: r) == 0
+    && belt_reconcile_refusal_count(r: r) == 0
+}
+
+fn witness_reconcile_noop_when_ready_and_live() -> Bool {
+  let f = frontier_ready(ids: ["a"])
+  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "a", verdict: Converged)], cap: cap(n: 3))
+  belt_reconcile_spawn_count(r: r) == 0
+    && belt_reconcile_teardown_count(r: r) == 0
+    && belt_reconcile_refusal_count(r: r) == 0
+}
+
+fn witness_reconcile_reaps_owned_done_session() -> Bool {
+  let f = frontier_ready(ids: ["a"])
+  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
+  belt_reconcile_teardown_count(r: r) == 1
+    && tears_down_node(r: r, id: "z")
+    && belt_reconcile_spawn_count(r: r) == 1
+    && spawns_node(r: r, id: "a")
+    && belt_reconcile_refusal_count(r: r) == 0
+}
+
+fn witness_reconcile_reaps_drifted_owned_session() -> Bool {
+  let f = frontier_ready(ids: [])
+  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Drifted)], cap: cap(n: 3))
+  belt_reconcile_teardown_count(r: r) == 1 && tears_down_node(r: r, id: "z")
+}
+
+fn witness_r5_refuses_foreign_teardown() -> Bool {
+  let f = frontier_ready(ids: ["a"])
+  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
+  belt_reconcile_teardown_count(r: r) == 0
+    && !tears_down_node(r: r, id: "z")
+    && belt_reconcile_refusal_count(r: r) == 1
+    && belt_reconcile_spawn_count(r: r) == 1
+}
+
+fn witness_r5_refuses_nameonly_teardown() -> Bool {
+  let f = frontier_ready(ids: [])
+  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: UnknownRefused)], cap: cap(n: 3))
+  belt_reconcile_teardown_count(r: r) == 0 && belt_reconcile_refusal_count(r: r) == 1
+}
+
+fn witness_reconcile_capacity_defers_surfaced() -> Bool {
+  let f = frontier_ready(ids: ["a", "b", "c"])
+  let r = belt_reconcile(state: Running, frontier: f, live: [], cap: cap(n: 1))
+  belt_reconcile_spawn_count(r: r) == 1 && r.deferred == 2
+}
+
+fn witness_reconcile_paused_no_actions() -> Bool {
+  let f = frontier_ready(ids: ["a", "b"])
+  let r = belt_reconcile(state: Paused, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
+  belt_reconcile_spawn_count(r: r) == 0
+    && belt_reconcile_teardown_count(r: r) == 0
+    && belt_reconcile_refusal_count(r: r) == 0
+}
+
+fn witness_reconcile_status_json_shape() -> Bool {
+  let f = frontier_ready(ids: ["a"])
+  let j = belt_reconcile_status_json(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
+  string_contains(s: j, pattern: "roadmap-belt-reconcile/v1")
+    && string_contains(s: j, pattern: "would_teardown")
+    && string_contains(s: j, pattern: "refusal_count")
+    && string_contains(s: j, pattern: "deferred")
+}
+
+test fn roadmap_belt_reconcile_witnesses() -> Bool {
+  witness_reconcile_spawns_ready_missing_session()
+    && witness_reconcile_noop_when_ready_and_live()
+    && witness_reconcile_reaps_owned_done_session()
+    && witness_reconcile_reaps_drifted_owned_session()
+    && witness_r5_refuses_foreign_teardown()
+    && witness_r5_refuses_nameonly_teardown()
+    && witness_reconcile_capacity_defers_surfaced()
+    && witness_reconcile_paused_no_actions()
+    && witness_reconcile_status_json_shape()
+}

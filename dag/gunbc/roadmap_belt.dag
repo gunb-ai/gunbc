@@ -11,10 +11,7 @@ import gunbc.membership_reconcile {
   membership_reconcile,
 }
 import gunbc.ownership { Ownership, Owned }
-import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
-import std.upsert_decision {
-  ObservationVerdict, Converged, Drifted, Conflict, Inaccessible, UnknownRefused
-}
+import gunbc.roadmap_dispatch_actuator { DispatchLiveSession, dispatch_session_is_owned }
 import extdeps.languages.json.emit {
   JsonValue,
   serialize_json,
@@ -202,29 +199,21 @@ data belt_value_eq_note: String = "Presence-only equality (always true): a ready
 
 fn dispatch_member_value_eq(a: DispatchMember, b: DispatchMember) -> Bool { true }
 
-data belt_ownership_mapping_note: String = "R5 owned-only teardown at session grain. A live dispatch session is teardown-eligible (Owned) ONLY when its lease verdict proves it is OUR process: Converged (running with our expected process fingerprint) or Drifted (our fingerprint, stale lease — a reap-able stale-ours session, matching the actuator's DrainStale treatment). Conflict (foreign process owns the slot), Inaccessible, UnknownRefused, and the N/A Absent are NOT owned => the spine REFUSES teardown (counted, surfaced), never kills a session it cannot prove it owns. Name-only tmux-ls observation (SessionNameObserved) yields UnknownRefused/Inaccessible only, so teardown FAIL-CLOSED-REFUSES until the observation carries a process fingerprint (SessionObserved) — correct R5: no ownership proof, no reap. Fingerprint-confident observation is the slice-2b actuation. The coarse spine cause (foreign Conflict collapses to OwnershipUnknown because gunbc.ownership has no observed-but-foreign stance distinct from Ensured=required-dependency) is retained finely in the ObservedMember payload for belt surfacing; a spine-cause refinement is a coordinated evolution, not a belt fork."
+data belt_ownership_mapping_note: String = "R5 owned-only teardown at session grain. Teardown-eligibility (Owned) is the actuator's dispatch_session_is_owned Bool (Converged/Drifted = OUR process; Conflict/Inaccessible/UnknownRefused/Absent = not owned — see dispatch_session_ownership_note). This fn LIFTS that Bool into gunbc.ownership.Ownership? for the spine's teardown gate: owned -> Present{Owned} (reap), not-owned -> Absent -> OwnershipUnknown -> the spine REFUSES teardown (counted, surfaced), never kills a session it cannot prove it owns. The coarse spine cause (foreign Conflict collapses to OwnershipUnknown because gunbc.ownership has no observed-but-foreign stance distinct from Ensured=required-dependency) is retained finely in the ObservedMember payload (session.lease_verdict) for belt surfacing; a spine-cause refinement is a coordinated evolution, not a belt fork. Keeping the verdict match in the actuator lets roadmap_belt avoid importing ObservationVerdict, whose Absent variant collides with Optional.Absent."
 
-fn belt_verdict_is_owned(v: ObservationVerdict) -> Bool {
-  match v {
-    Converged => true
-    Drifted => true
-    Conflict => false
-    Inaccessible => false
-    UnknownRefused => false
-    _ => false
-  }
-}
+fn belt_ownership_owned() -> Ownership? { Present { value: Owned } }
+fn belt_ownership_unknown() -> Ownership? { Absent }
 
-fn belt_session_ownership(v: ObservationVerdict) -> Ownership? {
-  if belt_verdict_is_owned(v: v) { Present { value: Owned } } else { Absent }
+fn belt_session_ownership(session: DispatchLiveSession) -> Ownership? {
+  if dispatch_session_is_owned(session: session) { belt_ownership_owned() } else { belt_ownership_unknown() }
 }
 
 data belt_desired_member_ownership_note: String = "ownership_of is called by the spine ONLY on Removed (observed-side) members; a DesiredMember is on the desired side and is never Removed, so this arm is unreachable by construction. IF reached it returns Absent => OwnershipUnknown => REFUSE (fail-closed, DESIGN §5) — never a fabricated Owned that would license a teardown."
 
 fn dispatch_member_ownership(m: DispatchMember) -> Ownership? {
   match m {
-    ObservedMember { node_id: _, session } => belt_session_ownership(v: session.lease_verdict)
-    DesiredMember { node_id: _, node: _ } => Absent
+    ObservedMember { node_id: _, session } => belt_session_ownership(session: session)
+    DesiredMember { node_id: _, node: _ } => belt_ownership_unknown()
   }
 }
 
