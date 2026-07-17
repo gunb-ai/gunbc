@@ -911,7 +911,8 @@ data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" }
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_compile" }
 ]
 
 fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
