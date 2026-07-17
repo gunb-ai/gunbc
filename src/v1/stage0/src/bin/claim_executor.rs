@@ -12,11 +12,11 @@ use std::time::Instant;
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, enable_floor_compile_clean_lazy_install,
-    make_eval_context, resolve_entry_graph, resolve_entry_graph_shared, run_claim,
-    run_discovery_corpus_with_options, run_value, set_phase, top_n_slowest_witnesses, ClaimOutcome,
-    DiscoveryCorpusOptions, DiscoverySummary, DiscoveryWidthPolicy, FloorPhase, HistogramData,
-    NodeFrontierSelectionMode, PhaseProfile, TimingPercentiles, WitnessTimingRow,
-    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    install_floor_compile_clean_receipt, make_eval_context, resolve_entry_graph,
+    resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
+    top_n_slowest_witnesses, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary,
+    DiscoveryWidthPolicy, FloorPhase, HistogramData, NodeFrontierSelectionMode, PhaseProfile,
+    TimingPercentiles, WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::memory_governor::{
     binding_cap_cgroup_dir, binding_high_cgroup_dir, leaf_cgroup_dir, mem_total_bytes,
@@ -1520,6 +1520,7 @@ fn run_walk(
         // resolve, or (b) its entry is already in walk_memo from a prior batch — in
         // which case re-resolving would be redundant regardless of profile.
         let mut memo_units: Vec<BatchUnit> = Vec::new();
+        let mut main_thread_units: Vec<BatchUnit> = Vec::new();
         let mut thread_units: Vec<BatchUnit> = Vec::new();
         for unit in units {
             match &unit {
@@ -1534,6 +1535,14 @@ fn run_walk(
                 } if walk_memo.contains_key(&(entry.clone(), *execution_mode)) => {
                     memo_units.push(unit)
                 }
+                // Discovery pumps run on the MAIN thread: `process_shared_index` is
+                // thread-local (Rc-based, !Send), and the eagerly-installed compile-clean
+                // receipt (see the install before run_walk) warmed THIS thread's index —
+                // routing the pump here is what lets batch-2's witness resolves read the
+                // gate's content-keyed typed store instead of re-typechecking the tree
+                // (lever 1, PR #6766). No wall-clock loss: the main thread previously
+                // idled at the join while the one Discovery unit ran on a spawned thread.
+                BatchUnit::Discovery { .. } => main_thread_units.push(unit),
                 _ => thread_units.push(unit),
             }
         }
@@ -1581,6 +1590,18 @@ fn run_walk(
                 );
                 memo_results.extend(results);
             }
+        }
+        // Discovery pumps on the main thread (see the partition above): the pump's
+        // `process_shared_index` is this thread's — the one the eager compile-clean
+        // receipt install warmed — so the corpus reads the gate's typed store.
+        for unit in main_thread_units {
+            memo_results.extend(run_batch_unit(
+                source_roots.to_vec(),
+                unit,
+                governor.clone(),
+                fast_lane_eval_budget_ms,
+                falsifier_self_host_wet_budgets,
+            ));
         }
         // Collect all results before printing any PASS/FAIL — the prints must land
         // after `group_end`, and a thread panic still has to close the group.
@@ -2069,7 +2090,18 @@ fn run() -> Result<ExitCode, ExitCode> {
     if plan_function == "gunbc_ci_floor_batches"
         || plan_function == "gunbc_ci_plan_artifact_batches"
     {
-        enable_floor_compile_clean_lazy_install();
+        enable_floor_compile_clean_lazy_install(&source_roots);
+        // Eager install on the MAIN thread (lever 1, PR #6766): the receipt compile
+        // rides this thread's `process_shared_index` — the same thread-local universe
+        // the Discovery pump (main-thread lane in run_walk) resolves batch-2 witnesses
+        // against — so the typed store the gate fills is the one the corpus reads.
+        // Plan resolve completed above, matching the lazy path's ordering. The lazy
+        // consume fallback stays armed; with the receipt installed here it never fires.
+        // A refused install is loud AND fail-closed: the gate node consumes the
+        // installed receipt (including a Refused one) and reds the floor.
+        if let Err(msg) = install_floor_compile_clean_receipt() {
+            eprintln!("claim_executor: eager compile-clean receipt install refused: {msg}");
+        }
     }
 
     let outcome = run_walk(&source_roots, &batches, &governor, fast_lane_eval_budget_ms);
