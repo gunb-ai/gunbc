@@ -1,0 +1,29 @@
+module tools.self_host_04_infer_behavioral_transport
+
+import tools.self_host_curated_seed_linked_harness { cssl_seed_linked_behavioral_receipt }
+import v2.std.collection { List }
+import std.logic { Bool }
+
+data i4_doc: String = "Gate-A flip prep (04_infer self-emit): curated seed-linked behavioral receipt via tools.self_host_curated_seed_linked_harness. Emit ONLY v2.compiler.infer via gunbc compile --entry; runtime gunbc closure (empty shim_lib + shim_writes) — no committed frozen dep snapshots. Seed oracle: v1_compiler::v2_compiler_infer in src/v1/stage0 (exported module-authority constant from 04_infer.dag). Witness compares emitted vs seed on infer_arrow_domain_binding_heuristic_note with inject-fault perturbing emitted side (03_resolve pattern). Full infer-tree behavioral oracle deferred until post-#6775 Rc/Optional emit surface greens. Frontier NOT flipped until rustc-green receipt — migration_trigger stays ^migrate_when_closure_self_emits_cargo_green (compiler_frontier_row_04_infer, src/v2/compiler/self_host/frontier.dag)."
+
+data i4_emit_surface_note: String = "emit-surface rustc refusal probe (04_infer entry): tracked against #6775 landing (emit: Rc/Optional coherence) — the migration_trigger this scaffold flips on. Runtime emit supplies dep closure."
+
+data i4_source_rel: String = "src/v2/compiler/04_infer.dag"
+
+data i4_shim_driver_rel: String = "dag/tools/self_host_04_infer_shims/witness_main.rs"
+
+data i4_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_04_infer_shims/witness_main.rs + i4 harness transport. DISSOLVES WHEN modeled self-host behavioral-equivalence harness emits comparison driver + manifest."
+
+data i4_receipt_pass_marker: String = "SELF_HOST_04_INFER_BEHAVIORAL_RECEIPT: PASS"
+
+fn i4_behavioral_receipt_holds() -> Bool {
+  cssl_seed_linked_behavioral_receipt(
+    source_rel: i4_source_rel,
+    shim_lib_rel: "",
+    shim_writes: [],
+    driver_rel: i4_shim_driver_rel,
+    pass_marker: i4_receipt_pass_marker,
+    claim_entry_rel: "",
+    claim_function: ""
+  )
+}

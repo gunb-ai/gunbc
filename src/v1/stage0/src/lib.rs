@@ -119,6 +119,7 @@ pub mod v1_std_core;
 pub mod v1_test_non_ascii_perf_fixture;
 pub mod v2_compiler_body_producer;
 pub mod v2_compiler_discovery_enumeration;
+pub mod v2_compiler_infer;
 pub mod v2_compiler_parse_engine_hooks;
 pub mod v2_compiler_resolve;
 pub mod v2_compiler_target_carriers;
