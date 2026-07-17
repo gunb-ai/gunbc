@@ -716,214 +716,6 @@ mod process_workspace_root_tests {
     }
 }
 
-/// Locate-only oracle helpers (quiet-gull-833 hypotheses 11–12). Not floor-enrolled.
-#[cfg(test)]
-mod global_bare_wiring_oracle_tests {
-    use super::{
-        anchor_source_root, build_corpus_global_bare_census_from_index, build_module_graph_facts_live,
-        build_module_index_primary_precedence, build_multi_entry_index, census_module_path_included,
-        compile_clean_diagnostic_is_hard, disable_floor_compile_clean_lazy_install_for_test,
-        load_compile_clean_entry_sources, merge_source_indices, reconcile_with_typed_cache,
-        set_census_eval_overlay, set_purity_oracle_ignore_typed_cache, v1_compiler_compile,
-        v1_compiler_normalize, v1_rt, witness_layer_roots,
-        workspace_relative_repo_path, CompileCleanScopePlan, MultiEntryIndex,
-    };
-    use crate::v1_std_core::CompilerDiagnostic;
-    use std::collections::BTreeMap;
-    use std::rc::Rc;
-
-    fn hard_diag_stats(result: &v1_compiler_compile::ResolvedPipelineResult) -> (usize, BTreeMap<String, usize>) {
-        let mut by_class = BTreeMap::new();
-        let mut total = 0usize;
-        for d in result.diagnostics.iter().filter(|d| compile_clean_diagnostic_is_hard(d)) {
-            total += 1;
-            let class = match d.diagnostic.as_ref() {
-                CompilerDiagnostic::UnresolvedImport { .. } => "UnresolvedImport",
-                CompilerDiagnostic::MissingExport { .. } => "MissingExport",
-                CompilerDiagnostic::UnresolvedType { .. } => "UnresolvedType",
-                CompilerDiagnostic::TypeMismatch { .. } => "TypeMismatch",
-                CompilerDiagnostic::ArityMismatch { .. } => "ArityMismatch",
-                CompilerDiagnostic::VariantNotFound { .. } => "VariantNotFound",
-                CompilerDiagnostic::FieldNotFound { .. } => "FieldNotFound",
-                CompilerDiagnostic::MissingField { .. } => "MissingField",
-                CompilerDiagnostic::NonExhaustiveMatch { .. } => "NonExhaustiveMatch",
-                CompilerDiagnostic::CircularDependency { .. } => "CircularDependency",
-                CompilerDiagnostic::DuplicateModule { .. } => "DuplicateModule",
-                CompilerDiagnostic::MissingAnnotation { .. } => "MissingAnnotation",
-                CompilerDiagnostic::ParseError { .. } => "ParseError",
-                CompilerDiagnostic::InternalError { .. } => "InternalError",
-                CompilerDiagnostic::ComplexityUnknown { .. } => "ComplexityUnknown",
-                CompilerDiagnostic::OwnershipViolation { .. } => "OwnershipViolation",
-                CompilerDiagnostic::VariantCollision { .. } => "VariantCollision",
-                CompilerDiagnostic::SoleConstructorViolation { .. } => "SoleConstructorViolation",
-                CompilerDiagnostic::UnlistedImportUse { .. } => "UnlistedImportUse",
-            };
-            *by_class.entry(class.to_string()).or_default() += 1;
-        }
-        (total, by_class)
-    }
-
-    fn whole_tree_on_shared_index(
-        index: &MultiEntryIndex,
-        clear_typed_cache: bool,
-        ignore_typed_cache_reads: bool,
-    ) -> Result<(usize, BTreeMap<String, usize>), String> {
-        use super::{
-            merge_source_indices, reconcile_with_typed_cache, v1_compiler_compile,
-            v1_compiler_normalize, v1_rt,
-        };
-
-        set_purity_oracle_ignore_typed_cache(ignore_typed_cache_reads);
-        if clear_typed_cache {
-            index.typed_module_cache.borrow_mut().clear();
-        }
-        let (global_bare, census_source_indices, overlay) =
-            build_corpus_global_bare_census_from_index(index)?;
-        set_census_eval_overlay(overlay);
-        let anchored_roots: Vec<String> = witness_layer_roots()
-            .iter()
-            .map(|r| anchor_source_root(r))
-            .collect();
-        let index_module = build_module_index_primary_precedence(&anchored_roots);
-        let facts = build_module_graph_facts_live(&anchored_roots);
-        let sources = load_compile_clean_entry_sources(
-            &anchored_roots,
-            &index_module,
-            &facts,
-            None,
-        )?;
-        let sources_rc: Rc<im_rc::Vector<Rc<v1_compiler_compile::SourceFile>>> =
-            Rc::new(sources.into());
-        let frontend = v1_compiler_compile::front_end_sources(sources_rc.clone());
-        let newline_indices = frontend.newline_indices.clone();
-        let graph = match frontend.graph.clone() {
-            Some(g) => g,
-            None => {
-                return Ok(hard_diag_stats(&v1_compiler_compile::ResolvedPipelineResult {
-                    graph: None,
-                    diagnostics: frontend.diagnostics.clone(),
-                    source_indices: v1_rt::rc_empty_map(),
-                    complexity: v1_compiler_compile::empty_complexity_report(),
-                    ownership: Rc::new(im_rc::Vector::new()),
-                    newline_indices: newline_indices.clone(),
-                }));
-            }
-        };
-        let source_indices = newline_indices.iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<crate::v1_std_core::NewlineIndex>>(),
-            |acc, idx| v1_rt::rc_map_insert(acc, idx.file.clone(), idx.clone()),
-        );
-        let source_indices = merge_source_indices(source_indices, census_source_indices);
-        let norm = v1_compiler_normalize::normalize_graph(graph.clone(), source_indices.clone());
-        let typed = reconcile_with_typed_cache(
-            norm.graph.clone(),
-            source_indices.clone(),
-            frontend.intern_table.clone(),
-            index,
-            global_bare,
-        )?;
-        let diags = v1_rt::concat(
-            v1_rt::concat(frontend.diagnostics.clone(), norm.diagnostics.clone()),
-            typed.diagnostics.clone(),
-        );
-        let result = v1_compiler_compile::ResolvedPipelineResult {
-            graph: Some(typed.clone()),
-            diagnostics: diags,
-            source_indices,
-            complexity: v1_compiler_compile::empty_complexity_report(),
-            ownership: Rc::new(im_rc::Vector::new()),
-            newline_indices,
-        };
-        Ok(hard_diag_stats(&result))
-    }
-
-    /// Gate audit: which whole-tree closure modules fail `census_module_path_included`?
-    #[test]
-    fn census_module_path_included_gate_audit() {
-        disable_floor_compile_clean_lazy_install_for_test();
-        std::env::remove_var("GITHUB_ACTIONS");
-        std::env::remove_var("GUNBC_CI_DIFF_BASE");
-
-        let anchored_roots: Vec<String> = witness_layer_roots()
-            .iter()
-            .map(|r| anchor_source_root(r))
-            .collect();
-        let index_module = build_module_index_primary_precedence(&anchored_roots);
-        let facts = build_module_graph_facts_live(&anchored_roots);
-        let sources = load_compile_clean_entry_sources(
-            &anchored_roots,
-            &index_module,
-            &facts,
-            None,
-        )
-        .expect("whole-tree entry closure sources");
-
-        let mut gate_false = 0usize;
-        for sf in &sources {
-            let rel = workspace_relative_repo_path(&sf.path);
-            if !census_module_path_included(&rel) {
-                gate_false += 1;
-                eprintln!("GATE_FALSE\t{rel}");
-            }
-        }
-        eprintln!("GATE_SUMMARY\twhole_tree_modules\t{}\tgate_false\t{gate_false}", sources.len());
-
-        for probe in [
-            "dag/std/types.dag",
-            "dag/gunbc/workflow_escalation.dag",
-            "dag/gunbc/fleet_posix_accounts.dag",
-        ] {
-            let ok = census_module_path_included(probe);
-            eprintln!("GATE_PROBE\t{probe}\t{ok}");
-        }
-    }
-
-    /// DESIGN.md cache-purity oracle: cold (typed cache cleared / reads ignored) vs warm (reuse).
-    #[test]
-    #[ignore = "whole-tree resolve ~minutes; run with --ignored"]
-    fn typed_cache_purity_oracle_cold_vs_warm() {
-        disable_floor_compile_clean_lazy_install_for_test();
-        std::env::remove_var("GITHUB_ACTIONS");
-        std::env::remove_var("GUNBC_CI_DIFF_BASE");
-        set_purity_oracle_ignore_typed_cache(false);
-
-        let roots: Vec<String> = witness_layer_roots()
-            .iter()
-            .map(|r| anchor_source_root(r))
-            .collect();
-        let index = build_multi_entry_index(&roots);
-
-        // Establish typed cache (normal whole-tree pass).
-        let (n_first, class_first) = whole_tree_on_shared_index(&index, true, false)
-            .expect("first pass");
-        eprintln!("PURITY_ORACLE\tpass=first_clear\tN={n_first}");
-        for (class, count) in &class_first {
-            eprintln!("PURITY_CLASS\tfirst\t{class}\t{count}");
-        }
-
-        // Warm: reuse typed_module_cache from first pass (production path).
-        let (n_warm, class_warm) =
-            whole_tree_on_shared_index(&index, false, false).expect("warm pass");
-        eprintln!("PURITY_ORACLE\tpass=warm_cache\tN={n_warm}");
-        for (class, count) in &class_warm {
-            eprintln!("PURITY_CLASS\twarm\t{class}\t{count}");
-        }
-
-        // Cold: clear cache and force cache-miss reads (re-typecheck every module).
-        let (n_cold, class_cold) =
-            whole_tree_on_shared_index(&index, true, true).expect("cold pass");
-        eprintln!("PURITY_ORACLE\tpass=cold_recompute\tN={n_cold}");
-        for (class, count) in &class_cold {
-            eprintln!("PURITY_CLASS\tcold\t{class}\t{count}");
-        }
-
-        eprintln!(
-            "PURITY_VERDICT\tfirst={n_first}\twarm={n_warm}\tcold={n_cold}\twarm_ne_cold={}",
-            n_warm != n_cold
-        );
-    }
-}
-
 #[cfg(test)]
 mod workspace_root_discovery_tests {
     use super::workspace_root_from;
@@ -4183,7 +3975,6 @@ fn typed_module_content_key(
     index: &MultiEntryIndex,
     resolved: &Rc<v1_compiler_resolve::ResolvedModule>,
     mod_name: &str,
-<<<<<<< Updated upstream
     interface_hash_by_name: &std::collections::HashMap<String, String>,
 ) -> Result<String, String> {
     let file = &resolved.module.span.file;
@@ -4213,15 +4004,6 @@ fn typed_module_content_key(
                 )
             })?;
         import_hashes.push_back(hash);
-=======
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-    #[cfg(test)]
-    if PURITY_ORACLE_IGNORE_TYPED_CACHE.with(|c| c.get()) {
-        return Ok(None);
-    }
-    if let Some(hit) = index.typed_module_cache.borrow().get(mod_name).cloned() {
-        return Ok(Some(hit));
->>>>>>> Stashed changes
     }
     Ok(typed_module_key(
         module_key(source_hash, Rc::new(import_hashes)),
@@ -4229,7 +4011,6 @@ fn typed_module_content_key(
     ))
 }
 
-<<<<<<< Updated upstream
 /// Record `mod_name`'s interface hash for downstream key derivation (one entry per
 /// module per reconcile; the interface is a pure projection of the typed result).
 fn note_interface_hash(
@@ -4250,16 +4031,6 @@ fn index_get_typed(
     index: &MultiEntryIndex,
     typed_key: &str,
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-=======
-fn index_contains_typed(index: &MultiEntryIndex, mod_name: &str) -> Result<bool, String> {
-    #[cfg(test)]
-    if PURITY_ORACLE_IGNORE_TYPED_CACHE.with(|c| c.get()) {
-        return Ok(false);
-    }
-    if index.typed_module_cache.borrow().contains_key(mod_name) {
-        return Ok(true);
-    }
->>>>>>> Stashed changes
     let Some(store) = index.cross_worker_store.as_ref() else {
         return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
     };
@@ -4491,17 +4262,6 @@ thread_local! {
             reconcile_assembly: 0,
             ownership: 0,
         }) };
-}
-
-#[cfg(test)]
-thread_local! {
-    static PURITY_ORACLE_IGNORE_TYPED_CACHE: std::cell::Cell<bool> =
-        const { std::cell::Cell::new(false) };
-}
-
-#[cfg(test)]
-fn set_purity_oracle_ignore_typed_cache(ignore: bool) {
-    PURITY_ORACLE_IGNORE_TYPED_CACHE.with(|c| c.set(ignore));
 }
 
 fn resolve_stage_slot_reset() {
