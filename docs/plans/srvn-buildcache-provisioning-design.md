@@ -166,11 +166,41 @@ STEP 2 replaces the `if` with fail-closed:
 
 ## 5. Discriminating witness plan
 
+### 5.1 RED control (non-tautological)
+
+The STEP-2 forbidden behavior is modeled as a **separate perturbation sketch**, not asserted from the authority fold:
+
+- `provision_build_cache_absorbing_fallback_widen_sketch` — fabricates `ProvisionConverged` on `DaemonAbsent` (models `ci_retry_escalation_level2` / `-u RUSTC_WRAPPER` widen).
+- `build_cache_provision_gate_accepts` — the gate STEP 2 will enforce; returns `false` when absent observation pairs with a Converged verdict.
+- `witness_red_control_widen_on_absent_rejected_by_gate` — **discriminating control**: widen sketch *does* fabricate Converged on absent, gate *rejects* it, authority verdict *passes* gate. Perturbation is independent of the property checked.
+
+Dropped: `provision_refused_has_no_fallback_arm` (tautology — both coproduct arms returned `true`). Verdict exhaustiveness is structural (two-arm coproduct, no third arm).
+
+### 5.2 P1b spine ordering justification
+
+Walk of `host_standup_spine` phases that could touch compile/cache **before** P1b:
+
+| Phase | Compiles Rust during standup? | Needs sccache? |
+|---|---|---|
+| prefix:bmc-credential-converge | No (BMC probe) | No |
+| prefix:os-install-mechanism | No (solver) | No |
+| prefix:os-install-actuated | No during standup spine itself | No |
+| prefix:host-converge | No (policy emit) | No |
+| P0:host-identity-converge | No (hostnamectl) | No |
+| P0:reach-secrets-network | No (ACL model) | No |
+| P1:runner-deploy-slot | No (runner registration — no cargo build in spine) | No |
+
+**After P1b**, consumers that need sccache: CI jobs and ctrl-build sessions run **post-assimilation**, not during earlier spine phases. P2–P5 are fabric enrollment, green-place pin, session placement, and composite gate — none compile Rust during standup execution.
+
+**Conclusion:** no standup phase before P1b performs a Rust compile needing the cache. P1b after runner slot deploy provisions the shared per-host cache (`PerHostFilesystem` in `sccache_local_facts`) before post-assimilation CI/session workloads consume it.
+
+### 5.3 Witness tiers
+
 | Tier | Witness | Green | RED (perturb) |
 |---|---|---|---|
-| **T1** | `host_build_cache_provision_design_witness_test.dag` | `provision_build_cache_routes_through_host_effect_apply` holds; `ProvisionRefused` for `DaemonAbsent` fixture; no fallback arm in verdict type | Mint `ProvisionDegraded` arm → compile/refuse witness; `DaemonAbsent` → `Converged` → false |
-| **T1** | catalog authority | `catalog_id == sccache_local_id` pins to cited row, not stringly `"sccache"` | wrong id → `CatalogUnknown` |
-| **T2** | spine consumer | `host_standup_spine` includes `P1b:build-cache-provision` row; gap ledger marks modeled | remove row → `host_standup_gap_count` witness fails |
+| **T1** | `host_build_cache_provision_design_witnesses` | authority refuses absent; widen sketch rejected by gate | widen sketch passes gate → witness false |
+| **T1** | catalog authority | `catalog_id == sccache_local_id` pins to cited row | wrong id → `CatalogUnknown` |
+| **T2** | spine consumer | `host_standup_spine` includes `P1b:build-cache-provision` row | remove row → `host_standup_gap_count` witness fails |
 | **T3** | srv1 dry-run | `host_toolchain_ensure(host: srv1, kind: BuildCache)` dry-run receipt on operator host | — |
 | **T4** | live read-back | post-apply `sccache --show-stats` on srv1 **and** srv2; independent of our write | hand-stop daemon → next standup run → `ProvisionRefused`, counted |
 | **T5** | CI consumer | STEP 2: build job without `RUSTC_WRAPPER` unset arm stays green for 7d on main | disable daemon on one host → build job typed refuse, not local fallback |
