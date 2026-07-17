@@ -102,7 +102,7 @@ pub use crate::v1_compiler_infer_service::{
     is_typed_service_call_receiver, service_op_entry,
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
-pub use crate::v1_compiler_infer_sigs::resolve_func_sigs;
+pub use crate::v1_compiler_infer_sigs::{flatten_parent_envs, resolve_func_sigs};
 pub use crate::v1_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
@@ -10845,6 +10845,7 @@ pub fn populate_output_provenance(
                                     ) {
                                         {
                                             let working_env = Rc::new(ResolvedFuncEnv {
+                                                name: func_env.name.clone(),
                                                 local: acc.clone(),
                                                 parents: func_env.parents.clone(),
                                             });
@@ -10934,6 +10935,7 @@ pub fn populate_output_provenance(
             },
         );
         Rc::new(ResolvedFuncEnv {
+            name: func_env.name.clone(),
             local: updated_local.clone(),
             parents: func_env.parents.clone(),
         })
@@ -14636,6 +14638,7 @@ pub fn typecheck_module(
                         source_indices.clone(),
                     ),
                     func_env: Rc::new(ResolvedFuncEnv {
+                        name: authored_name_at(source_indices.clone(), resolved.module.clone()),
                         local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
                         parents: Rc::new(vec![]),
                     }),
@@ -16237,8 +16240,9 @@ pub fn rewire_func_env_parent_links(
                         type_env_cache: m.type_env_cache.clone(),
                         interface: m.interface.clone(),
                         func_env: Rc::new(ResolvedFuncEnv {
+                            name: m.func_env.clone().name.clone(),
                             local: m.func_env.clone().local.clone(),
-                            parents: parents.clone(),
+                            parents: flatten_parent_envs(parents.clone()),
                         }),
                         item_registry: m.item_registry.clone(),
                     })
