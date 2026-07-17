@@ -18,6 +18,7 @@ import gunbc.node_http_server_emit {
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
+import gunbc.ownership { Ownership, Owned, Ensured }
 
 type OwnedArtifactKind =
     ServerScript
@@ -28,19 +29,26 @@ type EnsuredDependencyKind =
     TailscalePackage
   | NodeJsPackage
 
-type DeploymentOwnedStep {
+type DeploymentArtifactStep {
   kind: OwnedArtifactKind
   path: NonEmptyStr
 }
 
-type DeploymentEnsuredStep {
+type DeploymentDependencyStep {
   kind: EnsuredDependencyKind
   package: NonEmptyStr
 }
 
 type DeploymentStep
-  = Owned { step: DeploymentOwnedStep }
-  | Ensured { step: DeploymentEnsuredStep }
+  = Artifact { step: DeploymentArtifactStep }
+  | Dependency { step: DeploymentDependencyStep }
+
+fn deployment_step_ownership(step: DeploymentStep) -> Ownership {
+  match step {
+    Artifact { step: _ } => Owned
+    Dependency { step: _ } => Ensured
+  }
+}
 
 type DeploymentHostTarget {
   host: ComputeHost
@@ -71,33 +79,33 @@ fn srv1_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
-fn deployment_owned_steps() -> List<DeploymentOwnedStep> {
+fn deployment_owned_steps() -> List<DeploymentArtifactStep> {
   [
-    DeploymentOwnedStep { kind: ServerScript, path: gunbc_roadmap_server_path },
-    DeploymentOwnedStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
-    DeploymentOwnedStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
+    DeploymentArtifactStep { kind: ServerScript, path: gunbc_roadmap_server_path },
+    DeploymentArtifactStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
+    DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
   ]
 }
 
-fn deployment_ensured_steps() -> List<DeploymentEnsuredStep> {
+fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
   [
-    DeploymentEnsuredStep { kind: TailscalePackage, package: package_tailscale },
-    DeploymentEnsuredStep { kind: NodeJsPackage, package: package_nodejs },
+    DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale },
+    DeploymentDependencyStep { kind: NodeJsPackage, package: package_nodejs },
   ]
 }
 
 fn deployment_steps_apply_order() -> List<DeploymentStep> {
   concat(
-    map(deployment_ensured_steps(), s => Ensured { step: s }),
-    map(deployment_owned_steps(), s => Owned { step: s })
+    map(deployment_ensured_steps(), s => Dependency { step: s }),
+    map(deployment_owned_steps(), s => Artifact { step: s })
   )
 }
 
-fn deployment_owned_steps_retract_order() -> List<DeploymentOwnedStep> {
+fn deployment_owned_steps_retract_order() -> List<DeploymentArtifactStep> {
   [
-    DeploymentOwnedStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
-    DeploymentOwnedStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
-    DeploymentOwnedStep { kind: ServerScript, path: gunbc_roadmap_server_path },
+    DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
+    DeploymentArtifactStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
+    DeploymentArtifactStep { kind: ServerScript, path: gunbc_roadmap_server_path },
   ]
 }
 

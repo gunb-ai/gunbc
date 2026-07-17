@@ -2,7 +2,7 @@ module gunbc.live_deploy.apply
 
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  DeploymentEnsuredStep,
+  DeploymentDependencyStep,
   deployment_spec_srv1,
   deployment_plan_listen_port,
 }
@@ -103,7 +103,7 @@ fn live_deploy_fold(
 
 fn live_deploy_ensure_dependency(
   spec: DeploymentSpec,
-  dep: DeploymentEnsuredStep,
+  dep: DeploymentDependencyStep,
   transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
