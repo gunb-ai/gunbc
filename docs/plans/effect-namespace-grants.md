@@ -76,7 +76,7 @@ A build is admissible in a replay-lane run when its envelope is: **Read ⊑ {sub
 
 ## 7. Ownership, de-fork sequencing, and decision log (silent-ibex-417, 2026-07-17)
 
-**Ownership.** This doc and its implementation are owned by silent-ibex-417 as of 2026-07-17 (operator handoff). Originating draft is lively-heron-615's, currently inside PR #6738; the handoff mechanics (drop from #6738 vs. land #6738 first) are Q4 below — pending, not yet executed.
+**Ownership.** This doc and its implementation are owned by silent-ibex-417 as of 2026-07-17 (operator handoff: "you'll be owning that doc now/implementation"; earlier: "you can subsume that doc in your own PR as the work lands"). Originating draft is lively-heron-615's, currently also inside PR #6738. Handoff mechanics (Q4): this lane is now the doc's single home; lively-heron-615 asked to drop it from #6738 to avoid a two-PR fork on the same file.
 
 **The concept being decomposed (operator working session, 2026-07-17).** "Effect" is currently carried by ≥5 partial, overlapping, forked vocabularies, each a flat enum that fuses several separable grounded axes:
 
@@ -106,4 +106,4 @@ This is also what dissolves the **String model↔realization fork** that blocked
 | Q1 | Verb set — start closed at `{Read, Write}`? (`Execute`/`Create` as later rows only when a displaced cost names them.) | Yes | _pending_ |
 | Q2 | Interim target realization — path-string prefix over the OS/URI trees now, converging onto `SymbolIndex` when the naming lane lands; the convergence row is the anti-fork commitment. | Yes, with the convergence row as a hard commitment | _pending_ |
 | Q3 | `AuthScope` — converge into the grant model where it encodes reach, or stay identity-side? | Defer: identity-side for P-A; revisit when a reach-encoding consumer names the cost (avoid speculative convergence). | _pending_ |
-| Q4 | Doc handoff from #6738 — take into this lane (drop from #6738), or land #6738 first and extend on main? | Take into this lane | _pending_ |
+| Q4 | Doc handoff from #6738 — take into this lane (drop from #6738), or land #6738 first and extend on main? | Take into this lane | **RESOLVED — take into this lane** (operator, earlier: "subsume that doc in your own PR"; "you'll be owning that doc"). Coordinating drop from #6738. |
