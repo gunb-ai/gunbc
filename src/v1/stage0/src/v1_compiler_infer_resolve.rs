@@ -733,7 +733,44 @@ pub fn resolve_node_bounded_masked_boundary() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+// [LOCAL MEASUREMENT PROBE — do not commit] resolve_node_bounded counters
+pub static RNB_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static RNB_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+thread_local! {
+    static RNB_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 pub fn resolve_node_bounded(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+    depth: i64,
+    masked: bool,
+) -> Rc<NodeResolveResult> {
+    // [LOCAL MEASUREMENT PROBE — do not commit] count all calls; time at depth 0 only
+    RNB_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let __probe_d = RNB_DEPTH.with(|d| {
+        let v = d.get();
+        d.set(v + 1);
+        v
+    });
+    let __probe_t = if __probe_d == 0 {
+        Some(std::time::Instant::now())
+    } else {
+        None
+    };
+    let __probe_out = resolve_node_bounded_inner(n, env, module_name, depth, masked);
+    if let Some(s) = __probe_t {
+        RNB_NS.fetch_add(
+            s.elapsed().as_nanos() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+    RNB_DEPTH.with(|d| d.set(d.get() - 1));
+    __probe_out
+}
+
+fn resolve_node_bounded_inner(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,

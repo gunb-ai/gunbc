@@ -645,7 +645,11 @@ pub fn str_bindings_from_bindings(
     )
 }
 
+// [LOCAL MEASUREMENT PROBE — do not commit] binding-lookup call counter (count-only)
+pub static LB_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    LB_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
         None => match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {

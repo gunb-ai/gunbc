@@ -765,7 +765,16 @@ pub struct DeclaredFuncEnv {
     pub signatures: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+// [LOCAL MEASUREMENT PROBE — do not commit] Node deep-equality counters.
+// PartialEq removed from the derive; the manual impl below is field-identical
+// but counts every comparison and times depth-0 comparisons.
+pub static NODE_EQ_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static NODE_EQ_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+thread_local! {
+    static NODE_EQ_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub name: String,
     pub ident: Option<i64>,
@@ -785,6 +794,50 @@ pub struct Node {
     pub has_non_tail_self_call: bool,
     pub match_pattern: Option<Rc<MatchPattern>>,
     pub expr_data: Rc<ExprData>,
+}
+
+// [LOCAL MEASUREMENT PROBE — do not commit] field-identical to the removed
+// derive (same field order, short-circuit &&), plus counters.
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        NODE_EQ_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let d = NODE_EQ_DEPTH.with(|c| {
+            let v = c.get();
+            c.set(v + 1);
+            v
+        });
+        let t = if d == 0 {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
+        let r = self.name == other.name
+            && self.ident == other.ident
+            && self.span == other.span
+            && self.ident_span == other.ident_span
+            && self.children == other.children
+            && self.connective == other.connective
+            && self.params == other.params
+            && self.inferred == other.inferred
+            && self.return_cardinality == other.return_cardinality
+            && self.uses == other.uses
+            && self.body == other.body
+            && self.transport == other.transport
+            && self.properties == other.properties
+            && self.type_annotation == other.type_annotation
+            && self.is_self_recursive == other.is_self_recursive
+            && self.has_non_tail_self_call == other.has_non_tail_self_call
+            && self.match_pattern == other.match_pattern
+            && self.expr_data == other.expr_data;
+        if let Some(s) = t {
+            NODE_EQ_NS.fetch_add(
+                s.elapsed().as_nanos() as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        }
+        NODE_EQ_DEPTH.with(|c| c.set(c.get() - 1));
+        r
+    }
 }
 
 pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
@@ -1218,10 +1271,15 @@ pub fn generic_param_name_at(
     authored_name_at(source_indices.clone(), n.clone())
 }
 
+// [LOCAL MEASUREMENT PROBE — do not commit] name-derivation call counter
+// (count-only: this leaf fires millions of times; timing it would distort).
+pub static AN_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub fn authored_name_at(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     node: Rc<Node>,
 ) -> String {
+    AN_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     match node.ident_span.clone() {
         Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
             Some(index) => {

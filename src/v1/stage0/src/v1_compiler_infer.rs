@@ -2779,7 +2779,41 @@ pub fn infer_arg_with_element_type(
     }
 }
 
+// [LOCAL MEASUREMENT PROBE — do not commit] infer_expr counters
+pub static IE_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static IE_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+thread_local! {
+    static IE_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 pub fn infer_expr(
+    texpr: Rc<Node>,
+    scope: Rc<InferScope>,
+    expected: Option<Rc<Node>>,
+) -> Rc<InferResult> {
+    IE_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let __probe_d = IE_DEPTH.with(|c| {
+        let v = c.get();
+        c.set(v + 1);
+        v
+    });
+    let __probe_t = if __probe_d == 0 {
+        Some(std::time::Instant::now())
+    } else {
+        None
+    };
+    let __probe_out = infer_expr_probe_inner(texpr, scope, expected);
+    if let Some(s) = __probe_t {
+        IE_NS.fetch_add(
+            s.elapsed().as_nanos() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+    IE_DEPTH.with(|c| c.set(c.get() - 1));
+    __probe_out
+}
+
+fn infer_expr_probe_inner(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
     expected: Option<Rc<Node>>,
@@ -5692,6 +5726,8 @@ pub fn expand_alias_chain_for_field_access(
     mut lossy: bool,
 ) -> Rc<Node> {
     loop {
+        // [LOCAL MEASUREMENT PROBE — do not commit]
+        EXPAND_CHAIN_STEPS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let peeled = if needs_alias_field_expansion(n.clone(), env.clone()) {
             peel_alias_once_for_field_access(n.clone(), env.clone(), module_name.clone())
         } else {
@@ -5804,17 +5840,42 @@ pub fn expand_type_for_field_access_with_seen(
     }
 }
 
+// [LOCAL MEASUREMENT PROBE — do not commit] expansion-grain counters
+pub static EXPAND_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static EXPAND_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static EXPAND_CHAIN_STEPS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+thread_local! {
+    static EXPAND_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 pub fn expand_type_for_field_access(
     n: Rc<Node>,
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Node> {
-    expand_type_for_field_access_with_seen(
+    // [LOCAL MEASUREMENT PROBE — do not commit] time at depth 0 only (re-entrancy safe)
+    EXPAND_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let depth = EXPAND_DEPTH.with(|d| {
+        let v = d.get();
+        d.set(v + 1);
+        v
+    });
+    let started = if depth == 0 {
+        Some(std::time::Instant::now())
+    } else {
+        None
+    };
+    let out = expand_type_for_field_access_with_seen(
         n.clone(),
         env.clone(),
         module_name.clone(),
         v1_rt::rc_empty_map::<String, bool>(),
-    )
+    );
+    if let Some(s) = started {
+        EXPAND_NS.fetch_add(s.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
+    }
+    EXPAND_DEPTH.with(|d| d.set(d.get() - 1));
+    out
 }
 
 pub fn record_lit_alias_struct_fields(
@@ -10529,7 +10590,44 @@ pub fn compose_output_relations(
     compose_sub_value_relations(arg_rel.clone(), callee_rel.clone())
 }
 
+// [LOCAL MEASUREMENT PROBE — do not commit] variant-provenance counters
+pub static VP_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static VP_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+thread_local! {
+    static VP_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 pub fn compute_variant_provenance(
+    body: Rc<Node>,
+    return_type: Rc<Node>,
+    params: Rc<Vec<Rc<Node>>>,
+    type_env: Rc<TypeEnv>,
+    func_env: Rc<ResolvedFuncEnv>,
+) -> Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>> {
+    VP_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let __probe_d = VP_DEPTH.with(|c| {
+        let v = c.get();
+        c.set(v + 1);
+        v
+    });
+    let __probe_t = if __probe_d == 0 {
+        Some(std::time::Instant::now())
+    } else {
+        None
+    };
+    let __probe_out =
+        compute_variant_provenance_probe_inner(body, return_type, params, type_env, func_env);
+    if let Some(s) = __probe_t {
+        VP_NS.fetch_add(
+            s.elapsed().as_nanos() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+    VP_DEPTH.with(|c| c.set(c.get() - 1));
+    __probe_out
+}
+
+fn compute_variant_provenance_probe_inner(
     body: Rc<Node>,
     return_type: Rc<Node>,
     params: Rc<Vec<Rc<Node>>>,
@@ -11974,6 +12072,13 @@ pub fn unify_record_lit_generics(
     }
 }
 
+// [LOCAL MEASUREMENT PROBE — do not commit] substitution counters
+pub static SUBST_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static SUBST_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+thread_local! {
+    static SUBST_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 pub fn substitute_generics(
     n: Rc<Node>,
     subst: Rc<HashMap<String, Rc<Node>>>,
@@ -11982,7 +12087,27 @@ pub fn substitute_generics(
     if v1_rt::map_is_empty(&subst) {
         n
     } else {
-        substitute_generics_apply(n, subst.clone(), source_indices.clone())
+        // [LOCAL MEASUREMENT PROBE — do not commit] non-trivial substitutions only
+        SUBST_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let d = SUBST_DEPTH.with(|c| {
+            let v = c.get();
+            c.set(v + 1);
+            v
+        });
+        let t = if d == 0 {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
+        let out = substitute_generics_apply(n, subst.clone(), source_indices.clone());
+        if let Some(s) = t {
+            SUBST_NS.fetch_add(
+                s.elapsed().as_nanos() as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        }
+        SUBST_DEPTH.with(|c| c.set(c.get() - 1));
+        out
     }
 }
 
@@ -14749,6 +14874,9 @@ pub fn typecheck_module(
     symbol_index: Rc<SymbolIndex>,
 ) -> Rc<TypecheckModuleResult> {
     {
+        // [LOCAL MEASUREMENT PROBE — do not commit] within-module attribution
+        let __probe_total_started = std::time::Instant::now();
+        let __probe_bte_started = std::time::Instant::now();
         let env_result = build_type_env(
             resolved.clone(),
             parent_index.clone(),
@@ -14757,6 +14885,7 @@ pub fn typecheck_module(
             global_bare.clone(),
             symbol_index.clone(),
         );
+        let __probe_bte_us = __probe_bte_started.elapsed().as_micros();
         let env = env_result.env.clone();
         let env_cache = env_result.cache.clone();
         let env_diags = env_result.diagnostics.clone();
@@ -14796,6 +14925,7 @@ pub fn typecheck_module(
         }
         let resolved_module_name =
             authored_name_at(source_indices.clone(), resolved.module.clone());
+        let __probe_an_started = std::time::Instant::now();
         let contributions = Rc::new({
             let mut __result = Vec::new();
             for item in module_items(resolved.module.clone()).iter().cloned() {
@@ -14807,6 +14937,8 @@ pub fn typecheck_module(
             }
             __result
         });
+        let __probe_an_us = __probe_an_started.elapsed().as_micros();
+        let __probe_bmc_started = std::time::Instant::now();
         let ctx = build_module_context(
             contributions.clone(),
             parent_index.clone(),
@@ -14815,6 +14947,7 @@ pub fn typecheck_module(
             env.clone(),
             resolved_module_name.clone(),
         );
+        let __probe_bmc_us = __probe_bmc_started.elapsed().as_micros();
         let data_locals = ctx.resolved_items.clone().iter().cloned().fold(
             ctx.locals.clone(),
             |acc: Rc<HashMap<String, Rc<TypeBinding>>>, item: Rc<Node>| {
@@ -14846,7 +14979,9 @@ pub fn typecheck_module(
             item_registry: ctx.item_registry.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         });
+        let __probe_infer_started = std::time::Instant::now();
         let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
+        let __probe_infer_us = __probe_infer_started.elapsed().as_micros();
         let typed_items = Rc::new({
             let mut __result = Vec::new();
             for tir in typed_item_results.clone().iter().cloned() {
@@ -14861,12 +14996,15 @@ pub fn typecheck_module(
             }
             __result
         });
+        let __probe_pop_started = std::time::Instant::now();
         let updated_func_env = populate_output_provenance(
             typed_items.clone(),
             ctx.func_env.clone(),
             env.clone(),
             data_locals.clone(),
         );
+        let __probe_pop_us = __probe_pop_started.elapsed().as_micros();
+        let __probe_reann_started = std::time::Instant::now();
         let reannotated_items = Rc::new({
             let mut __result = Vec::new();
             for item in typed_items.clone().iter().cloned() {
@@ -14906,6 +15044,7 @@ pub fn typecheck_module(
             }
             __result
         });
+        let __probe_reann_us = __probe_reann_started.elapsed().as_micros();
         let typed_base = module_node(
             resolved_module_name.clone(),
             module_imports(resolved.module.clone()),
@@ -14916,7 +15055,8 @@ pub fn typecheck_module(
             ident_span: resolved.module.clone().ident_span.clone(),
             ..(*typed_base.clone()).clone()
         });
-        Rc::new(TypecheckModuleResult {
+        let __probe_iface_started = std::time::Instant::now();
+        let __probe_result = Rc::new(TypecheckModuleResult {
             typed: Rc::new(TypedModule {
                 module: typed_module.clone(),
                 items: reannotated_items.clone(),
@@ -14950,7 +15090,24 @@ pub fn typecheck_module(
                 seed_diags.clone(),
             ),
             binding_forks: env_result.binding_forks.clone(),
-        })
+        });
+        // [LOCAL MEASUREMENT PROBE — do not commit] within-module split for modules ≥ 1s
+        let __probe_total_us = __probe_total_started.elapsed().as_micros();
+        if __probe_total_us >= 1_000_000 {
+            eprintln!(
+                "[tc-split] module={} total_us={} bte_us={} analyze_us={} bmc_us={} infer_us={} pop_us={} reann_us={} tail_us={}",
+                resolved_module_name,
+                __probe_total_us,
+                __probe_bte_us,
+                __probe_an_us,
+                __probe_bmc_us,
+                __probe_infer_us,
+                __probe_pop_us,
+                __probe_reann_us,
+                __probe_iface_started.elapsed().as_micros()
+            );
+        }
+        __probe_result
     }
 }
 
@@ -15582,8 +15739,20 @@ pub fn typecheck(
                 )
             },
         );
+        // [LOCAL MEASUREMENT PROBE — do not commit] whole-graph census + fold attribution
+        let __probe_gb_started = std::time::Instant::now();
         let global_bare = build_global_bare_census(graph.modules.clone(), source_indices.clone());
+        eprintln!(
+            "[gate-phase] global_bare_census ms={}",
+            __probe_gb_started.elapsed().as_millis()
+        );
+        let __probe_si_started = std::time::Instant::now();
         let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
+        eprintln!(
+            "[gate-phase] symbol_index_census ms={}",
+            __probe_si_started.elapsed().as_millis()
+        );
+        let __probe_fold_started = std::time::Instant::now();
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -15635,8 +15804,17 @@ pub fn typecheck(
             }
             __result
         });
+        eprintln!(
+            "[gate-phase] realize_fold ms={}",
+            __probe_fold_started.elapsed().as_millis()
+        );
+        let __probe_ets_started = std::time::Instant::now();
         let expanded_registry =
             expand_transitive_services(modules.clone(), state.item_registry.clone(), 5);
+        eprintln!(
+            "[gate-phase] expand_transitive_services ms={}",
+            __probe_ets_started.elapsed().as_millis()
+        );
         Rc::new(TypedGraph {
             modules: modules.clone(),
             item_registry: expanded_registry.clone(),
@@ -15680,11 +15858,43 @@ pub fn realize_module(
                             )
                         },
                     );
+                    // [LOCAL MEASUREMENT PROBE — do not commit] per-module attribution
+                    let __probe_pe_started = std::time::Instant::now();
                     let parent_result = collect_parent_envs(
                         resolved.clone(),
                         dep_state.module_index.clone(),
                         source_indices.clone(),
                     );
+                    let __probe_pe_us = __probe_pe_started.elapsed().as_micros();
+                    let __probe_tc_started = std::time::Instant::now();
+                    let __probe_ex_calls0 =
+                        EXPAND_CALLS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_ex_ns0 = EXPAND_NS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_ex_steps0 =
+                        EXPAND_CHAIN_STEPS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_rnb_calls0 = crate::v1_compiler_infer_resolve::RNB_CALLS
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_rnb_ns0 = crate::v1_compiler_infer_resolve::RNB_NS
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_eq_calls0 =
+                        crate::v1_std_core::NODE_EQ_CALLS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_eq_ns0 =
+                        crate::v1_std_core::NODE_EQ_NS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_su_calls0 =
+                        SUBST_CALLS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_su_ns0 = SUBST_NS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_ie_calls0 = IE_CALLS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_ie_ns0 = IE_NS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_vp_calls0 = VP_CALLS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_vp_ns0 = VP_NS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_sn_calls0 = crate::v1_compiler_infer_lookup::SCRUT_CALLS
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_sn_ns0 = crate::v1_compiler_infer_lookup::SCRUT_NS
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_an_calls0 =
+                        crate::v1_std_core::AN_CALLS.load(std::sync::atomic::Ordering::Relaxed);
+                    let __probe_lb_calls0 = crate::v1_compiler_infer_env::LB_CALLS
+                        .load(std::sync::atomic::Ordering::Relaxed);
                     let tc_result = typecheck_module(
                         resolved.clone(),
                         dep_state.module_index.clone(),
@@ -15693,6 +15903,56 @@ pub fn realize_module(
                         intern_table.clone(),
                         global_bare.clone(),
                         symbol_index.clone(),
+                    );
+                    eprintln!(
+                        "[gate-typecheck] module={} pe_us={} tc_us={} ex_calls={} ex_us={} ex_steps={} rnb_calls={} rnb_us={} eq_calls={} eq_us={} su_calls={} su_us={}",
+                        name,
+                        __probe_pe_us,
+                        __probe_tc_started.elapsed().as_micros(),
+                        EXPAND_CALLS.load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_ex_calls0,
+                        (EXPAND_NS.load(std::sync::atomic::Ordering::Relaxed) - __probe_ex_ns0)
+                            / 1000,
+                        EXPAND_CHAIN_STEPS.load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_ex_steps0,
+                        crate::v1_compiler_infer_resolve::RNB_CALLS
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_rnb_calls0,
+                        (crate::v1_compiler_infer_resolve::RNB_NS
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_rnb_ns0)
+                            / 1000,
+                        crate::v1_std_core::NODE_EQ_CALLS
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_eq_calls0,
+                        (crate::v1_std_core::NODE_EQ_NS
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_eq_ns0)
+                            / 1000,
+                        SUBST_CALLS.load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_su_calls0,
+                        (SUBST_NS.load(std::sync::atomic::Ordering::Relaxed) - __probe_su_ns0)
+                            / 1000
+                    );
+                    eprintln!(
+                        "[gate-typecheck2] module={} ie_calls={} ie_us={} vp_calls={} vp_us={} sn_calls={} sn_us={} an_calls={} lb_calls={}",
+                        name,
+                        IE_CALLS.load(std::sync::atomic::Ordering::Relaxed) - __probe_ie_calls0,
+                        (IE_NS.load(std::sync::atomic::Ordering::Relaxed) - __probe_ie_ns0) / 1000,
+                        VP_CALLS.load(std::sync::atomic::Ordering::Relaxed) - __probe_vp_calls0,
+                        (VP_NS.load(std::sync::atomic::Ordering::Relaxed) - __probe_vp_ns0) / 1000,
+                        crate::v1_compiler_infer_lookup::SCRUT_CALLS
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_sn_calls0,
+                        (crate::v1_compiler_infer_lookup::SCRUT_NS
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_sn_ns0)
+                            / 1000,
+                        crate::v1_std_core::AN_CALLS.load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_an_calls0,
+                        crate::v1_compiler_infer_env::LB_CALLS
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            - __probe_lb_calls0
                     );
                     let typed = tc_result.typed.clone();
                     let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
@@ -16384,13 +16644,39 @@ pub fn reconcile(
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
     {
+        // [LOCAL MEASUREMENT PROBE — do not commit] reconcile sub-phase attribution
+        let __probe_tc_started = std::time::Instant::now();
         let typed = typecheck(graph.clone(), source_indices.clone(), intern_table.clone());
+        eprintln!(
+            "[gate-phase] typecheck_total ms={}",
+            __probe_tc_started.elapsed().as_millis()
+        );
+        let __probe_rw1_started = std::time::Instant::now();
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
+        eprintln!(
+            "[gate-phase] rewire_type_env_parent_links ms={}",
+            __probe_rw1_started.elapsed().as_millis()
+        );
+        let __probe_rw2_started = std::time::Instant::now();
         let modules =
             rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
+        eprintln!(
+            "[gate-phase] rewire_type_env_import_str_binding_identity ms={}",
+            __probe_rw2_started.elapsed().as_millis()
+        );
+        let __probe_rw3_started = std::time::Instant::now();
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
+        eprintln!(
+            "[gate-phase] rewire_func_env_parent_links ms={}",
+            __probe_rw3_started.elapsed().as_millis()
+        );
+        let __probe_emit_started = std::time::Instant::now();
         let has_v1_seed = corpus_has_v1_seed_source_indices(modules.clone());
         let emit_info = build_emit_graph_info(modules.clone(), has_v1_seed.clone());
+        eprintln!(
+            "[gate-phase] build_emit_graph_info ms={}",
+            __probe_emit_started.elapsed().as_millis()
+        );
         Rc::new(ResolvedGraph {
             modules: modules.clone(),
             item_registry: typed.item_registry.clone(),

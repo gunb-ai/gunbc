@@ -238,7 +238,43 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
     }
 }
 
+// [LOCAL MEASUREMENT PROBE — do not commit] scrutinee-resolve counters (this
+// recursion does NOT route through resolve_node_bounded, so it is outside the
+// rnb figures; recursive self-calls hit this wrapper, depth-0 timing only).
+pub static SCRUT_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static SCRUT_NS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+thread_local! {
+    static SCRUT_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
 pub fn resolve_scrutinee_type_node_seen(
+    env: Rc<TypeEnv>,
+    n: Rc<Node>,
+    seen: Rc<HashMap<String, bool>>,
+) -> Rc<Node> {
+    SCRUT_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let __probe_d = SCRUT_DEPTH.with(|c| {
+        let v = c.get();
+        c.set(v + 1);
+        v
+    });
+    let __probe_t = if __probe_d == 0 {
+        Some(std::time::Instant::now())
+    } else {
+        None
+    };
+    let __probe_out = resolve_scrutinee_type_node_seen_probe_inner(env, n, seen);
+    if let Some(s) = __probe_t {
+        SCRUT_NS.fetch_add(
+            s.elapsed().as_nanos() as u64,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
+    SCRUT_DEPTH.with(|c| c.set(c.get() - 1));
+    __probe_out
+}
+
+fn resolve_scrutinee_type_node_seen_probe_inner(
     env: Rc<TypeEnv>,
     n: Rc<Node>,
     seen: Rc<HashMap<String, bool>>,
