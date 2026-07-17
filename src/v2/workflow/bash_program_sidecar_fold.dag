@@ -19,6 +19,8 @@ import extdeps.languages.bash.program {
   serialize_stmt
 }
 import v2.extdeps.languages.bash_build {
+  bash_build_assign,
+  bash_build_binary_stmt,
   bash_build_command,
   bash_build_command_words_pair,
   bash_build_command_words_single,
@@ -26,7 +28,6 @@ import v2.extdeps.languages.bash_build {
   bash_build_if,
   bash_build_stmt_list_pair,
   bash_build_stmt_list_single,
-  bash_build_stmt_tag,
   bash_build_subshell,
   bash_build_with_redir,
   bash_build_with_redir_to_file,
@@ -85,41 +86,6 @@ fn bash_fold_word_emitted_witness(w: ShellWord) -> Witness<Node> {
   }
 }
 
-fn bash_build_command_words_single(word: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: word }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_build_command_words_pair(left: Node, right: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_build_command(words: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: bash_build_stmt_tag(binding: ^bash_production_fold_command)
-      },
-      Edge { label: Positional, target: words }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
 fn bash_fold_words_absent_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^bash_fold_words_empty,
@@ -167,51 +133,10 @@ fn bash_fold_command_words_emitted_witness(words: List<ShellWord>) -> Witness<No
   }
 }
 
-fn bash_build_exit(code: String) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: bash_build_stmt_tag(binding: ^bash_production_fold_exit)
-      },
-      Edge {
-        label: Positional,
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: code } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
 fn bash_fold_assign_emitted_witness(name: String, value: ShellWord) -> Witness<Node> {
   match bash_fold_word_emitted_witness(w: value) {
     Holds { value: word_node } =>
-      Holds {
-        value: Node {
-          kind: TypeNode { connective: Conj },
-          children: [
-            Edge {
-              label: Positional,
-              target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
-            },
-            Edge {
-              label: Positional,
-              target: Node {
-                kind: TypeNode { connective: Atom { identity: name } },
-                children: [],
-                occurrence_id: SyntheticOccurrence
-              }
-            },
-            Edge { label: Positional, target: word_node }
-          ],
-          occurrence_id: SyntheticOccurrence
-        }
-      }
+      Holds { value: bash_build_assign(name: name, value: word_node) }
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
@@ -232,40 +157,15 @@ fn bash_fold_binary_stmt_emitted_witness(
       match bash_fold_stmt_emitted_witness(stmt: right) {
         Holds { value: right_emitted } =>
           Holds {
-            value: Node {
-              kind: TypeNode { connective: Conj },
-              children: [
-                Edge { label: Positional, target: bash_build_stmt_tag(binding: binding) },
-                Edge { label: Positional, target: left_emitted },
-                Edge { label: Positional, target: right_emitted }
-              ],
-              occurrence_id: SyntheticOccurrence
-            }
+            value: bash_build_binary_stmt(
+              binding: binding,
+              left: left_emitted,
+              right: right_emitted
+            )
           }
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn bash_build_stmt_list_single(stmt: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: stmt }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_build_stmt_list_pair(left: Node, right: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
-    ],
-    occurrence_id: SyntheticOccurrence
   }
 }
 
@@ -313,66 +213,6 @@ fn bash_fold_stmt_list_emitted_witness(stmts: List<ShellStmt>) -> Witness<Node> 
         Violates { diagnostic: d } => Violates { diagnostic: d }
       }
     Violates { diagnostic: d } => Violates { diagnostic: d }
-  }
-}
-
-fn bash_build_subshell(body: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: bash_build_stmt_tag(binding: ^bash_production_fold_subshell)
-      },
-      Edge { label: Positional, target: body }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_build_if(cond: Node, body: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: bash_build_stmt_tag(binding: ^bash_production_fold_if)
-      },
-      Edge { label: Positional, target: cond },
-      Edge { label: Positional, target: body }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_build_with_redir(inner: Node, redir: Symbol) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir)
-      },
-      Edge { label: Positional, target: inner },
-      Edge { label: Positional, target: bash_build_stmt_tag(binding: redir) }
-    ],
-    occurrence_id: SyntheticOccurrence
-  }
-}
-
-fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
-  Node {
-    kind: TypeNode { connective: Conj },
-    children: [
-      Edge {
-        label: Positional,
-        target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir)
-      },
-      Edge { label: Positional, target: inner },
-      Edge { label: Positional, target: bash_build_stmt_tag(binding: ^bash_production_fold_redir_to_file) },
-      Edge { label: Positional, target: path }
-    ],
-    occurrence_id: SyntheticOccurrence
   }
 }
 
