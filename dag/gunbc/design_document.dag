@@ -9,13 +9,7 @@ import std.markdown {
 import extdeps.languages.markdown { serialize_markdown_source }
 
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
-fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
 fn rule() -> MarkdownBlock { ThematicBreak }
-
-fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn li_blocks(blocks: List<MarkdownBlock>) -> MarkdownListItem { MarkdownListItem { blocks: blocks } }
-fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
 
 fn preamble_blocks() -> List<MarkdownBlock> {
   [
