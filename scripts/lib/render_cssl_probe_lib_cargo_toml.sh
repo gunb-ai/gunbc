@@ -27,18 +27,23 @@ render_cssl_probe_lib_cargo_toml() {
     return 1
   fi
 
-  local -a source_roots=(dag src/v2)
-  if [[ -n "$tmp_auth" ]]; then
-    source_roots=("target/cssl-harness-authority-snapshot" "${source_roots[@]}")
-  fi
-
   local witness_toml
   witness_toml="$(
     cd "$root"
-    "$gunbc" run \
-      "${source_roots[@]/#/--source-root }" \
-      --entry dag/tools/self_host_curated_probe_cargo.dag \
-      --function curated_probe_cargo_toml_from_cssl_authority 2>/dev/null
+    if [[ -n "$tmp_auth" ]]; then
+      "$gunbc" run \
+        --source-root target/cssl-harness-authority-snapshot \
+        --source-root dag \
+        --source-root src/v2 \
+        --entry dag/tools/self_host_curated_probe_cargo.dag \
+        --function curated_probe_cargo_toml_from_cssl_authority 2>/dev/null
+    else
+      "$gunbc" run \
+        --source-root dag \
+        --source-root src/v2 \
+        --entry dag/tools/self_host_curated_probe_cargo.dag \
+        --function curated_probe_cargo_toml_from_cssl_authority 2>/dev/null
+    fi
   )"
 
   if [[ -n "$tmp_auth" ]]; then
