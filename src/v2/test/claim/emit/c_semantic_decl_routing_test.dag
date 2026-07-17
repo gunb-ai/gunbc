@@ -273,6 +273,43 @@ test fn c_semantic_bool_emit_starts_typedef_holds() -> Bool {
   }
 }
 
+test fn c_semantic_bool_emit_contains_brace_space_bool_holds() -> Bool {
+  match cdr_emit_text(name: ^Bool, node: cdr_bool_coproduct()) {
+    Accepted { value: text, diagnostics: _ } => string_contains(s: text, pattern: "} Bool")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_bool_emit_oracle_tight_brace_holds() -> Bool {
+  match cdr_emit_text(name: ^Bool, node: cdr_bool_coproduct()) {
+    Accepted { value: text, diagnostics: _ } =>
+      text == concat("typedef enum ", "{ True, False}", " Bool;")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_bool_emit_oracle_no_final_semi_holds() -> Bool {
+  match cdr_emit_text(name: ^Bool, node: cdr_bool_coproduct()) {
+    Accepted { value: text, diagnostics: _ } =>
+      text == concat("typedef enum ", "{ True, False } Bool")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_bool_emit_starts_typedef_enum_no_trail_holds() -> Bool {
+  match cdr_emit_text(name: ^Bool, node: cdr_bool_coproduct()) {
+    Accepted { value: text, diagnostics: _ } => starts_with(s: text, prefix: "typedef enum")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_bool_emit_starts_typedef_enum_brace_holds() -> Bool {
+  match cdr_emit_text(name: ^Bool, node: cdr_bool_coproduct()) {
+    Accepted { value: text, diagnostics: _ } => starts_with(s: text, prefix: "typedef enum {")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn c_semantic_bool_emit_starts_typedef_enum_holds() -> Bool {
   match cdr_emit_text(name: ^Bool, node: cdr_bool_coproduct()) {
     Accepted { value: text, diagnostics: _ } =>
@@ -346,6 +383,29 @@ test fn c_semantic_bool_emit_len_33_holds() -> Bool {
 test fn c_semantic_bool_coproduct_routes_to_enum_emit() -> Bool {
   cdr_matches(name: ^Bool, node: cdr_bool_coproduct(), golden: c_semantic_bool_golden)
     && !cdr_matches(name: ^Bool, node: cdr_bool_coproduct(), golden: c_semantic_bool_wrong_golden)
+}
+
+fn cdr_answer_text() -> String {
+  match cdr_emit_text(name: ^Answer, node: cdr_answer_coproduct()) {
+    Accepted { value: text, diagnostics: _ } => text
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+test fn c_semantic_answer_emit_eq_golden_holds() -> Bool {
+  cdr_answer_text() == c_semantic_answer_golden
+}
+
+test fn c_semantic_answer_emit_len_89_holds() -> Bool {
+  fold_list(xs: cdr_answer_text(), empty: 0, cons: fn(acc, _) { acc + 1 }) == 89
+}
+
+test fn c_semantic_answer_emit_len_90_holds() -> Bool {
+  fold_list(xs: cdr_answer_text(), empty: 0, cons: fn(acc, _) { acc + 1 }) == 90
+}
+
+test fn c_semantic_answer_emit_len_91_holds() -> Bool {
+  fold_list(xs: cdr_answer_text(), empty: 0, cons: fn(acc, _) { acc + 1 }) == 91
 }
 
 test fn c_semantic_answer_coproduct_routes_to_tagged_union_emit() -> Bool {

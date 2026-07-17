@@ -141,6 +141,7 @@ fn c_decl_shared_variant_productions() -> List<FormalProduction> {
       rhs: [
         grammar_formal_terminal(identity: ^c_token_lbrace),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_variant_list),
+        grammar_formal_terminal(identity: ^c_token_ws),
         grammar_formal_terminal(identity: ^c_token_rbrace)
       ]
     )
