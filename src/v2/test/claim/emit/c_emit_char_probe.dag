@@ -1,0 +1,39 @@
+module c_emit_char_probe
+
+import c_semantic_decl_routing_test
+import std.test
+import std.types
+
+fn c_emit_char_at(emit: c_semantic_decl_routing_test.CdrEmitText, idx: Int) -> Char {
+  let s = emit.text
+  let len = s.length()
+  if idx >= len {
+    return Char(0)
+  }
+  return s.char_at(idx)
+}
+
+test fn c_emit_char25_holds() {
+  let emit = c_semantic_decl_routing_test.cdr_emit_text(c_semantic_decl_routing_test.c_point_record())
+  assert(c_emit_char_at(emit, 25) == Char(32))
+}
+
+test fn c_emit_char26_holds() {
+  let emit = c_semantic_decl_routing_test.cdr_emit_text(c_semantic_decl_routing_test.c_point_record())
+  assert(c_emit_char_at(emit, 26) == Char(121))
+}
+
+test fn c_emit_char27_holds() {
+  let emit = c_semantic_decl_routing_test.cdr_emit_text(c_semantic_decl_routing_test.c_point_record())
+  assert(c_emit_char_at(emit, 27) == Char(59))
+}
+
+test fn c_emit_char28_holds() {
+  let emit = c_semantic_decl_routing_test.cdr_emit_text(c_semantic_decl_routing_test.c_point_record())
+  assert(c_emit_char_at(emit, 28) == Char(32))
+}
+
+test fn c_emit_char29_holds() {
+  let emit = c_semantic_decl_routing_test.cdr_emit_text(c_semantic_decl_routing_test.c_point_record())
+  assert(c_emit_char_at(emit, 29) == Char(125))
+}

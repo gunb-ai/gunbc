@@ -1,0 +1,159 @@
+module v2.test.emit.c_emit_oracle_probe
+
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.c { c_target_model }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Edge, Named, Node, SyntheticOccurrence, TypeNode, Atom }
+
+fn point() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^x }, target: Node { kind: TypeNode { connective: Atom { identity: ^Int } }, children: [], occurrence_id: SyntheticOccurrence } },
+      Edge { label: Named { name: ^y }, target: Node { kind: TypeNode { connective: Atom { identity: ^Int } }, children: [], occurrence_id: SyntheticOccurrence } }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn str_len(s: String) -> Int {
+  fold_list(xs: s, empty: 0, cons: fn(acc, _) { acc + 1 })
+}
+
+test fn c_emit_point_len_35_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => str_len(s: medium.carried) == 35
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_len_36_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => str_len(s: medium.carried) == 36
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_len_37_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => str_len(s: medium.carried) == 37
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_len_38_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => str_len(s: medium.carried) == 38
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_len_39_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => str_len(s: medium.carried) == 39
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_len_40_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => str_len(s: medium.carried) == 40
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_len_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      str_len(s: medium.carried) == 35
+        || str_len(s: medium.carried) == 36
+        || str_len(s: medium.carried) == 37
+        || str_len(s: medium.carried) == 38
+        || str_len(s: medium.carried) == 39
+        || str_len(s: medium.carried) == 40
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_oracle_f_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == concat("typedef struct ", "{ int x; int y;   ;P")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_oracle_g_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == concat("typedef struct ", "{ int x; int y;  ; }")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_oracle_h_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == concat("typedef struct ", "{ int x; int y;  ; P")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_oracle_a_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == concat("typedef struct ", "{ int x; int y; }  ;")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_oracle_b_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == concat("typedef struct ", "{ int x; int y; };")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_oracle_c_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == concat("typedef struct ", "{ int x; int y; } ;")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_oracle_d_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == concat("typedef struct ", "{ int x; int y; }Point;")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_oracle_e_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == concat("typedef struct ", "{ int x; int y; } Poi;")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_golden_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == concat("typedef struct ", "{ int x; int y; } Point;")
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_emit_point_missing_name_holds() -> Bool {
+  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } =>
+      medium.carried == concat("typedef struct ", "{ int x; int y; }  ;")
+    Rejected { diagnostics: _ } => false
+  }
+}
