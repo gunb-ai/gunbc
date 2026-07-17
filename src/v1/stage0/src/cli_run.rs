@@ -19625,3 +19625,173 @@ mod peel_alias_fixpoint_termination {
         let _ = is_fixpoint;
     }
 }
+
+#[cfg(test)]
+mod sigs_env_flat_parents {
+    // §6 cost-shape witnesses for the flat sigs-env closure
+    // (04_sigs.dag sigs_env_flat_parents_note). The prior shape nested each
+    // parent env recursively and lookup walked the shared import DAG as a
+    // TREE with no visited state — probes multiplied per PATH (measured:
+    // identical 541 signature requests cost 53.3M env probes, 902.8M after
+    // #6750 widened one closure by 54 modules), with a quadratic
+    // parents-prefix copy per step. These witnesses pin the two properties
+    // the flat invariant rests on: (1) the flat list is bounded by DISTINCT
+    // closure modules, never paths (the name dedup is load-bearing — without
+    // it construction itself re-becomes path-counted and the watchdog fires);
+    // (2) linearization preserves the old walk's shadowing order exactly
+    // (own local, then closure-of-last-import before earlier imports).
+    use std::rc::Rc;
+
+    fn w2_sig(fn_name: &str, marker: &str) -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncSig> {
+        Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncSig {
+            name: fn_name.to_string(),
+            params: Rc::new(im_rc::vector![]),
+            inferred: crate::v1_std_core::leaf_node_with_span(
+                marker.to_string(),
+                crate::v1_std_core::kernel_span(marker.to_string()),
+            ),
+            is_async: false,
+            output_provenance: Rc::new(im_rc::vector![]),
+            variant_provenance: crate::v1_rt::rc_empty_map(),
+        })
+    }
+
+    fn w2_env(
+        name: &str,
+        sigs: &[(&str, &str)],
+        direct: Vec<Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>>,
+    ) -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv> {
+        let mut local = crate::v1_rt::rc_empty_map();
+        for (f, m) in sigs {
+            local = crate::v1_rt::rc_map_insert(local, f.to_string(), w2_sig(f, m));
+        }
+        Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncEnv {
+            name: name.to_string(),
+            local,
+            parents: crate::v1_compiler_infer_sigs::flatten_parent_envs(Rc::new(
+                direct.into_iter().collect(),
+            )),
+        })
+    }
+
+    // Diamond tower, depth 64: at each level two mids (a_i, b_i) import the
+    // previous join; the next join imports both. Path count to the base is
+    // 2^64; distinct ancestors of the top join are exactly 3*K (a_i + b_i +
+    // lower joins + base). Pre-fix, a single MISS lookup walked per-path and
+    // never returned; without the name dedup, construction itself doubles
+    // per level. Either regression trips the 30s watchdog; the length assert
+    // is the structural tooth.
+    #[test]
+    fn flat_parents_diamond_dedups_to_distinct_modules_and_lookup_terminates() {
+        const K: usize = 64;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut prev = w2_env("base", &[("bottom_fn", "FromBase")], vec![]);
+            for i in 1..=K {
+                let a = w2_env(&format!("a{i}"), &[], vec![prev.clone()]);
+                let b = w2_env(&format!("b{i}"), &[], vec![prev.clone()]);
+                prev = w2_env(&format!("j{i}"), &[], vec![a, b]);
+            }
+            let deep_hit = crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                prev.clone(),
+                "bottom_fn".to_string(),
+            );
+            let miss = crate::v1_compiler_infer_sigs::lookup_resolved_sig(
+                prev.clone(),
+                "absent_fn".to_string(),
+            );
+            let _ = tx.send((
+                prev.parents.len(),
+                deep_hit.map(|s| s.inferred.name.clone()),
+                miss.is_none(),
+            ));
+        });
+        let (flat_len, deep_hit, miss_is_none) =
+            rx.recv_timeout(std::time::Duration::from_secs(30)).expect(
+                "flat sigs-env construction/lookup did not terminate within 30s — \
+                 the closure is being walked or built per-path again (dedup or \
+                 flat-scan regressed; pre-fix this fixture is 2^64 paths)",
+            );
+        assert_eq!(
+            flat_len,
+            3 * K,
+            "flat parents must hold DISTINCT closure modules (3K for the diamond tower), never path counts"
+        );
+        assert_eq!(deep_hit.as_deref(), Some("FromBase"));
+        assert!(
+            miss_is_none,
+            "absent name must resolve to None, not a diagnostic or a hang"
+        );
+    }
+
+    // Shadowing linearization: the old walk was deep-first, LAST import
+    // first. Flat order must reproduce all three consequences: (a) among
+    // direct imports both defining f, the last import wins; (b) a name in
+    // the LAST import's transitive closure beats the same name directly in
+    // an EARLIER import; (c) own local beats every parent.
+    #[test]
+    fn flat_parents_preserve_deep_first_last_import_first_shadowing() {
+        let read = |env: &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>, f: &str| {
+            crate::v1_compiler_infer_sigs::lookup_resolved_sig(env.clone(), f.to_string())
+                .map(|s| s.inferred.name.clone())
+        };
+
+        let b = w2_env("b", &[("f", "FromB"), ("g", "FromBg")], vec![]);
+        let c = w2_env("c", &[("f", "FromC")], vec![]);
+        let m = w2_env("m", &[], vec![b.clone(), c.clone()]);
+        assert_eq!(
+            read(&m, "f").as_deref(),
+            Some("FromC"),
+            "last direct import wins"
+        );
+        let flat_names: Vec<String> = m.parents.iter().map(|p| p.name.clone()).collect();
+        assert_eq!(flat_names, vec!["c".to_string(), "b".to_string()]);
+
+        let d = w2_env("d", &[("g", "FromD")], vec![]);
+        let c2 = w2_env("c2", &[], vec![d]);
+        let m2 = w2_env("m2", &[], vec![b.clone(), c2]);
+        assert_eq!(
+            read(&m2, "g").as_deref(),
+            Some("FromD"),
+            "closure of the last import must beat the same name directly in an earlier import (deep-first order)"
+        );
+
+        let own = w2_env("own", &[("f", "FromSelf")], vec![b, c]);
+        assert_eq!(
+            read(&own, "f").as_deref(),
+            Some("FromSelf"),
+            "own local shadows all parents"
+        );
+    }
+
+    // The .dag-level constructor threads the invariant: resolve_func_sigs
+    // flattens its direct parent envs before the topo loop stores them.
+    #[test]
+    fn resolve_func_sigs_stores_flat_named_parents() {
+        let b = w2_env("dep.b", &[("f", "FromB")], vec![]);
+        let c = w2_env("dep.c", &[], vec![b.clone()]);
+        let result = crate::v1_compiler_infer_sigs::resolve_func_sigs(
+            crate::v1_rt::rc_empty_map(),
+            Rc::new([b, c].into_iter().collect()),
+            Rc::new(im_rc::vector![]),
+            "top.module".to_string(),
+            crate::v1_rt::rc_empty_map(),
+        );
+        assert_eq!(result.func_env.name, "top.module");
+        let flat_names: Vec<String> = result
+            .func_env
+            .parents
+            .iter()
+            .map(|p| p.name.clone())
+            .collect();
+        assert_eq!(
+            flat_names,
+            vec!["dep.c".to_string(), "dep.b".to_string()],
+            "resolve_func_sigs must store the flattened, deduped closure (c's closure contains b; dedup keeps the first occurrence)"
+        );
+        assert!(
+            result.func_env.parents.iter().all(|p| !p.name.is_empty()),
+            "every closure member carries its module name (the dedup key)"
+        );
+    }
+}
