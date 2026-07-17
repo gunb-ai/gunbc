@@ -13,6 +13,7 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_sweep_order_matches_tractability_rank_holds
 }
 import v2.compiler.self_host.frontier_probe_types {
+  EmitSurfaceGap,
   NameResolutionGap,
   SelfEmitReady
 }
@@ -33,9 +34,9 @@ test fn compiler_frontier_measured_parse_engine_hooks_self_emit_ready_holds() ->
   }
 }
 
-test fn compiler_frontier_measured_tokenize_name_resolution_holds() -> Bool {
+test fn compiler_frontier_measured_tokenize_emit_surface_holds() -> Bool {
   match compiler_frontier_row_01_tokenize.measured_probe.blocker_class {
-    NameResolutionGap => true
+    EmitSurfaceGap => true
     _ => false
   }
 }
