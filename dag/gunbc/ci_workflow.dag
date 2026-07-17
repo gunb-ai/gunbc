@@ -392,7 +392,13 @@ data gunbc_ci_prelude_allowance_minutes: Int = 5
 
 data gunbc_ci_release_build_step_timeout_minutes: Int = 45
 
-data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
+data gunbc_ci_deploy_run_allowance_minutes: Int = 10
+
+data gunbc_ci_deploy_job_backstop_note: String = "The deploy job STEP embeds the full v1-compiler release build (17 bins) as a superset of the ci build-job script (ci_materialization_note grain honesty), then runs the gunbc live_deploy apply plus the bounded readiness poll on top. A cold sccache miss compiles the 161k-line crate in ~33-34min (gunbc_ci_job_timeout_policy_disposition cold-build receipt), so a flat 10m job backstop killed the deploy MID-BUILD exactly as the ci job's own 10m-kill class did (receipt run 28819559597) — surfacing to the operator as intermittent deploy_dashboard_srv1 push Cancelled after 10m (job-level cancels at ~10-11m duration: runs 29541485814 / 29538613393 / 29537885402; warm builds finish ~5m and succeed, cold builds are killed). This is NOT the #6769 readback-curl hang (that is bounded and real but a separate, rarer arm) — the dominant flaky-main cause is the embedded cold release build outrunning a too-short job cap. Fix (2026-07-16): the deploy backstop must COVER its embedded step budgets exactly like gunbc_ci_build_job_backstop_timeout_minutes — prelude + release build + a deploy-run allowance — so a slow-but-progressing build reaches RED-by-completion, not job-cancelled silent no-deploy. Deeper dissolve-on (forward-wiring thread, ci_materialization_note): when deploy demands derive from the DependencyView the deploy consumes the ci build-job release artifact instead of rebuilding, collapsing this budget to the deploy-run allowance alone."
+
+fn gunbc_ci_deploy_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_prelude_allowance_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_deploy_run_allowance_minutes
+}
 
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_aux_step_timeout_minutes + gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
@@ -417,7 +423,7 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     outputs: none,
     if_condition: Present { value: ci_deploy_push_to_main_if },
     strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes },
+    timeout_minutes: Present { value: gunbc_ci_deploy_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none
   }
