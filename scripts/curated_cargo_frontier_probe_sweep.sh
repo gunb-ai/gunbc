@@ -33,11 +33,13 @@ probe() {
 run_tier() {
   local path="$1"
   local shim="${2:-}"
+  local row
   if [[ "$FORCE_REPROBE" != "1" ]] && grep -qF "$path" "$REPORT"; then
     echo "skip (already probed): $path" >&2
     return 0
   fi
-  probe "$path" "$shim" | tee -a "$REPORT"
+  row="$(probe "$path" "$shim")"
+  printf '%s\n' "$row" >>"$REPORT"
 }
 
 # TIER 1 — highest information value
