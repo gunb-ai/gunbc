@@ -1,0 +1,53 @@
+module v2.test.emit.rust_two_field_probe_test
+
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.rust { rust_target_model }
+import extdeps.languages.rust.emit { rust_struct_derives }
+import std.algebra { Empty }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, SyntheticOccurrence, TypeNode }
+import v2.std.text { String }
+
+fn two_field_record() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^x },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^Int } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      },
+      Edge {
+        label: Named { name: ^y },
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^Int } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn emit_point() -> String {
+  match emit_semantic_type_decl(
+    name: ^Point,
+    params: Empty,
+    node: two_field_record(),
+    target: rust_target_model()
+  ) {
+    Accepted { value: medium, diagnostics: _ } => medium.carried
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+data rust_two_field_golden: String = concat(rust_struct_derives, "\nstruct Point { x: Int, y: Int }")
+
+test fn rust_two_field_emit_matches_golden_holds() -> Bool {
+  emit_point() == rust_two_field_golden
+}
