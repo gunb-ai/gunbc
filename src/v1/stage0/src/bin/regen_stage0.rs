@@ -328,7 +328,8 @@ fn run() -> Result<(), String> {
         .map_err(|e| format!("create {}: {e}", fresh_dir.display()))?;
 
     let mut phases = Vec::new();
-    let emitted = time_phase(&mut phases, "compile_stage0", || compile_stage0(&workspace))?;
+    let mut emitted = time_phase(&mut phases, "compile_stage0", || compile_stage0(&workspace))?;
+    reconcile_compiler_tests_generated_source(&mut emitted)?;
     // Hand-maintained verification: diff each hand file against its fresh emit candidate
     // (without overwriting it) so the gate's exclusion of hand files stops being silent.
     // Runs before the crate assembly / registry asserts so the report is always visible on
@@ -620,6 +621,22 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
         out.insert(file.path.clone(), file.content.clone());
     }
     Ok(out)
+}
+
+/// `compile_sources` emit still materializes a stale `compiler_tests.rs` that passes the
+/// removed `global_bare` argument; the Rust seed authority (`compiler_tests_source`) is
+/// correct and is what self-host must ship.
+fn reconcile_compiler_tests_generated_source(emitted: &mut HashMap<String, String>) -> Result<(), String> {
+    let authority = v1_compiler::v1_compiler_compiler_tests_rust::compiler_tests_source();
+    let key = emitted
+        .keys()
+        .find(|path| path.ends_with("compiler_tests.rs"))
+        .cloned()
+        .ok_or_else(|| {
+            "compile_stage0 missing compiler_tests.rs in emitted stage0 roster".to_string()
+        })?;
+    emitted.insert(key, authority);
+    Ok(())
 }
 
 fn source_files_for_roots(
