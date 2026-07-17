@@ -2,7 +2,6 @@ module v2.extdeps.languages.c_decl
 
 import v2.std.grammar {
   grammar_formal_terminal,
-  grammar_formal_terminal_bound,
   grammar_formal_terminal_free,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
@@ -77,7 +76,9 @@ fn c_decl_shared_field_productions() -> List<FormalProduction> {
       lhs: ^c_decl_field,
       rhs: [
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_type_expr),
-        grammar_formal_terminal_free(identity: ^c_token_ident)
+        grammar_formal_terminal(identity: ^c_token_ws),
+        grammar_formal_terminal_free(identity: ^c_token_ident),
+        grammar_formal_terminal(identity: ^c_token_semicolon_field)
       ]
     ),
     grammar_formal_production(
@@ -90,7 +91,6 @@ fn c_decl_shared_field_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^c_decl_field_list_suffix,
       rhs: [
-        grammar_formal_terminal(identity: ^c_token_semicolon_field),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_field),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_list_suffix)
       ]
@@ -156,7 +156,8 @@ fn c_decl_tagged_union_member_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ^c_token_lbrace),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_field_list),
         grammar_formal_terminal(identity: ^c_token_rbrace),
-        grammar_formal_terminal_free(identity: ^c_token_ident)
+        grammar_formal_terminal_free(identity: ^c_token_ident),
+        grammar_formal_terminal(identity: ^c_token_semicolon_field)
       ]
     ),
     grammar_formal_production(
@@ -169,7 +170,6 @@ fn c_decl_tagged_union_member_productions() -> List<FormalProduction> {
     grammar_formal_production(
       lhs: ^c_decl_union_member_list_suffix,
       rhs: [
-        grammar_formal_terminal(identity: ^c_token_semicolon_field),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_member),
         grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_member_list_suffix)
       ]
@@ -282,6 +282,7 @@ fn c_enum_general_decl_productions_only_translation_rules() -> Node {
 fn c_semantic_decl_lex_rows() -> List<Node> {
   [
     semantic_decl_lex_whitespace_trivia_row(),
+    semantic_decl_lex_literal_row(token_class: ^c_token_ws, text: " "),
     semantic_decl_lex_literal_row(token_class: ^c_token_kw_typedef_struct, text: "typedef struct "),
     semantic_decl_lex_literal_row(token_class: ^c_token_kw_typedef_enum, text: "typedef enum "),
     semantic_decl_lex_literal_row(token_class: ^c_token_kw_struct, text: "struct { "),
