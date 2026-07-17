@@ -19,6 +19,8 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "usv_pilot_v2_std_node.rs",
     "v2_compiler_resolve.rs",
     "v2_compiler_program_assembly.rs",
+    "v2_compiler_program_partition.rs",
+    "v2_compiler_tokenize.rs",
     "v2_compiler_body_producer.rs",
     "v2_compiler_target_carriers.rs",
     "v2_compiler_discovery_enumeration.rs",
