@@ -959,41 +959,30 @@ fn semantic_decl_surface_projection_bool_flag_node(
 fn decode_semantic_decl_surface_projection_bool_flag(
   bundle: Node,
   field: Symbol,
-  true_id: Symbol
-) -> Bool {
-  match find_named_child(root: bundle, name: field) {
-    Accepted { value: flag, diagnostics: _ } =>
+  true_id: Symbol,
+  false_id: Symbol
+) -> Outcome<Bool> {
+  bind_outcome(
+    o: find_named_child(root: bundle, name: field),
+    f: fn(flag) {
       match flag.kind {
-        TypeNode { connective: Atom { identity: id } } => id == true_id
-        _ => false
+        TypeNode { connective: Atom { identity: id } } =>
+          if id == true_id {
+            outcome_accepted(value: true)
+          } else if id == false_id {
+            outcome_accepted(value: false)
+          } else {
+            outcome_rejected(
+              d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
+            )
+          }
+        _ =>
+          outcome_rejected(
+            d: semantic_decl_emission_bundle_malformed_diagnostic(bundle: bundle)
+          )
       }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn decode_semantic_decl_surface_projection_field_type_before_name(
-  bundle: Node
-) -> Bool {
-  decode_semantic_decl_surface_projection_bool_flag(
-    bundle: bundle,
-    field: ^semantic_decl_surface_field_type_before_name,
-    true_id: ^semantic_decl_field_type_before_name_true
+    }
   )
-}
-
-fn decode_semantic_decl_surface_projection_symbol_field(
-  bundle: Node,
-  field: Symbol,
-  absent: Symbol
-) -> Symbol {
-  match find_named_child(root: bundle, name: field) {
-    Accepted { value: flag, diagnostics: _ } =>
-      match flag.kind {
-        TypeNode { connective: Atom { identity: id } } => id
-        _ => absent
-      }
-    Rejected { diagnostics: _ } => absent
-  }
 }
 
 fn decode_semantic_decl_surface_projection_bundle(
@@ -1017,42 +1006,82 @@ fn decode_semantic_decl_surface_projection_bundle(
               bind_outcome(
                 o: semantic_decl_coproduct_decoration_rules_from_catalog(catalog: rules_catalog),
                 f: fn(coproduct_decoration_rules) {
-                  outcome_accepted(
-                    TargetSemanticDeclSurfaceProjection {
-                      record_decoration_lines: record_decoration_lines,
-                      coproduct_decoration_rules: coproduct_decoration_rules,
-                      field_type_before_name: decode_semantic_decl_surface_projection_field_type_before_name(
-                        bundle: bundle
-                      ),
-                      type_expr_field_scope: decode_semantic_decl_surface_projection_bool_flag(
-                        bundle: bundle,
-                        field: ^semantic_decl_surface_field_type_expr_field_scope,
-                        true_id: ^semantic_decl_type_expr_field_scope_true
-                      ),
-                      struct_typedef_name_after_fields: decode_semantic_decl_surface_projection_bool_flag(
-                        bundle: bundle,
-                        field: ^semantic_decl_surface_field_struct_typedef_name_after_fields,
-                        true_id: ^semantic_decl_struct_typedef_name_after_fields_true
-                      ),
-                      enum_name_after_variants: decode_semantic_decl_surface_projection_bool_flag(
-                        bundle: bundle,
-                        field: ^semantic_decl_surface_field_enum_name_after_variants,
-                        true_id: ^semantic_decl_enum_name_after_variants_true
-                      ),
-                      coproduct_tagged_union_struct_layout: decode_semantic_decl_surface_projection_bool_flag(
-                        bundle: bundle,
-                        field: ^semantic_decl_surface_field_coproduct_tagged_union_struct_layout,
-                        true_id: ^semantic_decl_coproduct_tagged_union_struct_layout_true
-                      ),
-                      tagged_union_tag_field: decode_semantic_decl_surface_projection_symbol_field(
-                        bundle: bundle,
-                        field: ^semantic_decl_surface_field_tagged_union_tag_field,
-                        absent: ^semantic_decl_tagged_union_tag_field_unused
-                      ),
-                      tagged_union_union_field: decode_semantic_decl_surface_projection_symbol_field(
-                        bundle: bundle,
-                        field: ^semantic_decl_surface_field_tagged_union_union_field,
-                        absent: ^semantic_decl_tagged_union_union_field_unused
+                  bind_outcome(
+                    o: decode_semantic_decl_surface_projection_bool_flag(
+                      bundle: bundle,
+                      field: ^semantic_decl_surface_field_type_before_name,
+                      true_id: ^semantic_decl_field_type_before_name_true,
+                      false_id: ^semantic_decl_field_type_before_name_false
+                    ),
+                    f: fn(field_type_before_name) {
+                      bind_outcome(
+                        o: decode_semantic_decl_surface_projection_bool_flag(
+                          bundle: bundle,
+                          field: ^semantic_decl_surface_field_type_expr_field_scope,
+                          true_id: ^semantic_decl_type_expr_field_scope_true,
+                          false_id: ^semantic_decl_type_expr_field_scope_false
+                        ),
+                        f: fn(type_expr_field_scope) {
+                          bind_outcome(
+                            o: decode_semantic_decl_surface_projection_bool_flag(
+                              bundle: bundle,
+                              field: ^semantic_decl_surface_field_struct_typedef_name_after_fields,
+                              true_id: ^semantic_decl_struct_typedef_name_after_fields_true,
+                              false_id: ^semantic_decl_struct_typedef_name_after_fields_false
+                            ),
+                            f: fn(struct_typedef_name_after_fields) {
+                              bind_outcome(
+                                o: decode_semantic_decl_surface_projection_bool_flag(
+                                  bundle: bundle,
+                                  field: ^semantic_decl_surface_field_enum_name_after_variants,
+                                  true_id: ^semantic_decl_enum_name_after_variants_true,
+                                  false_id: ^semantic_decl_enum_name_after_variants_false
+                                ),
+                                f: fn(enum_name_after_variants) {
+                                  bind_outcome(
+                                    o: decode_semantic_decl_surface_projection_bool_flag(
+                                      bundle: bundle,
+                                      field: ^semantic_decl_surface_field_coproduct_tagged_union_struct_layout,
+                                      true_id: ^semantic_decl_coproduct_tagged_union_struct_layout_true,
+                                      false_id: ^semantic_decl_coproduct_tagged_union_struct_layout_false
+                                    ),
+                                    f: fn(coproduct_tagged_union_struct_layout) {
+                                      bind_outcome(
+                                        o: projection_bundle_symbol_field(
+                                          bundle: bundle,
+                                          field: ^semantic_decl_surface_field_tagged_union_tag_field
+                                        ),
+                                        f: fn(tagged_union_tag_field) {
+                                          bind_outcome(
+                                            o: projection_bundle_symbol_field(
+                                              bundle: bundle,
+                                              field: ^semantic_decl_surface_field_tagged_union_union_field
+                                            ),
+                                            f: fn(tagged_union_union_field) {
+                                              outcome_accepted(
+                                                TargetSemanticDeclSurfaceProjection {
+                                                  record_decoration_lines: record_decoration_lines,
+                                                  coproduct_decoration_rules: coproduct_decoration_rules,
+                                                  field_type_before_name: field_type_before_name,
+                                                  type_expr_field_scope: type_expr_field_scope,
+                                                  struct_typedef_name_after_fields: struct_typedef_name_after_fields,
+                                                  enum_name_after_variants: enum_name_after_variants,
+                                                  coproduct_tagged_union_struct_layout: coproduct_tagged_union_struct_layout,
+                                                  tagged_union_tag_field: tagged_union_tag_field,
+                                                  tagged_union_union_field: tagged_union_union_field
+                                                }
+                                              )
+                                            }
+                                          )
+                                        }
+                                      )
+                                    }
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
                       )
                     }
                   )
