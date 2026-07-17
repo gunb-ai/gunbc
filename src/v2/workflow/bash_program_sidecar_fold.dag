@@ -36,14 +36,10 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_var
 }
 import v2.extdeps.languages.bash_command_fold {
-  BashFoldStmtBundle,
   bash_fold_delegated_needs_component_spellings_diagnostic,
   bash_fold_diagnostic_anchor,
-  bash_fold_stmts_absent_diagnostic,
   bash_fold_target_model_for_emitted_witness,
-  bash_fold_unsupported_variant_diagnostic,
-  bash_fold_words_absent_diagnostic,
-  bash_fold_with_redir_bundle
+  bash_fold_unsupported_variant_diagnostic
 }
 import v2.std.collection {
   Absent,
@@ -617,6 +613,29 @@ fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetMod
   }
 }
 
+
+fn bash_fold_subshell_wrong_target_model_witness() -> Witness<TargetModel> {
+  match bash_fold_stmt_bundle_witness(
+    stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] }
+  ) {
+    Holds { value: bundle } =>
+      bash_fold_target_model_for_emitted_witness(
+        emitted: bundle.emitted,
+        source_literal: ^bash_fold_subshell_wrong_source_literal,
+        source_text: "(false)",
+        production_binding: ^bash_production_fold_subshell,
+        rule_name: ^bash_relation_rule_fold_subshell
+      )
+    Violates { diagnostic: _ } =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^bash_fold_subshell_wrong_fixture_build_failed,
+          at: node_locus(node: bash_fold_diagnostic_anchor),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
 
 fn bash_fold_if_wrong_target_model_witness() -> Witness<TargetModel> {
   match bash_fold_stmt_bundle_witness(
