@@ -151,6 +151,13 @@ fn c_decl_shared_variant_productions() -> List<FormalProduction> {
 fn c_decl_tagged_union_member_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
+      lhs: ^c_decl_field,
+      rhs: [
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_union_body),
+        grammar_formal_terminal(identity: ^c_token_semicolon_field)
+      ]
+    ),
+    grammar_formal_production(
       lhs: ^c_decl_union_member,
       rhs: [
         grammar_formal_terminal(identity: ^c_token_kw_struct),

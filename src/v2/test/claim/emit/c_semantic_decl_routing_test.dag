@@ -1,7 +1,12 @@
 module v2.test.emit.c_semantic_decl_routing
 
 import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.compiler.translate { grammar_relation_row_for_emitted }
 import v2.extdeps.languages.c { c_target_model }
+import v2.std.compilers.semantic_decl_emission {
+  semantic_decl_emission_from_target,
+  target_semantic_enum_surface_from_coproduct
+}
 import std.algebra { Empty }
 import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
@@ -392,6 +397,84 @@ fn cdr_answer_text() -> String {
   }
 }
 
+test fn c_semantic_answer_surface_builds_holds() -> Bool {
+  match semantic_decl_emission_from_target(target: c_target_model()) {
+    Accepted { value: emission, diagnostics: _ } =>
+      match target_semantic_enum_surface_from_coproduct(
+        projection: emission.surface,
+        name: ^Answer,
+        params: Empty,
+        coproduct: cdr_answer_coproduct()
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_answer_grammar_row_holds() -> Bool {
+  match semantic_decl_emission_from_target(target: c_target_model()) {
+    Accepted { value: emission, diagnostics: _ } =>
+      match target_semantic_enum_surface_from_coproduct(
+        projection: emission.surface,
+        name: ^Answer,
+        params: Empty,
+        coproduct: cdr_answer_coproduct()
+      ) {
+        Accepted { value: surface, diagnostics: _ } =>
+          match grammar_relation_row_for_emitted(
+            rules: emission.enum_translation_rules,
+            emitted: surface
+          ) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_answer_emit_accepted_holds() -> Bool {
+  match cdr_emit_text(name: ^Answer, node: cdr_answer_coproduct()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn c_semantic_answer_emit_oracle_a_holds() -> Bool {
+  cdr_answer_text() == concat(
+    "typedef struct ",
+    "{ int tag; union { struct { int n; } Yes; struct { int code; } No; } u; } Answer;"
+  )
+}
+
+test fn c_semantic_answer_emit_oracle_b_holds() -> Bool {
+  cdr_answer_text() == concat(
+    "typedef struct ",
+    "{ int tag; union { struct { int n; }Yes; struct { int code; }No; } u; } Answer;"
+  )
+}
+
+test fn c_semantic_answer_emit_oracle_c_holds() -> Bool {
+  cdr_answer_text() == concat(
+    "typedef struct ",
+    "{ int tag; union { struct { int n; } Yes; struct { int code; } No; }u; } Answer;"
+  )
+}
+
+test fn c_semantic_answer_emit_oracle_d_holds() -> Bool {
+  cdr_answer_text() == concat(
+    "typedef struct ",
+    "{ int tag; union { struct { int n; } Yes; struct { int code; } No; } u; }Answer;"
+  )
+}
+
+test fn c_semantic_answer_emit_starts_golden_prefix_holds() -> Bool {
+  starts_with(s: cdr_answer_text(), prefix: concat("typedef struct ", "{ int tag; union { "))
+}
+
 test fn c_semantic_answer_emit_eq_golden_holds() -> Bool {
   cdr_answer_text() == c_semantic_answer_golden
 }
@@ -446,6 +529,10 @@ test fn c_semantic_unsupported_shape_refuses() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+}
+
+test fn c_semantic_answer_emit_oracle_probe_holds() -> Bool {
+  cdr_answer_text() == concat("typedef struct ", "{ int tag; union { struct { int n; } Yes; struct { int code; } No; } u; }Answer;")
 }
 
 test fn c_semantic_decl_routing_all_holds() -> Bool {

@@ -1566,6 +1566,22 @@ fn target_semantic_decl_surface_tagged_union_union_body(
   )
 }
 
+fn target_semantic_decl_surface_tagged_union_union_field(
+  variants: List<Node>,
+  union_field: Symbol
+) -> Node {
+  target_semantic_decl_surface_conj(
+    children: [
+      target_semantic_decl_surface_pos(
+        target: target_semantic_decl_surface_tagged_union_union_body(
+          variants: variants,
+          union_field: union_field
+        )
+      )
+    ]
+  )
+}
+
 fn target_semantic_decl_surface_tagged_union_body_fields(
   projection: TargetSemanticDeclSurfaceProjection,
   variants: List<Node>
@@ -1577,7 +1593,7 @@ fn target_semantic_decl_surface_tagged_union_body_fields(
       type_before_name: projection.field_type_before_name,
       type_expr_field_scope: projection.type_expr_field_scope
     ),
-    target_semantic_decl_surface_tagged_union_union_body(
+    target_semantic_decl_surface_tagged_union_union_field(
       variants: variants,
       union_field: projection.tagged_union_union_field
     )
