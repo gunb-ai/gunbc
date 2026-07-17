@@ -10,7 +10,7 @@ import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.workflow.build_step_emit { verifications_script }
 import tools.build_step { BuildArtifact, emit_verifications }
 import gunbc.ci_spec { ci_floor_build_verify_script }
-import v2.std.collection { list_at_optional }
+import v2.std.collection { Absent, Present, list_at_optional }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.node { Atom, Node, Symbol, TypeNode }
