@@ -245,10 +245,16 @@ pub fn lookup_coproduct_common_field_node(
 }
 
 pub fn resolve_scrutinee_type_node(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
-    resolve_scrutinee_type_node_seen(
-        env.clone(),
-        n.clone(),
-        v1_rt::rc_empty_map::<String, bool>(),
+    crate::v1_compiler_infer_resolve::per_module_scrutinee_memo_lookup_or_compute(
+        &env,
+        &n,
+        || {
+            resolve_scrutinee_type_node_seen(
+                env.clone(),
+                n.clone(),
+                v1_rt::rc_empty_map::<String, bool>(),
+            )
+        },
     )
 }
 
