@@ -12,7 +12,7 @@ render_cssl_probe_lib_cargo_toml() {
   local harness_rel="dag/tools/self_host_curated_seed_linked_harness.dag"
 
   if [[ ! -f "$root/$harness_rel" ]]; then
-    echo "curated_cargo_probe: missing $harness_rel (bundle from ferret #6782 or wait for main)" >&2
+    echo "curated_cargo_probe: missing $harness_rel" >&2
     return 1
   fi
 
