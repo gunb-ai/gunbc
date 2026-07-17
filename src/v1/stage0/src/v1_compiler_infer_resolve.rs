@@ -378,9 +378,18 @@ pub struct ResourceUseResult {
 // docs/plans/execution-spine-design.md §2.
 // CONDITION: dissolve when v2.std.materialize's ComputationIdentity qualification
 // reaches SUB-MODULE grain in the executed compiler — i.e. when type-grounding
-// computations (resolve_node_bounded / resolve_scrutinee_type_node_seen results)
-// are content-hash-qualified Share/Memoize by v2.std.materialize rather than
-// by this seed memo.
+// computations (resolve_node_bounded results) are content-hash-qualified
+// Share/Memoize by v2.std.materialize rather than by this seed memo.
+//
+// SCRUTINEE GRAIN REMOVED (2026-07-17): #6779 also memoized resolve_scrutinee_type_node
+// on a full-subtree fingerprint key. On a self-recursive scrutinee (e.g. MarkupNode
+// reached via field_summary_for_type recursion) each expansion depth yields a DISTINCT
+// key, so that grain never hit yet pinned every intermediate subtree (measured >33GB /
+// OOM on a 6-module closure and the whole-tree CI floor). Its dedup benefit cannot
+// materialize on exactly the recursive case that makes it expensive, so it was pure
+// liability — removed. The bounded grain (resolve_node_bounded) is unaffected and keeps
+// #6779's within-module speedup; whole-tree compile-clean now completes bounded (~1.1GB,
+// ~26s) where it previously OOM'd.
 // DISSOLUTION RECEIPT: delete this memo, rerun whole-tree attribution; wall time
 // unchanged (memo hits must read as zero; typecheck wall must not regress).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -486,20 +495,15 @@ pub fn per_module_resolve_memo_install(env: &Rc<TypeEnv>) {
         if let Some(leaked) = cell.borrow_mut().take() {
             eprintln!(
                 "[resolve-memo-mod] warning: flushed leaked scope before install \
-                 bounded_hit={} bounded_miss={} bounded_bypass={} \
-                 scrutinee_hit={} scrutinee_miss={} scrutinee_bypass={}",
+                 bounded_hit={} bounded_miss={} bounded_bypass={}",
                 leaked.stats.bounded_hits,
                 leaked.stats.bounded_misses,
                 leaked.stats.bounded_bypasses,
-                leaked.stats.scrutinee_hits,
-                leaked.stats.scrutinee_misses,
-                leaked.stats.scrutinee_bypasses,
             );
         }
         *cell.borrow_mut() = Some(PerModuleResolveMemoScope {
             env_scope_ptr: Rc::as_ptr(env) as usize,
             bounded: std::collections::HashMap::new(),
-            scrutinee: std::collections::HashMap::new(),
             node_surface_fp_cache: std::collections::HashMap::new(),
             stats: PerModuleResolveMemoStats::default(),
         });
@@ -538,52 +542,6 @@ pub fn per_module_resolve_memo_global_snapshot() -> PerModuleResolveMemoStats {
             .map(|scope| scope.stats)
             .unwrap_or_default()
     })
-}
-
-pub(crate) fn per_module_scrutinee_memo_lookup_or_compute(
-    env: &Rc<TypeEnv>,
-    n: &Rc<Node>,
-    compute: impl FnOnce() -> Rc<Node>,
-) -> Rc<Node> {
-    if !per_module_resolve_memo_enabled() {
-        return compute();
-    }
-    enum ScrutineeProbe {
-        Hit(Rc<Node>),
-        Miss(ScrutineeMemoKey),
-        Passthrough,
-    }
-    let probe = PER_MODULE_RESOLVE_MEMO.with(|cell| {
-        let mut borrow = cell.borrow_mut();
-        let Some(scope) = borrow.as_mut() else {
-            return ScrutineeProbe::Passthrough;
-        };
-        if !resolve_memo_env_matches(scope, env) {
-            scope.stats.scrutinee_bypasses += 1;
-            return ScrutineeProbe::Passthrough;
-        }
-        let node_surface_fp = resolve_memo_node_surface_fp(scope, n);
-        let key = ScrutineeMemoKey { node_surface_fp };
-        if let Some(hit) = scope.scrutinee.get(&key) {
-            scope.stats.scrutinee_hits += 1;
-            return ScrutineeProbe::Hit(hit.clone());
-        }
-        scope.stats.scrutinee_misses += 1;
-        ScrutineeProbe::Miss(key)
-    });
-    match probe {
-        ScrutineeProbe::Hit(node) => node,
-        ScrutineeProbe::Passthrough => compute(),
-        ScrutineeProbe::Miss(key) => {
-            let result = compute();
-            PER_MODULE_RESOLVE_MEMO.with(|cell| {
-                if let Some(scope) = cell.borrow_mut().as_mut() {
-                    scope.scrutinee.insert(key, result.clone());
-                }
-            });
-            result
-        }
-    }
 }
 
 fn per_module_bounded_memo_lookup_or_compute(
@@ -640,18 +598,12 @@ fn per_module_bounded_memo_lookup_or_compute(
 
 pub fn log_per_module_resolve_memo_stats(module_name: &str, stats: PerModuleResolveMemoStats) {
     let bounded_total = stats.bounded_hits + stats.bounded_misses + stats.bounded_bypasses;
-    let scrutinee_total = stats.scrutinee_hits + stats.scrutinee_misses + stats.scrutinee_bypasses;
-    if bounded_total == 0 && scrutinee_total == 0 {
+    if bounded_total == 0 {
         return;
     }
     eprintln!(
-        "[resolve-memo-mod] module={module_name} bounded_hit={} bounded_miss={} bounded_bypass={} scrutinee_hit={} scrutinee_miss={} scrutinee_bypass={}",
-        stats.bounded_hits,
-        stats.bounded_misses,
-        stats.bounded_bypasses,
-        stats.scrutinee_hits,
-        stats.scrutinee_misses,
-        stats.scrutinee_bypasses,
+        "[resolve-memo-mod] module={module_name} bounded_hit={} bounded_miss={} bounded_bypass={}",
+        stats.bounded_hits, stats.bounded_misses, stats.bounded_bypasses,
     );
 }
 
