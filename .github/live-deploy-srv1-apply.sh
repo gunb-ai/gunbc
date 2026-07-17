@@ -4,16 +4,8 @@ set -euo pipefail
 # the minimal grant set (apt-get, install, systemctl, tailscale) — no root shell.
 _gunbc_stage="$(mktemp -d)"
 trap 'rm -rf "$_gunbc_stage"' EXIT
-ensure_apt_package() {
-  local pkg="$1"
-  if ! dpkg -s "$pkg" >/dev/null 2>&1; then
-    sudo -n apt-get install -y "$pkg"
-  fi
-}
-
-ensure_apt_package "tailscale"
-ensure_apt_package "nodejs"
-
+if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install -y tailscale; fi
+if ! dpkg -s nodejs >/dev/null 2>&1; then sudo -n apt-get install -y nodejs; fi
 sudo -n install -d -m 0755 /opt/gunbc
 cat > "$_gunbc_stage/server.js" <<'GUNBC_SERVER_EOF'
 // @ts-nocheck
@@ -273,7 +265,6 @@ const HOST = process.env['HOST'] || '0.0.0.0';
 server.listen(PORT, HOST, () => {   process.stdout.write('listening\\n'); });
 GUNBC_SERVER_EOF
 sudo -n install -m 0644 "$_gunbc_stage/server.js" /opt/gunbc/server.js
-
 cat > "$_gunbc_stage/gunbc-roadmap.service" <<'GUNBC_UNIT_EOF'
 [Unit]
 Description=gunbc roadmap HTTP server
@@ -292,13 +283,8 @@ Restart=on-failure
 WantedBy=multi-user.target
 GUNBC_UNIT_EOF
 sudo -n install -m 0644 "$_gunbc_stage/gunbc-roadmap.service" /etc/systemd/system/gunbc-roadmap.service
-
 sudo -n systemctl daemon-reload
 sudo -n systemctl enable gunbc-roadmap.service
 sudo -n systemctl restart gunbc-roadmap.service
-
-if ! sudo -n tailscale serve status 2>/dev/null | grep -q ':8080'; then
-  sudo -n tailscale serve --bg 8080
-fi
-
+if ! sudo -n tailscale serve status 2>/dev/null | grep -q ':8080'; then sudo -n tailscale serve --bg 8080; fi
 echo live-deploy-receipt host=srv1 fold=apply verdict=converged
