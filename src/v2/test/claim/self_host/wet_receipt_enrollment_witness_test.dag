@@ -1,6 +1,7 @@
 module v2.test.claim.self_host.wet_receipt_enrollment_witness_test
 
 import v2.compiler.self_host.frontier {
+  compiler_frontier_row_03_body_producer,
   compiler_frontier_row_06_translate,
   compiler_frontier_row_07_target_carriers,
   compiler_frontier_row_parse_engine_hooks,
@@ -67,6 +68,10 @@ fn witness_target_carriers_self_emitted_enrolls_wet_entry() -> Bool {
   length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_07_target_carriers)) == 1
 }
 
+fn witness_body_producer_self_emitted_enrolls_wet_entry() -> Bool {
+  length(xs: frontier_row_wet_entries_if_enrolled(row: compiler_frontier_row_03_body_producer)) == 1
+}
+
 fn witness_nightly_enrollment_includes_template_plus_self_emitted_modules() -> Bool {
   (length(xs: falsifier_self_host_wet_template_entries) == 1)
     && (length(xs: falsifier_self_host_wet_frontier_enrolled_entries()) == compiler_frontier_self_emitted_baseline)
@@ -109,6 +114,15 @@ fn witness_target_carriers_binding_present() -> Bool {
   }
 }
 
+fn witness_body_producer_binding_present() -> Bool {
+  match find_wet_receipt_binding(module_path: "src/v2/compiler/03_body_producer.dag") {
+    Present { value: b } =>
+      b.entry == "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag"
+        && b.function == "self_host_body_producer_behavioral_receipt_holds"
+    Absent => false
+  }
+}
+
 fn witness_unbound_module_path_has_no_binding() -> Bool {
   match find_wet_receipt_binding(module_path: "src/v2/compiler/06_translate.dag") {
     Absent => true
@@ -123,10 +137,12 @@ test fn wet_receipt_enrollment_witnesses() -> Bool {
     && witness_use_site_verdict_self_emitted_enrolls_wet_entry()
     && witness_discovery_enumeration_self_emitted_enrolls_wet_entry()
     && witness_target_carriers_self_emitted_enrolls_wet_entry()
+    && witness_body_producer_self_emitted_enrolls_wet_entry()
     && witness_nightly_enrollment_includes_template_plus_self_emitted_modules()
     && witness_parse_engine_hooks_binding_present()
     && witness_use_site_verdict_binding_present()
     && witness_discovery_enumeration_binding_present()
     && witness_target_carriers_binding_present()
+    && witness_body_producer_binding_present()
     && witness_unbound_module_path_has_no_binding()
 }
