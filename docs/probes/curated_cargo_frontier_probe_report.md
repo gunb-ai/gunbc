@@ -1,7 +1,7 @@
 # Curated-cargo frontier probe sweep (cool-crab-179)
 
 **Scope:** probe-only measurement — no `frontier.dag` edits, no flips.  
-**Harness:** `gunbc compile --dependency-pool-index primary-precedence` + seed-linked `v1-compiler` crate (mirrors `tools.self_host_curated_seed_linked_harness` spine). Pull harness authority from `origin/session/snappy-ferret-198` before running; do not fork.  
+**Harness:** `gunbc compile --dependency-pool-index primary-precedence` + seed-linked `v1-compiler` crate (`dag/tools/self_host_curated_seed_linked_harness`, in-tree; dedupes when ferret #6782 lands on main).  
 **Skipped:** `03_body_producer` (already proven PHANTOM / flip in flight on ferret #6782).
 
 ## Executive summary
@@ -55,8 +55,7 @@
 ## Reproduce
 
 ```bash
-# Harness authority: dag/tools/self_host_curated_seed_linked_harness.dag (ferret #6782).
-# Until on main, probe runner fetches it via git show origin/session/snappy-ferret-198.
+# Harness authority: dag/tools/self_host_curated_seed_linked_harness.dag (in-tree; dedupes when #6782 lands on main).
 
 # full sweep (~45min sequential)
 ./scripts/curated_cargo_frontier_probe_sweep.sh
