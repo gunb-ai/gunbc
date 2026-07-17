@@ -1,6 +1,6 @@
 # Grain-agnostic membership-diff reconcile spine (R2/R3/R5/R9)
 
-Status: DESIGN — pre-commit review by calm-ferret-849 (seam) + royal-carp-451 (grain-agnosticism + R5 boundary). Not yet implemented.
+Status: LANDED — Pass 1 (spine + R5) and Pass 2 (live_deploy binding) implemented, reviewed pre-commit by calm-ferret-849 (seam) + royal-carp-451 (grain-agnosticism + R5 boundary). See "Pass 2 — LANDED" below for the shape as built (which refined the pre-commit design in three reviewed ways: derived-ownership projection, the `EffectsOrRefusal` sum wall, and the typed wholesale-refuse policy trigger).
 
 ## Objective (locked requirements, royal-carp 2026-07-17)
 
@@ -119,6 +119,20 @@ A future Session member (NOT built here) instantiates the same spine: `M = Sessi
 
 1. **Spine + R5** — `membership_reconcile` generic fn, `Ownership`/`MemberAction`/`MembershipPlan`, R5 owned-only partition, typed `MemberTeardownRefused`. Pure; witnessed with a RED control (unowned Removed refuses).
 2. **live_deploy binding** — unify apply+retract via the poles; plan-driven emit folding into the R7 `Pipeline`; byte-identity goldens; R5 RED control at the ensured-member pole.
+
+## Pass 2 — LANDED (live_deploy binding)
+
+Pass 2 wired live_deploy onto the spine and refined the pre-commit design in three reviewer-approved ways. It is behavior-preserving: the committed apply/retract goldens stay **byte-for-byte identical** (the oracle), proven green by execution (`live_deploy_emit_holds`).
+
+**Re-ground (option b, landed).** `DeploymentStep`'s payload-discriminating variants were renamed `Owned/Ensured → Artifact/Dependency` (and the payload records `Deployment{Owned,Ensured}Step → Deployment{Artifact,Dependency}Step`), so they name the payload domain, not the ownership axis. `deployment_step_ownership(step) -> Ownership` PROJECTS each variant onto the single `gunbc.ownership.Ownership` authority — ownership is DERIVED, never stored, so an inconsistent ownership/payload pair is unwritable (§5, stronger than the pre-commit option a of a stored field). Only `gunbc.ownership` defines `Owned|Ensured`; the pass-1 reground-trigger Scaffold dissolved when the projection landed.
+
+**The apply grain — `EffectsOrRefusal` sum wall.** The apply dispatch consumes an effects-only input, not the full plan. `membership_effects(plan) -> EffectsOrRefusal<M>` is a SUM: `EffectsReady{effects}` (the upsert/teardown effects) or `ApplyRefused{refusals}` (the `MemberRefusal{member, cause}` list). The refusal arm carries **no effects**, so a plan with any refusal is un-emittable — a consumer can obtain a `List<MemberEffect>` only from the `EffectsReady` arm, making drop-and-proceed (emit the effects, ignore the refusals) **unrepresentable**, not merely discouraged (§5 construction-over-validation — the pre-commit `{effects, refusals}` product was droppable; the sum fixes it). This layers cleanly with the plan grain: `membership_reconcile` still produces every per-member action and counts refusals ("siblings continue"); the apply grain refuses wholesale.
+
+**Wholesale-refuse execution semantics.** The sum also encodes a deliberate *execution policy* (any refusal ⇒ the whole apply emits nothing), which is separable from the type-safety and is **scope-dependent** on the future real observed-provider. That decision — the scope→policy rule and its dissolution condition — is carried by the typed `membership_effects_wholesale_refuse_policy_trigger` in `gunbc.membership_reconcile` (§6 carrier-is-authority). **This paragraph is a gloss; the trigger is the source of truth** — read it for the actual choice, and it is what dissolves when the observed-provider lands and the conscious wholesale-vs-siblings-continue call is made.
+
+**Pole collapse.** `apply = membership_reconcile(desired = spec members, observed = ∅)` → all upsert; `retract = membership_reconcile(desired = ∅, observed = owned artifacts)` → all teardown (all Owned, no refusal). `emit_deploy_member_effect` is the per-kind realization handler (share the diff, dispatch the apply); framing (preamble/receipt) wraps outside the reconcile; orchestration is derived from the effect kind (a SystemdUnit upsert carries its own daemon-reload/enable/restart; ServerScript carries the `/opt/gunbc` `install -d` it writes into — flagged to calm-ferret as the finest-grain reading of the shared-setup, byte-identical to the prior shared prefix). The degenerate poles never produce a refusal, so `ApplyRefused` is unreachable in the real deploy — the wall is a backstop for a future non-degenerate observed provider, exercised only by the synthetic spine witness.
+
+**Tally-monoid refinement (operator-requested, landed with the consumption).** The three `membership_*_count` fns were three separate folds; they are now projections of ONE catamorphism `membership_tally(plan) -> MembershipTally` (a counts-monoid: fixed-size record accumulator, O(1)/step, no copy). §2 one-concept — the elegant fold the diff already is.
 
 ## Open shape-questions for reviewers
 

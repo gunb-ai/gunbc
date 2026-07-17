@@ -407,7 +407,7 @@ data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = knowled
   module_path: "src/v2/compiler/source_authority.dag",
   closure_reads: 87,
   measured_blocker: EmitSurfaceGap,
-  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
+  migration_trigger: ^migrate_when_emit_rc_optional_coherence_lands
 )
 
 data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
@@ -914,7 +914,10 @@ data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_assembly" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_partition" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" }
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_source_authority" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_compile" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" }
 ]
 
 fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
