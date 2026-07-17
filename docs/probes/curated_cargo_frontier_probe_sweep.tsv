@@ -24,3 +24,7 @@ src/v2/compiler/fold_lowering.dag	41 files emitted, 0 diagnostics	refuse	error[E
 src/v2/compiler/emit_host.dag	66 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
 src/v2/compiler/03_name_resolve.dag	49 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
 src/v2/compiler/fold_lowering.dag	41 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/03_resolve.dag	44 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/03_name_resolve.dag	49 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/00_compile.dag	129 files emitted, 0 diagnostics	refuse	error: UNRESOLVED_CompilerError	UNKNOWN_unresolved	UNKNOWN-error:_UNRESOLVED_CompilerError
+src/v2/compiler/03_resolve.dag	44 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
