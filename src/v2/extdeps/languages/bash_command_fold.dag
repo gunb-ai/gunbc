@@ -1320,6 +1320,12 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
                 )
               Absent => Rejected { diagnostics: None }
             }
+          } else if kind == ^bash_build_refused_empty_word_list {
+            Rejected {
+              diagnostics: Some {
+                diagnostics: [bash_fold_unsupported_variant_diagnostic(variant: ^bash_build_refused_empty_word_list)]
+              }
+            }
           } else {
             Rejected { diagnostics: None }
           }
@@ -1332,16 +1338,16 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
 fn bash_fold_serialize_word_list_spelling_from(
   acc: String,
   first: Bool,
-  words: List<Node>
+  rest: List<Node>
 ) -> Outcome<String> {
-  match list_head(xs: words) {
+  match list_head(xs: rest) {
     HeadAbsent => Accepted { value: acc, diagnostics: None }
     HeadFound { value: w } =>
       bind_outcome(
         o: bash_fold_serialize_word_node(word: w),
         f: fn(part) {
           let next = if first { part } else { concat(acc, part) }
-          match list_tail(xs: words) {
+          match list_tail(xs: rest) {
             TailFound { tail: t } =>
               bash_fold_serialize_word_list_spelling_from(acc: next, first: false, rest: t)
             TailAbsent => Accepted { value: next, diagnostics: None }
@@ -1585,6 +1591,12 @@ fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
     bash_fold_serialize_with_redir_node(stmt: stmt)
   } else if binding == ^bash_build_stmt_negation {
     bash_fold_serialize_negation_node(stmt: stmt)
+  } else if binding == ^bash_build_refused_empty_stmt_list {
+    Rejected {
+      diagnostics: Some {
+        diagnostics: [bash_fold_unsupported_variant_diagnostic(variant: ^bash_build_refused_empty_stmt_list)]
+      }
+    }
   } else {
     bash_fold_serialize_leaf_node(
       emitted: stmt,

@@ -370,7 +370,9 @@ fn bash_build_word_list_from_nodes(words: List<Node>) -> Node {
         index: 1
       )
     HeadAbsent =>
-      bash_build_command_words_single(word: bash_build_word_lit(text: ""))
+      bash_build_command_words_single(
+        word: bash_build_word_kinded(kind: ^bash_build_refused_empty_word_list, value: "")
+      )
   }
 }
 
@@ -420,6 +422,15 @@ fn bash_build_stmt_list_from_nodes(stmts: List<Node>) -> Node {
         index: 1
       )
     HeadAbsent =>
-      bash_build_stmt_list_single(stmt: bash_build_exit(code: "0"))
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Positional,
+            target: bash_build_stmt_tag(binding: ^bash_build_refused_empty_stmt_list)
+          }
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
   }
 }
