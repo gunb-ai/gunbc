@@ -14,3 +14,13 @@ src/v2/compiler/05_emit_orchestration.dag	63 files emitted, 0 diagnostics	refuse
 src/v2/compiler/05_emit.dag	57 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
 src/v2/compiler/emit_module.dag	58 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
 src/v2/compiler/05_emit_orchestration.dag	63 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_produced.dag	67 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_module.dag	58 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_semantic_decl.dag	58 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_produced.dag	67 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_host.dag	66 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_semantic_decl.dag	58 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/fold_lowering.dag	41 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_host.dag	66 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/03_name_resolve.dag	49 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/fold_lowering.dag	41 files emitted, 0 diagnostics	refuse	error[E0428]: the name `Int128` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
