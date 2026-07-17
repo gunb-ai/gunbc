@@ -8,8 +8,7 @@ import extdeps.languages.c.emit {
   c_source_extension
 }
 import v2.extdeps.languages.c_decl {
-  c_semantic_decl_emission_bundle_node,
-  c_stage1_type_decl_note
+  c_semantic_decl_emission_bundle_node
 }
 import std.algebra { Empty }
 import std.graph {

@@ -32,12 +32,6 @@ import v2.std.node {
   TypeNode
 }
 
-data c_stage1_type_decl_note: String = "Stage 1 C semantic type declarations (ISO/IEC 9899:2018): record→typedef struct, nullary closed-coproduct→typedef enum, payload closed-coproduct→tagged union. Int fields only at Stage 1 — deferrals are counted rows in c_stage1_type_decl_frontier_rows(). Generic type params not in scope (receipts use Empty params only)."
-
-data c_tagged_union_tag_naming_note: String = "Stage 1 payload coproduct → single typedef struct with int tag + anonymous union. Named tag-enum typedef is c_stage1_frontier_row_named_tag_enum (deferred, counted) — not prose-only."
-
-data c_stage1_type_decl_frontier_dissolution_note: String = "🟡 dissolve-on: c_stage1_type_decl_frontier_rows() — Stage 1 C type-decl deferrals are counted frontier rows. DISSOLVES WHEN c_stage1_type_decl_frontier_deferred_count() reaches 0 (primitive-width type_expr binding + named tag-enum typedef without variant_block double-match)."
-
 type CStage1TypeDeclFrontierDisposition
   = CStage1Deferred { migration_trigger: Symbol }
   | CStage1Landed

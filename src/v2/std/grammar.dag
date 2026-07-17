@@ -1124,6 +1124,59 @@ fn node_atom_identity_optional(node: Node) -> Symbol? {
   }
 }
 
+type FormalBindingConjSlotArm
+  = FormalBindingConjSlotSurfaceDiscriminator
+  | FormalBindingConjSlotEmittedAtom
+  | FormalBindingConjSlotExactBinding
+
+fn formal_binding_conj_slot_arm(binding: Symbol) -> FormalBindingConjSlotArm {
+  if formal_binding_is_surface_discriminator_slot(binding: binding) {
+    FormalBindingConjSlotSurfaceDiscriminator
+  } else if formal_binding_is_emitted_atom_from_slot(binding: binding) {
+    FormalBindingConjSlotEmittedAtom
+  } else {
+    FormalBindingConjSlotExactBinding
+  }
+}
+
+fn formal_binding_conj_slot_atom_only(binding: Symbol) -> Bool {
+  match formal_binding_conj_slot_arm(binding: binding) {
+    FormalBindingConjSlotSurfaceDiscriminator => true
+    FormalBindingConjSlotEmittedAtom => true
+    FormalBindingConjSlotExactBinding => false
+  }
+}
+
+fn grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^grammar_relation_emitted_conj_slot_missing,
+    at: node_locus(node: emitted),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn formal_conj_child_atom_at_index(
+  children: List<Node>,
+  index: Int,
+  emitted: Node
+) -> Witness<Node> {
+  match list_nth(
+    xs: children,
+    wanted: index,
+    absent: grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: emitted)
+  ) {
+    Holds { value: slot_child } =>
+      match node_atom_identity_optional(node: slot_child) {
+        Present { value: _ } => Holds { value: slot_child }
+        Absent =>
+          Violates {
+            diagnostic: grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: emitted)
+          }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
 type EmittedRhsMatchState
   = EmittedRhsMatchOk { children: List<Node>, index: Int }
   | EmittedRhsMatchFail
@@ -1141,51 +1194,21 @@ fn formal_production_rhs_matches_emitted_conj_step(
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Present { value: binding_symbol } =>
-              if formal_binding_is_surface_discriminator_slot(binding: binding_symbol) {
-                match list_nth(
-                  xs: children,
-                  wanted: index,
-                  absent: Diagnostic {
-                    reason: ^grammar_relation_emitted_conj_slot_missing,
-                    at: node_locus(node: emitted),
-                    correction: Unavailable { reason: ExternalContractUnknown }
-                  }
+              if formal_binding_conj_slot_atom_only(binding: binding_symbol) {
+                match formal_conj_child_atom_at_index(
+                  children: children,
+                  index: index,
+                  emitted: emitted
                 ) {
-                  Holds { value: slot_child } =>
-                    match node_atom_identity_optional(node: slot_child) {
-                      Present { value: _ } =>
-                        EmittedRhsMatchOk { children: children, index: index + 1 }
-                      Absent => EmittedRhsMatchFail
-                    }
-                  Violates { diagnostic: _ } => EmittedRhsMatchFail
-                }
-              } else if formal_binding_is_emitted_atom_from_slot(binding: binding_symbol) {
-                match list_nth(
-                  xs: children,
-                  wanted: index,
-                  absent: Diagnostic {
-                    reason: ^grammar_relation_emitted_conj_slot_missing,
-                    at: node_locus(node: emitted),
-                    correction: Unavailable { reason: ExternalContractUnknown }
-                  }
-                ) {
-                  Holds { value: slot_child } =>
-                    match node_atom_identity_optional(node: slot_child) {
-                      Present { value: _ } =>
-                        EmittedRhsMatchOk { children: children, index: index + 1 }
-                      Absent => EmittedRhsMatchFail
-                    }
+                  Holds { value: _ } =>
+                    EmittedRhsMatchOk { children: children, index: index + 1 }
                   Violates { diagnostic: _ } => EmittedRhsMatchFail
                 }
               } else {
-                match list_nth(
-                  xs: children,
-                  wanted: index,
-                  absent: Diagnostic {
-                    reason: ^grammar_relation_emitted_conj_slot_missing,
-                    at: node_locus(node: emitted),
-                    correction: Unavailable { reason: ExternalContractUnknown }
-                  }
+                match formal_conj_child_atom_at_index(
+                  children: children,
+                  index: index,
+                  emitted: emitted
                 ) {
                   Holds { value: slot_child } =>
                     match node_atom_identity_optional(node: slot_child) {
@@ -1281,7 +1304,7 @@ fn formal_production_matches_emitted_child(
         Absent =>
           match formal_production_rhs_singleton_binding(production: production) {
             Present { value: binding } =>
-              if formal_binding_is_emitted_atom_from_slot(binding: binding) {
+              if formal_binding_conj_slot_atom_only(binding: binding) {
                 true
               } else {
                 atom_id == binding
@@ -1369,88 +1392,68 @@ fn derive_grammar_relation_token_edges_recursive_step(
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Present { value: binding_symbol } =>
-              if formal_binding_is_surface_discriminator_slot(binding: binding_symbol) {
-                match list_nth(
-                  xs: conj_children,
-                  wanted: conj_index,
-                  absent: Diagnostic {
-                    reason: ^grammar_relation_emitted_conj_slot_missing,
-                    at: node_locus(node: emitted),
-                    correction: Unavailable { reason: ExternalContractUnknown }
+              match formal_binding_conj_slot_arm(binding: binding_symbol) {
+                FormalBindingConjSlotSurfaceDiscriminator =>
+                  match formal_conj_child_atom_at_index(
+                    children: conj_children,
+                    index: conj_index,
+                    emitted: emitted
+                  ) {
+                    Holds { value: _ } =>
+                      Holds {
+                        value: DeriveGrammarRelationTokensProgress {
+                          edges: edges,
+                          conj_index: conj_index + 1,
+                          conj_children: conj_children
+                        }
+                      }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
                   }
-                ) {
-                  Holds { value: slot_child } =>
-                    match node_atom_identity_optional(node: slot_child) {
-                      Present { value: _ } =>
-                        Holds {
-                          value: DeriveGrammarRelationTokensProgress {
-                            edges: edges,
-                            conj_index: conj_index + 1,
-                            conj_children: conj_children
+                FormalBindingConjSlotEmittedAtom =>
+                  match formal_conj_child_atom_at_index(
+                    children: conj_children,
+                    index: conj_index,
+                    emitted: emitted
+                  ) {
+                    Holds { value: slot_child } =>
+                      match node_atom_identity_optional(node: slot_child) {
+                        Present { value: atom_id } =>
+                          Holds {
+                            value: DeriveGrammarRelationTokensProgress {
+                              edges: list_snoc_item(
+                                xs: edges,
+                                item: grammar_terminal_occurrence_to_token_edge(
+                                  terminal: terminal,
+                                  binding: optional_present(value: atom_id)
+                                )
+                              ),
+                              conj_index: conj_index + 1,
+                              conj_children: conj_children
+                            }
                           }
-                        }
-                      Absent =>
-                        Violates {
-                          diagnostic: Diagnostic {
-                            reason: ^grammar_relation_emitted_conj_slot_missing,
-                            at: node_locus(node: emitted),
-                            correction: Unavailable { reason: ExternalContractUnknown }
+                        Absent =>
+                          Violates {
+                            diagnostic: grammar_relation_emitted_conj_slot_missing_diagnostic(
+                              emitted: emitted
+                            )
                           }
-                        }
+                      }
+                    Violates { diagnostic: d } => Violates { diagnostic: d }
+                  }
+                FormalBindingConjSlotExactBinding =>
+                  Holds {
+                    value: DeriveGrammarRelationTokensProgress {
+                      edges: list_snoc_item(
+                        xs: edges,
+                        item: grammar_terminal_occurrence_to_token_edge(
+                          terminal: terminal,
+                          binding: binding
+                        )
+                      ),
+                      conj_index: conj_index + 1,
+                      conj_children: conj_children
                     }
-                  Violates { diagnostic: d } => Violates { diagnostic: d }
-                }
-              } else if formal_binding_is_emitted_atom_from_slot(binding: binding_symbol) {
-                match list_nth(
-                  xs: conj_children,
-                  wanted: conj_index,
-                  absent: Diagnostic {
-                    reason: ^grammar_relation_emitted_conj_slot_missing,
-                    at: node_locus(node: emitted),
-                    correction: Unavailable { reason: ExternalContractUnknown }
                   }
-                ) {
-                  Holds { value: slot_child } =>
-                    match node_atom_identity_optional(node: slot_child) {
-                      Present { value: atom_id } =>
-                        Holds {
-                          value: DeriveGrammarRelationTokensProgress {
-                            edges: list_snoc_item(
-                              xs: edges,
-                              item: grammar_terminal_occurrence_to_token_edge(
-                                terminal: terminal,
-                                binding: optional_present(value: atom_id)
-                              )
-                            ),
-                            conj_index: conj_index + 1,
-                            conj_children: conj_children
-                          }
-                        }
-                      Absent =>
-                        Violates {
-                          diagnostic: Diagnostic {
-                            reason: ^grammar_relation_emitted_conj_slot_missing,
-                            at: node_locus(node: emitted),
-                            correction: Unavailable { reason: ExternalContractUnknown }
-                          }
-                        }
-                    }
-                  Violates { diagnostic: d } => Violates { diagnostic: d }
-                }
-              } else {
-                Holds {
-                  value: DeriveGrammarRelationTokensProgress {
-                    edges: list_snoc_item(
-                      xs: edges,
-                      item: grammar_terminal_occurrence_to_token_edge(
-                        terminal: terminal,
-                        binding: binding
-                      )
-                    ),
-                    conj_index: conj_index + 1,
-                    conj_children: conj_children
-                  }
-                }
               }
             Absent =>
               Holds {
