@@ -218,7 +218,7 @@ data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = knowledge_att
 data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
   module_path: "src/v2/compiler/01_tokenize.dag",
   closure_reads: 17,
-  measured_blocker: NameResolutionGap,
+  measured_blocker: EmitSurfaceGap,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -456,6 +456,7 @@ data compiler_frontier_sweep_order: List<String> = [
   "src/v2/compiler/parse_engine_hooks.dag",
   "src/v2/compiler/use_site_verdict.dag",
   "src/v2/compiler/discovery_enumeration.dag",
+  "src/v2/compiler/01_tokenize.dag",
   "src/v2/compiler/self_host.dag",
   "src/v2/compiler/materialization_carriers.dag",
   "src/v2/compiler/07_target_carriers.dag",
@@ -477,7 +478,6 @@ data compiler_frontier_sweep_order: List<String> = [
   "src/v2/compiler/source_authority.dag",
   "src/v2/compiler/program_assembly.dag",
   "src/v2/compiler/03_ingest.dag",
-  "src/v2/compiler/01_tokenize.dag",
   "src/v2/compiler/03_body_producer.dag",
   "src/v2/compiler/00_compile.dag"
 ]
@@ -911,7 +911,10 @@ data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" },
-  SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" }
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_assembly" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_partition" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" }
 ]
 
 fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
