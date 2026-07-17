@@ -27,6 +27,27 @@ use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
 };
 
+#[derive(Clone, Copy, Default)]
+struct FalsifierSelfHostWetBudgets {
+    wall_budget_ms: Option<u64>,
+    interp_eval_budget_ms: Option<u64>,
+}
+
+fn read_positive_budget_ms(
+    plan_ctx: &InterpContext,
+    function: &str,
+) -> Result<Option<u64>, String> {
+    match run_value(plan_ctx, function) {
+        Ok(Value::Int(n)) if n > 0 => Ok(Some(n as u64)),
+        Ok(other) => Err(format!(
+            "claim_executor: {function} must be a positive Int, got {other:?} (fail-closed)"
+        )),
+        Err(msg) => Err(format!(
+            "claim_executor: {function} is unavailable (fail-closed): {msg}"
+        )),
+    }
+}
+
 #[derive(Clone)]
 enum Runnable {
     SingleClaim {
@@ -517,6 +538,7 @@ fn run_batch_unit(
     unit: BatchUnit,
     governor: Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
+    falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
 ) -> Vec<ClaimResult> {
     match unit {
         BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
@@ -549,11 +571,16 @@ fn run_batch_unit(
             // silent widen: the Wet roster is a small explicit set with its own resource
             // profile, and the eval-wedge risk the budget guards (the s1_closure class)
             // lives in the wide hermetic corpus, not here.
-            let effective_budget = if execution_mode.is_hermetic() {
-                fast_lane_eval_budget_ms
-            } else {
-                None
-            };
+            let (effective_fast_lane, wet_wall_budget_ms, wet_interp_budget_ms) =
+                if execution_mode.is_hermetic() {
+                    (fast_lane_eval_budget_ms, None, None)
+                } else {
+                    (
+                        None,
+                        falsifier_self_host_wet_budgets.wall_budget_ms,
+                        falsifier_self_host_wet_budgets.interp_eval_budget_ms,
+                    )
+                };
             vec![run_discovery_batch_node(
                 roots,
                 scan_dirs,
@@ -563,7 +590,9 @@ fn run_batch_unit(
                 discovery_scope_dirs,
                 governor,
                 execution_mode,
-                effective_budget,
+                effective_fast_lane,
+                wet_wall_budget_ms,
+                wet_interp_budget_ms,
             )]
         }
         BatchUnit::SharedClaims {
@@ -923,6 +952,8 @@ fn run_discovery_batch_node(
     governor: Arc<MemoryGovernor>,
     execution_mode: ExecutionMode,
     fast_lane_eval_budget_ms: Option<u64>,
+    wet_receipt_wall_budget_ms: Option<u64>,
+    wet_receipt_interp_eval_budget_ms: Option<u64>,
 ) -> ClaimResult {
     set_phase(FloorPhase::Discovery, "discovery-corpus");
     let label = format!(
@@ -942,6 +973,8 @@ fn run_discovery_batch_node(
             exclude_substrings,
             discovery_scope_dirs,
             fast_lane_eval_budget_ms,
+            wet_receipt_wall_budget_ms,
+            wet_receipt_interp_eval_budget_ms,
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
@@ -1489,6 +1522,7 @@ fn run_walk(
     batches: &[Vec<Runnable>],
     governor: &Arc<MemoryGovernor>,
     fast_lane_eval_budget_ms: Option<u64>,
+    falsifier_self_host_wet_budgets: FalsifierSelfHostWetBudgets,
 ) -> WalkOutcome {
     let mut any_failed = false;
     let mut batches_run = 0usize;
@@ -1566,8 +1600,15 @@ fn run_walk(
             .map(|unit| {
                 let roots = source_roots.to_vec();
                 let unit_governor = governor.clone();
+                let wet_budgets = falsifier_self_host_wet_budgets;
                 thread::spawn(move || {
-                    run_batch_unit(roots, unit, unit_governor, fast_lane_eval_budget_ms)
+                    run_batch_unit(
+                        roots,
+                        unit,
+                        unit_governor,
+                        fast_lane_eval_budget_ms,
+                        wet_budgets,
+                    )
                 })
             })
             .collect();
@@ -1857,6 +1898,7 @@ fn run_perturb_check(
         &remapped,
         &Arc::new(MemoryGovernor::from_environment(1)),
         None,
+        FalsifierSelfHostWetBudgets::default(),
     );
     let _ = fs::remove_dir_all(&tmp);
 
@@ -2055,6 +2097,32 @@ fn run() -> Result<ExitCode, ExitCode> {
     } else {
         None
     };
+    let falsifier_self_host_wet_budgets = if plan_function == "gunbc_falsifier_batches" {
+        FalsifierSelfHostWetBudgets {
+            wall_budget_ms: match read_positive_budget_ms(
+                &plan_ctx,
+                "gunbc_falsifier_self_host_wet_receipt_wall_budget_ms",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+            interp_eval_budget_ms: match read_positive_budget_ms(
+                &plan_ctx,
+                "gunbc_falsifier_self_host_wet_interp_eval_budget_ms",
+            ) {
+                Ok(v) => v,
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    return Err(ExitCode::from(1));
+                }
+            },
+        }
+    } else {
+        FalsifierSelfHostWetBudgets::default()
+    };
     drop(plan_ctx);
     phase_mark("plan evaluated");
 
@@ -2104,7 +2172,13 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
 
-    let outcome = run_walk(&source_roots, &batches, &governor, fast_lane_eval_budget_ms);
+    let outcome = run_walk(
+        &source_roots,
+        &batches,
+        &governor,
+        fast_lane_eval_budget_ms,
+        falsifier_self_host_wet_budgets,
+    );
     match peak_rss_bytes() {
         Some(bytes) => {
             eprintln!("[measurement] floor peak RSS: {bytes} bytes (VmHWM) (adaptive width)");
@@ -2372,6 +2446,7 @@ mod tests {
             unit,
             Arc::new(MemoryGovernor::from_environment(1)),
             None,
+            FalsifierSelfHostWetBudgets::default(),
         );
         assert_eq!(results.len(), 1);
         assert!(!results[0].ok, "unmapped sentinel must fail closed");

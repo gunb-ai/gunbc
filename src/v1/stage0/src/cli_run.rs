@@ -9060,6 +9060,27 @@ pub struct DiscoveryCorpusOptions {
     /// typed EvalBudgetExceeded runtime error (a FAIL row naming the witness). None = no
     /// bound (the long-lane / local recipe posture).
     pub fast_lane_eval_budget_ms: Option<u64>,
+    /// Whole-receipt wall budget for the nightly falsifier Wet self-host lane (emit+cargo).
+    pub wet_receipt_wall_budget_ms: Option<u64>,
+    /// Secondary interpreter CPU budget for the falsifier Wet self-host lane.
+    pub wet_receipt_interp_eval_budget_ms: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WitnessBudgetPolicy {
+    pub cpu_eval_budget_ms: Option<u64>,
+    pub wet_receipt_wall_budget_ms: Option<u64>,
+}
+
+impl DiscoveryCorpusOptions {
+    pub fn witness_budget_policy(&self) -> WitnessBudgetPolicy {
+        WitnessBudgetPolicy {
+            cpu_eval_budget_ms: self
+                .fast_lane_eval_budget_ms
+                .or(self.wet_receipt_interp_eval_budget_ms),
+            wet_receipt_wall_budget_ms: self.wet_receipt_wall_budget_ms,
+        }
+    }
 }
 
 impl Default for DiscoveryCorpusOptions {
@@ -9070,6 +9091,8 @@ impl Default for DiscoveryCorpusOptions {
             exclude_substrings: witness_exclusion_substrings(),
             discovery_scope_dirs: vec![],
             fast_lane_eval_budget_ms: None,
+            wet_receipt_wall_budget_ms: None,
+            wet_receipt_interp_eval_budget_ms: None,
         }
     }
 }
@@ -10493,7 +10516,7 @@ pub fn run_discovery_corpus_with_options(
                 &diff_edits,
                 floor_runner_ctx.as_ref(),
                 whole_tree_published_keys.clone(),
-                options.fast_lane_eval_budget_ms,
+                options.witness_budget_policy(),
                 ShardStyle {
                     shard_id: 0,
                     shard_count: 1,
@@ -10569,7 +10592,7 @@ pub fn run_discovery_corpus_with_options(
                         &diff_edits,
                         floor_runner_ctx.as_ref(),
                         whole_tree_published_keys.clone(),
-                        options.fast_lane_eval_budget_ms,
+                        options.witness_budget_policy(),
                         style,
                     )?);
                 }
@@ -10600,7 +10623,7 @@ pub fn run_discovery_corpus_with_options(
             let abort = std::sync::Arc::new(AtomicBool::new(false));
             let source_roots_owned = source_roots.to_vec();
             let selection_for_workers = options.node_frontier_selection;
-            let budget_policy_for_workers = options.fast_lane_eval_budget_ms;
+            let budget_policy_for_workers = options.witness_budget_policy();
             let mut handles = Vec::new();
             let mut worker_ordinal: usize = 0;
             loop {
@@ -11029,7 +11052,7 @@ fn run_discovery_rows(
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
-    fast_lane_eval_budget_ms: Option<u64>,
+    budgets: WitnessBudgetPolicy,
     style: ShardStyle,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
@@ -11171,7 +11194,8 @@ fn run_discovery_rows(
                 current_entry_file_touched = resolved.entry_file_touched;
                 ctx = Some(resolved.ctx);
                 if let Some(c) = ctx.as_ref() {
-                    c.set_witness_eval_budget(fast_lane_eval_budget_ms);
+                    c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
+                    c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
                 }
                 current_entry = Some(row.entry.clone());
             }
@@ -11265,7 +11289,8 @@ fn run_discovery_rows(
             current_entry_file_touched = resolved.entry_file_touched;
             ctx = Some(resolved.ctx);
             if let Some(c) = ctx.as_ref() {
-                c.set_witness_eval_budget(fast_lane_eval_budget_ms);
+                c.set_witness_eval_budget(budgets.cpu_eval_budget_ms);
+                c.set_witness_wall_budget(budgets.wet_receipt_wall_budget_ms);
             }
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
