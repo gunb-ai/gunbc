@@ -1,0 +1,77 @@
+module test.claim.host_build_cache_provision_design
+
+import std.logic { Bool }
+import gunbc.host_build_cache_provision {
+  sccache_local_id,
+  provision_build_cache_default_effect,
+  provision_build_cache_routes_through_host_effect_apply,
+  provision_refused_has_no_fallback_arm,
+  daemon_absent_refuses_fail_closed,
+  misconfigured_matches_cited_fragment,
+  provision_build_cache_verdict,
+  DaemonAbsent,
+  DaemonStatsOk,
+  ProvisionConverged,
+  ProvisionRefused,
+  RefusalDaemonAbsent,
+}
+
+fn design_witness_routes_through_host_effect_apply() -> Bool {
+  provision_build_cache_routes_through_host_effect_apply()
+}
+
+fn design_witness_default_effect_pins_sccache_catalog() -> Bool {
+  provision_build_cache_default_effect().catalog_id == sccache_local_id
+}
+
+fn design_witness_absent_daemon_fail_closed() -> Bool {
+  daemon_absent_refuses_fail_closed()
+}
+
+fn design_witness_verdict_has_no_fallback_arm() -> Bool {
+  provision_refused_has_no_fallback_arm(
+    verdict: provision_build_cache_verdict(
+      catalog_id: sccache_local_id,
+      observed: DaemonAbsent,
+    ),
+  )
+    && provision_refused_has_no_fallback_arm(
+      verdict: provision_build_cache_verdict(
+        catalog_id: sccache_local_id,
+        observed: DaemonStatsOk { stats_line: "compile_requests=1" },
+      ),
+    )
+}
+
+fn design_witness_cited_fatal_error_fragment() -> Bool {
+  misconfigured_matches_cited_fragment()
+}
+
+fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: DaemonStatsOk { stats_line: "compile_requests=42" },
+  ) {
+    ProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
+    ProvisionRefused { cause: _, reason: _ } => false
+  }
+}
+
+fn design_witness_red_simulated_widen_would_fail() -> Bool {
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: DaemonAbsent,
+  ) {
+    ProvisionRefused { cause: RefusalDaemonAbsent, reason: _ } => true
+    ProvisionConverged { catalog_id: _, stats_line: _ } => false
+  }
+}
+
+test data witness_host_build_cache_provision_design_anchor: Bool =
+  design_witness_routes_through_host_effect_apply()
+    && design_witness_default_effect_pins_sccache_catalog()
+    && design_witness_absent_daemon_fail_closed()
+    && design_witness_verdict_has_no_fallback_arm()
+    && design_witness_cited_fatal_error_fragment()
+    && design_witness_converged_not_refused_on_ok_stats()
+    && design_witness_red_simulated_widen_would_fail()
