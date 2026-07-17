@@ -3757,6 +3757,7 @@ type StructuralBoundResult {
 
 type ComplexityReport {
   function_classes: Map<String, String>
+  space_classes: Map<String, String>
   violations: List<ComplexityViolation>
   structural_bounds: List<StructuralBoundResult>
 }
@@ -3764,6 +3765,7 @@ type ComplexityReport {
 fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_classes: empty_map(),
+    space_classes: empty_map(),
     violations: [],
     structural_bounds: []
   }
@@ -4123,6 +4125,7 @@ type SummaryResult {
 type TopoBuildAcc {
   table: CostInternTable
   classes: Map<String, String>
+  space_classes: Map<String, String>
   violations: List<ComplexityViolation>
   fan_in: Map<String, Int>
 
@@ -4796,6 +4799,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let result = scc_result.processing_order |> fold(init: TopoBuildAcc {
     table: empty_cost_intern_table(),
     classes: empty_map(),
+    space_classes: empty_map(),
     violations: [],
     fan_in: fan_in,
     processed: empty_map()
@@ -4805,6 +4809,8 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let sr = get_or_compute_summary(func_name: func_name, func_index: func_index, scc_index: full_scc_index, table: acc.table, parser_always_advancing: parser_always_advancing, recursion_ctx: recursion_ctx, si: si)
         let class_str = classify_complexity(expr: sr.summary.work)
         let new_classes = map_insert(acc.classes, func_name, class_str)
+        let space_class_str = classify_complexity(expr: space_of(work: sr.summary.work))
+        let new_space_classes = map_insert(acc.space_classes, func_name, space_class_str)
         let new_processed = map_insert(acc.processed, func_name, true)
 
         let new_violations = if is_unknown_cost(expr: sr.summary.work) {
@@ -4836,7 +4842,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let final_table = if self_fan_in <= 0 {
           evict_summary(table: evicted_table, func_name: func_name)
         } else { evicted_table }
-        TopoBuildAcc { table: final_table, classes: new_classes, violations: new_violations, fan_in: new_fan_in, processed: new_processed }
+        TopoBuildAcc { table: final_table, classes: new_classes, space_classes: new_space_classes, violations: new_violations, fan_in: new_fan_in, processed: new_processed }
       Absent => acc
     }
   })
@@ -4844,6 +4850,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   let structural_bounds = analyze_structural_bounds(func_entries: func_entries, si: si)
   ComplexityReport {
     function_classes: result.classes,
+    space_classes: result.space_classes,
     violations: result.violations,
     structural_bounds: structural_bounds
   }
