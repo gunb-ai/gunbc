@@ -6,6 +6,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_command_words_pair,
   bash_build_command_words_single,
   bash_build_pipe,
+  bash_build_exit,
   bash_build_stmt_tag,
   bash_build_word_lit,
   bash_build_word_var
@@ -83,6 +84,13 @@ data bash_fold_diagnostic_anchor: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
+}
+
+fn bash_fold_stmt_kind_tag_terminal(binding: Symbol) -> FormalGrammarSymbol {
+  grammar_formal_terminal_bound(
+    identity: ^bash_fold_stmt_kind_tag,
+    binding: binding
+  )
 }
 
 fn bash_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
@@ -953,9 +961,9 @@ data bash_fold_cmd_true_wrong_emitted: Node = bash_build_command(
   )
 )
 
-data bash_fold_exit_42_emitted: Node = bash_fold_exit_emitted(code: "42")
+data bash_fold_exit_42_emitted: Node = bash_build_exit(code: "42")
 
-data bash_fold_exit_wrong_emitted: Node = bash_fold_exit_emitted(code: "0")
+data bash_fold_exit_wrong_emitted: Node = bash_build_exit(code: "0")
 
 data bash_fold_assign_foo_bar_emitted: Node = Node {
   kind: TypeNode { connective: Conj },
