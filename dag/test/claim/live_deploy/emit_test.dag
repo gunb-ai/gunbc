@@ -18,11 +18,20 @@ import gunbc.live_deploy.spec {
 import gunbc.live_deploy.emit {
   expected_live_deploy_apply_script,
   expected_live_deploy_retract_script,
-  live_deploy_apply_script_drifted,
-  live_deploy_retract_script_drifted,
   live_deploy_systemd_unit_for,
   deployment_ensure_dependency_script,
+  live_deploy_emit_shell_dissolution_trigger,
+  live_deploy_remote_mutation_service_op_realization_dissolution_trigger,
+  live_deploy_intent_dependency_graph_emit_dissolution_trigger,
 }
+import std.disposition { Scaffold, RealizationDispatch, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.generated_artifact {
+  LiveDeployApplyScriptArtifact,
+  LiveDeployRetractScriptArtifact,
+  artifact_path,
+}
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.node_http_server_emit {
   roadmap_dashboard_served_static_route_table,
   roadmap_dashboard_node_http_server_source,
@@ -137,15 +146,13 @@ fn witness_apply_script_serves_roadmap_page() -> Bool {
     && !string_contains(s: sh, pattern: ">Browse<")
 }
 
-fn witness_apply_script_includes_static_site_readback() -> Bool {
+fn witness_apply_script_excludes_readback_curls() -> Bool {
   let sh = expected_live_deploy_apply_script()
-  string_contains(s: sh, pattern: roadmap_site_health_path)
-    && string_contains(s: sh, pattern: roadmap_site_roadmap_url_path)
-    && string_contains(s: sh, pattern: roadmap_site_dispatch_url_path)
-    && string_contains(s: sh, pattern: "roadmap-site-readback")
-    && string_contains(s: sh, pattern: "roadmap-site-receipt")
-    && string_contains(s: sh, pattern: "healthz json parse failed")
-    && string_contains(s: sh, pattern: "dispatch json parse failed")
+  !string_contains(s: sh, pattern: "roadmap-site-readback")
+    && !string_contains(s: sh, pattern: "roadmap-site-receipt")
+    && !string_contains(s: sh, pattern: "dispatch json parse failed")
+    && !string_contains(s: sh, pattern: "curl -sf 'http://127.0.0.1:8080/healthz'")
+    && !string_contains(s: sh, pattern: "--connect-timeout")
 }
 
 fn witness_retract_owned_process_removes_static_site_server() -> Bool {
@@ -185,11 +192,50 @@ fn witness_systemd_unit_emitted() -> Bool {
     && string_contains(s: unit, pattern: "Environment=PORT=8080")
 }
 
-fn witness_drift_gates() -> Bool {
-  !live_deploy_apply_script_drifted(committed: expected_live_deploy_apply_script())
-    && live_deploy_apply_script_drifted(committed: concat(expected_live_deploy_apply_script(), "x"))
-    && !live_deploy_retract_script_drifted(committed: expected_live_deploy_retract_script())
-    && live_deploy_retract_script_drifted(committed: concat(expected_live_deploy_retract_script(), "x"))
+fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis() -> Bool {
+  match live_deploy_remote_mutation_service_op_realization_dissolution_trigger {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+    } =>
+      m == "gunbc.live_deploy.emit"
+        && n == "live_deploy_emit_shell_dissolution_trigger"
+    Terminal { reason: _ } => false
+  }
+}
+
+fn witness_emit_shell_dissolution_trigger_is_scaffold() -> Bool {
+  match live_deploy_emit_shell_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
+  match live_deploy_intent_dependency_graph_emit_dissolution_trigger {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
+    } =>
+      m == "v2.compiler.emit_orchestration" && n == "orch_emit_pipeline"
+    Terminal { reason: _ } => false
+  }
+}
+
+fn witness_apply_script_matches_committed_golden() -> Bool {
+  let r = Filesystem.Read(path: artifact_path(a: LiveDeployApplyScriptArtifact))
+  let expected = expected_live_deploy_apply_script()
+  r.success
+    && r.content == expected
+    && !(concat(r.content, "x") == expected)
+}
+
+fn witness_retract_script_matches_committed_golden() -> Bool {
+  let r = Filesystem.Read(path: artifact_path(a: LiveDeployRetractScriptArtifact))
+  let expected = expected_live_deploy_retract_script()
+  r.success
+    && r.content == expected
+    && !(concat(r.content, "x") == expected)
 }
 
 test fn live_deploy_emit_holds() -> Bool {
@@ -205,10 +251,14 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_retract_script_owned_only()
     && witness_apply_script_contains_node_server()
     && witness_apply_script_serves_roadmap_page()
-    && witness_apply_script_includes_static_site_readback()
+    && witness_apply_script_excludes_readback_curls()
     && witness_retract_owned_process_removes_static_site_server()
     && witness_static_site_routes_in_dashboard_route_table()
     && witness_static_site_paths_only_in_retracted_server()
     && witness_systemd_unit_emitted()
-    && witness_drift_gates()
+    && witness_apply_script_matches_committed_golden()
+    && witness_retract_script_matches_committed_golden()
+    && witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis()
+    && witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline()
+    && witness_emit_shell_dissolution_trigger_is_scaffold()
 }

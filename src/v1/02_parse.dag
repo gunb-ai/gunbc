@@ -27,6 +27,7 @@ import v1.std.core {
   local_transport_node, rest_transport_node, shell_transport_node, file_transport_node,
   transport_url_key, transport_path_key,
   transport_method_key, transport_path_template_key, transport_query_key, transport_body_key, transport_stdin_key, transport_response_format_key, transport_headers_key,
+  transport_auth_basic_key, transport_tls_key,
   service_config_properties,
   OperationModifier, Idempotent, Readonly, Hermetic,
   Token, TokenShape,
@@ -2249,6 +2250,9 @@ fn parse_rest_fields(tokens: TokenStream, ctx: ParseContext, base_url: Node?, me
         _ => return TransportResult { transport: dummy, tokens: tokens, ctx: ctx, err: Present { value: make_error_node(diagnostic: InternalError { message: "transport headers must be a record literal { \"Name\": value, ... }", span: token_span(tok: token_stream_first(stream: tokens)) }, module_name: "") } }
       }
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: h)
+    } else if fname == transport_auth_basic_key || fname == transport_tls_key {
+      let field = make_field_init_node(name: fname, value: r3.expr, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
+      parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: concat(headers, [field]))
     } else {
       parse_rest_fields(tokens: tokens, ctx: ctx, base_url: base_url, method: method, path_template: path_template, query: query, request_body: request_body, response_format: response_format, headers: headers)
     }

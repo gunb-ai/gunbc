@@ -1015,7 +1015,6 @@ fn classify_expr(texpr: Node) -> ExprCategory {
     ExprLet => ExprCatBinding
     ExprReturn => ExprCatControlFlow
     NoExprData => ExprCatNone
-    _ => ExprCatNone
   }
 }
 

@@ -56,8 +56,38 @@ fn falsifier_step() -> Step {
   }
 }
 
+data gunbc_falsifier_compile_clean_cold_control_timeout_minutes: Int = 30
+
+data gunbc_falsifier_compile_clean_cold_control_note: String = "Compile-clean whole-tree cold control (2026-07-16, lands with the per-PR import-closure scoping in tools.dag_compile_clean_scope): PR floors now compile only the affected entry closure, and main pushes already skip on an empty diff — so this step is the deterministic whole-tree execution of the compile-clean gate, on the falsifier cadence, mirroring how the predict-only cold run controls witness selection. GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL=1 forces the scope plan to WholeTree before any diff observation (a widen-to-more-checking control arm, not an escape hatch — it can only force the gate to run in full). Plan function gunbc_ci_plan_artifact_batches is batch 1 of the floor schedule: exactly the compile-clean anchor through the same executor path that installs and consumes the in-run compile receipt."
+
+fn compile_clean_cold_control_invoke() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)),
+      " --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_plan_artifact_batches"
+    )
+  )
+}
+
+fn compile_clean_cold_control_step() -> Step {
+  RunStep {
+    name: Present { value: "compile-clean whole-tree cold control (scoped-PR admission counterpart)" },
+    id: none,
+    run: compile_clean_cold_control_invoke(),
+    shell: none,
+    env: Present {
+      value: [kv(key: "GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL", value: yaml_string(s: "1"))]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_falsifier_compile_clean_cold_control_timeout_minutes }
+  }
+}
+
 fn gunbc_falsifier_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_falsifier_step_timeout_minutes + gunbc_falsifier_compile_clean_cold_control_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn falsifier_job() -> Job {
@@ -65,7 +95,7 @@ fn falsifier_job() -> Job {
     id: "falsifier",
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), falsifier_step(), ci_floor_peak_post_step()]),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_peak_pre_step(), falsifier_step(), compile_clean_cold_control_step(), ci_floor_peak_post_step()]),
     needs: [],
     env: none,
     outputs: none,

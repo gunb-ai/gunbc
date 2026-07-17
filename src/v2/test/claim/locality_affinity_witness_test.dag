@@ -1,0 +1,358 @@
+module v2.test.claim.locality_affinity_witness
+
+import std.machine_shape {
+  DomainId,
+  ExecutionDomain,
+  LevelId,
+  MemoryLevel,
+  execution_shape_independent_lanes,
+}
+import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count }
+import std.types { ContentHash }
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode, content_hash }
+import v2.workflow.locality_affinity {
+  AffinityClaim,
+  AffinityFlowRefused,
+  AffinityFootprintMismatch,
+  AffinityInsufficientConsumers,
+  AffinityNoFittingLevel,
+  AffinityOperandMismatch,
+  AffinityRefused,
+  ConsumerBatch,
+  TrafficAffinityRefused,
+  TrafficBatchAssignmentConflict,
+  TrafficBatchAssignmentMissing,
+  TrafficPriced,
+  TrafficPricingRefused,
+  derive_affinity,
+  price_operand_traffic,
+}
+import v2.workflow.operand_flow { OperandFlow, OperandFlowNoOperand, OperandFlowRefused, OperandFlowRow }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data locality_shared_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^locality_shared } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data locality_consumer_a_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^locality_consumer_a } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data locality_consumer_b_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^locality_consumer_b } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data locality_shared_hash: ContentHash = content_hash(n: locality_shared_node)
+
+data locality_edge_a: DependencyView = DependencyView {
+  source: locality_shared_node,
+  dependent: locality_consumer_a_node,
+  kind: DataDependsOn,
+  usage_site: locality_consumer_a_node
+}
+
+data locality_edge_b: DependencyView = DependencyView {
+  source: locality_shared_node,
+  dependent: locality_consumer_b_node,
+  kind: DataDependsOn,
+  usage_site: locality_consumer_b_node
+}
+
+data locality_consumer_a_hash: ContentHash = content_hash(n: locality_consumer_a_node)
+data locality_consumer_b_hash: ContentHash = content_hash(n: locality_consumer_b_node)
+
+data locality_footprint: ByteSize = byte_size(count: 64)
+
+data locality_flow_a: OperandFlowRow = OperandFlow {
+  edge: locality_edge_a,
+  operand: locality_shared_hash,
+  footprint: locality_footprint
+}
+
+data locality_flow_b: OperandFlowRow = OperandFlow {
+  edge: locality_edge_b,
+  operand: locality_shared_hash,
+  footprint: locality_footprint
+}
+
+data locality_flows: List<OperandFlowRow> = [locality_flow_a, locality_flow_b]
+
+data locality_edge_unresolved: DependencyView = DependencyView {
+  source: locality_shared_node,
+  dependent: locality_consumer_b_node,
+  kind: BarrierBefore,
+  usage_site: locality_consumer_b_node
+}
+
+data locality_flow_unresolved: OperandFlowRow = OperandFlowRefused {
+  edge: locality_edge_unresolved,
+  cause: OperandFlowNoOperand { edge: locality_edge_unresolved }
+}
+
+data locality_flows_with_unresolved: List<OperandFlowRow> = [locality_flow_a, locality_flow_unresolved]
+
+data locality_other_shared_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^locality_other_shared } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data locality_other_shared_hash: ContentHash = content_hash(n: locality_other_shared_node)
+
+data locality_flow_mismatched: OperandFlowRow = OperandFlow {
+  edge: locality_edge_a,
+  operand: locality_other_shared_hash,
+  footprint: locality_footprint
+}
+
+data locality_flows_with_mismatch: List<OperandFlowRow> = [locality_flow_mismatched, locality_flow_b]
+
+data locality_flow_a_wrong_footprint: OperandFlowRow = OperandFlow {
+  edge: locality_edge_a,
+  operand: locality_shared_hash,
+  footprint: byte_size(count: 128)
+}
+
+data locality_flows_with_footprint_mismatch: List<OperandFlowRow> = [locality_flow_a_wrong_footprint, locality_flow_b]
+
+data locality_flows_duplicate_edge_single_consumer: List<OperandFlowRow> = [locality_flow_a, locality_flow_a]
+
+data locality_flows_duplicate_edge_two_consumers: List<OperandFlowRow> = [locality_flow_a, locality_flow_a, locality_flow_b]
+
+data locality_domain_id: DomainId = "locality-domain" as DomainId
+data locality_l1_id: LevelId = "l1" as LevelId
+data locality_l2_id: LevelId = "l2" as LevelId
+
+data locality_l1: MemoryLevel = MemoryLevel {
+  id: locality_l1_id,
+  capacity: byte_size(count: 16),
+  transfer_grain: none,
+  bandwidth: none,
+  latency: none
+}
+
+data locality_l2: MemoryLevel = MemoryLevel {
+  id: locality_l2_id,
+  capacity: byte_size(count: 256),
+  transfer_grain: none,
+  bandwidth: none,
+  latency: none
+}
+
+data locality_domain: ExecutionDomain = ExecutionDomain {
+  id: locality_domain_id,
+  execution: execution_shape_independent_lanes(lane_count: hardware_thread_count(count: 1)),
+  memory: [locality_l1, locality_l2]
+}
+
+data locality_domain_no_fit: ExecutionDomain = ExecutionDomain {
+  id: locality_domain_id,
+  execution: execution_shape_independent_lanes(lane_count: hardware_thread_count(count: 1)),
+  memory: [locality_l1]
+}
+
+data locality_co_batch_assignment: List<ConsumerBatch> = [
+  ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 },
+  ConsumerBatch { consumer: locality_consumer_b_hash, batch: 0 }
+]
+
+data locality_split_batch_assignment: List<ConsumerBatch> = [
+  ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 },
+  ConsumerBatch { consumer: locality_consumer_b_hash, batch: 1 }
+]
+
+data locality_missing_assignment: List<ConsumerBatch> = [
+  ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 }
+]
+
+data locality_conflicting_assignment: List<ConsumerBatch> = [
+  ConsumerBatch { consumer: locality_consumer_a_hash, batch: 0 },
+  ConsumerBatch { consumer: locality_consumer_b_hash, batch: 1 },
+  ConsumerBatch { consumer: locality_consumer_b_hash, batch: 0 }
+]
+
+fn witness_derive_affinity_claims_smallest_fitting_level() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows, domain: locality_domain) {
+    AffinityClaim { operand: op, level: lvl, footprint: fp, consumers: cs } =>
+      op == locality_shared_hash
+        && lvl == locality_l2_id
+        && byte_size_count(b: fp) == 64
+        && length(xs: cs) == 2
+    AffinityRefused { operand: _, cause: _ } => false
+  }
+}
+
+fn witness_derive_affinity_refuses_no_fitting_level() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows, domain: locality_domain_no_fit) {
+    AffinityRefused { operand: op, cause: AffinityNoFittingLevel { operand: _, footprint: fp } } =>
+      op == locality_shared_hash && byte_size_count(b: fp) == 64
+    AffinityRefused { operand: _, cause: _ } => false
+    AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
+  }
+}
+
+fn witness_derive_affinity_refuses_single_consumer() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: [locality_flow_a], domain: locality_domain) {
+    AffinityRefused { operand: op, cause: AffinityInsufficientConsumers { operand: _ } } =>
+      op == locality_shared_hash
+    AffinityRefused { operand: _, cause: _ } => false
+    AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
+  }
+}
+
+fn witness_derive_affinity_refuses_unresolved_operand_edge() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_unresolved, domain: locality_domain) {
+    AffinityRefused { operand: op, cause: AffinityFlowRefused { edge: e, cause: OperandFlowNoOperand { edge: _ } } } =>
+      op == locality_shared_hash && e == locality_edge_unresolved
+    AffinityRefused { operand: _, cause: _ } => false
+    AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
+  }
+}
+
+fn witness_derive_affinity_refuses_operand_mismatch() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_mismatch, domain: locality_domain) {
+    AffinityRefused { operand: op, cause: AffinityOperandMismatch { expected: expected, found: found } } =>
+      op == locality_shared_hash
+        && expected == locality_shared_hash
+        && found == locality_other_shared_hash
+    AffinityRefused { operand: _, cause: _ } => false
+    AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
+  }
+}
+
+fn witness_derive_affinity_refuses_footprint_mismatch() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows_with_footprint_mismatch, domain: locality_domain) {
+    AffinityRefused { operand: op, cause: AffinityFootprintMismatch { operand: _, expected: exp, found: fnd } } =>
+      op == locality_shared_hash
+        && byte_size_count(b: exp) == 128
+        && byte_size_count(b: fnd) == 64
+    AffinityRefused { operand: _, cause: _ } => false
+    AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
+  }
+}
+
+fn witness_derive_affinity_dedupes_consumers_from_duplicate_edges() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows_duplicate_edge_two_consumers, domain: locality_domain) {
+    AffinityClaim { operand: op, level: lvl, footprint: fp, consumers: cs } =>
+      op == locality_shared_hash
+        && lvl == locality_l2_id
+        && byte_size_count(b: fp) == 64
+        && length(xs: cs) == 2
+    AffinityRefused { operand: _, cause: _ } => false
+  }
+}
+
+fn witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consumer() -> Bool {
+  match derive_affinity(operand: locality_shared_hash, flows: locality_flows_duplicate_edge_single_consumer, domain: locality_domain) {
+    AffinityRefused { operand: op, cause: AffinityInsufficientConsumers { operand: _ } } =>
+      op == locality_shared_hash
+    AffinityRefused { operand: _, cause: _ } => false
+    AffinityClaim { operand: _, level: _, footprint: _, consumers: _ } => false
+  }
+}
+
+fn witness_co_batch_prices_single_load() -> Bool {
+  match price_operand_traffic(
+    operand: locality_shared_hash,
+    flows: locality_flows,
+    domain: locality_domain,
+    assignment: locality_co_batch_assignment
+  ) {
+    TrafficPriced { account: account, crossings: crossings } =>
+      crossings == 1
+        && account.level == locality_l2_id
+        && byte_size_count(b: account.bytes) == 64
+    TrafficPricingRefused { operand: _, cause: _ } => false
+  }
+}
+
+fn witness_split_batch_prices_double_load() -> Bool {
+  match price_operand_traffic(
+    operand: locality_shared_hash,
+    flows: locality_flows,
+    domain: locality_domain,
+    assignment: locality_split_batch_assignment
+  ) {
+    TrafficPriced { account: account, crossings: crossings } =>
+      crossings == 2
+        && account.level == locality_l2_id
+        && byte_size_count(b: account.bytes) == 128
+    TrafficPricingRefused { operand: _, cause: _ } => false
+  }
+}
+
+fn witness_missing_batch_assignment_refuses_typed() -> Bool {
+  match price_operand_traffic(
+    operand: locality_shared_hash,
+    flows: locality_flows,
+    domain: locality_domain,
+    assignment: locality_missing_assignment
+  ) {
+    TrafficPricingRefused { operand: op, cause: TrafficBatchAssignmentMissing { operand: _, consumer: missing } } =>
+      op == locality_shared_hash && missing == locality_consumer_b_hash
+    TrafficPricingRefused { operand: _, cause: _ } => false
+    TrafficPriced { account: _, crossings: _ } => false
+  }
+}
+
+fn witness_conflicting_batch_assignment_refuses_typed() -> Bool {
+  match price_operand_traffic(
+    operand: locality_shared_hash,
+    flows: locality_flows,
+    domain: locality_domain,
+    assignment: locality_conflicting_assignment
+  ) {
+    TrafficPricingRefused {
+      operand: op,
+      cause: TrafficBatchAssignmentConflict { operand: _, consumer: conflicted, first: f, second: s }
+    } =>
+      op == locality_shared_hash
+        && conflicted == locality_consumer_b_hash
+        && f == 1
+        && s == 0
+    TrafficPricingRefused { operand: _, cause: _ } => false
+    TrafficPriced { account: _, crossings: _ } => false
+  }
+}
+
+fn witness_refused_affinity_propagates_typed() -> Bool {
+  match price_operand_traffic(
+    operand: locality_shared_hash,
+    flows: locality_flows,
+    domain: locality_domain_no_fit,
+    assignment: locality_co_batch_assignment
+  ) {
+    TrafficPricingRefused { operand: op, cause: TrafficAffinityRefused { operand: _, cause: AffinityNoFittingLevel { operand: _, footprint: _ } } } =>
+      op == locality_shared_hash
+    TrafficPricingRefused { operand: _, cause: _ } => false
+    TrafficPriced { account: _, crossings: _ } => false
+  }
+}
+
+test fn locality_affinity_witnesses() -> Bool {
+  witness_derive_affinity_claims_smallest_fitting_level()
+    && witness_derive_affinity_refuses_no_fitting_level()
+    && witness_derive_affinity_refuses_single_consumer()
+    && witness_derive_affinity_refuses_unresolved_operand_edge()
+    && witness_derive_affinity_refuses_operand_mismatch()
+    && witness_derive_affinity_refuses_footprint_mismatch()
+    && witness_derive_affinity_dedupes_consumers_from_duplicate_edges()
+    && witness_derive_affinity_refuses_when_duplicate_edges_are_one_real_consumer()
+    && witness_co_batch_prices_single_load()
+    && witness_split_batch_prices_double_load()
+    && witness_missing_batch_assignment_refuses_typed()
+    && witness_conflicting_batch_assignment_refuses_typed()
+    && witness_refused_affinity_propagates_typed()
+}
