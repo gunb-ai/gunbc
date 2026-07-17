@@ -1,33 +1,47 @@
 module v2.test.claim.build_artifact_verification_witness
 
 import std.logic { Bool }
-import extdeps.languages.bash.program {
-  ShellStmt, ShellWord, ShellProgram,
-  If, Command, Concat, VarRef, Lit,
-  lit, var_ref
+import tools.build_step { BuildArtifact, emit_verification_nodes }
+import v2.extdeps.languages.bash_build {
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var
 }
-import v2.workflow.bash_program_emit { bash_program_serialize, bash_program_serialize_stmt }
+import v2.extdeps.languages.bash_command_fold { bash_fold_relation_row_witness }
+import v2.extdeps.languages.bash_emit {
+  BashEmitStmt,
+  bash_emit_tagged
+}
 import v2.workflow.build_step_emit { verifications_script }
-import tools.build_step { BuildArtifact, emit_verifications }
 import gunbc.ci_spec { ci_floor_build_verify_script }
+import v2.std.collection { List }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node { Node }
+import v2.std.witness { Holds, Violates }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn probe_artifact() -> BuildArtifact {
   BuildArtifact {
-    path: Concat { parts: [var_ref(name: "ROOT"), lit(text: "/target/release/probe_bin")] },
+    path: bash_build_word_concat_from_nodes(parts: [
+      bash_build_word_var(name: "ROOT"),
+      bash_build_word_lit(text: "/target/release/probe_bin")
+    ]),
     name: "probe_bin"
   }
 }
 
-fn probe_stmts() -> List<ShellStmt> {
-  emit_verifications(produces: [probe_artifact()])
+fn probe_nodes() -> List<Node> {
+  emit_verification_nodes(produces: [probe_artifact()])
 }
 
-fn stmt_text(s: ShellStmt) -> Bool {
-  match bash_program_serialize_stmt(stmt: s) {
+fn node_text(n: Node) -> Bool {
+  match bash_emit_tagged(stmt: BashEmitStmt {
+    node: n,
+    production_binding: ^bash_production_fold_if,
+    rule_name: ^bash_relation_rule_fold_if
+  }) {
     Accepted { value: text, diagnostics: _ } =>
       string_contains(s: text, pattern: "-x")
         && !string_contains(s: text, pattern: "-newer")
@@ -35,20 +49,20 @@ fn stmt_text(s: ShellStmt) -> Bool {
   }
 }
 
-fn is_if(s: ShellStmt) -> Bool {
-  match s {
-    If { cond: c, then: t } => true
-    _ => false
+fn is_if_node(n: Node) -> Bool {
+  match bash_fold_relation_row_witness(emitted: n, lhs: ^bash_production_fold_if) {
+    Holds { value: _ } => true
+    Violates { diagnostic: _ } => false
   }
 }
 
 fn witness_single_artifact_produces_two_checks() -> Bool {
-  let stmts = probe_stmts()
-  stmts.length() == 2 && is_if(s: stmts.first())
+  let nodes = probe_nodes()
+  nodes.length() == 2 && is_if_node(n: nodes.first())
 }
 
 fn witness_existence_check_no_mtime() -> Bool {
-  stmt_text(s: probe_stmts().first())
+  node_text(n: probe_nodes().first())
 }
 
 fn witness_serialized_conjuncts_and_teeth() -> Bool {

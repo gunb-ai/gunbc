@@ -36,7 +36,9 @@ import v2.extdeps.languages.bash {
   bash_stmt_assign_emitted,
   bash_stmt_exit_emitted,
   bash_stmt_env_prefixed_emitted,
+  bash_stmt_env_prefixed_target_model,
   bash_stmt_heredoc_emitted,
+  bash_stmt_heredoc_target_model,
   bash_stmt_brace_group_emitted
 }
 import v2.extdeps.languages.bash_command_fold {
@@ -338,8 +340,8 @@ fn bash_emit_tagged(stmt: BashEmitStmt) -> Outcome<String> {
 fn bash_emit_special(item: BashEmitSpecial) -> Outcome<String> {
   match item {
     BashEmitTagged { stmt: s } => bash_emit_tagged(stmt: s)
-    BashEmitIfNegatedSubshell { inner_stmts: inner, then_stmts: then } =>
-      bash_emit_if_negated_subshell(inner_stmts: inner, then_stmts: then)
+    BashEmitIfNegatedSubshell { inner_stmts: inner, then_stmts: then_body } =>
+      bash_emit_if_negated_subshell(inner_stmts: inner, then_stmts: then_body)
   }
 }
 
@@ -413,4 +415,96 @@ fn bash_emit_stmts_append_tagged(
 
 fn fold_tagged_stmts(statements: List<Node>) -> List<BashEmitSpecial> {
   bash_emit_stmts_append_tagged(acc: [], rest: statements)
+}
+
+fn bash_emit_matches_golden(stmt: BashEmitStmt, golden: String) -> Bool {
+  match bash_emit_tagged(stmt: stmt) {
+    Accepted { value: folded, diagnostics: _ } => folded == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_emit_raw_line_matches_golden(text: String, golden: String) -> Bool {
+  match bash_emit_from_target(
+    emitted: bash_word_pass_emitted,
+    target: bash_word_pass_target_model(spelling: text)
+  ) {
+    Accepted { value: folded, diagnostics: _ } => folded == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_emit_program_matches_golden(
+  statements: List<BashEmitSpecial>,
+  set_e: Bool,
+  golden: String
+) -> Bool {
+  match bash_emit_program(statements: statements, set_e: set_e) {
+    Accepted { value: folded, diagnostics: _ } => folded == golden
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bash_emit_heredoc(path_spelling: String, delimiter: String, body: String) -> Outcome<String> {
+  bind_outcome(
+    o: bash_stmt_heredoc_target_model(path: path_spelling, delimiter: delimiter, body: body),
+    f: fn(target) {
+      bash_emit_from_target(emitted: bash_stmt_heredoc_emitted, target: target)
+    }
+  )
+}
+
+fn bash_emit_negation_spelling(inner_spelling: String) -> Outcome<String> {
+  bash_emit_from_target(
+    emitted: bash_stmt_negation_emitted,
+    target: bash_stmt_negation_target_model(inner: inner_spelling)
+  )
+}
+
+fn bash_emit_env_prefixed(
+  name: String,
+  value_spelling: String,
+  command_spelling: String
+) -> Outcome<String> {
+  bind_outcome(
+    o: bash_stmt_env_prefixed_target_model(
+      name: name,
+      value: value_spelling,
+      command: command_spelling
+    ),
+    f: fn(target) {
+      bash_emit_from_target(emitted: bash_stmt_env_prefixed_emitted, target: target)
+    }
+  )
+}
+
+fn bash_emit_with_redir_spelling(stmt_spelling: String, redir_spelling: String) -> Outcome<String> {
+  bind_outcome(
+    o: bash_stmt_with_redir_target_model(stmt: stmt_spelling, redir: redir_spelling),
+    f: fn(target) {
+      bash_emit_from_target(emitted: bash_stmt_with_redir_emitted, target: target)
+    }
+  )
+}
+
+fn bash_emit_wrong_target_oracle_holds(
+  emitted: Node,
+  golden: String,
+  wrong_target_witness: Witness<TargetModel>
+) -> Bool {
+  match wrong_target_witness {
+    Holds { value: target } =>
+      match bash_emit_from_target(emitted: emitted, target: target) {
+        Accepted { value: folded, diagnostics: _ } => folded != golden
+        Rejected { diagnostics: _ } => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn bash_emit_wrong_spelling_oracle_holds(emit_o: Outcome<String>, golden: String) -> Bool {
+  match emit_o {
+    Accepted { value: folded, diagnostics: _ } => folded != golden
+    Rejected { diagnostics: _ } => true
+  }
 }
