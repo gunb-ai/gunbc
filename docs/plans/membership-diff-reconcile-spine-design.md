@@ -23,8 +23,22 @@ ONE grain-agnostic keyed membership-diff reconcile: **desired set vs observed se
 
 **Shape decision (want reviewer sign-off):** the reconcile spine is a **generic fn** parameterized by the member projections, NOT a hardcoded Member coproduct. This maximizes diff-sharing (the whole partition is generic, not just the `keyed_two_way_diff` call) and gives R9 *true zero spine change* (a new member type is a new instantiation, editing no central type). A heterogeneous-fleet `Member` coproduct is then just ONE instantiation (`M = Member`), not a precondition.
 
+### Ownership re-grounding — §3 single authority (calm-ferret catch)
+
+`Ownership` is the EXTRACTION of the ownership concept currently embedded in live_deploy's `DeploymentStep = Owned{step} | Ensured{step}` — the ONLY ownership marker in the tree today. "Lift" means **re-ground, not mint-alongside**: there must be ONE `Owned|Ensured` authority, not two whose variant names collide. Resolution (**option b**, scoped to the sequence):
+
+- **Pass 1 (spine):** `Ownership` lands in a shared low home as the single authority; the generic spine consumes it. live_deploy is untouched in pass 1, so no consumer yet holds two `Owned|Ensured`s. A **dissolution trigger** (Scaffold disposition) declares that `DeploymentStep` re-grounds onto `Ownership` in pass 2 — countable, never a silent parallel.
+- **Pass 2 (live_deploy binding):** `DeploymentStep` re-grounds onto `Ownership` — the ownership classification is read through the single `Ownership` authority (its variant tags stop independently re-encoding the bit; the coproduct stays the payload discriminator, coupled to `Ownership`). Natural here because pass 2 already rewires live_deploy through the spine. The dissolution trigger closes; ONE `Owned|Ensured` stands.
+
+This is the §2 decompose-map-reduce: the ownership concept, embedded in `DeploymentStep`, is extracted to its own authority and `DeploymentStep` references it — not a second representation.
+
+### Two guardrails on the generic choice (calm-ferret, locked)
+
+1. **ONE `membership_reconcile`, the single authority** — consumers CALL it with their `(key_of, key_eq, value_eq, ownership_of)` bundle; they NEVER copy-adapt a tweaked reconcile. One fn, N parameter-bundles (a Realization), zero reimplementations. A forked reconcile means the genericity bought nothing.
+2. **No speculative `M = Member` coproduct** — build the heterogeneous coproduct ONLY when a real heterogeneous reconcile exists (a fleet mixing host+service+session in one pass). Until then, homogeneous instantiations. §6 YAGNI / purity trap. Deferred, not eliminated — when needed it is one instantiation and becomes THE named "heterogeneous fleet member" authority at that point.
+
 ```
-type Ownership = Owned | Ensured          // the lifted live_deploy distinction (single authority)
+type Ownership = Owned | Ensured          // the EXTRACTED ownership authority (DeploymentStep re-grounds onto it, pass 2)
 
 type TeardownRefusalCause = MemberNotOwned | OwnershipUnknown
 
