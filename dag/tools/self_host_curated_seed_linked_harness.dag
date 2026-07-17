@@ -15,13 +15,13 @@ data cssl_doc: String = "Reusable curated seed-linked self-host harness (Wave 2 
 
 data cssl_cargo_features_note: String = "Mirrors slb_cargo_features_note: text_lookup_work_counter feature declared for -D warnings consumers."
 
-data cssl_std_seed_link_followup_note: String = "LANDED (2026-07-17): generic seed-shim closure assembly via cssl_assemble bin + cssl_seed_linked_closure_assembly.rs (5-arm: entry SHA invariant · compiler seed re-export · shared std-bridge · bootstrap_inline · typed Refused). Invoked from cssl_seed_linked_behavioral_receipt when shim_lib_rel empty and shim_writes empty. Probe runners may still use scripts/lib/apply_std_seed_link_assembly.sh for measurement-only."
+data cssl_std_seed_link_followup_note: String = "LANDED (2026-07-17): generic seed-shim closure assembly via cssl_assemble bin + cssl_seed_linked_closure_assembly.rs (6-arm: entry SHA invariant · compiler seed re-export · shared std-bridge · dag/std emit-retain · bootstrap_inline · typed Refused). Invoked from cssl_seed_linked_behavioral_receipt when shim_lib_rel empty and shim_writes empty. Probe runners use cssl_assemble when CSSL_STD_SEED_LINK=1 (scripts/curated_cargo_probe_one.sh)."
 
 data cssl_std_bridge_shims_rel: String = "dag/tools/self_host_std_bridge_shims"
 
 data cssl_std_bridge_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_std_bridge_shims/* shared std-bridge (emitted-side ONLY; seed oracle uses v1_compiler real std). DISSOLVES WHEN v2 std self-emits and gunbc emits seed-linked extern imports without hand ABI bridges."
 
-data cssl_closure_assembly_note: String = "Generic closure assembly (arm 2 compiler re-export + arm 3 shared std-bridge + arm 4 bootstrap_inline skip). Dep manifest = gunbc-emitted src/lib.rs pub mod list. Entry module bytes hash-locked. Hand shim_lib_rel/shim_writes = optional fast-path (body_producer); skipped when non-empty."
+data cssl_closure_assembly_note: String = "Generic closure assembly (arm 2 compiler re-export + arm 3 shared std-bridge + arm 4 dag/std emit-retain + arm 5 bootstrap_inline skip). Dep manifest = gunbc-emitted src/lib.rs pub mod list. Entry module bytes hash-locked. Hand shim_lib_rel/shim_writes = optional fast-path (body_producer); skipped when non-empty."
 
 data cssl_medium_as_string_scaffold_debt: String = "SCAFFOLD — tracked debt (v2.lens.medium_structure_containment roster): Cargo.toml TOML markup authored via concat string literals in cssl_v1_compiled_cargo_* (same class as slb_cargo_toml / ssuv_cargo_toml / peh_cargo_toml). Probe-only throwaway measurement — not gate-side substrate. dissolve-on: extdeps cargo manifest grammar rows + bash-emit #5828 OR harness consolidation; until then one concat producer per variant ([[bin]] witness vs [lib] probe), consumed only via tools.self_host_curated_probe_cargo."
 
