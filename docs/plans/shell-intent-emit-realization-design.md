@@ -41,7 +41,7 @@ Two classes of shell-in-intent survive, and the arc so far addressed only part o
 
 Swept both `.dag` roots (2169 files) by six angles (`concat(`, `bash_build`, serialize, `ShellStmt`, literal shell tokens, `*_shell`/`*_flags`/`*_script`/`*_argv` names), body-filtered to genuine shell-execution (excluding `.dag`'s own `&&`/`||` operators). Counts defensible to ~±10% on the long tail.
 
-- **Class 1 + 3 (raw `String` shell builders — hand-assembled scripts / argv / flags): ~110 functions across ~50 files.** This is the class the operator flagged; the `bash_build` migration never touched it.
+- **Class 1 (raw `String` shell builders — hand-assembled scripts / argv / flags, including the fragment-helper sub-kind that yields flag/path strings feeding the top-level builders): ~110 functions across ~50 files.** This is the class the operator flagged; the `bash_build` migration never touched it.
 - **Class 2 (structured-but-still-bash — `bash_build`/`ShellStmt` + serialize): ~9 construction sites.**
 - Excluded as legitimate (grammar spec + emit rows + the `shell_bash_runner` execution edge + `05_emit_orchestration`): ~14 files. Not residual.
 
