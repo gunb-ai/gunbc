@@ -171,7 +171,7 @@ test fn c_semantic_unsupported_shape_refuses() -> Bool {
 }
 
 test fn c_stage1_type_decl_frontier_deferred_count_holds() -> Bool {
-  c_stage1_type_decl_frontier_deferred_count() == 2
+  c_stage1_type_decl_frontier_deferred_count() == 3
 }
 
 test fn c_semantic_decl_routing_all_holds() -> Bool {

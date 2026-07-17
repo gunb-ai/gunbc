@@ -204,6 +204,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductDecorationRule,
+  TargetSemanticDeclCoproductEnumSurface,
   TargetSemanticDeclDecorationLine,
   TargetSemanticDeclEmission,
   TargetSemanticDeclSerializeProfile,
@@ -2461,9 +2462,7 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
     type_expr_field_scope: false,
     struct_typedef_name_after_fields: false,
     enum_name_after_variants: false,
-    coproduct_tagged_union_struct_layout: false,
-    tagged_union_tag_field: ^semantic_decl_tagged_union_tag_field_unused,
-    tagged_union_union_field: ^semantic_decl_tagged_union_union_field_unused,
+    coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_default,

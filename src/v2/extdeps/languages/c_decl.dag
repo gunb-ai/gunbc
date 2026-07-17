@@ -11,6 +11,8 @@ import v2.std.grammar {
 }
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductDecorationRule,
+  TargetSemanticDeclCoproductEnumSurface,
+  TargetSemanticDeclCoproductTaggedUnionSurface,
   TargetSemanticDeclDecorationLine,
   TargetSemanticDeclSurfaceProjection,
   semantic_decl_binding_spelling_row,
@@ -59,10 +61,19 @@ data c_stage1_frontier_row_named_tag_enum: CStage1TypeDeclFrontierRow = CStage1T
   semantics_note: "Interim tagged union: int tag field inside one typedef struct. Separate Answer_Tag enum typedef deferred until grammar emits two typedefs from one surface without double-matching variant_block."
 }
 
+data c_stage1_frontier_row_surface_projection_ordering_flags: CStage1TypeDeclFrontierRow = CStage1TypeDeclFrontierRow {
+  topic: ^c_stage1_surface_projection_ordering_flags_deferred,
+  disposition: CStage1Deferred {
+    migration_trigger: ^c_stage1_dissolve_when_surface_layout_derived_from_grammar_productions
+  },
+  semantics_note: "field_type_before_name / struct_typedef_name_after_fields / enum_name_after_variants booleans duplicate child-order already encoded in c_decl FormalProduction rows and empty shape-marker lex selectors. DISSOLVES WHEN surface child order is derived from the active production RHS instead of parallel projection flags."
+}
+
 fn c_stage1_type_decl_frontier_rows() -> List<CStage1TypeDeclFrontierRow> {
   [
     c_stage1_frontier_row_primitive_width,
-    c_stage1_frontier_row_named_tag_enum
+    c_stage1_frontier_row_named_tag_enum,
+    c_stage1_frontier_row_surface_projection_ordering_flags
   ]
 }
 
@@ -374,9 +385,10 @@ fn c_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
     type_expr_field_scope: false,
     struct_typedef_name_after_fields: true,
     enum_name_after_variants: true,
-    coproduct_tagged_union_struct_layout: true,
-    tagged_union_tag_field: ^c_token_tag_field,
-    tagged_union_union_field: ^c_token_union_field,
+    coproduct_layout: TargetSemanticDeclCoproductTaggedUnionSurface {
+      tag_field: ^c_token_tag_field,
+      union_field: ^c_token_union_field
+    },
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
         shape_key: ^semantic_decl_coproduct_shape_all_variants_nullary,
