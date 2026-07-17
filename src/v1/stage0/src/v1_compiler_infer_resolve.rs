@@ -396,6 +396,10 @@ pub struct PerModuleResolveMemoStats {
 // KEY: content-identity (dag_node_surface_fingerprint String), not pointer — ABA-safe
 // (no Rc::as_ptr in map keys; transient peel wrappers cannot stale-serve). Values
 // retain Rc<NodeResolveResult>/Rc<Node>. Env install pin is guardrail only.
+// module_name labels diagnostics only; within one install window every
+// resolve_node_bounded call uses the same enclosing module name, and identical
+// (env, node, depth, masked) yields the same grounded resolved form — excluded
+// from BoundedMemoKey intentionally.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct BoundedMemoKey {
     node_surface_fp: String,
@@ -491,10 +495,19 @@ pub fn per_module_resolve_memo_install(env: &Rc<TypeEnv>) {
         return;
     }
     PER_MODULE_RESOLVE_MEMO.with(|cell| {
-        assert!(
-            cell.borrow().is_none(),
-            "nested per-module resolve memo install"
-        );
+        if let Some(leaked) = cell.borrow_mut().take() {
+            eprintln!(
+                "[resolve-memo-mod] warning: flushed leaked scope before install \
+                 bounded_hit={} bounded_miss={} bounded_bypass={} \
+                 scrutinee_hit={} scrutinee_miss={} scrutinee_bypass={}",
+                leaked.stats.bounded_hits,
+                leaked.stats.bounded_misses,
+                leaked.stats.bounded_bypasses,
+                leaked.stats.scrutinee_hits,
+                leaked.stats.scrutinee_misses,
+                leaked.stats.scrutinee_bypasses,
+            );
+        }
         *cell.borrow_mut() = Some(PerModuleResolveMemoScope {
             env_scope_ptr: Rc::as_ptr(env) as usize,
             bounded: std::collections::HashMap::new(),
@@ -503,6 +516,22 @@ pub fn per_module_resolve_memo_install(env: &Rc<TypeEnv>) {
             stats: PerModuleResolveMemoStats::default(),
         });
     });
+}
+
+/// Flushes the per-module memo on drop (panic-safe pairing with [`per_module_resolve_memo_install`]).
+pub struct PerModuleResolveMemoScopeGuard;
+
+impl PerModuleResolveMemoScopeGuard {
+    pub fn install(env: &Rc<TypeEnv>) -> Self {
+        per_module_resolve_memo_install(env);
+        Self
+    }
+}
+
+impl Drop for PerModuleResolveMemoScopeGuard {
+    fn drop(&mut self) {
+        per_module_resolve_memo_flush();
+    }
 }
 
 pub fn per_module_resolve_memo_flush() -> PerModuleResolveMemoStats {

@@ -94,6 +94,7 @@ pub use crate::v1_compiler_infer_resolve::{
 pub use crate::v1_compiler_infer_resolve::{
     log_per_module_resolve_memo_stats, per_module_resolve_memo_flush,
     per_module_resolve_memo_install, per_module_resolve_memo_global_snapshot,
+    PerModuleResolveMemoScopeGuard,
     ItemResolveResult, NodeResolveResult, PerModuleResolveMemoStats,
 };
 pub use crate::v1_compiler_infer_service::{
@@ -14685,29 +14686,38 @@ pub fn typecheck_module(
             item_registry: ctx.item_registry.clone(),
             lambda_param_provenance: v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
         });
-        per_module_resolve_memo_install(&env);
-        let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
-        let typed_items = Rc::new({
-            let mut __result = Vec::new();
-            for tir in typed_item_results.clone().iter().cloned() {
-                __result.push(tir.item.clone());
-            }
-            __result
-        });
-        let infer_diags = Rc::new({
-            let mut __result = Vec::new();
-            for tir in typed_item_results.clone().iter().cloned() {
-                __result.extend((*tir.diagnostics.clone()).iter().cloned());
-            }
-            __result
-        });
-        let updated_func_env = populate_output_provenance(
-            typed_items.clone(),
-            ctx.func_env.clone(),
-            env.clone(),
-            data_locals.clone(),
-        );
-        let resolve_memo_stats = per_module_resolve_memo_flush();
+        let (typed_item_results, typed_items, infer_diags, updated_func_env, resolve_memo_stats) = {
+            let _memo_guard = PerModuleResolveMemoScopeGuard::install(&env);
+            let typed_item_results = infer_items(ctx.resolved_items.clone(), infer_scope.clone());
+            let typed_items = Rc::new({
+                let mut __result = Vec::new();
+                for tir in typed_item_results.clone().iter().cloned() {
+                    __result.push(tir.item.clone());
+                }
+                __result
+            });
+            let infer_diags = Rc::new({
+                let mut __result = Vec::new();
+                for tir in typed_item_results.clone().iter().cloned() {
+                    __result.extend((*tir.diagnostics.clone()).iter().cloned());
+                }
+                __result
+            });
+            let updated_func_env = populate_output_provenance(
+                typed_items.clone(),
+                ctx.func_env.clone(),
+                env.clone(),
+                data_locals.clone(),
+            );
+            let resolve_memo_stats = per_module_resolve_memo_global_snapshot();
+            (
+                typed_item_results,
+                typed_items,
+                infer_diags,
+                updated_func_env,
+                resolve_memo_stats,
+            )
+        };
         log_per_module_resolve_memo_stats(resolved_module_name.as_str(), resolve_memo_stats);
         let reannotated_items = Rc::new({
             let mut __result = Vec::new();
