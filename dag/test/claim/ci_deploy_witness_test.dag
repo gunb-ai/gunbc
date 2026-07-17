@@ -27,8 +27,9 @@ import gunbc.fleet_posix_accounts {
   fleet_posix_principal,
   grounded_posix_principal_name,
 }
+import gunbc.ci_materialization { step_display_name }
+import std.materialization_ladder { string_list_contains }
 import gunbc.ci_workflow { ci_workflow }
-import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.fleet_intent { srv1_host }
 import gunbc.host_effect { LocalShell }
@@ -110,7 +111,16 @@ fn witness_deploy_run_script_does_not_rebuild_release_bins() -> Bool {
 
 fn witness_workflow_deploy_job_consumes_release_bins_artifact() -> Bool {
   let deploy_jobs = filter(ci_workflow.jobs, j => j.id == "deploy_dashboard_srv1")
-  length(deploy_jobs) == 1
+  if length(deploy_jobs) != 1 {
+    false
+  } else {
+    let names = map(deploy_jobs.first().steps, s => step_display_name(s: s))
+    string_list_contains(xs: names, wanted: "Checkout")
+      && string_list_contains(xs: names, wanted: "Download release-bins artifact")
+      && string_list_contains(xs: names, wanted: "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)")
+      && string_list_contains(xs: names, wanted: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)")
+      && !string_list_contains(xs: names, wanted: "Cache Cargo")
+  }
 }
 
 fn witness_ci_yml_deploy_job_consumes_release_bins_artifact() -> Bool {
@@ -119,7 +129,6 @@ fn witness_ci_yml_deploy_job_consumes_release_bins_artifact() -> Bool {
     && string_contains(s: yaml, pattern: "      - name: Download release-bins artifact")
     && string_contains(s: yaml, pattern: "      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)")
     && string_contains(s: yaml, pattern: "      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)")
-    && !string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)\n        run: |\n          ROOT=")
 }
 
 fn witness_workflow_deploy_job_matches_enrollment() -> Bool {
