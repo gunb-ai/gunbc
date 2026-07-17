@@ -1,0 +1,20 @@
+module gunbc.ownership
+
+import std.types { String }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+type Ownership = Owned | Ensured
+
+data ownership_authority_note: String = "The single authority for the ownership classification of a reconcile member. Owned = this reconcile created/owns it (teardown-eligible); Ensured = a dependency it requires present but does NOT own (never torn down). Extracted (DESIGN §2 decompose-map-reduce) from the ownership bit previously embedded in gunbc.live_deploy.spec DeploymentStep = Owned/Ensured, the ONLY ownership marker in the tree. The reconcile spine gunbc.membership_reconcile reads ownership through THIS type; teardown-owned-only (R5) partitions Removed members on it."
+
+data ownership_deployment_step_reground_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.spec",
+    decl_name: "DeploymentStep",
+    field: WholeDeclaration,
+  }
+}
+
+data ownership_reground_trigger_note: String = "Pass-2 re-grounding trigger (calm-ferret §3 catch): live_deploy's DeploymentStep still names its own Owned/Ensured variants. There must be ONE Owned/Ensured authority, not two whose variant names collide. Pass 1 (this module + the spine) leaves live_deploy untouched, so no consumer yet holds two ownerships. This Scaffold declares that the live_deploy binding (pass 2) re-grounds DeploymentStep onto gunbc.ownership.Ownership — countable, never a silent parallel. Dissolves when DeploymentStep reads ownership through this authority (its coproduct stays the payload discriminator, coupled to Ownership)."
