@@ -50,7 +50,7 @@ data c_stage1_frontier_row_primitive_width: CStage1TypeDeclFrontierRow = CStage1
   disposition: CStage1Deferred {
     migration_trigger: ^c_stage1_dissolve_when_primitive_width_binding_lands
   },
-  semantics_note: "Stage 1 binds ^Int→int only. MachineWidth / unsigned / non-Int field atoms refuse or mis-route until extdeps primitive-width authority wires into c_decl type_expr."
+  semantics_note: "Stage 1 binds ^Int→int only. MachineWidth / unsigned / non-Int field atoms refuse with ^target_semantic_decl_field_type_primitive_unsupported until extdeps primitive-width authority wires into c_decl type_expr."
 }
 
 data c_stage1_frontier_row_named_tag_enum: CStage1TypeDeclFrontierRow = CStage1TypeDeclFrontierRow {
@@ -100,7 +100,7 @@ fn c_decl_shape_productions() -> List<FormalProduction> {
       lhs: ^c_decl_shape_enum,
       rhs: [
         grammar_formal_terminal_bound(
-          identity: ^c_decl_shape_enum_marker,
+          identity: ^c_decl_shape_enum_binding,
           binding: ^c_decl_shape_enum_binding
         )
       ]
@@ -109,7 +109,7 @@ fn c_decl_shape_productions() -> List<FormalProduction> {
       lhs: ^c_decl_shape_tagged,
       rhs: [
         grammar_formal_terminal_bound(
-          identity: ^c_decl_shape_tagged_marker,
+          identity: ^c_decl_shape_tagged_binding,
           binding: ^c_decl_shape_tagged_binding
         )
       ]
@@ -355,8 +355,6 @@ fn c_semantic_decl_lex_rows() -> List<Node> {
     semantic_decl_lex_literal_row(token_class: ^c_token_semicolon_field, text: "; "),
     semantic_decl_lex_literal_row(token_class: ^c_token_semicolon, text: ";"),
     semantic_decl_lex_literal_row(token_class: ^c_token_tag_field, text: "tag"),
-    semantic_decl_lex_literal_row(token_class: ^c_decl_shape_enum_marker, text: ""),
-    semantic_decl_lex_literal_row(token_class: ^c_decl_shape_tagged_marker, text: ""),
     semantic_decl_lex_ident_row(token_class: ^c_token_ident)
   ]
 }
@@ -364,8 +362,6 @@ fn c_semantic_decl_lex_rows() -> List<Node> {
 fn c_semantic_decl_binding_spelling_rows() -> List<Node> {
   [
     semantic_decl_binding_spelling_row(binding: ^Int, spelling: "int"),
-    semantic_decl_binding_spelling_row(binding: ^c_decl_shape_enum_binding, spelling: ""),
-    semantic_decl_binding_spelling_row(binding: ^c_decl_shape_tagged_binding, spelling: ""),
     semantic_decl_binding_spelling_row(binding: ^c_token_union_field, spelling: "u"),
     semantic_decl_binding_spelling_row(binding: ^c_token_tag_field, spelling: "tag")
   ]
@@ -385,6 +381,7 @@ fn c_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
     type_expr_field_scope: false,
     struct_typedef_name_after_fields: true,
     enum_name_after_variants: true,
+    field_type_permit_only_int: true,
     coproduct_layout: TargetSemanticDeclCoproductTaggedUnionSurface {
       tag_field: ^c_token_tag_field,
       union_field: ^c_token_union_field

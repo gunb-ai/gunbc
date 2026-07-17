@@ -118,17 +118,20 @@ fn cdr_bool_field_record() -> Node {
   }
 }
 
-test fn c_semantic_non_int_field_discriminates_from_int_holds() -> Bool {
-  cdr_matches(
+test fn c_semantic_non_int_field_refuses() -> Bool {
+  match emit_semantic_type_decl(
     name: ^Bad,
+    params: [],
     node: cdr_bool_field_record(),
-    golden: concat("typedef struct ", "{ Bool flag; } Bad;")
-  )
-    && !cdr_matches(
-      name: ^Bad,
-      node: cdr_bool_field_record(),
-      golden: concat("typedef struct ", "{ int flag; } Bad;")
-    )
+    target: c_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn c_semantic_int_field_still_emits() -> Bool {
+  cdr_matches(name: ^Point, node: cdr_point_record(), golden: c_semantic_point_golden)
 }
 
 fn cdr_arrow_type() -> Node {
@@ -179,7 +182,8 @@ test fn c_semantic_decl_routing_all_holds() -> Bool {
     && c_semantic_point_record_routes_to_struct_emit()
     && c_semantic_bool_coproduct_routes_to_enum_emit()
     && c_semantic_answer_coproduct_routes_to_tagged_union_emit()
-    &&   c_semantic_non_int_field_discriminates_from_int_holds()
+    && c_semantic_non_int_field_refuses()
+    && c_semantic_int_field_still_emits()
     && c_semantic_generic_struct_refuses()
     && c_semantic_generic_tagged_union_refuses()
     && c_semantic_unsupported_shape_refuses()

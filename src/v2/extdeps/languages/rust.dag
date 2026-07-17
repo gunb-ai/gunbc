@@ -2462,6 +2462,7 @@ fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjectio
     type_expr_field_scope: false,
     struct_typedef_name_after_fields: false,
     enum_name_after_variants: false,
+    field_type_permit_only_int: false,
     coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
     coproduct_decoration_rules: [
       TargetSemanticDeclCoproductDecorationRule {
