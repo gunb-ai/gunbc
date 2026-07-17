@@ -2950,6 +2950,37 @@ mod compile_clean_via_index_verdict_equivalence {
         );
     }
 
+    /// Roots-key canonicalization (review 39118): the executor's absolute CLI roots
+    /// and the plan's relative `witness_layer_roots` are the SAME pool and must
+    /// address ONE thread-local shared index — otherwise the compile-clean receipt
+    /// warms an index batch-2 silently replaces, and the whole lever-1 sharing claim
+    /// is void on the CI path. Rc pointer equality is the discriminating check: two
+    /// spellings, one universe.
+    #[test]
+    fn shared_index_roots_key_canonicalizes_absolute_and_relative_spellings() {
+        // Workspace cwd: canonical roots are repo-relative and the index build
+        // resolves them against cwd — the executor always runs from the repo root;
+        // cargo test does not.
+        let ws = super::workspace_root();
+        let prior = std::env::current_dir().ok();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let absolute = vec![
+            ws.join("dag").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let relative = vec!["dag".to_string(), "src/v2".to_string()];
+        let a = super::process_shared_index(&absolute);
+        let b = super::process_shared_index(&relative);
+        if let Some(p) = prior {
+            let _ = std::env::set_current_dir(p);
+        }
+        assert!(
+            Rc::ptr_eq(&a, &b),
+            "absolute and relative spellings of the same pool must address ONE shared \
+             index — a roots-key fork gives the receipt and batch-2 two typed universes"
+        );
+    }
+
     /// §5 discriminating RED: a typecheck-stage red must red BOTH paths. The planted
     /// module is the same variant-mismatch shape as the transport's canonical
     /// `perturb_module_source` (`dag/tools/dag_compile_clean_transport.dag`) — `Some`
@@ -3711,11 +3742,37 @@ thread_local! {
         const { RefCell::new(None) };
 }
 
+/// Canonical spelling for the shared-index roots — both the key AND the build
+/// inputs: an absolute root under the workspace normalizes to its repo-relative
+/// form, so the executor's CLI `$ROOT/dag` and the plan's declared `dag`
+/// (`gunbc.ci_layer_roots` witness_layer_roots) address ONE index. Without this,
+/// the compile-clean receipt (armed from CLI roots) and batch-2 discovery (plan
+/// roots) keyed two separate typed universes in CI and the gate's warm store was
+/// silently replaced before the corpus read it (review 39118 on PR #6783). Order
+/// is preserved (primary-precedence pool semantics); a root outside the workspace
+/// keeps its spelling — it is genuinely a different pool.
+fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
+    source_roots
+        .iter()
+        .map(|r| {
+            let p = Path::new(r);
+            if p.is_absolute() {
+                try_repo_relative_path_normalized(p).unwrap_or_else(|| r.replace('\\', "/"))
+            } else {
+                r.replace('\\', "/")
+            }
+        })
+        .collect()
+}
+
 /// The thread-local shared resolve index for `source_roots` (union-resolve S1). Built once
-/// per (thread, roots) and reused, so consumers that resolve distinct entries against it
-/// share one typed_module_cache — the union closure typechecks once per node.
+/// per (thread, canonical roots) and reused, so consumers that resolve distinct entries
+/// against it share one typed_module_cache — the union closure typechecks once per node.
+/// Roots are canonicalized (`canonical_shared_index_roots`) before both keying and
+/// building, so path-spelling variants of the same pool cannot fork the universe.
 fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
-    let roots_key = source_roots.join("\u{1f}");
+    let roots = canonical_shared_index_roots(source_roots);
+    let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow().as_ref().and_then(|(k, idx)| {
             if *k == roots_key {
@@ -3728,7 +3785,7 @@ fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     if let Some(idx) = existing {
         return idx;
     }
-    let idx = Rc::new(build_multi_entry_index(source_roots));
+    let idx = Rc::new(build_multi_entry_index(&roots));
     PROCESS_RESOLVE_INDEX.with(|s| {
         *s.borrow_mut() = Some((roots_key, idx.clone()));
     });
