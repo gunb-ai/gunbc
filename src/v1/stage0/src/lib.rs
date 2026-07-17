@@ -6,11 +6,11 @@
     unused_mut,
     unused_parens,
     dead_code,
-    unreachable_patterns,
     non_shorthand_field_patterns,
     suspicious_double_ref_op,
     clippy::all
 )]
+#![deny(unreachable_patterns)]
 #![recursion_limit = "256"]
 
 use im_rc::{OrdSet as BTreeSet, Vector as Vec};
@@ -119,6 +119,7 @@ pub mod v1_std_core;
 pub mod v1_test_non_ascii_perf_fixture;
 pub mod v2_compiler_discovery_enumeration;
 pub mod v2_compiler_parse_engine_hooks;
+pub mod v2_compiler_target_carriers;
 pub mod v2_compiler_use_site_verdict;
 pub mod wt_a;
 pub mod wt_b;
