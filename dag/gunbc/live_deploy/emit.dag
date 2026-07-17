@@ -11,8 +11,8 @@ import std.layout {
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  DeploymentEnsuredStep,
-  DeploymentOwnedStep,
+  DeploymentDependencyStep,
+  DeploymentArtifactStep,
   deployment_spec_srv1,
   deployment_plan_listen_port,
   gunbc_roadmap_server_path,
@@ -100,14 +100,14 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec) -> Doc {
   ])
 }
 
-fn deployment_ensured_steps_from_spec(spec: DeploymentSpec) -> List<DeploymentEnsuredStep> {
+fn deployment_ensured_steps_from_spec(spec: DeploymentSpec) -> List<DeploymentDependencyStep> {
   fold(
     spec.steps,
     init: [],
     f: (acc, step) =>
       match step {
-        Ensured { step: s } => concat(acc, [s])
-        Owned { step: _ } => acc
+        Dependency { step: s } => concat(acc, [s])
+        Artifact { step: _ } => acc
       }
   )
 }
@@ -215,7 +215,7 @@ fn live_deploy_systemd_unit_for(spec: DeploymentSpec) -> String {
   render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol)
 }
 
-fn deployment_ensure_dependency_intent(dep: DeploymentEnsuredStep) -> Pipeline {
+fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
   Pipeline {
     steps: [
       ensure_apt_package_step(
@@ -227,7 +227,7 @@ fn deployment_ensure_dependency_intent(dep: DeploymentEnsuredStep) -> Pipeline {
   }
 }
 
-fn deployment_ensure_dependency_script(dep: DeploymentEnsuredStep) -> String {
+fn deployment_ensure_dependency_script(dep: DeploymentDependencyStep) -> String {
   emit_pipeline_or_poison(p: deployment_ensure_dependency_intent(dep: dep), refused: live_deploy_ensure_dep_emit_refused_poison)
 }
 
