@@ -11,12 +11,24 @@ import std.layout {
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  DeploymentEnsuredStep,
-  DeploymentOwnedStep,
+  DeploymentStep, Artifact, Dependency,
+  DeploymentDependencyStep,
+  DeploymentArtifactStep,
+  ServerScript, SystemdUnit, TailscaleServeMapping,
   deployment_spec_srv1,
   deployment_plan_listen_port,
+  deployment_owned_steps_retract_order,
+  deployment_step_ownership,
   gunbc_roadmap_server_path,
   gunbc_roadmap_systemd_unit_path,
+}
+import gunbc.ownership { Ownership }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  MemberEffect, EffectUpsert, EffectTeardown,
+  MemberRefusal,
+  EffectsOrRefusal, EffectsReady, ApplyRefused,
+  membership_reconcile, membership_effects,
 }
 import gunbc.node_http_server_emit { roadmap_dashboard_node_http_server_source }
 import v2.std.orchestration {
@@ -100,15 +112,42 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec) -> Doc {
   ])
 }
 
-fn deployment_ensured_steps_from_spec(spec: DeploymentSpec) -> List<DeploymentEnsuredStep> {
-  fold(
-    spec.steps,
-    init: [],
-    f: (acc, step) =>
-      match step {
-        Ensured { step: s } => concat(acc, [s])
-        Owned { step: _ } => acc
-      }
+data live_deploy_reconcile_binding_note: String = "apply/retract are the two degenerate POLES of the ONE grain-agnostic membership_reconcile (gunbc.membership_reconcile) — no bespoke fold. apply = reconcile(desired = all deploy members, observed = none) => every member Added => Upsert. retract = reconcile(desired = none, observed = the owned artifacts) => every member Removed => Teardown (all Owned, so no refusal). The DeploymentStep (key_of/key_eq/value_eq/ownership_of) bundle is this consumer's Realization of the spine — not a copy of it. ownership_of projects through deployment_step_ownership onto the single gunbc.ownership authority, so it is ALWAYS Present (a deploy member's ownership is known by construction); the OwnershipUnknown/MemberNotOwned refusal arms are the safety backstop for a future non-degenerate observed provider, exercised only by the synthetic spine witness. key_of returns stable member IDENTITY (artifact path / dependency package); value_eq never fires in the degenerate poles (no Modified — one side is always empty)."
+
+fn deployment_step_key(step: DeploymentStep) -> NonEmptyStr {
+  match step {
+    Artifact { step: art } => art.path
+    Dependency { step: dep } => dep.package
+  }
+}
+
+fn deployment_step_key_eq(a: NonEmptyStr, b: NonEmptyStr) -> Bool { a == b }
+
+fn deployment_step_value_eq(a: DeploymentStep, b: DeploymentStep) -> Bool { a == b }
+
+fn deployment_step_ownership_opt(step: DeploymentStep) -> Ownership? {
+  Present { value: deployment_step_ownership(step: step) }
+}
+
+fn deployment_apply_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep> {
+  membership_reconcile(
+    desired: spec.steps,
+    observed: [],
+    key_of: deployment_step_key,
+    key_eq: deployment_step_key_eq,
+    value_eq: deployment_step_value_eq,
+    ownership_of: deployment_step_ownership_opt,
+  )
+}
+
+fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentStep> {
+  membership_reconcile(
+    desired: [],
+    observed: map(deployment_owned_steps_retract_order(), s => Artifact { step: s }),
+    key_of: deployment_step_key,
+    key_eq: deployment_step_key_eq,
+    value_eq: deployment_step_value_eq,
+    ownership_of: deployment_step_ownership_opt,
   )
 }
 
@@ -126,15 +165,92 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   ))
 }
 
-fn apply_intent(spec: DeploymentSpec) -> Pipeline {
+fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   let port = deployment_plan_listen_port(spec: spec)
-  let dep_steps = map(
-    deployment_ensured_steps_from_spec(spec: spec),
-    d => ensure_apt_package_step(
-      pkg: d.package,
-      install_command: concat("sudo -n apt-get install -y ", d.package)
-    )
-  )
+  If {
+    cond: Not { inner: ExitZero {
+      run: Run {
+        command: concat("sudo -n tailscale serve status 2>/dev/null | grep -q ':", to_string(port), "'"),
+        env: [],
+        redirect: Absent,
+        capture: Absent
+      }
+    } },
+    then_: Pipeline {
+      steps: [deploy_raw(command: concat("sudo -n tailscale serve --bg ", to_string(port)))],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+data install_d_shared_setup_latent_coupling_note: String = "LATENT COUPLING (calm-ferret pass-2 flag 1, non-blocking): the 'sudo -n install -d -m 0755 /opt/gunbc' below rides in the ServerScript EffectUpsert arm — derived-from-effect-kind (fires only when ServerScript is upserted), byte-identical for the current SINGLE-writer spec. It is hardcoded to the ServerScript arm, NOT derived from the write path's parent dir with dedup. If a SECOND owned artifact ever writes into /opt/gunbc, this mkdir must become the shared-prefix form ('parent-of-owned-writes, dedup'd', i.e. install -d folded once from the set of owned-write parents) or the second writer silently lacks its dir. A future second /opt/gunbc writer should trip THIS marker in review, not a runtime gap."
+
+fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
+  match art.kind {
+    ServerScript => [
+      deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc"),
+      apply_server_js_write_step(),
+      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/server.js\" ", gunbc_roadmap_server_path)),
+    ]
+    SystemdUnit => [
+      apply_systemd_unit_write_step(spec: spec),
+      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-roadmap.service\" ", gunbc_roadmap_systemd_unit_path)),
+      deploy_raw(command: "sudo -n systemctl daemon-reload"),
+      deploy_raw(command: concat("sudo -n systemctl enable ", spec.service.unit_name)),
+      deploy_raw(command: concat("sudo -n systemctl restart ", spec.service.unit_name)),
+    ]
+    TailscaleServeMapping => [
+      tailscale_serve_apply_step(spec: spec),
+    ]
+  }
+}
+
+fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
+  match art.kind {
+    TailscaleServeMapping => [
+      deploy_raw(command: "sudo -n tailscale serve reset || true"),
+    ]
+    SystemdUnit => [
+      deploy_raw(command: concat("sudo -n systemctl disable --now ", spec.service.unit_name, " 2>/dev/null || true")),
+      deploy_raw(command: concat("sudo -n rm -f ", gunbc_roadmap_systemd_unit_path)),
+      deploy_raw(command: "sudo -n systemctl daemon-reload"),
+    ]
+    ServerScript => [
+      deploy_raw(command: concat("sudo -n rm -f ", gunbc_roadmap_server_path)),
+    ]
+  }
+}
+
+data emit_deploy_member_effect_note: String = "The per-member realization HANDLER: share the DIFF (membership_reconcile), dispatch the APPLY (this). One handler for both fold directions — EffectUpsert dispatches on member kind to the artifact/dependency install fragments; EffectTeardown to the removal fragments. Orchestration is DERIVED from the effect kind, not an always-on envelope: a SystemdUnit upsert carries its own daemon-reload/enable/restart (once, part of the unit's realization); ServerScript carries the /opt/gunbc install -d it writes into. MemberEffect is a bidirectional sum, so each POLE has one structurally-unreachable direction (apply never Teardown, retract never Upsert) — those ARE reached across the two poles combined. The ONE arm unreachable across BOTH poles is EffectTeardown of a Dependency: a dependency is Ensured, so a Removed dependency is MemberTeardownRefused, never an EffectTeardown. That arm REFUSES loudly (emit_deploy_teardown_dependency_refusal — a typed/located poison step), it does NOT fabricate a no-op (DESIGN §5: an unreachable arm refuses, never a silent pass)."
+
+data live_deploy_teardown_dependency_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ R5 wall breach — EffectTeardown of an Ensured dependency reached the emit dispatch. A dependency is Ensured, so a Removed dependency is MemberTeardownRefused (never an EffectTeardown); reaching this arm means deployment_step_ownership or membership_effects is broken. This marker is not valid deploy shell, so the golden drift gate reds — DESIGN §5: an unreachable arm REFUSES loudly (typed/located/counted), never fabricates a no-op. dependency="
+
+fn emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep) -> List<PipelineStep> {
+  [deploy_raw(command: concat(live_deploy_teardown_dependency_unreachable_poison, dep.package))]
+}
+
+fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: DeploymentSpec) -> List<PipelineStep> {
+  match effect {
+    EffectUpsert { member: step } =>
+      match step {
+        Dependency { step: dep } => [
+          ensure_apt_package_step(
+            pkg: dep.package,
+            install_command: concat("sudo -n apt-get install -y ", dep.package)
+          ),
+        ]
+        Artifact { step: art } => emit_artifact_upsert(art: art, spec: spec)
+      }
+    EffectTeardown { member: step } =>
+      match step {
+        Artifact { step: art } => emit_artifact_teardown(art: art, spec: spec)
+        Dependency { step: dep } => emit_deploy_teardown_dependency_refusal(dep: dep)
+      }
+  }
+}
+
+fn apply_intent_from_effects(spec: DeploymentSpec, effects: List<MemberEffect<DeploymentStep>>) -> Pipeline {
   Pipeline {
     steps: concat(
       [
@@ -145,62 +261,62 @@ fn apply_intent(spec: DeploymentSpec) -> Pipeline {
         deploy_raw(command: "_gunbc_stage=\"$(mktemp -d)\""),
         deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
       ],
-      dep_steps,
-      [
-        deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc"),
-        apply_server_js_write_step(),
-        deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/server.js\" ", gunbc_roadmap_server_path)),
-        apply_systemd_unit_write_step(spec: spec),
-        deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-roadmap.service\" ", gunbc_roadmap_systemd_unit_path)),
-        deploy_raw(command: "sudo -n systemctl daemon-reload"),
-        deploy_raw(command: concat("sudo -n systemctl enable ", spec.service.unit_name)),
-        deploy_raw(command: concat("sudo -n systemctl restart ", spec.service.unit_name)),
-        If {
-          cond: Not { inner: ExitZero {
-            run: Run {
-              command: concat("sudo -n tailscale serve status 2>/dev/null | grep -q ':", to_string(port), "'"),
-              env: [],
-              redirect: Absent,
-              capture: Absent
-            }
-          } },
-          then_: Pipeline {
-            steps: [deploy_raw(command: concat("sudo -n tailscale serve --bg ", to_string(port)))],
-            on_failure: FailFast
-          },
-          else_: Absent
-        },
-        deploy_raw(command: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=apply verdict=converged")),
-      ]
+      concat(
+        flat_map(effects, e => emit_deploy_member_effect(effect: e, spec: spec)),
+        [
+          deploy_raw(command: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=apply verdict=converged")),
+        ]
+      )
     ),
     on_failure: FailFast
   }
 }
 
-fn retract_intent(spec: DeploymentSpec) -> Pipeline {
+fn retract_intent_from_effects(spec: DeploymentSpec, effects: List<MemberEffect<DeploymentStep>>) -> Pipeline {
   Pipeline {
-    steps: [
-      deploy_raw(command: "set -euo pipefail"),
-      deploy_raw(command: concat("# GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
-      deploy_raw(command: "# owned-artifacts only — ensured deps (tailscale, nodejs) intentionally NOT purged"),
-      deploy_raw(command: "# Runs UNPRIVILEGED; privileged ops via sudo -n <command> (tailscale, systemctl, rm)."),
-      deploy_raw(command: "sudo -n tailscale serve reset || true"),
-      deploy_raw(command: concat("sudo -n systemctl disable --now ", spec.service.unit_name, " 2>/dev/null || true")),
-      deploy_raw(command: concat("sudo -n rm -f ", gunbc_roadmap_systemd_unit_path)),
-      deploy_raw(command: "sudo -n systemctl daemon-reload"),
-      deploy_raw(command: concat("sudo -n rm -f ", gunbc_roadmap_server_path)),
-      deploy_raw(command: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=retract verdict=converged")),
-    ],
+    steps: concat(
+      [
+        deploy_raw(command: "set -euo pipefail"),
+        deploy_raw(command: concat("# GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
+        deploy_raw(command: "# owned-artifacts only — ensured deps (tailscale, nodejs) intentionally NOT purged"),
+        deploy_raw(command: "# Runs UNPRIVILEGED; privileged ops via sudo -n <command> (tailscale, systemctl, rm)."),
+      ],
+      concat(
+        flat_map(effects, e => emit_deploy_member_effect(effect: e, spec: spec)),
+        [
+          deploy_raw(command: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=retract verdict=converged")),
+        ]
+      )
+    ),
     on_failure: FailFast
   }
 }
 
+data live_deploy_wholesale_refused_poison_prefix: String = "__GUNBC_DEPLOY_REFUSED__ live-deploy reconcile refused WHOLESALE — the plan carried member teardown-refusals (a member the deploy does not own, or ownership unknown). Per the wholesale-refuse execution policy (gunbc.membership_reconcile.membership_effects_wholesale_refuse_policy_trigger) the ENTIRE fold is refused before emit rather than partially applied — R5 owned-only teardown is a construction wall, never emit-around. This marker is not valid deploy shell, so the committed golden drift gate reds (DESIGN §5: refuse, never widen). "
+
+fn live_deploy_wholesale_refused_poison(refusals: List<MemberRefusal<DeploymentStep>>, fold_label: String) -> String {
+  concat(
+    live_deploy_wholesale_refused_poison_prefix,
+    concat(fold_label, concat(" refused-member-count=", to_string(count(refusals))))
+  )
+}
+
 fn live_deploy_apply_script_for(spec: DeploymentSpec) -> String {
-  emit_pipeline_or_poison(p: apply_intent(spec: spec), refused: live_deploy_apply_emit_refused_poison)
+  match membership_effects(plan: deployment_apply_plan(spec: spec)) {
+    EffectsReady { effects: es } =>
+      emit_pipeline_or_poison(p: apply_intent_from_effects(spec: spec, effects: es), refused: live_deploy_apply_emit_refused_poison)
+    ApplyRefused { refusals: rs } =>
+      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "APPLY")
+  }
 }
 
 fn live_deploy_retract_script_for(spec: DeploymentSpec) -> String {
-  emit_pipeline_or_poison(p: retract_intent(spec: spec), refused: live_deploy_retract_emit_refused_poison)
+  match membership_effects(plan: deployment_retract_plan(spec: spec)) {
+    EffectsReady { effects: es } =>
+      emit_pipeline_or_poison(p: retract_intent_from_effects(spec: spec, effects: es), refused: live_deploy_retract_emit_refused_poison)
+    ApplyRefused { refusals: rs } =>
+      live_deploy_wholesale_refused_poison(refusals: rs, fold_label: "RETRACT")
+  }
 }
 
 fn expected_live_deploy_apply_script() -> String {
@@ -215,7 +331,7 @@ fn live_deploy_systemd_unit_for(spec: DeploymentSpec) -> String {
   render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol)
 }
 
-fn deployment_ensure_dependency_intent(dep: DeploymentEnsuredStep) -> Pipeline {
+fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
   Pipeline {
     steps: [
       ensure_apt_package_step(
@@ -227,7 +343,7 @@ fn deployment_ensure_dependency_intent(dep: DeploymentEnsuredStep) -> Pipeline {
   }
 }
 
-fn deployment_ensure_dependency_script(dep: DeploymentEnsuredStep) -> String {
+fn deployment_ensure_dependency_script(dep: DeploymentDependencyStep) -> String {
   emit_pipeline_or_poison(p: deployment_ensure_dependency_intent(dep: dep), refused: live_deploy_ensure_dep_emit_refused_poison)
 }
 
@@ -267,4 +383,4 @@ data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition =
   }
 }
 
-data live_deploy_golden_freeze_note: String = "The apply/retract scripts are now ONE orchestration-intent Pipeline each (apply_intent / retract_intent), emitted through the signed v2.compiler.emit_orchestration.orch_emit_pipeline path over the bash_orchestration_emit medium — NOT assembled by workflow-code string concat. The smuggled-program class (control flow / sequencing joins built by concat in this module — the former ensure_apt_package function-def, the deployment_ensure_dependency_script nested if/then concat, the tailscale if/fi) is dissolved: dependency-ensure is inline If-Not-ExitZero(dpkg -s) then Do(sudo -n apt-get install) intent (DESIGN §2 CUT: desugar inline, no minted verb), and the emission JOIN lives in extdeps/languages/bash_orchestration_emit, not here (no-smuggled-programs wall: a string literal is an ATOM, joins live in extdeps/languages rows). An emission refusal returns a poison marker (live_deploy_*_emit_refused_poison) so the committed golden drift gate reds instead of a hand-spelled fallback (DESIGN §5: refuse, never widen). The scripts are still frozen as committed golden artifacts (gunbc.generated_artifact LiveDeployApplyScriptArtifact / LiveDeployRetractScriptArtifact, gated byte-for-byte in test.claim.live_deploy.emit) — green by execution + a discriminating RED — killing the #6023-class self-referential drift check. RESIDUE (named, not this slice): Run.command is still a String leaf (v2.std.orchestration.Run), so the heredoc file bodies (server.js, systemd unit) and per-command argv interpolation ride inside command: strings as the anemic-leaf residue — they dissolve when Do-effect gains a typed file-write leaf (heredoc file bodies as typed orchestration intent, live_deploy_intent_dependency_graph_emit_dissolution_trigger binds orch_emit_pipeline). Transport-aware remote-mutation service-op realization (live_deploy runs shell, not yet a transport-realized service op) is OUT OF SCOPE — live_deploy_remote_mutation_service_op_realization_dissolution_trigger. Healthz readiness and digest read-back run on the DAG reconcile spine after mutation (live_deploy.readiness transport curl poll, then live_deploy.apply digest read-back); the apply script ships mutation only (no in-script curl read-back)."
+data live_deploy_golden_freeze_note: String = "The apply/retract scripts are now ONE orchestration-intent Pipeline each, built from the two degenerate POLES of the grain-agnostic gunbc.membership_reconcile (apply = reconcile desired=all-members/observed=none => all Upsert; retract = reconcile desired=none/observed=owned-artifacts => all Teardown) — apply_intent_from_effects / retract_intent_from_effects fold the resulting MemberEffects into the Pipeline via the per-kind emit_deploy_member_effect handler (share the diff, dispatch the apply), framing (preamble/receipt) wrapping OUTSIDE the reconcile. A refusal (a non-owned/unknown member) refuses the WHOLE fold before emit (EffectsOrRefusal sum — un-emittable by type; never reached by the degenerate poles). The Pipeline is emitted through the signed v2.compiler.emit_orchestration.orch_emit_pipeline path over the bash_orchestration_emit medium — NOT assembled by workflow-code string concat. The smuggled-program class (control flow / sequencing joins built by concat in this module — the former ensure_apt_package function-def, the deployment_ensure_dependency_script nested if/then concat, the tailscale if/fi) is dissolved: dependency-ensure is inline If-Not-ExitZero(dpkg -s) then Do(sudo -n apt-get install) intent (DESIGN §2 CUT: desugar inline, no minted verb), and the emission JOIN lives in extdeps/languages/bash_orchestration_emit, not here (no-smuggled-programs wall: a string literal is an ATOM, joins live in extdeps/languages rows). An emission refusal returns a poison marker (live_deploy_*_emit_refused_poison) so the committed golden drift gate reds instead of a hand-spelled fallback (DESIGN §5: refuse, never widen). The scripts are still frozen as committed golden artifacts (gunbc.generated_artifact LiveDeployApplyScriptArtifact / LiveDeployRetractScriptArtifact, gated byte-for-byte in test.claim.live_deploy.emit) — green by execution + a discriminating RED — killing the #6023-class self-referential drift check. RESIDUE (named, not this slice): Run.command is still a String leaf (v2.std.orchestration.Run), so the heredoc file bodies (server.js, systemd unit) and per-command argv interpolation ride inside command: strings as the anemic-leaf residue — they dissolve when Do-effect gains a typed file-write leaf (heredoc file bodies as typed orchestration intent, live_deploy_intent_dependency_graph_emit_dissolution_trigger binds orch_emit_pipeline). Transport-aware remote-mutation service-op realization (live_deploy runs shell, not yet a transport-realized service op) is OUT OF SCOPE — live_deploy_remote_mutation_service_op_realization_dissolution_trigger. Healthz readiness and digest read-back run on the DAG reconcile spine after mutation (live_deploy.readiness transport curl poll, then live_deploy.apply digest read-back); the apply script ships mutation only (no in-script curl read-back)."

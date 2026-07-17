@@ -43,6 +43,8 @@ import v2.compiler.translate { target_serialize_source_from_model }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
 
+data source_authority_module_note: String = "Wave 2 Gate-A flip lane: v2.compiler.source_authority is the cross-tree ingest and round-trip authority (parse→normalize→resolve→serialize laws over DagSourceReadWitness / SourceRootIngest). Curated seed-linked scaffold defers full tree behavioral oracle until emitter Rc/Optional coherence (#6775) greens rustc on the closure."
+
 type DagSourceAst {
   tree: ParseTree
 }
