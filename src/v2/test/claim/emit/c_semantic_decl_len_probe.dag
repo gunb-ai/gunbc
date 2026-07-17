@@ -7,29 +7,17 @@ import v2.std.algebra { fold_list }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Edge, Named, Node, SyntheticOccurrence, TypeNode, Atom }
+import v2.std.text { CharAbsent, CharFound, String, TailAbsent, TailFound, string_head, string_tail }
 
-data golden: String = concat("typedef struct ", "{ int x; int y; } Point;")
+data actual_golden: String = concat("typedef struct ", "{ int x; int y; ", "} ; ")
+data alt_golden: String = concat("typedef struct ", "{ int x; int y; y; }")
 
 fn point() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
-        label: Named { name: ^x },
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: ^Int } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      },
-      Edge {
-        label: Named { name: ^y },
-        target: Node {
-          kind: TypeNode { connective: Atom { identity: ^Int } },
-          children: [],
-          occurrence_id: SyntheticOccurrence
-        }
-      }
+      Edge { label: Named { name: ^x }, target: Node { kind: TypeNode { connective: Atom { identity: ^Int } }, children: [], occurrence_id: SyntheticOccurrence } },
+      Edge { label: Named { name: ^y }, target: Node { kind: TypeNode { connective: Atom { identity: ^Int } }, children: [], occurrence_id: SyntheticOccurrence } }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -39,51 +27,59 @@ fn str_len(s: String) -> Int {
   fold_list(xs: s, empty: 0, cons: fn(acc, _) { acc + 1 })
 }
 
-test fn c_semantic_decl_golden_len_holds() -> Bool {
-  str_len(s: golden) == 39
-}
-
-test fn c_semantic_decl_len_bracket_probe_holds() -> Bool {
-  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
-    Accepted { value: medium, diagnostics: _ } =>
-      str_len(s: medium.carried) == 30
-        || str_len(s: medium.carried) == 31
-        || str_len(s: medium.carried) == 32
-        || str_len(s: medium.carried) == 33
-        || str_len(s: medium.carried) == 34
-        || str_len(s: medium.carried) == 35
-        || str_len(s: medium.carried) == 36
-        || str_len(s: medium.carried) == 37
-        || str_len(s: medium.carried) == 38
-        || str_len(s: medium.carried) == 39
-        || str_len(s: medium.carried) == 40
-        || str_len(s: medium.carried) == 41
-        || str_len(s: medium.carried) == 42
-        || str_len(s: medium.carried) == 43
-        || str_len(s: medium.carried) == 44
-        || str_len(s: medium.carried) == 45
-        || str_len(s: medium.carried) == 46
-        || str_len(s: medium.carried) == 47
-        || str_len(s: medium.carried) == 48
-        || str_len(s: medium.carried) == 49
-        || str_len(s: medium.carried) == 50
-        || str_len(s: medium.carried) == 55
-        || str_len(s: medium.carried) == 60
-    Rejected { diagnostics: _ } => false
+fn skip_chars(s: String, n: Int) -> String {
+  if n == 0 {
+    s
+  } else {
+    match string_tail(s: s) {
+      TailFound { tail: tail } => skip_chars(s: tail, n: n - 1)
+      TailAbsent => Empty
+    }
   }
 }
 
-test fn c_semantic_decl_len_probe_holds() -> Bool {
-  match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
-    Accepted { value: medium, diagnostics: _ } =>
-      str_len(s: medium.carried) == str_len(s: golden)
-    Rejected { diagnostics: _ } => false
+fn char_at(s: String, n: Int) -> Int {
+  match string_head(s: skip_chars(s: s, n: n)) {
+    CharFound { value: c } => c
+    CharAbsent => 0
   }
 }
 
-test fn c_semantic_decl_eq_probe_holds() -> Bool {
+fn emit_carried() -> String {
   match emit_semantic_type_decl(name: ^Point, params: Empty, node: point(), target: c_target_model()) {
-    Accepted { value: medium, diagnostics: _ } => medium.carried == golden
-    Rejected { diagnostics: _ } => false
+    Accepted { value: medium, diagnostics: _ } => medium.carried
+    Rejected { diagnostics: _ } => Empty
   }
+}
+
+test fn c_semantic_decl_len_is_35_holds() -> Bool {
+  str_len(s: emit_carried()) == 35
+}
+
+test fn c_semantic_decl_eq_alt_golden_holds() -> Bool {
+  emit_carried() == alt_golden
+}
+
+test fn c_semantic_decl_eq_actual_golden_holds() -> Bool {
+  emit_carried() == actual_golden
+}
+
+test fn c_semantic_decl_emit_char30_code_holds() -> Bool {
+  char_at(s: emit_carried(), n: 30) == 32
+}
+
+test fn c_semantic_decl_emit_char31_code_holds() -> Bool {
+  char_at(s: emit_carried(), n: 31) == 125
+}
+
+test fn c_semantic_decl_emit_char32_code_holds() -> Bool {
+  char_at(s: emit_carried(), n: 32) == 32
+}
+
+test fn c_semantic_decl_emit_char33_code_holds() -> Bool {
+  char_at(s: emit_carried(), n: 33) == 59
+}
+
+test fn c_semantic_decl_emit_char34_code_holds() -> Bool {
+  char_at(s: emit_carried(), n: 34) == 32
 }
