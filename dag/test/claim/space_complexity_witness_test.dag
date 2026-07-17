@@ -11,36 +11,33 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data space_complexity_witness_note: String = "Space-complexity increment 1a ACCEPT: peak working set as the structural dual of the time cost-expr. The headline — a reducing fold is O(n) time but O(1) space (CostSum collapses to its body) — plus the P1 residency duals (sequential CostAdd->CostMax releases; parallel CostMax->CostAdd co-resides), concrete byte evaluation of a closed expr, and the fail-closed frontier (CostUnknown -> unknown space, the SpaceBoundUnknown counted bottom). All derived, none measured."
+data space_complexity_witness_note: String = "Space-complexity increment 1a ACCEPT: peak working set as the structural dual of the time cost-expr, proven BEHAVIORALLY through the concrete evaluator (no structural wildcard matches — exhaustive Optional threading only). The headline — a reducing fold is O(n) time but O(1) space (CostSum collapses to its body) — plus the P1 residency duals (sequential CostAdd->CostMax releases: eval 50 not sum 80; parallel CostMax->CostAdd co-resides: eval 80 not max 50), concrete byte evaluation, and the fail-closed frontier (CostUnknown -> the evaluator refuses, the SpaceBoundUnknown counted bottom). All derived, none measured."
+
+fn eval_space(work: CostExpr) -> Int? {
+  eval_cost_expr_concrete(e: space_of(work: work), env: empty_map())
+}
 
 test fn reducing_fold_is_constant_space_holds() -> Bool {
   let reducing_fold_time = CostSum { binder: "i", upper: SizeVar { name: "n" }, body: CostConst { value: 1 } }
-  let space = space_of(work: reducing_fold_time)
-  match space {
-    CostConst { value: v } => v == 1
-    _ => false
+  match eval_space(work: reducing_fold_time) {
+    Present { value: bytes } => bytes == 1
+    Absent => false
   }
 }
 
 test fn sequential_releases_max_not_sum_holds() -> Bool {
   let seq_time = CostAdd { left: CostConst { value: 30 }, right: CostConst { value: 50 } }
-  let space = space_of(work: seq_time)
-  match space {
-    CostMax { left: l, right: r } =>
-      match l { CostConst { value: lv } => lv == 30  _ => false }
-        && match r { CostConst { value: rv } => rv == 50  _ => false }
-    _ => false
+  match eval_space(work: seq_time) {
+    Present { value: bytes } => bytes == 50
+    Absent => false
   }
 }
 
 test fn parallel_coresides_add_not_max_holds() -> Bool {
   let par_time = CostMax { left: CostConst { value: 30 }, right: CostConst { value: 50 } }
-  let space = space_of(work: par_time)
-  match space {
-    CostAdd { left: l, right: r } =>
-      match l { CostConst { value: lv } => lv == 30  _ => false }
-        && match r { CostConst { value: rv } => rv == 50  _ => false }
-    _ => false
+  match eval_space(work: par_time) {
+    Present { value: bytes } => bytes == 80
+    Absent => false
   }
 }
 
@@ -65,14 +62,8 @@ test fn fold_that_builds_is_linear_space_holds() -> Bool {
 
 test fn unknown_cost_is_fail_closed_space_holds() -> Bool {
   let unknown_time = CostAdd { left: CostConst { value: 8 }, right: CostUnknown { reason: "unmodeled primitive" } }
-  let space = space_of(work: unknown_time)
-  let has_unknown = match space {
-    CostMax { left: _, right: r } => match r { CostUnknown { reason: _ } => true  _ => false }
-    _ => false
-  }
-  let concrete_refuses = match eval_cost_expr_concrete(e: space, env: empty_map()) {
+  match eval_space(work: unknown_time) {
     Present { value: _ } => false
     Absent => true
   }
-  has_unknown && concrete_refuses
 }
