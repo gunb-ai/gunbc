@@ -1414,37 +1414,20 @@ fn target_semantic_decl_surface_struct_generic(
   name: Symbol,
   decoration_lines: List<TargetSemanticDeclDecorationLine>,
   params: List<Symbol>,
-  fields: List<Node>,
-  struct_typedef_name_after_fields: Bool
+  fields: List<Node>
 ) -> Node {
-  if struct_typedef_name_after_fields {
-    target_semantic_decl_surface_conj(
-      children: list_append(
-        left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-        right: list_append(
-          left: [
-            target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
-          ],
-          right: [
-            target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
-          ]
-        )
-      )
+  target_semantic_decl_surface_conj(
+    children: list_append(
+      left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
+      right: [
+        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
+        target_semantic_decl_surface_pos(
+          target: target_semantic_decl_surface_generic_params(params: params)
+        ),
+        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
+      ]
     )
-  } else {
-    target_semantic_decl_surface_conj(
-      children: list_append(
-        left: target_semantic_decl_surface_decoration_pos_edges(lines: decoration_lines),
-        right: [
-          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-          target_semantic_decl_surface_pos(
-            target: target_semantic_decl_surface_generic_params(params: params)
-          ),
-          target_semantic_decl_surface_pos(target: target_semantic_decl_surface_field_block(fields: fields))
-        ]
-      )
-    )
-  }
+  )
 }
 
 fn target_semantic_decl_surface_enum_name_variant_edges(
@@ -2056,15 +2039,22 @@ fn target_semantic_struct_surface_from_record(
               )
             )
           } else {
-            outcome_accepted(
-              value: target_semantic_decl_surface_struct_generic(
-                name: name,
-                decoration_lines: projection.record_decoration_lines,
-                params: params,
-                fields: fields,
-                struct_typedef_name_after_fields: projection.struct_typedef_name_after_fields
+            if projection.struct_typedef_name_after_fields {
+              outcome_rejected(d: Diagnostic {
+                    reason: ^target_semantic_decl_struct_generic_unsupported,
+                    at: node_locus(node: record),
+                    correction: Unavailable { reason: ExternalContractUnknown }
+                  })
+            } else {
+              outcome_accepted(
+                value: target_semantic_decl_surface_struct_generic(
+                  name: name,
+                  decoration_lines: projection.record_decoration_lines,
+                  params: params,
+                  fields: fields
+                )
               )
-            )
+            }
           }
         }
       )

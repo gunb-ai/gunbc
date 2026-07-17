@@ -139,6 +139,30 @@ fn cdr_arrow_type() -> Node {
   }
 }
 
+test fn c_semantic_generic_struct_refuses() -> Bool {
+  match emit_semantic_type_decl(
+    name: ^Pair,
+    params: [^K, ^V],
+    node: cdr_point_record(),
+    target: c_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn c_semantic_generic_tagged_union_refuses() -> Bool {
+  match emit_semantic_type_decl(
+    name: ^Answer,
+    params: [^T],
+    node: cdr_answer_coproduct(),
+    target: c_target_model()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 test fn c_semantic_unsupported_shape_refuses() -> Bool {
   match cdr_emit_text(name: ^Bogus, node: cdr_arrow_type()) {
     Accepted { value: _, diagnostics: _ } => false
@@ -155,6 +179,8 @@ test fn c_semantic_decl_routing_all_holds() -> Bool {
     && c_semantic_point_record_routes_to_struct_emit()
     && c_semantic_bool_coproduct_routes_to_enum_emit()
     && c_semantic_answer_coproduct_routes_to_tagged_union_emit()
-    && c_semantic_non_int_field_discriminates_from_int_holds()
+    &&   c_semantic_non_int_field_discriminates_from_int_holds()
+    && c_semantic_generic_struct_refuses()
+    && c_semantic_generic_tagged_union_refuses()
     && c_semantic_unsupported_shape_refuses()
 }
