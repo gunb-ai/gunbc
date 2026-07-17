@@ -14,7 +14,8 @@ import v2.std.compilers.target_model { concrete_syntax_token_list_from_node }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Edge, Named, Node, SyntheticOccurrence, TypeNode, Atom }
-import std.algebra { Empty, fold_list }
+import std.algebra { Empty }
+import v2.std.algebra { fold_list }
 
 fn cdr_point_record() -> Node {
   Node {
