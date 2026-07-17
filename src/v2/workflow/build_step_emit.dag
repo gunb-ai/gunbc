@@ -1,14 +1,45 @@
 module v2.workflow.build_step_emit
 
-import tools.build_step { BuildArtifact, emit_verifications }
+import tools.build_step { BuildArtifact, emit_verification_nodes }
+import v2.extdeps.languages.bash_emit {
+  BashEmitSpecial,
+  BashEmitStmt,
+  BashEmitTagged,
+  bash_emit_program
+}
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.collection { List }
 import v2.std.diagnostic { Outcome }
-import v2.workflow.bash_program_emit { bash_program_serialize_stmts }
+import v2.std.node { Node }
 
-data build_step_emit_authority_note: String = "Build-artifact verification shell text emits through v2.workflow.bash_program_emit (grammar rows), not extdeps.languages.bash.program serialize_bash. Stmt construction stays in tools.build_step; this module is the realization-edge serializer. Byte-identity vs v1 is witnessed in v2.test.claim.build_artifact_verification_witness."
+data build_step_emit_authority_note: String = "Build-artifact verification shell text emits through v2.extdeps.languages.bash_emit (grammar rows), not extdeps.languages.bash.program serialize_bash. Node construction stays in tools.build_step; this module is the realization-edge serializer. Byte-identity vs v1 is witnessed in v2.test.claim.build_artifact_verification_witness."
+
+data empty_build_step_emit: List<BashEmitSpecial> = []
+
+fn build_step_emit_tagged_nodes(nodes: List<Node>) -> List<BashEmitSpecial> {
+  fold_list(
+    xs: nodes,
+    empty: empty_build_step_emit,
+    cons: fn(acc, node) {
+      list_snoc_item(
+        xs: acc,
+        item: BashEmitTagged {
+          stmt: BashEmitStmt {
+            node: node,
+            production_binding: ^bash_production_fold_if,
+            rule_name: ^bash_relation_rule_fold_if
+          }
+        }
+      )
+    }
+  )
+}
 
 fn verifications_script(produces: List<BuildArtifact>) -> Outcome<String> {
-  bash_program_serialize_stmts(
-    statements: emit_verifications(produces: produces),
+  bash_emit_program(
+    statements: build_step_emit_tagged_nodes(
+      nodes: emit_verification_nodes(produces: produces)
+    ),
     set_e: false
   )
 }

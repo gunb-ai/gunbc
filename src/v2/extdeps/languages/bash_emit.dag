@@ -1,0 +1,416 @@
+module v2.extdeps.languages.bash_emit
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.bash {
+  bash_stmt_negation_emitted,
+  bash_stmt_negation_target_model,
+  bash_stmt_with_redir_emitted,
+  bash_stmt_with_redir_target_model,
+  bash_redir_stderr_null_target_model,
+  bash_redir_stdout_and_stderr_null_target_model,
+  bash_redir_stdout_to_stderr_target_model,
+  bash_redir_to_file_target_model,
+  bash_stmt_if_target_model,
+  bash_stmt_subshell_target_model,
+  bash_stmt_andor_target_model,
+  bash_stmt_pipe_target_model,
+  bash_stmt_assign_target_model,
+  bash_stmt_exit_target_model,
+  bash_stmt_env_prefixed_target_model,
+  bash_stmt_heredoc_target_model,
+  bash_stmt_brace_group_target_model,
+  bash_stmt_negation_target_model,
+  bash_word_pass_emitted,
+  bash_word_pass_target_model,
+  bash_word_cmdsubst_emitted,
+  bash_word_cmdsubst_target_model,
+  bash_redir_stderr_null_emitted,
+  bash_redir_stdout_and_stderr_null_emitted,
+  bash_redir_stdout_to_stderr_emitted,
+  bash_redir_to_file_emitted,
+  bash_stmt_if_emitted,
+  bash_stmt_subshell_emitted,
+  bash_stmt_andor_emitted,
+  bash_stmt_pipe_emitted,
+  bash_stmt_assign_emitted,
+  bash_stmt_exit_emitted,
+  bash_stmt_env_prefixed_emitted,
+  bash_stmt_heredoc_emitted,
+  bash_stmt_brace_group_emitted
+}
+import v2.extdeps.languages.bash_command_fold {
+  bash_fold_target_model_for_emitted_witness
+}
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, list_snoc_item }
+import v2.std.collection { List, Map }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol, TypeNode, Conj, Atom }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates, Witness }
+
+type BashEmitStmt {
+  node: Node
+  production_binding: Symbol
+  rule_name: Symbol
+}
+
+type BashEmitSpecial
+  = BashEmitTagged { stmt: BashEmitStmt }
+  | BashEmitIfNegatedSubshell {
+      inner_stmts: List<BashEmitStmt>
+      then_stmts: List<BashEmitStmt>
+    }
+
+data bash_emit_authority_note: String = "Node-tree shell emission via bash_build constructors + grammar ingest (bash_fold_target_model_for_emitted_witness + emit). Replaces extdeps.languages.bash.program serialize_bash and v2.workflow.bash_program_sidecar_fold (sidecar FULL DELETE PR-B/PR-C)."
+
+fn bash_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^bash_emit_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn bash_emit_from_target(emitted: Node, target: TargetModel) -> Outcome<String> {
+  let tree = InferredTree {
+    root: emitted,
+    facts: Map { lookup: bash_emit_facts_lookup }
+  }
+  match emit(tree: tree, target: target) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => Accepted { value: source.carried, diagnostics: None }
+        Some { diagnostics: r } => Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn bash_emit_fold_node(
+  emitted: Node,
+  production_binding: Symbol,
+  rule_name: Symbol
+) -> Outcome<String> {
+  match bash_fold_target_model_for_emitted_witness(
+    emitted: emitted,
+    source_literal: ^bash_fold_dynamic_source_literal,
+    source_text: "",
+    production_binding: production_binding,
+    rule_name: rule_name
+  ) {
+    Holds { value: target } =>
+      bash_emit_from_target(emitted: emitted, target: target)
+    Violates { diagnostic: dd } => Rejected { diagnostics: Some { diagnostics: [dd] } }
+  }
+}
+
+fn bash_emit_command(emitted: Node) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: emitted,
+    production_binding: ^bash_production_fold_command,
+    rule_name: ^bash_relation_rule_fold_command
+  )
+}
+
+fn bash_emit_assign(emitted: Node) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: emitted,
+    production_binding: ^bash_production_fold_assign,
+    rule_name: ^bash_relation_rule_fold_assign
+  )
+}
+
+fn bash_emit_exit(emitted: Node) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: emitted,
+    production_binding: ^bash_production_fold_exit,
+    rule_name: ^bash_relation_rule_fold_exit
+  )
+}
+
+fn bash_emit_and_then(emitted: Node) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: emitted,
+    production_binding: ^bash_production_fold_and_then,
+    rule_name: ^bash_relation_rule_fold_and_then
+  )
+}
+
+fn bash_emit_or_else(emitted: Node) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: emitted,
+    production_binding: ^bash_production_fold_or_else,
+    rule_name: ^bash_relation_rule_fold_or_else
+  )
+}
+
+fn bash_emit_pipe(emitted: Node) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: emitted,
+    production_binding: ^bash_production_fold_pipe,
+    rule_name: ^bash_relation_rule_fold_pipe
+  )
+}
+
+fn bash_emit_if(emitted: Node) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: emitted,
+    production_binding: ^bash_production_fold_if,
+    rule_name: ^bash_relation_rule_fold_if
+  )
+}
+
+fn bash_emit_subshell(emitted: Node) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: emitted,
+    production_binding: ^bash_production_fold_subshell,
+    rule_name: ^bash_relation_rule_fold_subshell
+  )
+}
+
+fn bash_emit_with_redir(emitted: Node) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: emitted,
+    production_binding: ^bash_production_fold_with_redir,
+    rule_name: ^bash_relation_rule_fold_with_redir
+  )
+}
+
+fn bash_emit_negation_inner(inner_spelling: String) -> Outcome<String> {
+  bash_emit_from_target(
+    emitted: bash_stmt_negation_emitted,
+    target: bash_stmt_negation_target_model(inner: inner_spelling)
+  )
+}
+
+fn bash_emit_negation(inner: Node) -> Outcome<String> {
+  bind_outcome(
+    o: bash_emit_subshell(emitted: inner),
+    f: fn(inner_spelling) {
+      bash_emit_negation_inner(inner_spelling: concat("(", concat(inner_spelling, ")")))
+    }
+  )
+}
+
+fn bash_emit_stmt_node(
+  emitted: Node,
+  production_binding: Symbol,
+  rule_name: Symbol
+) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: emitted,
+    production_binding: production_binding,
+    rule_name: rule_name
+  )
+}
+
+fn bash_emit_body_from(
+  acc: String,
+  first: Bool,
+  rest: List<Node>,
+  production_binding: Symbol,
+  rule_name: Symbol
+) -> Outcome<String> {
+  match list_head(xs: rest) {
+    HeadAbsent => Accepted { value: acc, diagnostics: None }
+    HeadFound { value: s } =>
+      bind_outcome(
+        o: bash_emit_stmt_node(
+          emitted: s,
+          production_binding: production_binding,
+          rule_name: rule_name
+        ),
+        f: fn(part) {
+          let next = if first { part } else { concat(acc, concat("\n", part)) }
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              bash_emit_body_from(
+                acc: next,
+                first: false,
+                rest: t,
+                production_binding: production_binding,
+                rule_name: rule_name
+              )
+            TailAbsent => Accepted { value: concat(next, "\n"), diagnostics: None }
+          }
+        }
+      )
+  }
+}
+
+fn bash_emit_body(stmts: List<Node>) -> Outcome<String> {
+  bash_emit_body_from(
+    acc: "",
+    first: true,
+    rest: stmts,
+    production_binding: ^bash_production_fold_command,
+    rule_name: ^bash_relation_rule_fold_command
+  )
+}
+
+fn bash_emit_stmts_semi_tagged(stmts: List<BashEmitStmt>) -> Outcome<String> {
+  bash_emit_stmts_semi_tagged_from(acc: "", first: true, rest: stmts)
+}
+
+fn bash_emit_stmts_semi_tagged_from(
+  acc: String,
+  first: Bool,
+  rest: List<BashEmitStmt>
+) -> Outcome<String> {
+  match list_head(xs: rest) {
+    HeadAbsent => Accepted { value: acc, diagnostics: None }
+    HeadFound { value: s } =>
+      bind_outcome(
+        o: bash_emit_tagged(stmt: s),
+        f: fn(part) {
+          let next = if first { part } else { concat(acc, concat("; ", part)) }
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              bash_emit_stmts_semi_tagged_from(acc: next, first: false, rest: t)
+            TailAbsent => Accepted { value: next, diagnostics: None }
+          }
+        }
+      )
+  }
+}
+
+fn bash_emit_if_spelling(cond_spelling: String, then_stmts: List<BashEmitStmt>) -> Outcome<String> {
+  bind_outcome(
+    o: bash_emit_stmts_semi_tagged(stmts: then_stmts),
+    f: fn(body_spelling) {
+      bind_outcome(
+        o: bash_stmt_if_target_model(cond: cond_spelling, body: body_spelling),
+        f: fn(target) {
+          bash_emit_from_target(emitted: bash_stmt_if_emitted, target: target)
+        }
+      )
+    }
+  )
+}
+
+fn bash_emit_if_negated_subshell(
+  inner_stmts: List<BashEmitStmt>,
+  then_stmts: List<BashEmitStmt>
+) -> Outcome<String> {
+  bind_outcome(
+    o: bash_emit_stmts_semi_tagged(stmts: inner_stmts),
+    f: fn(body_spelling) {
+      bind_outcome(
+        o: bash_emit_from_target(
+          emitted: bash_stmt_subshell_emitted,
+          target: bash_stmt_subshell_target_model(body: body_spelling)
+        ),
+        f: fn(subshell_spelling) {
+          bash_emit_if_spelling(
+            cond_spelling: concat("! ", subshell_spelling),
+            then_stmts: then_stmts
+          )
+        }
+      )
+    }
+  )
+}
+
+fn bash_emit_tagged(stmt: BashEmitStmt) -> Outcome<String> {
+  bash_emit_fold_node(
+    emitted: stmt.node,
+    production_binding: stmt.production_binding,
+    rule_name: stmt.rule_name
+  )
+}
+
+fn bash_emit_special(item: BashEmitSpecial) -> Outcome<String> {
+  match item {
+    BashEmitTagged { stmt: s } => bash_emit_tagged(stmt: s)
+    BashEmitIfNegatedSubshell { inner_stmts: inner, then_stmts: then } =>
+      bash_emit_if_negated_subshell(inner_stmts: inner, then_stmts: then)
+  }
+}
+
+fn bash_emit_program_from(
+  acc: String,
+  first: Bool,
+  rest: List<BashEmitSpecial>
+) -> Outcome<String> {
+  match list_head(xs: rest) {
+    HeadAbsent => Accepted { value: acc, diagnostics: None }
+    HeadFound { value: item } =>
+      bind_outcome(
+        o: bash_emit_special(item: item),
+        f: fn(part) {
+          let next = if first { part } else { concat(acc, concat("\n", part)) }
+          match list_tail(xs: rest) {
+            TailFound { tail: t } =>
+              bash_emit_program_from(acc: next, first: false, rest: t)
+            TailAbsent => Accepted { value: concat(next, "\n"), diagnostics: None }
+          }
+        }
+      )
+  }
+}
+
+fn bash_emit_program(statements: List<BashEmitSpecial>, set_e: Bool) -> Outcome<String> {
+  bind_outcome(
+    o: bash_emit_program_from(acc: "", first: true, rest: statements),
+    f: fn(body) {
+      if set_e {
+        Accepted { value: concat("set -e\n", body), diagnostics: None }
+      } else {
+        Accepted { value: body, diagnostics: None }
+      }
+    }
+  )
+}
+
+fn bash_emit_stmts(statements: List<Node>, set_e: Bool) -> Outcome<String> {
+  bash_emit_program(
+    statements: fold_tagged_stmts(statements: statements),
+    set_e: set_e
+  )
+}
+
+fn bash_emit_stmts_append_tagged(
+  acc: List<BashEmitSpecial>,
+  rest: List<Node>
+) -> List<BashEmitSpecial> {
+  match list_head(xs: rest) {
+    HeadAbsent => acc
+    HeadFound { value: node } =>
+      bash_emit_stmts_append_tagged(
+        acc: list_snoc_item(
+          xs: acc,
+          item: BashEmitTagged {
+            stmt: BashEmitStmt {
+              node: node,
+              production_binding: ^bash_production_fold_command,
+              rule_name: ^bash_relation_rule_fold_command
+            }
+          }
+        ),
+        rest: match list_tail(xs: rest) {
+          TailFound { tail: t } => t
+          TailAbsent => []
+        }
+      )
+  }
+}
+
+fn fold_tagged_stmts(statements: List<Node>) -> List<BashEmitSpecial> {
+  bash_emit_stmts_append_tagged(acc: [], rest: statements)
+}

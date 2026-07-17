@@ -1,57 +1,76 @@
 module tools.build_step
 
-import extdeps.languages.bash.program {
-  ShellStmt, ShellWord,
-  Command, If, Exit, WithRedir,
-  Lit, Concat, StdoutToStderr,
-  lit, command
+import v2.extdeps.languages.bash_build {
+  bash_build_command_from_word_nodes,
+  bash_build_exit,
+  bash_build_if_from_stmts,
+  bash_build_with_redir,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var
 }
+import v2.std.collection { List }
+import v2.std.node { Node }
 
-data build_step_serialize_dissolution_note: String = "Shell text emission for build-artifact verification lives in v2.workflow.build_step_emit (grammar-row serializer). This module retains ShellStmt construction only."
+data build_step_authority_note: String = "Build-artifact verification constructs bash Node trees via v2.extdeps.languages.bash_build. Shell text emission lives in v2.workflow.build_step_emit (bash_emit grammar rows)."
 
 type BuildArtifact {
-  path: ShellWord
-
+  path: Node
   name: String
 }
 
-fn build_verify_echo(msg: ShellWord) -> ShellStmt {
-  WithRedir {
-    stmt: command(words: [lit(text: "echo"), msg]),
-    redir: StdoutToStderr
-  }
+fn build_verify_echo_node(msg: Node) -> Node {
+  bash_build_with_redir(
+    inner: bash_build_command_from_word_nodes(words: [
+      bash_build_word_lit(text: "echo"),
+      msg
+    ]),
+    redir: ^bash_production_fold_redir_stdout_to_stderr
+  )
 }
 
-fn verify_artifact_exists(art: BuildArtifact) -> ShellStmt {
-  If {
-    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-x"), art.path, lit(text: "]")]),
-    then: [
-      build_verify_echo(msg: Concat { parts: [
-        lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' absent or not executable after a 'successful' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: "))),
+fn verify_artifact_exists_node(art: BuildArtifact) -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_command_from_word_nodes(words: [
+      bash_build_word_lit(text: "["),
+      bash_build_word_lit(text: "!"),
+      bash_build_word_lit(text: "-x"),
+      art.path,
+      bash_build_word_lit(text: "]")
+    ]),
+    then_stmts: [
+      build_verify_echo_node(msg: bash_build_word_concat_from_nodes(parts: [
+        bash_build_word_lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' absent or not executable after a 'successful' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: "))),
         art.path
-      ] }),
-      Exit { code: 1 }
+      ])),
+      bash_build_exit(code: "1")
     ]
-  }
+  )
 }
 
-fn verify_artifact_nonempty(art: BuildArtifact) -> ShellStmt {
-  If {
-    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-s"), art.path, lit(text: "]")]),
-    then: [
-      build_verify_echo(msg: Concat { parts: [
-        lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: "))),
+fn verify_artifact_nonempty_node(art: BuildArtifact) -> Node {
+  bash_build_if_from_stmts(
+    cond: bash_build_command_from_word_nodes(words: [
+      bash_build_word_lit(text: "["),
+      bash_build_word_lit(text: "!"),
+      bash_build_word_lit(text: "-s"),
+      art.path,
+      bash_build_word_lit(text: "]")
+    ]),
+    then_stmts: [
+      build_verify_echo_node(msg: bash_build_word_concat_from_nodes(parts: [
+        bash_build_word_lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: "))),
         art.path
-      ] }),
-      Exit { code: 1 }
+      ])),
+      bash_build_exit(code: "1")
     ]
-  }
+  )
 }
 
-fn verify_artifact(art: BuildArtifact) -> List<ShellStmt> {
-  [verify_artifact_exists(art: art), verify_artifact_nonempty(art: art)]
+fn verify_artifact_nodes(art: BuildArtifact) -> List<Node> {
+  [verify_artifact_exists_node(art: art), verify_artifact_nonempty_node(art: art)]
 }
 
-fn emit_verifications(produces: List<BuildArtifact>) -> List<ShellStmt> {
-  fold(produces, init: [], f: (acc, art) => concat(acc, verify_artifact(art: art)))
+fn emit_verification_nodes(produces: List<BuildArtifact>) -> List<Node> {
+  fold(produces, init: [], f: (acc, art) => concat(acc, verify_artifact_nodes(art: art)))
 }
