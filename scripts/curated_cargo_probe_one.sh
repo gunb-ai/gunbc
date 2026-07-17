@@ -102,18 +102,18 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
   else
     CARGO_VERDICT="refuse"
     FIRST_ERROR="$(grep -m1 -E '^error(\[E[0-9]+\])?:' "$BUILD_LOG" || grep -m1 -E '^error:' "$BUILD_LOG" || head -1 "$BUILD_LOG" || true)"
-    # RULE 1: any duplicate-definition is harness std-dup — never a gate verdict.
-    if grep -qE 'is defined multiple times|defined multiple times' "$BUILD_LOG"; then
+    # RULE 1/2: classify from the first rustc error line only (not later log lines).
+    if echo "$FIRST_ERROR" | grep -qE 'is defined multiple times|defined multiple times'; then
       MAPPED_GATE="HARNESS_ARTIFACT_std_dup"
-    elif grep -qE 'UNRESOLVED_CompilerError' "$BUILD_LOG"; then
+    elif echo "$FIRST_ERROR" | grep -qE 'UNRESOLVED_CompilerError'; then
       MAPPED_GATE="UNKNOWN_unresolved"
-    elif grep -qE 'expected item after attributes|expected one of|unexpected token' "$BUILD_LOG"; then
+    elif echo "$FIRST_ERROR" | grep -qE 'expected item after attributes|expected one of|unexpected token'; then
       MAPPED_GATE="UNKNOWN_emit_shape"
-    elif grep -qE 'error\[E0432\]: unresolved import|cannot find .+ in this scope|not found in this scope|unbound' "$BUILD_LOG"; then
+    elif echo "$FIRST_ERROR" | grep -qE 'error\[E0432\]: unresolved import|cannot find .+ in this scope|not found in this scope|unbound'; then
       MAPPED_GATE="namespace_resolution"
-    elif grep -qE 'error\[E0382\]|error\[E0507\]|error\[E0597\]|cannot move out of|cannot borrow|mismatched types.*Rc<|expected .+ found .+Rc<' "$BUILD_LOG"; then
+    elif echo "$FIRST_ERROR" | grep -qE 'error\[E0382\]|error\[E0507\]|error\[E0597\]|cannot move out of|cannot borrow|mismatched types.*Rc<|expected .+ found .+Rc<'; then
       MAPPED_GATE="Gate_A_emitter_Rc_Optional"
-    elif grep -qE 'wrapper\.retained|body_producer|Arrow|Behavior' "$BUILD_LOG"; then
+    elif echo "$FIRST_ERROR" | grep -qE 'wrapper\.retained|body_producer|Arrow|Behavior'; then
       MAPPED_GATE="Gate_B_body_producer"
     else
       MAPPED_GATE="UNKNOWN"

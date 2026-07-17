@@ -7,7 +7,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 REPORT="${ROOT}/docs/probes/curated_cargo_frontier_probe_sweep.tsv"
-CLASSIFIER_STAMP="rule1-dup-harness-unknown-unresolved-v1"
+CLASSIFIER_STAMP="rule1-first-error-dup-harness-unknown-unresolved-v2"
 FORCE_REPROBE="${CSSL_FORCE_REPROBE:-0}"
 mkdir -p "$(dirname "$REPORT")"
 PROBE="$ROOT/scripts/curated_cargo_probe_one.sh"
