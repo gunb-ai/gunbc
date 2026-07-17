@@ -120,6 +120,7 @@ pub mod v1_test_non_ascii_perf_fixture;
 pub mod v2_compiler_body_producer;
 pub mod v2_compiler_discovery_enumeration;
 pub mod v2_compiler_parse_engine_hooks;
+pub mod v2_compiler_program_assembly;
 pub mod v2_compiler_resolve;
 pub mod v2_compiler_target_carriers;
 pub mod v2_compiler_use_site_verdict;
