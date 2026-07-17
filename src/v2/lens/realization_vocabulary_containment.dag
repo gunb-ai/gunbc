@@ -37,6 +37,7 @@ data realization_edge_path_prefixes: List<String> = [
 data realization_vocab_exception_roster: List<String> = [
   "dag/gunbc/node_http_server_emit.dag",
   "src/v2/lens/duplicate_computation.dag",
+  "src/v2/workflow/bash_program_emit.dag",
   "src/v2/workflow/bash_program_sidecar_fold.dag"
 ]
 
