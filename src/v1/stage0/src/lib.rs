@@ -6,11 +6,11 @@
     unused_mut,
     unused_parens,
     dead_code,
-    unreachable_patterns,
     non_shorthand_field_patterns,
     suspicious_double_ref_op,
     clippy::all
 )]
+#![deny(unreachable_patterns)]
 #![recursion_limit = "256"]
 
 use im_rc::{OrdSet as BTreeSet, Vector as Vec};

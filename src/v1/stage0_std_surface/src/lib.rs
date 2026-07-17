@@ -11,11 +11,11 @@
     unused_mut,
     unused_parens,
     dead_code,
-    unreachable_patterns,
     non_shorthand_field_patterns,
     suspicious_double_ref_op,
     clippy::all
 )]
+#![deny(unreachable_patterns)]
 
 pub use v1_stage0_runtime::*;
 pub use v1_stage0_std_core::*;
