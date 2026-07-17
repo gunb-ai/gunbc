@@ -100,6 +100,13 @@ fn cdr_answer_coproduct() -> Node {
   }
 }
 
+test fn c_semantic_projection_type_expr_field_scope_holds() -> Bool {
+  match semantic_decl_emission_from_target(target: c_target_model()) {
+    Accepted { value: emission, diagnostics: _ } => emission.surface.type_expr_field_scope
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn c_semantic_point_surface_builds_holds() -> Bool {
   match semantic_decl_emission_from_target(target: c_target_model()) {
     Accepted { value: emission, diagnostics: _ } =>

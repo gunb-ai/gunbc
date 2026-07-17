@@ -4,10 +4,12 @@ import v2.std.grammar {
   grammar_formal_terminal,
   grammar_formal_terminal_bound,
   grammar_formal_terminal_free,
+  grammar_formal_terminal_surface_discriminator,
   grammar_formal_nonterminal_occurrence,
   grammar_formal_production,
   formal_productions_catalog_to_node,
-  FormalProduction
+  FormalProduction,
+  grammar_surface_discriminator_terminal
 }
 import v2.std.compilers.semantic_decl_emission {
   TargetSemanticDeclCoproductDecorationRule,
@@ -71,7 +73,10 @@ fn c_decl_shared_field_productions() -> List<FormalProduction> {
     ),
     grammar_formal_production(
       lhs: ^c_decl_type_expr,
-      rhs: [ grammar_formal_nonterminal_occurrence(identity: ^c_decl_qualified_name) ]
+      rhs: [
+        grammar_formal_terminal_surface_discriminator(identity: grammar_surface_discriminator_terminal),
+        grammar_formal_nonterminal_occurrence(identity: ^c_decl_qualified_name)
+      ]
     ),
     grammar_formal_production(
       lhs: ^c_decl_field,
@@ -318,6 +323,7 @@ fn c_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
   TargetSemanticDeclSurfaceProjection {
     record_decoration_lines: [],
     field_type_before_name: true,
+    type_expr_field_scope: true,
     struct_typedef_name_after_fields: true,
     enum_name_after_variants: true,
     coproduct_tagged_union_struct_layout: true,

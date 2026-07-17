@@ -82,6 +82,7 @@ type TargetSemanticDeclSurfaceProjection {
   record_decoration_lines: List<TargetSemanticDeclDecorationLine>
   coproduct_decoration_rules: List<TargetSemanticDeclCoproductDecorationRule>
   field_type_before_name: Bool
+  type_expr_field_scope: Bool
   struct_typedef_name_after_fields: Bool
   enum_name_after_variants: Bool
   coproduct_tagged_union_struct_layout: Bool
@@ -904,6 +905,14 @@ fn semantic_decl_surface_projection_bundle(
         )
       ),
       target_model_named_edge(
+        name: ^semantic_decl_surface_field_type_expr_field_scope,
+        target: semantic_decl_surface_projection_bool_flag_node(
+          enabled: projection.type_expr_field_scope,
+          true_id: ^semantic_decl_type_expr_field_scope_true,
+          false_id: ^semantic_decl_type_expr_field_scope_false
+        )
+      ),
+      target_model_named_edge(
         name: ^semantic_decl_surface_field_struct_typedef_name_after_fields,
         target: semantic_decl_surface_projection_bool_flag_node(
           enabled: projection.struct_typedef_name_after_fields,
@@ -1014,6 +1023,11 @@ fn decode_semantic_decl_surface_projection_bundle(
                       coproduct_decoration_rules: coproduct_decoration_rules,
                       field_type_before_name: decode_semantic_decl_surface_projection_field_type_before_name(
                         bundle: bundle
+                      ),
+                      type_expr_field_scope: decode_semantic_decl_surface_projection_bool_flag(
+                        bundle: bundle,
+                        field: ^semantic_decl_surface_field_type_expr_field_scope,
+                        true_id: ^semantic_decl_type_expr_field_scope_true
                       ),
                       struct_typedef_name_after_fields: decode_semantic_decl_surface_projection_bool_flag(
                         bundle: bundle,
@@ -1233,11 +1247,46 @@ fn target_semantic_decl_surface_type_expr(t: Symbol) -> Node {
   )
 }
 
-fn target_semantic_decl_surface_field(name: Symbol, t: Symbol, type_before_name: Bool) -> Node {
+fn target_semantic_decl_surface_type_expr_scoped(scope: Symbol, t: Symbol) -> Node {
+  target_semantic_decl_surface_conj(
+    children: [
+      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: scope)),
+      target_semantic_decl_surface_pos(
+        target: target_semantic_decl_surface_conj(
+          children: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: t)) ]
+        )
+      )
+    ]
+  )
+}
+
+fn target_semantic_decl_surface_type_expr_for_field(
+  name: Symbol,
+  t: Symbol,
+  type_expr_field_scope: Bool
+) -> Node {
+  if type_expr_field_scope {
+    target_semantic_decl_surface_type_expr_scoped(scope: name, t: t)
+  } else {
+    target_semantic_decl_surface_type_expr(t: t)
+  }
+}
+
+fn target_semantic_decl_surface_field(
+  name: Symbol,
+  t: Symbol,
+  type_before_name: Bool,
+  type_expr_field_scope: Bool
+) -> Node {
+  let type_node = target_semantic_decl_surface_type_expr_for_field(
+    name: name,
+    t: t,
+    type_expr_field_scope: type_expr_field_scope
+  )
   if type_before_name {
     target_semantic_decl_surface_conj(
       children: [
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_type_expr(t: t)),
+        target_semantic_decl_surface_pos(target: type_node),
         target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name))
       ]
     )
@@ -1245,10 +1294,23 @@ fn target_semantic_decl_surface_field(name: Symbol, t: Symbol, type_before_name:
     target_semantic_decl_surface_conj(
       children: [
         target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: name)),
-        target_semantic_decl_surface_pos(target: target_semantic_decl_surface_type_expr(t: t))
+        target_semantic_decl_surface_pos(target: type_node)
       ]
     )
   }
+}
+
+fn target_semantic_decl_surface_field_legacy(
+  name: Symbol,
+  t: Symbol,
+  type_before_name: Bool
+) -> Node {
+  target_semantic_decl_surface_field(
+    name: name,
+    t: t,
+    type_before_name: type_before_name,
+    type_expr_field_scope: false
+  )
 }
 
 fn target_semantic_decl_field_surface_from_edge(
@@ -1263,7 +1325,8 @@ fn target_semantic_decl_field_surface_from_edge(
             value: target_semantic_decl_surface_field(
               name: fname,
               t: tid,
-              type_before_name: projection.field_type_before_name
+              type_before_name: projection.field_type_before_name,
+              type_expr_field_scope: projection.type_expr_field_scope
             )
           )
         _ =>
@@ -1515,7 +1578,8 @@ fn target_semantic_decl_surface_tagged_union_body_fields(
     target_semantic_decl_surface_field(
       name: projection.tagged_union_tag_field,
       t: ^Int,
-      type_before_name: projection.field_type_before_name
+      type_before_name: projection.field_type_before_name,
+      type_expr_field_scope: projection.type_expr_field_scope
     ),
     target_semantic_decl_surface_tagged_union_union_body(
       variants: variants,
