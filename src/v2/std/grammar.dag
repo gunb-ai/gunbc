@@ -1139,14 +1139,6 @@ fn formal_binding_conj_slot_arm(binding: Symbol) -> FormalBindingConjSlotArm {
   }
 }
 
-fn formal_binding_conj_slot_atom_only(binding: Symbol) -> Bool {
-  match formal_binding_conj_slot_arm(binding: binding) {
-    FormalBindingConjSlotSurfaceDiscriminator => true
-    FormalBindingConjSlotEmittedAtom => true
-    FormalBindingConjSlotExactBinding => false
-  }
-}
-
 fn grammar_relation_emitted_conj_slot_missing_diagnostic(emitted: Node) -> Diagnostic {
   Diagnostic {
     reason: ^grammar_relation_emitted_conj_slot_missing,
@@ -1194,34 +1186,45 @@ fn formal_production_rhs_matches_emitted_conj_step(
         FormalTerminalOccurrence { terminal: terminal, binding: binding } =>
           match binding {
             Present { value: binding_symbol } =>
-              if formal_binding_conj_slot_atom_only(binding: binding_symbol) {
-                match formal_conj_child_atom_at_index(
-                  children: children,
-                  index: index,
-                  emitted: emitted
-                ) {
-                  Holds { value: _ } =>
-                    EmittedRhsMatchOk { children: children, index: index + 1 }
-                  Violates { diagnostic: _ } => EmittedRhsMatchFail
-                }
-              } else {
-                match formal_conj_child_atom_at_index(
-                  children: children,
-                  index: index,
-                  emitted: emitted
-                ) {
-                  Holds { value: slot_child } =>
-                    match node_atom_identity_optional(node: slot_child) {
-                      Present { value: atom_id } =>
-                        if atom_id == binding_symbol {
-                          EmittedRhsMatchOk { children: children, index: index + 1 }
-                        } else {
-                          EmittedRhsMatchFail
-                        }
-                      Absent => EmittedRhsMatchFail
-                    }
-                  Violates { diagnostic: _ } => EmittedRhsMatchFail
-                }
+              match formal_binding_conj_slot_arm(binding: binding_symbol) {
+                FormalBindingConjSlotSurfaceDiscriminator =>
+                  match formal_conj_child_atom_at_index(
+                    children: children,
+                    index: index,
+                    emitted: emitted
+                  ) {
+                    Holds { value: _ } =>
+                      EmittedRhsMatchOk { children: children, index: index + 1 }
+                    Violates { diagnostic: _ } => EmittedRhsMatchFail
+                  }
+                FormalBindingConjSlotEmittedAtom =>
+                  match formal_conj_child_atom_at_index(
+                    children: children,
+                    index: index,
+                    emitted: emitted
+                  ) {
+                    Holds { value: _ } =>
+                      EmittedRhsMatchOk { children: children, index: index + 1 }
+                    Violates { diagnostic: _ } => EmittedRhsMatchFail
+                  }
+                FormalBindingConjSlotExactBinding =>
+                  match formal_conj_child_atom_at_index(
+                    children: children,
+                    index: index,
+                    emitted: emitted
+                  ) {
+                    Holds { value: slot_child } =>
+                      match node_atom_identity_optional(node: slot_child) {
+                        Present { value: atom_id } =>
+                          if atom_id == binding_symbol {
+                            EmittedRhsMatchOk { children: children, index: index + 1 }
+                          } else {
+                            EmittedRhsMatchFail
+                          }
+                        Absent => EmittedRhsMatchFail
+                      }
+                    Violates { diagnostic: _ } => EmittedRhsMatchFail
+                  }
               }
             Absent =>
               EmittedRhsMatchOk { children: children, index: index }
@@ -1304,10 +1307,10 @@ fn formal_production_matches_emitted_child(
         Absent =>
           match formal_production_rhs_singleton_binding(production: production) {
             Present { value: binding } =>
-              if formal_binding_conj_slot_atom_only(binding: binding) {
-                true
-              } else {
-                atom_id == binding
+              match formal_binding_conj_slot_arm(binding: binding) {
+                FormalBindingConjSlotSurfaceDiscriminator => true
+                FormalBindingConjSlotEmittedAtom => true
+                FormalBindingConjSlotExactBinding => atom_id == binding
               }
             Absent => false
           }
