@@ -47,6 +47,9 @@ import v2.extdeps.languages.bash {
   bash_word_pass_target_model
 }
 import v2.extdeps.languages.bash_command_fold {
+  bash_fold_target_model_for_emitted_witness
+}
+import v2.workflow.bash_program_sidecar_fold {
   bash_fold_stmt_emitted_witness,
   bash_fold_target_model_for_stmt_witness
 }
