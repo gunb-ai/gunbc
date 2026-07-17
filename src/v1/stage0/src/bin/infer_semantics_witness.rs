@@ -331,6 +331,7 @@ fn empty_infer_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: empty_type_env(),
         func_env: Rc::new(ResolvedFuncEnv {
+            name: "test".to_string(),
             local: Rc::new(im_rc::HashMap::new()),
             parents: Rc::new(vec![]),
         }),

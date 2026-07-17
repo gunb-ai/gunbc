@@ -32,6 +32,7 @@ pub struct ResolvedFuncSig {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedFuncEnv {
+    pub name: String,
     pub local: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
     pub parents: Rc<Vec<Rc<ResolvedFuncEnv>>>,
 }
@@ -54,40 +55,71 @@ pub struct CallEdge {
     pub callee: String,
 }
 
-pub fn lookup_in_parent_chain(
-    mut parents: Rc<Vec<Rc<ResolvedFuncEnv>>>,
-    mut name: String,
-) -> Option<Rc<ResolvedFuncSig>> {
-    loop {
-        match parents.clone().last().cloned() {
-            None => {
-                break None;
+pub fn sigs_env_flat_parents_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cost shape (§6 bare-minimum cost): ResolvedFuncEnv.parents is the module's transitive import closure held FLAT — precedence-ordered (first = highest precedence: the last direct import's closure first, then earlier imports'; own local always wins before any parent), deduped by env name keeping the first occurrence. The prior shape nested each parent env recursively and lookup walked the shared import DAG as a TREE with no visited state, so a shared ancestor was probed once per PATH, not per module (measured: identical 541 signature requests cost 53.3M env probes, and 902.8M after one merge widened the host-effect closure by 54 modules — 16.95x from visibility alone), with a quadratic parents-prefix copy per recursion step. Flattening at the two assembly points (resolve_func_sigs at typecheck time; rewire_func_env_parent_links post-fold) makes lookup one ordered scan over closure members' own local maps: probes are bounded by distinct closure modules, never paths. The name dedup is load-bearing: without it flat lists compose additively along every import path and the list length re-becomes the path count. Shadowing is preserved exactly — the old deep-first, last-import-first walk linearizes to closure-of-last-import before closure-of-earlier-imports, and a member's own local precedes its parents' contributions.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FlattenAccum {
+    pub seen: Rc<HashMap<String, bool>>,
+    pub out: Rc<Vec<Rc<ResolvedFuncEnv>>>,
+}
+
+pub fn flatten_parent_envs(
+    direct_parents: Rc<Vec<Rc<ResolvedFuncEnv>>>,
+) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
+    {
+        let ordered = Rc::new({
+            let mut __result = Vec::new();
+            for p in v1_rt::reverse(direct_parents.clone()).iter().cloned() {
+                __result.extend(
+                    (*v1_rt::concat(Rc::new(vec![p.clone()]), p.parents.clone()))
+                        .iter()
+                        .cloned(),
+                );
             }
-            Some(tail_parent) => match lookup_resolved_sig(tail_parent.clone(), name.clone()) {
-                Some(sig) => {
-                    break Some(sig.clone());
-                }
-                None => {
-                    let __tco_0 = Rc::new(
-                        parents
-                            .iter()
-                            .cloned()
-                            .take(((parents.len() as i64) - 1) as usize)
-                            .collect::<Vec<_>>(),
-                    );
-                    parents = __tco_0;
-                    continue;
+            __result
+        });
+        let dedup = ordered.clone().iter().cloned().fold(
+            Rc::new(FlattenAccum {
+                seen: v1_rt::rc_empty_map::<String, bool>(),
+                out: Rc::new(vec![]),
+            }),
+            |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
+                if emit_map_has(acc.seen.clone(), p.name.clone()) {
+                    acc.clone()
+                } else {
+                    Rc::new(FlattenAccum {
+                        seen: v1_rt::rc_map_insert(acc.seen.clone(), p.name.clone(), true),
+                        out: v1_rt::rc_list_push(acc.out.clone(), p.clone()),
+                    })
                 }
             },
-        }
+        );
+        dedup.out.clone()
     }
 }
 
 pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Some(sig.clone()),
-        None => lookup_in_parent_chain(env.parents.clone(), name.clone()),
+        None => env.parents.clone().iter().cloned().fold(
+            none_resolved_sig(),
+            |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc.clone() {
+                Some(sig) => Some(sig.clone()),
+                None => v1_rt::map_get(&p.local.clone(), name.clone()),
+            },
+        ),
     }
+}
+
+pub fn none_resolved_sig() -> Option<Rc<ResolvedFuncSig>> {
+    None
 }
 
 pub fn collect_func_call_edges(
@@ -290,6 +322,7 @@ pub fn topo_resolve_loop(
                     );
                 return Rc::new(ResolveFuncSigsResult {
                     func_env: Rc::new(ResolvedFuncEnv {
+                        name: module_name.clone(),
                         local: all_resolved.clone(),
                         parents: parent_envs.clone(),
                     }),
@@ -407,6 +440,7 @@ pub fn topo_resolve_loop(
                     );
                 return Rc::new(ResolveFuncSigsResult {
                     func_env: Rc::new(ResolvedFuncEnv {
+                        name: module_name.clone(),
                         local: all_resolved.clone(),
                         parents: parent_envs.clone(),
                     }),
@@ -525,7 +559,7 @@ pub fn resolve_func_sigs(
             local_func_set.clone(),
             module_name.clone(),
             Rc::new(vec![]),
-            parent_envs.clone(),
+            flatten_parent_envs(parent_envs.clone()),
             (local_func_names.clone().len() as i64),
         )
     }
