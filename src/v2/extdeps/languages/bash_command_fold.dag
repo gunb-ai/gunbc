@@ -27,6 +27,8 @@ import v2.extdeps.languages.bash {
   bash_stmt_assign_target_model,
   bash_stmt_exit_emitted,
   bash_stmt_exit_target_model,
+  bash_stmt_if_emitted,
+  bash_stmt_if_target_model,
   bash_stmt_negation_emitted,
   bash_stmt_negation_target_model,
   bash_stmt_pipe_emitted,
@@ -1500,11 +1502,36 @@ fn bash_fold_serialize_pipe_node(stmt: Node) -> Outcome<String> {
 }
 
 fn bash_fold_serialize_if_node(stmt: Node) -> Outcome<String> {
-  bash_fold_serialize_leaf_node(
-    emitted: stmt,
-    production_binding: ^bash_production_fold_if,
-    rule_name: ^bash_relation_rule_fold_if
-  )
+  match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
+    Present { value: cond } =>
+      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
+        Present { value: body } =>
+          bind_outcome(
+            o: bash_fold_serialize_node(stmt: cond),
+            f: fn(cond_spelling) {
+              bind_outcome(
+                o: bash_fold_serialize_stmt_list_semi(list_node: body),
+                f: fn(body_spelling) {
+                  bind_outcome(
+                    o: bash_stmt_if_target_model(
+                      cond: cond_spelling,
+                      body: body_spelling
+                    ),
+                    f: fn(target) {
+                      bash_fold_serialize_emit_from_node(
+                        emitted: bash_stmt_if_emitted,
+                        target: target
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+      }
+    Absent => bash_fold_serialize_refused(variant: ^bash_fold_serialize_positional_child_absent)
+  }
 }
 
 fn bash_fold_serialize_subshell_node(stmt: Node) -> Outcome<String> {
