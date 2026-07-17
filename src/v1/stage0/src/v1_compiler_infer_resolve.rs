@@ -388,9 +388,6 @@ pub struct PerModuleResolveMemoStats {
     pub bounded_hits: u64,
     pub bounded_misses: u64,
     pub bounded_bypasses: u64,
-    pub scrutinee_hits: u64,
-    pub scrutinee_misses: u64,
-    pub scrutinee_bypasses: u64,
 }
 
 // KEY: content-identity (dag_node_surface_fingerprint String), not pointer — ABA-safe
@@ -407,15 +404,9 @@ struct BoundedMemoKey {
     masked: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct ScrutineeMemoKey {
-    node_surface_fp: String,
-}
-
 struct PerModuleResolveMemoScope {
     env_scope_ptr: usize,
     bounded: std::collections::HashMap<BoundedMemoKey, Rc<NodeResolveResult>>,
-    scrutinee: std::collections::HashMap<ScrutineeMemoKey, Rc<Node>>,
     /// Ptr-hint cache: pins Rc<Node> so addr cannot be reused (ABA-safe); map equality is content String.
     node_surface_fp_cache: std::collections::HashMap<usize, (Rc<Node>, String)>,
     stats: PerModuleResolveMemoStats,
