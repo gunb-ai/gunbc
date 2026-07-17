@@ -20,7 +20,7 @@ fn main() {
             e.clone()
         };
         let ok = sym_eq(&e_cmp, s);
-        println!("{label} emitted_len={} seed_len={} eq={ok}", e_cmp.len());
+        println!("{label} emitted_len={} seed_len={} eq={ok}", e_cmp.len(), s.len());
         all_pass &= ok;
     }
     if all_pass {
