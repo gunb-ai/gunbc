@@ -109,10 +109,10 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
       MAPPED_GATE="UNKNOWN_unresolved"
     elif grep -qE 'expected item after attributes|expected one of|unexpected token' "$BUILD_LOG"; then
       MAPPED_GATE="UNKNOWN_emit_shape"
+    elif grep -qE 'error\[E0432\]: unresolved import|cannot find .+ in this scope|not found in this scope|unbound' "$BUILD_LOG"; then
+      MAPPED_GATE="namespace_resolution"
     elif grep -qE 'error\[E0382\]|error\[E0507\]|error\[E0597\]|cannot move out of|cannot borrow|mismatched types.*Rc<|expected .+ found .+Rc<' "$BUILD_LOG"; then
       MAPPED_GATE="Gate_A_emitter_Rc_Optional"
-    elif grep -qE 'unbound|cannot find .+ in this scope|not found in this scope|resolve_' "$BUILD_LOG"; then
-      MAPPED_GATE="namespace_resolution"
     elif grep -qE 'wrapper\.retained|body_producer|Arrow|Behavior' "$BUILD_LOG"; then
       MAPPED_GATE="Gate_B_body_producer"
     else

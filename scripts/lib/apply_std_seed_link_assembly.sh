@@ -75,9 +75,8 @@ apply_std_seed_link_assembly() {
         continue
         ;;
       std_*)
-        if _seed_mod_exists "$mod"; then
-          _write_seed_reexport_shim "$src_dir/$mod.rs" "$mod"
-        fi
+        # Keep gunbc-emitted std_* — seed re-export shims break v2 emit surface (e.g. FreeMonoid).
+        _sanitize_emitter_artifact_in_place "$src_dir/$mod.rs"
         ;;
       v2_compiler_*|extdeps_*|v1_compiler_*)
         if _seed_mod_exists "$mod"; then
@@ -85,7 +84,6 @@ apply_std_seed_link_assembly() {
         fi
         ;;
       v2_std_*|v1_rt|v2_extdeps_*)
-        # Keep gunbc-emitted dep sources verbatim; fix only known emitter self-dup artifacts.
         _sanitize_emitter_artifact_in_place "$src_dir/$mod.rs"
         ;;
       *)
