@@ -8101,6 +8101,7 @@ pub struct StructuralBoundResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexityReport {
     pub function_classes: Rc<HashMap<String, String>>,
+    pub space_classes: Rc<HashMap<String, String>>,
     pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
     pub structural_bounds: Rc<Vec<Rc<StructuralBoundResult>>>,
 }
@@ -8108,6 +8109,7 @@ pub struct ComplexityReport {
 pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport {
         function_classes: v1_rt::rc_empty_map::<String, String>(),
+        space_classes: v1_rt::rc_empty_map::<String, String>(),
         violations: Rc::new(vec![]),
         structural_bounds: Rc::new(vec![]),
     })
@@ -8850,6 +8852,7 @@ pub struct SummaryResult {
 pub struct TopoBuildAcc {
     pub table: Rc<CostInternTable>,
     pub classes: Rc<HashMap<String, String>>,
+    pub space_classes: Rc<HashMap<String, String>>,
     pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
     pub fan_in: Rc<HashMap<String, i64>>,
     pub processed: Rc<HashMap<String, bool>>,
@@ -10194,6 +10197,7 @@ pub fn build_complexity_report(
             Rc::new(TopoBuildAcc {
                 table: empty_cost_intern_table(),
                 classes: v1_rt::rc_empty_map::<String, String>(),
+                space_classes: v1_rt::rc_empty_map::<String, String>(),
                 violations: Rc::new(vec![]),
                 fan_in: fan_in.clone(),
                 processed: v1_rt::rc_empty_map::<String, bool>(),
@@ -10217,6 +10221,13 @@ pub fn build_complexity_report(
                         acc.classes.clone(),
                         func_name.clone(),
                         class_str.clone(),
+                    );
+                    let space_class_str =
+                        classify_complexity(space_of(sr.summary.clone().work.clone()));
+                    let new_space_classes = v1_rt::rc_map_insert(
+                        acc.space_classes.clone(),
+                        func_name.clone(),
+                        space_class_str.clone(),
                     );
                     let new_processed =
                         v1_rt::rc_map_insert(acc.processed.clone(), func_name.clone(), true);
@@ -10281,6 +10292,7 @@ pub fn build_complexity_report(
                     Rc::new(TopoBuildAcc {
                         table: final_table.clone(),
                         classes: new_classes.clone(),
+                        space_classes: new_space_classes.clone(),
                         violations: new_violations.clone(),
                         fan_in: new_fan_in.clone(),
                         processed: new_processed.clone(),
@@ -10292,6 +10304,7 @@ pub fn build_complexity_report(
         let structural_bounds = analyze_structural_bounds(func_entries.clone(), si.clone());
         Rc::new(ComplexityReport {
             function_classes: result.classes.clone(),
+            space_classes: result.space_classes.clone(),
             violations: result.violations.clone(),
             structural_bounds: structural_bounds.clone(),
         })
