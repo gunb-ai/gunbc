@@ -87,7 +87,7 @@ import v1.compiler.infer_env {
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
-  SymbolIndex, empty_symbol_index, symbol_index_insert
+  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
