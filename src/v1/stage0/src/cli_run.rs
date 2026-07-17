@@ -2137,18 +2137,38 @@ static FLOOR_COMPILE_CLEAN_LAZY_INSTALL: AtomicBool = AtomicBool::new(false);
 /// Floor CI runs through `claim_executor`; env-based scoping detection alone missed some
 /// self-hosted runners (silent whole-tree source load → step timeout). Tied to lazy install.
 static FLOOR_COMPILE_CLEAN_CI_SCOPING: AtomicBool = AtomicBool::new(false);
+/// The executor's `--source-root` vector, stored at lazy-install arm time so the
+/// receipt compile builds/reuses the SAME `process_shared_index` (same roots key) the
+/// plan prelude and batch-2 witness resolves use — one typed-module universe per run
+/// (the in-process double-pay kill, typecheck investigation PR #6766). `None` when the
+/// gate was never armed; the receipt then REFUSES (typed reason), never falls back to
+/// a second raw whole-tree compile (§5 — no silent widen).
+static FLOOR_COMPILE_CLEAN_INDEX_ROOTS: Mutex<Option<Vec<String>>> = Mutex::new(None);
 
-pub fn enable_floor_compile_clean_lazy_install() {
+pub fn enable_floor_compile_clean_lazy_install(source_roots: &[String]) {
     FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(true, Ordering::SeqCst);
     FLOOR_COMPILE_CLEAN_CI_SCOPING.store(true, Ordering::SeqCst);
+    *FLOOR_COMPILE_CLEAN_INDEX_ROOTS
+        .lock()
+        .expect("floor compile-clean index-roots lock poisoned") = Some(source_roots.to_vec());
 }
 
 #[cfg(test)]
 fn disable_floor_compile_clean_lazy_install_for_test() {
     FLOOR_COMPILE_CLEAN_LAZY_INSTALL.store(false, Ordering::SeqCst);
     FLOOR_COMPILE_CLEAN_CI_SCOPING.store(false, Ordering::SeqCst);
+    *FLOOR_COMPILE_CLEAN_INDEX_ROOTS
+        .lock()
+        .expect("floor compile-clean index-roots lock poisoned") = None;
 }
 
+/// Raw-pipeline `--target dag` compile-clean over a source set. NOT the floor's
+/// receipt path (that is `floor_compile_clean_emit_ok_via_index`, which shares the
+/// process's typed-module universe) — this is the index-independent oracle behind
+/// `witness_layer_roots_compile_clean_emit_check` (cargo tests, enrolled witnesses),
+/// and precisely BECAUSE it shares no caches with the via-index path it is the
+/// standing second opinion for verdict equivalence
+/// (`compile_clean_via_index_verdict_equivalence` tests).
 fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>) -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
     let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
@@ -2161,14 +2181,78 @@ fn floor_compile_clean_emit_ok(sources: Vec<Rc<v1_compiler_compile::SourceFile>>
     !has_hard_errors && !result.files.is_empty()
 }
 
+/// The floor receipt's compile: the same source closure as the raw oracle, routed
+/// through the shared `MultiEntryIndex` cached path (`resolved_graph_from_sources_with_index`)
+/// so every module's content-keyed typecheck is computed once per process and reused
+/// by batch-2's witness resolves (PR #6766 receipts: verdict-equivalent green AND on
+/// the planted `GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED` red; warm heavy
+/// witnesses 1.0–1.4s vs 10–90s cold; red verdict at the failing stage in seconds).
+/// The emit leg (`--target dag` render) runs over the already-typed graph.
+fn floor_compile_clean_emit_ok_via_index(
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index_roots: &[String],
+) -> bool {
+    use crate::v1_compiler_artifact::RenderTarget;
+    use crate::v1_compiler_complexity::empty_complexity_report;
+    let index = process_shared_index(index_roots);
+    let (graph, si) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        "floor-compile-clean-gate",
+    ) {
+        Ok(resolved) => resolved,
+        Err(msg) => {
+            eprintln!("compile-clean: hard diagnostics:\n{msg}");
+            return false;
+        }
+    };
+    let newline_indices: Rc<im_rc::Vector<Rc<NewlineIndex>>> =
+        Rc::new(si.values().cloned().collect::<im_rc::Vector<_>>());
+    let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
+        graph: Some(graph),
+        diagnostics: Rc::new(im_rc::Vector::new()),
+        source_indices: si,
+        complexity: empty_complexity_report(),
+        ownership: Rc::new(im_rc::Vector::new()),
+        newline_indices,
+    });
+    let result = v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
+    if result.files.is_empty() {
+        eprintln!("floor compile-clean: refused — compile produced zero files (empty emit set)");
+        return false;
+    }
+    true
+}
+
 fn produce_floor_compile_clean_receipt() -> FloorCompileCleanReceipt {
+    // Index roots are armed by `enable_floor_compile_clean_lazy_install`; a receipt
+    // demanded without them is a wiring defect and REFUSES (typed reason) — never a
+    // silent fallback to a second raw whole-tree compile (§5).
+    let index_roots = match FLOOR_COMPILE_CLEAN_INDEX_ROOTS.lock() {
+        Ok(guard) => match guard.as_ref() {
+            Some(roots) => roots.clone(),
+            None => {
+                return FloorCompileCleanReceipt::Refused {
+                    reason: "compile-clean receipt demanded with no index roots armed \
+                             (enable_floor_compile_clean_lazy_install arms them)"
+                        .to_string(),
+                }
+            }
+        },
+        Err(e) => {
+            return FloorCompileCleanReceipt::Refused {
+                reason: format!("floor compile-clean index-roots lock poisoned: {e}"),
+            }
+        }
+    };
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => FloorCompileCleanReceipt::Skipped {
             reason: "no compile-clean entry affected".to_string(),
         },
         Err(msg) => FloorCompileCleanReceipt::Refused { reason: msg },
         Ok(Some(sources)) => FloorCompileCleanReceipt::Compiled {
-            ok: floor_compile_clean_emit_ok(sources),
+            ok: floor_compile_clean_emit_ok_via_index(sources, &index_roots),
         },
     }
 }
@@ -2186,7 +2270,7 @@ pub fn install_floor_compile_clean_receipt() -> Result<(), String> {
         );
     }
     eprintln!(
-        "claim_executor: floor compile-clean — one whole-tree --target dag compile (gate consumes receipt)"
+        "claim_executor: floor compile-clean — one whole-tree --target dag compile via shared index (gate consumes receipt; batch-2 resolves reuse the typed store)"
     );
     let receipt = produce_floor_compile_clean_receipt();
     if let FloorCompileCleanReceipt::Compiled { ok } = &receipt {
@@ -2756,6 +2840,169 @@ mod typed_module_content_key_tests {
                  (interface-grain minimality, signed decision 1)"
             );
         });
+    }
+}
+
+#[cfg(test)]
+mod compile_clean_via_index_verdict_equivalence {
+    //! Verdict-equivalence controls for the floor receipt's via-index compile
+    //! (lever 1, typecheck investigation PR #6766): the raw pipeline
+    //! (`floor_compile_clean_emit_ok`, still the oracle behind
+    //! `witness_layer_roots_compile_clean_emit_check`) and the shared-index receipt
+    //! path (`floor_compile_clean_emit_ok_via_index`) must agree — green on a clean
+    //! corpus, red on a planted unresolved import, red on a planted type mismatch.
+    //! The raw path shares no caches with the via-index path, so agreement is an
+    //! independent second opinion, not a self-check. Whole-tree agreement receipts
+    //! (green 377.7s vs 381.4s; planted-inject red 4.3s vs 361.6s; both agree) are
+    //! recorded in PR #6766.
+
+    use super::{floor_compile_clean_emit_ok, floor_compile_clean_emit_ok_via_index};
+    use crate::v1_compiler_compile::SourceFile;
+    use std::fs;
+    use std::rc::Rc;
+
+    struct Corpus {
+        dir: std::path::PathBuf,
+        roots: Vec<String>,
+        sources: Vec<Rc<SourceFile>>,
+    }
+
+    impl Corpus {
+        /// Write `files` under a fresh fixture dir (the via-index path builds its
+        /// `process_shared_index` from on-disk roots) and mirror them as the source
+        /// set both compile paths receive.
+        fn new(tag: &str, files: &[(&str, &str)]) -> Corpus {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+            let dir = super::workspace_root().join("target").join(format!(
+                "compile-clean-equiv-{tag}-{}-{seq}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("create fixture dir");
+            let mut sources = Vec::new();
+            for (name, content) in files {
+                let path = dir.join(name);
+                fs::write(&path, content).expect("write fixture module");
+                sources.push(Rc::new(SourceFile {
+                    path: path.to_string_lossy().into_owned(),
+                    content: (*content).to_string(),
+                }));
+            }
+            let roots = vec![dir.to_string_lossy().into_owned()];
+            Corpus {
+                dir,
+                roots,
+                sources,
+            }
+        }
+
+        fn verdicts(&self) -> (bool, bool) {
+            let raw = floor_compile_clean_emit_ok(self.sources.clone());
+            let via_index =
+                floor_compile_clean_emit_ok_via_index(self.sources.clone(), &self.roots);
+            (raw, via_index)
+        }
+    }
+
+    impl Drop for Corpus {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[test]
+    fn green_corpus_agrees_green() {
+        let corpus = Corpus::new(
+            "green",
+            &[
+                ("imp.dag", "module eqv.imp\nfn base() -> Int { 10 }\n"),
+                (
+                    "dep.dag",
+                    "module eqv.dep\nimport eqv.imp { base }\nfn wit() -> Bool { base() == 10 }\n",
+                ),
+            ],
+        );
+        let (raw, via_index) = corpus.verdicts();
+        assert!(raw, "raw pipeline must be green on the clean corpus");
+        assert!(
+            via_index,
+            "via-index path must be green on the clean corpus"
+        );
+    }
+
+    /// §5 discriminating RED: an unresolved import must red BOTH paths.
+    #[test]
+    fn planted_unresolved_import_agrees_red() {
+        let corpus = Corpus::new(
+            "unresolved",
+            &[(
+                "bad.dag",
+                "module eqv.unresolved\nimport totally.nonexistent.module { Foo }\nfn probe() -> Int { 42 }\n",
+            )],
+        );
+        let (raw, via_index) = corpus.verdicts();
+        assert!(!raw, "raw pipeline must red on an unresolved import");
+        assert!(
+            !via_index,
+            "via-index path must red on an unresolved import"
+        );
+    }
+
+    /// Roots-key canonicalization (review 39118): the executor's absolute CLI roots
+    /// and the plan's relative `witness_layer_roots` are the SAME pool and must
+    /// address ONE thread-local shared index — otherwise the compile-clean receipt
+    /// warms an index batch-2 silently replaces, and the whole lever-1 sharing claim
+    /// is void on the CI path. Rc pointer equality is the discriminating check: two
+    /// spellings, one universe.
+    #[test]
+    fn shared_index_roots_key_canonicalizes_absolute_and_relative_spellings() {
+        // Workspace cwd: canonical roots are repo-relative and the index build
+        // resolves them against cwd — the executor always runs from the repo root;
+        // cargo test does not.
+        let ws = super::workspace_root();
+        let prior = std::env::current_dir().ok();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let absolute = vec![
+            ws.join("dag").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        let relative = vec!["dag".to_string(), "src/v2".to_string()];
+        let a = super::process_shared_index(&absolute);
+        let b = super::process_shared_index(&relative);
+        if let Some(p) = prior {
+            let _ = std::env::set_current_dir(p);
+        }
+        assert!(
+            Rc::ptr_eq(&a, &b),
+            "absolute and relative spellings of the same pool must address ONE shared \
+             index — a roots-key fork gives the receipt and batch-2 two typed universes"
+        );
+    }
+
+    /// §5 discriminating RED: a typecheck-stage red must red BOTH paths. The planted
+    /// module is the same variant-mismatch shape as the transport's canonical
+    /// `perturb_module_source` (`dag/tools/dag_compile_clean_transport.dag`) — `Some`
+    /// matched against a `Present`-constructed optional — a proven raw-pipeline red.
+    #[test]
+    fn planted_typecheck_red_agrees_red() {
+        let corpus = Corpus::new(
+            "typecheck-red",
+            &[(
+                "bad.dag",
+                "module eqv.typecheck_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}\n",
+            )],
+        );
+        let (raw, via_index) = corpus.verdicts();
+        assert!(
+            !raw,
+            "raw pipeline must red on the planted variant mismatch"
+        );
+        assert!(
+            !via_index,
+            "via-index path must red on the planted variant mismatch"
+        );
     }
 }
 
@@ -3495,11 +3742,37 @@ thread_local! {
         const { RefCell::new(None) };
 }
 
+/// Canonical spelling for the shared-index roots — both the key AND the build
+/// inputs: an absolute root under the workspace normalizes to its repo-relative
+/// form, so the executor's CLI `$ROOT/dag` and the plan's declared `dag`
+/// (`gunbc.ci_layer_roots` witness_layer_roots) address ONE index. Without this,
+/// the compile-clean receipt (armed from CLI roots) and batch-2 discovery (plan
+/// roots) keyed two separate typed universes in CI and the gate's warm store was
+/// silently replaced before the corpus read it (review 39118 on PR #6783). Order
+/// is preserved (primary-precedence pool semantics); a root outside the workspace
+/// keeps its spelling — it is genuinely a different pool.
+fn canonical_shared_index_roots(source_roots: &[String]) -> Vec<String> {
+    source_roots
+        .iter()
+        .map(|r| {
+            let p = Path::new(r);
+            if p.is_absolute() {
+                try_repo_relative_path_normalized(p).unwrap_or_else(|| r.replace('\\', "/"))
+            } else {
+                r.replace('\\', "/")
+            }
+        })
+        .collect()
+}
+
 /// The thread-local shared resolve index for `source_roots` (union-resolve S1). Built once
-/// per (thread, roots) and reused, so consumers that resolve distinct entries against it
-/// share one typed_module_cache — the union closure typechecks once per node.
+/// per (thread, canonical roots) and reused, so consumers that resolve distinct entries
+/// against it share one typed_module_cache — the union closure typechecks once per node.
+/// Roots are canonicalized (`canonical_shared_index_roots`) before both keying and
+/// building, so path-spelling variants of the same pool cannot fork the universe.
 fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
-    let roots_key = source_roots.join("\u{1f}");
+    let roots = canonical_shared_index_roots(source_roots);
+    let roots_key = roots.join("\u{1f}");
     let existing = PROCESS_RESOLVE_INDEX.with(|s| {
         s.borrow().as_ref().and_then(|(k, idx)| {
             if *k == roots_key {
@@ -3512,7 +3785,7 @@ fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
     if let Some(idx) = existing {
         return idx;
     }
-    let idx = Rc::new(build_multi_entry_index(source_roots));
+    let idx = Rc::new(build_multi_entry_index(&roots));
     PROCESS_RESOLVE_INDEX.with(|s| {
         *s.borrow_mut() = Some((roots_key, idx.clone()));
     });
@@ -4027,7 +4300,41 @@ fn resolve_entry_with_parse_cache(
         entry_file,
     )?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
+    resolved_graph_from_sources_with_index(index, sources, typecheck_gate, entry_file)
+}
 
+/// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
+/// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
+/// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
+/// resolved-graph subject memo). Extracted so a whole-tree SOURCE SET — the
+/// compile-clean gate's closure, which has no single entry file — rides the same
+/// cached path as entry-file resolves: one process, ONE typecheck universe, so the
+/// floor's gate compile and batch-2's witness resolves share every module's
+/// content-keyed typecheck instead of double-paying it (typecheck investigation,
+/// PR #6766).
+///
+/// Failure semantics: collect-then-refuse per stage — a stage gathers ALL of its
+/// diagnostics before refusing (parse errors across every file, resolve/normalize/
+/// typecheck/ownership across every module), so a multi-error tree reports its full
+/// failing-stage set in one run, never one error per run. Hardness predicates:
+/// typecheck refusals use `is_resolve_typecheck_blocking(typecheck_gate)` and the
+/// other stages use `is_error_diagnostic` — for the gate's `Strict` mode both reduce
+/// to the `00_core.dag` interpreter-blocking authority on every class those stages
+/// can produce (`ComplexityUnknown`, the sole class where the predicates differ, is
+/// only produced by complexity analysis, which does not run on this path).
+fn resolved_graph_from_sources_with_index(
+    index: &MultiEntryIndex,
+    sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    typecheck_gate: ResolveTypecheckGate,
+    phase_label: &str,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let entry_file = phase_label;
     let subject = subject_digest_for_closure(&sources);
     // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in
     // front of the opt-in cross-process store. A subject this process has already
@@ -4056,6 +4363,7 @@ fn resolve_entry_with_parse_cache(
 
     let mut modules: Vec<Rc<Node>> = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    let mut parse_error_msgs: Vec<String> = Vec::new();
 
     let parse_started = std::time::Instant::now();
     for source in &sources {
@@ -4087,17 +4395,23 @@ fn resolve_entry_with_parse_cache(
 
         si_map.insert(nl_index.file.clone(), nl_index.clone());
         if let Some(err) = &parse_result.error {
+            // Collect-then-refuse: gather every file's parse error before refusing,
+            // so a multi-file parse red reports its full set in one run.
             let span = diagnostic_to_span(err.diagnostic.clone());
             let loc = format_error_loc(&span.file, span.start, &si_map);
-            return Err(format!(
+            parse_error_msgs.push(format!(
                 "{}: error: {}",
                 loc,
                 diagnostic_to_message(err.diagnostic.clone())
             ));
+            continue;
         }
         if let Some(module) = &parse_result.module {
             modules.push(module.clone());
         }
+    }
+    if !parse_error_msgs.is_empty() {
+        return Err(parse_error_msgs.join("\n"));
     }
 
     let source_indices = Rc::new(si_map);
@@ -16620,6 +16934,10 @@ mod witness_layer_roots_compile_clean_tests {
                 let _inject =
                     EnvGuard::set("GUNBC_TEST_FLOOR_COMPILE_CLEAN_INJECT_UNRESOLVED", "1");
                 reset_floor_compile_clean_receipt_for_test();
+                // The receipt compile requires armed index roots (it rides the shared
+                // process index); without them install records a typed Refused receipt
+                // and this test would pass WITHOUT compiling — a masked tooth.
+                enable_floor_compile_clean_lazy_install(&["dag".to_string(), "src/v2".to_string()]);
                 install_floor_compile_clean_receipt()
                     .expect("real whole-tree compile with injected unresolved import");
                 assert!(
