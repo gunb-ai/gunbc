@@ -1,0 +1,40 @@
+module v2.test.emit.c_emit_prefix_probe_test
+
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.c { c_target_model }
+import v2.test.emit.c_semantic_decl_routing {
+  c_semantic_point_golden,
+  c_semantic_point_wrong_golden,
+  cdr_point_record
+}
+import std.algebra { Empty }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+
+fn emit_point_text() -> String {
+  match emit_semantic_type_decl(
+    name: ^Point,
+    params: Empty,
+    node: cdr_point_record(),
+    target: c_target_model()
+  ) {
+    Accepted { value: medium, diagnostics: _ } => medium.carried
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+test fn c_emit_starts_after_struct_brace_space_holds() -> Bool {
+  starts_with(s: emit_point_text(), prefix: concat("typedef struct ", "{ "))
+}
+
+test fn c_emit_eq_golden_holds() -> Bool {
+  emit_point_text() == c_semantic_point_golden
+}
+
+test fn c_emit_eq_wrong_golden_holds() -> Bool {
+  emit_point_text() == c_semantic_point_wrong_golden
+}
+
+test fn c_emit_first_matches_golden_holds() -> Bool {
+  c_semantic_point_golden == c_semantic_point_golden
+}
