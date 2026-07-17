@@ -303,6 +303,8 @@ fn c_semantic_decl_lex_rows() -> List<Node> {
 fn c_semantic_decl_binding_spelling_rows() -> List<Node> {
   [
     semantic_decl_binding_spelling_row(binding: ^Int, spelling: "int"),
+    semantic_decl_binding_spelling_row(binding: ^c_decl_shape_enum_binding, spelling: ""),
+    semantic_decl_binding_spelling_row(binding: ^c_decl_shape_tagged_binding, spelling: ""),
     semantic_decl_binding_spelling_row(binding: ^c_token_union_field, spelling: "u"),
     semantic_decl_binding_spelling_row(binding: ^c_token_tag_field, spelling: "tag")
   ]
