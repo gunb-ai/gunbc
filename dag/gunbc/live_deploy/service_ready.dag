@@ -1,0 +1,100 @@
+module gunbc.live_deploy.service_ready
+
+import std.types { NonEmptyStr, String, Bool, List }
+import std.measure { Second, second, second_count, measure_fit_count_floor }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
+import gunbc.roadmap_static_site { roadmap_site_health_path }
+import v2.std.dependency { ready_set }
+import v2.std.node { Node }
+
+data live_deploy_service_ready_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.service_ready",
+    decl_name: "live_deploy_service_ready_scaffold_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data live_deploy_service_ready_scaffold_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.readiness",
+    decl_name: "live_deploy_poll_until_service_ready",
+    field: WholeDeclaration,
+  }
+}
+
+type ServiceNotReady {
+  unit: NonEmptyStr
+  endpoint: NonEmptyStr
+  waited: Second
+  last_probe: String
+}
+
+data live_deploy_roadmap_unit_expected_startup: Second = second(count: 30)
+
+data live_deploy_service_ready_poll_bound_reason: String = "Conservative default for gunbc-roadmap.service cold-start after systemctl restart (node HTTP bind + localhost healthz); revisit if false ServiceNotReady observed in production."
+
+data live_deploy_service_ready_poll_bound: Second = live_deploy_roadmap_unit_expected_startup
+
+data live_deploy_service_ready_poll_cadence: Second = second(count: 1)
+
+data live_deploy_host_sleep_generalization_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect",
+    decl_name: "Srv3BootOnceReadBackSleep",
+    field: WholeDeclaration,
+  }
+}
+
+data live_deploy_executor_pacing_sleep_frontier_note: String = "Slice 3 readiness poll paces via extdeps.tools.sleep.Delay.Seconds (executor-local modeled sleep authority). General HostSleep duration host_effect variant is deferred — live_deploy_host_sleep_generalization_dissolution_trigger; Srv3BootOnceReadBackSleep dissolves as a consumer when HostSleep lands."
+
+data live_deploy_service_ready_unit_authority: NonEmptyStr = gunbc_roadmap_unit_name
+
+data live_deploy_service_ready_endpoint_authority: NonEmptyStr = roadmap_site_health_path
+
+fn service_not_ready_reason(refusal: ServiceNotReady) -> String {
+  concat(
+    concat(
+      concat(
+        concat("ServiceNotReady unit=", refusal.unit as String),
+        concat(" endpoint=", refusal.endpoint as String)
+      ),
+      concat(" waited_s=", to_string(second_count(s: refusal.waited)))
+    ),
+    concat(" last_probe=", refusal.last_probe)
+  )
+}
+
+fn live_deploy_readback_ready_set(graph_node: Node) -> List<Node> {
+  ready_set(graph_node: graph_node)
+}
+
+fn live_deploy_readiness_poll_bound_seconds() -> Second {
+  live_deploy_service_ready_poll_bound
+}
+
+fn live_deploy_readiness_poll_bound_is_positive() -> Bool {
+  second_count(s: live_deploy_service_ready_poll_bound) > 0
+}
+
+fn live_deploy_service_ready_poll_max_attempts() -> Int {
+  measure_fit_count_floor(capacity: live_deploy_service_ready_poll_bound, each: live_deploy_service_ready_poll_cadence)
+}
+
+fn live_deploy_service_ready_poll_cadence_seconds() -> Second {
+  live_deploy_service_ready_poll_cadence
+}
+
+fn service_not_ready_refusal_at_poll_bound(last_probe: String) -> ServiceNotReady {
+  ServiceNotReady {
+    unit: live_deploy_service_ready_unit_authority,
+    endpoint: live_deploy_service_ready_endpoint_authority,
+    waited: live_deploy_service_ready_poll_bound,
+    last_probe: last_probe,
+  }
+}

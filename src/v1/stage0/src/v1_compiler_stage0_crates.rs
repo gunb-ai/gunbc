@@ -89,13 +89,22 @@ pub fn stage0_crate_allow_block() -> String {
         "    unused_mut,".to_string(),
         "    unused_parens,".to_string(),
         "    dead_code,".to_string(),
-        "    unreachable_patterns,".to_string(),
         "    non_shorthand_field_patterns,".to_string(),
         "    suspicious_double_ref_op,".to_string(),
         "    clippy::all".to_string(),
         ")]".to_string(),
+        "#![deny(unreachable_patterns)]".to_string(),
     ])
     .join(&"\n".to_string())
+}
+
+pub fn unreachable_patterns_deny_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "unreachable_patterns is DENIED, not allowed (DESIGN §5 no-escape-hatches). The emitter lowers a nested variant pattern by hoisting the inner discriminant out of the arm into a `let .. = x.as_ref() else { unreachable!() }` prelude, because Rust cannot match through Rc<T> in a pattern. That is sound for ONE arm per outer constructor; two arms sharing an outer constructor collapse to identical Rust patterns, so the second is unreachable and the FIRST panics on any value it did not expect. Allowing unreachable_patterns suppressed the one signal that detects this -- the deficit frequency was zero by construction, so it never ranked for fixing (the exact §5 absorbing shape). Denying converts each occurrence into a located compile error. Proven by execution: reintroducing the nested-pattern form in std.effects.check_modifier_vs_derivation reds std_effects.rs with `unreachable pattern`; the corpus otherwise carried exactly ONE occurrence (a redundant wildcard in v1.compiler.emit.classify_expr, removed with this change). RESIDUE: this is validation, not construction -- the emitter still GENERATES the broken lowering and is merely caught downstream. The construction fix is to group arms sharing an outer constructor into a nested match (the form the emitter already lowers correctly); tracked as follow-on emitter work.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn stage0_foundation_header_doc() -> String {
