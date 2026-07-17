@@ -10,14 +10,6 @@ import std.markdown {
 
 
 
-fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
-fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
-fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
-fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
-fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
-
 fn wiring_liveness_preflight_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** design + direction · **DESIGN.md + carriers are authority** (§6). Linked from `ROADMAP.md` §4 *Testgen as the bug-class oracle*. Sibling of [testgen-oracle.md](testgen-oracle.md) (the bug-class→mechanism map): this is the **wiring** class worked out in full, and the first real consumer of the affected-set frontier."),

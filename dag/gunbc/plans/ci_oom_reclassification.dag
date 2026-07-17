@@ -10,13 +10,6 @@ import std.markdown {
 
 
 
-fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
-fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
-fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
-fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
-fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
-fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
-
 fn ci_oom_reclassification_body() -> List<MarkdownBlock> {
   [
     p(text: "One-line: a lone `exit-137` fails closed to `Structural` (correct in isolation — one `ProcessExit` cannot tell a co-residence/contention OOM from a structural memory-runaway), but the green-on-main freshness mechanism ([ci-merge-freshness.md](ci-merge-freshness.md) §3/§6) cannot consume that verdict to BLOCK merges until a consumer can reclassify a *contention* OOM back to `Infra`. This doc is the model-only design of that consumer — the **hard prerequisite (a)** ci-merge-freshness §6 names for the LIVE flip. The build is deferred (§6)."),
