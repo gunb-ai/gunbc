@@ -443,6 +443,33 @@ test fn c_semantic_answer_emit_accepted_holds() -> Bool {
   }
 }
 
+test fn c_semantic_answer_golden_eq_concat_holds() -> Bool {
+  c_semantic_answer_golden == concat(
+    "typedef struct ",
+    "{ int tag; union { struct { int n; } Yes; struct { int code; } No; } u; } Answer;"
+  )
+}
+
+test fn c_semantic_answer_emit_contains_full_golden_holds() -> Bool {
+  string_contains(s: cdr_answer_text(), pattern: c_semantic_answer_golden)
+}
+
+test fn c_semantic_answer_emit_golden_contains_emit_holds() -> Bool {
+  string_contains(s: c_semantic_answer_golden, pattern: cdr_answer_text())
+}
+
+test fn c_semantic_answer_emit_has_yes_member_holds() -> Bool {
+  string_contains(s: cdr_answer_text(), pattern: "} Yes;")
+}
+
+test fn c_semantic_answer_emit_has_no_member_holds() -> Bool {
+  string_contains(s: cdr_answer_text(), pattern: "} No;")
+}
+
+test fn c_semantic_answer_emit_has_u_field_holds() -> Bool {
+  string_contains(s: cdr_answer_text(), pattern: "} u; } Answer;")
+}
+
 test fn c_semantic_answer_emit_oracle_a_holds() -> Bool {
   cdr_answer_text() == concat(
     "typedef struct ",
@@ -532,7 +559,7 @@ test fn c_semantic_unsupported_shape_refuses() -> Bool {
 }
 
 test fn c_semantic_answer_emit_oracle_probe_holds() -> Bool {
-  cdr_answer_text() == concat("typedef struct ", "{ int tag; union { struct { int n; } Yes; struct { int code; } No; } u; }Answer;")
+  string_contains(s: cdr_answer_text(), pattern: "tag; union")
 }
 
 test fn c_semantic_decl_routing_all_holds() -> Bool {
