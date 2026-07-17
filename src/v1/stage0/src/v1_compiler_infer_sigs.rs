@@ -108,22 +108,18 @@ pub fn flatten_parent_envs(
 pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Some(sig.clone()),
-        None => match Rc::new({
-            let mut __result = Vec::new();
-            for p in env.parents.clone().iter().cloned() {
-                if (v1_rt::map_get(&p.local.clone(), name.clone()) != None) {
-                    __result.push(p);
-                }
-            }
-            __result
-        })
-        .first()
-        .cloned()
-        {
-            Some(p) => v1_rt::map_get(&p.local.clone(), name.clone()),
-            None => None,
-        },
+        None => env.parents.clone().iter().cloned().fold(
+            none_resolved_sig(),
+            |acc: Option<Rc<ResolvedFuncSig>>, p: Rc<ResolvedFuncEnv>| match acc.clone() {
+                Some(sig) => Some(sig.clone()),
+                None => v1_rt::map_get(&p.local.clone(), name.clone()),
+            },
+        ),
     }
+}
+
+pub fn none_resolved_sig() -> Option<Rc<ResolvedFuncSig>> {
+    None
 }
 
 pub fn collect_func_call_edges(
