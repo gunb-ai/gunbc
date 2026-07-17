@@ -1368,4 +1368,14 @@ mod tests {
             .as_nanos();
         env::temp_dir().join(format!("regen-stage0-test-{label}-{unique}"))
     }
+
+    #[test]
+    fn rust_compiler_tests_source_has_no_stale_global_bare_arg() {
+        let s = v1_compiler::v1_compiler_compiler_tests_rust::compiler_tests_source();
+        let bad = "intern_table.clone(),\n                        std::rc::Rc::new(HashMap::new()),\n                        crate::v1_compiler_infer_env::empty_symbol_index()";
+        assert!(
+            !s.contains(bad),
+            "Rust compiler_tests_source still contains removed global_bare arg"
+        );
+    }
 }
