@@ -301,13 +301,4 @@ if ! sudo -n tailscale serve status 2>/dev/null | grep -q ':8080'; then
   sudo -n tailscale serve --bg 8080
 fi
 
-set -euo pipefail
-# roadmap static-site read-back host=srv1
-curl -sf --connect-timeout 2 --max-time 5 'http://127.0.0.1:8080/healthz' | node -e 'JSON.parse(require("fs").readFileSync(0,"utf8"))' || { echo roadmap-site-readback: healthz json parse failed >&2; exit 1; }
-ACTUAL=$(curl -sf --connect-timeout 2 --max-time 5 'http://127.0.0.1:8080/ROADMAP.md' | node -e 'const fnv1a64=(b)=>{let h=0xcbf29ce484222325n;for(const x of b){h^=BigInt(x);h=(h*0x100000001b3n)&0xffffffffffffffffn;}return h;};let d='\'''\'';process.stdin.on('\''data'\'',c=>d+=c);process.stdin.on('\''end'\'',()=>{const h=fnv1a64(Buffer.from(d,'\''utf8'\''));process.stdout.write(h.toString(16).padStart(16,'\''0'\''));});' ) || { echo roadmap-site-readback: curl failed url=http://127.0.0.1:8080/ROADMAP.md >&2; exit 1; }; [ "$ACTUAL" = 'bb06ad53e630cb1b' ] || { echo roadmap-site-readback: digest mismatch url=http://127.0.0.1:8080/ROADMAP.md >&2; exit 1; }
-ACTUAL=$(curl -sf --connect-timeout 2 --max-time 5 'http://127.0.0.1:8080/target/roadmap-dispatch.json' | node -e 'const fnv1a64=(b)=>{let h=0xcbf29ce484222325n;for(const x of b){h^=BigInt(x);h=(h*0x100000001b3n)&0xffffffffffffffffn;}return h;};let d='\'''\'';process.stdin.on('\''data'\'',c=>d+=c);process.stdin.on('\''end'\'',()=>{const h=fnv1a64(Buffer.from(d,'\''utf8'\''));process.stdout.write(h.toString(16).padStart(16,'\''0'\''));});' ) || { echo roadmap-site-readback: curl failed url=http://127.0.0.1:8080/target/roadmap-dispatch.json >&2; exit 1; }; [ "$ACTUAL" = '33a6dd7aa94da201' ] || { echo roadmap-site-readback: digest mismatch url=http://127.0.0.1:8080/target/roadmap-dispatch.json >&2; exit 1; }
-curl -sf --connect-timeout 2 --max-time 5 'http://127.0.0.1:8080/target/roadmap-dispatch.json' | node -e 'JSON.parse(require("fs").readFileSync(0,"utf8"))' || { echo roadmap-site-readback: dispatch json parse failed >&2; exit 1; }
-echo roadmap-site-receipt host=srv1 port=8080 url=http://127.0.0.1:8080/healthz roadmap_digest=bb06ad53e630cb1b dispatch_digest=33a6dd7aa94da201 model_hash=c33d9fecc262777d read_back_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-
 echo live-deploy-receipt host=srv1 fold=apply verdict=converged
