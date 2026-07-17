@@ -10,10 +10,14 @@
 |---------|------:|---------|
 | PHANTOM (cargo green) | 0 | No phantom gates found in this pass |
 | CONFIRMED-Gate_A | 2 | Real rustc refusal — emitter Rc/Optional/ownership |
-| HARNESS_ARTIFACT_std_dup | 18 | Orthogonal closure std-dup (`Int128`/`Witness` vs seed) — **not** module verdict; needs per-module cssl shims |
+| HARNESS_ARTIFACT_std_dup | 18 | **One harness gap** (not 18 blockers): whole-closure emit re-emits std → collides with seed. Fix = generic std-seed-link in cssl (ferret #6782 authority) |
 | CONFIRMED-namespace / Gate_B / NEW | 0 | — |
 
-**Key finding:** With shim-free curated emit (empty `shim_lib_rel`), 18/20 modules hit std-type duplication between emitted import-closure and `v1-compiler` seed — the harness rule's orthogonal artifact class. **Module-level gate truth for those 18 requires ferret harness extensions** (per-module `shim_lib` + dep shim writes, as body_producer demonstrates). Two modules cleared the std-dup layer and refused on Gate A.
+**Key finding:** With shim-free curated emit, 18/20 modules hit std-type duplication — a **single harness limitation** (closure re-emits std that seed already provides), not 18 per-module blockers. **Fix:** generic std-seed-link in `self_host_curated_seed_linked_harness` (coordinate snappy-ferret-198, §3 one authority — do not fork). Two modules cleared std-dup and refused on Gate A (real findings, banked).
+
+**Banked real findings:**
+- `materialization_carriers` → CONFIRMED Gate A — **reclassifies** frontier label (`migrate_when_materialize_spine_lane_lands` is wrong; actual blocker is emitter Rc/Optional #6775/#6776).
+- `01_tokenize` → CONFIRMED Gate A (expected).
 
 ## Verdict table (execution-measured)
 
@@ -45,7 +49,7 @@
 
 1. **No PHANTOM gates** in shim-free pass — none of the 20 probed modules cargo-green'd without per-module shims.
 2. **`materialization_carriers`** and **`01_tokenize`** reached rustc past std-dup and refused on ownership/wrap axis → confirms Gate A (#6775/#6776) for those two; matches `migration_trigger: ^migrate_when_materialize_spine_lane_lands` vs cargo reality on carriers is **inconclusive** (Gate A, not materialize spine).
-3. **18 modules** need cssl shim extensions before module-level gate can be distinguished from harness artifact. Coordinate with snappy-ferret-198 — do not fork harness.
+3. **18 std-dup modules** → one harness gap; re-sweep pending generic std-seed-link in ferret cssl (not per-module stub work).
 4. **Emit is clean** (0 diagnostics) on all 20 — emit-clean ≠ rustc-green gap confirmed across the roster.
 
 ## Reproduce
