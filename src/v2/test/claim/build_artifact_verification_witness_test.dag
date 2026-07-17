@@ -6,7 +6,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_node }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_node }
 import v2.workflow.build_step_emit { verifications_script }
 import tools.build_step { BuildArtifact, emit_verifications }
 import gunbc.ci_spec { ci_floor_build_verify_script }

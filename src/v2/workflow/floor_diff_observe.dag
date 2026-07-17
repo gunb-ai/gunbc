@@ -41,7 +41,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import v2.extdeps.languages.bash_command_fold { bash_fold_serialize_program }
+import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Node }
 import extdeps.git {
@@ -53,8 +53,8 @@ import extdeps.git {
   git_diff_status_entries_any_unknown
 }
 
-data floor_unified_diff_emit_refused_reason: String = "floor_diff_observe: git-diff unified script emission rejected by bash_fold_serialize_program"
-data floor_name_status_diff_emit_refused_reason: String = "floor_diff_observe: git-diff name-status script emission rejected by bash_fold_serialize_program"
+data floor_unified_diff_emit_refused_reason: String = "floor_diff_observe: git-diff unified script emission rejected by bash_command_fold_serialize.bash_fold_serialize_program"
+data floor_name_status_diff_emit_refused_reason: String = "floor_diff_observe: git-diff name-status script emission rejected by bash_command_fold_serialize.bash_fold_serialize_program"
 
 type FloorUnifiedDiffResult
   = UnifiedDiffOk { text: String }
