@@ -18,9 +18,9 @@ This doc (a) fixes the ground truth with receipts, (b) names the root causes, (c
 
 ## 2. Measured ground truth — the kernel
 
-All runs: whole-tree compile-clean (`compile_clean_diagnostic_histogram`), single-threaded, instrumented seed (probes on branch `session/clever-seal-476`, never merged), tree = merged main `d077057d26` unless noted, executed in the session container (which runs **on srv2** — kernel btime match, §3.1).
+All §2 runs: whole-tree compile-clean (`compile_clean_diagnostic_histogram`), single-threaded, instrumented seed (probes on branch `session/clever-seal-476`, never merged), executed in the session container (which runs **on srv2** — kernel btime match, §3.1), **tree = the session base `af57cd65bf` (#6758)** — one day behind `d077057d26` at time of measurement. Which §2 conclusions were re-established on today's `d077057d26` tree and which await the W2 step-0 re-run is stated per-row below; §3.2–3.3 (environment parity, growth) were measured on `d077057d26` directly.
 
-### 2.1 Phase decomposition (346–353s total fold, 1090 modules)
+### 2.1 Phase decomposition (346–353s total fold, 1,090 modules, session base)
 
 | phase | share | receipt |
 |---|---|---|
@@ -39,9 +39,15 @@ Within `typecheck_module`: `infer_items` ≈ 82%, `populate_output_provenance` �
 | `resolve_node_bounded` (all resolve work through it) | **12.5%** (43.1s, 733k calls) | real but bounded; ~half of it in ONE module (`host_effect_realize`, 70% rnb) — Option B's honest main-tree ceiling |
 | `Node` deep-equality (`PartialEq`, hand-instrumented at the impl) | **0.0006%** (2ms, 15,071 calls) | **dead** |
 | `substitute_generics` | **0.005%** (16ms) | **dead** |
-| **unattributed inference-proper** | **87.7%** | the target. Battery in flight: `infer_expr` top-level share, `resolve_scrutinee_type_node_seen` (a second resolve recursion that **bypasses** rnb counters), `compute_variant_provenance`, `authored_name_at` / `lookup_binding_by_name` call storms. PENDING — results land in this PR before merge. |
+| `resolve_scrutinee_type_node_seen` (a second resolve recursion that **bypasses** rnb counters) | ~0% (52,139 calls, sub-ms depth-0 time) | **dead** (battery run) |
+| `compute_variant_provenance` | 3.0% (10.4s) | minor (battery run; the item-grain `populate_output_provenance` 17% remains the second walk's honest number) |
+| **`infer_expr` (all expression inference, depth-0)** | **81.5% (283.5s of 347.7s)** | **the target.** Coincides with the item-grain `infer_items` ≈ 82% — expression inference IS the fold. Call-storm receipts inside it: **16.9M `authored_name_at` calls** (5.7M in `host_effect_realize` alone; name re-derivation via source-span lookup) and 936K `lookup_binding_by_name`. The next split goes *inside* `infer_expr` (record-literal checking / method-arg folds / the name-derivation storm), on today's tree — W2 step 0. |
+
+(An earlier draft circulated `infer_expr` ≈ 41% — that figure divided by a double-counted denominator, the same awk artifact already registered in §3.4, and is corrected here; 81.5% is the receipt-consistent share. All battery rows are session-base measurements; §3.3's `d077` rows confirm the *concentration* shape carries to today's tree (top-10 = 49%, top-25 = 78%), and the full mechanism split re-runs on today's tree as W2 step 0.)
 
 ### 2.3 Concentration (why "the algorithm is inefficient" is fixable)
+
+(Session base; re-established on today's `d077057d26`: top-10 = 49%, top-25 = 78% — §3.3.)
 
 - median module = **4.4ms**; >1,000 modules are single-digit ms — the algorithm is fine on normal input.
 - **top-25 modules = 77%** of the fold; all are CiSpec/HostEffect-tower importers.
@@ -65,7 +71,8 @@ All three boxes run governor `ondemand` (`ignore_nice_load=0`). Two observations
 
 - sysfs `scaling_cur_freq` sampled on the core hosting my free-floating single-threaded fold read **1.0–1.5GHz** on all three boxes (the process migrated cores between samples), while srv1's CI compile processes read **3.0GHz**, and `taskset`-pinned runs read 3.0GHz immediately.
 - **Refutation:** `openssl speed sha256` on srv1 — floating vs pinned-core-120 vs pinned-core-5 — is **identical to <2%** (~1.86GB/s at 16K blocks). Delivered per-core compute does not depend on pinning or core choice; the low sysfs readings on a migrating thread are a sampling artifact (by the time the core is read, the thread has moved and the core has down-clocked). **"Clock starvation" is NOT a real term in CI's wall**, and no governor/pinning change is proposed. (An earlier draft of this section proposed exactly that — kept here, crossed out in spirit, as the §3.4 discipline: the claim was written down before the control experiment and did not survive it.)
-- Also eliminated by direct measurement: NUMA (both boxes are single-node monolithic — `numactl --hardware`), paging (108GB available, bench VmSwap=0, maj_flt=0 during runs), IRQ concentration on pinned cores (openssl unaffected), and one self-inflicted artifact (a doubled awk aggregation that briefly made pinned container runs look 2× slower — retracted within the hour; per-module rows were always consistent).
+- Also eliminated by direct measurement: NUMA (both boxes are single-node monolithic — `numactl --hardware`), paging (108GB available, bench VmSwap=0, maj_flt=0 during runs), IRQ concentration on pinned cores (openssl unaffected), and one self-inflicted artifact (a doubled awk aggregation — the pattern `gate-typecheck` also matched `gate-typecheck2` rows — that briefly made pinned container runs look 2× slower AND deflated an early `infer_expr` share to 41%; both corrected in §2.2, per-module rows were always consistent).
+- Positive contention datapoint: bisect legs 2–3 ran as two concurrent whole-tree folds on this box and produced session-base-level per-module times (29.4s/29.6s vs 28.6s single) — two co-running folds cost each other ≤3%.
 
 ### 3.2 Cross-environment benchmark (identical binary, identical tree `d077057d26`, single thread, pinned) — RESULT: PARITY
 
@@ -106,7 +113,7 @@ The 118-min run's CI log showed `host_effect_realize` at **213s** and `srv3_os_i
 
 | # | root cause | status | fix home |
 |---|---|---|---|
-| R1 | **Kernel cost-shape defect(s)** in inference-proper (87.7% unattributed; §2.2 battery pins the mechanism) | measuring | root fix in `src/v1/04_infer.dag` (§6 bare-minimum-cost; NOT a cache) |
+| R1 | **Kernel cost-shape defect(s)** in expression inference (§2.2: `infer_expr` 81.5% of the fold; name-derivation/lookup storm receipted; mechanism-inside-`infer_expr` split = W2 step 0) | narrowed, splitting | root fix in `src/v1/04_infer.dag` (§6 bare-minimum-cost; NOT a cache) |
 | R2 | **O(corpus) per run** — zero cross-run persistence; every PR re-typechecks ~1,090 modules, ~95%+ byte-identical to main's last green | design signed (A-lane) | W3 store |
 | R3 | **Serial fold** — 1 core of 128 works; 127 idle | unowned until now | W4 shard |
 | R4 | environmental per-box gap (if any survives §3.2) | under test | W5 receipts; no fix proposed until substantiated |
@@ -116,7 +123,7 @@ The 118-min run's CI log showed `host_effect_realize` at **213s** and `srv3_os_i
 ## 5. Workstreams
 
 - **W1 — current-main baseline truth (immediate; measurement, not code).** The §3.2 matrix on `d077057d26` establishes what today's tree actually costs per environment, and §3.3 decides how much of "CI got slower" is module growth. Output: this doc's tables filled, plus a per-module growth table (session-base vs today) for the fleet-lane modules. If growth confirmed, the fleet lane gets a heads-up that its modules carry a per-merge CI tax until W2 lands (§6 displaced cost made visible, not a block).
-- **W2 — kernel root fix (days).** Battery output (§2.2) names where the 87.7% lives: `infer_expr` ≈ 41% of the fold, provenance walks ≈ 18% (item-grain pop 17% + `compute_variant_provenance`), and ~40% in per-item machinery between them — with `authored_name_at` called **16.9M times** (5.7M in `host_effect_realize` alone) and `lookup_binding_by_name` 936K — the name-derivation/lookup storm inside those walks is the prime suspect for the next split. Fix lands in `04_infer.dag` authoring with regen, priced by before/after attribution on the same tree. Target: fold **≤60s** container-measured on today's main (top-25 modules to near-linear cost; `ci_spec`-class field checks from ~8ms → µs-class). Stretch: ≤20s if one mechanism dominates all top-25.
+- **W2 — kernel root fix (days).** Battery output (§2.2): **`infer_expr` = 81.5% of the fold** (all expression inference; coincides with item-grain `infer_items` 82%), `populate_output_provenance` 17% (the second walk), everything else ≤3%. Step 0 = re-run the split on today's tree and go one level *inside* `infer_expr` (record-literal checking, method-arg folds, and the receipted name-derivation storm — 16.9M `authored_name_at` / 936K `lookup_binding_by_name` calls). Fix lands in `04_infer.dag` authoring with regen, priced by before/after attribution on the same tree. Target: fold **≤60s** container-measured on today's main (top-25 modules to near-linear cost; `ci_spec`-class field checks from ~8ms → µs-class). Stretch: ≤20s if one mechanism dominates all top-25.
 - **W3 — cross-run typed-module store (the law-changer; ~1–2 weeks).** Realize the operator-signed A-lane sketch on the #6783 seam: persist typed modules keyed by `std.interface_summary.typed_module_key` (source ⊕ direct-import interfaces ⊕ compiler identity); a PR run loads by key and recomputes only its changed cone. §5 shape: key-miss ⇒ compute (never skip); byte-identical cached-vs-cold purity oracle; main-push + 4-hourly falsifier stay cold controls (same pattern as regen skip / witness selection). Target: typical .dag PR pays **minutes, proportional to the diff**; corpus growth stops taxing PRs.
 - **W4 — shard the cold pass (parallel to W3).** Process-level sharding of the module fold across cores (sidesteps the Rc→Arc/!Send interpreter constraint; scheduler already batches by closure). Cold whole-tree (main-push, falsifier, store-miss storms) → **≈ max-shard wall, ~≤5 min** on 128 cores even pre-W2. Overlap cost per process is bounded by the shared prefix (std/extdeps ≈ 14s of today's fold).
 - **W5 — fleet hygiene receipts (background).** The remaining §3.4 PENDING rows: slot cgroup caps, the controlled 1×-vs-8× pinned concurrency experiment (substantiate or retire "contention" for good), and runner-count right-sizing per box (9 vs 51 slots).
