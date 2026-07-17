@@ -1,5 +1,7 @@
 module v2.workflow.bash_program_sidecar_fold
 
+data bash_program_sidecar_fold_dissolve_on: String = "🟡 dissolve-on: bash_program_sidecar_fold — delete this module when dag/extdeps/languages/bash/program.dag is deleted (sidecar FULL DELETE PR-C). ShellStmt/ShellWord fold witnesses then route through bash_build Node constructors + grammar ingest only; bash_program_emit dissolves with program.dag. Trigger: realization_vocabulary_containment ratchet extdeps.languages.bash.program importers → 0 and PR-B production consumers migrated."
+
 import extdeps.languages.bash.program {
   AndOr,
   AndOrOp,
