@@ -21,9 +21,12 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_program_assembly.rs",
     "v2_compiler_program_partition.rs",
     "v2_compiler_tokenize.rs",
+<<<<<<< HEAD
     "v2_compiler_source_authority.rs",
     "v2_compiler_compile.rs",
     "v2_compiler_infer.rs",
+=======
+>>>>>>> origin/main
     "v2_compiler_body_producer.rs",
     "v2_compiler_target_carriers.rs",
     "v2_compiler_discovery_enumeration.rs",
