@@ -184,6 +184,8 @@ fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   }
 }
 
+data install_d_shared_setup_latent_coupling_note: String = "LATENT COUPLING (calm-ferret pass-2 flag 1, non-blocking): the 'sudo -n install -d -m 0755 /opt/gunbc' below rides in the ServerScript EffectUpsert arm — derived-from-effect-kind (fires only when ServerScript is upserted), byte-identical for the current SINGLE-writer spec. It is hardcoded to the ServerScript arm, NOT derived from the write path's parent dir with dedup. If a SECOND owned artifact ever writes into /opt/gunbc, this mkdir must become the shared-prefix form ('parent-of-owned-writes, dedup'd', i.e. install -d folded once from the set of owned-write parents) or the second writer silently lacks its dir. A future second /opt/gunbc writer should trip THIS marker in review, not a runtime gap."
+
 fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
   match art.kind {
     ServerScript => [
