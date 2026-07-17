@@ -373,20 +373,12 @@ data grammar_free_name_slot_binding: Symbol = ^grammar_free_name_slot
 
 data grammar_lexeme_stamp_slot_binding: Symbol = ^grammar_lexeme_stamp_slot
 
-data grammar_surface_discriminator_slot_binding: Symbol = ^grammar_surface_discriminator_slot
-
-data grammar_surface_discriminator_terminal: Symbol = ^grammar_surface_discriminator_terminal
-
 fn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {
   binding == ^grammar_free_name_slot
 }
 
 fn formal_binding_is_lexeme_stamp_slot(binding: Symbol) -> Bool {
   binding == ^grammar_lexeme_stamp_slot
-}
-
-fn formal_binding_is_surface_discriminator_slot(binding: Symbol) -> Bool {
-  binding == ^grammar_surface_discriminator_slot
 }
 
 fn formal_binding_is_emitted_atom_from_slot(binding: Symbol) -> Bool {
@@ -400,10 +392,6 @@ fn grammar_formal_terminal_free(identity: Symbol) -> FormalGrammarSymbol {
 
 fn grammar_formal_terminal_lexeme(identity: Symbol) -> FormalGrammarSymbol {
   grammar_formal_terminal_bound(identity: identity, binding: ^grammar_lexeme_stamp_slot)
-}
-
-fn grammar_formal_terminal_surface_discriminator(identity: Symbol) -> FormalGrammarSymbol {
-  grammar_formal_terminal_bound(identity: identity, binding: ^grammar_surface_discriminator_slot)
 }
 
 fn grammar_formal_nonterminal_occurrence(identity: Symbol) -> FormalGrammarSymbol {
@@ -1125,14 +1113,11 @@ fn node_atom_identity_optional(node: Node) -> Symbol? {
 }
 
 type FormalBindingConjSlotArm
-  = FormalBindingConjSlotSurfaceDiscriminator
-  | FormalBindingConjSlotEmittedAtom
+  = FormalBindingConjSlotEmittedAtom
   | FormalBindingConjSlotExactBinding
 
 fn formal_binding_conj_slot_arm(binding: Symbol) -> FormalBindingConjSlotArm {
-  if formal_binding_is_surface_discriminator_slot(binding: binding) {
-    FormalBindingConjSlotSurfaceDiscriminator
-  } else if formal_binding_is_emitted_atom_from_slot(binding: binding) {
+  if formal_binding_is_emitted_atom_from_slot(binding: binding) {
     FormalBindingConjSlotEmittedAtom
   } else {
     FormalBindingConjSlotExactBinding
@@ -1187,16 +1172,6 @@ fn formal_production_rhs_matches_emitted_conj_step(
           match binding {
             Present { value: binding_symbol } =>
               match formal_binding_conj_slot_arm(binding: binding_symbol) {
-                FormalBindingConjSlotSurfaceDiscriminator =>
-                  match formal_conj_child_atom_at_index(
-                    children: children,
-                    index: index,
-                    emitted: emitted
-                  ) {
-                    Holds { value: _ } =>
-                      EmittedRhsMatchOk { children: children, index: index + 1 }
-                    Violates { diagnostic: _ } => EmittedRhsMatchFail
-                  }
                 FormalBindingConjSlotEmittedAtom =>
                   match formal_conj_child_atom_at_index(
                     children: children,
@@ -1308,7 +1283,6 @@ fn formal_production_matches_emitted_child(
           match formal_production_rhs_singleton_binding(production: production) {
             Present { value: binding } =>
               match formal_binding_conj_slot_arm(binding: binding) {
-                FormalBindingConjSlotSurfaceDiscriminator => true
                 FormalBindingConjSlotEmittedAtom => true
                 FormalBindingConjSlotExactBinding => atom_id == binding
               }
@@ -1396,22 +1370,6 @@ fn derive_grammar_relation_token_edges_recursive_step(
           match binding {
             Present { value: binding_symbol } =>
               match formal_binding_conj_slot_arm(binding: binding_symbol) {
-                FormalBindingConjSlotSurfaceDiscriminator =>
-                  match formal_conj_child_atom_at_index(
-                    children: conj_children,
-                    index: conj_index,
-                    emitted: emitted
-                  ) {
-                    Holds { value: _ } =>
-                      Holds {
-                        value: DeriveGrammarRelationTokensProgress {
-                          edges: edges,
-                          conj_index: conj_index + 1,
-                          conj_children: conj_children
-                        }
-                      }
-                    Violates { diagnostic: d } => Violates { diagnostic: d }
-                  }
                 FormalBindingConjSlotEmittedAtom =>
                   match formal_conj_child_atom_at_index(
                     children: conj_children,
