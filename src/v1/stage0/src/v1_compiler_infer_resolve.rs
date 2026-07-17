@@ -439,12 +439,50 @@ fn resolve_memo_node_surface_fp(
 thread_local! {
     static PER_MODULE_RESOLVE_MEMO: std::cell::RefCell<Option<PerModuleResolveMemoScope>> =
         std::cell::RefCell::new(None);
+    /// When `Some`, overrides `GUNBC_PER_MODULE_RESOLVE_MEMO` for the current thread only
+    /// (receipt tests — avoids process-global env mutation under parallel `cargo test`).
+    static PER_MODULE_RESOLVE_MEMO_ENABLED_OVERRIDE: std::cell::Cell<Option<bool>> =
+        std::cell::Cell::new(None);
 }
 
 fn per_module_resolve_memo_enabled() -> bool {
+    if let Some(enabled) = PER_MODULE_RESOLVE_MEMO_ENABLED_OVERRIDE.with(|c| c.get()) {
+        return enabled;
+    }
     match std::env::var("GUNBC_PER_MODULE_RESOLVE_MEMO") {
         Ok(v) => !(v == "0" || v.eq_ignore_ascii_case("false")),
         Err(_) => true,
+    }
+}
+
+/// Force per-module resolve memo on/off for the current thread (receipt / local oracle).
+/// Pass `None` on drop via [`PerModuleResolveMemoEnabledGuard`] to restore prior state.
+#[doc(hidden)]
+pub fn per_module_resolve_memo_set_enabled_override(enabled: Option<bool>) {
+    PER_MODULE_RESOLVE_MEMO_ENABLED_OVERRIDE.with(|c| c.set(enabled));
+}
+
+/// RAII guard restoring the prior thread-local memo enable override.
+#[doc(hidden)]
+pub struct PerModuleResolveMemoEnabledGuard {
+    prev: Option<bool>,
+}
+
+#[doc(hidden)]
+impl PerModuleResolveMemoEnabledGuard {
+    pub fn force(enabled: bool) -> Self {
+        let prev = PER_MODULE_RESOLVE_MEMO_ENABLED_OVERRIDE.with(|c| {
+            let prev = c.get();
+            c.set(Some(enabled));
+            prev
+        });
+        Self { prev }
+    }
+}
+
+impl Drop for PerModuleResolveMemoEnabledGuard {
+    fn drop(&mut self) {
+        per_module_resolve_memo_set_enabled_override(self.prev);
     }
 }
 

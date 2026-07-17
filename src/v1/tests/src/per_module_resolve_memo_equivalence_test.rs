@@ -11,6 +11,7 @@ use v1_compiler::v1_compiler_infer_env::empty_symbol_index;
 use v1_compiler::v1_compiler_infer_resolve::{
     per_module_resolve_memo_flush, per_module_resolve_memo_install,
     per_module_resolve_memo_global_snapshot, resolve_node,
+    PerModuleResolveMemoEnabledGuard,
 };
 use v1_compiler::v1_compiler_resolve::ResolvedModule;
 use v1_compiler::v1_rt;
@@ -95,9 +96,9 @@ fn typecheck_fixture() -> Rc<v1_compiler::v1_compiler_infer::TypecheckModuleResu
 
 #[test]
 fn receipt_a_memo_path_byte_identical_to_unmemoized() {
-    std::env::set_var("GUNBC_PER_MODULE_RESOLVE_MEMO", "0");
+    let _memo_off = PerModuleResolveMemoEnabledGuard::force(false);
     let cold = typecheck_fixture();
-    std::env::remove_var("GUNBC_PER_MODULE_RESOLVE_MEMO");
+    drop(_memo_off);
     let hot = typecheck_fixture();
     assert_eq!(
         cold, hot,
@@ -107,7 +108,6 @@ fn receipt_a_memo_path_byte_identical_to_unmemoized() {
 
 #[test]
 fn receipt_a_bounded_memo_serves_repeat_resolve_node() {
-    std::env::remove_var("GUNBC_PER_MODULE_RESOLVE_MEMO");
     let (resolved, source_indices, intern_table, global_bare, _) = fixture();
     let tc = typecheck_module(
         resolved.clone(),
@@ -143,7 +143,6 @@ fn receipt_a_bounded_memo_serves_repeat_resolve_node() {
 
 #[test]
 fn receipt_a_composite_resolve_reenters_memo_without_panic() {
-    std::env::remove_var("GUNBC_PER_MODULE_RESOLVE_MEMO");
     let (resolved, source_indices, intern_table, global_bare, _) = fixture();
     let tc = typecheck_module(
         resolved.clone(),
