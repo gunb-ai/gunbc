@@ -37,7 +37,40 @@ Two classes of shell-in-intent survive, and the arc so far addressed only part o
 1. **Raw string concat** — functions returning `String` built by nested `concat(...)` of shell fragments. Canonical: `dag/gunbc/ci_spec.dag` `gunbc_ci_deploy_invoke` builds `"$ROOT/target/release/gunbc" run <flags> --entry <e> --function <f>\n` by hand. Never touched a structured AST. **This is the class the operator flagged 2026-07-17; the `bash_build` migration did not touch it.**
 2. **Structured-but-still-bash** — code constructing bash via `bash_build` Node constructors or the `ShellStmt` coproduct and serializing (`bash_command_fold_serialize`, `bash_fold_serialize_program`). Better than (1) — analyzable, cannot smuggle arbitrary text — but still bash-in-the-workflow. Canonical: `src/v2/workflow/floor_diff_observe.dag` `floor_git_diff_unified_stmts` / `floor_serialize_program`.
 
-<!-- CENSUS: filled from the 2026-07-17 residual census — counts per class, per layer, per operation. -->
+### Census (2026-07-17)
+
+Swept both `.dag` roots (2169 files) by six angles (`concat(`, `bash_build`, serialize, `ShellStmt`, literal shell tokens, `*_shell`/`*_flags`/`*_script`/`*_argv` names), body-filtered to genuine shell-execution (excluding `.dag`'s own `&&`/`||` operators). Counts defensible to ~±10% on the long tail.
+
+- **Class 1 + 3 (raw `String` shell builders — hand-assembled scripts / argv / flags): ~110 functions across ~50 files.** This is the class the operator flagged; the `bash_build` migration never touched it.
+- **Class 2 (structured-but-still-bash — `bash_build`/`ShellStmt` + serialize): ~9 construction sites.**
+- Excluded as legitimate (grammar spec + emit rows + the `shell_bash_runner` execution edge + `05_emit_orchestration`): ~14 files. Not residual.
+
+By layer — the residual concentrates in the intent/workflow layer, exactly as the diagnosis predicts:
+
+| Root | Files | Fns | Contents |
+|---|---|---|---|
+| `dag/gunbc/**` | ~35 | ~87 | the bulk: CI spec, merge-admission, deploy, fleet, `live_deploy`, host-effect, roadmap-site |
+| `dag/tools/**` | ~12 | ~23 | behavioral-transport harnesses, build-step/host prelude, compile-clean transports |
+| `src/v2/workflow/**` | ~7 | ~10 | `ci_workflow_run_emit` (partially migrated), floor-diff-observe, ingest/survey transports |
+| `dag/extdeps/{os,tools,bmc}/**` | — | ~7 | extern-tool wrappers (curl, apt, systemd, ISO) — see policy note below |
+| `dag/std`, `src/v2/lens`, `src/v2/compiler` | — | 0 | zero true offenders |
+
+The ~110 functions **collapse to ~10 operation families** — model each once (§3 shape + bash transport) and its callers become intent graphs over it. This is the key scope fact: it is *not* 110 independent problems.
+
+1. **gunbc-run / claim-executor invocations** (`gunbc_ci_deploy_invoke`, `claim_executor_bin_shell`, `scheduler_invoke*`)
+2. **witness / source-root flag assembly** (`witness_layer_source_flags_rooted` + siblings; `dcc_*_args`, `*_manifest_emit_args`)
+3. **git ops** (`git_fetch_script`, `ci_merge_base_diff_range`, `merge_target_tree_hash`)
+4. **CI floor / retry / cargo-build / rustup / tar-pack** (`ci_cargo_eagain_retry_script`, `ci_release_bins_pack_script`, `ci_pin_rustup_default_command`)
+5. **deploy / access preflight** (sudo + `apt-get install`)
+6. **live_deploy** (systemd unit write + apt ensure)
+7. **install / provisioning** (ISO fetch/remaster, hostname CAS, nbd-proxy transient units)
+8. **systemd effective read-back** (`systemctl show …`)
+9. **githooks emission** (pre-commit / pre-push bodies)
+10. **HTTP / curl probes** (roadmap-site readback, language smokes)
+
+Per-file hotspots: `ci_spec.dag` (14), `live_deploy/emit.dag` (7), `fleet_show_effective_read.dag` (7), `merge_admission_produce.dag` (6), `host_effect_nbd_proxy_serve.dag` (6, class-2), `ci_workflow_run_emit.dag` (4, partially migrated), `fleet_converge_emit.dag` (4), `ci_deploy_access.dag` (4).
+
+**Policy note — the `dag/extdeps/**` wrappers (~7 fns):** these build shell for external tools (curl, apt, systemd, ISO tooling). Per §3 they are *legitimate as transport handlers* — the bash-CLI realization of that tool's operation — **provided** they are structured as one-of-N handlers bound to an agnostic operation shape, not the single fused transport. Where a wrapper is the only hardwired transport with policy literals baked into its argv, it is residual (the N×M trap); where it is a declared handler under a modeled operation, it is fine. This is a per-wrapper §3 call during Phase 2, not a blanket verdict.
 
 Legitimate and **excluded** from the residual: `src/v2/extdeps/languages/bash.dag` (the grammar spec — the Rust analog) and the emit rows. Their existence is correct.
 
