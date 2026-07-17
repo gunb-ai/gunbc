@@ -113,7 +113,7 @@ fn symbol_to_manifest(sym: &str) -> String {
     }
 }
 
-fn value_symbol_name(ctx: &InterpContext, value: &Value) -> Result<String, String> {
+fn value_symbol_name(_ctx: &InterpContext, value: &Value) -> Result<String, String> {
     match value {
         Value::Str(s) => Ok(symbol_to_manifest(s)),
         other => Err(format!(
@@ -453,7 +453,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     if !only_modules.is_empty() {
         module_paths.retain(|path| only_modules.iter().any(|only| only == path));
         if module_paths.is_empty() {
-            eprintln!("frontier_probe_survey: --only-module filter matched zero sweep-order entries");
+            eprintln!(
+                "frontier_probe_survey: --only-module filter matched zero sweep-order entries"
+            );
             return Err(ExitCode::from(1));
         }
         eprintln!(
