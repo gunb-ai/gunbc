@@ -11739,6 +11739,7 @@ pub struct RcPatternAnalysis {
 pub struct RcMatchAnalysis {
     pub needs_option_deref: bool,
     pub needs_deref: bool,
+    pub needs_rc_option_ref: bool,
 }
 
 pub fn empty_rc_pattern_analysis() -> Rc<RcPatternAnalysis> {
@@ -11934,8 +11935,15 @@ pub fn analyze_rc_match(
             }
             __found
         };
+        let scrutinee_is_call = match (*scrutinee.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => true,
+            _ => false,
+        };
         RcMatchAnalysis {
-            needs_option_deref: arms_want_option.clone(),
+            needs_rc_option_ref: ((arms_want_option.clone() && scrutinee_is_optional.clone())
+                && scrutinee_is_call.clone()),
+            needs_option_deref: (arms_want_option.clone()
+                && !(scrutinee_is_optional.clone() && scrutinee_is_call.clone())),
             needs_deref: if scrutinee_is_optional.clone() {
                 false
             } else {
@@ -17767,14 +17775,14 @@ pub fn emit_typed_match(
         let needs_as_str =
             (all_arms_are_string_lit(arms.clone()) && ((arms.clone().len() as i64) > 0));
         let needs_string_from = has_string_lit_with_bind(arms.clone());
-        if rc_match.needs_option_deref.clone() {
+        if rc_match.needs_rc_option_ref.clone() {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                                ".as_deref()".to_string(),
+                                ".as_ref()".to_string(),
                             ),
                             clone_iterator_suffix(),
                         ),
@@ -17785,81 +17793,100 @@ pub fn emit_typed_match(
                 "\n}".to_string(),
             )
         } else {
-            if rc_match.needs_deref.clone() {
-                {
-                    let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+            if rc_match.needs_option_deref.clone() {
+                v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "match ".to_string(),
-                                    apply_type_template1(
-                                        sharing.deref_clone.clone(),
-                                        scrut_str.clone(),
-                                    ),
-                                ),
-                                " {\n".to_string(),
-                            ),
-                            arms_str.clone(),
-                        ),
-                        "\n}".to_string(),
-                    )
-                }
-            } else {
-                if needs_as_str.clone() {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                                ".as_str() {\n".to_string(),
-                            ),
-                            arms_str.clone(),
-                        ),
-                        "\n}".to_string(),
-                    )
-                } else {
-                    if needs_string_from.clone() {
-                        {
-                            let sf_arm_strs = Rc::new({
-                                let mut __result = Vec::new();
-                                for arm in arms.clone().iter().cloned() {
-                                    __result.push(emit_typed_match_arm(
-                                        arm.clone(),
-                                        registry.clone(),
-                                        scope.clone(),
-                                        depth.clone(),
-                                        shared_types.clone(),
-                                        emit_info.clone(),
-                                        scrut_type.clone(),
-                                        match_result_type.clone(),
-                                        true,
-                                    ));
-                                }
-                                __result
-                            });
-                            let sf_arms_str = sf_arm_strs.clone().join(&"\n".to_string());
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                                        " {\n".to_string(),
-                                    ),
-                                    sf_arms_str.clone(),
-                                ),
-                                "\n}".to_string(),
-                            )
-                        }
-                    } else {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                                    ".as_deref()".to_string(),
+                                ),
+                                clone_iterator_suffix(),
+                            ),
+                            " {\n".to_string(),
+                        ),
+                        arms_str.clone(),
+                    ),
+                    "\n}".to_string(),
+                )
+            } else {
+                if rc_match.needs_deref.clone() {
+                    {
+                        let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "match ".to_string(),
+                                        apply_type_template1(
+                                            sharing.deref_clone.clone(),
+                                            scrut_str.clone(),
+                                        ),
+                                    ),
                                     " {\n".to_string(),
                                 ),
                                 arms_str.clone(),
                             ),
                             "\n}".to_string(),
                         )
+                    }
+                } else {
+                    if needs_as_str.clone() {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                                    ".as_str() {\n".to_string(),
+                                ),
+                                arms_str.clone(),
+                            ),
+                            "\n}".to_string(),
+                        )
+                    } else {
+                        if needs_string_from.clone() {
+                            {
+                                let sf_arm_strs = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for arm in arms.clone().iter().cloned() {
+                                        __result.push(emit_typed_match_arm(
+                                            arm.clone(),
+                                            registry.clone(),
+                                            scope.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            emit_info.clone(),
+                                            scrut_type.clone(),
+                                            match_result_type.clone(),
+                                            true,
+                                        ));
+                                    }
+                                    __result
+                                });
+                                let sf_arms_str = sf_arm_strs.clone().join(&"\n".to_string());
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                                            " {\n".to_string(),
+                                        ),
+                                        sf_arms_str.clone(),
+                                    ),
+                                    "\n}".to_string(),
+                                )
+                            }
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                                        " {\n".to_string(),
+                                    ),
+                                    arms_str.clone(),
+                                ),
+                                "\n}".to_string(),
+                            )
+                        }
                     }
                 }
             }
