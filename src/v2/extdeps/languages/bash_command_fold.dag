@@ -1151,30 +1151,6 @@ fn bash_fold_built_stmt_production_binding(stmt: Node) -> Symbol {
   }
 }
 
-fn bash_fold_relation_rule_for_production(binding: Symbol) -> Symbol {
-  if binding == ^bash_production_fold_command {
-    ^bash_relation_rule_fold_command
-  } else if binding == ^bash_production_fold_exit {
-    ^bash_relation_rule_fold_exit
-  } else if binding == ^bash_production_fold_assign {
-    ^bash_relation_rule_fold_assign
-  } else if binding == ^bash_production_fold_and_then {
-    ^bash_relation_rule_fold_and_then
-  } else if binding == ^bash_production_fold_or_else {
-    ^bash_relation_rule_fold_or_else
-  } else if binding == ^bash_production_fold_pipe {
-    ^bash_relation_rule_fold_pipe
-  } else if binding == ^bash_production_fold_if {
-    ^bash_relation_rule_fold_if
-  } else if binding == ^bash_production_fold_subshell {
-    ^bash_relation_rule_fold_subshell
-  } else if binding == ^bash_production_fold_with_redir {
-    ^bash_relation_rule_fold_with_redir
-  } else {
-    ^bash_relation_rule_fold_unsupported
-  }
-}
-
 fn bash_fold_serialize_leaf_node(
   emitted: Node,
   production_binding: Symbol,
@@ -1613,7 +1589,7 @@ fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
     bash_fold_serialize_leaf_node(
       emitted: stmt,
       production_binding: binding,
-      rule_name: bash_fold_relation_rule_for_production(binding: binding)
+      rule_name: ^bash_relation_rule_fold_unsupported
     )
   }
 }
