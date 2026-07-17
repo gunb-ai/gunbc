@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SCAFFOLD — dissolve-on: tools.self_host_curated_seed_linked_harness on main post-#6782
-# (+ generic std-seed-link follow-up) retires hand-shell Cargo.toml projection; until then
-# this helper reads cssl_v1_compiled_cargo_toml via dag/tools/self_host_curated_probe_cargo.dag
-# (single authority — no parallel dependency manifest). dissolve-on alt: gunbc bash-emit #5828.
+# (+ generic std-seed-link follow-up) retires this hand-shell Cargo.toml reader; until then
+# this helper reads cssl_v1_compiled_probe_lib_cargo_toml via dag/tools/self_host_curated_probe_cargo.dag
+# (single authority — no parallel dependency manifest, no sed fork). dissolve-on alt: gunbc bash-emit #5828.
 set -euo pipefail
 
 render_cssl_probe_lib_cargo_toml() {
@@ -21,8 +21,8 @@ render_cssl_probe_lib_cargo_toml() {
     return 1
   fi
 
-  local witness_toml
-  witness_toml="$(
+  local probe_lib_toml err_log
+  probe_lib_toml="$(
     cd "$root"
     "$gunbc" run \
       --source-root dag \
@@ -31,19 +31,19 @@ render_cssl_probe_lib_cargo_toml() {
       --function curated_probe_cargo_toml_from_cssl_authority 2>/dev/null
   )"
 
-  if [[ -z "$witness_toml" ]]; then
-    echo "curated_cargo_probe: failed to read cssl_v1_compiled_cargo_toml authority" >&2
+  if [[ -z "$probe_lib_toml" ]]; then
+    err_log="$(
+      cd "$root"
+      "$gunbc" run \
+        --source-root dag \
+        --source-root src/v2 \
+        --entry dag/tools/self_host_curated_probe_cargo.dag \
+        --function curated_probe_cargo_toml_from_cssl_authority 2>&1 >/dev/null
+    )"
+    echo "curated_cargo_probe: gunbc authority-read failed" >&2
+    [[ -n "$err_log" ]] && echo "$err_log" >&2
     return 1
   fi
 
-  # Probe uses `cargo build --lib`; project witness [[bin]] manifest from cssl authority.
-  printf '%s\n' "$witness_toml" \
-    | sed '/^\[\[bin\]\]/,/^path = /d' \
-    | sed '/^name = "witness"$/d' \
-    >"$out_path"
-  {
-    echo ""
-    echo "[lib]"
-    echo 'path = "src/lib.rs"'
-  } >>"$out_path"
+  printf '%s\n' "$probe_lib_toml" >"$out_path"
 }
