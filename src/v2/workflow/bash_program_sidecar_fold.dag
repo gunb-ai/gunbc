@@ -1,0 +1,506 @@
+module v2.workflow.bash_program_sidecar_fold
+
+import extdeps.languages.bash.program {
+  AndOr,
+  AndOrOp,
+  AndThen,
+  Assign,
+  Command,
+  Exit,
+  If,
+  Lit,
+  OrElse,
+  Pipe,
+  Redir,
+  ShellStmt,
+  ShellWord,
+  Subshell,
+  VarRef,
+  serialize_stmt
+}
+import v2.extdeps.languages.bash_build {
+  bash_build_assign,
+  bash_build_binary_stmt,
+  bash_build_command,
+  bash_build_command_words_pair,
+  bash_build_command_words_single,
+  bash_build_exit,
+  bash_build_if,
+  bash_build_stmt_list_pair,
+  bash_build_stmt_list_single,
+  bash_build_subshell,
+  bash_build_with_redir,
+  bash_build_with_redir_to_file,
+  bash_build_word_cmdsubst,
+  bash_build_word_concat,
+  bash_build_word_lit,
+  bash_build_word_var
+}
+import v2.extdeps.languages.bash_command_fold {
+  bash_fold_delegated_needs_component_spellings_diagnostic,
+  bash_fold_diagnostic_anchor,
+  bash_fold_target_model_for_emitted_witness,
+  bash_fold_unsupported_variant_diagnostic
+}
+import v2.std.collection {
+  Absent,
+  List,
+  Present,
+  list_at_optional,
+  list_nth
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Unavailable,
+  node_locus
+}
+import v2.std.node {
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.witness { Holds, Violates, Witness }
+
+data bash_program_sidecar_fold_dissolve_on: String = "🟡 dissolve-on: bash_program_sidecar_fold — delete this module when dag/extdeps/languages/bash/program.dag is deleted (sidecar FULL DELETE PR-C). ShellStmt/ShellWord fold witnesses then route through bash_build Node constructors + grammar ingest only; bash_program_emit dissolves with program.dag. Trigger: realization_vocabulary_containment ratchet extdeps.languages.bash.program importers → 0 and PR-B production consumers migrated."
+
+fn bash_fold_word_emitted_witness(w: ShellWord) -> Witness<Node> {
+  match w {
+    Lit { text: t } => Holds { value: bash_build_word_lit(text: t) }
+    VarRef { name: n } => Holds { value: bash_build_word_var(name: n) }
+    Concat { parts: ps } =>
+      match bash_fold_command_words_emitted_witness(words: ps) {
+        Holds { value: parts_node } => Holds { value: bash_build_word_concat(parts: parts_node) }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    CmdSubst { body: b } =>
+      match bash_fold_stmt_emitted_witness(stmt: b) {
+        Holds { value: body_node } => Holds { value: bash_build_word_cmdsubst(body: body_node) }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Raw { text: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_word_raw) }
+  }
+}
+
+fn bash_fold_words_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^bash_fold_words_empty,
+    at: node_locus(node: bash_fold_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn bash_fold_command_words_emitted_from_list_suffix_witness(
+  words: List<ShellWord>,
+  accumulated: Node,
+  index: Int
+) -> Witness<Node> {
+  match list_at_optional(xs: words, index: index) {
+    Present { value: w } =>
+      match bash_fold_word_emitted_witness(w: w) {
+        Holds { value: word_node } =>
+          bash_fold_command_words_emitted_from_list_suffix_witness(
+            words: words,
+            accumulated: bash_build_command_words_pair(
+              left: accumulated,
+              right: word_node
+            ),
+            index: index + 1
+          )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Absent => Holds { value: accumulated }
+  }
+}
+
+fn bash_fold_command_words_emitted_witness(words: List<ShellWord>) -> Witness<Node> {
+  match list_nth(xs: words, wanted: 0, absent: bash_fold_words_absent_diagnostic()) {
+    Holds { value: w0 } =>
+      match bash_fold_word_emitted_witness(w: w0) {
+        Holds { value: word0 } =>
+          bash_fold_command_words_emitted_from_list_suffix_witness(
+            words: words,
+            accumulated: bash_build_command_words_single(word: word0),
+            index: 1
+          )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_fold_assign_emitted_witness(name: String, value: ShellWord) -> Witness<Node> {
+  match bash_fold_word_emitted_witness(w: value) {
+    Holds { value: word_node } =>
+      Holds { value: bash_build_assign(name: name, value: word_node) }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+type BashFoldStmtBundle {
+  production_binding: Symbol
+  relation_rule: Symbol
+  emitted: Node
+}
+
+fn bash_fold_binary_stmt_emitted_witness(
+  binding: Symbol,
+  left: ShellStmt,
+  right: ShellStmt
+) -> Witness<Node> {
+  match bash_fold_stmt_emitted_witness(stmt: left) {
+    Holds { value: left_emitted } =>
+      match bash_fold_stmt_emitted_witness(stmt: right) {
+        Holds { value: right_emitted } =>
+          Holds {
+            value: bash_build_binary_stmt(
+              binding: binding,
+              left: left_emitted,
+              right: right_emitted
+            )
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_fold_stmts_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^bash_fold_stmts_empty,
+    at: node_locus(node: bash_fold_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn bash_fold_stmt_list_emitted_from_suffix_witness(
+  stmts: List<ShellStmt>,
+  accumulated: Node,
+  index: Int
+) -> Witness<Node> {
+  match list_at_optional(xs: stmts, index: index) {
+    Present { value: s } =>
+      match bash_fold_stmt_emitted_witness(stmt: s) {
+        Holds { value: stmt_node } =>
+          bash_fold_stmt_list_emitted_from_suffix_witness(
+            stmts: stmts,
+            accumulated: bash_build_stmt_list_pair(
+              left: accumulated,
+              right: stmt_node
+            ),
+            index: index + 1
+          )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Absent => Holds { value: accumulated }
+  }
+}
+
+fn bash_fold_stmt_list_emitted_witness(stmts: List<ShellStmt>) -> Witness<Node> {
+  match list_nth(xs: stmts, wanted: 0, absent: bash_fold_stmts_absent_diagnostic()) {
+    Holds { value: s0 } =>
+      match bash_fold_stmt_emitted_witness(stmt: s0) {
+        Holds { value: stmt0 } =>
+          bash_fold_stmt_list_emitted_from_suffix_witness(
+            stmts: stmts,
+            accumulated: bash_build_stmt_list_single(stmt: stmt0),
+            index: 1
+          )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_fold_with_redir_bundle(emitted: Node) -> BashFoldStmtBundle {
+  BashFoldStmtBundle {
+    production_binding: ^bash_production_fold_with_redir,
+    relation_rule: ^bash_relation_rule_fold_with_redir,
+    emitted: emitted
+  }
+}
+
+fn bash_fold_with_redir_bundle_witness(inner_stmt: ShellStmt, redir: Redir) -> Witness<BashFoldStmtBundle> {
+  match bash_fold_stmt_emitted_witness(stmt: inner_stmt) {
+    Holds { value: inner } =>
+      match redir {
+        StderrToNull =>
+          Holds {
+            value: bash_fold_with_redir_bundle(
+              emitted: bash_build_with_redir(inner: inner, redir: ^bash_production_fold_redir_stderr_null)
+            )
+          }
+        StdoutAndStderrToNull =>
+          Holds {
+            value: bash_fold_with_redir_bundle(
+              emitted: bash_build_with_redir(inner: inner, redir: ^bash_production_fold_redir_stdout_and_stderr_null)
+            )
+          }
+        StdoutToStderr =>
+          Holds {
+            value: bash_fold_with_redir_bundle(
+              emitted: bash_build_with_redir(inner: inner, redir: ^bash_production_fold_redir_stdout_to_stderr)
+            )
+          }
+        RedirToFile { path: p } =>
+          match bash_fold_word_emitted_witness(w: p) {
+            Holds { value: path_node } =>
+              Holds {
+                value: bash_fold_with_redir_bundle(
+                  emitted: bash_build_with_redir_to_file(inner: inner, path: path_node)
+                )
+              }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_fold_stmt_bundle_witness(stmt: ShellStmt) -> Witness<BashFoldStmtBundle> {
+  match stmt {
+    Command { words: ws } =>
+      match bash_fold_command_words_emitted_witness(words: ws) {
+        Holds { value: words_node } =>
+          Holds {
+            value: BashFoldStmtBundle {
+              production_binding: ^bash_production_fold_command,
+              relation_rule: ^bash_relation_rule_fold_command,
+              emitted: bash_build_command(words: words_node)
+            }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Exit { code: c } =>
+      Holds {
+        value: BashFoldStmtBundle {
+          production_binding: ^bash_production_fold_exit,
+          relation_rule: ^bash_relation_rule_fold_exit,
+          emitted: bash_build_exit(code: to_string(c))
+        }
+      }
+    Assign { name: n, value: v } =>
+      match bash_fold_assign_emitted_witness(name: n, value: v) {
+        Holds { value: emitted } =>
+          Holds {
+            value: BashFoldStmtBundle {
+              production_binding: ^bash_production_fold_assign,
+              relation_rule: ^bash_relation_rule_fold_assign,
+              emitted: emitted
+            }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    AndOr { left: l, op: AndThen, right: r } =>
+      match bash_fold_binary_stmt_emitted_witness(
+        binding: ^bash_production_fold_and_then,
+        left: l,
+        right: r
+      ) {
+        Holds { value: emitted } =>
+          Holds {
+            value: BashFoldStmtBundle {
+              production_binding: ^bash_production_fold_and_then,
+              relation_rule: ^bash_relation_rule_fold_and_then,
+              emitted: emitted
+            }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    AndOr { left: l, op: OrElse, right: r } =>
+      match bash_fold_binary_stmt_emitted_witness(
+        binding: ^bash_production_fold_or_else,
+        left: l,
+        right: r
+      ) {
+        Holds { value: emitted } =>
+          Holds {
+            value: BashFoldStmtBundle {
+              production_binding: ^bash_production_fold_or_else,
+              relation_rule: ^bash_relation_rule_fold_or_else,
+              emitted: emitted
+            }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Pipe { left: l, right: r } =>
+      match bash_fold_binary_stmt_emitted_witness(
+        binding: ^bash_production_fold_pipe,
+        left: l,
+        right: r
+      ) {
+        Holds { value: emitted } =>
+          Holds {
+            value: BashFoldStmtBundle {
+              production_binding: ^bash_production_fold_pipe,
+              relation_rule: ^bash_relation_rule_fold_pipe,
+              emitted: emitted
+            }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    If { cond: c, then: body } =>
+      match bash_fold_stmt_emitted_witness(stmt: c) {
+        Holds { value: cond_emitted } =>
+          match bash_fold_stmt_list_emitted_witness(stmts: body) {
+            Holds { value: body_emitted } =>
+              Holds {
+                value: BashFoldStmtBundle {
+                  production_binding: ^bash_production_fold_if,
+                  relation_rule: ^bash_relation_rule_fold_if,
+                  emitted: bash_build_if(cond: cond_emitted, body: body_emitted)
+                }
+              }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Subshell { body: b } =>
+      match bash_fold_stmt_list_emitted_witness(stmts: b) {
+        Holds { value: body_emitted } =>
+          Holds {
+            value: BashFoldStmtBundle {
+              production_binding: ^bash_production_fold_subshell,
+              relation_rule: ^bash_relation_rule_fold_subshell,
+              emitted: bash_build_subshell(body: body_emitted)
+            }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    BraceGroup { body: _ } =>
+      Violates { diagnostic: bash_fold_unsupported_variant_diagnostic(variant: ^bash_fold_stmt_brace_group) }
+    EnvPrefixed { name: _, value: _, command: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    WithRedir { stmt: st, redir: rd } =>
+      bash_fold_with_redir_bundle_witness(inner_stmt: st, redir: rd)
+    Heredoc { path: _, delimiter: _, body: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    Negation { stmt: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    RawLine { text: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+  }
+}
+
+fn bash_fold_stmt_emitted_witness(stmt: ShellStmt) -> Witness<Node> {
+  match bash_fold_stmt_bundle_witness(stmt: stmt) {
+    Holds { value: bundle } => Holds { value: bundle.emitted }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_fold_production_binding_for_stmt(stmt: ShellStmt) -> Symbol {
+  match bash_fold_stmt_bundle_witness(stmt: stmt) {
+    Holds { value: bundle } => bundle.production_binding
+    Violates { diagnostic: _ } => ^bash_production_fold_unsupported
+  }
+}
+
+fn bash_fold_relation_rule_for_stmt(stmt: ShellStmt) -> Symbol {
+  match bash_fold_stmt_bundle_witness(stmt: stmt) {
+    Holds { value: bundle } => bundle.relation_rule
+    Violates { diagnostic: _ } => ^bash_relation_rule_fold_unsupported
+  }
+}
+
+
+fn bash_fold_target_model_from_native_bundle_witness(stmt: ShellStmt) -> Witness<TargetModel> {
+  match bash_fold_stmt_bundle_witness(stmt: stmt) {
+    Holds { value: bundle } =>
+      bash_fold_target_model_for_emitted_witness(
+        emitted: bundle.emitted,
+        source_literal: ^bash_fold_dynamic_source_literal,
+        source_text: serialize_stmt(s: stmt),
+        production_binding: bundle.production_binding,
+        rule_name: bundle.relation_rule
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn bash_fold_target_model_for_stmt_witness(stmt: ShellStmt) -> Witness<TargetModel> {
+  match stmt {
+    WithRedir { stmt: _, redir: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    Heredoc { path: _, delimiter: _, body: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    RawLine { text: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    Negation { stmt: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    EnvPrefixed { name: _, value: _, command: _ } =>
+      Violates { diagnostic: bash_fold_delegated_needs_component_spellings_diagnostic() }
+    Command { words: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    Assign { name: _, value: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    Exit { code: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    AndOr { left: _, op: _, right: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    Pipe { left: _, right: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    Subshell { body: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    If { cond: _, then: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+    BraceGroup { body: _ } =>
+      bash_fold_target_model_from_native_bundle_witness(stmt: stmt)
+  }
+}
+
+
+fn bash_fold_subshell_wrong_target_model_witness() -> Witness<TargetModel> {
+  match bash_fold_stmt_bundle_witness(
+    stmt: Subshell { body: [Command { words: [Lit { text: "true" }] }] }
+  ) {
+    Holds { value: bundle } =>
+      bash_fold_target_model_for_emitted_witness(
+        emitted: bundle.emitted,
+        source_literal: ^bash_fold_subshell_wrong_source_literal,
+        source_text: "(false)",
+        production_binding: ^bash_production_fold_subshell,
+        rule_name: ^bash_relation_rule_fold_subshell
+      )
+    Violates { diagnostic: _ } =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^bash_fold_subshell_wrong_fixture_build_failed,
+          at: node_locus(node: bash_fold_diagnostic_anchor),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}
+
+fn bash_fold_if_wrong_target_model_witness() -> Witness<TargetModel> {
+  match bash_fold_stmt_bundle_witness(
+    stmt: If {
+      cond: Command { words: [Lit { text: "true" }] },
+      then: [Command { words: [Lit { text: "echo" }, Lit { text: "hi" }] }]
+    }
+  ) {
+    Holds { value: bundle } =>
+      bash_fold_target_model_for_emitted_witness(
+        emitted: bundle.emitted,
+        source_literal: ^bash_fold_if_wrong_source_literal,
+        source_text: "if false; then 'echo' 'hi'; fi",
+        production_binding: ^bash_production_fold_if,
+        rule_name: ^bash_relation_rule_fold_if
+      )
+    Violates { diagnostic: _ } =>
+      Violates {
+        diagnostic: Diagnostic {
+          reason: ^bash_fold_if_wrong_fixture_build_failed,
+          at: node_locus(node: bash_fold_diagnostic_anchor),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      }
+  }
+}

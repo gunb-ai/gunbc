@@ -291,6 +291,7 @@ fn func_env_dropped_parent_chain_fails_lookup() {
     );
 
     let stripped = Rc::new(ResolvedFuncEnv {
+        name: consumer.func_env.name.clone(),
         local: consumer.func_env.local.clone(),
         parents: Rc::new(im_rc::vector![]),
     });

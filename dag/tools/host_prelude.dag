@@ -5,101 +5,13 @@ import extdeps.cargo_build
 import extdeps.git
 import extdeps.gunbc
 import std.logic { Bool }
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt, ShellWord,
-  Command, If, Subshell, AndOr, WithRedir, Exit,
-  Lit, VarRef, Concat, CmdSubst,
-  AndThen, OrElse, StderrToNull,
-  lit, var_ref, command, assign, test_not_executable
-}
-import tools.build_step { BuildArtifact, emit_verifications }
 
-fn assign_root_stmt() -> ShellStmt {
-  assign(name: "ROOT", value: CmdSubst { body: AndOr {
-    left: WithRedir {
-      stmt: command(words: [lit(text: "git"), lit(text: "rev-parse"), lit(text: "--show-toplevel")]),
-      redir: StderrToNull
-    },
-    op: OrElse,
-    right: command(words: [lit(text: "pwd")])
-  } })
-}
-
-fn build_bin_if_absent_stmt(bin_path: ShellWord, root: ShellWord, bin_name: String) -> ShellStmt {
-  build_bin_if_absent_stmt_with_features(bin_path: bin_path, root: root, bin_name: bin_name, features: "")
-}
-
-fn build_bin_if_absent_stmt_with_features(bin_path: ShellWord, root: ShellWord, bin_name: String, features: String) -> ShellStmt {
-  let cargo_build = if features == "" {
-    command(words: [
-      lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
-      lit(text: "--release"), lit(text: "--bin"), lit(text: bin_name)
-    ])
-  } else {
-    command(words: [
-      lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
-      lit(text: "--release"), lit(text: "--features"), lit(text: features),
-      lit(text: "--bin"), lit(text: bin_name)
-    ])
-  }
-  If {
-    cond: test_not_executable(path: bin_path),
-    then: [
-      AndOr {
-        left: Subshell { body: [
-          AndOr {
-            left: command(words: [lit(text: "cd"), root]),
-            op: AndThen,
-            right: cargo_build
-          }
-        ] },
-        op: OrElse,
-        right: Exit { code: 1 }
-      }
-    ]
-  }
-}
-
-fn ensure_bin_built_and_verified_with_features(var_name: String, bin_name: String, features: String) -> List<ShellStmt> {
-  let root = var_ref(name: "ROOT")
-  let bin = var_ref(name: var_name)
-  concat(
-    [
-      assign_root_stmt(),
-      assign(name: var_name, value: Concat { parts: [root, lit(text: concat("/target/release/", bin_name))] }),
-      build_bin_if_absent_stmt_with_features(bin_path: bin, root: root, bin_name: bin_name, features: features)
-    ],
-    emit_verifications(
-      produces: [BuildArtifact { path: bin, name: bin_name }]
-    )
-  )
-}
-
-fn ensure_bin_built_and_verified(var_name: String, bin_name: String) -> List<ShellStmt> {
-  let root = var_ref(name: "ROOT")
-  let bin = var_ref(name: var_name)
-  concat(
-    [
-      assign_root_stmt(),
-      assign(name: var_name, value: Concat { parts: [root, lit(text: concat("/target/release/", bin_name))] }),
-      build_bin_if_absent_stmt(bin_path: bin, root: root, bin_name: bin_name)
-    ],
-    emit_verifications(
-      produces: [BuildArtifact { path: bin, name: bin_name }]
-    )
-  )
-}
-
-fn ensure_gunbc_built() -> List<ShellStmt> {
-  ensure_bin_built_and_verified(var_name: "GUNBC", bin_name: "gunbc")
-}
+data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Core.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) and ensure_bin_built_and_verified shell-stmt chain dissolved with the typed WitnessBin path (Phase D, 2026-07-14); toolchain_provision_shell_exec is the only surviving consumer of this module's shell path."
 
 fn toolchain_provision_shell_exec(script: String) -> Bool {
   let result = shell.Exec.Run(script: script)
   result.success
 }
-
-data witness_invocation_doc: String = "Shared witness-binary invocation. A dag/tools transport states WHICH binaries must exist (WitnessBin: prereqs + the one to invoke) and its argv Strings; this module realizes that intent as TYPED service operations (shell.Test.IsExecutable, cargo.Build.Build, gunbc.WitnessBin.Run at the git.Core.Toplevel root) - no bash is serialized or executed on the run path, per the shell-emission-model rule that runtime-present sites are argv invocations wearing bash syntax and need no shell. The former ShellProgram builders (witness_bin_program, gunbc_claims_program) dissolved with the oracle flip to emitter-independent goldens in v2.test.claim.bash_program_fold; ensure_gunbc_built and the ensure_bin_built_and_verified shell-stmt chain are the legacy pre-flip bin-build scaffold, now uncalled after Phase D (2026-07-14) removed emit_determinism_transport (their last consumer) — dissolve-on: delete the uncalled chain in a follow-up hygiene sweep; toolchain_provision_shell_exec is the only surviving consumer of this module's shell path."
 
 type WitnessBin {
   var_name: String
