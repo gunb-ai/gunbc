@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Curated seed-linked cargo probe for one compiler frontier module.
-# Uses gunbc compile (primary-precedence curated emit) + v1-compiler seed link.
-# Does NOT touch frontier.dag or flip anything — measurement only.
+# Mirrors tools.self_host_curated_seed_linked_harness emit+assemble spine (probe-only).
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
@@ -30,7 +29,7 @@ if "$GUNBC" compile \
   --source-root dag \
   --source-root src/v2 \
   --entry "$MODULE_PATH" \
-  --output-dir "$OUT/emit" \
+  --output-dir "$OUT" \
   --target rust \
   --dependency-pool-index primary-precedence \
   >"$EMIT_LOG" 2>&1; then
@@ -42,7 +41,7 @@ if [[ "$EMIT_OK" -eq 1 ]]; then
   if grep -q 'compiled:' "$EMIT_LOG"; then
     EMIT_SUMMARY="$(grep -m1 'compiled:' "$EMIT_LOG" | sed 's/.*compiled: //')"
   else
-    FILE_COUNT="$(find "$OUT/emit" -name '*.rs' 2>/dev/null | wc -l | tr -d ' ')"
+    FILE_COUNT="$(find "$OUT" -name '*.rs' 2>/dev/null | wc -l | tr -d ' ')"
     EMIT_SUMMARY="${FILE_COUNT}files,unknown_diag"
   fi
 fi
@@ -52,24 +51,18 @@ FIRST_ERROR=""
 MAPPED_GATE=""
 
 if [[ "$EMIT_OK" -eq 1 ]]; then
-  mkdir -p "$OUT/crate/src"
   if [[ -n "$SHIM_LIB_REL" && -f "$ROOT/$SHIM_LIB_REL" ]]; then
-    cp "$ROOT/$SHIM_LIB_REL" "$OUT/crate/src/lib.rs"
-    # Optional companion shims live beside lib.rs in the shim directory.
+    cp "$ROOT/$SHIM_LIB_REL" "$OUT/src/lib.rs"
     shim_dir="$(dirname "$ROOT/$SHIM_LIB_REL")"
     for f in "$shim_dir"/*.rs; do
       [[ -f "$f" ]] || continue
       base="$(basename "$f")"
       [[ "$base" == "lib.rs" ]] && continue
-      cp "$f" "$OUT/crate/src/$base"
+      cp "$f" "$OUT/src/$base"
     done
-  elif [[ -d "$OUT/emit/src" ]]; then
-    cp -a "$OUT/emit/src/." "$OUT/crate/src/"
-  elif [[ -f "$OUT/emit/lib.rs" ]]; then
-    cp "$OUT/emit/lib.rs" "$OUT/crate/src/lib.rs"
   fi
 
-  cat >"$OUT/crate/Cargo.toml" <<EOF
+  cat >"$OUT/Cargo.toml" <<EOF
 [package]
 name = "v1_compiled"
 version = "0.1.0"
@@ -93,12 +86,12 @@ v1-compiler = { path = "$ROOT/src/v1/stage0" }
 EOF
 
   BUILD_LOG="$OUT/cargo.log"
-  if (cd "$OUT/crate" && CTRL_BUILD_WRAP_CARGO=0 cargo build --release 2>"$BUILD_LOG"); then
+  if (cd "$OUT" && RUSTC_WRAPPER= CTRL_BUILD_WRAP_CARGO=0 cargo build --release --lib 2>"$BUILD_LOG"); then
     CARGO_VERDICT="green"
   else
     CARGO_VERDICT="refuse"
-    FIRST_ERROR="$(grep -m1 '^error' "$BUILD_LOG" || head -1 "$BUILD_LOG" || true)"
-    if grep -qE 'duplicate definitions|Int8|UInt128|already defined' "$BUILD_LOG"; then
+    FIRST_ERROR="$(grep -m1 -E '^error(\[E[0-9]+\])?:' "$BUILD_LOG" || grep -m1 -E '^error:' "$BUILD_LOG" || head -1 "$BUILD_LOG" || true)"
+    if grep -qE 'the name `Int(8|16|32|64|128|256)` is defined multiple times|duplicate definitions with name' "$BUILD_LOG"; then
       MAPPED_GATE="HARNESS_ARTIFACT_std_dup"
     elif grep -qE 'Rc<|im_rc|Optional|ownership' "$BUILD_LOG"; then
       MAPPED_GATE="Gate_A_emitter_Rc_Optional"

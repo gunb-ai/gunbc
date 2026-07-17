@@ -113,7 +113,7 @@ fn symbol_to_manifest(sym: &str) -> String {
     }
 }
 
-fn value_symbol_name(_ctx: &InterpContext, value: &Value) -> Result<String, String> {
+fn value_symbol_name(ctx: &InterpContext, value: &Value) -> Result<String, String> {
     match value {
         Value::Str(s) => Ok(symbol_to_manifest(s)),
         other => Err(format!(
@@ -390,7 +390,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut survey_manifest: Option<PathBuf> = None;
     let mut survey_tsv: Option<PathBuf> = None;
     let mut survey_dir: Option<PathBuf> = None;
-    let mut only_modules: Vec<String> = Vec::new();
 
     let mut i = 1;
     while i < args.len() {
@@ -414,10 +413,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--survey-dir" => {
                 i += 1;
                 survey_dir = Some(PathBuf::from(require_value(&args, i, "--survey-dir")?));
-            }
-            "--only-module" => {
-                i += 1;
-                only_modules.push(require_value(&args, i, "--only-module")?);
             }
             other => {
                 eprintln!("frontier_probe_survey: unknown argument: {other}");
@@ -446,31 +441,18 @@ fn run() -> Result<ExitCode, ExitCode> {
         ExitCode::from(1)
     })?;
 
-    let mut module_paths = load_compiler_frontier_sweep_order(&source_roots).map_err(|msg| {
+    let module_paths = load_compiler_frontier_sweep_order(&source_roots).map_err(|msg| {
         eprintln!("frontier_probe_survey: {msg}");
         ExitCode::from(1)
     })?;
-    if !only_modules.is_empty() {
-        module_paths.retain(|path| only_modules.iter().any(|only| only == path));
-        if module_paths.is_empty() {
-            eprintln!(
-                "frontier_probe_survey: --only-module filter matched zero sweep-order entries"
-            );
-            return Err(ExitCode::from(1));
-        }
-        eprintln!(
-            "frontier_probe_survey: filtered to {} module path(s) via --only-module",
-            module_paths.len()
-        );
-    } else if module_paths.is_empty() {
+    if module_paths.is_empty() {
         eprintln!("frontier_probe_survey: {SWEEP_ORDER_DATA} is empty");
         return Err(ExitCode::from(1));
-    } else {
-        eprintln!(
-            "frontier_probe_survey: loaded {} module path(s) from {SWEEP_ORDER_DATA}",
-            module_paths.len()
-        );
     }
+    eprintln!(
+        "frontier_probe_survey: loaded {} module path(s) from {SWEEP_ORDER_DATA}",
+        module_paths.len()
+    );
 
     let host_failure_reasons = load_host_failure_reasons(&source_roots).map_err(|msg| {
         eprintln!("frontier_probe_survey: {msg}");
