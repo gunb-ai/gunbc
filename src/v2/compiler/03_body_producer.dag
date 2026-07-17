@@ -16,6 +16,7 @@ import v2.std.node {
   Edge,
   Named,
   Node,
+  Symbol,
   TypeNode,
   node_rebuild,
   well_formed
