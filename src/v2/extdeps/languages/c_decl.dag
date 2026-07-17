@@ -75,7 +75,7 @@ fn c_decl_shared_field_productions() -> List<FormalProduction> {
       lhs: ^c_decl_type_expr,
       rhs: [
         grammar_formal_terminal_surface_discriminator(identity: grammar_surface_discriminator_terminal),
-        grammar_formal_nonterminal_occurrence(identity: ^c_decl_qualified_name)
+        grammar_formal_terminal_free(identity: ^c_token_ident)
       ]
     ),
     grammar_formal_production(

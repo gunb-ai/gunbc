@@ -1251,11 +1251,7 @@ fn target_semantic_decl_surface_type_expr_scoped(scope: Symbol, t: Symbol) -> No
   target_semantic_decl_surface_conj(
     children: [
       target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: scope)),
-      target_semantic_decl_surface_pos(
-        target: target_semantic_decl_surface_conj(
-          children: [ target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: t)) ]
-        )
-      )
+      target_semantic_decl_surface_pos(target: target_semantic_decl_surface_atom(id: t))
     ]
   )
 }
