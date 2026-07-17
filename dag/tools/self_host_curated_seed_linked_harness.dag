@@ -6,8 +6,8 @@ import extdeps.cargo_build
 import extdeps.git
 import extdeps.gunbc
 import std.logic { Bool }
-import v2.std.algebra { fold_list }
-import v2.std.collection { List, length }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
 import v2.std.text { String }
 import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
 
