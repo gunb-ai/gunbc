@@ -48,10 +48,15 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_pipe_echo_hi_wc_emitted,
   bash_fold_raw_line_wrong_target_model_witness,
   bash_fold_relation_row_witness,
+  bash_fold_target_model_for_emitted_witness,
+  bash_fold_with_redir_wrong_target_model_witness
+}
+import v2.workflow.bash_program_sidecar_fold {
+  bash_fold_if_wrong_target_model_witness,
   bash_fold_stmt_bundle_witness,
   bash_fold_stmt_emitted_witness,
-  bash_fold_target_model_for_stmt_witness,
-  bash_fold_with_redir_wrong_target_model_witness
+  bash_fold_subshell_wrong_target_model_witness,
+  bash_fold_target_model_for_stmt_witness
 }
 import v2.std.compilers.target_model { TargetModel }
 import v2.workflow.bash_program_emit { bash_program_serialize_stmt }
