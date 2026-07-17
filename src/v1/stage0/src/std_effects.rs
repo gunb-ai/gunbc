@@ -22,6 +22,15 @@ use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
+pub fn effect_namespace_grants_design_doc_provenance() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "bind: docs/plans/effect-namespace-grants.md".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EffectShape {
