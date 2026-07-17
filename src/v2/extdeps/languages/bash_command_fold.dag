@@ -1152,17 +1152,26 @@ fn bash_fold_built_stmt_production_binding(stmt: Node) -> Symbol {
 }
 
 fn bash_fold_relation_rule_for_production(binding: Symbol) -> Symbol {
-  match binding {
-    ^bash_production_fold_command => ^bash_relation_rule_fold_command
-    ^bash_production_fold_exit => ^bash_relation_rule_fold_exit
-    ^bash_production_fold_assign => ^bash_relation_rule_fold_assign
-    ^bash_production_fold_and_then => ^bash_relation_rule_fold_and_then
-    ^bash_production_fold_or_else => ^bash_relation_rule_fold_or_else
-    ^bash_production_fold_pipe => ^bash_relation_rule_fold_pipe
-    ^bash_production_fold_if => ^bash_relation_rule_fold_if
-    ^bash_production_fold_subshell => ^bash_relation_rule_fold_subshell
-    ^bash_production_fold_with_redir => ^bash_relation_rule_fold_with_redir
-    _ => ^bash_relation_rule_fold_unsupported
+  if binding == ^bash_production_fold_command {
+    ^bash_relation_rule_fold_command
+  } else if binding == ^bash_production_fold_exit {
+    ^bash_relation_rule_fold_exit
+  } else if binding == ^bash_production_fold_assign {
+    ^bash_relation_rule_fold_assign
+  } else if binding == ^bash_production_fold_and_then {
+    ^bash_relation_rule_fold_and_then
+  } else if binding == ^bash_production_fold_or_else {
+    ^bash_relation_rule_fold_or_else
+  } else if binding == ^bash_production_fold_pipe {
+    ^bash_relation_rule_fold_pipe
+  } else if binding == ^bash_production_fold_if {
+    ^bash_relation_rule_fold_if
+  } else if binding == ^bash_production_fold_subshell {
+    ^bash_relation_rule_fold_subshell
+  } else if binding == ^bash_production_fold_with_redir {
+    ^bash_relation_rule_fold_with_redir
+  } else {
+    ^bash_relation_rule_fold_unsupported
   }
 }
 
@@ -1236,49 +1245,49 @@ fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
               bind_outcome(
                 o: bash_fold_serialize_node(stmt: inner),
                 f: fn(stmt_spelling) {
-                  match redir_binding {
-                    ^bash_production_fold_redir_stderr_null =>
-                      bash_fold_serialize_emit_from_node(
-                        emitted: bash_stmt_with_redir_emitted,
-                        target: bash_stmt_with_redir_target_model(
-                          stmt: stmt_spelling,
-                          redir: "2>/dev/null"
-                        )
+                  if redir_binding == ^bash_production_fold_redir_stderr_null {
+                    bash_fold_serialize_emit_from_node(
+                      emitted: bash_stmt_with_redir_emitted,
+                      target: bash_stmt_with_redir_target_model(
+                        stmt: stmt_spelling,
+                        redir: "2>/dev/null"
                       )
-                    ^bash_production_fold_redir_stdout_and_stderr_null =>
-                      bash_fold_serialize_emit_from_node(
-                        emitted: bash_stmt_with_redir_emitted,
-                        target: bash_stmt_with_redir_target_model(
-                          stmt: stmt_spelling,
-                          redir: ">/dev/null 2>&1"
-                        )
+                    )
+                  } else if redir_binding == ^bash_production_fold_redir_stdout_and_stderr_null {
+                    bash_fold_serialize_emit_from_node(
+                      emitted: bash_stmt_with_redir_emitted,
+                      target: bash_stmt_with_redir_target_model(
+                        stmt: stmt_spelling,
+                        redir: ">/dev/null 2>&1"
                       )
-                    ^bash_production_fold_redir_stdout_to_stderr =>
-                      bash_fold_serialize_emit_from_node(
-                        emitted: bash_stmt_with_redir_emitted,
-                        target: bash_stmt_with_redir_target_model(
-                          stmt: stmt_spelling,
-                          redir: ">&2"
-                        )
+                    )
+                  } else if redir_binding == ^bash_production_fold_redir_stdout_to_stderr {
+                    bash_fold_serialize_emit_from_node(
+                      emitted: bash_stmt_with_redir_emitted,
+                      target: bash_stmt_with_redir_target_model(
+                        stmt: stmt_spelling,
+                        redir: ">&2"
                       )
-                    ^bash_production_fold_redir_to_file =>
-                      match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 3) {
-                        Present { value: path_node } =>
-                          bind_outcome(
-                            o: bash_fold_serialize_word_node(word: path_node),
-                            f: fn(path_spelling) {
-                              bash_fold_serialize_emit_from_node(
-                                emitted: bash_stmt_with_redir_emitted,
-                                target: bash_stmt_with_redir_target_model(
-                                  stmt: stmt_spelling,
-                                  redir: concat("> ", path_spelling)
-                                )
+                    )
+                  } else if redir_binding == ^bash_production_fold_redir_to_file {
+                    match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 3) {
+                      Present { value: path_node } =>
+                        bind_outcome(
+                          o: bash_fold_serialize_word_node(word: path_node),
+                          f: fn(path_spelling) {
+                            bash_fold_serialize_emit_from_node(
+                              emitted: bash_stmt_with_redir_emitted,
+                              target: bash_stmt_with_redir_target_model(
+                                stmt: stmt_spelling,
+                                redir: concat("> ", path_spelling)
                               )
-                            }
-                          )
-                        Absent => Rejected { diagnostics: None }
-                      }
-                    _ => Rejected { diagnostics: None }
+                            )
+                          }
+                        )
+                      Absent => Rejected { diagnostics: None }
+                    }
+                  } else {
+                    Rejected { diagnostics: None }
                   }
                 }
               )
@@ -1295,48 +1304,48 @@ fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
     Present { value: kind_node } =>
       match kind_node.kind {
         TypeNode { connective: Atom { identity: kind } } =>
-          match kind {
-            ^bash_fold_word_kind_lit =>
-              match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
-                Present { value: text_node } =>
-                  match text_node.kind {
-                    TypeNode { connective: Atom { identity: text } } =>
-                      bash_fold_serialize_leaf_node(
-                        emitted: word,
-                        production_binding: ^bash_production_fold_command,
-                        rule_name: ^bash_relation_rule_fold_command
-                      )
-                    _ => Rejected { diagnostics: None }
+          if kind == ^bash_fold_word_kind_lit {
+            match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
+              Present { value: text_node } =>
+                match text_node.kind {
+                  TypeNode { connective: Atom { identity: text } } =>
+                    bash_fold_serialize_leaf_node(
+                      emitted: word,
+                      production_binding: ^bash_production_fold_command,
+                      rule_name: ^bash_relation_rule_fold_command
+                    )
+                  _ => Rejected { diagnostics: None }
+                }
+              Absent => Rejected { diagnostics: None }
+            }
+          } else if kind == ^bash_fold_word_kind_var {
+            bash_fold_serialize_leaf_node(
+              emitted: word,
+              production_binding: ^bash_production_fold_command,
+              rule_name: ^bash_relation_rule_fold_command
+            )
+          } else if kind == ^bash_fold_word_kind_concat {
+            match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
+              Present { value: parts } =>
+                bash_fold_serialize_word_list_spelling(parts: parts)
+              Absent => Rejected { diagnostics: None }
+            }
+          } else if kind == ^bash_fold_word_kind_cmdsubst {
+            match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
+              Present { value: body } =>
+                bind_outcome(
+                  o: bash_fold_serialize_node(stmt: body),
+                  f: fn(body_spelling) {
+                    bash_fold_serialize_emit_from_node(
+                      emitted: bash_word_cmdsubst_emitted,
+                      target: bash_word_cmdsubst_target_model(body: body_spelling)
+                    )
                   }
-                Absent => Rejected { diagnostics: None }
-              }
-            ^bash_fold_word_kind_var =>
-              bash_fold_serialize_leaf_node(
-                emitted: word,
-                production_binding: ^bash_production_fold_command,
-                rule_name: ^bash_relation_rule_fold_command
-              )
-            ^bash_fold_word_kind_concat =>
-              match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
-                Present { value: parts } =>
-                  bash_fold_serialize_word_list_spelling(parts: parts)
-                Absent => Rejected { diagnostics: None }
-              }
-            ^bash_fold_word_kind_cmdsubst =>
-              match list_at_optional(xs: node_positional_child_targets(node: word), index: 1) {
-                Present { value: body } =>
-                  bind_outcome(
-                    o: bash_fold_serialize_node(stmt: body),
-                    f: fn(body_spelling) {
-                      bash_fold_serialize_emit_from_node(
-                        emitted: bash_word_cmdsubst_emitted,
-                        target: bash_word_cmdsubst_target_model(body: body_spelling)
-                      )
-                    }
-                  )
-                Absent => Rejected { diagnostics: None }
-              }
-            _ => Rejected { diagnostics: None }
+                )
+              Absent => Rejected { diagnostics: None }
+            }
+          } else {
+            Rejected { diagnostics: None }
           }
         _ => Rejected { diagnostics: None }
       }
@@ -1580,23 +1589,32 @@ fn bash_fold_serialize_negation_node(stmt: Node) -> Outcome<String> {
 
 fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
   let binding = bash_fold_built_stmt_production_binding(stmt: stmt)
-  match binding {
-    ^bash_production_fold_command => bash_fold_serialize_command_node(stmt: stmt)
-    ^bash_production_fold_assign => bash_fold_serialize_assign_node(stmt: stmt)
-    ^bash_production_fold_exit => bash_fold_serialize_exit_node(stmt: stmt)
-    ^bash_production_fold_and_then => bash_fold_serialize_and_then_node(stmt: stmt)
-    ^bash_production_fold_or_else => bash_fold_serialize_or_else_node(stmt: stmt)
-    ^bash_production_fold_pipe => bash_fold_serialize_pipe_node(stmt: stmt)
-    ^bash_production_fold_if => bash_fold_serialize_if_node(stmt: stmt)
-    ^bash_production_fold_subshell => bash_fold_serialize_subshell_node(stmt: stmt)
-    ^bash_production_fold_with_redir => bash_fold_serialize_with_redir_node(stmt: stmt)
-    ^bash_build_stmt_negation => bash_fold_serialize_negation_node(stmt: stmt)
-    _ =>
-      bash_fold_serialize_leaf_node(
-        emitted: stmt,
-        production_binding: binding,
-        rule_name: bash_fold_relation_rule_for_production(binding: binding)
-      )
+  if binding == ^bash_production_fold_command {
+    bash_fold_serialize_command_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_assign {
+    bash_fold_serialize_assign_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_exit {
+    bash_fold_serialize_exit_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_and_then {
+    bash_fold_serialize_and_then_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_or_else {
+    bash_fold_serialize_or_else_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_pipe {
+    bash_fold_serialize_pipe_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_if {
+    bash_fold_serialize_if_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_subshell {
+    bash_fold_serialize_subshell_node(stmt: stmt)
+  } else if binding == ^bash_production_fold_with_redir {
+    bash_fold_serialize_with_redir_node(stmt: stmt)
+  } else if binding == ^bash_build_stmt_negation {
+    bash_fold_serialize_negation_node(stmt: stmt)
+  } else {
+    bash_fold_serialize_leaf_node(
+      emitted: stmt,
+      production_binding: binding,
+      rule_name: bash_fold_relation_rule_for_production(binding: binding)
+    )
   }
 }
 
