@@ -93,9 +93,8 @@ pub use crate::v1_compiler_infer_resolve::{
 };
 pub use crate::v1_compiler_infer_resolve::{
     log_per_module_resolve_memo_stats, per_module_resolve_memo_flush,
-    per_module_resolve_memo_install, per_module_resolve_memo_global_snapshot,
-    PerModuleResolveMemoScopeGuard,
-    ItemResolveResult, NodeResolveResult, PerModuleResolveMemoStats,
+    per_module_resolve_memo_global_snapshot, per_module_resolve_memo_install, ItemResolveResult,
+    NodeResolveResult, PerModuleResolveMemoScopeGuard, PerModuleResolveMemoStats,
 };
 pub use crate::v1_compiler_infer_service::{
     check_service_field_access_node, check_service_method_call_node, collect_called_func_names,

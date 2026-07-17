@@ -8,6 +8,7 @@ pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitInt;
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
+use crate::v1_compiler_dag_collect_support::dag_node_surface_fingerprint;
 pub use crate::v1_compiler_infer_env::{
     authored_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for,
     lookup_type, lookup_type_by_name, lookup_type_for,
@@ -17,7 +18,6 @@ pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
     node_is_keyed_collection, resolved_type,
 };
-use crate::v1_compiler_dag_collect_support::dag_node_surface_fingerprint;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -425,10 +425,7 @@ fn resolve_memo_env_matches(scope: &PerModuleResolveMemoScope, env: &Rc<TypeEnv>
     Rc::as_ptr(env) as usize == scope.env_scope_ptr
 }
 
-fn resolve_memo_node_surface_fp(
-    scope: &mut PerModuleResolveMemoScope,
-    n: &Rc<Node>,
-) -> String {
+fn resolve_memo_node_surface_fp(scope: &mut PerModuleResolveMemoScope, n: &Rc<Node>) -> String {
     let node_ptr = Rc::as_ptr(n) as usize;
     if let Some((_pinned, fp)) = scope.node_surface_fp_cache.get(&node_ptr) {
         return fp.clone();
@@ -651,10 +648,8 @@ fn per_module_bounded_memo_lookup_or_compute(
 }
 
 pub fn log_per_module_resolve_memo_stats(module_name: &str, stats: PerModuleResolveMemoStats) {
-    let bounded_total =
-        stats.bounded_hits + stats.bounded_misses + stats.bounded_bypasses;
-    let scrutinee_total =
-        stats.scrutinee_hits + stats.scrutinee_misses + stats.scrutinee_bypasses;
+    let bounded_total = stats.bounded_hits + stats.bounded_misses + stats.bounded_bypasses;
+    let scrutinee_total = stats.scrutinee_hits + stats.scrutinee_misses + stats.scrutinee_bypasses;
     if bounded_total == 0 && scrutinee_total == 0 {
         return;
     }
@@ -1047,13 +1042,7 @@ pub fn resolve_node_bounded(
     masked: bool,
 ) -> Rc<NodeResolveResult> {
     per_module_bounded_memo_lookup_or_compute(&env, &n, depth, masked, || {
-        resolve_node_bounded_uncached(
-            n.clone(),
-            env.clone(),
-            module_name.clone(),
-            depth,
-            masked,
-        )
+        resolve_node_bounded_uncached(n.clone(), env.clone(), module_name.clone(), depth, masked)
     })
 }
 

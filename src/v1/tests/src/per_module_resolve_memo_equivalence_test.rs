@@ -9,9 +9,8 @@ use v1_compiler::v1_compiler_infer::{
 };
 use v1_compiler::v1_compiler_infer_env::empty_symbol_index;
 use v1_compiler::v1_compiler_infer_resolve::{
-    per_module_resolve_memo_flush, per_module_resolve_memo_install,
-    per_module_resolve_memo_global_snapshot, resolve_node,
-    PerModuleResolveMemoEnabledGuard,
+    per_module_resolve_memo_flush, per_module_resolve_memo_global_snapshot,
+    per_module_resolve_memo_install, resolve_node, PerModuleResolveMemoEnabledGuard,
 };
 use v1_compiler::v1_compiler_resolve::ResolvedModule;
 use v1_compiler::v1_rt;
