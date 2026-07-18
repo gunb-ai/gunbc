@@ -8,6 +8,9 @@ use std::path::{Path, PathBuf};
 
 const BOOTSTRAP_INLINE_MODS: &[&str] = &["NonEmptyVec", "NonEmptyBTreeSet"];
 
+/// Emitted peripheral helpers that are not seed-routed but are known gunbc closure artifacts.
+const PERIPHERAL_EMIT_RETAIN_MODS: &[&str] = &["dry_run"];
+
 #[derive(Debug)]
 pub enum AssemblyError {
     MissingEntryFile { path: PathBuf },
@@ -108,7 +111,68 @@ fn copy_std_bridge(dest: &Path, bridge_src: &Path) -> Result<(), AssemblyError> 
     Ok(())
 }
 
-/// Five-arm assembly: entry untouched · compiler seed re-export · shared std-bridge · bootstrap_inline · Refused.
+/// SCAFFOLD — see `cssl_emit_artifact_sanitize_scaffold_debt` in
+/// `dag/tools/self_host_curated_seed_linked_harness.dag`. String-scrub on emitted
+/// `v2_std_integer.rs` / `v2_std_witness.rs` only; dissolve-on #6775 emitter defects.
+fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    if name != "v2_std_integer.rs" && name != "v2_std_witness.rs" {
+        return Ok(());
+    }
+    let content = fs::read_to_string(path)?;
+    let sanitized = if name == "v2_std_integer.rs" {
+        sanitize_integer_inhabitant_dupes(&content)
+    } else {
+        sanitize_witness_import_conflict(&content)
+    };
+    if sanitized != content {
+        eprintln!(
+            "CSSL_ASSEMBLE: sanitize scaffold applied to {}",
+            path.display()
+        );
+        fs::write(path, sanitized)?;
+    }
+    Ok(())
+}
+
+fn sanitize_integer_inhabitant_dupes(content: &str) -> String {
+    let mut out = Vec::new();
+    let mut skip = false;
+    for line in content.lines() {
+        if line.trim() == "pub struct Int128;" {
+            skip = true;
+            continue;
+        }
+        if skip {
+            if line.trim() == "pub struct UInt8;" {
+                skip = false;
+            }
+            continue;
+        }
+        out.push(line);
+    }
+    out.join("\n")
+}
+
+fn sanitize_witness_import_conflict(content: &str) -> String {
+    if !content.lines().any(|l| l.trim() == "pub enum Witness") {
+        return content.to_string();
+    }
+    content
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            t != "use crate::v1_rt::Witness;" && !t.starts_with("use crate::v1_rt::Witness::")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Assembly arms: entry untouched · compiler seed re-export · shared std-bridge · dag/std
+/// emit-retain · lens/peripheral emit-retain · bootstrap_inline · typed Refused.
 pub fn assemble_seed_linked_closure(
     out_dir: &Path,
     entry_dag: &Path,
@@ -159,10 +223,8 @@ pub fn assemble_seed_linked_closure(
             if seed_has_pub_mod(&seed_lib_rs, &module)? {
                 write_compiler_seed_reexport(&dest, &module)?;
             } else {
-                return Err(AssemblyError::RefusedDep {
-                    module,
-                    reason: "compiler dep not present in v1-compiler seed lib.rs".to_string(),
-                });
+                // Former RefusedDep arm → emit-retain; cargo is the refusal surface.
+                sanitize_emitter_artifact_in_place(&dest)?;
             }
             continue;
         }
@@ -172,21 +234,31 @@ pub fn assemble_seed_linked_closure(
             if bridge_src.is_file() {
                 copy_std_bridge(&dest, &bridge_src)?;
             } else {
-                return Err(AssemblyError::RefusedDep {
-                    module,
-                    reason: "no shared std-bridge shim for referenced v2_std module".to_string(),
-                });
+                // Former RefusedDep arm → emit-retain + optional sanitize scaffold.
+                sanitize_emitter_artifact_in_place(&dest)?;
             }
             continue;
         }
 
-        if module == "v1_rt" {
+        if module.starts_with("std_") {
+            sanitize_emitter_artifact_in_place(&dest)?;
+            continue;
+        }
+
+        if module == "v1_rt" || module.starts_with("v2_extdeps_") {
+            sanitize_emitter_artifact_in_place(&dest)?;
+            continue;
+        }
+
+        if module.starts_with("v2_lens_") || PERIPHERAL_EMIT_RETAIN_MODS.contains(&module.as_str())
+        {
+            sanitize_emitter_artifact_in_place(&dest)?;
             continue;
         }
 
         return Err(AssemblyError::RefusedDep {
             module,
-            reason: "unroutable closure dependency (not entry/compiler/std-bridge/bootstrap)"
+            reason: "unroutable closure dependency (not entry/compiler/std-bridge/bootstrap/lens/peripheral)"
                 .to_string(),
         });
     }
@@ -200,4 +272,168 @@ pub fn assemble_seed_linked_closure(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_minimal_emit_tree(
+        root: &Path,
+        entry_mod: &str,
+        closure_mods: &[&str],
+    ) -> Result<PathBuf, AssemblyError> {
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src)?;
+        let lib = closure_mods
+            .iter()
+            .map(|m| format!("pub mod {m};"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(
+            out.join("src/lib.rs"),
+            format!("{lib}\npub mod {entry_mod};\n"),
+        )?;
+        fs::write(src.join(format!("{entry_mod}.rs")), "// entry\n")?;
+        for m in closure_mods {
+            if *m == entry_mod {
+                continue;
+            }
+            fs::write(src.join(format!("{m}.rs")), format!("// emitted {m}\n"))?;
+        }
+        let seed_src = root.join("seed/src");
+        fs::create_dir_all(&seed_src)?;
+        fs::write(
+            seed_src.join("lib.rs"),
+            "pub mod v2_compiler_tokenize;\npub mod std_algebra;\n",
+        )?;
+        fs::write(seed_src.join("v2_compiler_tokenize.rs"), "pub fn f() {}\n")?;
+        fs::write(seed_src.join("std_algebra.rs"), "pub fn g() {}\n")?;
+        Ok(out)
+    }
+
+    fn temp_fixture_root() -> PathBuf {
+        let base = std::env::temp_dir().join(format!("cssl_assembly_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).expect("temp root");
+        base
+    }
+
+    #[test]
+    fn std_prefix_deps_are_emit_retained_not_refused() {
+        let root = temp_fixture_root();
+        let out = write_minimal_emit_tree(
+            &root,
+            "v2_compiler_tokenize",
+            &[
+                "std_error_primitives",
+                "std_algebra",
+                "v2_compiler_tokenize",
+            ],
+        )
+        .expect("tree");
+        let seed_lib = root.join("seed/src/lib.rs");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(&seed_lib, repo.join("src/v1/stage0/src/lib.rs")).expect("copy seed");
+        let dag = repo.join("src/v2/compiler/01_tokenize.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept = fs::read_to_string(out.join("src/std_error_primitives.rs")).expect("read");
+        assert!(kept.contains("emitted std_error_primitives"));
+    }
+
+    #[test]
+    fn extdeps_without_seed_stays_emitted() {
+        let root = temp_fixture_root();
+        let out = write_minimal_emit_tree(
+            &root,
+            "v2_compiler_self_host",
+            &["extdeps_communication_medium", "v2_compiler_self_host"],
+        )
+        .expect("tree");
+        let seed_src = root.join("seed/src");
+        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/self_host.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.self_host\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept =
+            fs::read_to_string(out.join("src/extdeps_communication_medium.rs")).expect("read");
+        assert!(kept.contains("emitted extdeps_communication_medium"));
+    }
+
+    #[test]
+    fn dry_run_peripheral_emit_retain_holds() {
+        let root = temp_fixture_root();
+        let out = write_minimal_emit_tree(
+            &root,
+            "v2_compiler_self_host",
+            &["dry_run", "v2_compiler_self_host"],
+        )
+        .expect("tree");
+        let seed_src = root.join("seed/src");
+        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/self_host.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.self_host\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept = fs::read_to_string(out.join("src/dry_run.rs")).expect("read");
+        assert!(kept.contains("emitted dry_run"));
+    }
+
+    #[test]
+    fn unknown_closure_dep_is_typed_refused() {
+        let root = temp_fixture_root();
+        let out = write_minimal_emit_tree(
+            &root,
+            "v2_compiler_tokenize",
+            &["not_a_routable_mod", "v2_compiler_tokenize"],
+        )
+        .expect("tree");
+        let seed_src = root.join("seed/src");
+        fs::write(seed_src.join("lib.rs"), "pub mod v2_compiler_tokenize;\n").expect("seed");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/01_tokenize.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        let err = assemble_seed_linked_closure(&out, &dag, &repo, &bridge).unwrap_err();
+        match err {
+            AssemblyError::RefusedDep { module, reason } => {
+                assert_eq!(module, "not_a_routable_mod");
+                assert!(reason.contains("unroutable"));
+            }
+            other => panic!("expected RefusedDep, got {other:?}"),
+        }
+    }
 }
