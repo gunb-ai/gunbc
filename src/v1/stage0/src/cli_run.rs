@@ -9161,14 +9161,23 @@ const EFFECT_REACH_HOST_SINK_MARKERS: &[&str] = &[
 ];
 
 fn source_has_path_like_string_data(content: &str) -> bool {
-    content.lines().any(|line| {
-        let trimmed = line.trim();
-        trimmed.starts_with("data ")
-            && ((trimmed.contains("String = \"") || trimmed.contains("String="))
-                && (trimmed.contains(".dag\"")
-                    || trimmed.contains("src/")
-                    || trimmed.contains("dag/")))
-    })
+    content.lines().any(source_line_has_path_like_string_data)
+}
+
+fn source_line_has_path_like_string_data(line: &str) -> bool {
+    let trimmed = line.trim();
+    trimmed.starts_with("data ")
+        && ((trimmed.contains("String = \"") || trimmed.contains("String="))
+            && (trimmed.contains(".dag\"") || trimmed.contains("src/") || trimmed.contains("dag/")))
+}
+
+fn source_data_path_literal_touches(content: &str, touched: &str) -> bool {
+    if touched.is_empty() {
+        return false;
+    }
+    content
+        .lines()
+        .any(|line| source_line_has_path_like_string_data(line) && line.contains(touched))
 }
 
 fn source_has_host_effect_sink(content: &str) -> bool {
@@ -9254,7 +9263,7 @@ fn effect_reach_touched_via_path_literals(
         };
         if touched_paths
             .iter()
-            .any(|touched| content.contains(touched.as_str()))
+            .any(|touched| source_data_path_literal_touches(&content, touched.as_str()))
         {
             return true;
         }
@@ -12575,6 +12584,26 @@ mod node_frontier_plumbing_controls {
             )
             .expect("qualify"),
             "literal-path touch must convert would-skip into run (additive only)"
+        );
+    }
+
+    // Touch bridge must match data-init path literals only — struct/path fields in
+    // unrelated entries must not widen selection (floor_skip_discovery_witness receipt).
+    #[test]
+    fn effect_reach_touched_ignores_non_data_path_mentions() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let facts = super::build_module_graph_facts_live(&roots);
+        let runner = "src/v2/workflow/affected_set_floor_runner_test.dag";
+        let fixture_path = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+        assert!(
+            !super::effect_reach_touched_via_path_literals(
+                runner,
+                &facts,
+                &[fixture_path.to_string()],
+            ),
+            "struct/path fixture mentions must not count as effect-reach touch evidence"
         );
     }
 
