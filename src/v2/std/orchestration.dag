@@ -67,6 +67,11 @@ type PipelineStep
   | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }
   | For { binder: Symbol, over: ValueSource, body: Pipeline }
   | While { cond: Predicate, body: Pipeline }
+  | BoundedPoll {
+      max_attempts: String,
+      body: Pipeline,
+      success: Predicate
+    }
   | Retry {
       body: Pipeline,
       escalations: FreeMonoid<EscalationLevel>,
