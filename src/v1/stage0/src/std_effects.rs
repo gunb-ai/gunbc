@@ -277,17 +277,15 @@ pub fn derive_op_effect(
     method: HttpMethod,
     path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
-    {
-        let shape = derive_effect_shape(method.clone(), path.clone());
-        Rc::new(DeriveOpEffectResult::DerivedEffect {
-            effect: Rc::new(DerivedOpEffect {
-                operation_name: operation_name.clone(),
-                method: method.clone(),
-                path_template: path.clone(),
-                shape: shape.clone(),
-            }),
-        })
-    }
+    let shape = derive_effect_shape(method.clone(), path.clone());
+    Rc::new(DeriveOpEffectResult::DerivedEffect {
+        effect: Rc::new(DerivedOpEffect {
+            operation_name: operation_name.clone(),
+            method: method.clone(),
+            path_template: path.clone(),
+            shape: shape.clone(),
+        }),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -321,13 +319,12 @@ pub fn check_modifier_vs_derivation(
     declared_idempotent: bool,
     declared_readonly: bool,
 ) -> Rc<ModifierCheck> {
-    {
-        let derived_idempotent = is_idempotent_effect(op.shape.clone());
-        let agreement = if (declared_idempotent.clone() && derived_idempotent.clone()) {
-            Rc::new(ModifierAgreement::Agrees)
-        } else {
-            if (declared_idempotent.clone() && !derived_idempotent.clone()) {
-                match (*op.shape.clone()).clone() {
+    let derived_idempotent = is_idempotent_effect(op.shape.clone());
+    let agreement = if (declared_idempotent.clone() && derived_idempotent.clone()) {
+        Rc::new(ModifierAgreement::Agrees)
+    } else {
+        if (declared_idempotent.clone() && !derived_idempotent.clone()) {
+            match (*op.shape.clone()).clone() {
     EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
     CreateCause::PostAlways => Rc::new(ModifierAgreement::DerivationUnknown {
     reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared".to_string(),
@@ -343,9 +340,9 @@ pub fn check_modifier_vs_derivation(
     reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
 }),
 }
-            } else {
-                if (!declared_idempotent.clone() && derived_idempotent.clone()) {
-                    match (*op.shape.clone()).clone() {
+        } else {
+            if (!declared_idempotent.clone() && derived_idempotent.clone()) {
+                match (*op.shape.clone()).clone() {
     EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
     CreateCause::CreateIfAbsent { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
     reason: "create-if-absent has proven identity but modifier declares non-idempotent".to_string(),
@@ -355,31 +352,30 @@ pub fn check_modifier_vs_derivation(
 },
     _ => Rc::new(ModifierAgreement::Agrees),
 }
-                } else {
-                    if (!declared_idempotent.clone() && declared_readonly.clone()) {
-                        match op.method.clone() {
-                            HttpMethod::GET => Rc::new(ModifierAgreement::Agrees),
-                            HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
-                            HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
-                            _ => Rc::new(ModifierAgreement::Disagrees {
-                                reason: "readonly declared but method is not GET/HEAD/OPTIONS"
-                                    .to_string(),
-                            }),
-                        }
-                    } else {
-                        Rc::new(ModifierAgreement::Agrees)
+            } else {
+                if (!declared_idempotent.clone() && declared_readonly.clone()) {
+                    match op.method.clone() {
+                        HttpMethod::GET => Rc::new(ModifierAgreement::Agrees),
+                        HttpMethod::HEAD => Rc::new(ModifierAgreement::Agrees),
+                        HttpMethod::OPTIONS => Rc::new(ModifierAgreement::Agrees),
+                        _ => Rc::new(ModifierAgreement::Disagrees {
+                            reason: "readonly declared but method is not GET/HEAD/OPTIONS"
+                                .to_string(),
+                        }),
                     }
+                } else {
+                    Rc::new(ModifierAgreement::Agrees)
                 }
             }
-        };
-        Rc::new(ModifierCheck {
-            operation_name: op.operation_name.clone(),
-            declared_idempotent: declared_idempotent.clone(),
-            declared_readonly: declared_readonly.clone(),
-            derived_shape: op.shape.clone(),
-            agreement: agreement.clone(),
-        })
-    }
+        }
+    };
+    Rc::new(ModifierCheck {
+        operation_name: op.operation_name.clone(),
+        declared_idempotent: declared_idempotent.clone(),
+        declared_readonly: declared_readonly.clone(),
+        derived_shape: op.shape.clone(),
+        agreement: agreement.clone(),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
