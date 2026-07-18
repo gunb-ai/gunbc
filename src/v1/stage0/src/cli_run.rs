@@ -12528,14 +12528,14 @@ mod node_frontier_plumbing_controls {
         let diff_edits =
             floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let declared = index.module_graph_facts.declared_repo_paths();
-        let unrelated = vec!["src/v2/std/logic.dag".to_string()];
+        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
         assert!(
             !super::effect_reach_touched_via_path_literals(
                 &fixture_abs,
                 &index.module_graph_facts,
-                &unrelated,
+                &touched_paths,
             ),
-            "hermetic fixture must not match unrelated path literals"
+            "hermetic fixture must not match outside-diff path literals"
         );
         assert!(
             super::entry_qualifies_for_skip_without_resolve(
@@ -12543,7 +12543,7 @@ mod node_frontier_plumbing_controls {
                 false,
                 &index.module_graph_facts,
                 &declared,
-                &unrelated,
+                &touched_paths,
                 &diff_edits,
             )
             .expect("qualify"),
