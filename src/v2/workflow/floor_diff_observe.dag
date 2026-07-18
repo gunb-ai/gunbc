@@ -104,10 +104,11 @@ fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiff
     Absent => {
       let base = floor_resolved_base(policy: policy)
       let head = floor_resolved_head(policy: policy)
-      let result = match policy.mode {
-        DiffMergeBase => git.Core.DiffNameStatusMerge(base: base, head: head)
-        DiffTwoDot => git.Core.DiffNameStatus(base: base, head: head)
-      }
+      let result = git.Core.DiffNameStatus(
+        base: base,
+        head: head,
+        range: floor_git_diff_range_of_mode(mode: policy.mode)
+      )
       if !result.success {
         NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
       } else {
