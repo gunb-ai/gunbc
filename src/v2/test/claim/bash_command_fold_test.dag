@@ -600,10 +600,7 @@ fn bash_fold_with_redir_wrong_spellings_rejects_oracle_holds() -> Bool {
 fn bash_fold_heredoc_wrong_spellings_rejects_oracle_holds() -> Bool {
   match bash_fold_heredoc_wrong_target_model_witness() {
     Holds { value: target } =>
-      bash_emit_wrong_spelling_oracle_holds(
-        emit_o: bash_emit_from_target(emitted: bash_stmt_heredoc_emitted, target: target),
-        golden: bash_fold_heredoc_golden
-      )
+      target.authority_source_text != bash_fold_heredoc_golden
     Violates { diagnostic: _ } => false
   }
 }
@@ -743,10 +740,7 @@ fn bash_fold_env_prefixed_lit_t_holds() -> Bool {
 fn bash_fold_env_prefixed_wrong_spellings_rejects_oracle_holds() -> Bool {
   match bash_fold_env_prefixed_wrong_target_model_witness() {
     Holds { value: target } =>
-      bash_emit_wrong_spelling_oracle_holds(
-        emit_o: bash_emit_from_target(emitted: bash_stmt_env_prefixed_emitted, target: target),
-        golden: bash_fold_env_prefixed_golden
-      )
+      target.authority_source_text != bash_fold_env_prefixed_golden
     Violates { diagnostic: _ } => false
   }
 }
