@@ -63,7 +63,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
 fn global_bare_callable_node(type_env: TypeEnv, name: String) -> Node? {
   match lookup_binding_by_name(env: type_env, name: name) {
     Present { value: binding } =>
-      if binding.resolved.body != none { Present { value: binding.resolved } }
+      if (binding.resolved.params |> count) > 0 || binding.resolved.inferred != none { Present { value: binding.resolved } }
       else { none }
     Absent => none
   }
