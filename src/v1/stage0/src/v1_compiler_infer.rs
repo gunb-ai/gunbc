@@ -3286,17 +3286,31 @@ pub fn infer_expr(
                                         }
                                         None => {
                                             if std::env::var("GUNBC_FIELD_PROBE").is_ok() {
+                                                let bn = authored_name_at(
+                                                    scope.type_env.source_indices.clone(),
+                                                    base_rt.clone(),
+                                                );
+                                                let lk = lookup_type_by_name(
+                                                    scope.type_env.clone(),
+                                                    bn.clone(),
+                                                );
+                                                let raw_name = base_rt.name.clone();
+                                                let deferred = is_deferred_field_access_base(
+                                                    base_rt.clone(),
+                                                    scope.type_env.clone(),
+                                                );
                                                 eprintln!(
                                                     "FIELD_PROBE module={} field={field_name} \
-                                                     base_rt_name={} base_rt_conn={:?} \
-                                                     resolved_name={} resolved_conn={:?} \
-                                                     resolved_children={}",
+                                                     base_rt_name={bn} raw_name={raw_name:?} \
+                                                     base_rt_conn={:?} deferred={deferred} \
+                                                     lookup_hit={} lookup_conn={:?} \
+                                                     lookup_children={} resolved_name={} \
+                                                     resolved_conn={:?} resolved_children={}",
                                                     scope.module_name,
-                                                    authored_name_at(
-                                                        scope.type_env.source_indices.clone(),
-                                                        base_rt.clone()
-                                                    ),
                                                     base_rt.connective,
+                                                    lk.is_some(),
+                                                    lk.as_ref().map(|t| t.connective.clone()),
+                                                    lk.as_ref().map(|t| t.children.len()).unwrap_or(0),
                                                     authored_name_at(
                                                         scope.type_env.source_indices.clone(),
                                                         resolved_base.clone()
@@ -13256,6 +13270,59 @@ pub fn build_symbol_index_census(
             }
         }
         eprintln!("CENSUS_PROBE modules={} roots={prefixes:?}", modules.len());
+        let built = {
+            let corpus_variant_counts =
+                corpus_disj_variant_name_counts(modules.clone(), source_indices.clone());
+            modules.clone().iter().cloned().fold(
+                empty_symbol_index(),
+                |index: Rc<SymbolIndex>, mod_: Rc<ResolvedModule>| {
+                    let module_path = authored_name_at(source_indices.clone(), mod_.module.clone());
+                    let items = module_items(mod_.module.clone());
+                    let with_items = items.clone().iter().cloned().fold(
+                        index,
+                        |acc: Rc<SymbolIndex>, item: Rc<Node>| {
+                            symbol_index_insert_item(
+                                acc,
+                                module_path.clone(),
+                                item.clone(),
+                                source_indices.clone(),
+                            )
+                        },
+                    );
+                    symbol_index_insert_unique_disj_variant_aliases(
+                        with_items.clone(),
+                        module_path.clone(),
+                        items.clone(),
+                        source_indices.clone(),
+                        corpus_variant_counts.clone(),
+                    )
+                },
+            )
+        };
+        for probe_name in ["PullRequest", "Job", "Medium", "Monoid", "Frame"] {
+            let gb = v1_rt::map_get(&built.global_bare, probe_name.to_string());
+            let entry_count = built
+                .entries
+                .keys()
+                .filter(|k| k.ends_with(&format!(".{probe_name}")))
+                .count();
+            let gb_desc = match gb.as_deref() {
+                Some(GlobalBareLookupState::GlobalBareUniqueBinding { module_path, .. }) => {
+                    format!("unique@{module_path}")
+                }
+                Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates }) => {
+                    format!(
+                        "ambiguous:{:?}",
+                        candidates
+                            .iter()
+                            .map(|c| c.module_path.clone())
+                            .collect::<std::vec::Vec<_>>()
+                    )
+                }
+                None => "ABSENT".to_string(),
+            };
+            eprintln!("CENSUS_PROBE name={probe_name} gb={gb_desc} qualified_entries={entry_count}");
+        }
     }
     let corpus_variant_counts =
         corpus_disj_variant_name_counts(modules.clone(), source_indices.clone());
