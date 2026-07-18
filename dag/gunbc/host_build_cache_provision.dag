@@ -8,17 +8,13 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
 import extdeps.cache.cache { cache_catalog }
-import gunbc.host_effect {
-  HostEffect,
-  ProvisionBuildCache,
-  HostOs,
-  host_effect_identity_evidence,
+import gunbc.host_effect { HostEffect, ProvisionBuildCache }
+import gunbc.host_toolchain_ensure {
+  host_toolchain_ensure,
+  host_toolchain_ensure_routes_through_host_effect_apply,
+  BuildCache,
 }
-import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.fleet_converge_apply { fleet_compute_host_for_identity }
-import gunbc.host_toolchain_ensure { host_toolchain_ensure_access }
 import product.placement_supply { HostIdentity }
-import std.realization_reconcile { Converged, NotConverged }
 
 data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling STEP-2 forbidden absorbing fallback (ci_retry_escalation_level2: -u RUSTC_WRAPPER). Must never ship as the authority verdict fold."
 
@@ -159,7 +155,7 @@ fn provision_build_cache_default_effect() -> HostEffect {
 }
 
 fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
-  true
+  host_toolchain_ensure_routes_through_host_effect_apply()
 }
 
 fn daemon_absent_refuses_fail_closed() -> Bool {
@@ -182,29 +178,18 @@ fn misconfigured_matches_cited_fragment() -> Bool {
 func provision_build_cache(host: HostIdentity, catalog_id: CacheInterfaceId) -> ProcessExit
   uses net: Network
 {
-  match host_toolchain_ensure_access(host: host) {
-    Present { value: access } =>
-      match fleet_compute_host_for_identity(identity: host) {
-        Present { value: compute_host } =>
-          match host_effect_apply_gated(
-            access: access,
-            target: HostOs { node: compute_host },
-            effect: ProvisionBuildCache { catalog_id: catalog_id },
-            evidence: host_effect_identity_evidence,
-            transport: access.transport,
-            fixture_actor: none,
-          ) {
-            Converged { evidence: _, applied: _ } => ExitSuccess
-            NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
-          }
-        Absent =>
-          exit_failure(
-            reason: concat("host_build_cache_provision: host absent from compute inventory ", host as String)
-          )
-      }
-    Absent =>
-      exit_failure(
-        reason: concat("host_build_cache_provision: no deploy access for host ", host as String)
+  if !catalog_id_is_known(catalog_id: catalog_id) {
+    exit_failure(
+      reason: concat("host_build_cache_provision: unknown catalog_id ", catalog_id)
+    )
+  } else if catalog_id != sccache_local_id {
+    exit_failure(
+      reason: concat(
+        concat("host_build_cache_provision: catalog_id ", catalog_id),
+        concat(" not yet realized; only ", sccache_local_id),
       )
+    )
+  } else {
+    host_toolchain_ensure(host: host, kind: BuildCache)
   }
 }

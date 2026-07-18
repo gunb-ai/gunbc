@@ -284,7 +284,6 @@ data host_standup_spine: List<HostStandupStep> = [
     disposition: ModeledCompose {
       authorities: [
         decl_ref(module_path: "gunbc.host_build_cache_provision", decl_name: "provision_build_cache"),
-        decl_ref(module_path: "gunbc.host_toolchain_ensure", decl_name: "host_toolchain_ensure"),
         decl_ref(module_path: "extdeps.cache.sccache", decl_name: "sccache_local_facts"),
         decl_ref(module_path: "gunbc.host_effect_realize", decl_name: "realize_provision_build_cache"),
       ]
@@ -377,7 +376,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P1b:build-cache-provision",
     modeling: "modeled",
-    authority_or_interim: "gunbc.host_build_cache_provision.provision_build_cache + gunbc.host_toolchain_ensure + extdeps.cache.sccache.sccache_local_facts + gunbc.host_effect_realize.realize_provision_build_cache"
+    authority_or_interim: "gunbc.host_build_cache_provision.provision_build_cache → gunbc.host_toolchain_ensure.host_toolchain_ensure(BuildCache) + extdeps.cache.sccache.sccache_local_facts + gunbc.host_effect_realize.realize_provision_build_cache"
   },
   GapLedgerRow {
     phase_label: "P2:compute-fabric-enroll",
