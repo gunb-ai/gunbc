@@ -3465,8 +3465,7 @@ fn resolve_discovery_entry_for_corpus_row(
                     entry_path,
                     &index.module_graph_facts,
                     touched_entry_paths,
-                )
-                || effect_reach_touched_via_path_literals(
+                ) || effect_reach_touched_via_path_literals(
                     entry_path,
                     &index.module_graph_facts,
                     touched_entry_paths,
@@ -9166,7 +9165,9 @@ fn source_has_path_like_string_data(content: &str) -> bool {
         let trimmed = line.trim();
         trimmed.starts_with("data ")
             && ((trimmed.contains("String = \"") || trimmed.contains("String="))
-                && (trimmed.contains(".dag\"") || trimmed.contains("src/") || trimmed.contains("dag/")))
+                && (trimmed.contains(".dag\"")
+                    || trimmed.contains("src/")
+                    || trimmed.contains("dag/")))
     })
 }
 
@@ -9186,9 +9187,7 @@ fn import_closure_repo_paths_for_entry(
         .collect()
 }
 
-fn effect_reach_derived_reads_live_tree_for_closure_paths(
-    closure_paths: &HashSet<String>,
-) -> bool {
+fn effect_reach_derived_reads_live_tree_for_closure_paths(closure_paths: &HashSet<String>) -> bool {
     let mut has_path_data = false;
     let mut has_sink = false;
     for rel in closure_paths {
@@ -9230,7 +9229,9 @@ fn reads_live_tree_effective(
     if declared {
         return Ok(true);
     }
-    Ok(effect_reach_derived_reads_live_tree_for_entry(entry_path, facts))
+    Ok(effect_reach_derived_reads_live_tree_for_entry(
+        entry_path, facts,
+    ))
 }
 
 fn effect_reach_touched_via_path_literals(
@@ -9251,7 +9252,10 @@ fn effect_reach_touched_via_path_literals(
         let Ok(content) = std::fs::read_to_string(&path) else {
             continue;
         };
-        if touched_paths.iter().any(|touched| content.contains(touched.as_str())) {
+        if touched_paths
+            .iter()
+            .any(|touched| content.contains(touched.as_str()))
+        {
             return true;
         }
     }
@@ -9267,8 +9271,7 @@ fn apply_effect_reach_derived_reads_live_tree(
     facts: &ModuleGraphFactsLive,
 ) {
     for row in rows.iter_mut() {
-        if !row.reads_live_tree
-            && effect_reach_derived_reads_live_tree_for_entry(&row.entry, facts)
+        if !row.reads_live_tree && effect_reach_derived_reads_live_tree_for_entry(&row.entry, facts)
         {
             row.reads_live_tree = true;
         }
