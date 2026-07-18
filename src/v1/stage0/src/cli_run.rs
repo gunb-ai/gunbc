@@ -1480,15 +1480,28 @@ fn load_compile_clean_entry_sources(
             sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
         }
     }
-    // Reference-derived dependency closure (namespace Rule-1 interim). A qualified
-    // reference `container.member` is a dependency edge exactly as an `import` line
-    // was: with dag/ imports stripped, the import-edge closure alone silently drops
-    // every module reached only by qualified reference (the referenced modules fall
-    // out of the census and their qualified names refuse corpus-wide). Projection is
-    // text-level longest-prefix against the declared module-path index, iterated to
-    // fixpoint; each addition pulls its own import closure. Dissolves into the
-    // parsed-tree reference projection when the Rule-1 terminal step (import as
-    // parse error, deps derived from references) lands.
+    let mut sources = extend_with_reference_closure(sources, index, facts)?;
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.dedup_by(|a, b| a.path == b.path);
+    Ok(sources)
+}
+
+/// Reference-derived dependency closure (namespace Rule-1 interim). A qualified
+/// reference `container.member` is a dependency edge exactly as an `import` line
+/// was: with dag/ imports stripped, the import-edge closure alone silently drops
+/// every module reached only by qualified reference (the referenced modules fall
+/// out of the census and their qualified names refuse corpus-wide). Projection is
+/// text-level longest-prefix against the declared module-path index, iterated to
+/// fixpoint; each addition pulls its own import closure. The ONE closure authority
+/// for both the whole-tree compile-clean walk and the per-entry claim/witness
+/// loaders (a second closure rule would be a §3 fork). Dissolves into the
+/// parsed-tree reference projection when the Rule-1 terminal step (import as
+/// parse error, deps derived from references) lands.
+fn extend_with_reference_closure(
+    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index: &ModuleSourceIndex,
+    facts: &ModuleGraphFactsLive,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let path_lookup = path_to_source_lookup(index);
     let mut known_paths: std::collections::HashSet<String> = sources
         .iter()
@@ -1528,8 +1541,6 @@ fn load_compile_clean_entry_sources(
             }
         }
     }
-    sources.sort_by(|a, b| a.path.cmp(&b.path));
-    sources.dedup_by(|a, b| a.path == b.path);
     Ok(sources)
 }
 
@@ -3717,6 +3728,9 @@ fn load_sources_for_entry_with_index(
     {
         sources.push(entry_source);
     }
+    let mut sources = extend_with_reference_closure(sources, index, facts)?;
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.dedup_by(|a, b| a.path == b.path);
     Ok(sources)
 }
 
