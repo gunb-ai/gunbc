@@ -8,6 +8,7 @@ use std::process::{Command, ExitCode};
 use std::rc::Rc;
 use std::time::Instant;
 
+use v1_compiler::gunbc_stage0_crate_layout_generated::generated_pub_mod_basenames;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::stage0_self_compile_refusal_message;
 use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
@@ -345,6 +346,9 @@ fn run() -> Result<(), String> {
     time_phase(&mut phases, "copy_hand_maintained_support", || {
         copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))
     })?;
+    time_phase(&mut phases, "ensure_hand_maintained_pub_mods_in_lib_rs", || {
+        ensure_hand_maintained_pub_mods_in_lib_rs(&fresh_dir.join("src"))
+    })?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
     })?;
@@ -653,6 +657,83 @@ fn write_emitted_crate(dir: &Path, files: &HashMap<String, String>) -> Result<()
         }
         fs::write(&out_path, content).map_err(|e| format!("write {}: {e}", out_path.display()))?;
     }
+    Ok(())
+}
+
+/// Seed-retained scaffold modules are copied in after emit but are not always wired into the
+/// freshly emitted `lib.rs` (emit_lib_rs_from_files' generated_pub_mod_block append is not
+/// reliably present in the self-compile closure). Splice any missing `pub mod` lines from the
+/// frontier-derived registry so seed-linked behavioral witnesses can import them.
+fn ensure_hand_maintained_pub_mods_in_lib_rs(src_dir: &Path) -> Result<(), String> {
+    let lib_path = src_dir.join("lib.rs");
+    let text = fs::read_to_string(&lib_path)
+        .map_err(|e| format!("read {}: {e}", lib_path.display()))?;
+
+    let existing: BTreeSet<String> = text
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            line.strip_prefix("pub mod ")?
+                .strip_suffix(';')
+                .map(str::to_string)
+        })
+        .collect();
+
+    let missing: Vec<String> = generated_pub_mod_basenames()
+        .iter()
+        .filter(|basename| !existing.contains(basename.as_str()))
+        .cloned()
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    let lines: Vec<&str> = text.lines().collect();
+    let mut mod_line_indices: Vec<(usize, String)> = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        if let Some(name) = line
+            .trim()
+            .strip_prefix("pub mod ")
+            .and_then(|s| s.strip_suffix(';'))
+        {
+            mod_line_indices.push((index, name.to_string()));
+        }
+    }
+
+    let mut all_mods: BTreeSet<String> = mod_line_indices
+        .iter()
+        .map(|(_, name)| name.clone())
+        .collect();
+    for basename in &missing {
+        all_mods.insert(basename.clone());
+    }
+
+    let first_mod_index = mod_line_indices
+        .first()
+        .map(|(index, _)| *index)
+        .ok_or_else(|| format!("{} has no pub mod declarations", lib_path.display()))?;
+    let after_mod_index = mod_line_indices
+        .last()
+        .map(|(index, _)| *index)
+        .ok_or_else(|| format!("{} has no pub mod declarations", lib_path.display()))?;
+
+    let mut rebuilt_mod_lines: Vec<String> = all_mods
+        .iter()
+        .map(|basename| format!("pub mod {basename};"))
+        .collect();
+    rebuilt_mod_lines.sort();
+
+    let mut out: Vec<String> = Vec::new();
+    out.extend_from_slice(&lines[..first_mod_index]);
+    out.extend(rebuilt_mod_lines);
+    out.extend_from_slice(&lines[(after_mod_index + 1)..]);
+    let patched = out.join("\n");
+    let patched = if text.ends_with('\n') {
+        format!("{patched}\n")
+    } else {
+        patched
+    };
+    fs::write(&lib_path, patched).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
     Ok(())
 }
 
