@@ -58,6 +58,29 @@ data fixture_prose_doc_inits: List<DataInitDecl> = [
   }
 ]
 
+data fixture_concat_path_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "fix.concat_witness",
+    imports: ["fix.concat_transport", "fix.std_logic"]
+  },
+  ModuleImportFact { module: "fix.concat_transport", imports: [] }
+]
+
+data fixture_concat_path_data_inits: List<DataInitDecl> = [
+  DataInitDecl {
+    qualified_name: "fix.concat_transport.sn_path_prefix",
+    module: "fix.concat_transport",
+    name: "sn_path_prefix",
+    literal_fp: "str:\"src/\""
+  },
+  DataInitDecl {
+    qualified_name: "fix.concat_transport.sn_path_suffix",
+    module: "fix.concat_transport",
+    name: "sn_path_suffix",
+    literal_fp: "str:\"v2/compiler/03_normalize.dag\""
+  }
+]
+
 fn transport_classification() -> EffectReachClassification {
   effect_reach_classification_from_facts(
     entry_module: "fix.witness",
@@ -116,6 +139,22 @@ test fn effect_reach_prose_string_path_does_not_classify_holds() -> Bool {
   classification_is_local(classification: c)
     && !derived_host_reading(classification: c)
     && effect_reach_flow_count(classification: c) == 0
+}
+
+fn witness_frontier_concat_built_path_not_classified() -> Bool {
+  let c = effect_reach_classification_from_facts(
+    entry_module: "fix.concat_witness",
+    facts: fixture_concat_path_facts,
+    decls: fn_arrow_decl_facts_live(),
+    data_inits: fixture_concat_path_data_inits
+  )
+  classification_is_local(classification: c)
+    && !derived_host_reading(classification: c)
+    && effect_reach_flow_count(classification: c) == 0
+}
+
+test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool {
+  witness_frontier_concat_built_path_not_classified()
 }
 
 data live_03_normalize_facts: List<ModuleImportFact> = [

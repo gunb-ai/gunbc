@@ -58,7 +58,7 @@ import v2.std.node {
 }
 import v2.std.text { String }
 
-data effect_reach_law: String = "Effect-reach census (module-identity-storage-binding Phase 0): proven host-effect closure = call-reachable fn bodies from the witness entry over fn-arrow DependencyView facts, marking every string literal or data-init path literal that flows into a declared host-effect sink callee. Unknown path resolution fail-closed → HostEffectReach with UnknownPath empty string (still derived host-reading). Dissolves when typed SourceRef at host boundaries makes bare-string file dependencies unwritable."
+data effect_reach_law: String = "Effect-reach census (module-identity-storage-binding Phase 0): proven host-effect closure = call-reachable fn bodies from the witness entry over fn-arrow DependencyView facts, marking every string literal or data-init path literal that flows into a declared host-effect sink callee. Unknown path resolution fail-closed → HostEffectReach with UnknownPath empty string (still derived host-reading). Known-miss frontier: constructed paths (concat of literals that fail pure-path shape) and paths outside src/|dag/+.dag/no-spaces evade path census entirely → row keeps declared/default ReadsLiveTree disposition (miss ≤ baseline); falsely-declared rows and constructed deps close with Phase 1 typed SourceRef. Dissolves when typed SourceRef at host boundaries makes bare-string file dependencies unwritable."
 
 data effect_reach_plan_doc_provenance: String = "bind: docs/plans/module-identity-storage-binding-design.md"
 
