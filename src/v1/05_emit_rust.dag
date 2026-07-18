@@ -2678,7 +2678,9 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
     let variant_lines = parent_list |> map(parent =>
       if is_host_freemonoid_vec_alias(name: parent, corpus_repr: emit_info.corpus_repr) { "" } else {
       let variants = deduped_names |> filter(n =>
-        if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+        if n == "None" || n == "Some" {
+          false
+        } else if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
           false
         } else if import_module_enums |> any(e => e == n) {
           false
@@ -4247,6 +4249,7 @@ type RcPatternAnalysis {
 type RcMatchAnalysis {
   needs_option_deref: Bool
   needs_deref: Bool
+  needs_rc_option_ref: Bool
 }
 
 fn empty_rc_pattern_analysis() -> RcPatternAnalysis {
@@ -4322,10 +4325,18 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   }
   let arms_want_option = arm_analyses |> any(a => a.matches_option_rc_variant)
   let arms_want_deref = arm_analyses |> any(a => a.matches_rc_variant)
+  let scrutinee_is_rc_modeled_optional = match scrutinee.inferred {
+    Present { value: Resolved { node: rt } } =>
+      authored_name_at(source_indices: source_indices, node: rt) == "Optional"
+        && rt.return_cardinality != CardOptional
+        && rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices))
+    _ => false
+  }
 
   RcMatchAnalysis {
     needs_option_deref: arms_want_option,
-    needs_deref: if scrutinee_is_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref }
+    needs_deref: if scrutinee_is_optional || scrutinee_is_rc_modeled_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref },
+    needs_rc_option_ref: scrutinee_is_rc_modeled_optional
   }
 }
 
@@ -4575,13 +4586,13 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
 }
 
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
+  let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
+  if (name == "none" || name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
 
     let moves_by_value = set_contains(emit_info.movable, name)
     let sharing = language_spec(target: Rust).sharing
-    let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
         let body = if name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
@@ -4635,10 +4646,10 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
   match texpr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: texpr, source_indices: si)
-      if n == "none" || n == "None" { emit_keyword(key: "null", target: Rust) }
+      let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
+      if (n == "none" || n == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
       else if n == "true" || n == "false" { emit_keyword(key: n, target: Rust) }
       else {
-        let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
         match variant_parent {
           Present { value: enum_name } =>
             if n == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
@@ -6143,7 +6154,9 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
 
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
   let needs_string_from = has_string_lit_with_bind(arms: arms)
-  if rc_match.needs_option_deref {
+  if rc_match.needs_rc_option_ref {
+    concat("match ", scrut_str, ".as_ref() {\n", arms_str, "\n}")
+  } else if rc_match.needs_option_deref {
     concat("match ", scrut_str, ".as_deref()", clone_iterator_suffix(), " {\n", arms_str, "\n}")
   } else if rc_match.needs_deref {
     let sharing = language_spec(target: Rust).sharing
@@ -6937,7 +6950,9 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
         emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type))
       let arms_str = arm_strs |> join(separator: "\n")
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
-      if rc_match.needs_option_deref {
+      if rc_match.needs_rc_option_ref {
+        concat("match ", scrut_str, ".as_ref() {\n", arms_str, "\n}")
+      } else if rc_match.needs_option_deref {
         concat("match ", scrut_str, ".as_deref()", clone_iterator_suffix(), " {\n", arms_str, "\n}")
       } else if rc_match.needs_deref {
         let sharing = language_spec(target: Rust).sharing

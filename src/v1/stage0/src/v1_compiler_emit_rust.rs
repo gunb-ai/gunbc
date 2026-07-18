@@ -6838,13 +6838,16 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                     "".to_string()
                 } else {
                     {
-                        let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone()) {
+                        let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if ((n.clone() == "None".to_string()) || (n.clone() == "Some".to_string())) {
                             false
                         } else {
-                            if { let mut __found = false; for e in import_module_enums.clone().iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
+                            if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone()) {
                                 false
                             } else {
-                                match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
+                                if { let mut __found = false; for e in import_module_enums.clone().iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
+                                    false
+                                } else {
+                                    match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
     Some(found) => (found.clone() == parent.clone()),
     None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone()) {
     Some(found) => (found.clone() == parent.clone()),
@@ -6854,6 +6857,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
 },
 },
 }
+                                }
                             }
                         } { __result.push(n); } } __result });
 let parent_mod = match variants.clone().first().cloned() {
@@ -11823,6 +11827,7 @@ pub struct RcPatternAnalysis {
 pub struct RcMatchAnalysis {
     pub needs_option_deref: bool,
     pub needs_deref: bool,
+    pub needs_rc_option_ref: bool,
 }
 
 pub fn empty_rc_pattern_analysis() -> Rc<RcPatternAnalysis> {
@@ -12018,13 +12023,30 @@ pub fn analyze_rc_match(
             }
             __found
         };
+        let scrutinee_is_rc_modeled_optional = match scrutinee.inferred.clone().as_deref().cloned()
+        {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                (((authored_name_at(source_indices.clone(), rt.clone()) == "Optional".to_string())
+                    && (rt.return_cardinality.clone() != Cardinality::CardOptional))
+                    && rust_type_is_rc_wrapped(render_rust_type(
+                        rt.clone(),
+                        shared_types.clone(),
+                        emit_info.corpus_repr.clone(),
+                        source_indices.clone(),
+                    )))
+            }
+            _ => false,
+        };
         RcMatchAnalysis {
             needs_option_deref: arms_want_option.clone(),
-            needs_deref: if scrutinee_is_optional.clone() {
+            needs_deref: if (scrutinee_is_optional.clone()
+                || scrutinee_is_rc_modeled_optional.clone())
+            {
                 false
             } else {
                 (scrutinee_is_rc_wrapped.clone() || arms_want_deref.clone())
             },
+            needs_rc_option_ref: scrutinee_is_rc_modeled_optional.clone(),
         }
     }
 }
@@ -12821,109 +12843,114 @@ pub fn emit_var_ref(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if ((name.clone() == "none".to_string()) || (name.clone() == "None".to_string())) {
-        emit_keyword("null".to_string(), RenderTarget::Rust)
-    } else {
-        if ((name.clone() == "true".to_string()) || (name.clone() == "false".to_string())) {
-            emit_keyword(name.clone(), RenderTarget::Rust)
+    {
+        let variant_parent = effective_variant_parent(
+            name.clone(),
+            binding_kind.clone(),
+            resolved_type.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+        );
+        if (((name.clone() == "none".to_string()) || (name.clone() == "None".to_string()))
+            && (variant_parent.clone() == None))
+        {
+            emit_keyword("null".to_string(), RenderTarget::Rust)
         } else {
-            {
-                let moves_by_value = v1_rt::set_contains(&emit_info.movable.clone(), name.clone());
-                let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-                let variant_parent = effective_variant_parent(
-                    name.clone(),
-                    binding_kind.clone(),
-                    resolved_type.clone(),
-                    emit_info.clone(),
-                    source_indices.clone(),
-                );
-                let ref_str = match variant_parent.clone() {
-                    Some(enum_name) => {
-                        let body = if (((name.clone() == "Empty".to_string())
-                            && (enum_name.clone() == "FreeMonoid".to_string()))
-                            && corpus_repr_is_host(emit_info.corpus_repr.clone()))
-                        {
-                            "vec![]".to_string()
-                        } else {
-                            if (is_optional_variant_name(name.clone())
-                                && (enum_name.clone() == "Optional".to_string()))
+            if ((name.clone() == "true".to_string()) || (name.clone() == "false".to_string())) {
+                emit_keyword(name.clone(), RenderTarget::Rust)
+            } else {
+                {
+                    let moves_by_value =
+                        v1_rt::set_contains(&emit_info.movable.clone(), name.clone());
+                    let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+                    let ref_str = match variant_parent.clone() {
+                        Some(enum_name) => {
+                            let body = if (((name.clone() == "Empty".to_string())
+                                && (enum_name.clone() == "FreeMonoid".to_string()))
+                                && corpus_repr_is_host(emit_info.corpus_repr.clone()))
                             {
-                                if (name.clone() == "Present".to_string()) {
-                                    "Some".to_string()
-                                } else {
-                                    "None".to_string()
-                                }
+                                "vec![]".to_string()
                             } else {
-                                v1_rt::concat(
-                                    v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                    name.clone(),
-                                )
-                            }
-                        };
-                        if variant_ref_self_wraps(
-                            name.clone(),
-                            enum_name.clone(),
-                            shared_types.clone(),
-                            emit_info.corpus_repr.clone(),
-                        ) {
-                            v1_rt::concat(
-                                v1_rt::concat("Rc::new(".to_string(), body.clone()),
-                                ")".to_string(),
-                            )
-                        } else {
-                            body.clone()
-                        }
-                    }
-                    None => match v1_rt::map_get(&registry, name.clone()) {
-                        Some(info) => {
-                            let is_data = (info.kind.clone() == ItemKind::DataItem);
-                            if is_data.clone() {
-                                v1_rt::concat(to_snake(name.clone()), "()".to_string())
-                            } else {
+                                if (is_optional_variant_name(name.clone())
+                                    && (enum_name.clone() == "Optional".to_string()))
                                 {
-                                    let is_function_value =
-                                        match binding_kind.clone().as_deref().cloned() {
-                                            Some(VarBindingKind::FunctionValueBinding) => true,
-                                            _ => false,
-                                        };
-                                    let ident = emit_ident(name.clone(), RenderTarget::Rust);
-                                    let ident_str = if is_function_value.clone() {
-                                        ident.clone()
+                                    if (name.clone() == "Present".to_string()) {
+                                        "Some".to_string()
                                     } else {
-                                        if moves_by_value.clone() {
-                                            ident.clone()
-                                        } else {
-                                            match resolved_type.clone() {
-                                                Some(_) => apply_type_template1(
-                                                    sharing.clone_value.clone(),
-                                                    ident.clone(),
-                                                ),
-                                                _ => ident.clone(),
-                                            }
-                                        }
-                                    };
-                                    ident_str.clone()
-                                }
-                            }
-                        }
-                        None => {
-                            let ident = emit_ident(name.clone(), RenderTarget::Rust);
-                            let ident_str = if moves_by_value.clone() {
-                                ident.clone()
-                            } else {
-                                match resolved_type.clone() {
-                                    Some(_) => apply_type_template1(
-                                        sharing.clone_value.clone(),
-                                        ident.clone(),
-                                    ),
-                                    _ => ident.clone(),
+                                        "None".to_string()
+                                    }
+                                } else {
+                                    v1_rt::concat(
+                                        v1_rt::concat(enum_name.clone(), "::".to_string()),
+                                        name.clone(),
+                                    )
                                 }
                             };
-                            ident_str.clone()
+                            if variant_ref_self_wraps(
+                                name.clone(),
+                                enum_name.clone(),
+                                shared_types.clone(),
+                                emit_info.corpus_repr.clone(),
+                            ) {
+                                v1_rt::concat(
+                                    v1_rt::concat("Rc::new(".to_string(), body.clone()),
+                                    ")".to_string(),
+                                )
+                            } else {
+                                body.clone()
+                            }
                         }
-                    },
-                };
-                ref_str
+                        None => match v1_rt::map_get(&registry, name.clone()) {
+                            Some(info) => {
+                                let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                if is_data.clone() {
+                                    v1_rt::concat(to_snake(name.clone()), "()".to_string())
+                                } else {
+                                    {
+                                        let is_function_value =
+                                            match binding_kind.clone().as_deref().cloned() {
+                                                Some(VarBindingKind::FunctionValueBinding) => true,
+                                                _ => false,
+                                            };
+                                        let ident = emit_ident(name.clone(), RenderTarget::Rust);
+                                        let ident_str = if is_function_value.clone() {
+                                            ident.clone()
+                                        } else {
+                                            if moves_by_value.clone() {
+                                                ident.clone()
+                                            } else {
+                                                match resolved_type.clone() {
+                                                    Some(_) => apply_type_template1(
+                                                        sharing.clone_value.clone(),
+                                                        ident.clone(),
+                                                    ),
+                                                    _ => ident.clone(),
+                                                }
+                                            }
+                                        };
+                                        ident_str.clone()
+                                    }
+                                }
+                            }
+                            None => {
+                                let ident = emit_ident(name.clone(), RenderTarget::Rust);
+                                let ident_str = if moves_by_value.clone() {
+                                    ident.clone()
+                                } else {
+                                    match resolved_type.clone() {
+                                        Some(_) => apply_type_template1(
+                                            sharing.clone_value.clone(),
+                                            ident.clone(),
+                                        ),
+                                        _ => ident.clone(),
+                                    }
+                                };
+                                ident_str.clone()
+                            }
+                        },
+                    };
+                    ref_str
+                }
             }
         }
     }
@@ -12945,73 +12972,69 @@ pub fn emit_typed_expr_base(
                 ..
             } => {
                 let n = expr_var_name_at(texpr.clone(), si.clone());
-                if ((n.clone() == "none".to_string()) || (n.clone() == "None".to_string())) {
+                let variant_parent = effective_variant_parent(
+                    n.clone(),
+                    binding_kind.clone(),
+                    texpr.inferred.clone(),
+                    emit_info.clone(),
+                    si.clone(),
+                );
+                if (((n.clone() == "none".to_string()) || (n.clone() == "None".to_string()))
+                    && (variant_parent.clone() == None))
+                {
                     emit_keyword("null".to_string(), RenderTarget::Rust)
                 } else {
                     if ((n.clone() == "true".to_string()) || (n.clone() == "false".to_string())) {
                         emit_keyword(n.clone(), RenderTarget::Rust)
                     } else {
-                        {
-                            let variant_parent = effective_variant_parent(
-                                n.clone(),
-                                binding_kind.clone(),
-                                texpr.inferred.clone(),
-                                emit_info.clone(),
-                                si.clone(),
-                            );
-                            match variant_parent.clone() {
-                                Some(enum_name) => {
-                                    if (((n.clone() == "Empty".to_string())
-                                        && (enum_name.clone() == "FreeMonoid".to_string()))
-                                        && corpus_repr_is_host(emit_info.corpus_repr.clone()))
+                        match variant_parent.clone() {
+                            Some(enum_name) => {
+                                if (((n.clone() == "Empty".to_string())
+                                    && (enum_name.clone() == "FreeMonoid".to_string()))
+                                    && corpus_repr_is_host(emit_info.corpus_repr.clone()))
+                                {
+                                    "Rc::new(vec![])".to_string()
+                                } else {
                                     {
-                                        "Rc::new(vec![])".to_string()
-                                    } else {
+                                        let qualified = if (is_optional_variant_name(n.clone())
+                                            && (enum_name.clone() == "Optional".to_string()))
                                         {
-                                            let qualified = if (is_optional_variant_name(n.clone())
-                                                && (enum_name.clone() == "Optional".to_string()))
-                                            {
-                                                if (n.clone() == "Present".to_string()) {
-                                                    "Some".to_string()
-                                                } else {
-                                                    "None".to_string()
-                                                }
+                                            if (n.clone() == "Present".to_string()) {
+                                                "Some".to_string()
                                             } else {
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        enum_name.clone(),
-                                                        "::".to_string(),
-                                                    ),
-                                                    n.clone(),
-                                                )
-                                            };
-                                            if v1_rt::set_contains(&shared_types, enum_name.clone())
-                                            {
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        "Rc::new(".to_string(),
-                                                        qualified.clone(),
-                                                    ),
-                                                    ")".to_string(),
-                                                )
-                                            } else {
-                                                qualified.clone()
+                                                "None".to_string()
                                             }
+                                        } else {
+                                            v1_rt::concat(
+                                                v1_rt::concat(enum_name.clone(), "::".to_string()),
+                                                n.clone(),
+                                            )
+                                        };
+                                        if v1_rt::set_contains(&shared_types, enum_name.clone()) {
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "Rc::new(".to_string(),
+                                                    qualified.clone(),
+                                                ),
+                                                ")".to_string(),
+                                            )
+                                        } else {
+                                            qualified.clone()
                                         }
                                     }
                                 }
-                                None => match v1_rt::map_get(&registry, n.clone()) {
-                                    Some(info) => {
-                                        let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                        if is_data.clone() {
-                                            v1_rt::concat(to_snake(n.clone()), "()".to_string())
-                                        } else {
-                                            emit_ident(n.clone(), RenderTarget::Rust)
-                                        }
-                                    }
-                                    None => emit_ident(n.clone(), RenderTarget::Rust),
-                                },
                             }
+                            None => match v1_rt::map_get(&registry, n.clone()) {
+                                Some(info) => {
+                                    let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                    if is_data.clone() {
+                                        v1_rt::concat(to_snake(n.clone()), "()".to_string())
+                                    } else {
+                                        emit_ident(n.clone(), RenderTarget::Rust)
+                                    }
+                                }
+                                None => emit_ident(n.clone(), RenderTarget::Rust),
+                            },
                         }
                     }
                 }
@@ -17851,99 +17874,112 @@ pub fn emit_typed_match(
         let needs_as_str =
             (all_arms_are_string_lit(arms.clone()) && ((arms.clone().len() as i64) > 0));
         let needs_string_from = has_string_lit_with_bind(arms.clone());
-        if rc_match.needs_option_deref.clone() {
+        if rc_match.needs_rc_option_ref.clone() {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                                ".as_deref()".to_string(),
-                            ),
-                            clone_iterator_suffix(),
-                        ),
-                        " {\n".to_string(),
+                        v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                        ".as_ref() {\n".to_string(),
                     ),
                     arms_str.clone(),
                 ),
                 "\n}".to_string(),
             )
         } else {
-            if rc_match.needs_deref.clone() {
-                {
-                    let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+            if rc_match.needs_option_deref.clone() {
+                v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "match ".to_string(),
-                                    apply_type_template1(
-                                        sharing.deref_clone.clone(),
-                                        scrut_str.clone(),
-                                    ),
-                                ),
-                                " {\n".to_string(),
-                            ),
-                            arms_str.clone(),
-                        ),
-                        "\n}".to_string(),
-                    )
-                }
-            } else {
-                if needs_as_str.clone() {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                                ".as_str() {\n".to_string(),
-                            ),
-                            arms_str.clone(),
-                        ),
-                        "\n}".to_string(),
-                    )
-                } else {
-                    if needs_string_from.clone() {
-                        {
-                            let sf_arm_strs = Rc::new({
-                                let mut __result = Vec::new();
-                                for arm in arms.clone().iter().cloned() {
-                                    __result.push(emit_typed_match_arm(
-                                        arm.clone(),
-                                        registry.clone(),
-                                        scope.clone(),
-                                        depth.clone(),
-                                        shared_types.clone(),
-                                        emit_info.clone(),
-                                        scrut_type.clone(),
-                                        match_result_type.clone(),
-                                        true,
-                                    ));
-                                }
-                                __result
-                            });
-                            let sf_arms_str = sf_arm_strs.clone().join(&"\n".to_string());
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                                        " {\n".to_string(),
-                                    ),
-                                    sf_arms_str.clone(),
-                                ),
-                                "\n}".to_string(),
-                            )
-                        }
-                    } else {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                                    ".as_deref()".to_string(),
+                                ),
+                                clone_iterator_suffix(),
+                            ),
+                            " {\n".to_string(),
+                        ),
+                        arms_str.clone(),
+                    ),
+                    "\n}".to_string(),
+                )
+            } else {
+                if rc_match.needs_deref.clone() {
+                    {
+                        let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "match ".to_string(),
+                                        apply_type_template1(
+                                            sharing.deref_clone.clone(),
+                                            scrut_str.clone(),
+                                        ),
+                                    ),
                                     " {\n".to_string(),
                                 ),
                                 arms_str.clone(),
                             ),
                             "\n}".to_string(),
                         )
+                    }
+                } else {
+                    if needs_as_str.clone() {
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                                    ".as_str() {\n".to_string(),
+                                ),
+                                arms_str.clone(),
+                            ),
+                            "\n}".to_string(),
+                        )
+                    } else {
+                        if needs_string_from.clone() {
+                            {
+                                let sf_arm_strs = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for arm in arms.clone().iter().cloned() {
+                                        __result.push(emit_typed_match_arm(
+                                            arm.clone(),
+                                            registry.clone(),
+                                            scope.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            emit_info.clone(),
+                                            scrut_type.clone(),
+                                            match_result_type.clone(),
+                                            true,
+                                        ));
+                                    }
+                                    __result
+                                });
+                                let sf_arms_str = sf_arm_strs.clone().join(&"\n".to_string());
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                                            " {\n".to_string(),
+                                        ),
+                                        sf_arms_str.clone(),
+                                    ),
+                                    "\n}".to_string(),
+                                )
+                            }
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                                        " {\n".to_string(),
+                                    ),
+                                    arms_str.clone(),
+                                ),
+                                "\n}".to_string(),
+                            )
+                        }
                     }
                 }
             }
@@ -20500,67 +20536,89 @@ pub fn emit_rust_tco_match(
                     let arms_str = arm_strs.clone().join(&"\n".to_string());
                     let tco_needs_as_str = (all_arms_are_string_lit(arm_list.clone())
                         && ((arm_list.clone().len() as i64) > 0));
-                    if rc_match.needs_option_deref.clone() {
+                    if rc_match.needs_rc_option_ref.clone() {
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                                            ".as_deref()".to_string(),
-                                        ),
-                                        clone_iterator_suffix(),
-                                    ),
-                                    " {\n".to_string(),
+                                    v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                                    ".as_ref() {\n".to_string(),
                                 ),
                                 arms_str.clone(),
                             ),
                             "\n}".to_string(),
                         )
                     } else {
-                        if rc_match.needs_deref.clone() {
-                            {
-                                let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+                        if rc_match.needs_option_deref.clone() {
+                            v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                "match ".to_string(),
-                                                apply_type_template1(
-                                                    sharing.deref_clone.clone(),
+                                                v1_rt::concat(
+                                                    "match ".to_string(),
                                                     scrut_str.clone(),
                                                 ),
+                                                ".as_deref()".to_string(),
                                             ),
-                                            " {\n".to_string(),
+                                            clone_iterator_suffix(),
                                         ),
-                                        arms_str.clone(),
+                                        " {\n".to_string(),
                                     ),
-                                    "\n}".to_string(),
-                                )
-                            }
+                                    arms_str.clone(),
+                                ),
+                                "\n}".to_string(),
+                            )
                         } else {
-                            if tco_needs_as_str.clone() {
-                                v1_rt::concat(
+                            if rc_match.needs_deref.clone() {
+                                {
+                                    let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                                            ".as_str() {\n".to_string(),
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "match ".to_string(),
+                                                    apply_type_template1(
+                                                        sharing.deref_clone.clone(),
+                                                        scrut_str.clone(),
+                                                    ),
+                                                ),
+                                                " {\n".to_string(),
+                                            ),
+                                            arms_str.clone(),
                                         ),
-                                        arms_str.clone(),
-                                    ),
-                                    "\n}".to_string(),
-                                )
+                                        "\n}".to_string(),
+                                    )
+                                }
                             } else {
-                                v1_rt::concat(
+                                if tco_needs_as_str.clone() {
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                                            " {\n".to_string(),
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "match ".to_string(),
+                                                    scrut_str.clone(),
+                                                ),
+                                                ".as_str() {\n".to_string(),
+                                            ),
+                                            arms_str.clone(),
                                         ),
-                                        arms_str.clone(),
-                                    ),
-                                    "\n}".to_string(),
-                                )
+                                        "\n}".to_string(),
+                                    )
+                                } else {
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "match ".to_string(),
+                                                    scrut_str.clone(),
+                                                ),
+                                                " {\n".to_string(),
+                                            ),
+                                            arms_str.clone(),
+                                        ),
+                                        "\n}".to_string(),
+                                    )
+                                }
                             }
                         }
                     }

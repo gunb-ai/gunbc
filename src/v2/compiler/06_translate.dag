@@ -33,6 +33,7 @@ import v2.compiler.infer {
   algebra_ref_is_grounded,
   canonical_grounding_for_node
 }
+import v2.compiler.wrap_decision { wrap_decision_gate }
 import v2.std.coercion {
   CoercionCandidateSet,
   CoercionResult,
@@ -154,11 +155,12 @@ import v2.std.compilers.target_model {
   OwnershipAtFunctionReturn,
   OwnershipAtFunctionParameter,
   OwnershipAtStructField,
-  target_value_semantics_carriers_from_node,
-  CarrierOwnershipByValue,
-  CarrierOwnershipByReference,
-  target_use_site_ownership_lookup_in_catalog_node,
-  target_use_site_ownership_lookup_miss_diagnostic,
+  WrapDecision,
+  WrapByValue,
+  WrapByReference,
+  WrapDecisionGate,
+  WrapGateInapplicable,
+  WrapGateDecided,
   target_reference_layer_tokens_from_node,
   target_reference_layer_apply_type_emitted,
   target_reference_layer_apply_value_expression,
@@ -2768,48 +2770,6 @@ fn translate_outcome_is_catalog_lookup_miss(
   diagnostics.head.reason == ^target_atom_realization_lookup_miss
 }
 
-fn translate_sg_rc_bundle_edge_present(target: TargetModel, edge_name: Symbol) -> Outcome<Bool> {
-  match target_bundle_optional_child(target: target, edge_name: edge_name) {
-    Accepted { value: optional_child, diagnostics: d } =>
-      match optional_child {
-        Absent => outcome_accepted(false)
-        Present { value: _ } => outcome_accepted(true)
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
-
-fn translate_sg_rc_bundle_apply_disposition(
-  target: TargetModel,
-  source_carrier: Node
-) -> Outcome<Bool> {
-  bind_outcome(
-    o: translate_sg_rc_bundle_edge_present(
-      target: target,
-      edge_name: ^target_model_edge_use_site_ownership_realizations
-    ),
-    f: fn(has_catalog) {
-      bind_outcome(
-        o: translate_sg_rc_bundle_edge_present(
-          target: target,
-          edge_name: ^target_model_edge_reference_layer_tokens
-        ),
-        f: fn(has_tokens) {
-          if has_catalog == false && has_tokens == false {
-            outcome_accepted(false)
-          } else {
-            if has_catalog && has_tokens {
-              outcome_accepted(true)
-            } else {
-              outcome_rejected(translate_sg_rc_bundle_partial_diagnostic(source_carrier: source_carrier))
-            }
-          }
-        }
-      )
-    }
-  )
-}
-
 fn translate_reference_layer_tokens_from_target(
   target: TargetModel
 ) -> Outcome<TargetReferenceLayerTokens> {
@@ -2819,38 +2779,63 @@ fn translate_reference_layer_tokens_from_target(
   )
 }
 
-fn translate_use_site_ownership_catalog_from_model(
-  target: TargetModel,
-  source_carrier: Node
+fn translate_apply_wrap_gate_to_type_shell(
+  shell: Node,
+  gate: WrapDecisionGate,
+  target: TargetModel
 ) -> Outcome<Node> {
-  match target_bundle_optional_child(
-    target: target,
-    edge_name: ^target_model_edge_use_site_ownership_realizations
-  ) {
-    Accepted { value: optional_catalog, diagnostics: d } =>
-      match optional_catalog {
-        Absent =>
-          outcome_rejected(
-            target_use_site_ownership_lookup_miss_diagnostic(source_carrier: source_carrier)
+  match gate {
+    WrapGateInapplicable => outcome_accepted(shell)
+    WrapGateDecided { decision } =>
+      match decision {
+        WrapByValue => outcome_accepted(shell)
+        WrapByReference { layer } =>
+          bind_outcome(
+            o: type_expression_projection_from_target(target: target),
+            f: fn(projection) {
+              bind_outcome(
+                o: translate_reference_layer_tokens_from_target(target: target),
+                f: fn(tokens) {
+                  outcome_accepted(
+                    target_reference_layer_apply_type_emitted(
+                      inner: shell,
+                      layer: layer,
+                      projection: projection,
+                      tokens: tokens
+                    )
+                  )
+                }
+              )
+            }
           )
-        Present { value: catalog } => Accepted { value: catalog, diagnostics: d }
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
-fn translate_value_semantics_carriers_from_model(target: TargetModel) -> Outcome<List<Symbol>> {
-  match target_bundle_optional_child(
-    target: target,
-    edge_name: ^target_model_edge_value_semantics_carriers
-  ) {
-    Accepted { value: optional_node, diagnostics: d } =>
-      match optional_node {
-        Absent => Accepted { value: Empty, diagnostics: d }
-        Present { value: node } =>
-          Accepted { value: target_value_semantics_carriers_from_node(node: node), diagnostics: d }
+fn translate_apply_wrap_gate_to_value_expression(
+  expr: TargetValueExpression,
+  gate: WrapDecisionGate,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  match gate {
+    WrapGateInapplicable => outcome_accepted(expr)
+    WrapGateDecided { decision } =>
+      match decision {
+        WrapByValue => outcome_accepted(expr)
+        WrapByReference { layer } =>
+          bind_outcome(
+            o: translate_reference_layer_tokens_from_target(target: target),
+            f: fn(tokens) {
+              outcome_accepted(
+                target_reference_layer_apply_value_expression(
+                  inner: expr,
+                  layer: layer,
+                  tokens: tokens
+                )
+              )
+            }
+          )
       }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
 
@@ -2981,56 +2966,17 @@ fn translate_apply_use_site_ownership_to_type_shell(
   target: TargetModel,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<Node> {
-  match translate_sg_rc_bundle_apply_disposition(
+  match wrap_decision_gate(
     target: target,
-    source_carrier: source_carrier
+    source_carrier: source_carrier,
+    use_site: use_site
   ) {
-    Accepted { value: false, diagnostics: _ } => outcome_accepted(shell)
-    Accepted { value: true, diagnostics: _ } =>
-  bind_outcome(
-    o: type_expression_projection_from_target(target: target),
-    f: fn(projection) {
-      bind_outcome(
-        o: translate_reference_layer_tokens_from_target(target: target),
-        f: fn(tokens) {
-          bind_outcome(
-            o: translate_use_site_ownership_catalog_from_model(
-              target: target,
-              source_carrier: source_carrier
-            ),
-            f: fn(catalog) {
-              bind_outcome(
-                o: translate_value_semantics_carriers_from_model(target: target),
-                f: fn(value_semantics_carriers) {
-                  match target_use_site_ownership_lookup_in_catalog_node(
-                    catalog: catalog,
-                    value_semantics_carriers: value_semantics_carriers,
-                    source_carrier: source_carrier,
-                    use_site: use_site
-                  ) {
-                    Accepted { value: ownership, diagnostics: d } =>
-                      match ownership {
-                        CarrierOwnershipByValue => outcome_accepted(shell)
-                        CarrierOwnershipByReference { realization: row } =>
-                          outcome_accepted(
-                            target_reference_layer_apply_type_emitted(
-                              inner: shell,
-                              layer: row.reference_layer,
-                              projection: projection,
-                              tokens: tokens
-                            )
-                          )
-                      }
-                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  }
-                }
-              )
-            }
-          )
-        }
+    Accepted { value: gate, diagnostics: _ } =>
+      translate_apply_wrap_gate_to_type_shell(
+        shell: shell,
+        gate: gate,
+        target: target
       )
-    }
-  )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
@@ -3336,49 +3282,16 @@ fn translate_apply_use_site_ownership_to_value_expression(
   target: TargetModel,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<TargetValueExpression> {
-  match translate_sg_rc_bundle_apply_disposition(
+  match wrap_decision_gate(
     target: target,
-    source_carrier: source_carrier
+    source_carrier: source_carrier,
+    use_site: use_site
   ) {
-    Accepted { value: false, diagnostics: _ } => outcome_accepted(expr)
-    Accepted { value: true, diagnostics: _ } =>
-      bind_outcome(
-        o: translate_reference_layer_tokens_from_target(target: target),
-        f: fn(tokens) {
-          bind_outcome(
-            o: translate_use_site_ownership_catalog_from_model(
-              target: target,
-              source_carrier: source_carrier
-            ),
-            f: fn(catalog) {
-              bind_outcome(
-                o: translate_value_semantics_carriers_from_model(target: target),
-                f: fn(value_semantics_carriers) {
-                  match target_use_site_ownership_lookup_in_catalog_node(
-                    catalog: catalog,
-                    value_semantics_carriers: value_semantics_carriers,
-                    source_carrier: source_carrier,
-                    use_site: use_site
-                  ) {
-                    Accepted { value: ownership, diagnostics: d } =>
-                      match ownership {
-                        CarrierOwnershipByValue => outcome_accepted(expr)
-                        CarrierOwnershipByReference { realization: row } =>
-                          outcome_accepted(
-                            target_reference_layer_apply_value_expression(
-                              inner: expr,
-                              layer: row.reference_layer,
-                              tokens: tokens
-                            )
-                          )
-                      }
-                    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-                  }
-                }
-              )
-            }
-          )
-        }
+    Accepted { value: gate, diagnostics: _ } =>
+      translate_apply_wrap_gate_to_value_expression(
+        expr: expr,
+        gate: gate,
+        target: target
       )
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
