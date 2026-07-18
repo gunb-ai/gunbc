@@ -29,12 +29,13 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
     match decl.inferred {
       Present { value: Resolved { node: target } } =>
         let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
-        substitute_type_slots(
+        let substituted = substitute_type_slots(
           n: target,
           slot_bindings: subst,
           decl_name: name,
           source_indices: env.source_indices
         )
+        expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
       _ => scrut_node
     }
   } else {

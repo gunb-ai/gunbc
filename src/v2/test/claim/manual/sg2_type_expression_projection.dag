@@ -455,7 +455,7 @@ fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
     connective: Arrow
   ) {
     Accepted { value: good_shape, diagnostics: _ } =>
-      match type_expr_projection_row_shape_witness_gate(
+      match v2.std.compilers.target_model.type_expr_projection_row_shape_witness_gate(
         source_facts: good_shape,
         projection: sg2_wrong_arrow_projection(),
         connective: Arrow
@@ -467,15 +467,15 @@ fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
   }
 }
 
-data unified_claim_sg2_arrow: UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
+data unified_claim_sg2_arrow: UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
+  witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
     function: witness_sg2_arrow_holds
   }
 }
 
-data unified_claim_sg2_projection_falsification: UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
+data unified_claim_sg2_projection_falsification: UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
+  witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
     function: witness_sg2_projection_falsification_holds
   }

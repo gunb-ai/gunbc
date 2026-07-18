@@ -107,12 +107,13 @@ pub fn expand_scrut_from_decl(
                 match decl.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {
                         let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                        substitute_type_slots(
+                        let substituted = substitute_type_slots(
                             target.clone(),
                             subst.clone(),
                             name.clone(),
                             env.source_indices.clone(),
-                        )
+                        );
+                        expand_scrut_type_for_variant_lookup(substituted.clone(), env.clone())
                     }
                     _ => scrut_node.clone(),
                 }
