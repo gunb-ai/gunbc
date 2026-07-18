@@ -725,10 +725,16 @@ fn ensure_hand_maintained_pub_mods_in_lib_rs(src_dir: &Path) -> Result<(), Strin
         .collect();
     rebuilt_mod_lines.sort();
 
-    let mut out: Vec<String> = Vec::new();
-    out.extend_from_slice(&lines[..first_mod_index]);
+    let mut out: Vec<String> = lines[..first_mod_index]
+        .iter()
+        .map(|line| (*line).to_string())
+        .collect();
     out.extend(rebuilt_mod_lines);
-    out.extend_from_slice(&lines[(after_mod_index + 1)..]);
+    out.extend(
+        lines[(after_mod_index + 1)..]
+            .iter()
+            .map(|line| (*line).to_string()),
+    );
     let patched = out.join("\n");
     let patched = if text.ends_with('\n') {
         format!("{patched}\n")
