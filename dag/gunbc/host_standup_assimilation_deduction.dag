@@ -1,7 +1,7 @@
 module gunbc.host_standup_assimilation_deduction
 
 
-data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = Terminal {
+data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "Level-triggered assimilation deduction: OsInstalled from DHCP option-12 subsumption satisfies prefix:os-install-actuated and unlocks P0:host-identity-converge. Verdict authority is std.upsert_decision.ObservationVerdict (no parallel level enum). Happy path = lease read only; unreadable lease table → UnknownRefused, never Absent/Pending. Converged → UpsertDecision Noop. KVM/BMC weak surfaces consulted ONLY inside stall cause-fold."
 }
 
@@ -156,7 +156,7 @@ fn classify_os_install_actuation_upsert(
   obs: DhcpLeaseTableObservation,
   fleet_slot: HostIdentity,
   stall: StallBudgetVerdict,
-) -> UpsertClassification<OsInstallActuationAssertPlan> {
+) -> std.upsert_decision.UpsertClassification<OsInstallActuationAssertPlan> {
   let verdict = deduce_os_install_actuation_verdict(
     obs: obs,
     fleet_slot: fleet_slot,

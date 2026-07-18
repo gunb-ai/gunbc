@@ -1,7 +1,7 @@
 module gunbc.srv3_os_install_reconcile
 
 
-data srv3_os_install_reconcile_shell_runner_scaffold: Disposition = Terminal {
+data srv3_os_install_reconcile_shell_runner_scaffold: Disposition = std.disposition.Terminal {
   reason: "P5a discharged (2026-07-14): dry_run/apply/record_approval call sites migrated to srv3_host_effect_apply typed HostEffect rows — no shell.Exec.Run or shell_exec_via_bash in those modules. Remaining concat transport debt is centralized in gunbc.srv3_host_effect_script (srv3_host_effect_script_dissolution_trigger; bash-emit #5828 Wave 4 residue)."
 }
 
@@ -227,9 +227,9 @@ fn reconcile_temporal_plan(
 fn workflow_approval_from_durable_grant(grant: DurableApprovalGrant) -> WorkflowApprovalState {
   match grant {
     GrantActive { escalation_id: eid, intent_hash: _, granted_by: gb, granted_at: _, expires_at: _ } =>
-      ApprovalGranted { escalation_id: eid, granted_by: gb }
+      gunbc.workflow_escalation.ApprovalGranted { escalation_id: eid, granted_by: gb }
     _ =>
-      PendingApproval { escalation: srv3_boot_once_cd_escalation }
+      gunbc.workflow_escalation.PendingApproval { escalation: srv3_boot_once_cd_escalation }
   }
 }
 

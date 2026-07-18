@@ -22,7 +22,7 @@ type HostIdentityObservation {
   probed_at: NonEmptyStr
 }
 
-data gunbc_host_identity_observation_scope_disposition: Disposition = Terminal {
+data gunbc_host_identity_observation_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "Slice-1 typed fixture/read carrier: hostname -s over host_effect transport -> HostIdentityObservation. Does NOT subsume gunbc.ci_deploy_target_host.deploy_target_host_observed_hostname (direct shell.Exec) — that path dissolves when live deploy routes target-host proof through this carrier."
 }
 

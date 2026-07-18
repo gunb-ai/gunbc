@@ -22,12 +22,12 @@ fn recognize_accelerator_program_with_contract(
           insist_on_fma_fused_kernel: insist_on_fma_fused_kernel
         )
       } else {
-        Refused { reason: NotElementwisePure }
+        gunbc.accelerator_demo_plan.Refused { reason: NotElementwisePure }
       }
     EffectfulElementwiseMap { ops: _ } =>
-      Refused { reason: CarriesEffects }
+      gunbc.accelerator_demo_plan.Refused { reason: CarriesEffects }
     DataDependentGatherMap { ops: _ } =>
-      Refused { reason: NotElementwisePure }
+      gunbc.accelerator_demo_plan.Refused { reason: NotElementwisePure }
   }
 }
 

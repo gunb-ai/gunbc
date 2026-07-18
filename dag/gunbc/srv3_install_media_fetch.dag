@@ -1,7 +1,7 @@
 module gunbc.srv3_install_media_fetch
 
 
-data gunbc_srv3_install_media_fetch_scope_disposition: Disposition = Terminal {
+data gunbc_srv3_install_media_fetch_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "srv3 Ubuntu 24.04.3 live-server arm64 ISO acquisition — CreateIfAbsent keyed on content_sha256; N mirror transport handlers on one cited artifact row; runnable on srv1 actuator host before nbd-proxy serve."
 }
 
@@ -19,7 +19,7 @@ data srv3_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_install_media_
 )
 
 data install_media_fetch_effect_shape: EffectShape = CreateEffect {
-  cause: CreateIfAbsent { key_source: InputField { field: "content_sha256" } },
+  cause: std.effects.CreateIfAbsent { key_source: InputField { field: "content_sha256" } },
 }
 
 type InstallMediaPresenceObservation
@@ -99,7 +99,7 @@ fn srv3_install_media_fetch_actuator_host() -> ComputeHost {
 }
 
 func srv3_install_media_fetch() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   srv3_reconciliation_to_process_exit(
     r: srv3_install_media_fetch_apply(),
