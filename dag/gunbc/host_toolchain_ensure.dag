@@ -32,13 +32,11 @@ data host_toolchain_ensure_srv3_fork_scaffold: Disposition = Terminal {
 fn host_toolchain_ensure_access(host: HostIdentity) -> DeployAccess? {
   if host == operator_host_srv1 {
     Present { value: host_identity_srv1_access }
-  } else if host == operator_host_srv2 {
+  } else { if host == operator_host_srv2 {
     Present { value: host_identity_srv2_access }
-  } else if host == operator_host_srv3 {
+  } else { if host == operator_host_srv3 {
     Present { value: ci_deploy_srv1_operator_access }
-  } else {
-    Absent
-  }
+  } else { none } } }
 }
 
 fn host_toolchain_ensure_effect(kind: HostToolchainKind) -> HostEffect {
