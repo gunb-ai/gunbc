@@ -2170,7 +2170,7 @@ fn import_module_enum_scope(import_module: String, registry: Map<String, ItemInf
   unique_strings(items: concat(physical, reexport_parents))
 }
 
-fn enum_names_in_module(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>, module_index: ModuleIndex) -> List<String> {
+fn enum_names_in_module(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
     Absent => []
     Present { value: tm } =>

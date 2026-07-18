@@ -5014,7 +5014,6 @@ pub fn import_module_enum_scope(
             import_module.clone(),
             typed_modules.clone(),
             source_indices.clone(),
-            type_summaries.clone(),
             module_index.clone(),
         );
         let reexport_parents = match v1_rt::map_get(&export_sets, import_module.clone()) {
@@ -5074,7 +5073,6 @@ pub fn enum_names_in_module(
     module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<String>> {
     match typed_module_by_name(
