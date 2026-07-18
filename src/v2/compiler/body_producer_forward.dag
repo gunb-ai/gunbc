@@ -2,9 +2,8 @@ module v2.compiler.body_producer_forward
 
 import std.algebra { Cons, Empty }
 import v2.extdeps.languages.dag {
-  dag_language_model,
-  parse_production_emitted_identity_optional,
-  parse_production_captured_child_optional
+  dag_translation_rules_node,
+  parse_production_emitted_identity_optional
 }
 import v2.std.algebra { length }
 import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
@@ -24,6 +23,7 @@ import v2.std.node {
   Atom,
   ComputationNode,
   Node,
+  Symbol,
   TypeNode,
   node_synthetic
 }
@@ -77,7 +77,7 @@ fn body_producer_forward_is_behavior_surface_identity(surface_identity: Symbol) 
 }
 
 fn body_producer_forward_grammar_rules() -> Node {
-  dag_language_model().grammar
+  dag_translation_rules_node()
 }
 
 fn body_producer_forward_select_row(surface_identity: Symbol) -> Outcome<Node> {
