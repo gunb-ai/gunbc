@@ -1003,6 +1003,32 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
     })
 }
 
+pub fn node_with_inferred(
+    n: Rc<Node>,
+    inferred: Option<Rc<crate::v1_std_core::InferredNode>>,
+) -> Rc<Node> {
+    Rc::new(Node {
+        name: n.name.clone(),
+        ident: n.ident,
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: n.children.clone(),
+        connective: n.connective.clone(),
+        params: n.params.clone(),
+        inferred: inferred.clone(),
+        return_cardinality: n.return_cardinality.clone(),
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive,
+        has_non_tail_self_call: n.has_non_tail_self_call,
+        match_pattern: n.match_pattern.clone(),
+        expr_data: n.expr_data.clone(),
+    })
+}
+
 pub fn qualify_borrowed_inferred(
     inferred: Option<Rc<crate::v1_std_core::InferredNode>>,
     owner_module_path: String,

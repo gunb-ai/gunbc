@@ -13264,7 +13264,7 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
     }
 }
 
-pub fn build_symbol_index_census(
+pub fn build_symbol_index_census_raw(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
@@ -13363,6 +13363,201 @@ pub fn build_symbol_index_census(
             )
         },
     )
+}
+
+pub fn census_fn_sig_env(
+    census: Rc<SymbolIndex>,
+    module_path: String,
+    tp_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeEnv> {
+    let base = Rc::new(TypeEnv {
+        module_path: module_path.clone(),
+        bindings: v1_rt::rc_empty_map(),
+        str_bindings: v1_rt::rc_empty_map(),
+        ancestry_str_bindings: v1_rt::rc_empty_map(),
+        parents: Rc::new(vec![]),
+        recursive_types: Rc::new(vec![]),
+        recursive_type_set: v1_rt::rc_empty_map(),
+        inductive_fields: v1_rt::rc_empty_map(),
+        source_indices: source_indices.clone(),
+        intern_table: crate::v1_std_core::empty_intern_table(),
+        source_visible_names: v1_rt::rc_empty_map(),
+        symbol_index: census.clone(),
+    });
+    crate::v1_compiler_infer_env::env_with_type_variable_bindings(base, tp_names.clone())
+}
+
+pub fn census_binding_is_borrowable_generic_sig(
+    binding: Rc<TypeBinding>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let node = binding.resolved.clone();
+    (node.connective == crate::v1_std_core::Connective::NoConnective)
+        && ((node.children.clone().len() as i64) == 0)
+        && node.body.is_none()
+        && node.transport.is_none()
+        && node.inferred.is_some()
+        && ((crate::v1_compiler_infer_resolve::fn_type_param_names(
+            node.clone(),
+            source_indices.clone(),
+        )
+        .len() as i64)
+            > 0)
+}
+
+pub fn census_upgrade_sig_binding(
+    binding: Rc<TypeBinding>,
+    module_path: String,
+    census: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeBinding> {
+    if census_binding_is_borrowable_generic_sig(binding.clone(), source_indices.clone()) {
+        let node = binding.resolved.clone();
+        match node.inferred.clone().as_deref().cloned() {
+            Some(crate::v1_std_core::InferredNode::Resolved { node: raw_ret, .. }) => {
+                let tp_names = crate::v1_compiler_infer_resolve::fn_type_param_names(
+                    node.clone(),
+                    source_indices.clone(),
+                );
+                let env = census_fn_sig_env(
+                    census.clone(),
+                    module_path.clone(),
+                    tp_names.clone(),
+                    source_indices.clone(),
+                );
+                let ret_result = resolve_node(raw_ret.clone(), env.clone(), module_path.clone());
+                if (ret_result.diagnostics.clone().len() as i64) == 0 {
+                    Rc::new(TypeBinding {
+                        name: binding.name.clone(),
+                        resolved: crate::v1_compiler_infer_env::node_with_inferred(
+                            node.clone(),
+                            Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {
+                                node: ret_result.resolved.clone(),
+                            })),
+                        ),
+                        provenance: binding.provenance.clone(),
+                    })
+                } else {
+                    binding.clone()
+                }
+            }
+            _ => binding.clone(),
+        }
+    } else {
+        binding.clone()
+    }
+}
+
+pub fn census_with_resolved_fn_sigs(
+    index: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SymbolIndex> {
+    let entry_keys = v1_rt::sorted_map_keys(&index.entries);
+    let entries2 = entry_keys.iter().cloned().fold(
+        index.entries.clone(),
+        |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(
+            &index.entries,
+            k.clone(),
+        ) {
+            Some(node) => {
+                let upgraded = census_upgrade_sig_binding(
+                    Rc::new(TypeBinding {
+                        name: qualified_last_segment(k.clone()),
+                        resolved: node.clone(),
+                        provenance: Rc::new(
+                            crate::std_induction::SubValueRelation::SubValueUnknown,
+                        ),
+                    }),
+                    qualified_all_but_last(k.clone()),
+                    index.clone(),
+                    source_indices.clone(),
+                );
+                if upgraded.resolved.clone() == node.clone() {
+                    acc
+                } else {
+                    v1_rt::rc_map_insert(acc.clone(), k.clone(), upgraded.resolved.clone())
+                }
+            }
+            None => acc,
+        },
+    );
+    let bare_keys = v1_rt::sorted_map_keys(&index.global_bare);
+    let global2 = bare_keys.iter().cloned().fold(
+        index.global_bare.clone(),
+        |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, k: String| match v1_rt::map_get(
+            &index.global_bare,
+            k.clone(),
+        )
+        .as_deref()
+        .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                module_path: mp,
+                binding: b,
+            }) => {
+                let b2 = census_upgrade_sig_binding(
+                    b.clone(),
+                    mp.clone(),
+                    index.clone(),
+                    source_indices.clone(),
+                );
+                if b2.resolved.clone() == b.resolved.clone() {
+                    acc
+                } else {
+                    v1_rt::rc_map_insert(
+                        acc.clone(),
+                        k.clone(),
+                        Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
+                            module_path: mp.clone(),
+                            binding: b2.clone(),
+                        }),
+                    )
+                }
+            }
+            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cands }) => {
+                let cands2: Rc<Vec<Rc<crate::v1_compiler_infer_env::GlobalBareCandidate>>> =
+                    Rc::new(
+                        cands
+                            .iter()
+                            .cloned()
+                            .map(|c| {
+                                Rc::new(crate::v1_compiler_infer_env::GlobalBareCandidate {
+                                    module_path: c.module_path.clone(),
+                                    binding: census_upgrade_sig_binding(
+                                        c.binding.clone(),
+                                        c.module_path.clone(),
+                                        index.clone(),
+                                        source_indices.clone(),
+                                    ),
+                                })
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    k.clone(),
+                    Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                        candidates: cands2.clone(),
+                    }),
+                )
+            }
+            None => acc,
+        },
+    );
+    Rc::new(SymbolIndex {
+        entries: entries2.clone(),
+        global_bare: global2.clone(),
+        services: index.services.clone(),
+    })
+}
+
+pub fn build_symbol_index_census(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SymbolIndex> {
+    let raw = build_symbol_index_census_raw(modules.clone(), source_indices.clone());
+    census_with_resolved_fn_sigs(raw, source_indices.clone())
 }
 
 pub fn direct_import_export_precedence_note() -> String {

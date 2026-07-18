@@ -6229,6 +6229,94 @@ fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: 
   )
 }
 
+data census_borrowed_sig_resolution_note: String = "Borrowed-sig hoist (namespace lane): the census stores raw pre-typecheck fn nodes, so a borrowed generic fn's return leaked bare type-param leaves (T/V/E) and owner-local names into consumers — the local/borrowed asymmetry (locals resolve once per module in resolve_item_types with type params bound as TypeVariables; borrows got the raw node per lookup). Pass 2 resolves each borrowable GENERIC fn signature's return ONCE at census build, in a synthetic env at the OWNER's containment position (module_path = the candidate's declaring module; symbol_index = the completed pass-1 census; type params bound via env_with_type_variable_bindings) — order-independent (resolution reads only the completed raw census, never a partial one), once per decl (never per lookup — the per-lookup variant re-resolved recursive carriers to the depth bound on every call), and staged fail-closed: ANY resolution diagnostic keeps the raw binding, so the consumer-side refusal surface is unchanged (upgraded | raw is a typed frontier, not a widen). Scope: generic fn sigs only (fn_type_param_names non-empty) — the T-leak family; non-generic returns keep the qualify-at-borrow path."
+
+fn census_fn_sig_env(census: SymbolIndex, module_path: String, tp_names: List<String>, source_indices: Map<String, NewlineIndex>) -> TypeEnv {
+  let base = TypeEnv {
+    module_path: module_path,
+    bindings: empty_map(),
+    str_bindings: empty_map(),
+    ancestry_str_bindings: empty_map(),
+    parents: [],
+    recursive_types: [],
+    recursive_type_set: empty_map(),
+    inductive_fields: empty_map(),
+    source_indices: source_indices,
+    intern_table: empty_intern_table(),
+    source_visible_names: empty_map(),
+    symbol_index: census
+  }
+  env_with_type_variable_bindings(env: base, tp_names: tp_names)
+}
+
+fn census_binding_is_borrowable_generic_sig(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let node = binding.resolved
+  node.connective == NoConnective
+    && (node.children |> count) == 0
+    && node.body == none
+    && node.transport == none
+    && node.inferred != none
+    && (fn_type_param_names(item: node, source_indices: source_indices) |> count) > 0
+}
+
+fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
+  if census_binding_is_borrowable_generic_sig(binding: binding, source_indices: source_indices) {
+    let node = binding.resolved
+    match node.inferred {
+      Present { value: Resolved { node: raw_ret } } =>
+        let tp_names = fn_type_param_names(item: node, source_indices: source_indices)
+        let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: tp_names, source_indices: source_indices)
+        let ret_result = resolve_node(n: raw_ret, env: env, module_name: module_path)
+        if (ret_result.diagnostics |> count) == 0 {
+          TypeBinding {
+            name: binding.name,
+            resolved: node_with_inferred(n: node, inferred: Present { value: Resolved { node: ret_result.resolved } }),
+            provenance: binding.provenance
+          }
+        } else { binding }
+      _ => binding
+    }
+  } else { binding }
+}
+
+fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+  let entry_keys = sorted_map_keys(index.entries)
+  let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
+    match map_get(index.entries, k) {
+      Present { value: node } =>
+        let upgraded = census_upgrade_sig_binding(
+          binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown },
+          module_path: qualified_all_but_last(name: k),
+          census: index,
+          source_indices: source_indices
+        )
+        if upgraded.resolved == node { acc } else { map_insert(acc, k, upgraded.resolved) }
+      Absent => acc
+    }
+  )
+  let bare_keys = sorted_map_keys(index.global_bare)
+  let global2 = fold(bare_keys, init: index.global_bare, f: (acc, k) =>
+    match map_get(index.global_bare, k) {
+      Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+        let b2 = census_upgrade_sig_binding(binding: b, module_path: mp, census: index, source_indices: source_indices)
+        if b2.resolved == b.resolved { acc } else { map_insert(acc, k, GlobalBareUniqueBinding { module_path: mp, binding: b2 }) }
+      Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+        let cands2 = cands |> map(c => GlobalBareCandidate {
+          module_path: c.module_path,
+          binding: census_upgrade_sig_binding(binding: c.binding, module_path: c.module_path, census: index, source_indices: source_indices)
+        })
+        map_insert(acc, k, GlobalBareAmbiguousBinding { candidates: cands2 })
+      Absent => acc
+    }
+  )
+  SymbolIndex { entries: entries2, global_bare: global2, services: index.services }
+}
+
+fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+  let raw = build_symbol_index_census_raw(modules: modules, source_indices: source_indices)
+  census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
+}
+
 data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields; ledger arm = the fork row is still recorded)."
 
 fn overlay_skips_kernel_name(name: String) -> Bool {
