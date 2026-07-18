@@ -1,7 +1,7 @@
 module v2.test.manual.sg2_type_expression_projection
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 data sg2_fail_text: String = ""
 data sg2_expected_type_text: String = "Rc<FooBar<X, Y>>"
 data sg2_expected_arrow_text: String = "(X) -> Y"
@@ -467,14 +467,14 @@ fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
   }
 }
 
-data unified_claim_sg2_arrow: UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
+data unified_claim_sg2_arrow: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
     function: witness_sg2_arrow_holds
   }
 }
 
-data unified_claim_sg2_projection_falsification: UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
+data unified_claim_sg2_projection_falsification: v2.std.verification.UnifiedTestClaim = v2.std.verification.BoolWitnessClaim {
   witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/sg2_type_expression_projection.dag",
     function: witness_sg2_projection_falsification_holds
