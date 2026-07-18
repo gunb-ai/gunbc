@@ -12,6 +12,8 @@ data witness_discovery_scan_dirs: List<String> = ["dag/test/claim", "src/v2/test
 
 data witness_exclusion_substrings: List<String> = [
   "impossible_bug",
+  "artifact_store_fs_witness_test.dag",
+  "emit_source_store_test.dag",
   "test/manual/",
   "glob_discovery.dag",
   "glob_discovery_law.dag",
@@ -67,7 +69,8 @@ data witness_exclusion_substrings: List<String> = [
   "test/claim/manual/english_emit_add_test.dag",
   "srv3_install_media_fetch_real_execution_witness_test.dag",
   "srv3_seeded_install_media_real_execution_witness_test.dag",
-  "http_client_get_real_execution_witness_test.dag"
+  "http_client_get_real_execution_witness_test.dag",
+  "host_build_cache_provision_real_execution_witness_test.dag"
 ]
 
 data long_lane_exclusion_note: String = "test/claim/long/ is the LONG-test home (operator 5-second rule, 2026-07-12; authority + enforcement: gunbc_ci_fast_lane_rule_note / gunbc_ci_fast_lane_witness_eval_budget in v2.workflow.ci_floor_plan): a witness whose own eval reaches 5s does not run in per-PR discovery — the executor's cooperative eval deadline REDs it by name (EvalBudgetExceeded), and the fix is moving its file here (dag/test/claim/long/, src/v2/test/claim/long/), where discovery excludes it at dir grain and it runs via the local recipe (claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>) or the scheduled lane's future enrollment. First residents (receipted): s1_closure_receipt_test (whole-closure re-parse through the interpreted v2 frontend, 90+min eval, the run-29183446733 wedge class) and self_host_module_emit_derisk_test (~31s/witness). Unlike the roster exclusions above, membership here is a HOME, not a per-file ruling: the 5s deadline makes an over-budget fast-lane witness unwritable-in-place, so the roster cannot silently grow stale (§5 construction over validation). Dissolve-on: per-witness declared cost envelopes (witness-cost-locality admission law) subsume the dir grain."
@@ -133,7 +136,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/srv3_install_media_fetch_real_execution_witness_test.dag", f: "observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution"),
   bin_wet(entry: "dag/test/claim/srv3_seeded_install_media_real_execution_witness_test.dag", f: "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_roundtrip_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution")
+  bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution")
 ]
 
 data floor_skip_control_fixture_exclusion_note: String = "test/fixture/floor_skip/ is excluded from tree-wide discovery at DIR grain (parent ruling 2026-07-11: a fixture that WANTS witness enrollment is mis-homed by definition, and file-grain exclusion invites the next control fixture to repeat the landmine). These fixtures exist to be driven by floor_skip_discovery_witness's explicit rosters, not as corpus witnesses: falsifier_divergence_control_test.dag carries a BY-DESIGN red row (falsifier_red_control_holds returns false to prove the divergence attribution channel), so any completed full-corpus run - the nightly falsifier, or a PR whose diff touches its import closure - would red on a row whose red is the control's specification, and a permanent by-design divergence would also make the falsifier's 8-clean-window retirement criterion unsatisfiable; live_tree_declared_test.dag declares ReadsLiveTree as a control, so as a corpus row it would be a permanent never-skip cost with no enforcement value. Genuine corpus witnesses that were mis-homed here have been re-homed under test/claim/ (provenance_fail_closed_contract_test, live_tree_collision_test). Explicit-roster runs (the floor_skip bin) are unaffected: witness exclusions apply to discovery only."

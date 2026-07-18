@@ -2302,10 +2302,10 @@ fn parse_shell_fields(tokens: TokenStream, ctx: ParseContext, argv: List<Node>, 
 }
 
 fn parse_file_binding_body(tokens: TokenStream, ctx: ParseContext) -> TransportResult {
-  parse_file_fields(tokens: tokens, ctx: ctx, base_path: none)
+  parse_file_fields(tokens: tokens, ctx: ctx, base_path: none, verb: none)
 }
 
-fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?) -> TransportResult {
+fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?, verb: Node?) -> TransportResult {
   let tokens = skip_newlines(tokens: tokens)
   let span = token_span(tok: token_stream_first(stream: tokens))
   let dummy = local_transport_node(span: span)
@@ -2314,7 +2314,7 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?) -
       Present { value: e } => e
       Absent => make_expr_node(expr_data: ExprLiteral { value: LitStr { value: "" } }, children: [], inferred: none, span: make_span(start: 0, end: 0))
     }
-    TransportResult { transport: file_transport_node(base_path: bp, span: span), tokens: tokens, ctx: ctx, err: none }
+    TransportResult { transport: file_transport_node(base_path: bp, verb: verb, span: span), tokens: tokens, ctx: ctx, err: none }
   } else {
     let r = expect_ident(tokens: tokens)
     if has_err(err: r.err) { return TransportResult { transport: dummy, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -2326,9 +2326,11 @@ fn parse_file_fields(tokens: TokenStream, ctx: ParseContext, base_path: Node?) -
     let e = eat(tokens: r3.tokens, expected: ExpectComma)
     let tokens = match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r3.tokens }
     if fname == "path" || fname == transport_path_key {
-      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: Present { value: r3.expr })
+      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: Present { value: r3.expr }, verb: verb)
+    } else if fname == "verb" {
+      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path, verb: Present { value: r3.expr })
     } else {
-      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path)
+      parse_file_fields(tokens: tokens, ctx: r3.ctx, base_path: base_path, verb: verb)
     }
   }
 }

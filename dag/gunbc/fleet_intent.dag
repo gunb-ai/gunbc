@@ -29,7 +29,7 @@ import std.os.types { OperatingSystemSurface, Linux, Posix, PosixProcess }
 import std.types { List, NonEmptyStr, Bool, Int, String }
 import std.verification { NanosecondDuration, nanosecond_duration }
 import std.realization_schedule { CostAccount }
-import std.realization_measurement { cost_account_measured_from_time_and_space }
+import std.realization_measurement { cost_account_measured_from_time_and_space, space_measure_list_seq }
 import std.nat { Nat }
 import std.float { Float }
 
@@ -172,11 +172,7 @@ fn performance_receipts_total_time(receipts: List<PerformanceReceipt>) -> Nanose
 fn cost_account_from_performance_receipts(receipts: List<PerformanceReceipt>) -> CostAccount<Nano> {
   cost_account_measured_from_time_and_space(
     time: performance_receipts_total_time(receipts: receipts),
-    space: byte_size(count: fold(
-      receipts,
-      init: 0,
-      f: (acc, receipt) => acc + byte_size_count(receipt.cost.space)
-    ))
+    space: space_measure_list_seq(spaces: map(receipts, receipt => receipt.cost.space))
   )
 }
 
