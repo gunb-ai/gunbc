@@ -3384,6 +3384,9 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_paths) {
         return Ok(false);
     }
+    if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
+        return Ok(false);
+    }
     Ok(true)
 }
 
@@ -3459,6 +3462,11 @@ fn resolve_discovery_entry_for_corpus_row(
             };
             let entry_runtime_dependency_touched =
                 runtime_data_dependency_touched_via_carrier_closure(
+                    entry_path,
+                    &index.module_graph_facts,
+                    touched_entry_paths,
+                )
+                || effect_reach_touched_via_path_literals(
                     entry_path,
                     &index.module_graph_facts,
                     touched_entry_paths,
@@ -7648,6 +7656,7 @@ pub fn collect_deferred_discovery_rows(
     if exclude_substrings.is_empty() {
         return Ok(Vec::new());
     }
+    let facts = build_module_graph_facts_live(source_roots);
     let mut out: Vec<DeferredDiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
     for root in source_roots {
@@ -7670,13 +7679,14 @@ pub fn collect_deferred_discovery_rows(
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read deferred discovery entry {rel}: {e}"))?;
             let reads_live_tree = parse_entry_live_tree_disposition(&rel, &content)?;
+            let derived = effect_reach_derived_reads_live_tree_for_entry(&rel, &facts);
             for (function, _) in scan_test_decl_lines(&content) {
                 if seen.insert((rel.clone(), function.clone())) {
                     out.push(DeferredDiscoveryRow {
                         entry: rel.clone(),
                         function,
                         exclude_reason: exclude_reason.clone(),
-                        reads_live_tree,
+                        reads_live_tree: reads_live_tree || derived,
                     });
                 }
             }
@@ -8095,11 +8105,13 @@ fn discover_floor_corpus_rows_inner(
         discovery_scope_dirs,
     )?;
     let FloorLensHygieneGraph {
-        rows,
+        mut rows,
         path_imports,
         module_to_path,
         lens_with_justification,
     } = graph;
+    let facts = build_module_graph_facts_live(source_roots);
+    apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
     let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
     if !inert.is_empty() {
         return Err(format!(
@@ -9138,8 +9150,129 @@ fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
     parse_entry_live_tree_disposition(entry, &content)
 }
 
+// Host-fed inference bridge for `v2.lens.effect_reach` (module-identity-storage-binding
+// Phase 0): detects string-carried path literals in the import closure combined with
+// host-effect sink operations. DISSOLUTION: typed `SourceRef` at host boundaries makes
+// bare-string file dependencies unwritable; this scaffold deletes with that construction.
+const EFFECT_REACH_HOST_SINK_MARKERS: &[&str] = &[
+    "Filesystem.Read",
+    "WitnessBin.Run",
+    "gunbc.WitnessBin.Run",
+    "shell.Exec.Run",
+];
+
+fn source_has_path_like_string_data(content: &str) -> bool {
+    content.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed.starts_with("data ")
+            && ((trimmed.contains("String = \"") || trimmed.contains("String="))
+                && (trimmed.contains(".dag\"") || trimmed.contains("src/") || trimmed.contains("dag/")))
+    })
+}
+
+fn source_has_host_effect_sink(content: &str) -> bool {
+    EFFECT_REACH_HOST_SINK_MARKERS
+        .iter()
+        .any(|marker| content.contains(marker))
+}
+
+fn import_closure_repo_paths_for_entry(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+) -> HashSet<String> {
+    import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .map(|p| workspace_relative_repo_path(&p))
+        .collect()
+}
+
+fn effect_reach_derived_reads_live_tree_for_closure_paths(
+    closure_paths: &HashSet<String>,
+) -> bool {
+    let mut has_path_data = false;
+    let mut has_sink = false;
+    for rel in closure_paths {
+        let path = if std::path::Path::new(rel).is_absolute() {
+            rel.clone()
+        } else {
+            workspace_root().join(rel).to_string_lossy().into_owned()
+        };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if source_has_path_like_string_data(&content) {
+            has_path_data = true;
+        }
+        if source_has_host_effect_sink(&content) {
+            has_sink = true;
+        }
+        if has_path_data && has_sink {
+            return true;
+        }
+    }
+    false
+}
+
+pub(crate) fn effect_reach_derived_reads_live_tree_for_entry(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+) -> bool {
+    let closure_paths = import_closure_repo_paths_for_entry(entry_path, facts);
+    effect_reach_derived_reads_live_tree_for_closure_paths(&closure_paths)
+}
+
+fn reads_live_tree_effective(
+    entry_path: &str,
+    content: &str,
+    facts: &ModuleGraphFactsLive,
+) -> Result<bool, String> {
+    let declared = parse_entry_live_tree_disposition(entry_path, content)?;
+    if declared {
+        return Ok(true);
+    }
+    Ok(effect_reach_derived_reads_live_tree_for_entry(entry_path, facts))
+}
+
+fn effect_reach_touched_via_path_literals(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    touched_paths: &[String],
+) -> bool {
+    if touched_paths.is_empty() {
+        return false;
+    }
+    let closure_paths = import_closure_repo_paths_for_entry(entry_path, facts);
+    for rel in closure_paths {
+        let path = if std::path::Path::new(&rel).is_absolute() {
+            rel.clone()
+        } else {
+            workspace_root().join(&rel).to_string_lossy().into_owned()
+        };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if touched_paths.iter().any(|touched| content.contains(touched.as_str())) {
+            return true;
+        }
+    }
+    false
+}
+
 fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
     rows.iter().filter(|r| r.reads_live_tree).count()
+}
+
+fn apply_effect_reach_derived_reads_live_tree(
+    rows: &mut [DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+) {
+    for row in rows.iter_mut() {
+        if !row.reads_live_tree
+            && effect_reach_derived_reads_live_tree_for_entry(&row.entry, facts)
+        {
+            row.reads_live_tree = true;
+        }
+    }
 }
 
 /// Precompute-grain count for axis (iv): the number of distinct entries among `rows` whose
