@@ -3222,62 +3222,9 @@ pub fn resolve_item_types(
         } else {
             Rc::new(vec![])
         };
-        let env = tp_names.clone().iter().cloned().fold(
+        let env = crate::v1_compiler_infer_env::env_with_type_variable_bindings(
             env.clone(),
-            |e: Rc<TypeEnv>, tp_name: String| {
-                let tp_binding = Rc::new(TypeBinding {
-                    name: tp_name.clone(),
-                    resolved: Rc::new(Node {
-                        name: tp_name.clone(),
-                        span: kernel_span(tp_name.clone()),
-                        ident_span: Some(kernel_span(tp_name.clone())),
-                        children: Rc::new(vec![]),
-                        connective: Connective::NoConnective,
-                        params: Rc::new(vec![]),
-                        inferred: Some(Rc::new(InferredNode::TypeVariable {
-                            id: tp_name.clone(),
-                        })),
-                        return_cardinality: Cardinality::Required,
-                        uses: Rc::new(vec![]),
-                        body: None,
-                        transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: None,
-                        is_self_recursive: false,
-                        has_non_tail_self_call: false,
-                        match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
-                    }),
-                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                });
-                Rc::new(TypeEnv {
-                    module_path: e.module_path.clone(),
-                    bindings: v1_rt::rc_map_insert(
-                        e.bindings.clone(),
-                        intern(e.intern_table.clone(), tp_name.clone()).id.clone(),
-                        tp_binding.clone(),
-                    ),
-                    str_bindings: v1_rt::rc_map_insert(
-                        e.str_bindings.clone(),
-                        tp_name.clone(),
-                        tp_binding.clone(),
-                    ),
-                    ancestry_str_bindings: e.ancestry_str_bindings.clone(),
-                    parents: e.parents.clone(),
-                    recursive_types: e.recursive_types.clone(),
-                    recursive_type_set: e.recursive_type_set.clone(),
-                    inductive_fields: e.inductive_fields.clone(),
-                    source_indices: e.source_indices.clone(),
-                    intern_table: e.intern_table.clone(),
-                    source_visible_names: v1_rt::rc_map_insert(
-                        e.source_visible_names.clone(),
-                        tp_name.clone(),
-                        true,
-                    ),
-                    symbol_index: e.symbol_index.clone(),
-                })
-            },
+            tp_names.clone(),
         );
         let param_results = Rc::new({
             let mut __result = Vec::new();
