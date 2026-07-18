@@ -511,7 +511,9 @@ pub fn variant_not_found_result(
                 "VNF_CHILD name={:?} authored={} ident_span={:?} span={}:{}-{} si_has_file={}",
                 c.name,
                 authored_name_at(source_indices.clone(), c.clone()),
-                c.ident_span.as_ref().map(|sp| format!("{}:{}-{}", sp.file, sp.start, sp.end)),
+                c.ident_span
+                    .as_ref()
+                    .map(|sp| format!("{}:{}-{}", sp.file, sp.start, sp.end)),
                 c.span.file,
                 c.span.start,
                 c.span.end,
