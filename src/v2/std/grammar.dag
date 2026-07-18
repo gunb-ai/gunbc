@@ -2318,3 +2318,131 @@ fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> O
     }
   )
 }
+
+type ForwardProductionRowSelection
+  = ForwardProductionRowNone
+  | ForwardProductionRowOne { row: Node }
+  | ForwardProductionRowMany
+
+fn grammar_node_carries_surface_identity(node: Node, surface_identity: Symbol) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } => id == surface_identity
+    TypeNode { connective: Conj } =>
+      fold(node.children, init: false, f: fn(acc, e) {
+        if acc {
+          acc
+        } else {
+          match e.label {
+            Named { name: n } =>
+              (n == surface_identity)
+                || grammar_node_carries_surface_identity(
+                  node: e.target,
+                  surface_identity: surface_identity
+                )
+            Positional =>
+              grammar_node_carries_surface_identity(
+                node: e.target,
+                surface_identity: surface_identity
+              )
+          }
+        }
+      })
+    _ => false
+  }
+}
+
+fn grammar_relation_row_surface_identity_matches(row: Node, surface_identity: Symbol) -> Bool {
+  match grammar_relation_row_emitted_fixture(row: row) {
+    Accepted { value: emitted, diagnostics: _ } =>
+      grammar_node_carries_surface_identity(node: emitted, surface_identity: surface_identity)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn forward_production_row_select_step(
+  acc: ForwardProductionRowSelection,
+  surface_identity: Symbol,
+  row: Node
+) -> ForwardProductionRowSelection {
+  if grammar_relation_row_surface_identity_matches(row: row, surface_identity: surface_identity) {
+    match acc {
+      ForwardProductionRowNone => ForwardProductionRowOne { row: row }
+      ForwardProductionRowOne { row: _ } => ForwardProductionRowMany
+      ForwardProductionRowMany => ForwardProductionRowMany
+    }
+  } else {
+    acc
+  }
+}
+
+fn grammar_relation_row_forward_production_selection_not_found_diagnostic(
+  surface_identity: Symbol
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^grammar_relation_row_forward_production_not_found,
+    at: node_locus(
+      node: Node {
+        kind: TypeNode { connective: Atom { identity: surface_identity } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+      }
+    ),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn grammar_relation_row_forward_production_selection(
+  rules: Node,
+  surface_identity: Symbol
+) -> Outcome<Node> {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      match fold(
+        rules.children,
+        init: ForwardProductionRowNone,
+        f: fn(acc, edge) {
+          match edge.label {
+            Named { name: n } =>
+              if n == ^grammar_relation_rules_formal_productions {
+                acc
+              } else {
+                forward_production_row_select_step(
+                  acc: acc,
+                  surface_identity: surface_identity,
+                  row: edge.target
+                )
+              }
+            Positional => acc
+          }
+        }
+      ) {
+        ForwardProductionRowOne { row: row } => outcome_accepted(value: row)
+        ForwardProductionRowMany =>
+          outcome_rejected(
+            Diagnostic {
+              reason: ^grammar_relation_row_forward_production_ambiguous,
+              at: node_locus(
+                node: Node {
+                  kind: TypeNode { connective: Atom { identity: surface_identity } },
+                  children: [],
+                  occurrence_id: SyntheticOccurrence
+                }
+              ),
+              correction: Unavailable { reason: ExternalContractUnknown }
+            }
+          )
+        ForwardProductionRowNone =>
+          outcome_rejected(
+            grammar_relation_row_forward_production_selection_not_found_diagnostic(
+              surface_identity: surface_identity
+            )
+          )
+      }
+    _ =>
+      outcome_rejected(
+        grammar_relation_row_forward_production_selection_not_found_diagnostic(
+          surface_identity: surface_identity
+        )
+      )
+  }
+}
