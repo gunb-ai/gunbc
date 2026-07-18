@@ -1,11 +1,14 @@
 module test.claim.host_build_cache_provision_design
 
 import std.logic { Bool }
-import std.cache_identity { CacheInterfaceId }
 import extdeps.cache.sccache { sccache_local_id }
+import extdeps.cache.github_actions { gha_actions_cache_id }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host_effect { ProvisionBuildCache }
-import gunbc.host_build_cache_catalog_gate { provision_build_cache_catalog_refusal_reason }
+import gunbc.host_build_cache_catalog_gate {
+  provision_build_cache_catalog_refusal_reason,
+  provision_build_cache_unknown_catalog_fixture,
+}
 import gunbc.host_build_cache_provision_script { build_cache_provision_read_back_fails_closed }
 import gunbc.host_build_cache_provision {
   provision_build_cache_default_effect,
@@ -30,9 +33,17 @@ fn design_witness_read_back_fails_closed_in_shell() -> Bool {
 
 fn design_witness_unknown_catalog_refuses_at_gate() -> Bool {
   match provision_build_cache_catalog_refusal_reason(
-    catalog_id: "cache/unknown-test-id" as CacheInterfaceId,
+    catalog_id: provision_build_cache_unknown_catalog_fixture,
   ) {
     Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
+  match provision_build_cache_catalog_refusal_reason(catalog_id: gha_actions_cache_id) {
+    Present { value: reason } =>
+      string_contains(s: reason as String, pattern: "not yet realized")
     Absent => false
   }
 }
@@ -108,6 +119,7 @@ fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
 test fn host_build_cache_provision_design_witnesses() -> Bool {
   design_witness_read_back_fails_closed_in_shell()
     && design_witness_unknown_catalog_refuses_at_gate()
+    && design_witness_known_non_sccache_catalog_refuses_at_gate()
     && design_witness_sccache_catalog_passes_gate()
     && design_witness_routes_through_host_effect_apply()
     && design_witness_default_effect_pins_sccache_catalog()
