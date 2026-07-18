@@ -91,7 +91,7 @@ import v1.compiler.infer_env {
   SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
-  ServiceCensusEntry
+  ServiceCensusEntry, qualify_decl_reference_positions
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -6295,12 +6295,6 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
   } else { binding }
 }
 
-fn census_qualify_decl_references(n: Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> Node {
-  let inf2 = qualify_borrowed_inferred(inferred: n.inferred, owner_module_path: owner_module_path, env: env, excluded: excluded)
-  let ch2 = n.children |> map(c => census_qualify_decl_references(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
-  node_with_children(n: node_with_inferred(n: n, inferred: inf2), children: ch2)
-}
-
 fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
   let node = binding.resolved
   let excluded = fold(
@@ -6311,7 +6305,7 @@ fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, c
   let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
   TypeBinding {
     name: binding.name,
-    resolved: census_qualify_decl_references(n: node, owner_module_path: module_path, env: env, excluded: excluded),
+    resolved: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded),
     provenance: binding.provenance
   }
 }

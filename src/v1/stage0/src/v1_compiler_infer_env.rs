@@ -913,17 +913,23 @@ pub fn borrowed_generic_param_names(
     acc
 }
 
-pub fn qualify_borrowed_type_names(
+pub fn qualify_decl_reference_positions(
     n: Rc<Node>,
     owner_module_path: String,
     env: Rc<TypeEnv>,
     excluded: Rc<HashMap<String, bool>>,
 ) -> Rc<Node> {
-    let qualified_children: Rc<Vec<Rc<Node>>> = Rc::new(
+    let inf2 = qualify_borrowed_inferred(
+        n.inferred.clone(),
+        owner_module_path.clone(),
+        env.clone(),
+        excluded.clone(),
+    );
+    let ch2: Rc<Vec<Rc<Node>>> = Rc::new(
         n.children
             .iter()
             .map(|c| {
-                qualify_borrowed_type_names(
+                qualify_decl_reference_positions(
                     c.clone(),
                     owner_module_path.clone(),
                     env.clone(),
@@ -932,6 +938,45 @@ pub fn qualify_borrowed_type_names(
             })
             .collect::<Vec<Rc<Node>>>(),
     );
+    node_with_children(node_with_inferred(n.clone(), inf2.clone()), ch2)
+}
+
+pub fn qualify_borrowed_type_names(
+    n: Rc<Node>,
+    owner_module_path: String,
+    env: Rc<TypeEnv>,
+    excluded: Rc<HashMap<String, bool>>,
+) -> Rc<Node> {
+    let qualified_children: Rc<Vec<Rc<Node>>> =
+        if n.connective == crate::v1_std_core::Connective::NoConnective {
+            Rc::new(
+                n.children
+                    .iter()
+                    .map(|c| {
+                        qualify_borrowed_type_names(
+                            c.clone(),
+                            owner_module_path.clone(),
+                            env.clone(),
+                            excluded.clone(),
+                        )
+                    })
+                    .collect::<Vec<Rc<Node>>>(),
+            )
+        } else {
+            Rc::new(
+                n.children
+                    .iter()
+                    .map(|c| {
+                        qualify_decl_reference_positions(
+                            c.clone(),
+                            owner_module_path.clone(),
+                            env.clone(),
+                            excluded.clone(),
+                        )
+                    })
+                    .collect::<Vec<Rc<Node>>>(),
+            )
+        };
     let name = authored_name_at(env.source_indices.clone(), n.clone());
     let is_type_var = matches!(
         n.inferred.as_deref(),

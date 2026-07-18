@@ -13488,38 +13488,6 @@ pub fn census_upgrade_sig_binding(
     }
 }
 
-pub fn census_qualify_decl_references(
-    n: Rc<Node>,
-    owner_module_path: String,
-    env: Rc<TypeEnv>,
-    excluded: Rc<HashMap<String, bool>>,
-) -> Rc<Node> {
-    let inf2 = qualify_borrowed_inferred(
-        n.inferred.clone(),
-        owner_module_path.clone(),
-        env.clone(),
-        excluded.clone(),
-    );
-    let ch2: Rc<Vec<Rc<Node>>> = Rc::new(
-        n.children
-            .iter()
-            .cloned()
-            .map(|c| {
-                census_qualify_decl_references(
-                    c.clone(),
-                    owner_module_path.clone(),
-                    env.clone(),
-                    excluded.clone(),
-                )
-            })
-            .collect::<Vec<_>>(),
-    );
-    crate::v1_compiler_infer_env::node_with_children(
-        crate::v1_compiler_infer_env::node_with_inferred(n.clone(), inf2.clone()),
-        ch2,
-    )
-}
-
 pub fn census_upgrade_type_decl_binding(
     binding: Rc<TypeBinding>,
     module_path: String,
@@ -13546,7 +13514,7 @@ pub fn census_upgrade_type_decl_binding(
     );
     Rc::new(TypeBinding {
         name: binding.name.clone(),
-        resolved: census_qualify_decl_references(
+        resolved: crate::v1_compiler_infer_env::qualify_decl_reference_positions(
             node.clone(),
             module_path.clone(),
             env.clone(),
