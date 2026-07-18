@@ -18177,10 +18177,13 @@ pub fn emit_typed_match(
         if rc_match.needs_rc_option_ref.clone() {
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                    ".as_ref() {\n".to_string(),
+                    v1_rt::concat(
+                        v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                        ".as_ref() {\n".to_string(),
+                    ),
+                    arms_str.clone(),
                 ),
-                v1_rt::concat(arms_str.clone(), "\n}".to_string()),
+                "\n}".to_string(),
             )
         } else {
             if rc_match.needs_option_deref.clone() {

@@ -172,34 +172,36 @@ pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
 }
 
 pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
-    let core = v1_rt::concat(
-        (v.major.clone()).to_string(),
-        v1_rt::concat(
-            ".".to_string(),
+    {
+        let core = v1_rt::concat(
+            (v.major.clone()).to_string(),
             v1_rt::concat(
-                (v.minor.clone()).to_string(),
-                v1_rt::concat(".".to_string(), (v.patch.clone()).to_string()),
+                ".".to_string(),
+                v1_rt::concat(
+                    (v.minor.clone()).to_string(),
+                    v1_rt::concat(".".to_string(), (v.patch.clone()).to_string()),
+                ),
             ),
-        ),
-    );
-    let with_pre = if ((v.pre_release.clone().len() as i64) == 0) {
-        core.clone()
-    } else {
-        v1_rt::concat(
-            core.clone(),
+        );
+        let with_pre = if ((v.pre_release.clone().len() as i64) == 0) {
+            core.clone()
+        } else {
             v1_rt::concat(
-                "-".to_string(),
-                semver_identifiers_label(v.pre_release.clone()),
-            ),
-        )
-    };
-    if ((v.build.clone().len() as i64) == 0) {
-        with_pre
-    } else {
-        v1_rt::concat(
-            with_pre,
-            v1_rt::concat("+".to_string(), semver_identifiers_label(v.build.clone())),
-        )
+                core.clone(),
+                v1_rt::concat(
+                    "-".to_string(),
+                    semver_identifiers_label(v.pre_release.clone()),
+                ),
+            )
+        };
+        if ((v.build.clone().len() as i64) == 0) {
+            with_pre
+        } else {
+            v1_rt::concat(
+                with_pre,
+                v1_rt::concat("+".to_string(), semver_identifiers_label(v.build.clone())),
+            )
+        }
     }
 }
 

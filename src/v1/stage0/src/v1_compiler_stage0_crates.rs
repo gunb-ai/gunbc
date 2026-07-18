@@ -301,85 +301,89 @@ pub enum Stage0CrateBoundaryEmitOutcome {
 pub fn stage0_lookup_module_owner_package_name(
     module_basename: String,
 ) -> Rc<Stage0ModuleOwnerLookup> {
-    let matches = Rc::new({
-        let mut __result = Vec::new();
-        for row in generated_partition_crate_rows().iter().cloned() {
-            if (stage0_partition_row_is_module_bearing(row.clone()) && {
-                let mut __found = false;
-                for m in row.modules.clone().iter().cloned() {
-                    if (m.clone() == module_basename.clone()) {
-                        __found = true;
-                        break;
+    {
+        let matches = Rc::new({
+            let mut __result = Vec::new();
+            for row in generated_partition_crate_rows().iter().cloned() {
+                if (stage0_partition_row_is_module_bearing(row.clone()) && {
+                    let mut __found = false;
+                    for m in row.modules.clone().iter().cloned() {
+                        if (m.clone() == module_basename.clone()) {
+                            __found = true;
+                            break;
+                        }
                     }
+                    __found
+                }) {
+                    __result.push(row);
                 }
-                __found
-            }) {
-                __result.push(row);
             }
-        }
-        __result
-    });
-    let package_name = Rc::new({
-        let mut __result = Vec::new();
-        for row in matches.clone().iter().cloned() {
-            __result.push(row.package_name.clone());
-        }
-        __result
-    })
-    .iter()
-    .cloned()
-    .fold("".to_string(), |acc: String, pkg: String| {
-        if (acc.clone() == "".to_string()) {
-            pkg.clone()
+            __result
+        });
+        let package_name = Rc::new({
+            let mut __result = Vec::new();
+            for row in matches.clone().iter().cloned() {
+                __result.push(row.package_name.clone());
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        .fold("".to_string(), |acc: String, pkg: String| {
+            if (acc.clone() == "".to_string()) {
+                pkg.clone()
+            } else {
+                acc.clone()
+            }
+        });
+        if (package_name.clone() == "".to_string()) {
+            Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
+                cause: Rc::new(Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
+                    module_basename: module_basename.clone(),
+                }),
+            })
         } else {
-            acc.clone()
+            Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
+                package_name: package_name.clone(),
+            })
         }
-    });
-    if (package_name.clone() == "".to_string()) {
-        Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerRefused {
-            cause: Rc::new(Stage0ModuleOwnerRefusalCause::Stage0ModuleOwnerMissing {
-                module_basename: module_basename.clone(),
-            }),
-        })
-    } else {
-        Rc::new(Stage0ModuleOwnerLookup::Stage0ModuleOwnerFound {
-            package_name: package_name.clone(),
-        })
     }
 }
 
 pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0PackageCrateDirLookup> {
-    let matches = Rc::new({
-        let mut __result = Vec::new();
-        for row in generated_partition_crate_rows().iter().cloned() {
-            if (row.package_name.clone() == package_name.clone()) {
-                __result.push(row);
+    {
+        let matches = Rc::new({
+            let mut __result = Vec::new();
+            for row in generated_partition_crate_rows().iter().cloned() {
+                if (row.package_name.clone() == package_name.clone()) {
+                    __result.push(row);
+                }
             }
+            __result
+        });
+        let crate_dir = matches.clone().iter().cloned().fold(
+            "".to_string(),
+            |acc: String, row: Rc<GeneratedPartitionCrateRow>| {
+                if (acc.clone() == "".to_string()) {
+                    row.crate_dir.clone()
+                } else {
+                    acc.clone()
+                }
+            },
+        );
+        if (crate_dir.clone() == "".to_string()) {
+            Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
+                cause: Rc::new(
+                    Stage0PackageCrateDirRefusalCause::Stage0PackageCrateDirMissing {
+                        package_name: package_name.clone(),
+                    },
+                ),
+            })
+        } else {
+            Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
+                crate_dir: crate_dir.clone(),
+            })
         }
-        __result
-    });
-    let crate_dir = matches.clone().iter().cloned().fold(
-        "".to_string(),
-        |acc: String, row: Rc<GeneratedPartitionCrateRow>| {
-            if (acc.clone() == "".to_string()) {
-                row.crate_dir.clone()
-            } else {
-                acc.clone()
-            }
-        },
-    );
-    if (crate_dir.clone() == "".to_string()) {
-        Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
-            cause: Rc::new(
-                Stage0PackageCrateDirRefusalCause::Stage0PackageCrateDirMissing {
-                    package_name: package_name.clone(),
-                },
-            ),
-        })
-    } else {
-        Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirFound {
-            crate_dir: crate_dir.clone(),
-        })
     }
 }
 
@@ -743,32 +747,34 @@ pub fn render_stage0_crate_features_section(features: Rc<Vec<Rc<CargoFeature>>>)
 }
 
 pub fn emit_stage0_crate_manifest(spec: Rc<Stage0CrateSpec>) -> Rc<TextFile> {
-    let deps = Rc::new(
-        spec.dependencies
-            .clone()
-            .iter()
-            .cloned()
-            .map(render_stage0_crate_dep)
-            .collect::<Vec<_>>(),
-    )
-    .join(&"".to_string());
-    let content = v1_rt::concat(
-        v1_rt::concat(
+    {
+        let deps = Rc::new(
+            spec.dependencies
+                .clone()
+                .iter()
+                .cloned()
+                .map(render_stage0_crate_dep)
+                .collect::<Vec<_>>(),
+        )
+        .join(&"".to_string());
+        let content = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    render_cargo_package_header_prefix(spec.package_name.clone()),
-                    "\nedition = \"2021\"".to_string(),
+                    v1_rt::concat(
+                        render_cargo_package_header_prefix(spec.package_name.clone()),
+                        "\nedition = \"2021\"".to_string(),
+                    ),
+                    render_stage0_crate_features_section(spec.features.clone()),
                 ),
-                render_stage0_crate_features_section(spec.features.clone()),
+                "\n\n[dependencies]\n".to_string(),
             ),
-            "\n\n[dependencies]\n".to_string(),
-        ),
-        deps.clone(),
-    );
-    Rc::new(TextFile {
-        path: v1_rt::concat(spec.crate_dir.clone(), "/Cargo.toml".to_string()),
-        content: content.clone(),
-    })
+            deps.clone(),
+        );
+        Rc::new(TextFile {
+            path: v1_rt::concat(spec.crate_dir.clone(), "/Cargo.toml".to_string()),
+            content: content.clone(),
+        })
+    }
 }
 
 pub fn stage0_crate_mod_include(module_basename: String) -> String {
@@ -794,88 +800,94 @@ pub fn stage0_crate_mod_include(module_basename: String) -> String {
 }
 
 pub fn render_stage0_foundation_lib(spec: Rc<Stage0CrateSpec>) -> String {
-    let includes = Rc::new({
-        let mut __result = Vec::new();
-        for m in spec.modules.clone().iter().cloned() {
-            __result.push(stage0_crate_mod_include(m.clone()));
+    {
+        let includes = Rc::new({
+            let mut __result = Vec::new();
+            for m in spec.modules.clone().iter().cloned() {
+                __result.push(stage0_crate_mod_include(m.clone()));
+            }
+            __result
+        })
+        .join(&"\n".to_string());
+        let head = v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
+                    stage0_crate_allow_block(),
+                ),
+                "\n\n".to_string(),
+            ),
+            includes.clone(),
+        );
+        if spec.carries_non_empty_wrappers.clone() {
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(head.clone(), "\n\n".to_string()),
+                    emit_non_empty_wrappers(),
+                ),
+                "\n".to_string(),
+            )
+        } else {
+            v1_rt::concat(head.clone(), "\n".to_string())
         }
-        __result
-    })
-    .join(&"\n".to_string());
-    let head = v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
-                stage0_crate_allow_block(),
-            ),
-            "\n\n".to_string(),
-        ),
-        includes.clone(),
-    );
-    if spec.carries_non_empty_wrappers.clone() {
-        v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(head.clone(), "\n\n".to_string()),
-                emit_non_empty_wrappers(),
-            ),
-            "\n".to_string(),
-        )
-    } else {
-        v1_rt::concat(head.clone(), "\n".to_string())
     }
 }
 
 pub fn render_stage0_layered_core_lib(spec: Rc<Stage0CrateSpec>) -> String {
-    let sorted_reexports = Rc::new({
-        let mut __sorted: Vec<_> = spec.reexport_packages.clone().iter().cloned().collect();
-        __sorted.sort_by(|a: &String, b: &String| {
-            let __ka = (|pkg: String| stage0_package_name_to_rust_ident(pkg.clone()))(a.clone());
-            let __kb = (|pkg: String| stage0_package_name_to_rust_ident(pkg.clone()))(b.clone());
-            __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+    {
+        let sorted_reexports = Rc::new({
+            let mut __sorted: Vec<_> = spec.reexport_packages.clone().iter().cloned().collect();
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka =
+                    (|pkg: String| stage0_package_name_to_rust_ident(pkg.clone()))(a.clone());
+                let __kb =
+                    (|pkg: String| stage0_package_name_to_rust_ident(pkg.clone()))(b.clone());
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            __sorted
         });
-        __sorted
-    });
-    let reexports = Rc::new({
-        let mut __result = Vec::new();
-        for pkg in sorted_reexports.clone().iter().cloned() {
-            __result.push(v1_rt::concat(
-                v1_rt::concat(
-                    "pub use ".to_string(),
-                    stage0_package_name_to_rust_ident(pkg.clone()),
-                ),
-                "::*;".to_string(),
-            ));
-        }
-        __result
-    })
-    .join(&"\n".to_string());
-    let includes = Rc::new({
-        let mut __result = Vec::new();
-        for m in spec.modules.clone().iter().cloned() {
-            __result.push(stage0_crate_mod_include(m.clone()));
-        }
-        __result
-    })
-    .join(&"\n".to_string());
-    v1_rt::concat(
+        let reexports = Rc::new({
+            let mut __result = Vec::new();
+            for pkg in sorted_reexports.clone().iter().cloned() {
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
+                        "pub use ".to_string(),
+                        stage0_package_name_to_rust_ident(pkg.clone()),
+                    ),
+                    "::*;".to_string(),
+                ));
+            }
+            __result
+        })
+        .join(&"\n".to_string());
+        let includes = Rc::new({
+            let mut __result = Vec::new();
+            for m in spec.modules.clone().iter().cloned() {
+                __result.push(stage0_crate_mod_include(m.clone()));
+            }
+            __result
+        })
+        .join(&"\n".to_string());
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
-                            stage0_crate_allow_block(),
+                            v1_rt::concat(
+                                v1_rt::concat(spec.header_doc.clone(), "\n\n".to_string()),
+                                stage0_crate_allow_block(),
+                            ),
+                            "\n\n".to_string(),
                         ),
-                        "\n\n".to_string(),
+                        reexports.clone(),
                     ),
-                    reexports.clone(),
+                    "\n\n".to_string(),
                 ),
-                "\n\n".to_string(),
+                includes.clone(),
             ),
-            includes.clone(),
-        ),
-        "\n".to_string(),
-    )
+            "\n".to_string(),
+        )
+    }
 }
 
 pub fn stage0_emit_shell_module_reexports_outcome(

@@ -104,93 +104,96 @@ pub fn check_index_access_node(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
-    let normed = normalize_access_type_node(base_type.clone());
-    let normed_index = normalize_access_type_node(index_type.clone());
-    let base_is_string = node_type_equals(normed.clone(), string_type(), source_indices.clone());
-    let index_is_int = node_type_equals(normed_index.clone(), int_type(), source_indices.clone());
-    if base_is_string.clone() {
-        {
-            let diags = if index_is_int.clone() {
-                Rc::new(vec![])
-            } else {
-                Rc::new(vec![access_error(
-                    "string index requires an Int index".to_string(),
-                    span.clone(),
-                    module_name.clone(),
-                )])
-            };
-            access_result(
-                string_type(),
-                diags.clone(),
-                span.clone(),
-                "invalid string index access".to_string(),
-            )
-        }
-    } else {
-        match keyed_collection_parts(normed.clone(), source_indices.clone()) {
-            Some(parts) => {
-                let key_diags = if node_type_equals(
-                    parts.key_type.clone(),
-                    normed_index.clone(),
-                    source_indices.clone(),
-                ) {
+    {
+        let normed = normalize_access_type_node(base_type.clone());
+        let normed_index = normalize_access_type_node(index_type.clone());
+        let base_is_string =
+            node_type_equals(normed.clone(), string_type(), source_indices.clone());
+        let index_is_int =
+            node_type_equals(normed_index.clone(), int_type(), source_indices.clone());
+        if base_is_string.clone() {
+            {
+                let diags = if index_is_int.clone() {
                     Rc::new(vec![])
                 } else {
                     Rc::new(vec![access_error(
-                        "keyed collection index key type does not match the collection key type"
-                            .to_string(),
+                        "string index requires an Int index".to_string(),
                         span.clone(),
                         module_name.clone(),
                     )])
                 };
                 access_result(
-                    with_optional_cardinality(parts.value_type.clone()),
-                    key_diags.clone(),
+                    string_type(),
+                    diags.clone(),
                     span.clone(),
-                    "invalid keyed collection index access".to_string(),
+                    "invalid string index access".to_string(),
                 )
             }
-            None => {
-                if node_is_keyed_collection(normed.clone(), source_indices.clone()) {
-                    {
-                        let malformed_diags = Rc::new(vec![access_error(
-                            "malformed keyed collection type in index access".to_string(),
-                            span.clone(),
-                            module_name.clone(),
-                        )]);
-                        access_result(
-                            unit_type(),
-                            malformed_diags.clone(),
-                            span.clone(),
-                            "malformed keyed collection type in index access".to_string(),
-                        )
-                    }
-                } else {
-                    if ((is_ordered_element_collection(authored_name_at(
+        } else {
+            match keyed_collection_parts(normed.clone(), source_indices.clone()) {
+                Some(parts) => {
+                    let key_diags = if node_type_equals(
+                        parts.key_type.clone(),
+                        normed_index.clone(),
                         source_indices.clone(),
-                        normed.clone(),
-                    )) && node_is_element_collection(normed.clone(), source_indices.clone()))
-                        && index_is_int.clone())
-                    {
+                    ) {
+                        Rc::new(vec![])
+                    } else {
+                        Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name.clone())])
+                    };
+                    access_result(
+                        with_optional_cardinality(parts.value_type.clone()),
+                        key_diags.clone(),
+                        span.clone(),
+                        "invalid keyed collection index access".to_string(),
+                    )
+                }
+                None => {
+                    if node_is_keyed_collection(normed.clone(), source_indices.clone()) {
                         {
-                            let elem =
-                                for_each_element_type_node(normed.clone(), source_indices.clone());
-                            access_result(
-                                with_optional_cardinality(elem.clone()),
-                                Rc::new(vec![]),
+                            let malformed_diags = Rc::new(vec![access_error(
+                                "malformed keyed collection type in index access".to_string(),
                                 span.clone(),
-                                "list index access".to_string(),
+                                module_name.clone(),
+                            )]);
+                            access_result(
+                                unit_type(),
+                                malformed_diags.clone(),
+                                span.clone(),
+                                "malformed keyed collection type in index access".to_string(),
                             )
                         }
                     } else {
+                        if ((is_ordered_element_collection(authored_name_at(
+                            source_indices.clone(),
+                            normed.clone(),
+                        )) && node_is_element_collection(
+                            normed.clone(),
+                            source_indices.clone(),
+                        )) && index_is_int.clone())
                         {
-                            let diags = Rc::new(vec![access_error("indexing is only supported for String, keyed collection, and list values".to_string(), span.clone(), module_name.clone())]);
-                            access_result(
-                                unit_type(),
-                                diags.clone(),
-                                span.clone(),
-                                "invalid index access".to_string(),
-                            )
+                            {
+                                let elem = for_each_element_type_node(
+                                    normed.clone(),
+                                    source_indices.clone(),
+                                );
+                                access_result(
+                                    with_optional_cardinality(elem.clone()),
+                                    Rc::new(vec![]),
+                                    span.clone(),
+                                    "list index access".to_string(),
+                                )
+                            }
+                        } else {
+                            {
+                                let diags = Rc::new(vec![access_error("indexing is only supported for String, keyed collection, and list values".to_string(), span.clone(), module_name.clone())]);
+                                access_result(
+                                    unit_type(),
+                                    diags.clone(),
+                                    span.clone(),
+                                    "invalid index access".to_string(),
+                                )
+                            }
                         }
                     }
                 }
@@ -207,47 +210,50 @@ pub fn check_slice_access_node(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<AccessCheckResultNode> {
-    let normed_base = normalize_access_type_node(base_type.clone());
-    let base_is_string =
-        node_type_equals(normed_base.clone(), string_type(), source_indices.clone());
-    let base_diags = if base_is_string.clone() {
-        Rc::new(vec![])
-    } else {
-        Rc::new(vec![access_error(
-            "slice is only supported for String values".to_string(),
-            span.clone(),
-            module_name.clone(),
-        )])
-    };
-    let normed_start = normalize_access_type_node(start_type.clone());
-    let start_diags = if node_type_equals(normed_start.clone(), int_type(), source_indices.clone())
     {
-        Rc::new(vec![])
-    } else {
-        Rc::new(vec![access_error(
-            "slice start requires an Int index".to_string(),
+        let normed_base = normalize_access_type_node(base_type.clone());
+        let base_is_string =
+            node_type_equals(normed_base.clone(), string_type(), source_indices.clone());
+        let base_diags = if base_is_string.clone() {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![access_error(
+                "slice is only supported for String values".to_string(),
+                span.clone(),
+                module_name.clone(),
+            )])
+        };
+        let normed_start = normalize_access_type_node(start_type.clone());
+        let start_diags =
+            if node_type_equals(normed_start.clone(), int_type(), source_indices.clone()) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![access_error(
+                    "slice start requires an Int index".to_string(),
+                    span.clone(),
+                    module_name.clone(),
+                )])
+            };
+        let normed_end = normalize_access_type_node(end_type.clone());
+        let end_diags = if node_type_equals(normed_end.clone(), int_type(), source_indices.clone())
+        {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![access_error(
+                "slice end requires an Int index".to_string(),
+                span.clone(),
+                module_name.clone(),
+            )])
+        };
+        let all_diags = v1_rt::concat(
+            v1_rt::concat(base_diags.clone(), start_diags.clone()),
+            end_diags.clone(),
+        );
+        access_result(
+            string_type(),
+            all_diags.clone(),
             span.clone(),
-            module_name.clone(),
-        )])
-    };
-    let normed_end = normalize_access_type_node(end_type.clone());
-    let end_diags = if node_type_equals(normed_end.clone(), int_type(), source_indices.clone()) {
-        Rc::new(vec![])
-    } else {
-        Rc::new(vec![access_error(
-            "slice end requires an Int index".to_string(),
-            span.clone(),
-            module_name.clone(),
-        )])
-    };
-    let all_diags = v1_rt::concat(
-        v1_rt::concat(base_diags.clone(), start_diags.clone()),
-        end_diags.clone(),
-    );
-    access_result(
-        string_type(),
-        all_diags.clone(),
-        span.clone(),
-        "invalid slice access".to_string(),
-    )
+            "invalid slice access".to_string(),
+        )
+    }
 }
