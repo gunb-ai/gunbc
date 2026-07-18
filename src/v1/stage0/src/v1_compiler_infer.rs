@@ -3285,6 +3285,26 @@ pub fn infer_expr(
                                             })
                                         }
                                         None => {
+                                            if std::env::var("GUNBC_FIELD_PROBE").is_ok() {
+                                                eprintln!(
+                                                    "FIELD_PROBE module={} field={field_name} \
+                                                     base_rt_name={} base_rt_conn={:?} \
+                                                     resolved_name={} resolved_conn={:?} \
+                                                     resolved_children={}",
+                                                    scope.module_name,
+                                                    authored_name_at(
+                                                        scope.type_env.source_indices.clone(),
+                                                        base_rt.clone()
+                                                    ),
+                                                    base_rt.connective,
+                                                    authored_name_at(
+                                                        scope.type_env.source_indices.clone(),
+                                                        resolved_base.clone()
+                                                    ),
+                                                    resolved_base.connective,
+                                                    resolved_base.children.len(),
+                                                );
+                                            }
                                             let error_message = v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
@@ -6013,6 +6033,11 @@ pub fn expand_alias_chain_for_field_access(
             n.clone()
         };
         let carrier = alias_chain_carrier(peeled.clone());
+        let carrier_name = if carrier.name.clone() != "".to_string() {
+            carrier.name.clone()
+        } else {
+            authored_name_at(env.source_indices.clone(), carrier.clone())
+        };
         let structural =
             structural_from_expanded_type(resolve_scrutinee_type_node(env.clone(), peeled.clone()));
         let is_record = ((structural.connective.clone() == Connective::Conj)
@@ -6021,9 +6046,9 @@ pub fn expand_alias_chain_for_field_access(
             let resolved_record =
                 if ((record_has_unresolved_param_field(structural.clone(), env.clone())
                     && ((carrier.children.clone().len() as i64) > 0))
-                    && (carrier.name.clone() != "".to_string()))
+                    && (carrier_name.clone() != "".to_string()))
                 {
-                    match lookup_type_by_name(env.clone(), carrier.name.clone()) {
+                    match lookup_type_by_name(env.clone(), carrier_name.clone()) {
                         Some(target) => {
                             let subst = alias_chain_type_arg_subst(
                                 env.clone(),
