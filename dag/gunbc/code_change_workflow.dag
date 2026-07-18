@@ -54,7 +54,7 @@ type CodeChangeDecision
   | TransitionRefused { refusal: CodeChangeRefusal }
 
 type CodeChangeGithubPrContext {
-  pr: PullRequest
+  pr: extdeps.github.pulls.PullRequest
 }
 
 type CodeChangeTransitionRequest {
@@ -101,7 +101,7 @@ fn successor_stage(
   }
 }
 
-fn github_pr_terminal_anchor(pr: PullRequest) -> CodeChangeStage? {
+fn github_pr_terminal_anchor(pr: extdeps.github.pulls.PullRequest) -> CodeChangeStage? {
   match pr.merged_at {
     Present { value: _ } =>
       Present { value: CodeChangeTerminal { stage: ChangeMerged } }
