@@ -1524,6 +1524,58 @@ pub fn direct_call_arg_type_mismatch(
     }
 }
 
+pub fn borrowed_callable_call_type(
+    gnode: Rc<Node>,
+    typed_args: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+) -> Rc<Node> {
+    let source_indices = scope.type_env.source_indices.clone();
+    let base = callable_inferred(gnode.clone());
+    let tp_names = crate::v1_compiler_infer_resolve::fn_type_param_names(
+        gnode.clone(),
+        source_indices.clone(),
+    );
+    if (tp_names.len() as i64) == 0 {
+        base
+    } else {
+        let value_params: Vec<Rc<Node>> = gnode
+            .params
+            .iter()
+            .cloned()
+            .filter(|p| !param_is_generic_decl(p.clone(), source_indices.clone()))
+            .collect();
+        let subst = value_params.iter().enumerate().fold(
+            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            |acc, (i, p)| {
+                let formal_raw = param_node_type_expr(p.clone());
+                let param_name = authored_name_at(source_indices.clone(), p.clone());
+                let matched_arg = match typed_args
+                    .iter()
+                    .cloned()
+                    .filter(|ta| {
+                        arg_has_name(ta.clone(), param_name.clone(), source_indices.clone())
+                    })
+                    .next()
+                {
+                    Some(named_ta) => Some(named_ta),
+                    None => typed_args.iter().cloned().nth(i),
+                };
+                match matched_arg {
+                    Some(ta) => unify_generics(
+                        formal_raw.clone(),
+                        resolved_type(arg_value(ta.clone())),
+                        tp_names.clone(),
+                        source_indices.clone(),
+                        acc,
+                    ),
+                    None => acc,
+                }
+            },
+        );
+        substitute_generics(base.clone(), subst.clone(), source_indices.clone())
+    }
+}
+
 pub fn direct_call_arg_mismatch_diags(
     value_params: Rc<Vec<Rc<Node>>>,
     typed_args: Rc<Vec<Rc<Node>>>,
@@ -4193,8 +4245,10 @@ match bare_s.clone() {
                                                                         as i64)
                                                                         > 0
                                                                     {
-                                                                        callable_inferred(
+                                                                        borrowed_callable_call_type(
                                                                             gnode.clone(),
+                                                                            typed_arg_nodes.clone(),
+                                                                            scope.clone(),
                                                                         )
                                                                     } else {
                                                                         match gnode.inferred.clone().as_deref().cloned() {

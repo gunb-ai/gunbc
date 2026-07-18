@@ -701,6 +701,40 @@ pub fn lookup_variant_in_type(
                                                         }
                                                     }
                                                 };
+                                                if std::env::var("GUNBC_VNF_ENV_PROBE").is_ok()
+                                                    && direct_match.is_none()
+                                                    && scrut_name.contains("FreeMonoid")
+                                                {
+                                                    let gb_fm = crate::v1_rt::map_get(
+                                                        &env.symbol_index.global_bare,
+                                                        "FreeMonoid".to_string(),
+                                                    );
+                                                    let proj = crate::v1_compiler_infer_env::symbol_index_lookup(
+                                                        env.symbol_index.clone(),
+                                                        "std.algebra.FreeMonoid".to_string(),
+                                                    );
+                                                    let bare_lookup =
+                                                        crate::v1_compiler_infer_env::lookup_type_by_name(
+                                                            env.clone(),
+                                                            "FreeMonoid".to_string(),
+                                                        );
+                                                    eprintln!(
+                                                        "VNF_ENV module={} variant={} scrut={} entries={} gb_total={} gb_fm={} proj_hit={} bare_hit={} env_module_path={}",
+                                                        module_name,
+                                                        variant_name,
+                                                        scrut_name,
+                                                        env.symbol_index.entries.len(),
+                                                        env.symbol_index.global_bare.len(),
+                                                        match gb_fm.as_deref() {
+                                                            Some(crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareUniqueBinding { module_path, .. }) => format!("unique@{module_path}"),
+                                                            Some(crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates }) => format!("ambiguous({})", candidates.len()),
+                                                            None => "ABSENT".to_string(),
+                                                        },
+                                                        proj.is_some(),
+                                                        bare_lookup.is_some(),
+                                                        env.module_path,
+                                                    );
+                                                }
                                                 match direct_match.clone() {
                                                     Some(v) => node_lookup_resolved(v.clone()),
                                                     None => fallback,

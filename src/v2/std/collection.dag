@@ -45,7 +45,7 @@ fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
   }
 }
 
-type List<T> = FreeMonoid<T>
+type List<T> = std.algebra.FreeMonoid<T>
 type Set<T> = PointwisePower<T>
 
 data empty_map_host_binding: PrimitiveContract = empty_map_contract
