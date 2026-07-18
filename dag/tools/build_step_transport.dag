@@ -4,6 +4,7 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.git
 import extdeps.gunbc
+import gunbc.cli_services
 import std.logic { Bool }
 import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
 
@@ -32,11 +33,10 @@ fn make_probe_executable(path: String) -> Bool {
 }
 
 fn verify_artifacts_typed(root: String, paths: List<String>) -> Bool {
-  let args = concat(["--verify-build-artifacts"], paths)
-  let result = gunbc.WitnessBin.Run(
+  let result = claim_executor.Executor.VerifyBuildArtifacts(
     workdir: root,
     bin_path: claim_executor_path(root: root),
-    args: args
+    artifact_paths: paths
   )
   result.success
 }
