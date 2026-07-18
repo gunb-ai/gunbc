@@ -9,8 +9,6 @@ pub mod helpers;
 #[cfg(test)]
 mod a4_opacity;
 #[cfg(test)]
-mod zz_nat_debug_test;
-#[cfg(test)]
 mod b1_hash_primitive_test;
 #[cfg(test)]
 mod body_producer_infer_perf_witness_test;
@@ -174,3 +172,5 @@ mod whole_tree_wiring_enum_test;
 mod width_nat_type_arg_test;
 #[cfg(test)]
 mod witness_option_bridge_test;
+#[cfg(test)]
+mod zz_nat_debug_test;

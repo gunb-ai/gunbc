@@ -6321,6 +6321,23 @@ pub fn emit_specific_import_block(
                     source_indices.clone(),
                     module_index.clone(),
                 );
+                let zz_debug_line = if (import_module.clone() == "std.nat".to_string()) {
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "// ZZDEBUG import_module_enums=[".to_string(),
+                                    import_module_enums.clone().join(&",".to_string()),
+                                ),
+                                "] deduped_names=[".to_string(),
+                            ),
+                            deduped_names.clone().join(&",".to_string()),
+                        ),
+                        "]".to_string(),
+                    )
+                } else {
+                    "".to_string()
+                };
                 let top_level = Rc::new({
                     let mut __result = Vec::new();
                     for n in deduped_names.clone().iter().cloned() {
@@ -6903,15 +6920,22 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                 });
                 let all_lines = v1_rt::concat(
                     v1_rt::concat(
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for l in main_lines.clone().iter().cloned() {
-                                if (l.clone() != "".to_string()) {
-                                    __result.push(l);
+                        v1_rt::concat(
+                            if (zz_debug_line.clone() != "".to_string()) {
+                                Rc::new(vec![zz_debug_line.clone()])
+                            } else {
+                                Rc::new(vec![])
+                            },
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for l in main_lines.clone().iter().cloned() {
+                                    if (l.clone() != "".to_string()) {
+                                        __result.push(l);
+                                    }
                                 }
-                            }
-                            __result
-                        }),
+                                __result
+                            }),
+                        ),
                         Rc::new({
                             let mut __result = Vec::new();
                             for l in variant_lines.clone().iter().cloned() {

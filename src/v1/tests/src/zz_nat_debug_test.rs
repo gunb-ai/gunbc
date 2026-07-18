@@ -9,7 +9,7 @@ fn debug_nat_repro() {
         "dag/std/measure.dag",
         &src,
         RenderTarget::Rust,
-        &[root.join("dag")],
+        &[root.join("dag"), root.join("src/v2")],
     );
     for f in result.files.iter() {
         if f.path.contains("measure") {
