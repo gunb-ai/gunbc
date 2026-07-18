@@ -15,7 +15,15 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
   let decl_is_disj = decl.connective == Disj
   let has_inferred_alias = decl.inferred != none && decl.connective == NoConnective && decl.children |> count == 0
   if decl_is_disj {
-    decl
+    if (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
+      let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+      substitute_type_slots(
+        n: decl,
+        slot_bindings: subst,
+        decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
+        source_indices: env.source_indices
+      )
+    } else { decl }
   } else if has_inferred_alias {
     match decl.inferred {
       Present { value: Resolved { node: target } } =>

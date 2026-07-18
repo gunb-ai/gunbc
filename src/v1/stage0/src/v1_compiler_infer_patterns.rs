@@ -86,7 +86,19 @@ pub fn expand_scrut_from_decl(
             && (decl.connective.clone() == Connective::NoConnective))
             && ((decl.children.clone().len() as i64) == 0));
         if decl_is_disj.clone() {
-            decl
+            if (decl.params.clone().len() as i64) > 0
+                && (scrut_node.children.clone().len() as i64) > 0
+            {
+                let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
+                substitute_type_slots(
+                    decl.clone(),
+                    subst.clone(),
+                    authored_name_at(env.source_indices.clone(), decl.clone()),
+                    env.source_indices.clone(),
+                )
+            } else {
+                decl
+            }
         } else {
             if has_inferred_alias.clone() {
                 match decl.inferred.clone().as_deref().cloned() {
