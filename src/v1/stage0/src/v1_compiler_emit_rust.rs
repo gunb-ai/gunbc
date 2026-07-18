@@ -12053,6 +12053,15 @@ pub fn analyze_rc_match(
             }
             _ => false,
         };
+        let scrutinee_option_rc_inner = match scrutinee.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => declared_return_is_option_rc(
+                rt.clone(),
+                shared_types.clone(),
+                emit_info.corpus_repr.clone(),
+                source_indices.clone(),
+            ),
+            _ => false,
+        };
         let arms_want_option = {
             let mut __found = false;
             for a in arm_analyses.clone().iter().cloned() {
@@ -12077,12 +12086,20 @@ pub fn analyze_rc_match(
             ExprData::ExprCall { .. } => true,
             _ => false,
         };
+        let needs_option_deref_scrut = if (scrutinee_is_optional.clone()
+            && scrutinee_option_rc_inner.clone())
+        {
+            true
+        } else if (!scrutinee_is_optional.clone() && scrutinee_is_rc_wrapped.clone()) {
+            true
+        } else {
+            false
+        };
         RcMatchAnalysis {
             needs_rc_option_ref: ((arms_want_option.clone() && scrutinee_is_call.clone())
                 && !scrutinee_is_optional.clone()),
-            needs_option_deref: (((arms_want_option.clone() && !scrutinee_is_call.clone())
-                && !scrutinee_is_optional.clone())
-                && scrutinee_is_rc_wrapped.clone()),
+            needs_option_deref: ((arms_want_option.clone() && !scrutinee_is_call.clone())
+                && needs_option_deref_scrut.clone()),
             needs_deref: if scrutinee_is_optional.clone() {
                 false
             } else {

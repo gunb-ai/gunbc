@@ -4558,15 +4558,13 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
   }
 }
 
-fn scrutinee_is_option_rc_inner(scrutinee: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match scrutinee.inferred {
-    Present { value: Resolved { node: rt } } =>
-      if rt.return_cardinality == CardOptional {
-        let inner = with_required_cardinality(n: rt)
-        let inner_name = authored_name_at(source_indices: source_indices, node: inner)
-        set_contains(shared_types, inner_name)
-          || rust_type_is_rc_wrapped(type_name: render_rust_type(n: inner, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices))
-      } else { false }
+fn declared_return_is_option_rc(declared: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match declared.return_cardinality {
+    CardOptional =>
+      let inner = with_required_cardinality(n: declared)
+      let inner_name = authored_name_at(source_indices: source_indices, node: inner)
+      set_contains(shared_types, inner_name)
+        || rust_type_is_rc_wrapped(type_name: render_rust_type(n: inner, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices))
     _ => false
   }
 }
@@ -4586,19 +4584,28 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
       } else { false }
     _ => false
   }
-  let scrutinee_option_rc_inner = scrutinee_is_option_rc_inner(scrutinee: scrutinee, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+  let scrutinee_option_rc_inner = match scrutinee.inferred {
+    Present { value: Resolved { node: rt } } =>
+      declared_return_is_option_rc(declared: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices)
+    _ => false
+  }
   let arms_want_option = arm_analyses |> any(a => a.matches_option_rc_variant)
   let arms_want_deref = arm_analyses |> any(a => a.matches_rc_variant)
   let scrutinee_is_call = match scrutinee.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } => true
     _ => false
   }
+  let needs_option_deref_scrut = if scrutinee_is_optional && scrutinee_option_rc_inner {
+    true
+  } else if !scrutinee_is_optional && scrutinee_is_rc_wrapped {
+    true
+  } else {
+    false
+  }
 
   RcMatchAnalysis {
     needs_rc_option_ref: arms_want_option && scrutinee_is_call && !scrutinee_is_optional,
-    needs_option_deref: arms_want_option && !scrutinee_is_call && (
-      (scrutinee_is_optional && scrutinee_option_rc_inner) || (!scrutinee_is_optional && scrutinee_is_rc_wrapped)
-    ),
+    needs_option_deref: arms_want_option && !scrutinee_is_call && needs_option_deref_scrut,
     needs_deref: if scrutinee_is_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref }
   }
 }
@@ -4846,17 +4853,6 @@ fn effective_variant_parent(name: String, binding_kind: VarBindingKind?, resolve
 
 fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<String>, corpus_repr: RustCorpusRepr) -> Bool {
   (name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: corpus_repr)) || set_contains(shared_types, enum_name)
-}
-
-fn declared_return_is_option_rc(declared: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match declared.return_cardinality {
-    CardOptional =>
-      let inner = with_required_cardinality(n: declared)
-      let inner_name = authored_name_at(source_indices: source_indices, node: inner)
-      set_contains(shared_types, inner_name)
-        || rust_type_is_rc_wrapped(type_name: render_rust_type(n: inner, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices))
-    _ => false
-  }
 }
 
 fn is_optional_carrier_call(expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
