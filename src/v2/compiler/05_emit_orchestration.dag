@@ -11,6 +11,8 @@ import v2.std.orchestration_emit {
   orch_construct_run_rawline,
   orch_construct_retry,
   orch_construct_retry_1level,
+  orch_construct_retry_escalation_final,
+  orch_construct_retry_escalation_step,
   orch_construct_seq2,
   orch_construct_if,
   orch_construct_if_else,
@@ -693,8 +695,54 @@ fn orch_emit_retry_run_spelling(
   )
 }
 
-fn orch_retry_warning_spelling(level: EscalationLevel) -> String {
-  concat("echo \"::warning::", concat(level.warning.message, "\"\n"))
+fn orch_emit_retry_escalation_final(
+  command: String,
+  env: FreeMonoid<EnvBinding>,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<String> {
+  bind_outcome(
+    o: orch_emit_retry_run_spelling(command: command, env: env, medium: medium),
+    f: fn(occ) {
+      bind_outcome(
+        o: orch_emit_from_registry(
+          medium: medium,
+          construct_tag: orch_construct_retry_escalation_final,
+          target: medium.realize_retry_escalation_final(occ, exhausted)
+        ),
+        f: fn(m) { outcome_accepted(m.carried) }
+      )
+    }
+  )
+}
+
+fn orch_emit_retry_escalation_step_for_level(
+  command: String,
+  level: EscalationLevel,
+  grep_pat: String,
+  inner: String,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<String> {
+  bind_outcome(
+    o: orch_emit_retry_run_spelling(command: command, env: level.env, medium: medium),
+    f: fn(occ) {
+      bind_outcome(
+        o: orch_emit_from_registry(
+          medium: medium,
+          construct_tag: orch_construct_retry_escalation_step,
+          target: medium.realize_retry_escalation_step(
+            occ,
+            grep_pat,
+            level.warning.message,
+            inner,
+            exhausted
+          )
+        ),
+        f: fn(m) { outcome_accepted(m.carried) }
+      )
+    }
+  )
 }
 
 fn orch_emit_retry_escalation_tail(
@@ -710,55 +758,41 @@ fn orch_emit_retry_escalation_tail(
         LogMatches { source: _, pattern: grep_pat } =>
           match list_tail(xs: levels) {
             TailAbsent =>
-              bind_outcome(
-                o: orch_emit_retry_run_spelling(command: command, env: level.env, medium: medium),
-                f: fn(final_cmd) {
-                  outcome_accepted(concat(final_cmd, concat(" || ", exhausted)))
-                }
+              orch_emit_retry_escalation_final(
+                command: command,
+                env: level.env,
+                exhausted: exhausted,
+                medium: medium
               )
             TailFound { tail: rest } =>
-              bind_outcome(
-                o: orch_emit_retry_escalation_tail(
-                  command: command,
-                  levels: rest,
-                  exhausted: exhausted,
-                  medium: medium
-                ),
-                f: fn(inner) {
+              match is_empty(rest) {
+                true =>
+                  orch_emit_retry_escalation_final(
+                    command: command,
+                    env: level.env,
+                    exhausted: exhausted,
+                    medium: medium
+                  )
+                false =>
                   bind_outcome(
-                    o: orch_emit_retry_run_spelling(command: command, env: level.env, medium: medium),
-                    f: fn(retry_cmd) {
-                      outcome_accepted(
-                        concat(
-                          concat(
-                            concat(
-                              concat(
-                                concat("RETRY_LOG=$(mktemp)\n", "    if ! ( "),
-                                retry_cmd
-                              ),
-                              " ) 2>&1 | tee \"$RETRY_LOG\"; then\n"
-                            ),
-                            concat(
-                              concat(
-                                concat(concat("      if grep -qiE '", grep_pat), "' \"$RETRY_LOG\"; then\n"),
-                                concat("        ", orch_retry_warning_spelling(level: level))
-                              ),
-                              concat("        ", inner)
-                            )
-                          ),
-                          concat(
-                            concat("      else\n        ", exhausted),
-                            concat(
-                              concat("      fi\n    fi\n", "    rm -f \"$RETRY_LOG\""),
-                              ""
-                            )
-                          )
-                        )
+                    o: orch_emit_retry_escalation_tail(
+                      command: command,
+                      levels: rest,
+                      exhausted: exhausted,
+                      medium: medium
+                    ),
+                    f: fn(inner) {
+                      orch_emit_retry_escalation_step_for_level(
+                        command: command,
+                        level: level,
+                        grep_pat: grep_pat,
+                        inner: inner,
+                        exhausted: exhausted,
+                        medium: medium
                       )
                     }
                   )
-                }
-              )
+              }
           }
         _ =>
           outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
@@ -786,27 +820,15 @@ fn orch_emit_retry_multilevel(
               medium: medium
             ),
             f: fn(tail) {
-              outcome_accepted(
-                lossless_source(
-                  text: concat(
-                    concat("BUILD_LOG=$(mktemp)\nif ! (", m1.carried),
-                    concat(
-                      concat(") 2>&1 | tee \"$BUILD_LOG\"; then\n", "  if grep -qiE '"),
-                      concat(
-                        concat(grep_pat1, "' \"$BUILD_LOG\"; then\n"),
-                        concat(
-                          concat("    ", orch_retry_warning_spelling(level: level1)),
-                          concat(
-                            concat("    ", tail),
-                            concat(
-                              concat("\n  else\n    ", exhausted),
-                              concat("\n  fi\nfi\nrm -f \"$BUILD_LOG\"\n", "")
-                            )
-                          )
-                        )
-                      )
-                    )
-                  )
+              orch_emit_from_registry(
+                medium: medium,
+                construct_tag: orch_construct_retry_1level,
+                target: medium.realize_retry_1level(
+                  m1.carried,
+                  tail,
+                  grep_pat1,
+                  level1.warning.message,
+                  exhausted
                 )
               )
             }

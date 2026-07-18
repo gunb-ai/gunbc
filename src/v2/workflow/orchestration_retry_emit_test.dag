@@ -1,10 +1,26 @@
 module v2.workflow.orchestration_retry_emit_test
 
-import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.compiler.emit_orchestration {
+  orch_emit_step,
+  orch_emit_retry_escalation_tail,
+  orch_emit_retry_escalation_final,
+  orch_emit_from_registry,
+  orch_emit_retry_run_spelling
+}
+import v2.std.orchestration_emit { orch_construct_retry_escalation_step }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.bash { orch_retry_emitted_command, orch_retry_target_model }
+import v2.extdeps.languages.bash {
+  orch_retry_emitted_command,
+  orch_retry_target_model,
+  orch_retry_1level_emitted_command,
+  orch_retry_1level_target_model,
+  orch_retry_escalation_final_emitted_command,
+  orch_retry_escalation_final_target_model,
+  orch_retry_escalation_step_emitted_command,
+  orch_retry_escalation_step_target_model
+}
 import v2.test.manual.retry_eagain_bash {
   retry_eagain_intent,
   retry_eagain_example_command
@@ -204,6 +220,490 @@ test fn orch_retry_exhausted_has_teeth_holds() -> Bool {
   match orch_emit_step(s: orch_retry_perturbed_exhausted_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data orch_retry_1level_probe_command: String = "probe_cmd"
+
+data orch_retry_1level_exhausted_command: String = "exit 9"
+
+fn orch_retry_1level_escalation() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "w1"
+    },
+    env: [EnvSet { name: "E1", value: "1" }]
+  }
+}
+
+fn orch_retry_1level_intent() -> PipelineStep {
+  Retry {
+    body: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: orch_retry_1level_probe_command,
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    escalations: [orch_retry_1level_escalation()],
+    on_exhausted: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: orch_retry_1level_exhausted_command,
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    }
+  }
+}
+
+fn orch_retry_1level_golden() -> String {
+  concat(
+    concat(
+      concat("BUILD_LOG=$(mktemp)\n", "if ! ("),
+      concat(orch_retry_1level_probe_command, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
+    ),
+    concat(
+      concat(
+        concat(concat("  if grep -qiE 'PAT1' \"$BUILD_LOG\"; then\n", "    echo \"::warning::w1\"\n"),
+        concat("    E1=1 ", concat(orch_retry_1level_probe_command, "\n")))
+      ),
+      concat(
+        concat(concat("  else\n    ", orch_retry_1level_exhausted_command), "\n"),
+        concat("  fi\n", "fi\nrm -f \"$BUILD_LOG\"\n")
+      )
+    )
+  )
+}
+
+fn orch_retry_1level_perturbed_intent() -> PipelineStep {
+  match orch_retry_1level_intent() {
+    Retry { body: b, escalations: e, on_exhausted: x } =>
+      Retry {
+        body: b,
+        escalations: [
+          EscalationLevel {
+            detect: LogMatches { source: "BUILD_LOG", pattern: "PAT1" },
+            warning: EmitDirective {
+              severity: SeverityWarning,
+              message: "w1"
+            },
+            env: [EnvSet { name: "E1", value: "2" }]
+          }
+        ],
+        on_exhausted: x
+      }
+    Do { run: _ } => orch_retry_1level_intent()
+    If { cond: _, then_: _, else_: _ } => orch_retry_1level_intent()
+    For { binder: _, over: _, body: _ } => orch_retry_1level_intent()
+    While { cond: _, body: _ } => orch_retry_1level_intent()
+    BoundedPoll { max_attempts: _, body: _, success: _ } => orch_retry_1level_intent()
+    Let { name: _, value: _ } => orch_retry_1level_intent()
+    Call { callee: _, args: _ } => orch_retry_1level_intent()
+  }
+}
+
+test fn orch_retry_1level_emit_matches_golden_holds() -> Bool {
+  match orch_emit_step(s: orch_retry_1level_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_retry_1level_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_1level_emit_has_teeth_holds() -> Bool {
+  match orch_emit_step(s: orch_retry_1level_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != orch_retry_1level_golden()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
+  match emit(
+    tree: InferredTree {
+      root: orch_retry_escalation_final_emitted_command,
+      facts: Map { lookup: orch_retry_probe_facts }
+    },
+    target: orch_retry_escalation_final_target_model(
+      occ: "E3=1 cmd",
+      exhausted: "exit 9"
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
+  match emit(
+    tree: InferredTree {
+      root: orch_retry_escalation_step_emitted_command,
+      facts: Map { lookup: orch_retry_probe_facts }
+    },
+    target: orch_retry_escalation_step_target_model(
+      occ: "E2=1 cmd",
+      pattern: "PAT2",
+      warn: "w2",
+      inner: "E3=1 cmd || exit 9",
+      exhausted: "exit 9"
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool {
+  match emit(
+    tree: InferredTree {
+      root: orch_retry_1level_emitted_command,
+      facts: Map { lookup: orch_retry_probe_facts }
+    },
+    target: orch_retry_1level_target_model(
+      occ1: "cmd",
+      occ2: "E=1 cmd",
+      pattern1: "pat",
+      warn1: "w1",
+      exhausted: "exit 1"
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn orch_retry_level2_escalation() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "RETRY_LOG", pattern: "PAT2" },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "w2"
+    },
+    env: [EnvSet { name: "E2", value: "1" }]
+  }
+}
+
+fn orch_retry_level3_escalation() -> EscalationLevel {
+  EscalationLevel {
+    detect: LogMatches { source: "RETRY_LOG", pattern: "PAT3" },
+    warning: EmitDirective {
+      severity: SeverityWarning,
+      message: "w3"
+    },
+    env: [EnvSet { name: "E3", value: "1" }]
+  }
+}
+
+fn orch_retry_3level_intent() -> PipelineStep {
+  Retry {
+    body: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: orch_retry_1level_probe_command,
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    escalations: [
+      orch_retry_1level_escalation(),
+      orch_retry_level2_escalation(),
+      orch_retry_level3_escalation()
+    ],
+    on_exhausted: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: orch_retry_1level_exhausted_command,
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    }
+  }
+}
+
+fn orch_retry_3level_golden() -> String {
+  concat(
+    concat(
+      concat("BUILD_LOG=$(mktemp)\n", "if ! ("),
+      concat(orch_retry_1level_probe_command, ") 2>&1 | tee \"$BUILD_LOG\"; then\n")
+    ),
+    concat(
+      concat(
+        concat(concat("  if grep -qiE 'PAT1' \"$BUILD_LOG\"; then\n", "    echo \"::warning::w1\"\n"),
+        concat(
+          concat("    RETRY_LOG=$(mktemp)\n", "    if ! ( "),
+          concat(
+            concat("E2=1 ", concat(orch_retry_1level_probe_command, " ) 2>&1 | tee \"$RETRY_LOG\"; then\n")),
+            concat(
+              concat(
+                concat(concat("      if grep -qiE 'PAT2' \"$RETRY_LOG\"; then\n", "        echo \"::warning::w2\"\n"),
+                concat("        E3=1 ", concat(orch_retry_1level_probe_command, " || ")))
+              ),
+              concat(
+                concat(orch_retry_1level_exhausted_command, "\n"),
+                concat(
+                  concat("      else\n        ", orch_retry_1level_exhausted_command),
+                  concat(
+                    concat("\n      fi\n    fi\n", "    rm -f \"$RETRY_LOG\""),
+                    concat(
+                      concat("\n  else\n    ", orch_retry_1level_exhausted_command),
+                      concat("\n  fi\nfi\nrm -f \"$BUILD_LOG\"\n", "")
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  ))
+}
+
+fn orch_retry_3level_perturbed_intent() -> PipelineStep {
+  match orch_retry_3level_intent() {
+    Retry { body: b, escalations: e, on_exhausted: x } =>
+      Retry {
+        body: b,
+        escalations: [
+          orch_retry_1level_escalation(),
+          orch_retry_level2_escalation(),
+          EscalationLevel {
+            detect: LogMatches { source: "RETRY_LOG", pattern: "PAT3" },
+            warning: EmitDirective {
+              severity: SeverityWarning,
+              message: "w3"
+            },
+            env: [EnvSet { name: "E3", value: "9" }]
+          }
+        ],
+        on_exhausted: x
+      }
+    Do { run: _ } => orch_retry_3level_intent()
+    If { cond: _, then_: _, else_: _ } => orch_retry_3level_intent()
+    For { binder: _, over: _, body: _ } => orch_retry_3level_intent()
+    While { cond: _, body: _ } => orch_retry_3level_intent()
+    BoundedPoll { max_attempts: _, body: _, success: _ } => orch_retry_3level_intent()
+    Let { name: _, value: _ } => orch_retry_3level_intent()
+    Call { callee: _, args: _ } => orch_retry_3level_intent()
+  }
+}
+
+test fn orch_retry_escalation_step_with_level2_probe_holds() -> Bool {
+  let medium = bash_orchestration_emit_medium()
+  let level = orch_retry_level2_escalation()
+  match orch_emit_retry_escalation_tail(
+    command: orch_retry_1level_probe_command,
+    levels: [orch_retry_level3_escalation()],
+    exhausted: orch_retry_1level_exhausted_command,
+    medium: medium
+  ) {
+    Accepted { value: inner, diagnostics: od1 } =>
+      match level.detect {
+        LogMatches { source: _, pattern: grep_pat } =>
+          match orch_emit_retry_run_spelling(
+            command: orch_retry_1level_probe_command,
+            env: level.env,
+            medium: medium
+          ) {
+            Accepted { value: occ, diagnostics: od2 } =>
+              match orch_emit_from_registry(
+                medium: medium,
+                construct_tag: orch_construct_retry_escalation_step,
+                target: medium.realize_retry_escalation_step(
+                  occ,
+                  grep_pat,
+                  level.warning.message,
+                  inner,
+                  orch_retry_1level_exhausted_command
+                )
+              ) {
+                Accepted { value: _, diagnostics: dg } =>
+                  (od1 == None) && (od2 == None) && (dg == None)
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        ExitZero { run: _ } => false
+        StrEq { lhs: _, rhs: _ } => false
+        StrEmpty { operand: _ } => false
+        StrNonempty { operand: _ } => false
+        Not { inner: _ } => false
+        And { lhs: _, rhs: _ } => false
+        Or { lhs: _, rhs: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_escalation_step_with_inner_probe_holds() -> Bool {
+  let medium = bash_orchestration_emit_medium()
+  match orch_emit_retry_escalation_tail(
+    command: orch_retry_1level_probe_command,
+    levels: [orch_retry_level3_escalation()],
+    exhausted: orch_retry_1level_exhausted_command,
+    medium: medium
+  ) {
+    Accepted { value: inner, diagnostics: od1 } =>
+      match orch_emit_retry_run_spelling(
+        command: orch_retry_1level_probe_command,
+        env: [EnvSet { name: "E2", value: "1" }],
+        medium: medium
+      ) {
+        Accepted { value: occ, diagnostics: od2 } =>
+          match orch_emit_from_registry(
+            medium: medium,
+            construct_tag: orch_construct_retry_escalation_step,
+            target: medium.realize_retry_escalation_step(
+              occ,
+              "PAT2",
+              "w2",
+              inner,
+              orch_retry_1level_exhausted_command
+            )
+          ) {
+            Accepted { value: _, diagnostics: dg } =>
+              (od1 == None) && (od2 == None) && (dg == None)
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_escalation_step_dynamic_occ_probe_holds() -> Bool {
+  let medium = bash_orchestration_emit_medium()
+  match orch_emit_retry_run_spelling(
+    command: orch_retry_1level_probe_command,
+    env: [EnvSet { name: "E2", value: "1" }],
+    medium: medium
+  ) {
+    Accepted { value: occ, diagnostics: od } =>
+      match orch_emit_from_registry(
+        medium: medium,
+        construct_tag: orch_construct_retry_escalation_step,
+        target: medium.realize_retry_escalation_step(
+          occ,
+          "PAT2",
+          "w2",
+          "E3=1 cmd || exit 9",
+          orch_retry_1level_exhausted_command
+        )
+      ) {
+        Accepted { value: _, diagnostics: dg } => (od == None) && (dg == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_escalation_step_registry_probe_holds() -> Bool {
+  let medium = bash_orchestration_emit_medium()
+  match orch_emit_from_registry(
+    medium: medium,
+    construct_tag: orch_construct_retry_escalation_step,
+    target: medium.realize_retry_escalation_step(
+      "E2=1 cmd",
+      "PAT2",
+      "w2",
+      "E3=1 cmd || exit 9",
+      "exit 9"
+    )
+  ) {
+    Accepted { value: _, diagnostics: dg } => dg == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_escalation_final_probe_holds() -> Bool {
+  match orch_emit_retry_escalation_final(
+    command: orch_retry_1level_probe_command,
+    env: [EnvSet { name: "E3", value: "1" }],
+    exhausted: orch_retry_1level_exhausted_command,
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: dg } => dg == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_escalation_tail_single_probe_holds() -> Bool {
+  match orch_emit_retry_escalation_tail(
+    command: orch_retry_1level_probe_command,
+    levels: [orch_retry_level3_escalation()],
+    exhausted: orch_retry_1level_exhausted_command,
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: dg } => dg == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_escalation_tail_probe_holds() -> Bool {
+  match orch_emit_retry_escalation_tail(
+    command: orch_retry_1level_probe_command,
+    levels: [
+      orch_retry_level2_escalation(),
+      orch_retry_level3_escalation()
+    ],
+    exhausted: orch_retry_1level_exhausted_command,
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: _, diagnostics: dg } => dg == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn orch_retry_3level_emit_actual() -> String {
+  match orch_emit_step(s: orch_retry_3level_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "REJECTED"
+  }
+}
+
+test fn orch_retry_3level_emit_debug_holds() -> Bool {
+  let actual = orch_retry_3level_emit_actual()
+  let golden = orch_retry_3level_golden()
+  actual == golden
+}
+
+test fn orch_retry_3level_emit_matches_golden_holds() -> Bool {
+  match orch_emit_step(s: orch_retry_3level_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_retry_3level_golden()) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_retry_3level_emit_has_teeth_holds() -> Bool {
+  match orch_emit_step(s: orch_retry_3level_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != orch_retry_3level_golden()
     Rejected { diagnostics: _ } => false
   }
 }

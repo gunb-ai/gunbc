@@ -1485,7 +1485,7 @@ fn orch_retry_escalation_final_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-data orch_retry_escalation_final_emitted: Node = bash_conj_emitted_from_tokens(
+data orch_retry_escalation_final_emitted_command: Node = bash_conj_emitted_from_tokens(
   tokens: orch_retry_escalation_final_tokens()
 )
 
@@ -1504,7 +1504,7 @@ fn orch_retry_escalation_final_translation_rules_node() -> Node {
     rule_name: ^bash_relation_rule_orch_retry_escalation_final,
     lhs: ^bash_production_orch_retry_escalation_final,
     tokens: orch_retry_escalation_final_tokens(),
-    emitted: orch_retry_escalation_final_emitted
+    emitted: orch_retry_escalation_final_emitted_command
   )
 }
 
@@ -1551,11 +1551,11 @@ fn orch_retry_escalation_step_seg_e() -> String {
 }
 
 fn orch_retry_escalation_step_seg_f() -> String {
-  "      else\n        "
+  "\n      else\n        "
 }
 
 fn orch_retry_escalation_step_seg_g() -> String {
-  "      fi\n    fi\n    rm -f \"$RETRY_LOG\""
+  "\n      fi\n    fi\n    rm -f \"$RETRY_LOG\""
 }
 
 fn orch_retry_escalation_step_tokens() -> List<ConcreteSyntaxToken> {
@@ -1575,7 +1575,7 @@ fn orch_retry_escalation_step_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-data orch_retry_escalation_step_emitted: Node = bash_conj_emitted_from_tokens(
+data orch_retry_escalation_step_emitted_command: Node = bash_conj_emitted_from_tokens(
   tokens: orch_retry_escalation_step_tokens()
 )
 
@@ -1617,7 +1617,7 @@ fn orch_retry_escalation_step_translation_rules_node() -> Node {
     rule_name: ^bash_relation_rule_orch_retry_escalation_step,
     lhs: ^bash_production_orch_retry_escalation_step,
     tokens: orch_retry_escalation_step_tokens(),
-    emitted: orch_retry_escalation_step_emitted
+    emitted: orch_retry_escalation_step_emitted_command
   )
 }
 
