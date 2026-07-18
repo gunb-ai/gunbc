@@ -147,22 +147,6 @@ pub fn func_sig_from_global_bare(
                 })),
                 None => borrowed_census_decl(type_env.clone(), name.clone()),
             };
-                && (name == "get" || name == "first" || name == "lookup")
-            {
-                match borrowed.as_ref() {
-                    Some(bd) => eprintln!(
-                        "SIG_PROBE module={} name={name} owner={} node_name={:?} params={} \
-                         has_inferred={} has_ann={}",
-                        type_env.module_path,
-                        bd.owner_module_path,
-                        bd.node.name,
-                        bd.node.params.len(),
-                        bd.node.inferred.is_some(),
-                        bd.node.type_annotation.is_some(),
-                    ),
-                    None => eprintln!("SIG_PROBE module={} name={name} MISS", type_env.module_path),
-                }
-            }
             match borrowed {
                 Some(bd) => {
                     let node = bd.node.clone();

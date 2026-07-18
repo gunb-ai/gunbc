@@ -1748,35 +1748,6 @@ pub fn resolve_node_bounded(
                                                             })
                                                         }
                                                         None => {
-                                                                .map(|v| v == "1")
-                                                                .unwrap_or(false)
-                                                            {
-                                                                let nm = authored_name(
-                                                                    env.clone(),
-                                                                    n.clone(),
-                                                                );
-                                                                let gb = crate::v1_rt::map_get(
-                                                                    &env.symbol_index
-                                                                        .global_bare
-                                                                        .clone(),
-                                                                    nm.clone(),
-                                                                );
-                                                                eprintln!(
-            "RESOLVE_PROBE name={} module_path={:?} ident={:?} gb_state={} gb_size={} module={}",
-            nm,
-            env.module_path,
-            n.ident,
-            match gb.as_deref() {
-                Some(crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => "unique",
-                Some(crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates }) => {
-                    Box::leak(format!("ambiguous:{}", candidates.len()).into_boxed_str()) as &str
-                }
-                None => "absent",
-            },
-            env.symbol_index.global_bare.len(),
-            module_name
-        );
-                                                            }
                                                             Rc::new(NodeResolveResult {
     resolved: n.clone(),
     diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType {

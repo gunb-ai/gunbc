@@ -3275,36 +3275,6 @@ pub fn infer_expr(
                             field_name.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         );
-                        if std::env::var("GUNBC_FIELD_PROBE2").is_ok() && field_name == "member" {
-                            let dump = |n: &Rc<Node>| {
-                                let self_inf = n
-                                    .inferred
-                                    .as_ref()
-                                    .map(|i| format!("{:?}", i))
-                                    .unwrap_or_default();
-                                format!(
-                                    "name={} conn={:?} kids={:?} self_inf={:.200}",
-                                    n.name,
-                                    n.connective,
-                                    n.children
-                                        .iter()
-                                        .map(|c| c.name.clone())
-                                        .collect::<std::vec::Vec<_>>(),
-                                    self_inf,
-                                )
-                            };
-                            eprintln!(
-                                "FIELD2 field={} base_rt[{}] resolved_base[{}] hit={} ftype[{}]",
-                                field_name,
-                                dump(&base_rt),
-                                dump(&resolved_base),
-                                field_type_lookup.is_some(),
-                                field_type_lookup
-                                    .as_ref()
-                                    .map(|f| dump(f))
-                                    .unwrap_or_default(),
-                            );
-                        }
                         match field_type_lookup.clone() {
                             Some(field_type) => {
                                 let field_summary = match field_summary_for_type(
@@ -3565,16 +3535,6 @@ pub fn infer_expr(
                             }
                             __result
                         });
-                            && func_name.contains("membership_effects")
-                        {
-                            eprintln!(
-                                "SIGPATH func={} module={} sig_params={} generic_names={:?}",
-                                func_name,
-                                scope.module_name,
-                                sig_params.len(),
-                                generic_names,
-                            );
-                        }
                         let final_state = Rc::new(
                             call_args
                                 .clone()
@@ -3671,23 +3631,6 @@ pub fn infer_expr(
                 };
                 let arg_infer_results = arg_call.results.clone();
                 let call_subst = arg_call.subst.clone();
-                    && func_name.contains("membership_effects")
-                {
-                    eprintln!(
-                        "SIGPATH2 func={} sig_present={} subst={:?}",
-                        func_name,
-                        sig.is_some(),
-                        call_subst
-                            .iter()
-                            .map(|(k, v)| (
-                                k.clone(),
-                                v.name.clone(),
-                                format!("{:?}", v.connective),
-                                v.children.len()
-                            ))
-                            .collect::<std::vec::Vec<_>>(),
-                    );
-                }
                 let typed_args = Rc::new({
                     let mut __result = Vec::new();
                     for air in arg_infer_results.clone().iter().cloned() {
@@ -3713,97 +3656,6 @@ pub fn infer_expr(
                             ),
                             None => error_type(),
                         };
-                            && func_name.contains("membership_effects")
-                        {
-                            if let Some(s) = sig.clone() {
-                                let dump = |n: &Rc<Node>| {
-                                    format!(
-                                        "name={} conn={:?} kids={:?}",
-                                        n.name,
-                                        n.connective,
-                                        n.children
-                                            .iter()
-                                            .map(|c| c.name.clone())
-                                            .collect::<std::vec::Vec<_>>()
-                                    )
-                                };
-                                eprintln!(
-                                    "SIGPATH3 func={} sig_ret[{}] result[{}]",
-                                    func_name,
-                                    dump(&s.inferred),
-                                    dump(&resolved_type),
-                                );
-                                fn walk_tv(n: &Rc<Node>, path: &str, depth: usize) {
-                                    if depth > 6 {
-                                        return;
-                                    }
-                                    match n.inferred.as_deref() {
-                                        Some(InferredNode::TypeVariable { id, .. }) => {
-                                            eprintln!("SIGPATH4 {}/{} TV id={}", path, n.name, id);
-                                        }
-                                        Some(InferredNode::Resolved { node: t, .. }) => {
-                                            walk_tv(
-                                                t,
-                                                &format!("{}/{}~inf", path, n.name),
-                                                depth + 1,
-                                            );
-                                        }
-                                        _ => {}
-                                    }
-                                    for c in n.children.iter() {
-                                        walk_tv(c, &format!("{}/{}", path, n.name), depth + 1);
-                                    }
-                                }
-                                walk_tv(&resolved_type, "", 0);
-                                fn walk_m(
-                                    n: &Rc<Node>,
-                                    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-                                    path: &str,
-                                    depth: usize,
-                                ) {
-                                    if depth > 8 {
-                                        return;
-                                    }
-                                    if n.children.is_empty()
-                                        && authored_name_at(si.clone(), n.clone()) == "M"
-                                    {
-                                        eprintln!(
-                                            "SIGPATH5 {} leaf-M name={:?} conn={:?} params={} inf={} body={}",
-                                            path,
-                                            n.name,
-                                            n.connective,
-                                            n.params.len(),
-                                            n.inferred.is_some(),
-                                            n.body.is_some(),
-                                        );
-                                    }
-                                    if let Some(InferredNode::Resolved { node: t, .. }) =
-                                        n.inferred.as_deref()
-                                    {
-                                        walk_m(
-                                            t,
-                                            si.clone(),
-                                            &format!("{}/{}~inf", path, n.name),
-                                            depth + 1,
-                                        );
-                                    }
-                                    for c in n.children.iter() {
-                                        walk_m(
-                                            c,
-                                            si.clone(),
-                                            &format!("{}/{}", path, n.name),
-                                            depth + 1,
-                                        );
-                                    }
-                                }
-                                walk_m(
-                                    &resolved_type,
-                                    scope.type_env.clone().source_indices.clone(),
-                                    "",
-                                    0,
-                                );
-                            }
-                        }
                         let value_params_for_check = Rc::new({
                             let mut __result = Vec::new();
                             for p in sig_params.clone().iter().cloned() {
