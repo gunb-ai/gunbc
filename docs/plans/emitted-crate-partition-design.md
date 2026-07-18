@@ -5,6 +5,14 @@
 
 ---
 
+## Decisions (operator, 2026-07-18)
+
+- **Deferred** behind the active self-host critical path (Gate-A emit-coherence + body-emit). Resume when those lanes settle; do **not** dispatch ahead of them. Tracked here + in session memory so it is not forgotten.
+- **Cost proxy = LOC, made EXPLICIT in the interface.** The balance term uses lines-of-code as the compile-cost stand-in *for now*, but it must be a **named, typed proxy** in the policy interface (e.g. `CompileCostProxy = LocProxy { … } | …`), never an implicit `LOC == cost` equation buried in the fold. Swapping in a real compile-cost / monomorphization model later is then a typed substitution at one declared point, not a hidden refactor (§3 single-authority, §5 no-fabricated-default).
+- **Tests are out of the partition.** The `.dag` test corpus runs on the floor (`claim_executor`), not as emitted Rust `#[test]`, so test modules are not in the frontier roster / module graph and never enter the partition. The even-cost balance is over compiler modules only; there is no test-crate story to design. (The floor still *benefits* — a better-parallelized crate build speeds the witness runs — it just is not *part* of the partitioned input.)
+
+---
+
 ## 1. Problem
 
 The self-hosted compiler emits its own Rust as a **crate layout**. Today that layout is a **hand-drawn 2-crate functional split** in `src/v1/stage0_crates.dag` — `stage0_crate_plan()` hand-assigns ~49 modules to `v1_stage0_core` and 7 to `v1_stage0_emit_core`. `stage0_crates.dag` has **zero** references to the module authority (`frontier.dag`); the crate **membership** is a hand ledger.
