@@ -220,6 +220,25 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
     {
         let source_indices = env.source_indices.clone();
         let brand = authored_name_at(source_indices.clone(), n.clone());
+        if std::env::var("GUNBC_PEEL_PROBE").is_ok() && brand == "Timestamp" {
+            let by_ident = n
+                .ident
+                .clone()
+                .and_then(|id| crate::v1_compiler_infer_env::lookup_type(env.clone(), id.clone()));
+            let by_name = crate::v1_compiler_infer_env::lookup_type_by_name(
+                env.clone(),
+                authored_name_at(source_indices.clone(), n.clone()),
+            );
+            eprintln!(
+                "PEEL_PROBE module={module_name} ident_present={} ident_hit={} name_hit={} \
+                 name_hit_conn={:?} name_hit_inf={}",
+                n.ident.is_some(),
+                by_ident.is_some(),
+                by_name.is_some(),
+                by_name.as_ref().map(|r| r.connective.clone()),
+                by_name.as_ref().map(|r| r.inferred.is_some()).unwrap_or(false),
+            );
+        }
         match lookup_type_for(env.clone(), n.clone()) {
             Some(resolved) => {
                 let structural = if (((resolved.connective.clone() == Connective::NoConnective)

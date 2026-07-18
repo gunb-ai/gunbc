@@ -738,16 +738,32 @@ fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
   is_v4 || is_compiler_substrate
 }
 
-fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn brand_grounds_transparently_to(name: String, other: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match lookup_type_by_name(env: type_env, name: name) {
+    Present { value: resolved } =>
+      resolved.connective == NoConnective && (resolved.children |> count) == 0 && resolved.inferred != none
+        && match resolved.inferred {
+          Present { value: Resolved { node: target } } =>
+            let target_name = authored_name_at(source_indices: source_indices, node: target)
+            is_kernel_type(name: target_name) && target_name == authored_name_at(source_indices: source_indices, node: other)
+          _ => false
+        }
+    Absent => false
+  }
+}
+
+fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
   let formal_name = authored_name_at(source_indices: source_indices, node: formal)
   let actual_name = authored_name_at(source_indices: source_indices, node: actual)
   formal.connective != Arrow && actual.connective != Arrow
     && formal_name != ""
     && actual_name != ""
-    && formal_name != actual_name
+    && qualified_last_segment(name: formal_name) != qualified_last_segment(name: actual_name)
     && structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
     && !is_declared_container_alias_spelling(name: formal_name)
     && !is_declared_container_alias_spelling(name: actual_name)
+    && !brand_grounds_transparently_to(name: formal_name, other: actual, type_env: type_env, source_indices: source_indices)
+    && !brand_grounds_transparently_to(name: actual_name, other: formal, type_env: type_env, source_indices: source_indices)
 }
 
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -765,7 +781,7 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
       false
     } else {
       let formal_name = authored_name_at(source_indices: source_indices, node: formal_base)
-      if formal_name == "" || formal_name == actual_name || dag_can_cast(source_type: actual_name, target_type: formal_name) {
+      if formal_name == "" || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
         false
       } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
         false
@@ -808,7 +824,7 @@ fn container_element_nominal_brand_mismatch(
               n: child_type_node(ch: formal_ch), env: type_env, module_name: module_name)
             let actual_el = peel_nominal_alias_identity(
               n: child_type_node(ch: actual_ch), env: type_env, module_name: module_name)
-            nominal_call_arg_brand_mismatch(formal: formal_el, actual: actual_el, source_indices: source_indices)
+            nominal_call_arg_brand_mismatch(formal: formal_el, actual: actual_el, type_env: type_env, source_indices: source_indices)
           Absent => false
         }
       Absent => false
@@ -825,7 +841,7 @@ fn direct_call_arg_type_mismatch(
 ) -> Bool {
   if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
-    nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
+    nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
       || kernel_value_declared_type_mismatch(

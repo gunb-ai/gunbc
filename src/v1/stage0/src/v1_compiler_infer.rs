@@ -1500,6 +1500,31 @@ pub fn direct_call_arg_mismatch_diags(
                                     module_name.clone(),
                                     source_indices.clone(),
                                 ) {
+                                    if std::env::var("GUNBC_ARG_PROBE").is_ok() {
+                                        eprintln!(
+                                            "ARG_PROBE module={module_name} param={param_name} \
+                                             formal_name={} formal_conn={:?} formal_inf={} \
+                                             actual_name={} actual_conn={:?} actual_inf={} \
+                                             brand={} kernel={}",
+                                            authored_name_at(source_indices.clone(), formal.clone()),
+                                            formal.connective,
+                                            formal.inferred.is_some(),
+                                            authored_name_at(source_indices.clone(), actual.clone()),
+                                            actual.connective,
+                                            actual.inferred.is_some(),
+                                            nominal_call_arg_brand_mismatch(
+                                                formal.clone(),
+                                                actual.clone(),
+                                                source_indices.clone()
+                                            ),
+                                            kernel_value_declared_type_mismatch(
+                                                formal.clone(),
+                                                actual.clone(),
+                                                type_env.clone(),
+                                                source_indices.clone()
+                                            ),
+                                        );
+                                    }
                                     Rc::new(vec![type_mismatch_error(
                                         node_type_shape(formal.clone(), source_indices.clone()),
                                         node_type_shape(actual.clone(), source_indices.clone()),
