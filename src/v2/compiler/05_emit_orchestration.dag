@@ -10,9 +10,14 @@ import v2.std.orchestration_emit {
   OrchRunEmitPlan,
   orch_construct_run_rawline,
   orch_construct_retry,
+  orch_construct_retry_1level,
+  orch_construct_retry_escalation_final,
+  orch_construct_retry_escalation_step,
   orch_construct_seq2,
   orch_construct_if,
   orch_construct_if_else,
+  orch_construct_while,
+  orch_construct_bounded_poll,
   orch_construct_procedure,
   orch_construct_call,
   orch_construct_cmdsubst_assign,
@@ -51,6 +56,8 @@ import v2.std.orchestration {
   If,
   Let,
   Call,
+  While,
+  BoundedPoll,
   Pipeline,
   Procedure,
   Expr,
@@ -76,8 +83,10 @@ import v2.std.orchestration {
   EnvBinding
 }
 import std.algebra { FreeMonoid }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty }
 import v2.std.collection { List, Map, Optional, Present, Absent }
+import v2.std.integer { integer_nat_to_decimal_string }
+import v2.std.nat { Nat }
 import v2.compiler.target_carriers { lossless_source }
 import v2.std.diagnostic {
   Accepted,
@@ -491,6 +500,65 @@ fn orch_emit_if_step(
   )
 }
 
+fn orch_emit_while_step(
+  cond: Predicate,
+  body: Pipeline,
+  medium: OrchestrationEmitMedium
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: orch_emit_predicate(p: cond, medium: medium),
+    f: fn(cond_spelling) {
+      bind_outcome(
+        o: orch_emit_pipeline(p: body, medium: medium),
+        f: fn(body_medium) {
+          bind_outcome(
+            o: medium.realize_while(cond_spelling, body_medium.carried),
+            f: fn(target) {
+              orch_emit_from_registry(
+                medium: medium,
+                construct_tag: orch_construct_while,
+                target: target
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn orch_emit_bounded_poll_step(
+  max_attempts: Nat,
+  body: Pipeline,
+  success: Predicate,
+  medium: OrchestrationEmitMedium
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: orch_emit_pipeline(p: body, medium: medium),
+    f: fn(body_medium) {
+      bind_outcome(
+        o: orch_emit_predicate(p: success, medium: medium),
+        f: fn(success_spelling) {
+          bind_outcome(
+            o: medium.realize_bounded_poll(
+              integer_nat_to_decimal_string(value: max_attempts),
+              body_medium.carried,
+              success_spelling
+            ),
+            f: fn(target) {
+              orch_emit_from_registry(
+                medium: medium,
+                construct_tag: orch_construct_bounded_poll,
+                target: target
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
 fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<Medium<String>> {
   match s {
     Do { run: r } => orch_emit_run(r: r, medium: medium)
@@ -498,8 +566,10 @@ fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<M
       orch_emit_if_step(cond: c, then_: t, else_: e, medium: medium)
     For { binder: _, over: _, body: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_for_unsupported))
-    While { cond: _, body: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_step_while_unsupported))
+    While { cond: c, body: b } =>
+      orch_emit_while_step(cond: c, body: b, medium: medium)
+    BoundedPoll { max_attempts: m, body: b, success: s } =>
+      orch_emit_bounded_poll_step(max_attempts: m, body: b, success: s, medium: medium)
     Retry { body: b, escalations: e, on_exhausted: x } =>
       orch_emit_retry(body: b, escalations: e, on_exhausted: x, medium: medium)
     Let { name: n, value: v } =>
@@ -515,6 +585,7 @@ fn orch_retry_step_command(s: PipelineStep) -> Optional<String> {
     If { cond: _, then_: _, else_: _ } => Absent
     For { binder: _, over: _, body: _ } => Absent
     While { cond: _, body: _ } => Absent
+    BoundedPoll { max_attempts: _, body: _, success: _ } => Absent
     Retry { body: _, escalations: _, on_exhausted: _ } => Absent
     Let { name: _, value: _ } => Absent
     Call { callee: _, args: _ } => Absent
@@ -581,6 +652,196 @@ fn orch_emit_retry_2level(
   )
 }
 
+fn orch_emit_retry_1level(
+  command: String,
+  level: EscalationLevel,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<Medium<String>> {
+  match level.detect {
+    LogMatches { source: _, pattern: grep_pat } =>
+      bind_outcome(
+        o: orch_emit_retry_run(command: command, env: [], medium: medium),
+        f: fn(m1) {
+          bind_outcome(
+            o: orch_emit_retry_run(command: command, env: level.env, medium: medium),
+            f: fn(m2) {
+              orch_emit_from_registry(
+                medium: medium,
+                construct_tag: orch_construct_retry_1level,
+                target: medium.realize_retry_1level(
+                  m1.carried,
+                  m2.carried,
+                  grep_pat,
+                  level.warning.message,
+                  exhausted
+                )
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+  }
+}
+
+fn orch_emit_retry_run_spelling(
+  command: String,
+  env: FreeMonoid<EnvBinding>,
+  medium: OrchestrationEmitMedium
+) -> Outcome<String> {
+  bind_outcome(
+    o: orch_emit_retry_run(command: command, env: env, medium: medium),
+    f: fn(m) { outcome_accepted(m.carried) }
+  )
+}
+
+fn orch_emit_retry_escalation_final(
+  command: String,
+  env: FreeMonoid<EnvBinding>,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<String> {
+  bind_outcome(
+    o: orch_emit_retry_run_spelling(command: command, env: env, medium: medium),
+    f: fn(occ) {
+      bind_outcome(
+        o: orch_emit_from_registry(
+          medium: medium,
+          construct_tag: orch_construct_retry_escalation_final,
+          target: medium.realize_retry_escalation_final(occ, exhausted)
+        ),
+        f: fn(m) { outcome_accepted(m.carried) }
+      )
+    }
+  )
+}
+
+fn orch_emit_retry_escalation_step_for_level(
+  command: String,
+  level: EscalationLevel,
+  grep_pat: String,
+  inner: String,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<String> {
+  bind_outcome(
+    o: orch_emit_retry_run_spelling(command: command, env: level.env, medium: medium),
+    f: fn(occ) {
+      bind_outcome(
+        o: orch_emit_from_registry(
+          medium: medium,
+          construct_tag: orch_construct_retry_escalation_step,
+          target: medium.realize_retry_escalation_step(
+            occ,
+            grep_pat,
+            level.warning.message,
+            inner,
+            exhausted
+          )
+        ),
+        f: fn(m) { outcome_accepted(m.carried) }
+      )
+    }
+  )
+}
+
+fn orch_emit_retry_escalation_tail(
+  command: String,
+  levels: List<EscalationLevel>,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<String> {
+  match list_head(xs: levels) {
+    HeadAbsent => outcome_accepted(exhausted)
+    HeadFound { value: level } =>
+      match level.detect {
+        LogMatches { source: _, pattern: grep_pat } =>
+          match list_tail(xs: levels) {
+            TailAbsent =>
+              orch_emit_retry_escalation_final(
+                command: command,
+                env: level.env,
+                exhausted: exhausted,
+                medium: medium
+              )
+            TailFound { tail: rest } =>
+              match is_empty(rest) {
+                true =>
+                  orch_emit_retry_escalation_final(
+                    command: command,
+                    env: level.env,
+                    exhausted: exhausted,
+                    medium: medium
+                  )
+                false =>
+                  bind_outcome(
+                    o: orch_emit_retry_escalation_tail(
+                      command: command,
+                      levels: rest,
+                      exhausted: exhausted,
+                      medium: medium
+                    ),
+                    f: fn(inner) {
+                      orch_emit_retry_escalation_step_for_level(
+                        command: command,
+                        level: level,
+                        grep_pat: grep_pat,
+                        inner: inner,
+                        exhausted: exhausted,
+                        medium: medium
+                      )
+                    }
+                  )
+              }
+          }
+        _ =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+      }
+  }
+}
+
+fn orch_emit_retry_multilevel(
+  command: String,
+  level1: EscalationLevel,
+  rest: List<EscalationLevel>,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<Medium<String>> {
+  match level1.detect {
+    LogMatches { source: _, pattern: grep_pat1 } =>
+      bind_outcome(
+        o: orch_emit_retry_run(command: command, env: [], medium: medium),
+        f: fn(m1) {
+          bind_outcome(
+            o: orch_emit_retry_escalation_tail(
+              command: command,
+              levels: rest,
+              exhausted: exhausted,
+              medium: medium
+            ),
+            f: fn(tail) {
+              orch_emit_from_registry(
+                medium: medium,
+                construct_tag: orch_construct_retry_1level,
+                target: medium.realize_retry_1level(
+                  m1.carried,
+                  tail,
+                  grep_pat1,
+                  level1.warning.message,
+                  exhausted
+                )
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+  }
+}
+
 fn orch_emit_retry_levels(
   command: String,
   level1: EscalationLevel,
@@ -609,6 +870,67 @@ fn orch_emit_retry_levels(
   }
 }
 
+fn orch_emit_retry_dispatch(
+  command: String,
+  escalations: FreeMonoid<EscalationLevel>,
+  exhausted: String,
+  medium: OrchestrationEmitMedium
+) -> Outcome<Medium<String>> {
+  match list_head(xs: escalations) {
+    HeadAbsent =>
+      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
+    HeadFound { value: l1 } =>
+      match list_tail(xs: escalations) {
+        TailAbsent =>
+          orch_emit_retry_1level(
+            command: command,
+            level: l1,
+            exhausted: exhausted,
+            medium: medium
+          )
+        TailFound { tail: rest } =>
+          match is_empty(rest) {
+            true =>
+              orch_emit_retry_1level(
+                command: command,
+                level: l1,
+                exhausted: exhausted,
+                medium: medium
+              )
+            false =>
+              match list_head(xs: rest) {
+                HeadFound { value: l2 } =>
+                  match list_tail(xs: rest) {
+                    TailFound { tail: more } =>
+                      match is_empty(more) {
+                        true =>
+                          orch_emit_retry_levels(
+                            command: command,
+                            level1: l1,
+                            level2: l2,
+                            exhausted: exhausted,
+                            medium: medium
+                          )
+                        false =>
+                          orch_emit_retry_multilevel(
+                            command: command,
+                            level1: l1,
+                            rest: concat([l2], more),
+                            exhausted: exhausted,
+                            medium: medium
+                          )
+                      }
+                    TailAbsent =>
+                      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
+                  }
+                HeadAbsent =>
+                  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
+              }
+          }
+      }
+  }
+}
+
 fn orch_emit_retry(
   body: Pipeline,
   escalations: FreeMonoid<EscalationLevel>,
@@ -617,33 +939,17 @@ fn orch_emit_retry(
 ) -> Outcome<Medium<String>> {
   match orch_retry_body_command(body: body) {
     Present { value: command } =>
-      match list_head(xs: escalations) {
-        HeadFound { value: l1 } =>
-          match list_tail(xs: escalations) {
-            TailFound { tail: t } =>
-              match list_head(xs: t) {
-                HeadFound { value: l2 } =>
-                  bind_outcome(
-                    o: orch_emit_pipeline(p: on_exhausted, medium: medium),
-                    f: fn(exhausted_medium) {
-                      orch_emit_retry_levels(
-                        command: command,
-                        level1: l1,
-                        level2: l2,
-                        exhausted: exhausted_medium.carried,
-                        medium: medium
-                      )
-                    }
-                  )
-                HeadAbsent =>
-                  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_needs_two_levels))
-              }
-            TailAbsent =>
-              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_needs_two_levels))
-          }
-        HeadAbsent =>
-          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
-      }
+      bind_outcome(
+        o: orch_emit_pipeline(p: on_exhausted, medium: medium),
+        f: fn(exhausted_medium) {
+          orch_emit_retry_dispatch(
+            command: command,
+            escalations: escalations,
+            exhausted: exhausted_medium.carried,
+            medium: medium
+          )
+        }
+      )
     Absent =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_body_not_run))
   }
