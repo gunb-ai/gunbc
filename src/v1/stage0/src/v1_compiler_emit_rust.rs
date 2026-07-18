@@ -12120,7 +12120,7 @@ pub fn analyze_rc_match(
         needs_rc_option_ref: ((arms_want_option.clone() && scrutinee_is_call.clone())
             && !scrutinee_is_optional.clone()),
         needs_option_deref: ((arms_want_option.clone() && !scrutinee_is_call.clone())
-            && (scrutinee_is_optional.clone() || scrutinee_is_rc_wrapped.clone())),
+            && ((!scrutinee_is_optional.clone()) && scrutinee_is_rc_wrapped.clone())),
         needs_deref: if scrutinee_is_optional.clone() {
             false
         } else {
