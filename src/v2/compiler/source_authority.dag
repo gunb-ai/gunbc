@@ -11,7 +11,8 @@ import v2.compiler.parse {
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_language_model
+  dag_language_model,
+  qualified_name_from_module_node
 }
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
@@ -19,6 +20,7 @@ import std.algebra { Empty, FreeMonoid }
 import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
+  Accepted,
   Diagnostic,
   ExternalContractUnknown,
   NonEmptyDiagnostics,
@@ -33,6 +35,8 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ParseTree }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
@@ -79,6 +83,28 @@ type SourceIrArtifactProvenance {
   artifact: Artifact
   span_index: SpanIndex
 }
+
+data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact: the 27 hand FrontierQualifiedModuleBinding rows and the host-side build_module_path_index both project from here, else two authorities remain (§3). Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
+
+type ModuleStorageProvenance
+  = ParsedFromSource { artifact: Artifact, span_index: SpanIndex }
+  | ProducedByBehavior { producer: Symbol }
+
+type ModuleStorageBinding {
+  module: QualifiedName
+  provenance: ModuleStorageProvenance
+  source_root: SourceRootRef
+}
+
+type ModuleStorageIndex = FreeMonoid<ModuleStorageBinding>
+
+type ModuleStorageFoldState
+  = ModuleStorageFoldOk {
+      bindings: ModuleStorageIndex
+    }
+  | ModuleStorageFoldFailed {
+      diagnostics: NonEmptyDiagnostics
+    }
 
 type SourceAstEqual {
   original: DagSourceAst
