@@ -18,7 +18,6 @@ import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 
 data target_ast_vocab_modules: List<String> = [
-  "extdeps.languages.bash.program",
   "extdeps.languages.typescript.program"
 ]
 
@@ -35,10 +34,7 @@ data realization_edge_path_prefixes: List<String> = [
 ]
 
 data realization_vocab_exception_roster: List<String> = [
-  "dag/gunbc/node_http_server_emit.dag",
-  "src/v2/lens/duplicate_computation.dag",
-  "src/v2/workflow/bash_program_emit.dag",
-  "src/v2/workflow/bash_program_sidecar_fold.dag"
+  "dag/gunbc/node_http_server_emit.dag"
 ]
 
 data realization_vocab_consumer_scan_roots: List<String> = [
@@ -54,7 +50,7 @@ data realization_vocab_consumer_scan_roots: List<String> = [
 ]
 
 data bash_program_module: String = "extdeps.languages.bash.program"
-data bash_program_importer_count_baseline: Int = 9
+data bash_program_importer_count_baseline: Int = 0
 
 data bash_program_importer_scan_roots: List<String> = [
   "src/v2",

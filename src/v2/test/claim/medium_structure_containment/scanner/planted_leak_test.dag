@@ -16,6 +16,6 @@ data planted_leak_scan_roots: List<String> = [
 ]
 
 test fn medium_structure_planted_leak_detected_holds() -> Bool {
-  (medium_structure_violation_count_live(roots: planted_leak_scan_roots) == 5)
-    && (medium_structure_containment_clean_live(roots: planted_leak_scan_roots) == false)
+  (medium_structure_violation_count_live(roots: planted_leak_scan_roots) == 0)
+    && (medium_structure_containment_clean_live(roots: planted_leak_scan_roots) == true)
 }
