@@ -9729,9 +9729,9 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
                 Ok(_) => eprintln!(
                     "[realize-advisory] entry={entry} fn={function} — bridge returned non-record"
                 ),
-                Err(e) => eprintln!(
-                    "[realize-advisory] entry={entry} fn={function} — bridge error: {e}"
-                ),
+                Err(e) => {
+                    eprintln!("[realize-advisory] entry={entry} fn={function} — bridge error: {e}")
+                }
             }
         }
     }
