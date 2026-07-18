@@ -2,6 +2,7 @@ module test.claim.host_build_cache_provision_design
 
 import std.logic { Bool }
 import extdeps.cache.sccache { sccache_local_id }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host_build_cache_provision {
   provision_build_cache_default_effect,
   provision_build_cache_routes_through_host_effect_apply,
