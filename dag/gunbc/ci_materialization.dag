@@ -16,7 +16,7 @@ import extdeps.cache.materialization {
   projected_providers, projection_refusal_count
 }
 import extdeps.cache.sccache { sccache_local_facts, sccache_local_id }
-import gunbc.ci_spec { ci_release_build_script }
+import v2.workflow.ci_workflow_run_emit { ci_release_build_script }
 import gunbc.merge_admission_produce {
   ci_floor_disposition_marker_path,
   merge_admission_floor_disposition_documentation_only_skipped,

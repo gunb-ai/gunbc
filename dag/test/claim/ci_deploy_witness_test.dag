@@ -8,8 +8,8 @@ import gunbc.ci_spec {
   live_deploy_apply_srv1_wet_function,
   gunbc_ci_deploy_invoke,
   ci_release_build_line,
-  ci_release_build_script,
 }
+import v2.workflow.ci_workflow_run_emit { ci_release_build_script }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   deploy_access_is_local_apply,
