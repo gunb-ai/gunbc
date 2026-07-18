@@ -73,36 +73,34 @@ pub struct FlattenAccum {
 pub fn flatten_parent_envs(
     direct_parents: Rc<Vec<Rc<ResolvedFuncEnv>>>,
 ) -> Rc<Vec<Rc<ResolvedFuncEnv>>> {
-    {
-        let ordered = Rc::new({
-            let mut __result = Vec::new();
-            for p in v1_rt::reverse(direct_parents.clone()).iter().cloned() {
-                __result.extend(
-                    (*v1_rt::concat(Rc::new(vec![p.clone()]), p.parents.clone()))
-                        .iter()
-                        .cloned(),
-                );
+    let ordered = Rc::new({
+        let mut __result = Vec::new();
+        for p in v1_rt::reverse(direct_parents.clone()).iter().cloned() {
+            __result.extend(
+                (*v1_rt::concat(Rc::new(vec![p.clone()]), p.parents.clone()))
+                    .iter()
+                    .cloned(),
+            );
+        }
+        __result
+    });
+    let dedup = ordered.clone().iter().cloned().fold(
+        Rc::new(FlattenAccum {
+            seen: v1_rt::rc_empty_map::<String, bool>(),
+            out: Rc::new(vec![]),
+        }),
+        |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
+            if emit_map_has(acc.seen.clone(), p.name.clone()) {
+                acc.clone()
+            } else {
+                Rc::new(FlattenAccum {
+                    seen: v1_rt::rc_map_insert(acc.seen.clone(), p.name.clone(), true),
+                    out: v1_rt::rc_list_push(acc.out.clone(), p.clone()),
+                })
             }
-            __result
-        });
-        let dedup = ordered.clone().iter().cloned().fold(
-            Rc::new(FlattenAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
-                out: Rc::new(vec![]),
-            }),
-            |acc: Rc<FlattenAccum>, p: Rc<ResolvedFuncEnv>| {
-                if emit_map_has(acc.seen.clone(), p.name.clone()) {
-                    acc.clone()
-                } else {
-                    Rc::new(FlattenAccum {
-                        seen: v1_rt::rc_map_insert(acc.seen.clone(), p.name.clone(), true),
-                        out: v1_rt::rc_list_push(acc.out.clone(), p.clone()),
-                    })
-                }
-            },
-        );
-        dedup.out.clone()
-    }
+        },
+    );
+    dedup.out.clone()
 }
 
 pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
@@ -526,41 +524,39 @@ pub fn resolve_func_sigs(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ResolveFuncSigsResult> {
-    {
-        let local_func_names = Rc::new({
+    let local_func_names = Rc::new({
+        let mut __result = Vec::new();
+        for item in Rc::new({
             let mut __result = Vec::new();
-            for item in Rc::new({
-                let mut __result = Vec::new();
-                for item in items.clone().iter().cloned() {
-                    if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
-                        __result.push(item);
-                    }
+            for item in items.clone().iter().cloned() {
+                if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
+                    __result.push(item);
                 }
-                __result
-            })
-            .iter()
-            .cloned()
-            {
-                __result.push(authored_name_at(source_indices.clone(), item.clone()));
             }
             __result
-        });
-        let local_func_set = build_name_set(local_func_names.clone());
-        let call_edges = collect_func_call_edges(
-            items.clone(),
-            local_func_set.clone(),
-            source_indices.clone(),
-        );
-        topo_resolve_loop(
-            local_func_names.clone(),
-            v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
-            declared_sigs.clone(),
-            call_edges.clone(),
-            local_func_set.clone(),
-            module_name.clone(),
-            Rc::new(vec![]),
-            flatten_parent_envs(parent_envs.clone()),
-            (local_func_names.clone().len() as i64),
-        )
-    }
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push(authored_name_at(source_indices.clone(), item.clone()));
+        }
+        __result
+    });
+    let local_func_set = build_name_set(local_func_names.clone());
+    let call_edges = collect_func_call_edges(
+        items.clone(),
+        local_func_set.clone(),
+        source_indices.clone(),
+    );
+    topo_resolve_loop(
+        local_func_names.clone(),
+        v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
+        declared_sigs.clone(),
+        call_edges.clone(),
+        local_func_set.clone(),
+        module_name.clone(),
+        Rc::new(vec![]),
+        flatten_parent_envs(parent_envs.clone()),
+        (local_func_names.clone().len() as i64),
+    )
 }

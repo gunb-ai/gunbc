@@ -118,10 +118,7 @@ pub fn symbol_index_track_global_bare(
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     binding: Rc<TypeBinding>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
-    match v1_rt::map_get(&global_bare, binding.name.clone())
-        .as_deref()
-        .cloned()
-    {
+    match v1_rt::map_get(&global_bare, binding.name.clone()) {
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => global_bare.clone(),
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
             binding: existing, ..
@@ -630,32 +627,27 @@ pub fn merge_type_env_cache_guarded(
     import_path: String,
     conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 ) -> Rc<GuardedTypeEnvCacheMerge> {
-    {
-        let str_union = guarded_union_str_bindings(
-            base.str_bindings.clone(),
-            overlay.str_bindings.clone(),
-            import_path.clone(),
-            conflicts.clone(),
-        );
-        Rc::new(GuardedTypeEnvCacheMerge {
-            cache: Rc::new(TypeEnvCache {
-                deps_map: union_deps_map_skip_equal(
-                    base.deps_map.clone(),
-                    overlay.deps_map.clone(),
-                ),
-                str_bindings: str_union.bindings.clone(),
-                cycle_set_str: union_bool_set_skip_equal(
-                    base.cycle_set_str.clone(),
-                    overlay.cycle_set_str.clone(),
-                ),
-                variant_locals: union_variant_locals_skip_equal(
-                    base.variant_locals.clone(),
-                    overlay.variant_locals.clone(),
-                ),
-            }),
-            conflicts: str_union.conflicts.clone(),
-        })
-    }
+    let str_union = guarded_union_str_bindings(
+        base.str_bindings.clone(),
+        overlay.str_bindings.clone(),
+        import_path.clone(),
+        conflicts.clone(),
+    );
+    Rc::new(GuardedTypeEnvCacheMerge {
+        cache: Rc::new(TypeEnvCache {
+            deps_map: union_deps_map_skip_equal(base.deps_map.clone(), overlay.deps_map.clone()),
+            str_bindings: str_union.bindings.clone(),
+            cycle_set_str: union_bool_set_skip_equal(
+                base.cycle_set_str.clone(),
+                overlay.cycle_set_str.clone(),
+            ),
+            variant_locals: union_variant_locals_skip_equal(
+                base.variant_locals.clone(),
+                overlay.variant_locals.clone(),
+            ),
+        }),
+        conflicts: str_union.conflicts.clone(),
+    })
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
@@ -735,10 +727,7 @@ pub fn lookup_qualified_module_projection(
 }
 
 pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
-        .as_deref()
-        .cloned()
-    {
+    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone()) {
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
             binding: binding, ..
         }) => Some(binding.clone()),
@@ -748,10 +737,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
 }
 
 pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
-    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
-        .as_deref()
-        .cloned()
-    {
+    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone()) {
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => true,
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding: _, .. }) => false,
         None => false,
@@ -896,26 +882,24 @@ pub fn put_inductive_field(
     field_name: String,
     shape: RecursionShape,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    {
-        let existing = match v1_rt::map_get(&fields, type_name.clone()) {
-            Some(fs) => fs.clone(),
-            None => Rc::new(vec![]),
-        };
-        v1_rt::rc_map_insert(
-            fields.clone(),
-            type_name.clone(),
-            append_inductive_field_absent(
-                existing.clone(),
-                Rc::new(InductiveField {
-                    type_name: type_name.clone(),
-                    variant_name: variant_name.clone(),
-                    field_name: field_name.clone(),
-                    shape: shape.clone(),
-                    element_type: type_name.clone(),
-                }),
-            ),
-        )
-    }
+    let existing = match v1_rt::map_get(&fields, type_name.clone()) {
+        Some(fs) => fs.clone(),
+        None => Rc::new(vec![]),
+    };
+    v1_rt::rc_map_insert(
+        fields.clone(),
+        type_name.clone(),
+        append_inductive_field_absent(
+            existing.clone(),
+            Rc::new(InductiveField {
+                type_name: type_name.clone(),
+                variant_name: variant_name.clone(),
+                field_name: field_name.clone(),
+                shape: shape.clone(),
+                element_type: type_name.clone(),
+            }),
+        ),
+    )
 }
 
 pub fn put_inductive_field_cross(
@@ -926,26 +910,24 @@ pub fn put_inductive_field_cross(
     shape: RecursionShape,
     element_type: String,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
-    {
-        let existing = match v1_rt::map_get(&fields, type_name.clone()) {
-            Some(fs) => fs.clone(),
-            None => Rc::new(vec![]),
-        };
-        v1_rt::rc_map_insert(
-            fields.clone(),
-            type_name.clone(),
-            append_inductive_field_absent(
-                existing.clone(),
-                Rc::new(InductiveField {
-                    type_name: type_name.clone(),
-                    variant_name: variant_name.clone(),
-                    field_name: field_name.clone(),
-                    shape: shape.clone(),
-                    element_type: element_type.clone(),
-                }),
-            ),
-        )
-    }
+    let existing = match v1_rt::map_get(&fields, type_name.clone()) {
+        Some(fs) => fs.clone(),
+        None => Rc::new(vec![]),
+    };
+    v1_rt::rc_map_insert(
+        fields.clone(),
+        type_name.clone(),
+        append_inductive_field_absent(
+            existing.clone(),
+            Rc::new(InductiveField {
+                type_name: type_name.clone(),
+                variant_name: variant_name.clone(),
+                field_name: field_name.clone(),
+                shape: shape.clone(),
+                element_type: element_type.clone(),
+            }),
+        ),
+    )
 }
 
 pub fn merge_inductive_fields_dedupe_note() -> String {

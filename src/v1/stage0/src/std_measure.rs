@@ -176,13 +176,11 @@ pub fn measure_fit_count_floor<Q, S>(
     capacity: Rc<Measure<Q, S, Nat>>,
     each: Rc<Measure<Q, S, Nat>>,
 ) -> Nat {
-    {
-        let each_count = each.count.clone();
-        if (each_count.clone() == 0) {
-            each_count.clone()
-        } else {
-            (capacity.count.clone() / each_count.clone())
-        }
+    let each_count = each.count.clone();
+    if (each_count.clone() == 0) {
+        each_count.clone()
+    } else {
+        (capacity.count.clone() / each_count.clone())
     }
 }
 

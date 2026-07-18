@@ -99,17 +99,15 @@ pub fn collect_typed_service_calls(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    {
-        let result = collect_typed_service_calls_into(
-            texpr.clone(),
-            Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
-                result: Rc::new(vec![]),
-            }),
-            source_indices.clone(),
-        );
-        result.result.clone()
-    }
+    let result = collect_typed_service_calls_into(
+        texpr.clone(),
+        Rc::new(UniqueAccum {
+            seen: v1_rt::rc_empty_map::<String, bool>(),
+            result: Rc::new(vec![]),
+        }),
+        source_indices.clone(),
+    );
+    result.result.clone()
 }
 
 pub fn collect_typed_service_calls_into(
@@ -195,17 +193,15 @@ pub fn collect_called_func_names(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    {
-        let result = collect_called_func_names_into(
-            texpr.clone(),
-            Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<String, bool>(),
-                result: Rc::new(vec![]),
-            }),
-            source_indices.clone(),
-        );
-        result.result.clone()
-    }
+    let result = collect_called_func_names_into(
+        texpr.clone(),
+        Rc::new(UniqueAccum {
+            seen: v1_rt::rc_empty_map::<String, bool>(),
+            result: Rc::new(vec![]),
+        }),
+        source_indices.clone(),
+    );
+    result.result.clone()
 }
 
 pub fn expand_transitive_services_once(
