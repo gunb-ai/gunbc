@@ -12442,6 +12442,41 @@ mod node_frontier_plumbing_controls {
         );
     }
 
+    // Phase 0 receipt (module-identity-storage-binding): the 03_normalize behavioral
+    // witness declares a hermetic import closure but carries string-carried path deps via
+    // tools.self_host_03_normalize_behavioral_transport — derived host-reading must fire.
+    #[test]
+    fn effect_reach_derived_reads_live_tree_for_03_normalize_witness() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let facts = super::build_module_graph_facts_live(&roots);
+        let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
+        assert!(
+            super::effect_reach_derived_reads_live_tree_for_entry(entry, &facts),
+            "03_normalize behavioral witness must classify as derived host-reading"
+        );
+    }
+
+    #[test]
+    fn effect_reach_touched_via_normalize_path_for_03_normalize_witness() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let facts = super::build_module_graph_facts_live(&roots);
+        let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
+        let touched = vec!["src/v2/compiler/03_normalize.dag".to_string()];
+        assert!(
+            super::effect_reach_touched_via_path_literals(entry, &facts, &touched),
+            "emitter/normalize-path touch must select the 03_normalize behavioral witness"
+        );
+        let unrelated = vec!["src/v2/std/logic.dag".to_string()];
+        assert!(
+            !super::effect_reach_touched_via_path_literals(entry, &facts, &unrelated),
+            "unrelated path must not select the 03_normalize behavioral witness"
+        );
+    }
+
     // RED guard: data-item edits in the entry import closure must not fast-skip — the
     // node-frontier machinery needs resolve to discriminate referenced nodes.
     #[test]

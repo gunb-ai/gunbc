@@ -13,6 +13,7 @@ type HostEffectSinkKind
 type EffectReachFlow {
   sink: HostEffectSinkKind
   path_literal: String
+  init_literal_fp: String
 }
 
 type EffectReachClassification

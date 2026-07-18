@@ -9,7 +9,7 @@ import v2.lens.effect_reach {
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
 import v2.std.collection { List }
-import v2.std.data_index { DataInitDecl, data_init_decl_facts_live }
+import v2.std.data_index { DataInitDecl }
 import v2.std.effect_reach { EffectReachClassification }
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
@@ -123,13 +123,22 @@ data live_03_normalize_facts: List<ModuleImportFact> = [
   }
 ]
 
+data live_03_normalize_data_inits: List<DataInitDecl> = [
+  DataInitDecl {
+    qualified_name: "tools.self_host_03_normalize_behavioral_transport.sn_source_rel",
+    module: "tools.self_host_03_normalize_behavioral_transport",
+    name: "sn_source_rel",
+    literal_fp: "str:\"src/v2/compiler/03_normalize.dag\""
+  }
+]
+
 test fn effect_reach_live_03_normalize_witness_derived_host_reading_holds() -> Bool {
   derived_host_reading(
     classification: effect_reach_classification_from_facts(
       entry_module: "test.claim.self_host_03_normalize_behavioral_witness",
       facts: live_03_normalize_facts,
       decls: fn_arrow_decl_facts_live(),
-      data_inits: data_init_decl_facts_live()
+      data_inits: live_03_normalize_data_inits
     )
   )
 }
