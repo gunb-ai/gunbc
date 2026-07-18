@@ -271,14 +271,16 @@ fn loop_body_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
       Positional => acc
-      Named { name: sym } => acc && (sym == ^loop_bound_edge)
+      Named { name: sym } => acc && ((sym == ^loop_bound_edge) || (sym == ^loop_carrier_edge))
     }
   })
 }
 
 fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
+  let carrier_edges = name_occurrences(name: ^loop_carrier_edge, children: children)
   (bound_edges == 1)
+  && (carrier_edges <= 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
@@ -371,12 +373,16 @@ fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_bound_edge)
 }
 
+fn loop_carrier_binder_target(children: List<Edge>) -> NamedEdgeTargetLookup {
+  named_edge_target_lookup(children: children, name: ^loop_carrier_edge)
+}
+
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
       match e.label {
         Positional => true
-        Named { name: sym } => sym != ^loop_bound_edge
+        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
       }
     _ =>
       match e.label {
@@ -385,6 +391,29 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
       }
   }
 }
+
+data edge_contributes_to_cost_fold_note: String = "Wave 1 Gate 1 C1: the symbolic cost fold prices only runtime work. Arrow signature/type positional children and domain Named edges are NOT runtime cost — only ^arrow_body_edge carries the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to use that function directly."
+
+fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
+  match parent.kind {
+    ComputationNode { behavior: Loop } =>
+      match e.label {
+        Positional => true
+        Named { name: sym } => (sym != ^loop_bound_edge) && (sym != ^loop_carrier_edge)
+      }
+    TypeNode { connective: Arrow } =>
+      match e.label {
+        Positional => false
+        Named { name: sym } => sym == ^arrow_body_edge
+      }
+    _ =>
+      match e.label {
+        Positional => true
+        Named { name: _ } => true
+      }
+  }
+}
+
 fn all_names_distinct(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
