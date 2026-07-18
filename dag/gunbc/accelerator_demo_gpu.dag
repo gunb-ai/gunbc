@@ -92,7 +92,7 @@ fn render_device_sketch(device: GpuModelCatalogRow) -> String {
             device.microarchitecture,
             concat(
               ", lanes=",
-              concat(v1.compiler.emit_core_support.to_string(std.measure.hardware_thread_count_value(t: device.execution_lane_count)), "]")
+              concat(to_string(std.measure.hardware_thread_count_value(t: device.execution_lane_count)), "]")
             )
           )
         )

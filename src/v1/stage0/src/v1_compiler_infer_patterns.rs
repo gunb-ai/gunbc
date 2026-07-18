@@ -808,6 +808,26 @@ pub fn lookup_field_in_variant(
         ) {
             Some(field_child) => {
                 let resolved = child_type_node(field_child.clone());
+                if std::env::var("GUNBC_PAT_PROBE").is_ok() && field_name == "refusals" {
+                    let dump = |n: &Rc<Node>| {
+                        format!(
+                            "name={} conn={:?} kids={:?} inf={}",
+                            n.name,
+                            n.connective,
+                            n.children
+                                .iter()
+                                .map(|c| c.name.clone())
+                                .collect::<std::vec::Vec<_>>(),
+                            n.inferred.is_some(),
+                        )
+                    };
+                    eprintln!(
+                        "PAT field={} child[{}] resolved[{}]",
+                        field_name,
+                        dump(&field_child),
+                        dump(&resolved),
+                    );
+                }
                 node_lookup_resolved(resolved.clone())
             }
             None => node_lookup_failed(Rc::new(vec![make_error_node(
