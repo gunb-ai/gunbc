@@ -90,7 +90,8 @@ fn preserve_nominal_brand_on_resolve(
 ) -> Node {
   if brand_name != "" && brand_name != authored_name_at(source_indices: source_indices, node: structural)
     && !is_declared_container_alias_spelling(name: brand_name)
-    && !is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices) {
+    && (!is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices)
+      || is_kernel_type(name: qualified_last_segment(name: brand_name))) {
     with_authored_identity(identity: identity, structural: structural)
   } else { structural }
 }
@@ -111,7 +112,8 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
       }
       if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
         && !is_declared_container_alias_spelling(name: brand)
-        && !is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices) {
+        && (!is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices)
+          || is_kernel_type(name: qualified_last_segment(name: brand))) {
         with_authored_identity(identity: n, structural: structural)
       } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {

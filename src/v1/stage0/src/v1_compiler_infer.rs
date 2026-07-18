@@ -1376,6 +1376,23 @@ pub fn kernel_value_declared_type_mismatch(
     type_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
+    if std::env::var("GUNBC_KV_PROBE").is_ok() {
+        let fname = authored_name_at(source_indices.clone(), formal.clone());
+        if fname.contains("Secret") {
+            let aname = authored_name_at(source_indices.clone(), actual.clone());
+            let lk = lookup_type_by_name(type_env.clone(), fname.clone());
+            eprintln!(
+                "KV_PROBE formal={fname} actual={aname} cast={} sct_f={:?} sct_a={:?} lk_conn={:?} lk_children={} lk_ann={} lk_first={:?}",
+                dag_can_cast(aname.clone(), fname.clone()),
+                structural_carrier_template_name(formal.clone(), source_indices.clone()),
+                structural_carrier_template_name(actual.clone(), source_indices.clone()),
+                lk.as_ref().map(|d| d.connective.clone()),
+                lk.as_ref().map(|d| d.children.len()).unwrap_or(0),
+                lk.as_ref().map(|d| d.type_annotation.is_some()).unwrap_or(false),
+                lk.as_ref().and_then(|d| d.children.first().map(|c| authored_name_at(source_indices.clone(), c.clone()))),
+            );
+        }
+    }
     if (((formal.connective.clone() == Connective::Arrow)
         || (actual.connective.clone() == Connective::Arrow))
         || ((actual.children.clone().len() as i64) > 0))
@@ -1501,6 +1518,18 @@ pub fn direct_call_arg_type_mismatch(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
+    if std::env::var("GUNBC_KV_PROBE").is_ok() {
+        let fname = authored_name_at(source_indices.clone(), formal.clone());
+        if fname.contains("Secret") {
+            eprintln!(
+                "DCAT_PROBE formal={fname} actual={} brand={} container={} kernel={}",
+                authored_name_at(source_indices.clone(), actual.clone()),
+                nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), type_env.clone(), source_indices.clone()),
+                container_element_nominal_brand_mismatch(formal.clone(), actual.clone(), type_env.clone(), module_name.clone(), source_indices.clone()),
+                kernel_value_declared_type_mismatch(formal.clone(), actual.clone(), type_env.clone(), source_indices.clone()),
+            );
+        }
+    }
     if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
         false
     } else {
