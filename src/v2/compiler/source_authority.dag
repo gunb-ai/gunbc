@@ -40,6 +40,8 @@ import v2.std.diagnostic {
 import v2.std.grammar { ParseTree }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
 import v2.std.cross_tree.resolution { source_root_set_insert }
@@ -509,6 +511,25 @@ fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<S
       optional_absent()
   }
 }
+
+data module_storage_supply_op_note: String = "THE MODELED OP (docs/plans/module-identity-storage-binding-design.md §2; parent ruling 2026-07-18). Inputs: source roots. Output: ModuleStorageBinding rows — module, path, provenance — and deliberately NO source text: the binding never needed file CONTENTS, only module ⇄ path, which is why this is a different carrier from SourceRootIngest (whose witnesses inline the full Lossless source of every file and are therefore capped at corpus-protection scale). This declaration is the INTERFACE; the host is ONE HANDLER of it at the effect boundary (§2 Realization; §3's interface/transport split — the transport is not a fact about the binding). The handler carries ZERO independent policy: it records what the one parse pipeline already computed, which is precisely why repointing the host producer and supplying the rows are the SAME motion rather than two derivations to reconcile."
+
+data module_storage_supply_cost_note: String = "Why a host handler rather than deriving in-graph: module_storage_bindings_from_ingest re-parses every module, measured at ~6.5s of eval per module. That is fine at ORACLE scale (a handful of modules, off the gate path) and impossible at consumer scale — the frontier needs ~35 modules and compile-clean scope thousands. The host already knows (module, path) from its own parse, so re-deriving it in-graph is duplicated work (§2) as well as slow. The in-graph derivation is therefore retained as the ORACLE that pins this transport to the model, never as the consumer path."
+
+fn module_storage_bindings_for_source_roots(source_roots: FreeMonoid<String>) -> Outcome<ModuleStorageIndex> {
+  module_storage_bindings_for_source_roots(source_roots: source_roots)
+}
+
+data module_storage_bindings_for_source_roots_host_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.source_authority",
+    decl_name: "module_storage_bindings_for_source_roots",
+    field: WholeDeclaration
+  }
+}
+
+data module_storage_supply_dissolution_trigger: String = "dissolve-on: host-effect emission (witness-realization lane). The host handler for module_storage_bindings_for_source_roots is hand-written Rust at the effect boundary TODAY; when host-effect emission lands, the producer is EMITTED from this .dag model instead, and the hand handler retires. Declared here rather than left implicit so the scaffold cannot linger unmarked (§6: every scaffold lands with a named dissolution trigger). Until then the consistency witness — host-emitted rows == module_storage_bindings_from_ingest over the same sources, with a perturbed-row RED — is what keeps the handler honest to this interface."
 
 data module_storage_projection_note: String = "Both requested directions are queries against ONE table (design §2). file → graph region: given a path, the module parsed from it. module → file(s): given a module reference, its current storage — needed ONLY at host boundaries; user code and tool .dag reference modules and never see paths. A produced module answers Absent for storage, which is a real answer, not a miss."
 
