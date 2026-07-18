@@ -1368,4 +1368,19 @@ mod tests {
             .as_nanos();
         env::temp_dir().join(format!("regen-stage0-test-{label}-{unique}"))
     }
+
+    #[test]
+    fn emitted_compiler_tests_has_no_stale_global_bare_arg() {
+        let workspace = v1_compiler::cli_run::workspace_root();
+        let emitted = compile_stage0(&workspace).expect("compile_stage0");
+        let key = emitted
+            .keys()
+            .find(|path| path.ends_with("compiler_tests.rs"))
+            .expect("compiler_tests.rs in emitted stage0 roster");
+        let bad = "intern_table.clone(),\n                        std::rc::Rc::new(HashMap::new()),\n                        crate::v1_compiler_infer_env::empty_symbol_index()";
+        assert!(
+            !emitted[key].contains(bad),
+            "fresh emit of compiler_tests.rs still passes removed global_bare arg"
+        );
+    }
 }

@@ -42,7 +42,7 @@ data compiler_frontier_band_a_row_self_host: BandAEmitReadinessRow = BandAEmitRe
 
 data compiler_frontier_band_a_row_materialization_carriers: BandAEmitReadinessRow = BandAEmitReadinessRow {
   module_path: "src/v2/compiler/materialization_carriers.dag",
-  gate: OtherGate { migration_trigger: ^migrate_when_materialize_spine_lane_lands }
+  gate: OtherGate { migration_trigger: ^migrate_when_closure_self_emits_cargo_green }
 }
 
 data compiler_frontier_band_a_row_07_target_carriers: BandAEmitReadinessRow = BandAEmitReadinessRow {
