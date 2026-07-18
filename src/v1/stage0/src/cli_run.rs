@@ -14848,7 +14848,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/compilers/target_model.dag::source_atom_value_as_symbol",
     "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
     "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
-    "src/v2/std/effects.dag::key_source_eq",
     "src/v2/std/decl_index.dag::decl_facts_is_fn_like",
     "src/v2/std/float.dag::float_body_is_nan",
     "src/v2/std/node_minimal.dag::node_superset_field_eq",
