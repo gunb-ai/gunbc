@@ -437,6 +437,30 @@ fn dual_rep_violations_from_module(scan: DualRepModuleScan) -> List<DualRepViola
   })
 }
 
+fn dual_rep_eq_site_count_from_module(scan: DualRepModuleScan) -> Int {
+  fold(scan.fns, init: 0, f: fn(acc, fact) {
+    acc + length(xs: eq_sites_from_output(root: fact.output))
+  })
+}
+
+fn dual_rep_eq_site_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
+  fold_list(
+    xs: scans,
+    empty: 0,
+    cons: fn(acc, scan) {
+      acc + dual_rep_eq_site_count_from_module(scan: scan)
+    }
+  )
+}
+
+fn dual_rep_coverage_honesty_holds(eq_site_count: Int, frontier_declared: Bool) -> Bool {
+  if eq_site_count > 0 {
+    true
+  } else {
+    frontier_declared
+  }
+}
+
 fn dual_rep_violation_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
   length(
     xs: fold_list(
