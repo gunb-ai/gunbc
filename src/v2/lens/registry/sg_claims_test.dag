@@ -8,6 +8,7 @@ data lens_registry_v0_required_ids: List<LensIdV0> = [
   Cost,
   Parallelism,
   EffectEnumeration,
+  EffectReach,
   Idempotency,
   Provenance,
   UnusedParameters,

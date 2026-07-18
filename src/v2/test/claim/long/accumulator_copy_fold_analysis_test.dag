@@ -33,7 +33,11 @@ data item_in_computed_arg_snippet: String = "module hiddenitem\n\nfn f(xs: List<
 
 data computed_let_mention_snippet: String = "module hiddenlet\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let boxed = Wrapped { inner: acc }\n    mystery(box: boxed)\n  })\n}\n"
 
-data projection_call_residue_note: String = "A projection-headed call (helper.step(a: acc, b: x)) PARSES but lands in a production the analyze walk never classifies as a call - the carrier passes through invisibly (probed by execution 2026-07-10: ingest accepts, zero findings). Declared residue, owned by the namespace lane: '.' is its projection operator (see the general-body-producer design's honest-residue rows); when projection-calls normalize onto the canonical call shape, the existing classify arms cover them and this note dissolves. The ^call_head_unreadable arm below is therefore proven by NODE SURGERY - no parseable surface reaches it today; it guards produced trees (Stage A producer output), where a call node's head edge can target a non-atom."
+data projection_call_residue_note: String = "DISSOLVED (Stage B cross-decl): projection-headed calls lower to canonical Transform nodes in normalize; lowered_substrate_call_note arms classify them inside lowered Loop bodies. Witness: projection_call_carrier_is_classified."
+
+data projection_call_carrier_snippet: String = "module projcar\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    helper.step(a: acc, b: x)\n  })\n}\n"
+
+data multiline_unregistered_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery_op(a: acc, b: x)\n  })\n}\n"
 
 fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
   let lm = dag_language_model()
@@ -231,6 +235,40 @@ test fn named_step_fold_refuses_accumulator_unread() -> Bool {
     Absent => false
     Present { value: fs } =>
       findings_have_refusal_cause(fs: fs, cause: ^fold_accumulator_unread)
+  }
+}
+
+test fn multiline_unregistered_combiner_refuses() -> Bool {
+  match findings_of(source_text: multiline_unregistered_snippet, file: ^unreg_file) {
+    Absent => false
+    Present { value: fs } =>
+      findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+  }
+}
+
+test fn projection_call_carrier_is_classified() -> Bool {
+  match findings_of(source_text: projection_call_carrier_snippet, file: ^projcar_file) {
+    Absent => false
+    Present { value: fs } =>
+      if is_empty_findings(fs: fs) {
+        false
+      } else {
+        findings_have_refusal_cause(fs: fs, cause: ^combiner_unregistered_carrier_reaches)
+      }
+  }
+}
+
+test fn quadratic_ingest_has_lowered_loop() -> Bool {
+  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: tree } => tree_contains_lowered_loop(root: tree)
+  }
+}
+
+test fn quadratic_ingest_has_no_surface_fold_call() -> Bool {
+  match ingest(source_text: quadratic_snippet, file: ^quad_file) {
+    Absent => false
+    Present { value: tree } => !tree_contains_surface_fold_call(root: tree)
   }
 }
 
