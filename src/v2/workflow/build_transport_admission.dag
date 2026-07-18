@@ -5,23 +5,21 @@ import std.effect_grant {
   Read, Write,
   FilesystemPathTree,
   NamespacePosition,
-  RealTransport,
-  LifecycleByConstruction, LifecycleByConvention,
-  Grant, Envelope,
+  Envelope,
   EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
 }
 import std.materialization_ladder { Frame, SharedStateFrame }
+import v2.workflow.build_workspace_grant { build_workspace_grant_envelope }
 import v2.std.host_transport {
   HostTransportDescriptor, WorkspaceFile, RelPath,
   ProcessInvocation, ProcessProgram, HostToolProgram, ProducedProgram,
 }
 
-data build_transport_admission_note: String = "P-B enforcement decision (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): whether a build transport may run in the replay/hermetic lane is DERIVED from its own declared structure, not a mode bit. build_transport_admissible projects each declared effect of a HostTransportDescriptor onto a NamespacePosition and runs std.effect_grant.admit_effect against the build envelope -- so the verdict is the single admissibility authority (no fork), and a build that would touch anything outside its envelope is a located EffectOutsideGrant, never silently widened (DESIGN 5). This is the .dag half of the seam; the named consumer is the emit-host build transport (src/v2/compiler/emit_host.emit_host_run_transport, a v1_interpreter.rs intrinsic) which today refuses ALL hermetic builds by a blanket is_hermetic() early-return -- it becomes 'run only on an Admitted verdict', with the intrinsic's existing relative-path escape guard staying as the realization-side belt derived from this same containment."
-
-data build_transport_workspace_read_note: String = "This RESOLVES the ownership-implies-read question PR-1 deferred (build_workspace_grant.build_workspace_grant_witness_note): a real build READS its own workspace -- the emitted sources it was handed and the intermediate artifacts it produces (linking) -- so the build transport envelope grants the workspace BOTH Read and Write, not Write alone. The workspace stays LifecycleByConvention (interim scratch); toolchain Read is LifecycleByConstruction (pinned, immutable). 'No network' is structural: a HostTransportDescriptor has no field that can express a network target, so no UriTree grant is minted and none is needed -- fail-closed by the shape itself."
+data build_transport_admission_note: String = "P-B enforcement decision (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): whether a build transport may run in the replay/hermetic lane is DERIVED from its own declared structure, not a mode bit. build_transport_admissible projects each declared effect of a HostTransportDescriptor onto a NamespacePosition and runs std.effect_grant.admit_effect against the SINGLE build-envelope authority (v2.workflow.build_workspace_grant.build_workspace_grant_envelope -- consumed, never re-minted, DESIGN 3): a build that would touch anything outside that envelope is a located EffectOutsideGrant, never silently widened (DESIGN 5). This is the .dag half of the seam; the named consumer is the emit-host build transport (src/v2/compiler/emit_host.emit_host_run_transport, a v1_interpreter.rs intrinsic) which today refuses ALL hermetic builds by a blanket is_hermetic() early-return -- it becomes 'run only on an Admitted verdict', with the intrinsic's existing relative-path escape guard staying as the realization-side belt derived from this same containment. The build's reads of its own workspace (emitted sources + produced intermediates) are admitted because the authority grants the workspace Read+Write -- the ownership-implies-read resolution this seam settled."
 
 data build_transport_workspace_segment: String = "workspace"
 data build_transport_toolchain_segment: String = "toolchain"
+data build_transport_closure_segment: String = "closure"
 
 data build_transport_frame: Frame = Frame {
   name: "build-transport",
@@ -38,30 +36,18 @@ data build_transport_toolchain_root: NamespacePosition = NamespacePosition {
   path: [build_transport_toolchain_segment]
 }
 
+data build_transport_closure_root: NamespacePosition = NamespacePosition {
+  tree: FilesystemPathTree,
+  path: [build_transport_closure_segment]
+}
+
 fn build_transport_envelope() -> Envelope {
-  Envelope {
-    frame: build_transport_frame,
-    grants: [
-      Grant {
-        verb: Read,
-        root: build_transport_workspace_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
-      },
-      Grant {
-        verb: Write,
-        root: build_transport_workspace_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConvention
-      },
-      Grant {
-        verb: Read,
-        root: build_transport_toolchain_root,
-        binding: RealTransport,
-        lifecycle: LifecycleByConstruction
-      },
-    ]
-  }
+  build_workspace_grant_envelope(
+    workspace_root: build_transport_workspace_root,
+    substrate_closure_root: build_transport_closure_root,
+    toolchain_root: build_transport_toolchain_root,
+    frame: build_transport_frame
+  )
 }
 
 fn rel_path_is_workspace_contained(p: RelPath) -> Bool {
