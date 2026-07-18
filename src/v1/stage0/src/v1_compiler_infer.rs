@@ -1072,8 +1072,10 @@ pub fn record_lit_instantiated_fields(
     match type_name.clone() {
         Some(tn) => match expected.clone() {
             Some(exp) => {
-                if (authored_name_at(scope.type_env.clone().source_indices.clone(), exp.clone())
-                    != tn.clone())
+                if (crate::v1_std_core::type_name_compatible(
+                    authored_name_at(scope.type_env.clone().source_indices.clone(), exp.clone()),
+                    tn.clone(),
+                ) == false)
                 {
                     None
                 } else {

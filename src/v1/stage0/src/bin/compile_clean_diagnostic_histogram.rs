@@ -126,6 +126,20 @@ fn main() -> ExitCode {
         }
     }
 
+    if std::env::var("COMPILE_CLEAN_HISTOGRAM_DUMP_MESSAGES")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+    {
+        let filt = std::env::var("COMPILE_CLEAN_HISTOGRAM_DUMP_MESSAGES").unwrap_or_default();
+        println!("--- MESSAGES ---");
+        for d in diags.iter() {
+            let file = diagnostic_decl_file(d);
+            if filt == "1" || file.contains(&filt) {
+                println!("MSG\t{file}\t{:?}", d.diagnostic);
+            }
+        }
+    }
+
     // Residue probes: fold + type-mismatch pair (namespace migration lane).
     let fold_count = count_message_substr(&diags, "function 'fold' not found in scope");
     let iec_count = count_type_mismatch_name(&diags, "integer_exact_contract");
