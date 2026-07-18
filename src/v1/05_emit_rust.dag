@@ -2168,7 +2168,6 @@ fn enum_names_in_module(module_name: String, typed_modules: List<TypedModule>, s
       tm.items
         |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
         |> map(item => authored_name_at(source_indices: source_indices, node: item))
-        |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
   }
 }
 
@@ -2656,7 +2655,7 @@ fn is_emittable_parametric_type_alias_item(item: Node, item_text: String, source
 fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>) -> String {
   if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
     ""
-  } else if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) {
+  } else if import_module_enums |> any(e => e == n) {
     ""
   } else {
     match find_variant_parent_in_module(
@@ -2697,19 +2696,19 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
   if deduped_names |> count == 0 {
     ""
   } else {
+    let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let top_level = deduped_names |> filter(n =>
       if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
         true
       } else if is_known_variant(type_summaries: type_summaries, name: n) {
-        is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
+        import_module_enums |> any(e => e == n)
       } else if imported_name_is_non_emittable_type(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
         false
       } else if is_kernel_type(name: n) {
         false
       } else { true }
     )
-    let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let imported_enums = deduped_names |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+    let imported_enums = deduped_names |> filter(n => import_module_enums |> any(e => e == n))
     let all_parents = deduped_names |> map(n =>
       import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums)
     ) |> filter(p => p != "")
@@ -2718,7 +2717,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums) != "" {
         false
       } else if is_known_variant(type_summaries: type_summaries, name: n) {
-        is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
+        import_module_enums |> any(e => e == n)
       } else { true }
     )
     let direct_names = unique_strings(items: non_variant_top)
@@ -2827,7 +2826,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       let variants = deduped_names |> filter(n =>
         if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
           false
-        } else if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) {
+        } else if import_module_enums |> any(e => e == n) {
           false
         } else {
           match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -2852,8 +2851,8 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       concat("use crate::", parent_mod, "::", parent, "::{", vars_str, "};")
       }
     )
-    let imported_enums = top_level |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-    let wildcard_enum_lines = imported_enums
+    let final_imported_enums = top_level |> filter(n => import_module_enums |> any(e => e == n))
+    let wildcard_enum_lines = final_imported_enums
       |> filter(en => parent_list |> any(p => p == en) == false
         && !is_host_freemonoid_vec_alias(name: en, corpus_repr: emit_info.corpus_repr))
       |> map(en => concat("use crate::", mod_name, "::", en, "::*;"))
