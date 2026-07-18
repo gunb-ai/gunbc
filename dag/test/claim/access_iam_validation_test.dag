@@ -4,11 +4,11 @@ module test.claim.access_iam_validation
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn decision_is_permit(d: std.access.AccessDecision) -> Bool {
-  match d { Permit => true  extdeps.access.aws_iam.Deny { reason: _ } => false }
+  match d { Permit => true  std.access.Deny { reason: _ } => false }
 }
 
 fn decision_is_deny(d: std.access.AccessDecision) -> Bool {
-  match d { extdeps.access.aws_iam.Deny { reason: _ } => true  Permit => false }
+  match d { std.access.Deny { reason: _ } => true  Permit => false }
 }
 
 type IamPrincipal {

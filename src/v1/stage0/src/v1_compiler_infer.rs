@@ -3826,6 +3826,53 @@ pub fn infer_expr(
                                     }
                                 }
                                 walk_tv(&resolved_type, "", 0);
+                                fn walk_m(
+                                    n: &Rc<Node>,
+                                    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+                                    path: &str,
+                                    depth: usize,
+                                ) {
+                                    if depth > 8 {
+                                        return;
+                                    }
+                                    if n.children.is_empty()
+                                        && authored_name_at(si.clone(), n.clone()) == "M"
+                                    {
+                                        eprintln!(
+                                            "SIGPATH5 {} leaf-M name={:?} conn={:?} params={} inf={} body={}",
+                                            path,
+                                            n.name,
+                                            n.connective,
+                                            n.params.len(),
+                                            n.inferred.is_some(),
+                                            n.body.is_some(),
+                                        );
+                                    }
+                                    if let Some(InferredNode::Resolved { node: t, .. }) =
+                                        n.inferred.as_deref()
+                                    {
+                                        walk_m(
+                                            t,
+                                            si.clone(),
+                                            &format!("{}/{}~inf", path, n.name),
+                                            depth + 1,
+                                        );
+                                    }
+                                    for c in n.children.iter() {
+                                        walk_m(
+                                            c,
+                                            si.clone(),
+                                            &format!("{}/{}", path, n.name),
+                                            depth + 1,
+                                        );
+                                    }
+                                }
+                                walk_m(
+                                    &resolved_type,
+                                    scope.type_env.clone().source_indices.clone(),
+                                    "",
+                                    0,
+                                );
                             }
                         }
                         let value_params_for_check = Rc::new({
