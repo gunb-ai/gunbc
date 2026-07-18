@@ -6,7 +6,7 @@ import v2.lens.registry {
   Bound, LensIdV0, Unbound, lens_registry_v0,
   Complexity, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
   ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
-  DocReachability, DuplicateComputation, ExtdepsExternalAuthority, ExtdepsShapeTransportPolicy,
+  DocReachability, DuplicateComputation, EffectReach, ExtdepsExternalAuthority, ExtdepsShapeTransportPolicy,
   FactCardinality, FactDensity, FnFamily, Grounding, HostLanguageTransportScript,
   IdenticalVariantPayload, InertCarrier, InertLens, IntentLinearity, InterfaceSummary,
   LanguagesConsumerCensus, LayeringImports, LeafModelVerification, LiveReadClassification,
@@ -355,6 +355,13 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
+    EffectReach => LensInvariantSurface {
+      module: module,
+      projection: ProjectionModuleGraph,
+      verdict_authority: VerdictEffectFact,
+      remedy: RemedyReport,
+      admission: GenuinelyNewInvariant
+    }
     Idempotency => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
@@ -537,6 +544,10 @@ data lens_module_gate_audit_residue_rows: List<LensModuleGateResidueRow> = [
   LensModuleGateResidueRow {
     left_module: "v2.lens.structural_similarity",
     right_module: "v2.lens.simulated_relationship"
+  },
+  LensModuleGateResidueRow {
+    left_module: "v2.lens.effect",
+    right_module: "v2.lens.effect_reach"
   }
 ]
 
