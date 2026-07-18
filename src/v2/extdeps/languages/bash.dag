@@ -1473,6 +1473,202 @@ fn orch_retry_1level_target_model(
   )
 }
 
+fn orch_retry_escalation_final_seg_or() -> String {
+  " || "
+}
+
+fn orch_retry_escalation_final_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_final_occ },
+    FixedToken { token_class: ^bash_token_retry_escalation_final_or },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_final_exhausted }
+  ]
+}
+
+data orch_retry_escalation_final_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: orch_retry_escalation_final_tokens()
+)
+
+fn orch_retry_escalation_final_source_text(occ: String, exhausted: String) -> String {
+  concat(occ, concat(orch_retry_escalation_final_seg_or(), exhausted))
+}
+
+fn orch_retry_escalation_final_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: orch_retry_escalation_final_seg_or(), class: ^bash_token_retry_escalation_final_or)
+  ]))
+}
+
+fn orch_retry_escalation_final_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_orch_retry_escalation_final,
+    lhs: ^bash_production_orch_retry_escalation_final,
+    tokens: orch_retry_escalation_final_tokens(),
+    emitted: orch_retry_escalation_final_emitted
+  )
+}
+
+fn orch_retry_escalation_final_binding_spellings(
+  occ: String,
+  exhausted: String
+) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^orch_retry_escalation_final_occ, occ),
+    ^orch_retry_escalation_final_exhausted, exhausted
+  )
+}
+
+fn orch_retry_escalation_final_target_model(occ: String, exhausted: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: orch_retry_escalation_final_translation_rules_node(),
+    source_literal: ^bash_orch_retry_escalation_final_source_literal,
+    production_name: ^bash_production_orch_retry_escalation_final,
+    tokens: orch_retry_escalation_final_tokens(),
+    source_text: orch_retry_escalation_final_source_text(occ: occ, exhausted: exhausted),
+    lex: orch_retry_escalation_final_lex(),
+    binding_spellings: orch_retry_escalation_final_binding_spellings(occ: occ, exhausted: exhausted)
+  )
+}
+
+fn orch_retry_escalation_step_seg_a() -> String {
+  "RETRY_LOG=$(mktemp)\n    if ! ( "
+}
+
+fn orch_retry_escalation_step_seg_b() -> String {
+  " ) 2>&1 | tee \"$RETRY_LOG\"; then\n"
+}
+
+fn orch_retry_escalation_step_seg_c() -> String {
+  "      if grep -qiE '"
+}
+
+fn orch_retry_escalation_step_seg_d() -> String {
+  "' \"$RETRY_LOG\"; then\n        echo \"::warning::"
+}
+
+fn orch_retry_escalation_step_seg_e() -> String {
+  "\"\n        "
+}
+
+fn orch_retry_escalation_step_seg_f() -> String {
+  "      else\n        "
+}
+
+fn orch_retry_escalation_step_seg_g() -> String {
+  "      fi\n    fi\n    rm -f \"$RETRY_LOG\""
+}
+
+fn orch_retry_escalation_step_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_a },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_occ },
+    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_b },
+    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_c },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_pattern },
+    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_d },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_warn },
+    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_e },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_inner },
+    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_f },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_escalation_step_exhausted },
+    FixedToken { token_class: ^bash_token_retry_escalation_step_seg_g }
+  ]
+}
+
+data orch_retry_escalation_step_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: orch_retry_escalation_step_tokens()
+)
+
+fn orch_retry_escalation_step_source_text(
+  occ: String,
+  pattern: String,
+  warn: String,
+  inner: String,
+  exhausted: String
+) -> String {
+  concat(orch_retry_escalation_step_seg_a(),
+  concat(occ,
+  concat(orch_retry_escalation_step_seg_b(),
+  concat(orch_retry_escalation_step_seg_c(),
+  concat(pattern,
+  concat(orch_retry_escalation_step_seg_d(),
+  concat(warn,
+  concat(orch_retry_escalation_step_seg_e(),
+  concat(inner,
+  concat(orch_retry_escalation_step_seg_f(),
+  concat(exhausted,
+         orch_retry_escalation_step_seg_g())))))))))))
+}
+
+fn orch_retry_escalation_step_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: orch_retry_escalation_step_seg_a(), class: ^bash_token_retry_escalation_step_seg_a),
+    span(text: orch_retry_escalation_step_seg_b(), class: ^bash_token_retry_escalation_step_seg_b),
+    span(text: orch_retry_escalation_step_seg_c(), class: ^bash_token_retry_escalation_step_seg_c),
+    span(text: orch_retry_escalation_step_seg_d(), class: ^bash_token_retry_escalation_step_seg_d),
+    span(text: orch_retry_escalation_step_seg_e(), class: ^bash_token_retry_escalation_step_seg_e),
+    span(text: orch_retry_escalation_step_seg_f(), class: ^bash_token_retry_escalation_step_seg_f),
+    span(text: orch_retry_escalation_step_seg_g(), class: ^bash_token_retry_escalation_step_seg_g)
+  ]))
+}
+
+fn orch_retry_escalation_step_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_orch_retry_escalation_step,
+    lhs: ^bash_production_orch_retry_escalation_step,
+    tokens: orch_retry_escalation_step_tokens(),
+    emitted: orch_retry_escalation_step_emitted
+  )
+}
+
+fn orch_retry_escalation_step_binding_spellings(
+  occ: String,
+  pattern: String,
+  warn: String,
+  inner: String,
+  exhausted: String
+) -> Map<Symbol, String> {
+  map_insert(
+  map_insert(
+  map_insert(
+  map_insert(
+  map_insert(empty_map(), ^orch_retry_escalation_step_occ, occ),
+    ^orch_retry_escalation_step_pattern, pattern),
+    ^orch_retry_escalation_step_warn, warn),
+    ^orch_retry_escalation_step_inner, inner),
+    ^orch_retry_escalation_step_exhausted, exhausted)
+}
+
+fn orch_retry_escalation_step_target_model(
+  occ: String,
+  pattern: String,
+  warn: String,
+  inner: String,
+  exhausted: String
+) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: orch_retry_escalation_step_translation_rules_node(),
+    source_literal: ^bash_orch_retry_escalation_step_source_literal,
+    production_name: ^bash_production_orch_retry_escalation_step,
+    tokens: orch_retry_escalation_step_tokens(),
+    source_text: orch_retry_escalation_step_source_text(
+      occ: occ,
+      pattern: pattern,
+      warn: warn,
+      inner: inner,
+      exhausted: exhausted
+    ),
+    lex: orch_retry_escalation_step_lex(),
+    binding_spellings: orch_retry_escalation_step_binding_spellings(
+      occ: occ,
+      pattern: pattern,
+      warn: warn,
+      inner: inner,
+      exhausted: exhausted
+    )
+  )
+}
+
 fn bash_word_pass_tokens() -> List<ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_pass_spelling }
