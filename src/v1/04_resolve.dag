@@ -1007,7 +1007,6 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
       source_indices: e.source_indices,
       intern_table: e.intern_table,
       source_visible_names: map_insert(e.source_visible_names, tp_name, true),
-      global_bare: e.global_bare,
       symbol_index: e.symbol_index
     }
   )

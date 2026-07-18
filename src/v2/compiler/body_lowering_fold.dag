@@ -7,6 +7,10 @@ import v2.compiler.fold_lowering {
   fold_family_head
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
+import v2.compiler.body_producer_forward {
+  body_producer_forward_row_count,
+  body_producer_forward_surface_identities
+}
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFind,
@@ -75,59 +79,52 @@ import v2.std.node {
 }
 import v2.std.node_query { find_named_child }
 
-data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into FLAG E one SugarKey table (general-body-producer-design §9) once Slices 0–1 receipts land; no permanent sibling hand-inlined arm. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained with typed diagnostic ^body_lowering_reason_wrapper_retained_emitted (general-body-producer-design Stage A frontier: lowered | wrapper-retained cause, counted — never silent shell accept)."
+data body_lowering_fold_note: String = "Forward body producer fold (general-body-producer Stage A remainder + B/C/D): production-identity dispatch in normalize AFTER child-fold, BEFORE sugar (body_lower_finish in 03_normalize.dag). INTERIM scaffold — dissolves into v2.compiler.body_producer_forward GrammarRelationRow forward fold (general-body-producer-design §3) once Slice 4 deletes this module; match/if/body_try hand-walker scaffolds dissolved into body_producer_forward + body_lower_fold. COMPLEMENTS #6443 fold_lowering.dag — does NOT re-fork it. Seam: fold_lowering owns fold-CALL semantic desugar (callee-head keyed: ^fold/^fold_list/… → seam Loop via fold_call_to_loop); body_lowering_fold owns fn-BODY shape lowering (fn_decl→Arrow+domain, infix→Transform, let→Bind, …). The only overlap point is body_lower_try_fold_loop which DELEGATES to fold_call_to_loop — one authority, no parallel fold→Loop path. Pass-through expr wrappers unwrap; ^dag_surface_fn_body is deferred (shell retained until parent fn_decl lowers); metadata (module/import/qn) preserved; core substrate (Arrow, ComputationNode) is a positive terminal; out-of-scope emitted identities land wrapper-retained with typed diagnostic ^body_lowering_reason_wrapper_retained_emitted (general-body-producer-design Stage A frontier: lowered | wrapper-retained cause, counted — never silent shell accept)."
 
-data body_lowering_fold_dissolution_contract: String = "FLAG E dissolution DELETES this module — do NOT port its interim walker arms into the SugarKey table. The hand-authored families (body_lower_deep_unwrap*, body_lower_operand_ref*, body_lower_operator_tail/infix*, body_lower_postfix_projection*) are receipt scaffolding only; the row-selected GrammarRelationRow forward fold (general-body-producer-design §3) replaces them wholesale. Acceptance: this file is gone and coverage lives in forward rows + existing witnesses."
+data body_lowering_fold_dissolution_contract: String = "FLAG E dissolution DELETES this module — coverage lives in v2.compiler.body_producer_forward forward rows + GrammarRelationRow slot-map apply (general-body-producer-design §3). The hand-authored families (body_lower_deep_unwrap*, body_lower_operand_ref*, body_lower_operator_tail/infix*, body_lower_postfix_projection*) are receipt scaffolding only. Acceptance: this file is gone and coverage lives in forward rows + existing witnesses. match/if/body_try hand-walker scaffolds LANDED: body_lower_try_body_lowered delegates behavior productions to body_lower_fold; body_producer_forward owns the forward row table."
 
-type BodyLoweringInterimScaffoldDisposition
-  = SeedRetained { reason: Symbol, migration_trigger: Symbol }
-
-type BodyLoweringInterimScaffoldRow {
-  site: Symbol
-  disposition: BodyLoweringInterimScaffoldDisposition
-}
+data body_lowering_interim_scaffold_dissolved_note: String = "Wave 1 Gate 1 Track B: match/if/body_try interim hand-walker scaffolds dissolved into body_producer_forward (forward row table + production-identity dispatch via body_lower_fold). body_lowering_interim_scaffold_seed_retained_count is pinned at 0 — RED if any SeedRetained scaffold reappears."
 
 data body_lowering_domain_construction_disposition_note: String = "Wave 1 Gate 1 A1/B1: param-name domain harvesting is terminal param-list-walk (declaration reading, not SymbolIndex resolution). BodyLoweringDomainSymbolIndexResolved deleted in B1 — uninhabited variant with no migration trigger (operator ruling 2026-07-14)."
 
-data body_lowering_interim_scaffold_row_match_hand_walker: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
-  site: ^body_lower_try_match_from_node,
-  disposition: SeedRetained {
-    reason: ^body_lowering_match_interim_hand_walker_reason,
-    migration_trigger: ^migrate_when_general_body_producer_lands
-  }
+fn body_lowering_interim_scaffold_seed_retained_count() -> Int {
+  0
 }
 
-data body_lowering_interim_scaffold_row_if_hand_walker: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
-  site: ^body_lower_try_if_from_node,
-  disposition: SeedRetained {
-    reason: ^body_lowering_if_interim_hand_walker_reason,
-    migration_trigger: ^migrate_when_general_body_producer_lands
-  }
+fn body_lowering_forward_behavior_row_count() -> Int {
+  body_producer_forward_row_count()
 }
 
-data body_lowering_interim_scaffold_row_body_try_hand_walker: BodyLoweringInterimScaffoldRow = BodyLoweringInterimScaffoldRow {
-  site: ^body_lower_try_body_lowered,
-  disposition: SeedRetained {
-    reason: ^body_lowering_body_try_interim_hand_walker_reason,
-    migration_trigger: ^migrate_when_general_body_producer_lands
-  }
-}
-
-fn body_lowering_interim_scaffold_rows() -> List<BodyLoweringInterimScaffoldRow> {
+fn body_lower_fold_behavior_surface_identities() -> List<Symbol> {
   Cons {
-    head: body_lowering_interim_scaffold_row_match_hand_walker,
+    head: ^dag_surface_match_expr,
     tail: Cons {
-      head: body_lowering_interim_scaffold_row_if_hand_walker,
+      head: ^dag_surface_if_expr,
       tail: Cons {
-        head: body_lowering_interim_scaffold_row_body_try_hand_walker,
-        tail: Empty
+        head: ^dag_surface_loop_expr,
+        tail: Cons {
+          head: ^dag_surface_let_expr,
+          tail: Empty
+        }
       }
     }
   }
 }
 
-fn body_lowering_interim_scaffold_seed_retained_count() -> Int {
-  length(xs: body_lowering_interim_scaffold_rows())
+fn body_lowering_surface_identity_list_contains(xs: List<Symbol>, target: Symbol) -> Bool {
+  fold(xs, init: false, f: fn(acc, id) { acc || id == target })
+}
+
+fn body_lowering_forward_fold_surface_identities_agree() -> Bool {
+  let forward = body_producer_forward_surface_identities()
+  let fold_ids = body_lower_fold_behavior_surface_identities()
+  if length(xs: forward) != length(xs: fold_ids) {
+    false
+  } else {
+    fold(forward, init: true, f: fn(acc, id) {
+      acc && body_lowering_surface_identity_list_contains(xs: fold_ids, target: id)
+    })
+  }
 }
 
 type BodyLoweringFrontierDisposition
@@ -1172,24 +1169,29 @@ fn body_lower_find_core_substrate_optional(root: Node) -> Optional<Node> {
   }
 }
 
+fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> {
+  match body_lower_fold(node: node) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: folded, diagnostics: fd } =>
+      if body_lower_is_core_substrate(node: folded) {
+        outcome_accepted(value: optional_present(value: folded), diagnostics: fd)
+      } else {
+        outcome_accepted(value: optional_absent(), diagnostics: fd)
+      }
+  }
+}
+
 fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: optional_present(value: node))
   } else {
-    match body_lower_try_if_from_node(node: node) {
+    match body_lower_try_fold_behavior_optional(node: node) {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
-      Accepted { value: if_found, diagnostics: id } =>
-        match if_found {
+      Accepted { value: fold_found, diagnostics: fd } =>
+        match fold_found {
           Present { value: lowered } =>
-            outcome_accepted(value: optional_present(value: lowered), diagnostics: id)
+            outcome_accepted(value: optional_present(value: lowered), diagnostics: fd)
           Absent =>
-            match body_lower_try_match_from_node(node: node) {
-              Rejected { diagnostics: r } => Rejected { diagnostics: r }
-              Accepted { value: match_found, diagnostics: md } =>
-                match match_found {
-                  Present { value: lowered } =>
-                    outcome_accepted(value: optional_present(value: lowered), diagnostics: md)
-                  Absent =>
                     match body_lower_try_let_in_from_node(node: node) {
                       Rejected { diagnostics: r } => Rejected { diagnostics: r }
                       Accepted { value: let_found, diagnostics: ld } =>
@@ -1291,8 +1293,6 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                 }
                             }
                         }
-                                }
-                            }
                         }
                     }
                 }
@@ -1301,7 +1301,6 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
     }
   }
 }
-
 
 fn body_lower_reduce_passthrough(folded: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: folded) {
@@ -1372,6 +1371,23 @@ fn body_lower_fold_children(node: Node) -> Outcome<Node> {
   })
 }
 
+fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
+  if body_lower_match_capture_heads_spine(
+    spine: body_lower_unwrap_surface_shell(node: node)
+  ) {
+    match body_lower_try_match_from_captured(captured: node) {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: lowered_opt, diagnostics: d } =>
+        match lowered_opt {
+          Present { value: lowered } => Accepted { value: lowered, diagnostics: d }
+          Absent => body_lower_fold_reduce(node: node)
+        }
+    }
+  } else {
+    body_lower_fold_reduce(node: node)
+  }
+}
+
 fn body_lower_fold(node: Node) -> Outcome<Node> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: node)
@@ -1393,7 +1409,7 @@ fn body_lower_fold(node: Node) -> Outcome<Node> {
         } else {
           body_lower_fold_reduce(node: node)
         }
-      Absent => body_lower_fold_reduce(node: node)
+      Absent => body_lower_fold_identity_absent(node: node)
     }
   }
 }
@@ -3451,27 +3467,6 @@ fn body_lower_try_if_from_captured(captured: Node) -> Outcome<Optional<Node>> {
   }
 }
 
-fn body_lower_try_if_from_node(node: Node) -> Outcome<Optional<Node>> {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: emitted } =>
-      if emitted == ^dag_surface_if_expr {
-        match body_lower_unwrap_captured(shell: node) {
-          Present { value: captured } =>
-            body_lower_try_if_from_captured(captured: captured)
-          Absent => outcome_accepted(value: optional_absent())
-        }
-      } else if body_lower_is_pass_through_emitted(emitted: emitted) {
-        match body_lower_unwrap_captured(shell: node) {
-          Present { value: captured } => body_lower_try_if_from_node(node: captured)
-          Absent => outcome_accepted(value: optional_absent())
-        }
-      } else {
-        outcome_accepted(value: optional_absent())
-      }
-    Absent => outcome_accepted(value: optional_absent())
-  }
-}
-
 fn body_lower_if_expr(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
@@ -3685,26 +3680,47 @@ fn body_lower_match_capture_heads_spine(spine: Node) -> Bool {
   }
 }
 
-fn body_lower_try_match_from_node(node: Node) -> Outcome<Optional<Node>> {
-  match parse_production_emitted_identity_optional(node: node) {
-    Present { value: emitted } =>
-      if emitted == ^dag_surface_match_expr {
-        match body_lower_unwrap_captured(shell: node) {
-          Present { value: captured } =>
-            body_lower_try_match_from_captured(captured: captured)
-          Absent => outcome_accepted(value: optional_absent())
+fn body_lowering_match_spine_identity_absent_fixture_spine() -> Node {
+  let match_kw = node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^dag_token_kw_match } },
+    children: []
+  )
+  let tail = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^grammar_sequence_left_node_projection },
+        target: match_kw
+      },
+      Edge {
+        label: Named { name: ^grammar_sequence_right_node_projection },
+        target: tail
+      }
+    ]
+  )
+}
+
+fn body_lowering_match_spine_identity_absent_sniff_holds() -> Bool {
+  body_lower_match_capture_heads_spine(
+    spine: body_lowering_match_spine_identity_absent_fixture_spine()
+  )
+}
+
+fn body_lowering_match_spine_identity_absent_dispatch_holds() -> Bool {
+  let fixture = body_lowering_match_spine_identity_absent_fixture_spine()
+  if !body_lower_match_capture_heads_spine(spine: fixture) {
+    false
+  } else {
+    match body_lower_fold_reduce(node: fixture) {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: reduced, diagnostics: _ } =>
+        match body_lower_fold_identity_absent(node: fixture) {
+          Rejected { diagnostics: _ } => true
+          Accepted { value: dispatched, diagnostics: _ } =>
+            body_lower_is_core_substrate(node: dispatched) || dispatched != reduced
         }
-      } else {
-        outcome_accepted(value: optional_absent())
-      }
-    Absent =>
-      if body_lower_match_capture_heads_spine(
-        spine: body_lower_unwrap_surface_shell(node: node)
-      ) {
-        body_lower_try_match_from_captured(captured: node)
-      } else {
-        outcome_accepted(value: optional_absent())
-      }
+    }
   }
 }
 

@@ -15,7 +15,6 @@ type TypeEnv {
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
   source_visible_names: Map<String, Bool>
-  global_bare: Map<String, GlobalBareLookupState>
   symbol_index: SymbolIndex
 }
 
@@ -25,7 +24,7 @@ type TypeBinding {
   provenance: SubValueRelation
 }
 
-data global_bare_fallback_invariant: String = "Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): keyed on the bare declared name, one authority built once by build_global_bare_census over graph.modules before any module typechecks (order-independent — mirrors v2's symbol_index_global_bare, docs/plans/namespace-resolution-design.md §7.5). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss, and only a GlobalBareUniqueBinding resolves; GlobalBareAmbiguousBinding stays Absent (fail-closed, never guesses — §5). This is what unblocks the src/v1 import strip: a bare reference that used to resolve via a deleted import chain still resolves here iff its name is globally unique in the corpus."
+data global_bare_fallback_invariant: String = "Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): keyed on the bare declared name, one authority on SymbolIndex.global_bare built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent — mirrors v2's symbol_index_global_bare, docs/plans/namespace-resolution-design.md §7.5). Tracking is decl-only: symbol_index_insert_decl / local_binding_for_item (type/fn/data names). Unique Disj variant aliases still land in SymbolIndex.entries via symbol_index_insert but do NOT enter global_bare — byte-identical to the deleted build_global_bare_census population. lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss, and only a GlobalBareUniqueBinding resolves; GlobalBareAmbiguousBinding stays Absent (fail-closed, never guesses — §5). This is what unblocks the src/v1 import strip: a bare reference that used to resolve via a deleted import chain still resolves here iff its name is globally unique in the corpus."
 
 data qualified_module_projection_invariant: String = "Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let type-annotation positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module item paths plus module-unique Disj variant aliases (mirrors v2 symbol_index_fill_unique_variant_aliases); lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics)."
 
@@ -46,6 +45,7 @@ type ScopeBinding {
 
 type SymbolIndex {
   entries: Map<String, Node>
+  global_bare: Map<String, GlobalBareLookupState>
 }
 
 type Scope {
@@ -53,15 +53,41 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map() }
 }
 
 fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
   map_get(index.entries, qualified_name)
 }
 
+fn symbol_index_track_global_bare(
+  global_bare: Map<String, GlobalBareLookupState>,
+  binding: TypeBinding
+) -> Map<String, GlobalBareLookupState> {
+  match map_get(global_bare, binding.name) {
+    Present { value: GlobalBareAmbiguousBinding } => global_bare
+    Present { value: GlobalBareUniqueBinding { binding: existing } } =>
+      if existing.resolved == binding.resolved {
+        global_bare
+      } else {
+        map_insert(global_bare, binding.name, GlobalBareAmbiguousBinding)
+      }
+    Absent => map_insert(global_bare, binding.name, GlobalBareUniqueBinding { binding: binding })
+  }
+}
+
 fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Node) -> SymbolIndex {
-  SymbolIndex { entries: map_insert(index.entries, qualified_name, resolved) }
+  SymbolIndex {
+    entries: map_insert(index.entries, qualified_name, resolved),
+    global_bare: index.global_bare
+  }
+}
+
+fn symbol_index_insert_decl(index: SymbolIndex, qualified_name: String, binding: TypeBinding) -> SymbolIndex {
+  SymbolIndex {
+    entries: map_insert(index.entries, qualified_name, binding.resolved),
+    global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, binding: binding)
+  }
 }
 
 fn empty_scope() -> Scope {
@@ -408,7 +434,7 @@ fn lookup_qualified_module_projection(env: TypeEnv, name: String) -> TypeBinding
 }
 
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
-  match map_get(env.global_bare, name) {
+  match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareUniqueBinding { binding: binding } } => Present { value: binding }
     Present { value: GlobalBareAmbiguousBinding } => Absent
     Absent => Absent
@@ -416,7 +442,7 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
 }
 
 fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
-  match map_get(env.global_bare, name) {
+  match map_get(env.symbol_index.global_bare, name) {
     Present { value: GlobalBareAmbiguousBinding } => true
     Present { value: GlobalBareUniqueBinding { binding: _ } } => false
     Absent => false
