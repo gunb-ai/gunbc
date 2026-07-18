@@ -11,7 +11,7 @@ pub use crate::v1_compiler_infer_env::{
     lookup_type, lookup_type_by_name, qualified_last_segment, symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_resolve::{
-    is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
+    is_user_generic_use_site, resolve_generic_use_decl, resolve_node, substitute_type_slots,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
@@ -90,12 +90,15 @@ pub fn expand_scrut_from_decl(
                 && (scrut_node.children.clone().len() as i64) > 0
             {
                 let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                substitute_type_slots(
+                let substituted = substitute_type_slots(
                     decl.clone(),
                     subst.clone(),
                     authored_name_at(env.source_indices.clone(), decl.clone()),
                     env.source_indices.clone(),
-                )
+                );
+                resolve_node(substituted.clone(), env.clone(), env.module_path.clone())
+                    .resolved
+                    .clone()
             } else {
                 decl
             }
