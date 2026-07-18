@@ -1877,10 +1877,7 @@ pub fn rust_nominal_ord_derives_for_shape(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if rust_symbol_wrapped_ord_carrier_shape_eligible(
-        children.clone(),
-        source_indices.clone(),
-    ) {
+    if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
         rust_ord_derives_text()
     } else {
         "".to_string()
@@ -1888,10 +1885,9 @@ pub fn rust_nominal_ord_derives_for_shape(
 }
 
 pub fn rust_nominal_ord_type_name_eligible(type_name: String) -> bool {
-    ((type_name.clone() == "Symbol".to_string())
-        || (type_name.clone() == "DiffId".to_string()))
-        || (type_name.clone() == "FormalNonterminal".to_string())
-        || (type_name.clone() == "FormalTerminal".to_string())
+    ((((type_name.clone() == "Symbol".to_string()) || (type_name.clone() == "DiffId".to_string()))
+        || (type_name.clone() == "FormalNonterminal".to_string()))
+        || (type_name.clone() == "FormalTerminal".to_string()))
 }
 
 pub fn rust_nominal_ord_type_ref_eligible(
