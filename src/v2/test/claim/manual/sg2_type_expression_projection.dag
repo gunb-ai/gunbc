@@ -34,7 +34,7 @@ fn sg2_claim_input(ok: Bool) -> Node {
 data sg2_type_expr_target: TargetModel = v2.extdeps.languages.rust.rust_sg2_type_expr_projection_probe_target_model()
 
 fn sg2_project_instantiation_emitted() -> Node {
-  match translate_type_expression_project(
+  match v2.compiler.translate.translate_type_expression_project(
     node: v2.extdeps.languages.rust.rust_sg2_instantiation_source_type_node(),
     target: sg2_type_expr_target,
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
@@ -45,12 +45,12 @@ fn sg2_project_instantiation_emitted() -> Node {
 }
 
 fn sg2_projection_matches_golden() -> Bool {
-  content_hash(n: sg2_project_instantiation_emitted()) ==
-    content_hash(n: v2.extdeps.languages.rust.rust_sg2_rc_foobar_xy_emitted())
+  v2.std.node_content_hash.content_hash(n: sg2_project_instantiation_emitted()) ==
+    v2.std.node_content_hash.content_hash(n: v2.extdeps.languages.rust.rust_sg2_rc_foobar_xy_emitted())
 }
 
 fn sg2_project_arrow_emitted() -> Node {
-  match translate_type_expression_project(
+  match v2.compiler.translate.translate_type_expression_project(
     node: v2.extdeps.languages.rust.rust_sg2_arrow_source_type_node(),
     target: sg2_type_expr_target,
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
@@ -61,7 +61,7 @@ fn sg2_project_arrow_emitted() -> Node {
 }
 
 fn sg2_project_conj_emitted() -> Node {
-  match translate_type_expression_project(
+  match v2.compiler.translate.translate_type_expression_project(
     node: v2.extdeps.languages.rust.rust_sg2_conj_source_type_node(),
     target: sg2_type_expr_target,
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
@@ -72,7 +72,7 @@ fn sg2_project_conj_emitted() -> Node {
 }
 
 fn sg2_binary_fn_projection_accepts() -> Bool {
-  match translate_type_expression_project(
+  match v2.compiler.translate.translate_type_expression_project(
     node: v2.extdeps.languages.rust.rust_sg2_binary_fn_source_type_node(),
     target: sg2_type_expr_target,
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
@@ -83,7 +83,7 @@ fn sg2_binary_fn_projection_accepts() -> Bool {
 }
 
 fn sg2_arrow_malformed_projection_rejects() -> Bool {
-  match translate_type_expression_project(
+  match v2.compiler.translate.translate_type_expression_project(
     node: v2.extdeps.languages.rust.rust_sg2_arrow_malformed_source_type_node(),
     target: sg2_type_expr_target,
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
@@ -94,7 +94,7 @@ fn sg2_arrow_malformed_projection_rejects() -> Bool {
 }
 
 fn sg2_serialize_accepts(emitted: Node) -> Bool {
-  match target_serialize_source_from_model(
+  match v2.compiler.translate.target_serialize_source_from_model(
     target: sg2_type_expr_target,
     emitted: emitted
   ) {
@@ -104,7 +104,7 @@ fn sg2_serialize_accepts(emitted: Node) -> Bool {
 }
 
 fn sg2_serialized_text(emitted: Node) -> String {
-  match target_serialize_source_from_model(
+  match v2.compiler.translate.target_serialize_source_from_model(
     target: sg2_type_expr_target,
     emitted: emitted
   ) {
@@ -139,16 +139,16 @@ fn sg2_instantiation_projected_serialize_matches_expected() -> Bool {
 
 fn sg2_arrow_swapped_split_emitted() -> Node {
   let row = v2.extdeps.languages.rust.rust_type_expression_projection()
-  target_type_expr_arrow_emitted(
+  v2.std.compilers.target_model.target_type_expr_arrow_emitted(
     form: row.arrow_form,
     inputs: Cons {
-      head: target_type_expr_atom_emitted(
+      head: v2.std.compilers.target_model.target_type_expr_atom_emitted(
         form: row.atom_form,
         identity: ^rust_binding_sg2_y
       ),
       tail: Empty
     },
-    output: target_type_expr_atom_emitted(
+    output: v2.std.compilers.target_model.target_type_expr_atom_emitted(
       form: row.atom_form,
       identity: ^rust_binding_sg2_x
     )
@@ -168,7 +168,7 @@ fn sg2_conj_serialize_matches_expected() -> Bool {
 }
 
 fn sg2_wire_decode_accepts(emitted: Node) -> Bool {
-  match target_type_expr_emitted_wire_decode(
+  match v2.std.compilers.target_model.target_type_expr_emitted_wire_decode(
     node: emitted,
     projection: v2.extdeps.languages.rust.rust_type_expression_projection()
   ) {
@@ -178,14 +178,14 @@ fn sg2_wire_decode_accepts(emitted: Node) -> Bool {
 }
 
 fn sg2_rust_add_projection_absent() -> Bool {
-  match target_bundle_child_optional_type_expr_projection(target: v2.extdeps.languages.rust.rust_target_model()) {
+  match v2.compiler.translate.target_bundle_child_optional_type_expr_projection(target: v2.extdeps.languages.rust.rust_target_model()) {
     Accepted { value: ProjectionAbsent, diagnostics: _ } => true
     _ => false
   }
 }
 
 fn sg2_rust_add_translate_fallback_accepts() -> Bool {
-  match translate(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: v2.test.manual.rust_add_emit_translate.rust_add_target_model) {
+  match v2.compiler.translate.translate(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: v2.test.manual.rust_add_emit_translate.rust_add_target_model) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -200,7 +200,7 @@ fn sg2_instantiation_delimiters_bidirectional() -> Bool {
 
 data claim_sg2_projection_structural: TestClaim = EqualsClaim {
   label: "manual/sg2: Instantiation projects to golden Rc<FooBar<X,Y>> emitted node (no FooBar branch)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg2_project_instantiation_emitted(),
   rhs: v2.extdeps.languages.rust.rust_sg2_rc_foobar_xy_emitted(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -208,7 +208,7 @@ data claim_sg2_projection_structural: TestClaim = EqualsClaim {
 
 data claim_sg2_serialize_falsification: TestClaim = CompilesClaim {
   label: "manual/sg2: serialized generic apply is Rc<FooBar<X, Y>> with correct arity",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_serialize_matches_expected()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -216,7 +216,7 @@ data claim_sg2_serialize_falsification: TestClaim = CompilesClaim {
 
 data claim_sg2_projection_receipt: TestClaim = CompilesClaim {
   label: "manual/sg2: projection structural receipt (content_hash golden match)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_projection_matches_golden()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -224,7 +224,7 @@ data claim_sg2_projection_receipt: TestClaim = CompilesClaim {
 
 data claim_sg2_bidirectional_delimiters: TestClaim = CompilesClaim {
   label: "manual/sg2: instantiation_form delimiters are bidirectional lex token classes (§10.6)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_instantiation_delimiters_bidirectional()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -232,7 +232,7 @@ data claim_sg2_bidirectional_delimiters: TestClaim = CompilesClaim {
 
 data claim_sg2_arrow_projection_structural: TestClaim = EqualsClaim {
   label: "manual/sg2: Arrow<A,B> projects to golden arrow emitted node",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg2_project_arrow_emitted(),
   rhs: v2.extdeps.languages.rust.rust_sg2_arrow_xy_emitted(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -240,7 +240,7 @@ data claim_sg2_arrow_projection_structural: TestClaim = EqualsClaim {
 
 data claim_sg2_conj_projection_structural: TestClaim = EqualsClaim {
   label: "manual/sg2: Conj product projects to golden record emitted node",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: sg2_project_conj_emitted(),
   rhs: v2.extdeps.languages.rust.rust_sg2_conj_xy_emitted(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -248,7 +248,7 @@ data claim_sg2_conj_projection_structural: TestClaim = EqualsClaim {
 
 data claim_sg2_arrow_serialize: TestClaim = CompilesClaim {
   label: "manual/sg2: serialized arrow is (X) -> Y",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_arrow_serialize_matches_expected()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -256,7 +256,7 @@ data claim_sg2_arrow_serialize: TestClaim = CompilesClaim {
 
 data claim_sg2_conj_serialize: TestClaim = CompilesClaim {
   label: "manual/sg2: serialized conj record is { X, Y }",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_conj_serialize_matches_expected()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -264,7 +264,7 @@ data claim_sg2_conj_serialize: TestClaim = CompilesClaim {
 
 data claim_sg2_binary_fn_projection: TestClaim = CompilesClaim {
   label: "manual/sg2: substrate binary-fn Arrow (3 positional) projects n-ary inputs + output",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_binary_fn_projection_accepts()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -272,7 +272,7 @@ data claim_sg2_binary_fn_projection: TestClaim = CompilesClaim {
 
 data claim_sg2_arrow_malformed_rejects: TestClaim = CompilesClaim {
   label: "manual/sg2: Arrow with fewer than two positional children rejects (fail-closed arity)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_arrow_malformed_projection_rejects()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -280,7 +280,7 @@ data claim_sg2_arrow_malformed_rejects: TestClaim = CompilesClaim {
 
 data claim_sg2_serialize_rejects_malformed: TestClaim = CompilesClaim {
   label: "manual/sg2: serialize rejects malformed emitted node structurally",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: !sg2_serialize_accepts(emitted: sg2_fail_node())),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -288,7 +288,7 @@ data claim_sg2_serialize_rejects_malformed: TestClaim = CompilesClaim {
 
 data claim_sg2_serialize_rejects_atom_extra_positional: TestClaim = CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged atom emitted with extra positional child",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_serialize_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_malformed_atom_extra_positional_emitted())
   ),
@@ -298,7 +298,7 @@ data claim_sg2_serialize_rejects_atom_extra_positional: TestClaim = CompilesClai
 
 data claim_sg2_serialize_rejects_record_extra_positional: TestClaim = CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged record emitted with extra positional child",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_serialize_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_malformed_record_extra_positional_emitted())
   ),
@@ -308,7 +308,7 @@ data claim_sg2_serialize_rejects_record_extra_positional: TestClaim = CompilesCl
 
 data claim_sg2_serialize_rejects_sum_extra_positional: TestClaim = CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged sum emitted with extra positional child",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_serialize_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_malformed_sum_extra_positional_emitted())
   ),
@@ -318,7 +318,7 @@ data claim_sg2_serialize_rejects_sum_extra_positional: TestClaim = CompilesClaim
 
 data claim_sg2_serialize_rejects_atom_missing_surface: TestClaim = CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged atom emitted missing surface metadata",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_serialize_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_malformed_atom_missing_surface_emitted())
   ),
@@ -328,7 +328,7 @@ data claim_sg2_serialize_rejects_atom_missing_surface: TestClaim = CompilesClaim
 
 data claim_sg2_serialize_rejects_atom_duplicate_surface: TestClaim = CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged atom emitted with duplicate surface metadata",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_serialize_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_malformed_atom_duplicate_surface_emitted())
   ),
@@ -338,7 +338,7 @@ data claim_sg2_serialize_rejects_atom_duplicate_surface: TestClaim = CompilesCla
 
 data claim_sg2_serialize_rejects_atom_wrong_surface: TestClaim = CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged atom emitted with wrong surface metadata",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_serialize_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_malformed_atom_wrong_surface_emitted())
   ),
@@ -348,7 +348,7 @@ data claim_sg2_serialize_rejects_atom_wrong_surface: TestClaim = CompilesClaim {
 
 data claim_sg2_serialize_rejects_atom_extra_named: TestClaim = CompilesClaim {
   label: "manual/sg2: serialize rejects kind-tagged atom emitted with extra named metadata edge",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_serialize_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_malformed_atom_extra_named_emitted())
   ),
@@ -358,7 +358,7 @@ data claim_sg2_serialize_rejects_atom_extra_named: TestClaim = CompilesClaim {
 
 data claim_sg2_wire_decode_rejects_atom_zero_positional: TestClaim = CompilesClaim {
   label: "manual/sg2: wire decode rejects kind-tagged atom emitted with zero positional children",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_wire_decode_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_malformed_atom_zero_positional_emitted())
   ),
@@ -368,7 +368,7 @@ data claim_sg2_wire_decode_rejects_atom_zero_positional: TestClaim = CompilesCla
 
 data claim_sg2_wire_decode_rejects_arrow_one_positional: TestClaim = CompilesClaim {
   label: "manual/sg2: wire decode rejects kind-tagged arrow emitted with one positional child",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_wire_decode_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_malformed_arrow_one_positional_emitted())
   ),
@@ -378,7 +378,7 @@ data claim_sg2_wire_decode_rejects_arrow_one_positional: TestClaim = CompilesCla
 
 data claim_sg2_wire_decode_rejects_instantiation_zero_positional: TestClaim = CompilesClaim {
   label: "manual/sg2: wire decode rejects kind-tagged instantiation emitted with zero positional children",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(
     ok: !sg2_wire_decode_accepts(emitted: v2.extdeps.languages.rust.rust_sg2_malformed_instantiation_zero_positional_emitted())
   ),
@@ -388,7 +388,7 @@ data claim_sg2_wire_decode_rejects_instantiation_zero_positional: TestClaim = Co
 
 data claim_sg2_rust_add_projection_absent: TestClaim = CompilesClaim {
   label: "manual/sg2: v2.extdeps.languages.rust.rust_target_model lacks type-expression projection row (ProjectionAbsent)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_rust_add_projection_absent()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
@@ -396,14 +396,14 @@ data claim_sg2_rust_add_projection_absent: TestClaim = CompilesClaim {
 
 data claim_sg2_rust_add_translate_fallback: TestClaim = CompilesClaim {
   label: "manual/sg2: projection-absent translate fallback still grounds TypeNode subtrees (no projection row)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: sg2_rust_add_translate_fallback_accepts()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 fn witness_sg2_arrow_holds() -> Bool {
-  (content_hash(n: sg2_project_arrow_emitted()) == content_hash(n: v2.extdeps.languages.rust.rust_sg2_arrow_xy_emitted()))
+  (v2.std.node_content_hash.content_hash(n: sg2_project_arrow_emitted()) == v2.std.node_content_hash.content_hash(n: v2.extdeps.languages.rust.rust_sg2_arrow_xy_emitted()))
     && sg2_arrow_serialize_matches_expected()
     && sg2_arrow_projected_serialize_matches_expected()
     && sg2_conj_projected_serialize_matches_expected()
@@ -443,14 +443,14 @@ fn sg2_wrong_arrow_projection() -> TargetTypeExpressionProjection {
 
 data claim_sg2_fold_row_delimiter_discriminates: TestClaim = CompilesClaim {
   label: "manual/sg2: row witness gate rejects wrong arrow delimiter row (fold discrimination)",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  anchor: v2.std.verification.manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg2_claim_input(ok: witness_sg2_fold_row_delimiter_discriminates_holds()),
   expected_value: sg2_pass_node(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
 fn witness_sg2_fold_row_delimiter_discriminates_holds() -> Bool {
-  match type_expr_projection_bundle_shape_for_connective(
+  match v2.std.compilers.target_model.type_expr_projection_bundle_shape_for_connective(
     bundle: v2.extdeps.languages.rust.rust_type_expression_projection_bundle_node(),
     connective: Arrow
   ) {
