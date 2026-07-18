@@ -77,7 +77,7 @@ data gate_a_flip_probe_witness_std_dup_reason: Symbol = ^gate_a_flip_probe_witne
 
 data gate_a_flip_probe_formal_nonterminal_btree_set_ord_reason: Symbol = ^gate_a_flip_probe_formal_nonterminal_btree_set_ord
 
-data gate_a_flip_probe_wave_note: String = "Gate-A flip wave probe 2026-07-18 (silent-hawk-660, post-#6775): CSSL_STD_SEED_LINK=1 curated_cargo_probe_one.sh per candidate. Green: 03_normalize (shim required). Refusals bind execution_measured SeedRetained rows with these located_reason symbols — not class projections."
+data gate_a_flip_probe_wave_note: String = "Gate-A flip wave probe 2026-07-18 (silent-hawk-660, post-#6775): CSSL_STD_SEED_LINK=1 curated_cargo_probe_one.sh per candidate. GREEN: 03_normalize (shim dag/tools/self_host_03_normalize_shims/lib.rs required) — flipped SelfEmitted. REFUSALS (SeedRetained, execution-measured): 00_compile/materialization_carriers/program_assembly/source_authority → gate_a_flip_probe_unresolved_compiler_error; 01_tokenize → gate_a_flip_probe_witness_std_dup; 04_infer/program_partition → gate_a_flip_probe_formal_nonterminal_btree_set_ord (pre-existing BTreeSet conservatism, out of Gate-A scope)."
 
 fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> Symbol {
   if is_oom_or_budget {

@@ -214,7 +214,7 @@ fn knowledge_attributed_blocker_class_seed_retained_row(
 data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/00_compile.dag",
   closure_reads: 102,
-  measured_blocker: EmitSurfaceGap,
+  measured_blocker: NameResolutionGap,
   located_stage: ProbeStageEmit,
   located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
