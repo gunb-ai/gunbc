@@ -1539,6 +1539,13 @@ fn emit_phantom_zst_markers_for_enum(children: List<Node>, env: TypeEnv) -> Stri
   markers
 }
 
+fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indices: Map<String, NewlineIndex>, vname: String) -> Bool {
+  items |> any(item =>
+    authored_name_at(source_indices: source_indices, node: item) == vname
+    && (is_type_alias_item(item: item, source_indices: source_indices) || is_type_decl_item(item: item, source_indices: source_indices))
+  )
+}
+
 fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<String> {
   items
     |> filter(item => is_type_def_item(item: item) && item.children |> all(c => c.children |> count == 0))
@@ -1546,7 +1553,9 @@ fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<Str
       fold(item.children, init: acc, f: (inner, child) =>
         if child.children |> count == 0 {
           let vname = authored_name(env: env, node: child)
-          if is_phantom_unit_variant_type_arg(env: env, variant_name: vname) && !inner |> any(n => n == vname) {
+          if is_phantom_unit_variant_type_arg(env: env, variant_name: vname)
+            && !inner |> any(n => n == vname)
+            && !phantom_marker_name_shadowed_by_real_type_item(items: items, source_indices: env.source_indices, vname: vname) {
             concat(inner, [vname])
           } else { inner }
         } else { inner }
