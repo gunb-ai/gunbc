@@ -75,6 +75,7 @@ import gunbc.ci_deploy_access {
 }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
+import gunbc.host_build_cache_catalog_gate { provision_build_cache_catalog_refusal_reason }
 import gunbc.srv3_os_install_reconcile_types {
   srv3_boot_once_approval_grant_path,
   srv3_boot_once_apply_read_back_sleep,
@@ -981,20 +982,33 @@ fn realize_provision_build_cache_body(
 fn realize_provision_build_cache(
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  match effect_intent.transport {
-    LocalShell =>
-      realize_provision_build_cache_body(
-        transport: effect_intent.transport,
-        effect_intent: effect_intent,
-      )
-    SshShell { ssh_host: _ } =>
-      realize_provision_build_cache_body(
-        transport: effect_intent.transport,
-        effect_intent: effect_intent,
-      )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+  match effect_intent.effect {
+    ProvisionBuildCache { catalog_id: id } =>
+      match provision_build_cache_catalog_refusal_reason(catalog_id: id) {
+        Present { value: reason } =>
+          NotConverged { reason: reason as String, applied: effect_intent }
+        Absent =>
+          match effect_intent.transport {
+            LocalShell =>
+              realize_provision_build_cache_body(
+                transport: effect_intent.transport,
+                effect_intent: effect_intent,
+              )
+            SshShell { ssh_host: _ } =>
+              realize_provision_build_cache_body(
+                transport: effect_intent.transport,
+                effect_intent: effect_intent,
+              )
+            EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+              NotConverged {
+                reason: "host_effect_apply: ProvisionBuildCache cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+                applied: effect_intent,
+              }
+          }
+      }
+    _ =>
       NotConverged {
-        reason: "host_effect_apply: ProvisionBuildCache cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        reason: "host_effect_apply: realize_provision_build_cache requires ProvisionBuildCache effect",
         applied: effect_intent,
       }
   }

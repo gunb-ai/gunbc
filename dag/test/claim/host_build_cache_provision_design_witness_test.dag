@@ -1,9 +1,12 @@
 module test.claim.host_build_cache_provision_design
 
 import std.logic { Bool }
+import std.cache_identity { CacheInterfaceId }
 import extdeps.cache.sccache { sccache_local_id }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host_effect { ProvisionBuildCache }
+import gunbc.host_build_cache_catalog_gate { provision_build_cache_catalog_refusal_reason }
+import gunbc.host_build_cache_provision_script { build_cache_provision_read_back_fails_closed }
 import gunbc.host_build_cache_provision {
   provision_build_cache_default_effect,
   provision_build_cache_routes_through_host_effect_apply,
@@ -20,6 +23,26 @@ import gunbc.host_build_cache_provision {
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn design_witness_read_back_fails_closed_in_shell() -> Bool {
+  build_cache_provision_read_back_fails_closed()
+}
+
+fn design_witness_unknown_catalog_refuses_at_gate() -> Bool {
+  match provision_build_cache_catalog_refusal_reason(
+    catalog_id: "cache/unknown-test-id" as CacheInterfaceId,
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn design_witness_sccache_catalog_passes_gate() -> Bool {
+  match provision_build_cache_catalog_refusal_reason(catalog_id: sccache_local_id) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
 
 fn design_witness_routes_through_host_effect_apply() -> Bool {
   provision_build_cache_routes_through_host_effect_apply()
@@ -83,7 +106,10 @@ fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
 }
 
 test fn host_build_cache_provision_design_witnesses() -> Bool {
-  design_witness_routes_through_host_effect_apply()
+  design_witness_read_back_fails_closed_in_shell()
+    && design_witness_unknown_catalog_refuses_at_gate()
+    && design_witness_sccache_catalog_passes_gate()
+    && design_witness_routes_through_host_effect_apply()
     && design_witness_default_effect_pins_sccache_catalog()
     && design_witness_absent_daemon_fail_closed()
     && design_witness_authority_gate_accepts_absent_refusal()

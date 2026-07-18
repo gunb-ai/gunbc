@@ -7,7 +7,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, exit_failure }
 import std.resources { Network }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
-import extdeps.cache.cache { cache_catalog }
+import gunbc.host_build_cache_catalog_gate {
+  catalog_id_is_known,
+  provision_build_cache_catalog_refusal_reason,
+}
 import gunbc.host_effect { HostEffect, ProvisionBuildCache }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
 import product.placement_supply { HostIdentity }
@@ -112,14 +115,6 @@ fn build_cache_provision_gate_accepts(
   }
 }
 
-fn catalog_id_is_known(catalog_id: CacheInterfaceId) -> Bool {
-  fold(
-    cache_catalog,
-    init: false,
-    f: (acc, row) => acc || row.identity == catalog_id,
-  )
-}
-
 fn provision_build_cache_verdict(
   catalog_id: CacheInterfaceId,
   observed: BuildCacheDaemonObservation,
@@ -188,18 +183,8 @@ fn misconfigured_matches_cited_fragment() -> Bool {
 func provision_build_cache(host: HostIdentity, catalog_id: CacheInterfaceId) -> ProcessExit
   uses net: Network
 {
-  if !catalog_id_is_known(catalog_id: catalog_id) {
-    exit_failure(
-      reason: concat("host_build_cache_provision: unknown catalog_id ", catalog_id)
-    )
-  } else if catalog_id != sccache_local_id {
-    exit_failure(
-      reason: concat(
-        concat("host_build_cache_provision: catalog_id ", catalog_id),
-        concat(" not yet realized; only ", sccache_local_id),
-      )
-    )
-  } else {
-    host_toolchain_ensure(host: host, kind: BuildCache)
+  match provision_build_cache_catalog_refusal_reason(catalog_id: catalog_id) {
+    Present { value: reason } => exit_failure(reason: reason as String)
+    Absent => host_toolchain_ensure(host: host, kind: BuildCache)
   }
 }

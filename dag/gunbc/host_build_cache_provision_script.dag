@@ -1,6 +1,6 @@
 module gunbc.host_build_cache_provision_script
 
-import std.types { String }
+import std.types { String, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.shell_bash_runner { shell_exec_via_bash }
@@ -151,7 +151,19 @@ fn build_cache_provision_script_body() -> String {
                     "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"\n",
                     concat(
                       "  printf '%s\\n' \"$stats_out\"\n",
-                      "  exit 0\n",
+                      concat(
+                        "  exit 0\n",
+                        concat(
+                          "else\n",
+                          concat(
+                            "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=failed rc=$stats_rc\"\n",
+                            concat(
+                              "  printf '%s\\n' \"$stats_out\"\n",
+                              "  exit \"$stats_rc\"\n",
+                            )
+                          )
+                        )
+                      )
                     )
                   )
                 )
@@ -161,6 +173,16 @@ fn build_cache_provision_script_body() -> String {
         )
       )
     )
+  )
+}
+
+fn build_cache_provision_read_back_fails_closed() -> Bool {
+  string_contains(
+    s: build_cache_provision_script_body(),
+    pattern: "read_back=failed",
+  ) && string_contains(
+    s: build_cache_provision_script_body(),
+    pattern: "exit \"$stats_rc\"",
   )
 }
 
