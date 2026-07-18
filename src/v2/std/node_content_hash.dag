@@ -2,6 +2,7 @@ module v2.std.node_content_hash
 
 import std.algebra { Cons, Empty }
 import std.types { List }
+import std.content_hash { content_hash_atom, content_hash_combine }
 import v2.std.algebra { any, fold_list, length, list_snoc_item }
 
 import v2.std.node {
