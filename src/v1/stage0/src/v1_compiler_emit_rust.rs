@@ -8869,7 +8869,6 @@ pub fn emit_struct_field_from_child(
                     shared_types.clone(),
                     emit_info.corpus_repr.clone(),
                     env.source_indices.clone(),
-                    emit_info.clone(),
                 )
             } else {
                 if (find_property(
@@ -8883,7 +8882,6 @@ pub fn emit_struct_field_from_child(
                         shared_types.clone(),
                         emit_info.corpus_repr.clone(),
                         env.source_indices.clone(),
-                        emit_info.clone(),
                     )
                 } else {
                     if (find_property(
@@ -8897,7 +8895,6 @@ pub fn emit_struct_field_from_child(
                             shared_types.clone(),
                             emit_info.corpus_repr.clone(),
                             env.source_indices.clone(),
-                            emit_info.clone(),
                         )
                     } else {
                         if ((is_product_type(rt_child.clone())
@@ -9926,7 +9923,6 @@ pub fn emit_variant_from_child(
                                         shared_types.clone(),
                                         emit_info.corpus_repr.clone(),
                                         env.source_indices.clone(),
-                                        emit_info.clone(),
                                     )
                                 } else {
                                     render_rust_type(
@@ -9948,7 +9944,6 @@ pub fn emit_variant_from_child(
                                         shared_types.clone(),
                                         emit_info.corpus_repr.clone(),
                                         env.source_indices.clone(),
-                                        emit_info.clone(),
                                     )
                                 } else {
                                     raw_ty.clone()
@@ -10501,7 +10496,6 @@ pub fn emit_func_def(
             shared_types.clone(),
             emit_info.corpus_repr.clone(),
             scope.type_env.clone().source_indices.clone(),
-            emit_info.clone(),
         );
         let body_scope = build_params_scope(scope.clone(), params.clone());
         let si = scope.type_env.clone().source_indices.clone();
@@ -14623,7 +14617,6 @@ pub fn emit_typed_call_expr(
                         shared_types.clone(),
                         emit_info.corpus_repr.clone(),
                         scope.type_env.clone().source_indices.clone(),
-                        emit_info.clone(),
                     );
                     if (kv_type_str.clone() != "".to_string()) {
                         v1_rt::concat(
@@ -15687,7 +15680,6 @@ pub fn emit_typed_collection_lambda(
                 shared_types.clone(),
                 emit_info.corpus_repr.clone(),
                 scope.type_env.clone().source_indices.clone(),
-                emit_info.clone(),
             );
             let params_str = param_strs.clone().join(&", ".to_string());
             let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn.clone());
@@ -15782,7 +15774,6 @@ pub fn emit_typed_fold_lambda(
                 shared_types.clone(),
                 emit_info.corpus_repr.clone(),
                 scope.type_env.clone().source_indices.clone(),
-                emit_info.clone(),
             );
             let params_str = param_strs.clone().join(&", ".to_string());
             let lambda_scope = lambda_scope_from_children(scope.clone(), ps.clone(), pn.clone());
@@ -15876,7 +15867,6 @@ pub fn emit_rust_fold_method_call(
             shared_types.clone(),
             emit_info.corpus_repr.clone(),
             scope.type_env.clone().source_indices.clone(),
-            emit_info.clone(),
         );
         let contextual_acc_type = match result_type.clone().as_deref().cloned() {
             Some(InferredNode::Resolved {
@@ -16151,7 +16141,6 @@ pub fn emit_rust_fold_method_call(
                                 shared_types.clone(),
                                 emit_info.corpus_repr.clone(),
                                 scope.type_env.clone().source_indices.clone(),
-                                emit_info.clone(),
                             );
                             if (kv_type_str.clone() != "".to_string()) {
                                 v1_rt::concat(
@@ -24066,7 +24055,6 @@ pub fn emit_data_def(
                     shared_types.clone(),
                     emit_info.corpus_repr.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                    emit_info.clone(),
                 )
             }
         };
