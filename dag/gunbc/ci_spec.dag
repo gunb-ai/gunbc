@@ -31,6 +31,12 @@ import gunbc.merge_admission_produce {
   merge_admission_floor_disposition_floor_running,
   merge_admission_stamp_invoke,
 }
+import extdeps.git {
+  git_remote_ref_parts,
+  git_fetch_no_tags_shell,
+  git_toplevel_shell_subexpr_with_fallback,
+}
+import std.types { GitRef }
 import extdeps.github.actions { RunnerSpec }
 import v2.std.orchestration {
   Do,
@@ -155,7 +161,7 @@ fn ci_spec_with_discovery_scan_dirs(spec: CiSpec, dirs: List<String>) -> CiSpec 
 data ci_release_features: String = "text_lookup_work_counter"
 
 fn ci_repo_root_shell() -> String {
-  "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  git_toplevel_shell_subexpr_with_fallback()
 }
 
 fn ci_release_build_line() -> String {
@@ -420,13 +426,8 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
 }
 
 fn git_fetch_script(policy: DiffPolicy) -> String {
-  let parts = split(s: policy.base, delimiter: "/")
-  let remote = parts.first()
-  let ref_name = join_slash(parts: parts.skip(n: 1))
-  concat(
-    concat(concat("git fetch --no-tags ", remote), " "),
-    concat(ref_name, " 2>/dev/null || true")
-  )
+  let parts = git_remote_ref_parts(ref: policy.base as GitRef)
+  git_fetch_no_tags_shell(remote: parts.remote, ref_name: parts.ref_name, ignore_failure: true)
 }
 
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
