@@ -1,0 +1,168 @@
+module v2.test.claim.body_lowering.fn_body_seam_witness_helpers
+
+import v2.compiler.body_lowering_fold {
+  BodyLoweringLowered,
+  BodyLoweringWrapperRetained,
+  body_lower_fn_body_shell,
+  body_lower_outcome_frontier_disposition
+}
+import v2.compiler.ingested_fixture_arrows {
+  ingested_add_module_source,
+  ingested_find_arrow_in_module
+}
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  parse_production_emitted_identity_optional
+}
+import v2.std.collection { Absent, Optional, Present, optional_present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Node,
+  Transform,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.node_query { find_arrow_body_child }
+import v2.test.parse.parse_binding_fidelity {
+  pbf_parse_preserves_param_x_binding,
+  pbf_parse_preserves_param_y_binding
+}
+
+data fn_body_seam_witness_helpers_note: String = "Shared helpers for fn_body seam witnesses (decoupled from #6775 integer closure). Execution proofs exceed per-PR 5s fast-lane budget — enrolled in long/wave1_gate1_a1_fn_body_seam_witness_test.dag. Fast RED (invalid shell wrapper-retained) lives in self_host/wave1_gate1_a1_fn_body_seam_witness_test.dag."
+
+fn fn_body_seam_parsed_add_module() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: ingested_add_module_source,
+    file: ^fn_body_seam_add_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+      }
+  }
+}
+
+fn fn_body_seam_find_production_under_children(root: Node, emitted: Symbol) -> Optional<Node> {
+  fold(root.children, init: Absent, f: fn(acc, e) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => fn_body_seam_find_production(root: e.target, emitted: emitted)
+    }
+  })
+}
+
+fn fn_body_seam_find_production(root: Node, emitted: Symbol) -> Optional<Node> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == emitted {
+        optional_present(value: root)
+      } else {
+        fn_body_seam_find_production_under_children(root: root, emitted: emitted)
+      }
+    Absent =>
+      fn_body_seam_find_production_under_children(root: root, emitted: emitted)
+  }
+}
+
+fn fn_body_seam_add_fn_body_shell() -> Optional<Node> {
+  match fn_body_seam_parsed_add_module() {
+    Absent => Absent
+    Present { value: tree } =>
+      fn_body_seam_find_production(root: tree, emitted: ^dag_surface_fn_body)
+  }
+}
+
+fn fn_body_seam_tree_has_transform(root: Node) -> Bool {
+  match root.kind {
+    ComputationNode { behavior: Transform } => true
+    _ =>
+      fold(root.children, init: false, f: fn(found, e) {
+        if found {
+          true
+        } else {
+          fn_body_seam_tree_has_transform(root: e.target)
+        }
+      })
+  }
+}
+
+fn wave1_gate1_a1_fn_body_seam_shell_lowers_identity_holds() -> Bool {
+  match fn_body_seam_add_fn_body_shell() {
+    Absent => false
+    Present { value: shell } =>
+      match body_lower_fn_body_shell(shell: shell) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: lowered, diagnostics: _ } =>
+          fn_body_seam_tree_has_transform(root: lowered)
+      }
+  }
+}
+
+fn wave1_gate1_a1_fn_body_seam_fn_decl_binding_ordering_holds() -> Bool {
+  pbf_parse_preserves_param_x_binding()
+    && pbf_parse_preserves_param_y_binding()
+}
+
+fn wave1_gate1_a1_fn_body_seam_red_invalid_shell_wrapper_retained_holds() -> Bool {
+  let shell = node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^wave1_gate1_a1_fn_body_seam_invalid_shell } },
+    children: []
+  )
+  match body_lower_outcome_frontier_disposition(o: body_lower_fn_body_shell(shell: shell)) {
+    BodyLoweringWrapperRetained { reason: r } => r == ^body_lowering_reason_wrapper_retained_emitted
+    BodyLoweringLowered => false
+  }
+}
+
+fn wave1_gate1_a1_fn_body_seam_red_premature_fn_decl_shell_is_not_normalize_authority_holds() -> Bool {
+  match fn_body_seam_add_fn_body_shell() {
+    Absent => false
+    Present { value: fn_decl_body_shell } =>
+      match body_lower_fn_body_shell(shell: fn_decl_body_shell) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn wave1_gate1_a1_fn_body_seam_normalize_still_yields_arrow_transform_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(
+    text: ingested_add_module_source,
+    file: ^fn_body_seam_add_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: tree, diagnostics: _ } =>
+              match ingested_find_arrow_in_module(root: tree) {
+                Absent => false
+                Present { value: arrow } =>
+                  match find_arrow_body_child(root: arrow) {
+                    Accepted { value: body, diagnostics: _ } =>
+                      match body.kind {
+                        ComputationNode { behavior: Transform } => true
+                        _ => false
+                      }
+                    Rejected { diagnostics: _ } => false
+                  }
+              }
+          }
+      }
+  }
+}
