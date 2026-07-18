@@ -12078,8 +12078,11 @@ pub fn analyze_rc_match(
             _ => false,
         };
         RcMatchAnalysis {
-            needs_rc_option_ref: (arms_want_option.clone() && scrutinee_is_call.clone()),
-            needs_option_deref: (arms_want_option.clone() && !scrutinee_is_call.clone()),
+            needs_rc_option_ref: ((arms_want_option.clone() && scrutinee_is_call.clone())
+                && !scrutinee_is_optional.clone()),
+            needs_option_deref: (((arms_want_option.clone() && !scrutinee_is_call.clone())
+                && !scrutinee_is_optional.clone())
+                && scrutinee_is_rc_wrapped.clone()),
             needs_deref: if scrutinee_is_optional.clone() {
                 false
             } else {
@@ -18174,19 +18177,10 @@ pub fn emit_typed_match(
         if rc_match.needs_rc_option_ref.clone() {
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("match ".to_string(), scrut_str.clone()),
-                                ".as_ref()".to_string(),
-                            ),
-                            clone_iterator_suffix(),
-                        ),
-                        " {\n".to_string(),
-                    ),
-                    arms_str.clone(),
+                    v1_rt::concat("match ".to_string(), scrut_str.clone()),
+                    ".as_ref() {\n".to_string(),
                 ),
-                "\n}".to_string(),
+                v1_rt::concat(arms_str.clone(), "\n}".to_string()),
             )
         } else {
             if rc_match.needs_option_deref.clone() {
