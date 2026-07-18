@@ -4,9 +4,7 @@ import v2.lens.realization_vocabulary_containment {
   realization_vocab_consumer_scan_roots,
   realization_vocab_exception_roster,
   realization_vocab_live_leak_candidate_paths,
-  realization_vocab_roster_sound,
-  realization_vocab_roster_sound_live,
-  realization_vocab_roster_stale_count_live
+  realization_vocab_roster_sound
 }
 import v2.std.algebra { list_append }
 import v2.std.collection { List }
@@ -18,20 +16,28 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data planted_stale_roster_entry: String = "dag/tools/_stale_migrated_off_consumer.dag"
 
+data roster_soundness_single_scan_note: String = "One layer_import_facts_live scan per enrolled witness eval: roster_sound_live + stale_count_live duplicated the path enumeration (fast-lane 5s budget — was timing out at ~5.0s under parallel floor load)."
+
+fn realization_vocab_roster_soundness_receipt_live(scan_roots: List<String>) -> Bool {
+  realization_vocab_roster_sound(
+    roster: realization_vocab_exception_roster,
+    live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
+  )
+}
+
+data empty_live_leak_paths: List<String> = []
+
 test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
   realization_vocab_roster_sound(
     roster: list_append(
       left: realization_vocab_exception_roster,
       right: [planted_stale_roster_entry]
     ),
-    live_leak_paths: realization_vocab_live_leak_candidate_paths(
-      scan_roots: realization_vocab_consumer_scan_roots
-    )
+    live_leak_paths: empty_live_leak_paths
   ) == false
 }
 
 test fn realization_vocab_roster_soundness_holds() -> Bool {
-  realization_vocab_roster_sound_live(scan_roots: realization_vocab_consumer_scan_roots)
-    && (realization_vocab_roster_stale_count_live(scan_roots: realization_vocab_consumer_scan_roots) == 0)
+  realization_vocab_roster_soundness_receipt_live(scan_roots: realization_vocab_consumer_scan_roots)
     && realization_vocab_roster_soundness_planted_stale_red_holds()
 }

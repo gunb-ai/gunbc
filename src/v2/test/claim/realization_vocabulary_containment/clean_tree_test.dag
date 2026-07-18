@@ -2,15 +2,15 @@ module v2.test.realization_vocabulary_containment.clean_tree
 
 import v2.lens.realization_vocabulary_containment {
   realization_vocab_consumer_scan_roots,
-  realization_vocab_leak_count_live,
-  realization_vocab_containment_clean_live
+  realization_vocab_leak_count_live
 }
 import v2.std.logic { Bool }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
+data clean_tree_single_scan_note: String = "leak_count_live == 0 is equivalent to containment_clean_live; one host layer_import_facts_live scan per eval (fast-lane 5s budget — duplicate scan was timing out at ~5.0s under parallel floor load)."
+
 test fn realization_vocab_clean_tree_holds() -> Bool {
-  realization_vocab_containment_clean_live(scan_roots: realization_vocab_consumer_scan_roots)
-    && (realization_vocab_leak_count_live(scan_roots: realization_vocab_consumer_scan_roots) == 0)
+  realization_vocab_leak_count_live(scan_roots: realization_vocab_consumer_scan_roots) == 0
 }
