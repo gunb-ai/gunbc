@@ -46,7 +46,8 @@ use crate::v1_std_core::TokenShape::{
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, authored_name_at, empty_intern_table, error_type, expr_call_func_at,
-    expr_var_name_at, field_access_field_at, field_binding_pattern, field_node_cardinality,
+    expr_var_name_at, field_access_field_at, field_access_spine, field_binding_pattern,
+    field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_type_expr,
     file_transport_node, import_node, intern, is_compiler_error, is_container_type, kernel_span,
     leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node, make_error_node,
@@ -11296,6 +11297,60 @@ pub fn try_postfix(
                                 err: None,
                             })
                         }
+                    }
+                }
+                ExprData::ExprFieldAccess { summary: _, .. } => {
+                    let last_seg = field_access_field_at(lhs.clone(), ctx.source_indices.clone());
+                    if (is_uppercase_start(last_seg.clone()) && (14 <= min_bp.clone())) {
+                        Rc::new(PostfixResult {
+                            expr: lhs.clone(),
+                            changed: false,
+                            tokens: tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: None,
+                        })
+                    } else if is_uppercase_start(last_seg.clone()) {
+                        match field_access_spine(lhs.clone(), ctx.source_indices.clone()) {
+                            Some(spine) => {
+                                let r = parse_record_literal(
+                                    tokens.clone(),
+                                    ctx.clone(),
+                                    spine.dotted.clone(),
+                                    lhs.span.clone(),
+                                );
+                                if has_err(r.err.clone()) {
+                                    return Rc::new(PostfixResult {
+                                        expr: lhs.clone(),
+                                        changed: false,
+                                        tokens: r.tokens.clone(),
+                                        ctx: r.ctx.clone(),
+                                        err: r.err.clone(),
+                                    });
+                                }
+                                Rc::new(PostfixResult {
+                                    expr: r.expr.clone(),
+                                    changed: true,
+                                    tokens: r.tokens.clone(),
+                                    ctx: r.ctx.clone(),
+                                    err: None,
+                                })
+                            }
+                            None => Rc::new(PostfixResult {
+                                expr: lhs.clone(),
+                                changed: false,
+                                tokens: tokens.clone(),
+                                ctx: ctx.clone(),
+                                err: None,
+                            }),
+                        }
+                    } else {
+                        Rc::new(PostfixResult {
+                            expr: lhs.clone(),
+                            changed: false,
+                            tokens: tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: None,
+                        })
                     }
                 }
                 _ => Rc::new(PostfixResult {

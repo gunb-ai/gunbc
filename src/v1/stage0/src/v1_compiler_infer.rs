@@ -56,9 +56,9 @@ pub use crate::v1_compiler_infer_env::{
     inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name,
     lookup_binding_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
     merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
-    symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
-    symbol_index_lookup,
+    put_inductive_field, put_inductive_field_cross, qualified_last_segment,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
@@ -836,6 +836,25 @@ pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option
 }
 
 pub fn variant_owner_node(scope: Rc<InferScope>, name: String) -> Option<Rc<Node>> {
+    if v1_rt::contains(name.clone(), ".".to_string()) {
+        return match symbol_index_lookup(scope.type_env.clone().symbol_index.clone(), name.clone())
+        {
+            Some(resolved) => {
+                if resolved.connective.clone() == Connective::Disj
+                    && has_child_named(
+                        resolved.clone(),
+                        qualified_last_segment(name.clone()),
+                        scope.type_env.clone().source_indices.clone(),
+                    )
+                {
+                    Some(resolved.clone())
+                } else {
+                    None
+                }
+            }
+            None => None,
+        };
+    }
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(binding) => match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
             Some(owner) => {
@@ -2781,41 +2800,7 @@ pub fn infer_arg_with_element_type(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct FieldAccessSpine {
-    pub root: String,
-    pub dotted: String,
-}
-
-pub fn field_access_spine(
-    texpr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<FieldAccessSpine>> {
-    match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => {
-            let name = expr_var_name_at(texpr.clone(), source_indices.clone());
-            Some(Rc::new(FieldAccessSpine {
-                root: name.clone(),
-                dotted: name.clone(),
-            }))
-        }
-        ExprData::ExprFieldAccess { summary: _, .. } => {
-            match field_access_spine(field_access_base(texpr.clone()), source_indices.clone()) {
-                Some(base_spine) => Some(Rc::new(FieldAccessSpine {
-                    root: base_spine.root.clone(),
-                    dotted: v1_rt::concat(
-                        v1_rt::concat(base_spine.dotted.clone(), ".".to_string()),
-                        field_access_field_at(texpr.clone(), source_indices.clone()),
-                    ),
-                })),
-                None => None,
-            }
-        }
-        _ => None,
-    }
-}
+pub use crate::v1_std_core::{field_access_spine, FieldAccessSpine};
 
 pub fn binding_is_namespace_root_nominal(binding: Rc<TypeBinding>) -> bool {
     binding.resolved.name == binding.name
@@ -6274,7 +6259,9 @@ pub fn infer_record_lit(
                 Some(variant_owner) => match Rc::new({
                     let mut __result = Vec::new();
                     for v in variant_owner.children.clone().iter().cloned() {
-                        if (authored_name_at(si_presence.clone(), v.clone()) == tn_str.clone()) {
+                        if (authored_name_at(si_presence.clone(), v.clone())
+                            == qualified_last_segment(tn_str.clone()))
+                        {
                             __result.push(v);
                         }
                     }

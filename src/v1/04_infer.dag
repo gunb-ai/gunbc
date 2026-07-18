@@ -16,7 +16,7 @@ import v1.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_named_expr_node, make_expr_error_node,
-  expr_var_name_at, field_access_base, field_access_field_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
+  expr_var_name_at, field_access_base, field_access_field_at, FieldAccessSpine, field_access_spine, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
   make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
@@ -87,7 +87,7 @@ import v1.compiler.infer_env {
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
-  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup
+  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup, qualified_last_segment
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -510,6 +510,15 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
 }
 
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
+  if contains(name, ".") {
+    match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
+      Present { value: resolved } =>
+        if resolved.connective == Disj && has_child_named(n: resolved, name: qualified_last_segment(name: name), source_indices: scope.type_env.source_indices) {
+          Present { value: resolved }
+        } else { none }
+      Absent => none
+    }
+  } else {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
@@ -523,6 +532,7 @@ fn variant_owner_node(scope: InferScope, name: String) -> Node? {
         Absent => none
       }
     Absent => none
+  }
   }
 }
 
@@ -1398,29 +1408,6 @@ fn empty_override_map() -> Map<String, Node> {
 fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope) -> ArgInferResult {
   let ar = infer_expr(texpr: arg_value(n: arg), scope: scope, expected: Present { value: element_type })
   ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
-}
-
-type FieldAccessSpine {
-  root: String
-  dotted: String
-}
-
-fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) -> FieldAccessSpine? {
-  match texpr.expr_data {
-    ExprVar { binding_kind: _ } =>
-      let name = expr_var_name_at(texpr: texpr, source_indices: source_indices)
-      Present { value: FieldAccessSpine { root: name, dotted: name } }
-    ExprFieldAccess { summary: _ } =>
-      match field_access_spine(texpr: field_access_base(texpr: texpr), source_indices: source_indices) {
-        Present { value: base_spine } =>
-          Present { value: FieldAccessSpine {
-            root: base_spine.root,
-            dotted: concat(base_spine.dotted, ".", field_access_field_at(texpr: texpr, source_indices: source_indices))
-          } }
-        Absent => none
-      }
-    _ => none
-  }
 }
 
 fn binding_is_namespace_root_nominal(binding: TypeBinding) -> Bool {
@@ -3136,7 +3123,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   } else {
     match variant_owner_node(scope: scope, name: tn_str) {
       Present { value: variant_owner } =>
-        match variant_owner.children |> filter(v => authored_name_at(source_indices: si_presence, node: v) == tn_str) |> first {
+        match variant_owner.children |> filter(v => authored_name_at(source_indices: si_presence, node: v) == qualified_last_segment(name: tn_str)) |> first {
           Present { value: variant_node } => variant_node.children
           Absent => []
         }

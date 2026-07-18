@@ -1809,6 +1809,42 @@ pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FieldAccessSpine {
+    pub root: String,
+    pub dotted: String,
+}
+
+pub fn field_access_spine(
+    texpr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<FieldAccessSpine>> {
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
+            let name = expr_var_name_at(texpr.clone(), source_indices.clone());
+            Some(Rc::new(FieldAccessSpine {
+                root: name.clone(),
+                dotted: name.clone(),
+            }))
+        }
+        ExprData::ExprFieldAccess { summary: _, .. } => {
+            match field_access_spine(field_access_base(texpr.clone()), source_indices.clone()) {
+                Some(base_spine) => Some(Rc::new(FieldAccessSpine {
+                    root: base_spine.root.clone(),
+                    dotted: v1_rt::concat(
+                        v1_rt::concat(base_spine.dotted.clone(), ".".to_string()),
+                        field_access_field_at(texpr.clone(), source_indices.clone()),
+                    ),
+                })),
+                None => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 pub fn expr_call_func_at(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,

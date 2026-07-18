@@ -14,7 +14,7 @@ import v1.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_named_expr_node, make_expr_error_node,
-  expr_var_name_at, field_access_field_at, expr_call_func_at,
+  expr_var_name_at, field_access_field_at, field_access_spine, FieldAccessSpine, expr_call_func_at,
   make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node,
   MatchPattern, make_field_binding_node, field_binding_pattern,
   Bind, LitPattern, VariantPattern, Wildcard,
@@ -3619,6 +3619,25 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -
               let r = parse_record_literal(tokens: tokens, ctx: ctx, name: n, span: lhs.span)
               if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
               PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
+            } else {
+              PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
+            }
+          }
+        }
+        ExprFieldAccess { summary: _ } => {
+          let last_seg = field_access_field_at(texpr: lhs, source_indices: ctx.source_indices)
+          if is_uppercase_start(name: last_seg) && 14 <= min_bp {
+            PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
+          } else {
+            if is_uppercase_start(name: last_seg) {
+              match field_access_spine(texpr: lhs, source_indices: ctx.source_indices) {
+                Present { value: spine } => {
+                  let r = parse_record_literal(tokens: tokens, ctx: ctx, name: spine.dotted, span: lhs.span)
+                  if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+                  PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
+                }
+                Absent => PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
+              }
             } else {
               PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
             }
