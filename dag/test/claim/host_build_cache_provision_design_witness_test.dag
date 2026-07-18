@@ -18,6 +18,8 @@ import gunbc.host_build_cache_provision {
   RefusalDaemonAbsent,
 }
 
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
 fn design_witness_routes_through_host_effect_apply() -> Bool {
   provision_build_cache_routes_through_host_effect_apply()
 }
