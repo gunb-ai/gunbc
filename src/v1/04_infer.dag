@@ -6045,10 +6045,10 @@ fn symbol_index_insert_unique_disj_variant_aliases(
           let vname = authored_name_at(source_indices: source_indices, node: child)
           match map_get(counts, vname) {
             Present { value: 1 } =>
-              symbol_index_insert_decl(
+              symbol_index_insert(
                 index: a2,
                 qualified_name: concat(module_path, ".", vname),
-                binding: TypeBinding { name: vname, resolved: child, provenance: SubValueUnknown }
+                resolved: child
               )
             _ => a2
           }

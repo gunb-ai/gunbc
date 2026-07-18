@@ -12942,17 +12942,13 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
                         |a2: Rc<SymbolIndex>, child: Rc<Node>| {
                             let vname = authored_name_at(source_indices.clone(), child.clone());
                             match v1_rt::map_get(&counts, vname.clone()) {
-                                Some(1) => symbol_index_insert_decl(
+                                Some(1) => symbol_index_insert(
                                     a2.clone(),
                                     v1_rt::concat(
                                         v1_rt::concat(module_path.clone(), ".".to_string()),
                                         vname.clone(),
                                     ),
-                                    Rc::new(TypeBinding {
-                                        name: vname.clone(),
-                                        resolved: child.clone(),
-                                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                                    }),
+                                    child.clone(),
                                 ),
                                 _ => a2.clone(),
                             }
