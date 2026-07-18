@@ -117,14 +117,8 @@ fn main() -> ExitCode {
         for d in diags.iter() {
             let (class, name) = compile_clean_diagnostic_histogram_key(d);
             let span = diagnostic_to_span(d.diagnostic.clone());
-            let detail = match d.diagnostic.as_ref() {
-                v1_compiler::v1_std_core::CompilerDiagnostic::TypeMismatch {
-                    expected, ..
-                } => format!("expected:{expected}"),
-                _ => String::new(),
-            };
             println!(
-                "SITE\t{class}\t{name}\t{}\t{}\t{}\t{detail}",
+                "SITE\t{class}\t{name}\t{}\t{}\t{}",
                 diagnostic_decl_file(d),
                 span.start,
                 span.end
