@@ -578,7 +578,11 @@ fn authored_name(env: TypeEnv, node: Node) -> String {
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
   match node.ident {
-    Present { value: id } => lookup_type(env: env, ident: id)
+    Present { value: id } =>
+      match lookup_type(env: env, ident: id) {
+        Present { value: t } => Present { value: t }
+        Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
+      }
     Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
   }
 }
