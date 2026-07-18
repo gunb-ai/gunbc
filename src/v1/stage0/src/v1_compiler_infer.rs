@@ -3753,6 +3753,29 @@ pub fn infer_expr(
                             ),
                             None => error_type(),
                         };
+                        if std::env::var("GUNBC_SIGPATH_PROBE").is_ok()
+                            && func_name.contains("membership_effects")
+                        {
+                            if let Some(s) = sig.clone() {
+                                let dump = |n: &Rc<Node>| {
+                                    format!(
+                                        "name={} conn={:?} kids={:?}",
+                                        n.name,
+                                        n.connective,
+                                        n.children
+                                            .iter()
+                                            .map(|c| c.name.clone())
+                                            .collect::<std::vec::Vec<_>>()
+                                    )
+                                };
+                                eprintln!(
+                                    "SIGPATH3 func={} sig_ret[{}] result[{}]",
+                                    func_name,
+                                    dump(&s.inferred),
+                                    dump(&resolved_type),
+                                );
+                            }
+                        }
                         let value_params_for_check = Rc::new({
                             let mut __result = Vec::new();
                             for p in sig_params.clone().iter().cloned() {
