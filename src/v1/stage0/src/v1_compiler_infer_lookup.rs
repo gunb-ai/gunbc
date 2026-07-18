@@ -12,13 +12,13 @@ pub use crate::std_algebra::{
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
+pub use crate::v1_compiler_infer_env::{
+    authored_name, is_recursive_type, lookup_type, lookup_type_for,
+};
 use crate::v1_compiler_infer_env::{
     borrowed_generic_param_names, global_bare_nearest_ancestor_candidate, lookup_binding_by_name,
     lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names,
     symbol_index_lookup, GlobalBareLookupState,
-};
-pub use crate::v1_compiler_infer_env::{
-    authored_name, is_recursive_type, lookup_type, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v1_compiler_infer_method::infer_builtin_call_type;
@@ -92,10 +92,7 @@ pub struct BorrowedCensusDecl {
     pub node: Rc<Node>,
 }
 
-pub fn borrowed_census_decl(
-    type_env: Rc<TypeEnv>,
-    name: String,
-) -> Option<Rc<BorrowedCensusDecl>> {
+pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<BorrowedCensusDecl>> {
     if v1_rt::contains(name.clone(), ".".to_string()) {
         match symbol_index_lookup(type_env.symbol_index.clone(), name.clone()) {
             Some(node) => Some(Rc::new(BorrowedCensusDecl {
@@ -164,10 +161,7 @@ pub fn func_sig_from_global_bare(
                         bd.node.inferred.is_some(),
                         bd.node.type_annotation.is_some(),
                     ),
-                    None => eprintln!(
-                        "SIG_PROBE module={} name={name} MISS",
-                        type_env.module_path
-                    ),
+                    None => eprintln!("SIG_PROBE module={} name={name} MISS", type_env.module_path),
                 }
             }
             match borrowed {

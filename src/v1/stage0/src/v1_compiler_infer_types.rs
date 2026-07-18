@@ -2002,14 +2002,8 @@ pub fn node_type_compatible(
                                         break false;
                                     } else {
                                         break crate::v1_std_core::type_name_compatible(
-                                            authored_name_at(
-                                                source_indices.clone(),
-                                                left.clone(),
-                                            ),
-                                            authored_name_at(
-                                                source_indices.clone(),
-                                                right.clone(),
-                                            ),
+                                            authored_name_at(source_indices.clone(), left.clone()),
+                                            authored_name_at(source_indices.clone(), right.clone()),
                                         );
                                     }
                                 }

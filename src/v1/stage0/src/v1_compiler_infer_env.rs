@@ -953,10 +953,7 @@ pub fn qualify_borrowed_type_names(
             if mp.clone() == "".to_string() {
                 node_with_children(n.clone(), qualified_children.clone())
             } else {
-                let qname = v1_rt::concat(
-                    v1_rt::concat(mp.clone(), ".".to_string()),
-                    name.clone(),
-                );
+                let qname = v1_rt::concat(v1_rt::concat(mp.clone(), ".".to_string()), name.clone());
                 Rc::new(Node {
                     name: qname.clone(),
                     ident: None,

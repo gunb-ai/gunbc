@@ -56,10 +56,10 @@ pub use crate::v1_compiler_infer_env::{
     inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name,
     lookup_binding_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
     merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
-    qualified_last_segment, qualify_borrowed_inferred, qualify_borrowed_type_names,
-    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
-    symbol_index_insert_service, symbol_index_lookup,
+    put_inductive_field, put_inductive_field_cross, qualified_all_but_last, qualified_last_segment,
+    qualify_borrowed_inferred, qualify_borrowed_type_names, str_bindings_from_bindings,
+    symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
+    symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
@@ -3317,7 +3317,9 @@ pub fn infer_expr(
                                                     base_rt.connective,
                                                     lk.is_some(),
                                                     lk.as_ref().map(|t| t.connective.clone()),
-                                                    lk.as_ref().map(|t| t.children.len()).unwrap_or(0),
+                                                    lk.as_ref()
+                                                        .map(|t| t.children.len())
+                                                        .unwrap_or(0),
                                                     authored_name_at(
                                                         scope.type_env.source_indices.clone(),
                                                         resolved_base.clone()
@@ -13329,7 +13331,9 @@ pub fn build_symbol_index_census(
                 }
                 None => "ABSENT".to_string(),
             };
-            eprintln!("CENSUS_PROBE name={probe_name} gb={gb_desc} qualified_entries={entry_count}");
+            eprintln!(
+                "CENSUS_PROBE name={probe_name} gb={gb_desc} qualified_entries={entry_count}"
+            );
         }
     }
     let corpus_variant_counts =
