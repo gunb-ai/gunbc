@@ -14781,7 +14781,11 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_ready_to_boot",
     "dag/std/change.dag::keyed_diff_hunks_equal",
     "dag/std/computation.dag::constant_bound_value",
-    "dag/std/computation.dag::is_constant_bound",
+    // NamespaceTree structural `==` residue (nested `_ => false` off-variant arm),
+    // same class as the std `*_eq` rows below; landed unrostered with effect_grant.dag
+    // in #6817 (P-A), surfaced when this PR brought effect_grant.dag into the affected
+    // set. Dissolves with derived equality from inhabitance (DESIGN §3/§4), with its siblings.
+    "dag/std/effect_grant.dag::namespace_tree_eq",
     "dag/std/effects.dag::create_double_init_collapsible",
     "dag/std/effects.dag::create_effect_is_dedupable",
     "dag/std/effects.dag::key_source_eq",
