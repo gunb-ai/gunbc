@@ -3,7 +3,7 @@ module v2.test.claim.build_transport_admission_witness
 import std.types { Bool, String, List }
 import std.effect_grant {
   Write, verb_eq, Read,
-  NamespaceTree, FilesystemPathTree,
+  FilesystemPathTree,
   NamespacePosition, position_under,
   EffectAdmission, Admitted, EffectOutsideGrant,
 }

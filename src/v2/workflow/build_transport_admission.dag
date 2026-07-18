@@ -3,7 +3,7 @@ module v2.workflow.build_transport_admission
 import std.types { Bool, String, List }
 import std.effect_grant {
   Read, Write,
-  NamespaceTree, FilesystemPathTree,
+  FilesystemPathTree,
   NamespacePosition,
   RealTransport,
   LifecycleByConstruction, LifecycleByConvention,
