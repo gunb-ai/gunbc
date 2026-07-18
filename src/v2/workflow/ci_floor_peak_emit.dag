@@ -5,12 +5,15 @@ import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_me
 import v2.std.orchestration {
   Do,
   ExitZero,
+  ExprCmdSubst,
   FailFast,
   If,
+  Let,
   Pipeline,
   PipelineStep,
   Predicate,
-  Run
+  Run,
+  While
 }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None, Some }
@@ -19,7 +22,7 @@ data ci_floor_peak_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ fl
 
 data ci_floor_peak_assign_cgroup_dir_command: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\""
 
-data ci_floor_peak_cgroup_locate_while_command: String = "while [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done"
+data ci_floor_peak_while_cond_command: String = "[ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]"
 
 data ci_floor_peak_test_f_memory_peak_command: String = "[ -f \"$d/memory.peak\" ]"
 
@@ -63,10 +66,27 @@ fn ci_floor_peak_emit_pipeline(p: Pipeline) -> String {
   }
 }
 
+fn ci_floor_peak_cgroup_locate_while() -> PipelineStep {
+  While {
+    cond: ExitZero {
+      run: ci_floor_peak_run(command: ci_floor_peak_while_cond_command)
+    },
+    body: Pipeline {
+      steps: [
+        Let {
+          name: "d",
+          value: ExprCmdSubst { callee: "dirname", args: ["\"$d\""] }
+        }
+      ],
+      on_failure: FailFast
+    }
+  }
+}
+
 fn ci_floor_peak_cgroup_locate_steps() -> List<PipelineStep> {
   [
     ci_floor_peak_do(command: ci_floor_peak_assign_cgroup_dir_command),
-    ci_floor_peak_do(command: ci_floor_peak_cgroup_locate_while_command)
+    ci_floor_peak_cgroup_locate_while()
   ]
 }
 

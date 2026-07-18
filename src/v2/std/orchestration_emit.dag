@@ -11,6 +11,7 @@ data orch_construct_run_env_prefixed: Symbol = ^orch_construct_run_env_prefixed
 data orch_construct_run_env_unset: Symbol = ^orch_construct_run_env_unset
 data orch_construct_seq2: Symbol = ^orch_construct_seq2
 data orch_construct_retry: Symbol = ^orch_construct_retry
+data orch_construct_retry_1level: Symbol = ^orch_construct_retry_1level
 data orch_construct_if: Symbol = ^orch_construct_if
 data orch_construct_if_else: Symbol = ^orch_construct_if_else
 data orch_construct_while: Symbol = ^orch_construct_while
@@ -40,6 +41,7 @@ type OrchestrationEmitMedium {
     String,
     String
   ) -> TargetModel
+  realize_retry_1level: fn(String, String, String, String, String) -> TargetModel
   realize_if: fn(String, String) -> Outcome<TargetModel>
   realize_if_else: fn(String, String, String) -> Outcome<TargetModel>
   realize_while: fn(String, String) -> Outcome<TargetModel>
