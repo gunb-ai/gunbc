@@ -1,5 +1,15 @@
 module test.claim.roadmap_page_witness
 
+import gunbc.roadmap_page {
+  roadmap_page,
+  roadmap_page_for_authority,
+  nodes_ul,
+}
+import gunbc.roadmap_document { RoadmapDocument }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
+import gunbc.roadmap_authority { authored_merged_prs, authored }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

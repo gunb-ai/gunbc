@@ -20,7 +20,6 @@ import v2.std.dependency {
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates, Witness }
 
-
 type RunnableFrontier {
   ready: List<Node>
 }

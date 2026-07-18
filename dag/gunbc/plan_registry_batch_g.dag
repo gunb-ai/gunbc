@@ -15,8 +15,6 @@ import gunbc.plans.typescript_gap_census { typescript_gap_census_plan }
 import gunbc.plans.fleet_acceptance_criteria { fleet_acceptance_criteria_plan }
 import gunbc.plans.structural_quadratic_wall_coverage_audit { structural_quadratic_wall_coverage_audit_plan }
 
-
-
 data batch_g_plans: List<Plan> = [
   ci_humming_plan,
   edge_b_rust_dag_provenance_brief_plan,

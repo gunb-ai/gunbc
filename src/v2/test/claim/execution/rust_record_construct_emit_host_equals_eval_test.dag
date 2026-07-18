@@ -1,5 +1,88 @@
 module v2.test.execution.rust_record_construct_emit_host_equals_eval
 
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_test_claim_emit_vs_eval
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval_test_claim_subject
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_pick_arrow_domain_conj_node,
+  dag_rec_construct_body_fixture,
+  dag_type_atom_node
+}
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
+import v2.extdeps.languages.rust_test {
+  rust_rec_nine_target_model_staging,
+  rust_rec_nine_wrong_field_target_model_staging
+}
+import extdeps.communication.medium { Medium }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.algebra { length }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection { List, Map, list_at_optional }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  Transform,
+  TypeNode
+}
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  MatchInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
+import v2.std.verification {
+  EqualsClaim,
+  Integration,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier3,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -267,15 +350,19 @@ fn rust_rec_nine_eval_run(
 fn rust_rec_nine_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
-    Fail { actual: _, falsification: _ } => false
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn rust_rec_nine_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+fn rust_rec_nine_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
-    Fail { actual: _, falsification: _ } => true
+    SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
@@ -290,7 +377,7 @@ test fn rust_record_construct_emit_host_equals_eval_holds() -> Bool {
 }
 
 test fn rust_record_construct_emit_host_wrong_field_refuses_holds() -> Bool {
-  rust_rec_nine_eval_verdict_is_fail(
+  rust_rec_nine_eval_verdict_is_semantic_mismatch(
     run: rust_rec_nine_eval_run(
       tree: rust_rec_nine_eval_inferred_tree(),
       target: rust_rec_nine_wrong_field_target_model_staging()

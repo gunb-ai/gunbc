@@ -5,8 +5,6 @@ import std.integer { Int }
 import std.machine_constraints { Compose, MachineWidth }
 import std.approximate_field { ApproximateField }
 
-
-
 type Ieee754Float
 
 type Real = ApproximateField<FieldOfFractions<Int>>

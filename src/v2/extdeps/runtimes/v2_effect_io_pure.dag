@@ -25,8 +25,7 @@ import v2.std.diagnostic {
 }
 import v2.std.logic { Bool }
 import v2.std.model_core { EffectSignature, PrimitiveOperationRef }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence, Hash }
-import v2.std.node_content_hash { content_hash }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence, Hash, content_hash }
 import v2.std.runtime {
   EffectHandler,
   EffectHandlerBinding,

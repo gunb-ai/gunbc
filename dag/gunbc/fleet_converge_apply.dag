@@ -1,6 +1,5 @@
 module gunbc.fleet_converge_apply
 
-
 import std.types { String, List, Bool, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.host_converge {
@@ -32,8 +31,6 @@ import std.realization_reconcile {
   NotConverged,
   reconciliation_converged,
 }
-
-
 
 fn fleet_compute_host_for_identity(identity: HostIdentity) -> ComputeHost? {
   find_by_identity(fleet_intent_known_hosts, identity: identity, key: fn(host) { host.identity })
