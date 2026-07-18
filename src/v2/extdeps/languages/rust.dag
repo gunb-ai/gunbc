@@ -3103,7 +3103,7 @@ fn rust_insert_per_language_fact_bundle_entry_outcome(
 fn rust_per_language_fact_bundle_registry() -> Outcome<PerLanguageFactBundleRegistry> {
   fold_list(
     xs: rust_per_language_fact_bundle_entries(),
-    empty: outcome_accepted(value: empty_per_language_fact_bundle_registry()),
+    empty: outcome_accepted(value: v2.std.grounding.empty_per_language_fact_bundle_registry()),
     cons: fn(acc, entry) {
       rust_insert_per_language_fact_bundle_entry_outcome(acc: acc, entry: entry)
     }
@@ -3116,7 +3116,7 @@ fn rust_snoc_primitive_bundle(
   subject_carrier: Node
 ) -> Outcome<List<PrimitiveFactBundle>> {
   match acc {
-    Accepted { value: bundles, diagnostics: _ } => match primitive_fact_bundle_for_subject(
+    Accepted { value: bundles, diagnostics: _ } => match v2.std.grounding.primitive_fact_bundle_for_subject(
       registry: registry,
       subject_carrier: subject_carrier,
       target: rust_target_model()
