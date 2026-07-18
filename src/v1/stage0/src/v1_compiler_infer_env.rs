@@ -802,10 +802,7 @@ pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
     match node.ident.clone() {
-        Some(id) => match lookup_type(env.clone(), id.clone()) {
-            Some(t) => Some(t.clone()),
-            None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
-        },
+        Some(id) => lookup_type(env.clone(), id.clone()),
         None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }
