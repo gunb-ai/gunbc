@@ -5066,30 +5066,19 @@ pub fn enum_names_in_module(
         None => Rc::new(vec![]),
         Some(tm) => Rc::new({
             let mut __result = Vec::new();
-            for n in Rc::new({
+            for item in Rc::new({
                 let mut __result = Vec::new();
-                for item in Rc::new({
-                    let mut __result = Vec::new();
-                    for item in tm.items.clone().iter().cloned() {
-                        if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
-                            __result.push(item);
-                        }
+                for item in tm.items.clone().iter().cloned() {
+                    if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
+                        __result.push(item);
                     }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(authored_name_at(source_indices.clone(), item.clone()));
                 }
                 __result
             })
             .iter()
             .cloned()
             {
-                if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
-                    __result.push(n);
-                }
+                __result.push(authored_name_at(source_indices.clone(), item.clone()));
             }
             __result
         }),
@@ -6238,7 +6227,16 @@ pub fn import_variant_parent_for_name(
     ) {
         "".to_string()
     } else {
-        if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+        if {
+            let mut __found = false;
+            for e in import_module_enums.clone().iter().cloned() {
+                if (e.clone() == n.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
             "".to_string()
         } else {
             match find_variant_parent_in_module(
@@ -6317,6 +6315,15 @@ pub fn emit_specific_import_block(
             "".to_string()
         } else {
             {
+                let import_module_enums = import_module_enum_scope(
+                    import_module.clone(),
+                    registry.clone(),
+                    type_summaries.clone(),
+                    export_sets.clone(),
+                    typed_modules.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                );
                 let top_level = Rc::new({
                     let mut __result = Vec::new();
                     for n in deduped_names.clone().iter().cloned() {
@@ -6333,7 +6340,16 @@ pub fn emit_specific_import_block(
                             true
                         } else {
                             if is_known_variant(type_summaries.clone(), n.clone()) {
-                                is_enum_in_summaries(type_summaries.clone(), n.clone())
+                                {
+                                    let mut __found = false;
+                                    for e in import_module_enums.clone().iter().cloned() {
+                                        if (e.clone() == n.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                }
                             } else {
                                 if imported_name_is_non_emittable_type(
                                     n.clone(),
@@ -6359,19 +6375,19 @@ pub fn emit_specific_import_block(
                     }
                     __result
                 });
-                let import_module_enums = import_module_enum_scope(
-                    import_module.clone(),
-                    registry.clone(),
-                    type_summaries.clone(),
-                    export_sets.clone(),
-                    typed_modules.clone(),
-                    source_indices.clone(),
-                    module_index.clone(),
-                );
                 let imported_enums = Rc::new({
                     let mut __result = Vec::new();
                     for n in deduped_names.clone().iter().cloned() {
-                        if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                        if {
+                            let mut __found = false;
+                            for e in import_module_enums.clone().iter().cloned() {
+                                if (e.clone() == n.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
                             __result.push(n);
                         }
                     }
@@ -6426,7 +6442,16 @@ pub fn emit_specific_import_block(
                             false
                         } else {
                             if is_known_variant(type_summaries.clone(), n.clone()) {
-                                is_enum_in_summaries(type_summaries.clone(), n.clone())
+                                {
+                                    let mut __found = false;
+                                    for e in import_module_enums.clone().iter().cloned() {
+                                        if (e.clone() == n.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                }
                             } else {
                                 true
                             }
@@ -6794,7 +6819,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                         let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone()) {
                             false
                         } else {
-                            if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                            if { let mut __found = false; for e in import_module_enums.clone().iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
                                 false
                             } else {
                                 match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
@@ -6820,10 +6845,19 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     }
                     __result
                 });
-                let imported_enums = Rc::new({
+                let final_imported_enums = Rc::new({
                     let mut __result = Vec::new();
                     for n in top_level.clone().iter().cloned() {
-                        if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                        if {
+                            let mut __found = false;
+                            for e in import_module_enums.clone().iter().cloned() {
+                                if (e.clone() == n.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
                             __result.push(n);
                         }
                     }
@@ -6833,7 +6867,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     let mut __result = Vec::new();
                     for en in Rc::new({
                         let mut __result = Vec::new();
-                        for en in imported_enums.clone().iter().cloned() {
+                        for en in final_imported_enums.clone().iter().cloned() {
                             if (({
                                 let mut __found = false;
                                 for p in parent_list.clone().iter().cloned() {
