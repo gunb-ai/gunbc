@@ -5,7 +5,7 @@ import v2.extdeps.languages.dag {
   dag_translation_rules_node,
   parse_production_emitted_identity_optional
 }
-import v2.std.algebra { length }
+import v2.std.algebra { fold_list, length, list_append }
 import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
   Diagnostic,
@@ -68,6 +68,16 @@ fn body_producer_forward_rows() -> List<BodyProducerForwardRow> {
 
 fn body_producer_forward_row_count() -> Int {
   length(xs: body_producer_forward_rows())
+}
+
+fn body_producer_forward_surface_identities() -> List<Symbol> {
+  fold_list(
+    xs: body_producer_forward_rows(),
+    empty: Empty,
+    cons: fn(acc, row) {
+      list_append(left: acc, right: [row.surface_identity])
+    }
+  )
 }
 
 fn body_producer_forward_is_behavior_surface_identity(surface_identity: Symbol) -> Bool {

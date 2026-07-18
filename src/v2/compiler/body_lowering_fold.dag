@@ -7,7 +7,10 @@ import v2.compiler.fold_lowering {
   fold_family_head
 }
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_root }
-import v2.compiler.body_producer_forward { body_producer_forward_row_count }
+import v2.compiler.body_producer_forward {
+  body_producer_forward_row_count,
+  body_producer_forward_surface_identities
+}
 import v2.extdeps.languages.dag {
   ParseSubtreeAbsent,
   ParseSubtreeFind,
@@ -90,6 +93,38 @@ fn body_lowering_interim_scaffold_seed_retained_count() -> Int {
 
 fn body_lowering_forward_behavior_row_count() -> Int {
   body_producer_forward_row_count()
+}
+
+fn body_lower_fold_behavior_surface_identities() -> List<Symbol> {
+  Cons {
+    head: ^dag_surface_match_expr,
+    tail: Cons {
+      head: ^dag_surface_if_expr,
+      tail: Cons {
+        head: ^dag_surface_loop_expr,
+        tail: Cons {
+          head: ^dag_surface_let_expr,
+          tail: Empty
+        }
+      }
+    }
+  }
+}
+
+fn body_lowering_surface_identity_list_contains(xs: List<Symbol>, target: Symbol) -> Bool {
+  fold(xs, init: false, f: fn(acc, id) { acc || id == target })
+}
+
+fn body_lowering_forward_fold_surface_identities_agree() -> Bool {
+  let forward = body_producer_forward_surface_identities()
+  let fold_ids = body_lower_fold_behavior_surface_identities()
+  if length(xs: forward) != length(xs: fold_ids) {
+    false
+  } else {
+    fold(forward, init: true, f: fn(acc, id) {
+      acc && body_lowering_surface_identity_list_contains(xs: fold_ids, target: id)
+    })
+  }
 }
 
 type BodyLoweringFrontierDisposition
@@ -1336,6 +1371,23 @@ fn body_lower_fold_children(node: Node) -> Outcome<Node> {
   })
 }
 
+fn body_lower_fold_identity_absent(node: Node) -> Outcome<Node> {
+  if body_lower_match_capture_heads_spine(
+    spine: body_lower_unwrap_surface_shell(node: node)
+  ) {
+    match body_lower_try_match_from_captured(captured: node) {
+      Rejected { diagnostics: r } => Rejected { diagnostics: r }
+      Accepted { value: lowered_opt, diagnostics: d } =>
+        match lowered_opt {
+          Present { value: lowered } => Accepted { value: lowered, diagnostics: d }
+          Absent => body_lower_fold_reduce(node: node)
+        }
+    }
+  } else {
+    body_lower_fold_reduce(node: node)
+  }
+}
+
 fn body_lower_fold(node: Node) -> Outcome<Node> {
   if body_lower_is_core_substrate(node: node) {
     outcome_accepted(value: node)
@@ -1357,7 +1409,7 @@ fn body_lower_fold(node: Node) -> Outcome<Node> {
         } else {
           body_lower_fold_reduce(node: node)
         }
-      Absent => body_lower_fold_reduce(node: node)
+      Absent => body_lower_fold_identity_absent(node: node)
     }
   }
 }
@@ -3625,6 +3677,50 @@ fn body_lower_match_capture_heads_spine(spine: Node) -> Bool {
         Absent => false
       }
     Absent => false
+  }
+}
+
+fn body_lowering_match_spine_identity_absent_fixture_spine() -> Node {
+  let match_kw = node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^dag_token_kw_match } },
+    children: []
+  )
+  let tail = node_synthetic(kind: TypeNode { connective: Conj }, children: [])
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^grammar_sequence_left_node_projection },
+        target: match_kw
+      },
+      Edge {
+        label: Named { name: ^grammar_sequence_right_node_projection },
+        target: tail
+      }
+    ]
+  )
+}
+
+fn body_lowering_match_spine_identity_absent_sniff_holds() -> Bool {
+  body_lower_match_capture_heads_spine(
+    spine: body_lowering_match_spine_identity_absent_fixture_spine()
+  )
+}
+
+fn body_lowering_match_spine_identity_absent_dispatch_holds() -> Bool {
+  let fixture = body_lowering_match_spine_identity_absent_fixture_spine()
+  if !body_lower_match_capture_heads_spine(spine: fixture) {
+    false
+  } else {
+    match body_lower_fold_reduce(node: fixture) {
+      Rejected { diagnostics: _ } => false
+      Accepted { value: reduced, diagnostics: _ } =>
+        match body_lower_fold_identity_absent(node: fixture) {
+          Rejected { diagnostics: _ } => true
+          Accepted { value: dispatched, diagnostics: _ } =>
+            body_lower_is_core_substrate(node: dispatched) || dispatched != reduced
+        }
+    }
   }
 }
 
