@@ -9680,10 +9680,7 @@ fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[DiscoveryRow]
         let report =
             v1_compiler_compile::run_complexity_analysis(graph.clone(), source_indices.clone());
         for function in functions {
-            let derived: Option<i64> = report
-                .function_space_bytes
-                .get(function)
-                .map(|bs| crate::std_measure::byte_size_count(bs.clone()));
+            let derived: Option<i64> = report.function_space_bytes.get(function).copied();
             if derived.is_some() {
                 derivable += 1;
             } else {

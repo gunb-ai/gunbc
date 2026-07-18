@@ -3758,7 +3758,7 @@ type StructuralBoundResult {
 type ComplexityReport {
   function_classes: Map<String, String>
   space_classes: Map<String, String>
-  function_space_bytes: Map<String, ByteSize>
+  function_space_bytes: Map<String, Int>
   violations: List<ComplexityViolation>
   structural_bounds: List<StructuralBoundResult>
 }
@@ -4128,7 +4128,7 @@ type TopoBuildAcc {
   table: CostInternTable
   classes: Map<String, String>
   space_classes: Map<String, String>
-  function_space_bytes: Map<String, ByteSize>
+  function_space_bytes: Map<String, Int>
   violations: List<ComplexityViolation>
   fan_in: Map<String, Int>
 
@@ -4817,7 +4817,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let new_space_classes = map_insert(acc.space_classes, func_name, space_class_str)
         let space_bytes_opt = cost_account_space_from_summary(summary: sr.summary, size_env: empty_map())
         let new_function_space_bytes = match space_bytes_opt {
-          Present { value: bs } => map_insert(acc.function_space_bytes, func_name, bs)
+          Present { value: bs } => map_insert(acc.function_space_bytes, func_name, byte_size_count(b: bs))
           Absent => acc.function_space_bytes
         }
         let new_processed = map_insert(acc.processed, func_name, true)
