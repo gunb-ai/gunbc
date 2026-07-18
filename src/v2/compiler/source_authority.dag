@@ -5,8 +5,11 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse {
   ParseArtifact,
+  PreparedGrammar,
   parse,
   parse_module,
+  parse_module_prepared,
+  prepare_grammar,
 }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
@@ -22,6 +25,7 @@ import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   NonEmptyDiagnostics,
   Outcome,
@@ -282,9 +286,62 @@ fn module_storage_binding_from_provenance(
           source_root: source_root
         }
       )
-    Rejected { diagnostics: _ } =>
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+data module_storage_located_refusal_note: String = "The name-derivation refusal FORWARDS the derivation's own diagnostics unchanged rather than substituting a port-level source_authority_diagnostic. Substituting would satisfy 'typed' while destroying 'located' (§5 requires both): qualified_name_from_module_node reports at the offending node, whereas source_authority_port locates only the stage. Dropping that is the same loss of signal the silent-drop arm caused, one tier milder — the caller learns THAT a module name failed but not WHERE. This also keeps the authority path identical to the sibling arm in v2.compiler.program_assembly, so one derivation failure does not produce two different diagnostics depending on which entry point ran."
+
+data module_storage_prepare_once_note: String = "prepare_grammar is hoisted ABOVE the fold, exactly as v2.compiler.program_assembly does (program_assembly_prepare_once_note): the grammar is well-formed-checked, validated, and FIRST/nullable-analyzed ONCE per ingest, then parse_module_prepared reuses the PreparedGrammar for every read. Deriving the binding over a K-module ingest therefore validates the grammar once, not K times — the recompute-per-module cost this dissolves (§6 bare-minimum cost: a proven cost-shape defect is always fixed, and 'K is small here' is not a time-stable fact — K becomes the whole tree once the projections replace the hand tables). Empty ingest is guarded so it never pays the one-time prepare for zero reads, and an invalid grammar fails the whole derivation before any read is parsed, carrying the validation diagnostic — never a per-read silent skip."
+
+fn module_storage_binding_from_parse_artifact(
+  artifact: ParseArtifact,
+  source_read: DagSourceReadWitness
+) -> Outcome<ModuleStorageBinding> {
+  module_storage_binding_from_provenance(
+    prov: SourceIrArtifactProvenance {
+      node: artifact.tree,
+      artifact: source_read.artifact,
+      span_index: artifact.span_index
+    },
+    source_root: source_read.source_root
+  )
+}
+
+fn module_storage_binding_from_read_prepared(
+  source_read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> Outcome<ModuleStorageBinding> {
+  match source_read.artifact.kind {
+    SourceFile =>
+      bind_outcome(
+        o: tokenize(
+          text: source_read.source.carried,
+          file: source_read.compilation_unit,
+          rules: lm.lex
+        ),
+        f: fn(token_stream) {
+          bind_outcome(
+            o: parse_module_prepared(
+              tokens: token_stream,
+              prepared: prepared,
+              validation_residue: residue
+            ),
+            f: fn(artifact) {
+              module_storage_binding_from_parse_artifact(
+                artifact: artifact,
+                source_read: source_read
+              )
+            }
+          )
+        }
+      )
+    _ =>
       outcome_rejected(
-        d: source_authority_diagnostic(reason: ^source_authority_module_name_underivable)
+        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
       )
   }
 }
@@ -293,15 +350,16 @@ fn module_storage_binding_from_read_with_model(
   source_read: DagSourceReadWitness,
   lm: LanguageModel
 ) -> Outcome<ModuleStorageBinding> {
-  bind_outcome(
-    o: source_ir_artifact_provenance_from_model(source_read: source_read, lm: lm),
-    f: fn(prov) {
-      module_storage_binding_from_provenance(
-        prov: prov,
-        source_root: source_read.source_root
+  match prepare_grammar(grammar: lm.grammar) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      module_storage_binding_from_read_prepared(
+        source_read: source_read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue
       )
-    }
-  )
+  }
 }
 
 data module_storage_binding_refusal_note: String = "§5 — a failure arm REFUSES, never widens. A read whose module name cannot be derived is a located refusal, NOT a dropped binding: the pre-Phase-1 derivation in v2.compiler.program_assembly kept the root and left the index unchanged on Rejected, so a module that failed name extraction became silently invisible to every downstream lookup (an absorbing fallback in drop form — the deficit's frequency zeroed by construction). Duplicate module within the index is likewise a typed refusal here: it is the modeled form of the host panic at src/v1/stage0/src/cli_run.rs module_path_collision_panic_message, so the live 1:1 binding is enforced by the model rather than incidentally by a Rust panic."
@@ -349,13 +407,20 @@ fn module_storage_index_insert(
 fn module_storage_fold_step(
   state: ModuleStorageFoldState,
   read: DagSourceReadWitness,
-  lm: LanguageModel
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
 ) -> ModuleStorageFoldState {
   match state {
     ModuleStorageFoldFailed { diagnostics: d } =>
       ModuleStorageFoldFailed { diagnostics: d }
     ModuleStorageFoldOk { bindings: acc } =>
-      match module_storage_binding_from_read_with_model(source_read: read, lm: lm) {
+      match module_storage_binding_from_read_prepared(
+        source_read: read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue
+      ) {
         Rejected { diagnostics: d } =>
           ModuleStorageFoldFailed { diagnostics: d }
         Accepted { value: binding, diagnostics: _ } =>
@@ -369,19 +434,47 @@ fn module_storage_fold_step(
   }
 }
 
-fn module_storage_bindings_from_ingest_with_model(
+fn module_storage_bindings_from_ingest_prepared(
   ingest: SourceRootIngest,
-  lm: LanguageModel
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
 ) -> Outcome<ModuleStorageIndex> {
   match fold_list(
     xs: ingest,
     empty: ModuleStorageFoldOk { bindings: Empty },
     cons: fn(state, read) {
-      module_storage_fold_step(state: state, read: read, lm: lm)
+      module_storage_fold_step(
+        state: state,
+        read: read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue
+      )
     }
   ) {
     ModuleStorageFoldOk { bindings: b } => outcome_accepted(value: b)
     ModuleStorageFoldFailed { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn module_storage_bindings_from_ingest_with_model(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> Outcome<ModuleStorageIndex> {
+  match ingest {
+    Empty => outcome_accepted(value: Empty)
+    _ =>
+      match prepare_grammar(grammar: lm.grammar) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: prepared, diagnostics: residue } =>
+          module_storage_bindings_from_ingest_prepared(
+            ingest: ingest,
+            lm: lm,
+            prepared: prepared,
+            residue: residue
+          )
+      }
   }
 }
 
