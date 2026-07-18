@@ -87,7 +87,8 @@ import v1.compiler.infer_env {
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
-  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup, qualified_last_segment
+  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup, qualified_last_segment,
+  qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -1449,13 +1450,19 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
           match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: spine.dotted) {
             Absent => none
             Present { value: decl } =>
-              let value_type = match decl.inferred {
+              let raw_value_type = match decl.inferred {
                 Present { value: Resolved { node: rt } } => rt
                 _ => match decl.type_annotation {
                   Present { value: ann } => ann
                   Absent => decl
                 }
               }
+              let value_type = qualify_borrowed_type_names(
+                n: raw_value_type,
+                owner_module_path: qualified_all_but_last(name: spine.dotted),
+                env: scope.type_env,
+                excluded: empty_map()
+              )
               Present { value: ok_infer(texpr: make_named_expr_node(
                 name: spine.dotted,
                 expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
@@ -6117,6 +6124,7 @@ fn symbol_index_insert_item(
     symbol_index_insert_service(
       index: with_decl,
       name: authored_name_at(source_indices: source_indices, node: item),
+      module_path: module_path,
       item: item
     )
   } else { with_decl }
@@ -6862,9 +6870,18 @@ fn build_module_context(contributions: List<ItemContribution>,
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
   let census_scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
     match map_get(env.symbol_index.services, sname) {
-      Present { value: sitem } =>
+      Present { value: sentry } =>
+        let sitem = sentry.item
         let entries = sitem.children |> map(c =>
-          OpEntry { name: authored_name_at(source_indices: env.source_indices, node: c), outputs: inferred_to_outputs(inferred: c.inferred, span: c.span, source_indices: env.source_indices), params: c.params }
+          OpEntry {
+            name: authored_name_at(source_indices: env.source_indices, node: c),
+            outputs: inferred_to_outputs(
+              inferred: qualify_borrowed_inferred(inferred: c.inferred, owner_module_path: sentry.module_path, env: env, excluded: empty_map()),
+              span: c.span,
+              source_indices: env.source_indices
+            ),
+            params: c.params
+          }
         )
         let root = namespace_root_from_properties(properties: sitem.properties, name: sname, source_indices: env.source_indices)
         InferScopeComponents {

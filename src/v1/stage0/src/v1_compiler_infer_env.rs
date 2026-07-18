@@ -105,10 +105,16 @@ pub struct ScopeBinding {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceCensusEntry {
+    pub module_path: String,
+    pub item: Rc<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SymbolIndex {
     pub entries: Rc<HashMap<String, Rc<Node>>>,
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    pub services: Rc<HashMap<String, Rc<Node>>>,
+    pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -120,7 +126,7 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
         entries: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
-        services: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
     })
 }
 

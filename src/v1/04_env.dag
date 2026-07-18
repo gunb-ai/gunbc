@@ -46,10 +46,15 @@ type ScopeBinding {
   provenance: SubValueRelation
 }
 
+type ServiceCensusEntry {
+  module_path: String
+  item: Node
+}
+
 type SymbolIndex {
   entries: Map<String, Node>
   global_bare: Map<String, GlobalBareLookupState>
-  services: Map<String, Node>
+  services: Map<String, ServiceCensusEntry>
 }
 
 type Scope {
@@ -113,11 +118,11 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
   }
 }
 
-fn symbol_index_insert_service(index: SymbolIndex, name: String, item: Node) -> SymbolIndex {
+fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: String, item: Node) -> SymbolIndex {
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
-    services: map_insert(index.services, name, item)
+    services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item })
   }
 }
 
@@ -421,7 +426,7 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
   )
 }
 
-fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
+fn lookup_binding_by_name_local(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.str_bindings, name) {
     Present { value: binding } => Present { value: binding }
     Absent =>
@@ -429,13 +434,17 @@ fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
         Present { value: binding } => Present { value: binding }
         Absent =>
           match intern_find(table: env.intern_table, s: name) {
-            Present { value: id } => match map_get(env.bindings, id) {
-              Present { value: binding } => Present { value: binding }
-              Absent => lookup_binding_after_global_bare(env: env, name: name)
-            }
-            Absent => lookup_binding_after_global_bare(env: env, name: name)
+            Present { value: id } => map_get(env.bindings, id)
+            Absent => Absent
           }
       }
+  }
+}
+
+fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
+  match lookup_binding_by_name_local(env: env, name: name) {
+    Present { value: binding } => Present { value: binding }
+    Absent => lookup_binding_after_global_bare(env: env, name: name)
   }
 }
 
@@ -504,17 +513,122 @@ type GlobalBareNearestScan {
   tie: Bool
 }
 
-fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<GlobalBareCandidate>) -> TypeBinding? {
+type GlobalBareNearestCandidateScan {
+  best_lcp: Int
+  best: GlobalBareCandidate?
+  tie: Bool
+}
+
+fn global_bare_nearest_ancestor_candidate(env_module_path: String, candidates: List<GlobalBareCandidate>) -> GlobalBareCandidate? {
   let env_segs = module_path_segments(path: env_module_path)
-  let scan = fold(candidates, init: GlobalBareNearestScan { best_lcp: 0 - 1, best: none, tie: false }, f: (acc, cand) =>
+  let scan = fold(candidates, init: GlobalBareNearestCandidateScan { best_lcp: 0 - 1, best: none, tie: false }, f: (acc, cand) =>
     let l = segment_lcp_len(a: env_segs, b: module_path_segments(path: cand.module_path))
     if l > acc.best_lcp {
-      GlobalBareNearestScan { best_lcp: l, best: Present { value: cand.binding }, tie: false }
+      GlobalBareNearestCandidateScan { best_lcp: l, best: Present { value: cand }, tie: false }
     } else if l == acc.best_lcp {
-      GlobalBareNearestScan { best_lcp: acc.best_lcp, best: acc.best, tie: true }
+      GlobalBareNearestCandidateScan { best_lcp: acc.best_lcp, best: acc.best, tie: true }
     } else { acc }
   )
   if scan.tie { Absent } else { scan.best }
+}
+
+fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<GlobalBareCandidate>) -> TypeBinding? {
+  match global_bare_nearest_ancestor_candidate(env_module_path: env_module_path, candidates: candidates) {
+    Present { value: cand } => Present { value: cand.binding }
+    Absent => Absent
+  }
+}
+
+fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: String) -> String? {
+  match map_get(env.symbol_index.global_bare, name) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } => Present { value: mp }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match global_bare_nearest_ancestor_candidate(env_module_path: owner_module_path, candidates: cands) {
+        Present { value: cand } => Present { value: cand.module_path }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn borrowed_generic_param_names(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  fold(params, init: empty_map(), f: (acc, p) =>
+    let pt = param_node_type_expr(n: p)
+    let pname = param_node_name_at(n: p, source_indices: source_indices)
+    let tname = authored_name_at(source_indices: source_indices, node: pt)
+    if (pt.children |> count) == 0 && pt.connective == NoConnective && pname != "" && (pname == tname || pname == pt.name) {
+      map_insert(acc, pname, true)
+    } else { acc }
+  )
+}
+
+fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> Node {
+  let qualified_children = n.children |> map(c => qualify_borrowed_type_names(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
+  let name = authored_name_at(source_indices: env.source_indices, node: n)
+  let is_type_var = match n.inferred {
+    Present { value: TypeVariable { id: _ } } => true
+    _ => false
+  }
+  let rewrite = n.connective == NoConnective
+    && name != ""
+    && !contains(name, ".")
+    && !is_kernel_type(name: name)
+    && !map_has(excluded, name)
+    && !is_type_var
+  let owner_hit = if rewrite {
+    global_bare_owner_module(env: env, owner_module_path: owner_module_path, name: name)
+  } else { none }
+  match owner_hit {
+    Present { value: mp } =>
+      if mp == "" {
+        node_with_children(n: n, children: qualified_children)
+      } else {
+        let qname = concat(mp, ".", name)
+        Node {
+          name: qname, span: n.span, ident_span: Present { value: kernel_span(name: qname) },
+          children: qualified_children, connective: n.connective, params: n.params,
+          inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
+          body: n.body, transport: n.transport, properties: n.properties,
+          type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
+          has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
+          expr_data: n.expr_data
+        }
+      }
+    Absent => node_with_children(n: n, children: qualified_children)
+  }
+}
+
+fn node_with_children(n: Node, children: List<Node>) -> Node {
+  Node {
+    name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
+    children: children, connective: n.connective, params: n.params,
+    inferred: n.inferred, return_cardinality: n.return_cardinality, uses: n.uses,
+    body: n.body, transport: n.transport, properties: n.properties,
+    type_annotation: n.type_annotation, is_self_recursive: n.is_self_recursive,
+    has_non_tail_self_call: n.has_non_tail_self_call, match_pattern: n.match_pattern,
+    expr_data: n.expr_data
+  }
+}
+
+fn qualify_borrowed_inferred(inferred: InferredNode?, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> InferredNode? {
+  match inferred {
+    Present { value: Resolved { node: t } } =>
+      Present { value: Resolved { node: qualify_borrowed_type_names(n: t, owner_module_path: owner_module_path, env: env, excluded: excluded) } }
+    _ => inferred
+  }
+}
+
+fn qualified_all_but_last(name: String) -> String {
+  let segs = module_path_segments(path: name)
+  let seg_count = segs |> count
+  if seg_count <= 1 {
+    ""
+  } else {
+    let scan = fold(segs |> take(seg_count - 1), init: "", f: (acc, seg) =>
+      if acc == "" { seg } else { concat(acc, ".", seg) }
+    )
+    scan
+  }
 }
 
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {

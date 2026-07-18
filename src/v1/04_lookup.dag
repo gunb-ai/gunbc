@@ -33,24 +33,63 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
   }
 }
 
+type BorrowedCensusDecl {
+  owner_module_path: String
+  node: Node
+}
+
+fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? {
+  if contains(name, ".") {
+    match symbol_index_lookup(index: type_env.symbol_index, qualified_name: name) {
+      Present { value: node } =>
+        Present { value: BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }
+      Absent => none
+    }
+  } else {
+    match map_get(type_env.symbol_index.global_bare, name) {
+      Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+        Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+      Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+        match global_bare_nearest_ancestor_candidate(env_module_path: type_env.module_path, candidates: cands) {
+          Present { value: cand } =>
+            Present { value: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
+          Absent => none
+        }
+      Absent => none
+    }
+  }
+}
+
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
   match infer_builtin_call_type(name: name) {
     Present { value: _ } => none
     Absent =>
-  match lookup_binding_by_name(env: type_env, name: name) {
+  let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
     Present { value: binding } =>
-      let node = binding.resolved
+      Present { value: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
+    Absent => borrowed_census_decl(type_env: type_env, name: name)
+  }
+  match borrowed {
+    Present { value: bd } =>
+      let node = bd.node
       if (node.params |> count) > 0 || node.inferred != none || node.type_annotation != none {
+        let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
+        let raw_return = match node.inferred {
+          Present { value: inferred } => inferred
+          Absent => match node.type_annotation {
+            Present { value: ann } => ann
+            Absent => error_type
+          }
+        }
+        let qualified_return = if bd.owner_module_path == type_env.module_path {
+          raw_return
+        } else {
+          qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
+        }
         Present { value: ResolvedFuncSig {
           name: name,
           params: node.params,
-          inferred: match node.inferred {
-            Present { value: inferred } => inferred
-            Absent => match node.type_annotation {
-              Present { value: ann } => ann
-              Absent => error_type
-            }
-          },
+          inferred: qualified_return,
           is_async: false,
           output_provenance: [],
           variant_provenance: empty_map()
