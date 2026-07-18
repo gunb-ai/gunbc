@@ -13380,12 +13380,33 @@ pub fn corpus_disj_variant_name_counts(
     )
 }
 
+pub fn corpus_item_name_counts(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, i64>> {
+    modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, i64>(),
+        |counts: Rc<HashMap<String, i64>>, mod_: Rc<ResolvedModule>| {
+            module_items(mod_.module.clone()).iter().cloned().fold(
+                counts,
+                |c: Rc<HashMap<String, i64>>, item: Rc<Node>| {
+                    disj_variant_name_count_inc(
+                        c,
+                        authored_name_at(source_indices.clone(), item.clone()),
+                    )
+                },
+            )
+        },
+    )
+}
+
 pub fn symbol_index_insert_unique_disj_variant_aliases(
     index: Rc<SymbolIndex>,
     module_path: String,
     items: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     corpus_variant_counts: Rc<HashMap<String, i64>>,
+    corpus_item_counts: Rc<HashMap<String, i64>>,
 ) -> Rc<SymbolIndex> {
     {
         let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
@@ -13403,17 +13424,35 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
                             match v1_rt::map_get(&counts, vname.clone()) {
                                 Some(1) => {
                                     match v1_rt::map_get(&corpus_variant_counts, vname.clone()) {
-                                        Some(1) => symbol_index_insert_decl(
-                                            a2.clone(),
-                                            module_path.clone(),
-                                            Rc::new(TypeBinding {
-                                                name: vname.clone(),
-                                                resolved: item.clone(),
-                                                provenance: Rc::new(
-                                                    SubValueRelation::SubValueUnknown,
-                                                ),
-                                            }),
-                                        ),
+                                        Some(1) => {
+                                            if v1_rt::map_get(&corpus_item_counts, vname.clone())
+                                                != None
+                                            {
+                                                symbol_index_insert(
+                                                    a2.clone(),
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            module_path.clone(),
+                                                            ".".to_string(),
+                                                        ),
+                                                        vname.clone(),
+                                                    ),
+                                                    item.clone(),
+                                                )
+                                            } else {
+                                                symbol_index_insert_decl(
+                                                    a2.clone(),
+                                                    module_path.clone(),
+                                                    Rc::new(TypeBinding {
+                                                        name: vname.clone(),
+                                                        resolved: item.clone(),
+                                                        provenance: Rc::new(
+                                                            SubValueRelation::SubValueUnknown,
+                                                        ),
+                                                    }),
+                                                )
+                                            }
+                                        }
                                         _ => symbol_index_insert(
                                             a2.clone(),
                                             v1_rt::concat(
@@ -13453,6 +13492,8 @@ pub fn build_symbol_index_census_raw(
         let built = {
             let corpus_variant_counts =
                 corpus_disj_variant_name_counts(modules.clone(), source_indices.clone());
+            let corpus_item_counts =
+                corpus_item_name_counts(modules.clone(), source_indices.clone());
             modules.clone().iter().cloned().fold(
                 empty_symbol_index(),
                 |index: Rc<SymbolIndex>, mod_: Rc<ResolvedModule>| {
@@ -13475,6 +13516,7 @@ pub fn build_symbol_index_census_raw(
                         items.clone(),
                         source_indices.clone(),
                         corpus_variant_counts.clone(),
+                        corpus_item_counts.clone(),
                     )
                 },
             )
@@ -13518,6 +13560,7 @@ pub fn build_symbol_index_census_raw(
     }
     let corpus_variant_counts =
         corpus_disj_variant_name_counts(modules.clone(), source_indices.clone());
+    let corpus_item_counts = corpus_item_name_counts(modules.clone(), source_indices.clone());
     modules.clone().iter().cloned().fold(
         empty_symbol_index(),
         |index: Rc<SymbolIndex>, mod_: Rc<ResolvedModule>| {
@@ -13540,6 +13583,7 @@ pub fn build_symbol_index_census_raw(
                 items.clone(),
                 source_indices.clone(),
                 corpus_variant_counts.clone(),
+                corpus_item_counts.clone(),
             )
         },
     )

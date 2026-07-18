@@ -6233,12 +6233,21 @@ fn corpus_disj_variant_name_counts(modules: List<ResolvedModule>, source_indices
   )
 }
 
+fn corpus_item_name_counts(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
+  fold(modules, init: empty_map(), f: (counts, mod) =>
+    fold(module_items(n: mod.module), init: counts, f: (c, item) =>
+      disj_variant_name_count_inc(counts: c, name: authored_name_at(source_indices: source_indices, node: item))
+    )
+  )
+}
+
 fn symbol_index_insert_unique_disj_variant_aliases(
   index: SymbolIndex,
   module_path: String,
   items: List<Node>,
   source_indices: Map<String, NewlineIndex>,
-  corpus_variant_counts: Map<String, Int>
+  corpus_variant_counts: Map<String, Int>,
+  corpus_item_counts: Map<String, Int>
 ) -> SymbolIndex {
   let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
   fold(items, init: index, f: (acc, item) =>
@@ -6250,6 +6259,13 @@ fn symbol_index_insert_unique_disj_variant_aliases(
             Present { value: 1 } =>
               match map_get(corpus_variant_counts, vname) {
                 Present { value: 1 } =>
+                  if map_get(corpus_item_counts, vname) != none {
+                    symbol_index_insert(
+                      index: a2,
+                      qualified_name: concat(module_path, ".", vname),
+                      resolved: item
+                    )
+                  } else {
                   symbol_index_insert_decl(
                     index: a2,
                     module_path: module_path,
@@ -6259,6 +6275,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                       provenance: SubValueUnknown
                     }
                   )
+                  }
                 _ =>
                   symbol_index_insert(
                     index: a2,
@@ -6276,6 +6293,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
 
 fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let corpus_variant_counts = corpus_disj_variant_name_counts(modules: modules, source_indices: source_indices)
+  let corpus_item_counts = corpus_item_name_counts(modules: modules, source_indices: source_indices)
   fold(modules, init: empty_symbol_index(), f: (index, mod) =>
     let module_path = authored_name_at(source_indices: source_indices, node: mod.module)
     let items = module_items(n: mod.module)
@@ -6292,7 +6310,8 @@ fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: 
       module_path: module_path,
       items: items,
       source_indices: source_indices,
-      corpus_variant_counts: corpus_variant_counts
+      corpus_variant_counts: corpus_variant_counts,
+      corpus_item_counts: corpus_item_counts
     )
   )
 }
