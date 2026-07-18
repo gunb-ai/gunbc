@@ -1998,13 +1998,16 @@ pub fn node_type_compatible(
                                     if (left_opt.clone() || right_opt.clone()) {
                                         break false;
                                     } else {
-                                        break (authored_name_at(
-                                            source_indices.clone(),
-                                            left.clone(),
-                                        ) == authored_name_at(
-                                            source_indices.clone(),
-                                            right.clone(),
-                                        ));
+                                        break crate::v1_std_core::type_name_compatible(
+                                            authored_name_at(
+                                                source_indices.clone(),
+                                                left.clone(),
+                                            ),
+                                            authored_name_at(
+                                                source_indices.clone(),
+                                                right.clone(),
+                                            ),
+                                        );
                                     }
                                 }
                             }
@@ -2064,7 +2067,19 @@ pub fn prefer_specific_type(
             {
                 right.clone()
             } else {
-                left.clone()
+                if ((left.connective.clone() == Connective::NoConnective)
+                    && ((left.children.clone().len() as i64) == 0)
+                    && ((right.connective.clone() != Connective::NoConnective)
+                        || ((right.children.clone().len() as i64) > 0))
+                    && crate::v1_std_core::type_name_compatible(
+                        left_norm_name.clone(),
+                        authored_name_at(source_indices.clone(), right.clone()),
+                    ))
+                {
+                    right.clone()
+                } else {
+                    left.clone()
+                }
             }
         }
     }
@@ -2153,10 +2168,11 @@ pub fn node_type_equals_core(
         let left_name = authored_name_at(source_indices.clone(), left.clone());
         let right_name = authored_name_at(source_indices.clone(), right.clone());
         if (left_leaf.clone() && right_leaf.clone()) {
-            (left_name.clone() == right_name.clone())
+            crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
         } else {
             if (left_struct.clone() && right_struct.clone()) {
-                if (left_name.clone() != right_name.clone()) {
+                if !crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
+                {
                     false
                 } else {
                     if ((left.connective.clone() == Connective::Conj)
@@ -2207,10 +2223,13 @@ pub fn node_type_equals_core(
                 }
             } else {
                 if (left_leaf.clone() && right_struct.clone()) {
-                    (left_name.clone() == right_name.clone())
+                    crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
                 } else {
                     if (left_struct.clone() && right_leaf.clone()) {
-                        (left_name.clone() == right_name.clone())
+                        crate::v1_std_core::type_name_compatible(
+                            left_name.clone(),
+                            right_name.clone(),
+                        )
                     } else {
                         {
                             let left_is_container =

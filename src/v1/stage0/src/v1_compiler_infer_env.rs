@@ -827,25 +827,7 @@ pub fn lookup_qualified_module_projection(
     }
 }
 
-pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
-    if (path.clone() == "".to_string()) {
-        Rc::new(vec![])
-    } else {
-        Rc::new(
-            path.split('.')
-                .map(|s| s.to_string())
-                .collect::<std::vec::Vec<String>>()
-                .into(),
-        )
-    }
-}
-
-pub fn qualified_last_segment(name: String) -> String {
-    match module_path_segments(name.clone()).last() {
-        Some(s) => s.clone(),
-        None => name.clone(),
-    }
-}
+pub use crate::v1_std_core::{module_path_segments, qualified_last_segment};
 
 pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
     a.iter().zip(b.iter()).take_while(|(x, y)| x == y).count() as i64

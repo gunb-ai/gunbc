@@ -473,17 +473,6 @@ fn lookup_qualified_module_projection(env: TypeEnv, name: String) -> TypeBinding
   }
 }
 
-fn module_path_segments(path: String) -> List<String> {
-  if path == "" { [] } else { path |> split(delimiter: ".") }
-}
-
-fn qualified_last_segment(name: String) -> String {
-  match module_path_segments(path: name) |> last {
-    Present { value: s } => s
-    Absent => name
-  }
-}
-
 type SegmentLcpScan {
   remaining: List<String>
   matched: Int

@@ -17,6 +17,7 @@ import v1.std.core {
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_named_expr_node, make_expr_error_node,
   expr_var_name_at, field_access_base, field_access_field_at, FieldAccessSpine, field_access_spine, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
+  qualified_last_segment,
   make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
@@ -87,7 +88,7 @@ import v1.compiler.infer_env {
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
-  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup, qualified_last_segment,
+  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }

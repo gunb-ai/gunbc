@@ -713,7 +713,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       else { node_type_compatible(left: left_inner, right: right_inner, source_indices: source_indices) }
     }
     else if left_opt || right_opt { false }
-    else { authored_name_at(source_indices: source_indices, node: left) == authored_name_at(source_indices: source_indices, node: right) }
+    else { type_name_compatible(a: authored_name_at(source_indices: source_indices, node: left), b: authored_name_at(source_indices: source_indices, node: right)) }
   }
 }
 
@@ -743,6 +743,9 @@ fn prefer_specific_type(left: Node, right: Node, source_indices: Map<String, New
   } else { false }
   if same_kind && left_is_unit_inner { right }
   else if is_fully_resolved(n: right, source_indices: source_indices) && !is_fully_resolved(n: left, source_indices: source_indices) { right }
+  else if left.connective == NoConnective && left.children |> count == 0
+    && (right.connective != NoConnective || right.children |> count > 0)
+    && type_name_compatible(a: left_norm_name, b: authored_name_at(source_indices: source_indices, node: right)) { right }
   else { left }
 }
 
@@ -776,10 +779,10 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
   let left_name = authored_name_at(source_indices: source_indices, node: left)
   let right_name = authored_name_at(source_indices: source_indices, node: right)
   if left_leaf && right_leaf {
-    left_name == right_name
+    type_name_compatible(a: left_name, b: right_name)
   }
   else if left_struct && right_struct {
-    if left_name != right_name { false }
+    if !type_name_compatible(a: left_name, b: right_name) { false }
     else if (left.connective == Conj) != (right.connective == Conj) { false }
     else if left.children |> count != right.children |> count { false }
     else {
@@ -792,10 +795,10 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
     }
   }
   else if left_leaf && right_struct {
-    left_name == right_name
+    type_name_compatible(a: left_name, b: right_name)
   }
   else if left_struct && right_leaf {
-    left_name == right_name
+    type_name_compatible(a: left_name, b: right_name)
   }
   else {
     let left_is_container = node_is_element_collection(n: left, source_indices: source_indices)

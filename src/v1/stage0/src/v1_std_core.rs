@@ -3934,3 +3934,35 @@ pub struct ChildrenListField;
 pub struct SubValueField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MetadataField;
+
+pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
+    if (path.clone() == "".to_string()) {
+        Rc::new(vec![])
+    } else {
+        Rc::new(
+            path.split('.')
+                .map(|s| s.to_string())
+                .collect::<std::vec::Vec<String>>()
+                .into(),
+        )
+    }
+}
+
+pub fn qualified_last_segment(name: String) -> String {
+    match module_path_segments(name.clone()).last() {
+        Some(s) => s.clone(),
+        None => name.clone(),
+    }
+}
+
+pub fn type_name_compatible(a: String, b: String) -> bool {
+    if (a.clone() == b.clone()) {
+        true
+    } else if v1_rt::contains(a.clone(), ".".to_string())
+        && v1_rt::contains(b.clone(), ".".to_string())
+    {
+        false
+    } else {
+        (qualified_last_segment(a.clone()) == qualified_last_segment(b.clone()))
+    }
+}
