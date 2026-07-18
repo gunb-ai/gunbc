@@ -39,6 +39,7 @@ type RustCorpusRepr = HostNative | FaithfulFreeMonoid
 
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
+  type_decl_items: Map<String, Node>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
@@ -57,11 +58,13 @@ type EmitGraphInfo {
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
+  type_decl_items: Map<String, Node>
 }
 
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
+    type_decl_items: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
     positional_payload_variants: empty_set(),
@@ -88,6 +91,21 @@ fn variant_summary_key(enum_name: String, variant_name: String) -> String {
 
 fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
   map_get(emit_info.type_summaries, type_name)
+}
+
+fn lookup_emit_type_decl(emit_info: EmitGraphInfo, type_name: String) -> Node? {
+  map_get(emit_info.type_decl_items, type_name)
+}
+
+fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match build_type_summary(item: item, source_indices: source_indices) {
+    Present { value: _ } => true
+    Absent =>
+      item.connective == NoConnective
+        && (item.children |> count) == 0
+        && (item.params |> count) == 0
+        && item.transport == none
+  }
 }
 
 fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {
@@ -314,6 +332,15 @@ fn close_fn_fields(summaries: Map<String, TypeSummary>) -> Map<String, TypeSumma
 }
 
 fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: Map<String, NewlineIndex>) -> EmitInfoBuildState {
+  let decl_name = authored_name_at(source_indices: source_indices, node: item)
+  let state = if decl_name != "" && emit_graph_records_type_decl(item: item, source_indices: source_indices) {
+    EmitInfoBuildState {
+      type_summaries: state.type_summaries,
+      type_decl_items: map_insert(state.type_decl_items, decl_name, item)
+    }
+  } else {
+    state
+  }
   match build_type_summary(item: item, source_indices: source_indices) {
     Present { value: summary } =>
       let with_variants = match summary.repr {
@@ -343,7 +370,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
       }
       let next_summaries = map_insert(with_variants, summary.name, summary)
       EmitInfoBuildState {
-        type_summaries: next_summaries
+        type_summaries: next_summaries,
+        type_decl_items: state.type_decl_items
       }
     Absent => state
   }
