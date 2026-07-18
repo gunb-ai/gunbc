@@ -1,7 +1,14 @@
 module test.claim.live_deploy.operations_witness
 
 import std.logic { Bool }
-import extdeps.apt { package_nodejs, package_tailscale }
+import std.types { String, List }
+import extdeps.apt { package_nodejs, package_tailscale, apt_install_argv }
+import extdeps.dpkg { dpkg_status_argv }
+import extdeps.os.systemctl {
+  systemctl_daemon_reload_argv,
+  systemctl_restart_argv,
+  systemctl_disable_now_argv,
+}
 import gunbc.live_deploy.operations {
   dpkg_status_command,
   apt_install_command,
@@ -11,10 +18,95 @@ import gunbc.live_deploy.operations {
   privileged_command,
 }
 import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
-import extdeps.os.systemctl { systemctl_daemon_reload_argv }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data apt_install_path: String = "dag/extdeps/package_managers/apt.dag"
+data apt_install_service: String = "apt.PackageManager"
+data apt_install_operation: String = "Install"
+
+data systemctl_path: String = "dag/extdeps/os/systemctl.dag"
+data systemctl_service: String = "systemd.Systemctl"
+
+fn argv_join(argv: List<String>) -> String {
+  join(argv, " ")
+}
+
+fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
+  argv_join(argv: dpkg_status_argv(package: package_tailscale))
+    == argv_join(
+      argv: shell_materialize_argv_for_operation(
+        "dag/extdeps/package_managers/dpkg.dag",
+        "dpkg.Package",
+        "Status",
+        package_tailscale as String,
+        "",
+        [],
+        ""
+      )
+    )
+}
+
+fn witness_apt_install_argv_matches_transport_row() -> Bool {
+  argv_join(argv: apt_install_argv(package: package_nodejs))
+    == argv_join(
+      argv: shell_materialize_argv_for_operation(
+        apt_install_path,
+        apt_install_service,
+        apt_install_operation,
+        package_nodejs as String,
+        "",
+        [],
+        ""
+      )
+    )
+}
+
+fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
+  argv_join(argv: systemctl_restart_argv(unit: gunbc_roadmap_unit_name))
+    == argv_join(
+      argv: shell_materialize_argv_for_operation(
+        systemctl_path,
+        systemctl_service,
+        "Restart",
+        "",
+        "",
+        [],
+        gunbc_roadmap_unit_name as String
+      )
+    )
+}
+
+fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
+  argv_join(argv: systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name))
+    == argv_join(
+      argv: shell_materialize_argv_for_operation(
+        systemctl_path,
+        systemctl_service,
+        "DisableNow",
+        "",
+        "",
+        [],
+        gunbc_roadmap_unit_name as String
+      )
+    )
+}
+
+fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
+  argv_join(argv: systemctl_daemon_reload_argv())
+    == argv_join(
+      argv: shell_materialize_argv_for_operation(
+        systemctl_path,
+        systemctl_service,
+        "DaemonReload",
+        "",
+        "",
+        [],
+        ""
+      )
+    )
+}
 
 fn witness_dpkg_status_command_matches_transport() -> Bool {
   dpkg_status_command(package: package_tailscale) == "dpkg -s tailscale"
@@ -45,11 +137,20 @@ fn witness_systemctl_daemon_reload_command_privileged() -> Bool {
 }
 
 test fn live_deploy_operations_holds() -> Bool {
-  witness_dpkg_status_command_matches_transport()
+  witness_dpkg_status_argv_matches_transport_row()
+    && witness_apt_install_argv_matches_transport_row()
+    && witness_systemctl_restart_argv_matches_transport_row()
+    && witness_systemctl_disable_now_argv_matches_transport_row()
+    && witness_systemctl_daemon_reload_argv_matches_transport_row()
+    && witness_dpkg_status_command_matches_transport()
     && witness_apt_install_command_matches_transport()
     && witness_privileged_apt_install_command()
     && witness_systemctl_restart_command_matches_transport()
     && witness_systemctl_disable_now_command_matches_transport()
     && witness_privileged_command_prefixes_sudo_n()
     && witness_systemctl_daemon_reload_command_privileged()
+}
+
+test fn live_deploy_operations_RED_apt_install_wrong_package_golden() -> Bool {
+  apt_install_command(package: package_tailscale, privileged: false) != "apt-get install --yes nodejs"
 }

@@ -8,10 +8,33 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+data dpkg_status_path: String = "dag/extdeps/package_managers/dpkg.dag"
+data dpkg_status_service: String = "dpkg.Package"
+data dpkg_status_operation: String = "Status"
+
 fn argv_join(argv: List<String>) -> String {
   join(argv, " ")
 }
 
+fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
+  argv_join(argv: dpkg_status_argv(package: package_tailscale))
+    == argv_join(
+      argv: shell_materialize_argv_for_operation(
+        dpkg_status_path,
+        dpkg_status_service,
+        dpkg_status_operation,
+        package_tailscale as String,
+        "",
+        [],
+        ""
+      )
+    )
+}
+
 test fn extdeps_dpkg_status_argv_holds() -> Bool {
-  argv_join(argv: dpkg_status_argv(package: package_tailscale)) == "dpkg -s tailscale"
+  witness_dpkg_status_argv_matches_transport_row()
+}
+
+test fn extdeps_dpkg_status_argv_RED_wrong_package_golden() -> Bool {
+  argv_join(argv: dpkg_status_argv(package: package_tailscale)) != "dpkg -s nodejs"
 }
