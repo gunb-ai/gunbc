@@ -91,7 +91,6 @@ data lens_registry_v0_required_ids: List<LensIdV0> = [
   DispositionRedundancy,
   DocReachability,
   DuplicateComputation,
-  EffectReach,
   ExtdepsExternalAuthority,
   ExtdepsShapeTransportPolicy,
   FactCardinality,
