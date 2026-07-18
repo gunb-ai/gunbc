@@ -304,7 +304,7 @@ fn instantiate_algebra_type(template: AlgebraTypeTemplate, base: Node, source_in
     NamedTemplate { name: n } => KernelTypeBuild { ty: nominal_type_ref(name: n), diagnostics: [] }
     AlgebraTypeVariable { id: var_id } => KernelTypeBuild { ty: type_variable_node(id: var_id), diagnostics: [] }
     ContainerOf { source: src, element: inner } =>
-      let kind_name = match src { SameAsReceiver => authored_name_at(source_indices: source_indices, node: base)  Named { name: n } => n }
+      let kind_name = match src { SameAsReceiver => container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: base))  Named { name: n } => n }
       let inner_b = instantiate_algebra_type(template: inner, base: base, source_indices: source_indices)
       let built = make_container_type(kind_name: kind_name, element: inner_b.ty)
       KernelTypeBuild { ty: built.ty, diagnostics: concat(inner_b.diagnostics, built.diagnostics) }
@@ -384,8 +384,8 @@ fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node,
     CallableOf { params: _, return_type: ret_template } =>
       unify_template(template: ret_template, concrete: concrete, receiver: receiver, subst: subst, source_indices: source_indices)
     ContainerOf { source: src, element: elem_template } =>
-      let expected_name = match src { SameAsReceiver => authored_name_at(source_indices: source_indices, node: receiver)  Named { name: n } => n }
-      if authored_name_at(source_indices: source_indices, node: concrete) != expected_name { subst }
+      let expected_name = match src { SameAsReceiver => container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))  Named { name: n } => n }
+      if container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: concrete)) != expected_name { subst }
       else {
         match concrete.children |> first {
           Present { value: child } => unify_template(template: elem_template, concrete: child_type_node(ch: child), receiver: receiver, subst: subst, source_indices: source_indices)
@@ -443,7 +443,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
         Absent => KernelTypeBuild { ty: type_variable_node(id: var_id), diagnostics: [] }
       }
     ReceiverSelf =>
-      let receiver_name_str = authored_name_at(source_indices: source_indices, node: receiver)
+      let receiver_name_str = container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))
       let is_bare = is_container_type(name: receiver_name_str) && (receiver.children |> all(ch =>
         let inner = child_type_node(ch: ch)
         if inner.inferred != none { is_type_variable(inferred: inner.inferred.value) } else { inner.ident_span == none || !is_kernel_type(name: authored_name_at(source_indices: source_indices, node: inner)) }
@@ -462,7 +462,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
           }
         } else if arity == Present { value: 1 } {
           match map_get(subst, "__element__") {
-            Present { value: elem } => make_container_type(kind_name: receiver_name_str, element: elem)
+            Present { value: elem } => make_container_type(kind_name: container_kind_canonical(name: receiver_name_str), element: elem)
             Absent => KernelTypeBuild { ty: receiver, diagnostics: [] }
           }
         } else { KernelTypeBuild { ty: receiver, diagnostics: [] } }
@@ -523,7 +523,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
       }
     NamedTemplate { name: n } => KernelTypeBuild { ty: nominal_type_ref(name: n), diagnostics: [] }
     ContainerOf { source: src, element: inner } =>
-      let kind_name = match src { SameAsReceiver => authored_name_at(source_indices: source_indices, node: receiver)  Named { name: n } => n }
+      let kind_name = match src { SameAsReceiver => container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))  Named { name: n } => n }
       let inner_applied = apply_type_substitution(template: inner, subst: subst, receiver: receiver, source_indices: source_indices)
       let built = make_container_type(kind_name: kind_name, element: inner_applied.ty)
       KernelTypeBuild { ty: built.ty, diagnostics: concat(inner_applied.diagnostics, built.diagnostics) }

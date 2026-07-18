@@ -892,9 +892,10 @@ pub fn instantiate_algebra_type(
                 ..
             } => {
                 let kind_name = match (*src.clone()).clone() {
-                    ContainerSource::SameAsReceiver => {
-                        authored_name_at(source_indices.clone(), base.clone())
-                    }
+                    ContainerSource::SameAsReceiver => container_kind_canonical(authored_name_at(
+                        source_indices.clone(),
+                        base.clone(),
+                    )),
                     ContainerSource::Named { name: n, .. } => n.clone(),
                 };
                 let inner_b =
@@ -1157,13 +1158,16 @@ pub fn unify_template(
                 ..
             } => {
                 let expected_name = match (*src.clone()).clone() {
-                    ContainerSource::SameAsReceiver => {
-                        authored_name_at(source_indices.clone(), receiver.clone())
-                    }
+                    ContainerSource::SameAsReceiver => container_kind_canonical(authored_name_at(
+                        source_indices.clone(),
+                        receiver.clone(),
+                    )),
                     ContainerSource::Named { name: n, .. } => n.clone(),
                 };
-                if (authored_name_at(source_indices.clone(), concrete.clone())
-                    != expected_name.clone())
+                if (container_kind_canonical(authored_name_at(
+                    source_indices.clone(),
+                    concrete.clone(),
+                )) != expected_name.clone())
                 {
                     subst.clone()
                 } else {
@@ -1345,7 +1349,10 @@ pub fn apply_type_substitution(
                 }
             }
             AlgebraTypeTemplate::ReceiverSelf => {
-                let receiver_name_str = authored_name_at(source_indices.clone(), receiver.clone());
+                let receiver_name_str = container_kind_canonical(authored_name_at(
+                    source_indices.clone(),
+                    receiver.clone(),
+                ));
                 let is_bare = (is_container_type(receiver_name_str.clone()) && {
                     let mut __all = true;
                     for ch in receiver.children.clone().iter().cloned() {
@@ -1455,9 +1462,9 @@ pub fn apply_type_substitution(
                     }),
                     None => {
                         let rname = container_kind_canonical(authored_name_at(
-                                source_indices.clone(),
-                                receiver.clone(),
-                            ));
+                            source_indices.clone(),
+                            receiver.clone(),
+                        ));
                         match container_param_name(rname.clone(), 0) {
                             Some(n) => Rc::new(KernelTypeBuild {
                                 ty: type_variable_node(n.clone()),
@@ -1515,9 +1522,10 @@ pub fn apply_type_substitution(
                 ..
             } => {
                 let kind_name = match (*src.clone()).clone() {
-                    ContainerSource::SameAsReceiver => {
-                        authored_name_at(source_indices.clone(), receiver.clone())
-                    }
+                    ContainerSource::SameAsReceiver => container_kind_canonical(authored_name_at(
+                        source_indices.clone(),
+                        receiver.clone(),
+                    )),
                     ContainerSource::Named { name: n, .. } => n.clone(),
                 };
                 let inner_applied = apply_type_substitution(
@@ -2814,8 +2822,10 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
         .cloned()
         .fold(None, |acc: Option<String>, k: String| match acc {
             Some(_) => acc,
-            None => match v1_rt::map_get(&crate::std_types::container_template_alias_rows(), k.clone())
-            {
+            None => match v1_rt::map_get(
+                &crate::std_types::container_template_alias_rows(),
+                k.clone(),
+            ) {
                 Some(v) => {
                     if (v.clone() == algebra.clone()) {
                         Some(k.clone())
@@ -2843,6 +2853,9 @@ pub fn container_kind_canonical(name: String) -> String {
 }
 
 pub fn kernel_profile_lookup(name: String) -> Option<crate::std_algebra::AlgebraProfile> {
-    v1_rt::map_get(&kernel_algebra_profile(), container_kind_canonical(name.clone()))
-        .map(|p| p.clone())
+    v1_rt::map_get(
+        &kernel_algebra_profile(),
+        container_kind_canonical(name.clone()),
+    )
+    .map(|p| p.clone())
 }
