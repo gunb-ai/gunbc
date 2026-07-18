@@ -14,8 +14,8 @@ fn mini_doc(node: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_document.Roa
   }
 }
 
-fn emit_node(node: gunbc.roadmap_model.RoadmapNode, test.claim.roadmap_authority.merged: List<Int>) -> String {
-  extdeps.languages.markdown.serialize_markdown_source(doc: gunbc.roadmap_document.project_roadmap_to_markdown(doc: mini_doc(node: node), test.claim.roadmap_authority.merged: test.claim.roadmap_authority.merged))
+fn emit_node(node: gunbc.roadmap_model.RoadmapNode, merged: List<Int>) -> String {
+  extdeps.languages.markdown.serialize_markdown_source(doc: gunbc.roadmap_document.project_roadmap_to_markdown(doc: mini_doc(node: node), merged: test.claim.roadmap_authority.merged))
 }
 
 fn witness_clean_not_drift() -> Bool {
@@ -31,14 +31,14 @@ fn witness_signed_emits_checked() -> Bool {
     rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
     s: gunbc.roadmap_authority.signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
   )
-  let test.claim.roadmap_authority.out = emit_node(node: node, test.claim.roadmap_authority.merged: [])
+  let test.claim.roadmap_authority.out = emit_node(node: node, merged: [])
   string_contains(s: test.claim.roadmap_authority.out, pattern: "[x] **signoff witness**")
     && string_contains(s: test.claim.roadmap_authority.out, pattern: "✓ gunbc.roadmap_authority.signed off: operator")
 }
 
 fn witness_unsigned_with_evidence_awaiting() -> Bool {
   let node = derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: "")
-  let test.claim.roadmap_authority.out = emit_node(node: node, test.claim.roadmap_authority.merged: [5491])
+  let test.claim.roadmap_authority.out = emit_node(node: node, merged: [5491])
   string_contains(s: test.claim.roadmap_authority.out, pattern: "[ ] **signoff witness**")
     && string_contains(s: test.claim.roadmap_authority.out, pattern: "⏳ awaiting gunbc.roadmap_authority.sign-off")
     && !string_contains(s: test.claim.roadmap_authority.out, pattern: "[x] **signoff witness**")
@@ -50,10 +50,10 @@ fn witness_merge_perturb_does_not_flip_box() -> Bool {
     s: gunbc.roadmap_authority.signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
   )
   let unsigned_node = derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: "")
-  let signed_stays_checked = string_contains(s: emit_node(node: signed_node, test.claim.roadmap_authority.merged: []), pattern: "[x] **signoff witness**")
-    && string_contains(s: emit_node(node: signed_node, test.claim.roadmap_authority.merged: [5491]), pattern: "[x] **signoff witness**")
-  let unsigned_stays_unchecked = string_contains(s: emit_node(node: unsigned_node, test.claim.roadmap_authority.merged: []), pattern: "[ ] **signoff witness**")
-    && string_contains(s: emit_node(node: unsigned_node, test.claim.roadmap_authority.merged: [5491]), pattern: "[ ] **signoff witness**")
+  let signed_stays_checked = string_contains(s: emit_node(node: signed_node, merged: []), pattern: "[x] **signoff witness**")
+    && string_contains(s: emit_node(node: signed_node, merged: [5491]), pattern: "[x] **signoff witness**")
+  let unsigned_stays_unchecked = string_contains(s: emit_node(node: unsigned_node, merged: []), pattern: "[ ] **signoff witness**")
+    && string_contains(s: emit_node(node: unsigned_node, merged: [5491]), pattern: "[ ] **signoff witness**")
   signed_stays_checked && unsigned_stays_unchecked
 }
 

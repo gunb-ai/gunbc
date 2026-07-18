@@ -38,7 +38,7 @@ fn witness_width_parse_count_is_typed() -> Bool {
 fn witness_oom_wire_parses_to_sixty_percent() -> Bool {
   match extdeps.os.oomd.parse_managed_oom_pressure_limit_show(raw: "2576980377") {
     Present { value: gunbc.plans.md_helpers.p } =>
-      std.measure.percent_count(gunbc.plans.md_helpers.p: gunbc.plans.md_helpers.p) == 60
+      std.measure.percent_count(p: gunbc.plans.md_helpers.p) == 60
         && extdeps.os.oomd.managed_oom_pressure_limit_wire_matches_percent(
           wire: 2576980377,
           desired: gunbc.oomd_install.gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit
@@ -49,7 +49,7 @@ fn witness_oom_wire_parses_to_sixty_percent() -> Bool {
 
 fn witness_oom_show_value_single_authority() -> Bool {
   extdeps.os.oomd.managed_oom_pressure_limit_show_value(
-    gunbc.plans.md_helpers.p: gunbc.oomd_install.gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit
+    p: gunbc.oomd_install.gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit
   ) == 2576980377
 }
 

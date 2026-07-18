@@ -12,7 +12,7 @@ fn fixture_srv3_host_converge() -> gunbc.host_converge.HostConverge {
         name: "pinned_tree_sha",
         desired: gunbc.host_converge.gunbc_pinned_tree_desired_label,
         target: gunbc.host_converge.GunbcPinnedTree {
-          gunbc.host_converge.gunbc_root_env_key: gunbc.host_converge.gunbc_root_env_key,
+          gunbc_root_env_key: gunbc.host_converge.gunbc_root_env_key,
           gunbc_root_path: gunbc.host_converge.gunbc_host_gunbc_root_path,
           dag_root: gunbc.host_converge.DeferToSubmodule { submodule_path: gunbc.host_converge.gunbc_dag_root_submodule_path },
           ctrl_checkout_path: gunbc.host_converge.gunbc_host_ctrl_checkout_path,

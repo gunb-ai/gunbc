@@ -1,7 +1,7 @@
 module test.claim.orchestration_if_emit
 
 
-data orch_if_golden_note: String = "Hand-authored goldens below are independent of the orch_* grammar row spellings in src/v2/extdeps/languages/bash.dag: byte tests compare the emitter against these literals so a row/segment/emitter regression cannot go green by perturbing both sides at once (#6467 pattern)."
+data orch_if_golden_note: String = "Hand-authored goldens below are independent of the orch_* grammar row spellings in src/v2/extdeps/languages/dag: byte tests compare the emitter against these literals so a row/segment/emitter regression cannot go green by perturbing both sides at once (#6467 pattern)."
 
 fn orch_if_streq_empty_then_golden() -> String {
   "if [ -z \"$1\" ]; then verdict=absent; fi"

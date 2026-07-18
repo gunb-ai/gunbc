@@ -5,7 +5,7 @@ data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInpu
 
 fn hetzner_cax41_hourly_micros() -> std.nat.Nat {
   gunbc.ci_fleet.cost_estimate_unit_price_micros(
-    gunbc.plans.md_helpers.quote: gunbc.ci_fleet.per_second_billed_cost_quote(
+    quote: gunbc.ci_fleet.per_second_billed_cost_quote(
       unit_price: extdeps.cloud.hetzner.cax41_catalog.hourly,
       currency: extdeps.cloud.hetzner.cax41_catalog.currency,
     ),

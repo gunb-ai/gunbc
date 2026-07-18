@@ -16,7 +16,7 @@ test fn live_probe_firmware_matches_shipped_catalog_row() -> Bool {
 test fn live_probe_redfish_virtual_media_absent_matches_catalog() -> Bool {
   extdeps.boards.asrock_rack.live_probe_confirms_redfish_virtual_media_absent()
     && extdeps.bmc.capability.firmware_has_capability(
-      gunbc.plans.md_helpers.row: extdeps.boards.asrock_rack.asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+      row: extdeps.boards.asrock_rack.asrock_altrad8ud_shipped_bmc_firmware_capabilities,
       cap: extdeps.bmc.capability.CapabilityVirtualMedia
     ) == false
 }
@@ -37,7 +37,7 @@ test fn live_probe_rows_cover_vm_and_nbd_get_surfaces() -> Bool {
 
 test fn shipped_row_nbd_proxy_capability_requires_ws_dry_run_receipt() -> Bool {
   extdeps.bmc.capability.firmware_has_capability(
-    gunbc.plans.md_helpers.row: extdeps.boards.asrock_rack.asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+    row: extdeps.boards.asrock_rack.asrock_altrad8ud_shipped_bmc_firmware_capabilities,
     cap: extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia
   )
 }

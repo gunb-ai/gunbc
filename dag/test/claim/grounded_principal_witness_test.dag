@@ -12,14 +12,14 @@ fn witness_runner_fiction_not_in_roster() -> Bool {
 }
 
 fn witness_ghrunner_is_ci_deploy_principal() -> Bool {
-  let deploy_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(gunbc.plans.md_helpers.p: gunbc.ci_deploy_access.ci_deploy_srv1_access.principal)
-  let roster_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(gunbc.plans.md_helpers.p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountCiRunner))
+  let deploy_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(p: gunbc.ci_deploy_access.ci_deploy_srv1_access.principal)
+  let roster_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountCiRunner))
   deploy_name == "ghrunner" && deploy_name == roster_name
 }
 
 fn witness_operator_is_manual_deploy_principal() -> Bool {
-  let deploy_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(gunbc.plans.md_helpers.p: gunbc.ci_deploy_access.ci_deploy_srv1_operator_access.principal)
-  let roster_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(gunbc.plans.md_helpers.p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountOperator))
+  let deploy_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(p: gunbc.ci_deploy_access.ci_deploy_srv1_operator_access.principal)
+  let roster_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountOperator))
   deploy_name == "briansrls" && deploy_name == roster_name
 }
 
@@ -34,9 +34,9 @@ fn witness_briansrls_fork_dissolved() -> Bool {
 }
 
 fn witness_declared_probe_names_principal() -> Bool {
-  gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(gunbc.plans.md_helpers.p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountCiRunner))
-    && gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(gunbc.plans.md_helpers.p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountOperator))
-    && gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(gunbc.plans.md_helpers.p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountRoot))
+  gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountCiRunner))
+    && gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountOperator))
+    && gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountRoot))
 }
 
 fn witness_declared_probe_mismatch_red() -> Bool {
@@ -50,12 +50,12 @@ fn witness_declared_probe_mismatch_red() -> Bool {
       host: gunbc.plans.md_helpers.p.declared_probe.host,
     },
   }
-  !gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(gunbc.plans.md_helpers.p: poisoned)
+  !gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(p: poisoned)
 }
 
 fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
   let principal = gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountCiRunner)
-  let grounded = gunbc.ci_deploy_access.grounded_principal_privileged_commands(gunbc.plans.md_helpers.p: principal)
+  let grounded = gunbc.ci_deploy_access.grounded_principal_privileged_commands(p: principal)
   let composed = gunbc.ci_deploy_access.srv1_live_deploy_privileged_commands()
   v2.std.algebra.length(grounded) == 5
     && v2.std.algebra.length(composed) == 5

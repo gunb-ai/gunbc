@@ -57,7 +57,7 @@ fn cursor_is_overwrite(a: std.render.CursorAction) -> Bool {
 
 fn w_ci_frame_cannot_carry_overwrite() -> Bool {
   let test.claim.roadmap_belt_witness.cap = extdeps.render.terminal_capability.detect_capability(env: ci_log)
-  match extdeps.render.terminal.project_frame(frame: dynamic_frame, viewport: demo_viewport, test.claim.roadmap_belt_witness.cap: test.claim.roadmap_belt_witness.cap) {
+  match extdeps.render.terminal.project_frame(frame: dynamic_frame, viewport: demo_viewport, cap: test.claim.roadmap_belt_witness.cap) {
     Present { value: f } => cursor_is_append(a: f.cursor_action)
     Absent => false
   }
@@ -65,7 +65,7 @@ fn w_ci_frame_cannot_carry_overwrite() -> Bool {
 
 fn w_interactive_frame_keeps_overwrite() -> Bool {
   let test.claim.roadmap_belt_witness.cap = extdeps.render.terminal_capability.detect_capability(env: interactive_tty)
-  match extdeps.render.terminal.project_frame(frame: dynamic_frame, viewport: demo_viewport, test.claim.roadmap_belt_witness.cap: test.claim.roadmap_belt_witness.cap) {
+  match extdeps.render.terminal.project_frame(frame: dynamic_frame, viewport: demo_viewport, cap: test.claim.roadmap_belt_witness.cap) {
     Present { value: f } => cursor_is_overwrite(a: f.cursor_action)
     Absent => false
   }

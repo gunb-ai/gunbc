@@ -10,22 +10,22 @@ fn witness_selected_target_projects_fleet() -> Bool {
 }
 
 fn witness_ubicloud_target_projects_catalog_label() -> Bool {
-  match gunbc.ci_runner_target.ci_runner_target_spec(target: gunbc.ci_runner_target.UbicloudRunner { gunbc.plans.md_helpers.row: extdeps.cloud.ubicloud.ubicloud_standard_16_arm_catalog }) {
+  match gunbc.ci_runner_target.ci_runner_target_spec(target: gunbc.ci_runner_target.UbicloudRunner { row: extdeps.cloud.ubicloud.ubicloud_standard_16_arm_catalog }) {
     extdeps.github.actions.SelfHosted { labels: ls } => ls.length() == 1 && ls.first() == "ubicloud-standard-16-arm"
     _ => false
   }
 }
 
 fn witness_github_private_target_projects_hosted_scalar_variant() -> Bool {
-  match gunbc.ci_runner_target.ci_runner_target_spec(target: gunbc.ci_runner_target.GithubHostedRunner { gunbc.plans.md_helpers.row: extdeps.github.hosted_runners.github_hosted_ubuntu_2404_arm_private_catalog }) {
+  match gunbc.ci_runner_target.ci_runner_target_spec(target: gunbc.ci_runner_target.GithubHostedRunner { row: extdeps.github.hosted_runners.github_hosted_ubuntu_2404_arm_private_catalog }) {
     extdeps.github.actions.HostedRunner { label: l } => extdeps.languages.yaml.gha_workflow.runner_label_string(label: l) == "ubuntu-24.04-arm"
     _ => false
   }
 }
 
 fn witness_runner_yaml_forms_discriminate_hosted_vs_label_routed() -> Bool {
-  let hosted = extdeps.languages.yaml.gha_workflow.runner_yaml(spec: gunbc.ci_runner_target.ci_runner_target_spec(target: gunbc.ci_runner_target.GithubHostedRunner { gunbc.plans.md_helpers.row: extdeps.github.hosted_runners.github_hosted_ubuntu_2404_arm_private_catalog }))
-  let label_routed = extdeps.languages.yaml.gha_workflow.runner_yaml(spec: gunbc.ci_runner_target.ci_runner_target_spec(target: gunbc.ci_runner_target.UbicloudRunner { gunbc.plans.md_helpers.row: extdeps.cloud.ubicloud.ubicloud_standard_16_arm_catalog }))
+  let hosted = extdeps.languages.yaml.gha_workflow.runner_yaml(spec: gunbc.ci_runner_target.ci_runner_target_spec(target: gunbc.ci_runner_target.GithubHostedRunner { row: extdeps.github.hosted_runners.github_hosted_ubuntu_2404_arm_private_catalog }))
+  let label_routed = extdeps.languages.yaml.gha_workflow.runner_yaml(spec: gunbc.ci_runner_target.ci_runner_target_spec(target: gunbc.ci_runner_target.UbicloudRunner { row: extdeps.cloud.ubicloud.ubicloud_standard_16_arm_catalog }))
   hosted == extdeps.languages.yaml.types.yaml_string(s: "ubuntu-24.04-arm")
     && label_routed == extdeps.languages.yaml.gha_workflow.string_list_flow(items: ["ubicloud-standard-16-arm"])
     && hosted != extdeps.languages.yaml.gha_workflow.string_list_flow(items: ["ubuntu-24.04-arm"])
@@ -42,7 +42,7 @@ fn witness_fleet_regime_is_slot_carved_with_throttle_line() -> Bool {
 }
 
 fn witness_cloud_regime_is_whole_machine() -> Bool {
-  match gunbc.ci_runner_target.ci_runner_target_memory_regime(target: gunbc.ci_runner_target.UbicloudRunner { gunbc.plans.md_helpers.row: extdeps.cloud.ubicloud.ubicloud_standard_16_arm_catalog }) {
+  match gunbc.ci_runner_target.ci_runner_target_memory_regime(target: gunbc.ci_runner_target.UbicloudRunner { row: extdeps.cloud.ubicloud.ubicloud_standard_16_arm_catalog }) {
     gunbc.ci_runner_target.SlotCarved { desired: _ } => false
     gunbc.ci_runner_target.WholeMachine { ram: r } => std.measure.byte_size_count(b: r) == 48000000000
   }

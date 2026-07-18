@@ -3,7 +3,7 @@ module test.claim.bmc_wif_delegation_chain_witness
 
 data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn step_is(test.claim.materialization_ladder_witness.step: gunbc.assimilate.bmc_wif_delegation_chain.CredentialDelegationStep, tag: String) -> Bool {
+fn step_is(step: gunbc.assimilate.bmc_wif_delegation_chain.CredentialDelegationStep, tag: String) -> Bool {
   match test.claim.materialization_ladder_witness.step {
     gunbc.assimilate.bmc_wif_delegation_chain.GhaOidcIssuance { audience: _, designated_job: _ } => tag == "oidc"
     gunbc.assimilate.bmc_wif_delegation_chain.WifTokenExchange { pool: _, provider: _, attribute_condition: _ } => tag == "exchange"
@@ -15,10 +15,10 @@ fn step_is(test.claim.materialization_ladder_witness.step: gunbc.assimilate.bmc_
 test fn chain_has_four_steps_in_delegation_order() -> Bool {
   let steps = gunbc.assimilate.bmc_wif_delegation_chain.bmc_wif_canary_delegation_chain.steps
   steps.length() == 4
-    && step_is(test.claim.materialization_ladder_witness.step: steps.first(), tag: "oidc")
-    && step_is(test.claim.materialization_ladder_witness.step: steps.skip(n: 1).first(), tag: "exchange")
-    && step_is(test.claim.materialization_ladder_witness.step: steps.skip(n: 2).first(), tag: "impersonation")
-    && step_is(test.claim.materialization_ladder_witness.step: steps.skip(n: 3).first(), tag: "secret_access")
+    && step_is(step: steps.first(), tag: "oidc")
+    && step_is(step: steps.skip(n: 1).first(), tag: "exchange")
+    && step_is(step: steps.skip(n: 2).first(), tag: "impersonation")
+    && step_is(step: steps.skip(n: 3).first(), tag: "secret_access")
 }
 
 test fn exchange_step_pins_repo_attribute_condition() -> Bool {

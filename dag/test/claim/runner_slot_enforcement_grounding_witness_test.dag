@@ -88,7 +88,7 @@ fn witness_committed_read_is_absent() -> Bool {
 
 fn witness_uncapped_per_slot_unit_refuses_enforcement() -> Bool {
   !is_enforced(e: gunbc.runner_slot_enforcement.runner_slot_enforcement_from_unit_read(
-    read: gunbc.runner_unit_live_read.runner_unit_live_read_typed(gunbc.plans.md_helpers.row: gunbc.runner_unit_live_read.gunbc_srv1_runner_unit_live_read_fixture)
+    read: gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: gunbc.runner_unit_live_read.gunbc_srv1_runner_unit_live_read_fixture)
   ))
 }
 
@@ -105,7 +105,7 @@ fn witness_matching_per_slot_unit_read_grounds_enforced() -> Bool {
     memory_high_raw: "infinity",
     probed_at: "2026-07-14",
   }
-  is_enforced(e: gunbc.runner_slot_enforcement.runner_slot_enforcement_from_unit_read(read: gunbc.runner_unit_live_read.runner_unit_live_read_typed(gunbc.plans.md_helpers.row: gunbc.plans.md_helpers.row)))
+  is_enforced(e: gunbc.runner_slot_enforcement.runner_slot_enforcement_from_unit_read(read: gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: gunbc.plans.md_helpers.row)))
 }
 
 test fn runner_slot_enforcement_grounding_holds() -> Bool {

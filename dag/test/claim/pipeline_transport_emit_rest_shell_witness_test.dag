@@ -13,7 +13,7 @@ fn w_rest_uses_transport_method() -> Bool {
 
 fn w_rest_substitutes_path_template() -> Bool {
   compile_dag_rust_emit_check(
-    "module re1b\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    input { gunbc.tools.review_codex.owner: String, gunbc.tools.review_codex.repo: String }\n    output { name: String }\n    transport rest { method: v2.std.network.GET, path: \"/repos/\{gunbc.tools.review_codex.owner\}/\{gunbc.tools.review_codex.repo\}\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
+    "module re1b\n\nservice test.Svc {\n  config {\n    endpoint: \"https://api.example.com\"\n  }\n  operation GetItem {\n    input { owner: String, repo: String }\n    output { name: String }\n    transport rest { method: v2.std.network.GET, path: \"/repos/\{gunbc.tools.review_codex.owner\}/\{gunbc.tools.review_codex.repo\}\" }\n    response {\n      200 => String\n    }\n    mock_response {\n      200 => \"ok\" \"item\"\n    }\n  }\n}\n",
     "src/re1b.rs",
     ["format!(\"{}", "self.base_url"],
     []

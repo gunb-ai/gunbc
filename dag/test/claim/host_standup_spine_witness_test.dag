@@ -3,7 +3,7 @@ module test.claim.host_standup_spine
 
 data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn spine_step_tag(test.claim.materialization_ladder_witness.step: gunbc.host_standup.HostStandupStep) -> Int {
+fn spine_step_tag(step: gunbc.host_standup.HostStandupStep) -> Int {
   match test.claim.materialization_ladder_witness.step.phase {
     Prefix { phase: gunbc.host_standup.BmcCredentialConverge } => 0
     Prefix { phase: gunbc.host_standup.OsInstallMechanismResolved } => 1
@@ -29,7 +29,7 @@ fn spine_tags_are_linear() -> Bool {
     gunbc.host_standup.host_standup_spine,
     init: SpineTagAcc { ok: true, expected: 0 },
     f: (acc, s) => SpineTagAcc {
-      ok: acc.ok && spine_step_tag(test.claim.materialization_ladder_witness.step: s) == acc.expected,
+      ok: acc.ok && spine_step_tag(step: s) == acc.expected,
       expected: acc.expected + 1
     }
   ).ok

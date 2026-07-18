@@ -20,7 +20,7 @@ test fn dag_compile_clean_scope_disposition_core_discriminates() -> Bool {
     touched: "docs/plans/example.md",
     expect: tools.dag_compile_clean_scope.ExpectWholeTree
   }
-  tools.dag_compile_clean_scope.touched_path_disposition_matches(gunbc.plans.md_helpers.row: wrong_expectation) == false
+  tools.dag_compile_clean_scope.touched_path_disposition_matches(row: wrong_expectation) == false
 }
 
 test fn dag_compile_clean_scope_partition_authority_holds() -> Bool {

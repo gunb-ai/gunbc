@@ -23,12 +23,12 @@ fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
 }
 
 fn witness_step_sequence_only_serializes() -> Bool {
-  let test.claim.materialization_ladder_witness.step = extdeps.languages.yaml.gha_workflow.step_yaml(test.claim.materialization_ladder_witness.step: gunbc.ci_workflow.ci_workflow.jobs.first().steps.first())
+  let test.claim.materialization_ladder_witness.step = extdeps.languages.yaml.gha_workflow.step_yaml(step: gunbc.ci_workflow.ci_workflow.jobs.first().steps.first())
   extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.types.yaml_sequence(elements: concat(extdeps.languages.yaml.types.empty_yaml_values, [test.claim.materialization_ladder_witness.step]))) != ""
 }
 
 fn witness_step_mapping_serializes() -> Bool {
-  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.step_yaml(test.claim.materialization_ladder_witness.step: gunbc.ci_workflow.ci_workflow.jobs.first().steps.first())) != ""
+  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.step_yaml(step: gunbc.ci_workflow.ci_workflow.jobs.first().steps.first())) != ""
 }
 
 fn witness_first_step_is_mapping() -> Bool {
@@ -45,7 +45,7 @@ fn witness_first_step_is_mapping() -> Bool {
 fn witness_one_step_serializes() -> Bool {
   let first = gunbc.ci_workflow.ci_workflow.jobs.first().steps.first()
   extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.types.yaml_mapping(entries: [
-    extdeps.languages.yaml.types.kv(key: "steps", value: extdeps.languages.yaml.types.yaml_sequence(elements: concat(extdeps.languages.yaml.types.empty_yaml_values, [extdeps.languages.yaml.gha_workflow.step_yaml(test.claim.materialization_ladder_witness.step: first)])))
+    extdeps.languages.yaml.types.kv(key: "steps", value: extdeps.languages.yaml.types.yaml_sequence(elements: concat(extdeps.languages.yaml.types.empty_yaml_values, [extdeps.languages.yaml.gha_workflow.step_yaml(step: first)])))
   ])) != ""
 }
 

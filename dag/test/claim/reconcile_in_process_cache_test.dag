@@ -6,7 +6,7 @@ data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInpu
 data shared_subject_digest: ContentHash = "reconcile-in-process-witness-shared-subject-digest"
 
 fn witness_parse_cache_is_in_process_hand_authored() -> Bool {
-  let gunbc.plans.md_helpers.row = extdeps.cache.cache.cache_interface_facts_from_catalog(gunbc.plans.md_helpers.row: extdeps.realization.reconcile_in_process.parse_cache_facts)
+  let gunbc.plans.md_helpers.row = extdeps.cache.cache.cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.parse_cache_facts)
   (extdeps.cache.types.catalog_key_derivation_classification(kd: extdeps.realization.reconcile_in_process.parse_cache_facts.key_derivation) == std.cache_interface.HandAuthoredString)
     && !gunbc.plans.md_helpers.row.key_derivation.content_verified_on_read
     && (gunbc.plans.md_helpers.row.locality == std.cache_interface.InProcess)
@@ -15,7 +15,7 @@ fn witness_parse_cache_is_in_process_hand_authored() -> Bool {
 }
 
 fn witness_typed_module_cache_is_in_process_native_internal() -> Bool {
-  let gunbc.plans.md_helpers.row = extdeps.cache.cache.cache_interface_facts_from_catalog(gunbc.plans.md_helpers.row: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
+  let gunbc.plans.md_helpers.row = extdeps.cache.cache.cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
   (extdeps.cache.types.catalog_key_derivation_classification(kd: extdeps.realization.reconcile_in_process.typed_module_cache_facts.key_derivation) == std.cache_interface.NativeInternalHash)
     && !gunbc.plans.md_helpers.row.key_derivation.content_verified_on_read
     && (gunbc.plans.md_helpers.row.locality == std.cache_interface.InProcess)
@@ -24,16 +24,16 @@ fn witness_typed_module_cache_is_in_process_native_internal() -> Bool {
 }
 
 fn witness_disk_sibling_is_content_addressed() -> Bool {
-  let disk = extdeps.cache.cache.cache_interface_facts_from_catalog(gunbc.plans.md_helpers.row: extdeps.realization.resolved_graph.resolved_graph_cache_facts)
+  let disk = extdeps.cache.cache.cache_interface_facts_from_catalog(row: extdeps.realization.resolved_graph.resolved_graph_cache_facts)
   (extdeps.cache.types.catalog_key_derivation_classification(kd: extdeps.realization.resolved_graph.resolved_graph_cache_facts.key_derivation) == std.cache_interface.ContentAddressedByValue)
     && disk.key_derivation.content_verified_on_read
     && (disk.locality == std.cache_interface.PerHostFilesystem)
 }
 
 fn witness_in_process_siblings_share_locality_not_key_class() -> Bool {
-  let parse = extdeps.cache.cache.cache_interface_facts_from_catalog(gunbc.plans.md_helpers.row: extdeps.realization.reconcile_in_process.parse_cache_facts)
-  let typed = extdeps.cache.cache.cache_interface_facts_from_catalog(gunbc.plans.md_helpers.row: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
-  let disk = extdeps.cache.cache.cache_interface_facts_from_catalog(gunbc.plans.md_helpers.row: extdeps.realization.resolved_graph.resolved_graph_cache_facts)
+  let parse = extdeps.cache.cache.cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.parse_cache_facts)
+  let typed = extdeps.cache.cache.cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
+  let disk = extdeps.cache.cache.cache_interface_facts_from_catalog(row: extdeps.realization.resolved_graph.resolved_graph_cache_facts)
   (parse.locality == typed.locality)
     && (parse.locality == std.cache_interface.InProcess)
     && !(disk.locality == parse.locality)

@@ -49,7 +49,7 @@ fn fitting_headroom_bytes() -> std.measure.ByteSize {
 fn is_unsound(plan: gunbc.fleet_host_budget.FleetHostPlan) -> Bool {
   match plan {
     gunbc.fleet_host_budget.FleetHostPlanUnsound { reason: _ } => true
-    gunbc.fleet_host_budget.FleetHostPlanDerived { name: _, tree: _, gunbc.fleet_host_budget.runner_slice_cap: _, effective_build_tokens: _, effective_runner_cpu_cap: _, build_step: _ } => false
+    gunbc.fleet_host_budget.FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: _, effective_build_tokens: _, effective_runner_cpu_cap: _, build_step: _ } => false
   }
 }
 
@@ -134,7 +134,7 @@ fn witness_margin_exceeds_nproc_saturates() -> Bool {
 
 fn witness_runner_cpu_cap_is_cores_minus_margin() -> Bool {
   match sound_plan() {
-    gunbc.fleet_host_budget.FleetHostPlanDerived { name: _, tree: _, gunbc.fleet_host_budget.runner_slice_cap: _, effective_build_tokens: _, effective_runner_cpu_cap: cpu, build_step: _ } =>
+    gunbc.fleet_host_budget.FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: _, effective_build_tokens: _, effective_runner_cpu_cap: cpu, build_step: _ } =>
       std.measure.hardware_thread_count_value(t: cpu) == 120
     gunbc.fleet_host_budget.FleetHostPlanUnsound { reason: _ } => false
   }
@@ -142,7 +142,7 @@ fn witness_runner_cpu_cap_is_cores_minus_margin() -> Bool {
 
 fn witness_plan_derives_and_conserves() -> Bool {
   match sound_plan() {
-    gunbc.fleet_host_budget.FleetHostPlanDerived { name: _, tree: t, gunbc.fleet_host_budget.runner_slice_cap: slice, effective_build_tokens: tk, effective_runner_cpu_cap: cpu, build_step: _ } =>
+    gunbc.fleet_host_budget.FleetHostPlanDerived { name: _, tree: t, runner_slice_cap: slice, effective_build_tokens: tk, effective_runner_cpu_cap: cpu, build_step: _ } =>
       product.budget_tree.node_conserves(node: t)
         && std.measure.hardware_thread_count_value(t: tk) > 0
         && std.measure.hardware_thread_count_value(t: cpu) > 0

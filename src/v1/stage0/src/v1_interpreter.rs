@@ -2516,7 +2516,15 @@ fn match_pattern(
                         return Some(bindings);
                     }
                     if *variant_name != ctx.sym(name) {
-                        return None;
+                        // Qualified spellings on either side (module.Variant ctor value,
+                        // module.Variant pattern) carry the containment path in the name;
+                        // variant identity is the bare arm name — compare last segments.
+                        let vn = ctx.resolve(*variant_name);
+                        let val_last = vn.rsplit('.').next().unwrap_or(&vn);
+                        let pat_last = name.rsplit('.').next().unwrap_or(name);
+                        if val_last != pat_last {
+                            return None;
+                        }
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
