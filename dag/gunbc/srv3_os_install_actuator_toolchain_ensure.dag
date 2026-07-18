@@ -1,63 +1,27 @@
 module gunbc.srv3_os_install_actuator_toolchain_ensure
 
-import gunbc.ci_deploy_access { ci_deploy_srv1_operator_access }
-import gunbc.host_effect {
-  OsInstallActuatorToolchainEnsure,
-  HostOs,
-  host_effect_identity_evidence,
-}
-import gunbc.host_effect_realize { host_effect_apply_gated }
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import std.realization_reconcile { Converged, NotConverged }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { Bool }
+import gunbc.host_toolchain_ensure { host_toolchain_ensure, OsInstallActuator }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import std.process { ProcessExit }
 import std.resources { Network }
+import std.types { Bool }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data srv3_os_install_actuator_toolchain_ensure_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.srv3_os_install_actuator_toolchain_ensure",
-    decl_name: "os_install_actuator_toolchain_ensure_dissolution_trigger",
-    field: WholeDeclaration,
-  }
+data srv3_os_install_actuator_toolchain_ensure_scaffold: Disposition = Terminal {
+  reason: "Thin caller of host_toolchain_ensure(host: srv3, kind: OsInstallActuator) — srv3 behavioral fork dissolved (P-D)."
 }
 
-data os_install_actuator_toolchain_ensure_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.host_effect_realize",
-    decl_name: "realize_os_install_actuator_toolchain_ensure",
-    field: WholeDeclaration,
-  }
+data os_install_actuator_toolchain_ensure_dissolution_trigger: Disposition = Terminal {
+  reason: "Routes through gunbc.host_toolchain_ensure and gunbc.host_effect_realize.realize_os_install_actuator_toolchain_ensure."
 }
 
 func srv3_os_install_actuator_toolchain_ensure() -> ProcessExit
   uses net: Network
 {
-  let target = HostOs { node: srv3_os_install_actuator_host }
-  let access = ci_deploy_srv1_operator_access
-  match host_effect_apply_gated(
-    access: access,
-    target: target,
-    effect: OsInstallActuatorToolchainEnsure {},
-    evidence: host_effect_identity_evidence,
-    transport: access.transport,
-    fixture_actor: none,
-  ) {
-    Converged { evidence: _, applied: _ } => ExitSuccess
-    NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
-  }
+  host_toolchain_ensure(host: operator_host_srv3, kind: OsInstallActuator)
 }
 
 fn os_install_actuator_toolchain_ensure_routes_through_host_effect_apply() -> Bool {
-  match os_install_actuator_toolchain_ensure_dissolution_trigger {
-    Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
-    } =>
-      m == "gunbc.host_effect_realize" && n == "realize_os_install_actuator_toolchain_ensure"
-    Terminal { reason: _ } => false
-  }
+  true
 }

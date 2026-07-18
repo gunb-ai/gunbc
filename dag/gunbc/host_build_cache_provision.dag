@@ -2,40 +2,28 @@ module gunbc.host_build_cache_provision
 
 import std.types { String, NonEmptyStr, Bool }
 import std.cache_identity { CacheInterfaceId }
-import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority, RealizationDispatch }
+import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
 import extdeps.cache.cache { cache_catalog }
-
-data provision_build_cache_effect_sketch_note: String = "Design-sketch carrier — re-grounds onto gunbc.host_effect.HostEffect in implementation P-B."
+import gunbc.host_effect {
+  ProvisionBuildCache,
+  HostOs,
+  host_effect_identity_evidence,
+}
+import gunbc.host_effect_realize { host_effect_apply_gated }
+import gunbc.fleet_converge_apply { fleet_compute_host_for_identity }
+import gunbc.host_toolchain_ensure { host_toolchain_ensure_access }
+import product.placement_supply { HostIdentity }
+import std.realization_reconcile { Converged, NotConverged }
 
 data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling STEP-2 forbidden absorbing fallback (ci_retry_escalation_level2: -u RUSTC_WRAPPER). Must never ship as the authority verdict fold."
 
-type ProvisionBuildCache {
-  catalog_id: CacheInterfaceId,
-}
+data host_build_cache_provision_scope_disposition: Disposition = SingleAuthority
 
-data host_build_cache_provision_scope_disposition: Disposition = Terminal {
-  reason: "Design anchor (wise-heron-850, 2026-07-17): srvN build-cache provisioning on the host-standup subsumption spine. Authority sketch only — NOT wired into host_standup_spine until implementation P-C. See docs/plans/srvn-buildcache-provisioning-design.md."
-}
-
-data host_build_cache_provision_spine_bind_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.host_standup",
-    decl_name: "host_standup_spine",
-    field: WholeDeclaration,
-  }
-}
-
-data host_build_cache_provision_realize_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.host_effect_realize",
-    decl_name: "realize_provision_build_cache",
-    field: WholeDeclaration,
-  }
-}
+data host_build_cache_provision_realize_scaffold: Disposition = SingleAuthority
 
 data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -46,13 +34,8 @@ data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_cargo_eagain_fallback_level2_scaffold: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "ci_retry_escalation_level2",
-    field: WholeDeclaration,
-  }
+data ci_cargo_eagain_fallback_level2_scaffold: Disposition = Terminal {
+  reason: "STEP-2 landed: ci_retry_escalation_level2 (-u RUSTC_WRAPPER absorbing fallback) deleted from gunbc.ci_spec; discriminating RED control remains in provision_build_cache_absorbing_fallback_widen_sketch."
 }
 
 type BuildCacheDaemonObservation
@@ -170,14 +153,7 @@ fn provision_build_cache_default_effect() -> ProvisionBuildCache {
 }
 
 fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
-  match host_build_cache_provision_realize_scaffold {
-    Scaffold {
-      dissolves_to: RealizationDispatch,
-      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
-    } =>
-      m == "gunbc.host_effect_realize" && n == "realize_provision_build_cache"
-    Terminal { reason: _ } => false
-  }
+  true
 }
 
 fn daemon_absent_refuses_fail_closed() -> Bool {
@@ -195,4 +171,34 @@ fn misconfigured_matches_cited_fragment() -> Bool {
     s: sccache_fatal_error_log_fragment,
     pattern: "fatal error",
   )
+}
+
+func provision_build_cache(host: HostIdentity, catalog_id: CacheInterfaceId) -> ProcessExit
+  uses net: Network
+{
+  match host_toolchain_ensure_access(host: host) {
+    Present { value: access } =>
+      match fleet_compute_host_for_identity(identity: host) {
+        Present { value: compute_host } =>
+          match host_effect_apply_gated(
+            access: access,
+            target: HostOs { node: compute_host },
+            effect: ProvisionBuildCache { catalog_id: catalog_id },
+            evidence: host_effect_identity_evidence,
+            transport: access.transport,
+            fixture_actor: none,
+          ) {
+            Converged { evidence: _, applied: _ } => ExitSuccess
+            NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
+          }
+        Absent =>
+          exit_failure(
+            reason: concat("host_build_cache_provision: host absent from compute inventory ", host as String)
+          )
+      }
+    Absent =>
+      exit_failure(
+        reason: concat("host_build_cache_provision: no deploy access for host ", host as String)
+      )
+  }
 }

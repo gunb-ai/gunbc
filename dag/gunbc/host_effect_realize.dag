@@ -2,7 +2,7 @@ module gunbc.host_effect_realize
 
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
-  Srv3InstallDiagnosticObserve, OsInstallActuatorToolchainEnsure,
+  Srv3InstallDiagnosticObserve, OsInstallActuatorToolchainEnsure, ProvisionBuildCache,
   SetHostnameCas,
   Srv3InstallReconcileObserve,
   DurableApprovalGrantRecord,
@@ -74,6 +74,7 @@ import gunbc.ci_deploy_access {
   deploy_access_decision_reason,
 }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
+import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
 import gunbc.srv3_os_install_reconcile_types {
   srv3_boot_once_approval_grant_path,
   srv3_boot_once_apply_read_back_sleep,
@@ -115,6 +116,7 @@ type ResolvedHostEffectCell =
   | TypedReconcileOnHost { node: ComputeHost, kind: TypedReconcileKind }
   | Srv3DiagnosticObserveOnHost { node: ComputeHost, bmc: String, port: String, iso_path: String, intent_content_hash: String }
   | OsInstallActuatorToolchainOnHost { node: ComputeHost }
+  | ProvisionBuildCacheOnHost { node: ComputeHost, catalog_id: String }
   | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | NbdProxySessionOnHost {
       node: ComputeHost,
@@ -157,6 +159,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           }
         OsInstallActuatorToolchainEnsure {} =>
           OsInstallActuatorToolchainOnHost { node: n }
+        ProvisionBuildCache { catalog_id: id } =>
+          ProvisionBuildCacheOnHost { node: n, catalog_id: id }
         Srv3ReceiptEmit { lines: lines } =>
           ReceiptEmitOnHost { node: n, lines: lines }
         Srv3BootOnceReadBackSleep =>
@@ -187,6 +191,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   srv3_host_effect_script_resolution_failed_cell()
                 OsInstallActuatorToolchainEnsure {} =>
                   srv3_host_effect_script_resolution_failed_cell()
+                ProvisionBuildCache { catalog_id: id } =>
+                  ProvisionBuildCacheOnHost { node: n, catalog_id: id }
                 Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRead =>
@@ -217,6 +223,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
           IncompatibleCell { reason: "host_effect: Srv3InstallDiagnosticObserve is in-band (actuator host shell observe) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         OsInstallActuatorToolchainEnsure {} =>
           IncompatibleCell { reason: "host_effect: OsInstallActuatorToolchainEnsure is in-band (actuator host toolchain) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+        ProvisionBuildCache { catalog_id: _ } =>
+          IncompatibleCell { reason: "host_effect: ProvisionBuildCache is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         Srv3NbdProxyServe { intent: _, lease_key: _ } =>
           IncompatibleCell { reason: "host_effect: Srv3NbdProxyServe is in-band (actuator host long-running session) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
         _ =>
@@ -234,6 +242,8 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   srv3_host_effect_script_resolution_failed_cell()
                 OsInstallActuatorToolchainEnsure {} =>
                   srv3_host_effect_script_resolution_failed_cell()
+                ProvisionBuildCache { catalog_id: _ } =>
+                  IncompatibleCell { reason: "host_effect: ProvisionBuildCache is in-band (per-host sccache daemon) and cannot target BmcController; target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 Srv3InstallReconcileObserve { include_git_meta: _ } => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRecord => srv3_host_effect_script_resolution_failed_cell()
                 DurableApprovalGrantRead =>
@@ -957,6 +967,25 @@ fn realize_os_install_actuator_toolchain_ensure(
   }
 }
 
+fn realize_provision_build_cache(
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match effect_intent.transport {
+    LocalShell | SshShell { ssh_host: _ } => {
+      let observed = run_shell_transport(
+        script: build_cache_provision_shell_script(),
+        transport: effect_intent.transport,
+      )
+      srv3_toolchain_ensure_reconcile(observed: observed, intent: effect_intent)
+    }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      NotConverged {
+        reason: "host_effect_apply: ProvisionBuildCache cannot use EmitArtifactThenThinRun transport; typed mismatch.",
+        applied: effect_intent,
+      }
+  }
+}
+
 fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
   match transport {
     LocalShell => {
@@ -1193,6 +1222,8 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
       )
     OsInstallActuatorToolchainOnHost { node: _ } =>
       realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
+    ProvisionBuildCacheOnHost { node: _, catalog_id: _ } =>
+      realize_provision_build_cache(effect_intent: intent)
     HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
       realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
     NbdProxySessionOnHost { node: _, intent: i, lease_key: k } =>
@@ -1259,6 +1290,8 @@ fn host_effect_apply_gated(
           )
         OsInstallActuatorToolchainOnHost { node: _ } =>
           realize_os_install_actuator_toolchain_ensure(effect_intent: intent)
+        ProvisionBuildCacheOnHost { node: _, catalog_id: _ } =>
+          realize_provision_build_cache(effect_intent: intent)
         HostnameOnHost { node: _, hostnamectl_path: p, base: b, desired: d } =>
           realize_set_hostname_cas_on_host(hostnamectl_path: p, base: b, desired: d, transport: transport, intent: intent)
         NbdProxySessionOnHost { node: _, intent: i, lease_key: k } =>
