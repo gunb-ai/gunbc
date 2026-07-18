@@ -4,6 +4,8 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, quote, cell, row }
 
+
+
 fn emission_ingestion_inverse_body() -> List<MarkdownBlock> {
   [
     quote(blocks: [

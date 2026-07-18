@@ -1,20 +1,5 @@
 module v2.test.manual.branch_infer_fail_open_audit
 
-import v2.compiler.infer { infer }
-import v2.extdeps.languages.dag {
-  dag_pick_if_body_fixture,
-  dag_pick_if_body_from_arms,
-  dag_type_atom_node
-}
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

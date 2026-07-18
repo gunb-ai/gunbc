@@ -1,13 +1,5 @@
 module test.claim.long.import_closure_live
 
-import v2.lens.module_graph { import_closure_live }
-import gunbc.ci_layer_roots { witness_layer_roots }
-import std.algebra { FreeMonoid }
-import v2.std.algebra { contains, for_all, list_snoc_item, fold_list }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

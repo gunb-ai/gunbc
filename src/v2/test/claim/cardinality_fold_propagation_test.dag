@@ -1,12 +1,5 @@
 module v2.test.claim.cardinality_fold_propagation
 
-import v2.std.refinement { Refined, Validation, refine }
-import std.algebra { FreeMonoid }
-import v2.std.algebra { length, list_append, fold_list }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.diagnostic { Locus, Outcome, Accepted, Rejected, port_locus }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

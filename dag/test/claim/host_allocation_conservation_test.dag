@@ -1,14 +1,5 @@
 module test.claim.host_allocation_conservation
 
-import std.logic { Bool }
-import std.measure { byte_size }
-import gunbc.fleet_host_budget {
-  host_allocation_conserves,
-  max_concurrent_sessions,
-  session_pool_bytes,
-  gunbc_runner_pool_budget,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

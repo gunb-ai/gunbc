@@ -1,8 +1,5 @@
 module test.claim.extdeps_github_errors_url_grounding_witness
 
-import extdeps.github.errors { GitHubErrorShape, github_error_example }
-import std.types { NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

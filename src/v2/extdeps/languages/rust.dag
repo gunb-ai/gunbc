@@ -1,296 +1,4 @@
 module v2.extdeps.languages.rust
-import v2.std.language_model { LanguageModel }
-import v2.std.grammar {
-  StampClass,
-  grammar_formal_terminal,
-  grammar_formal_terminal_bound,
-  grammar_formal_terminal_free,
-  grammar_formal_nonterminal_occurrence,
-  grammar_formal_production,
-  formal_productions_catalog_to_node,
-  Choice,
-  FormalGrammarSymbol,
-  FormalProduction,
-  ParseGrammar,
-  GrammarExpr,
-  GrammarProduction,
-  GrammarRoot,
-  ModeledGrammar,
-  Nonterminal,
-  Optional,
-  Repeat,
-  Sequence,
-  Terminal,
-  grammar_carries_symbol,
-  grammar_empty_sync_tokens,
-  grammar_production_to_node,
-  grammar_relation_tokens_node
-}
-import v2.std.compilers.lexing {
-  CharClassPattern,
-  DigitChar,
-  IdentContinueChar,
-  IdentStartChar,
-  LexPattern,
-  LexRule,
-  LexRuleSet,
-  LexRules,
-  LiteralPattern,
-  ModeledLexRules,
-  OneOrMorePattern,
-  RepeatPattern,
-  SequencePattern,
-  TokenRule,
-  TriviaRule,
-  WhitespaceChar,
-  lex_rule_set_token_class_member
-}
-import v2.std.collection {
-  Absent,
-  List,
-  Map,
-  Present,
-  Set,
-  empty_map,
-  list_at_optional,
-  map_insert,
-  optional_absent,
-  optional_present
-}
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.node_query { node_positional_child_targets }
-import v2.std.grounding {
-  PerLanguageFactBundleEntry,
-  PerLanguageFactBundleKey,
-  PerLanguageFactBundleRegistry,
-  empty_per_language_fact_bundle_registry,
-  insert_per_language_fact_bundle_entry,
-  primitive_fact_bundle_for_subject
-}
-import v2.std.model_core {
-  AlgebraInhabitanceDecl,
-  AlgebraLawObligation,
-  EffectSemanticsDecl,
-  EffectSignature,
-  FailClosedAtBoundary,
-  ModelCore,
-  ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisOverflowDisposition,
-  ModelCoreFactAxisRange,
-  ModelCoreFactAxisSignedness,
-  ModelCoreFactAxisSurfaceSpelling,
-  ModelCoreFactAxisWidth,
-  ModelCorePrimitiveFactAxis,
-  PartialOperationDecl,
-  PartialitySemanticsDecl,
-  PrimitiveFactBundle,
-  PrimitiveOperationRef
-}
-import v2.std.compilers.target_model {
-  ConcreteSyntaxToken,
-  FixedToken,
-  BoundToken,
-  concrete_syntax_token_class,
-  concrete_syntax_token_to_node,
-  target_model_emit_transforms_empty,
-  CanonicalOperation,
-  InfixToken,
-  canonical_operation_op_add,
-  canonical_operation_op_sub,
-  canonical_operation_op_mul,
-  canonical_operation_op_div,
-  canonical_operation_op_and,
-  canonical_operation_op_or,
-  canonical_operation_op_lt,
-  canonical_operation_op_le,
-  canonical_operation_op_gt,
-  canonical_operation_op_ge,
-  canonical_operation_op_eq,
-  canonical_operation_op_ne,
-  TargetBindingRefShape,
-  TargetBodiedArrowStatementScaffold,
-  TargetCallApplyShape,
-  TargetClosureShape,
-  TargetEffectApplyShape,
-  TargetConditionalShape,
-  TargetPrimitiveApplyShape,
-  TargetBindLetShape,
-  TargetLoopShape,
-  TargetRecordConstructShape,
-  TargetFieldAccessShape,
-  TargetMatchShape,
-  TargetValueExpressionProjection,
-  grammar_relation_row_attach_bodied_scaffold,
-  target_operator_realization_node,
-  target_operator_realizations_catalog_node,
-  value_expr_projection_bundle_node,
-  Prepend,
-  ValueProducing,
-  derive_bodied_arrow_scaffold,
-  TargetAtomRealization,
-  TargetAtomTypeShape,
-  TargetTypeExpression,
-  target_atom_alias_type_expression,
-  target_value_template_for_kind,
-  TargetFunctionTypeShape,
-  TargetGenericApply,
-  TargetModel,
-  TargetSumTypeShape,
-  TargetTypeExpressionProjection,
-  ValueBoolLiteral,
-  ValueCharUnicodeScalar,
-  ValueSymbolToOwnedString,
-  char_kernel_type_node,
-  symbol_kernel_type_node,
-  target_atom_realization_catalog_node,
-  TargetFunctionSignatureRealization,
-  FunctionBoundaryParam,
-  FunctionBoundaryReturn,
-  target_function_signature_realization_catalog_node,
-  type_expr_projection_step_algebra,
-  TargetUseSiteOwnershipRealization,
-  TargetReferenceLayerTokens,
-  UseSiteOwnershipExactCarrier,
-  UseSiteOwnershipInstantiationHeadCarrier,
-  OwnershipAtFunctionReturn,
-  OwnershipAtFunctionParameter,
-  OwnershipAtStructField,
-  OwnershipAtBindingProjection,
-  ReferenceLayerOwned,
-  ReferenceLayerRc,
-  ReferenceLayerBox,
-  target_carrier_diagnostics_node,
-  target_carrier_node_node,
-  target_carrier_test_claim_node,
-  target_carrier_free_monoid_node,
-  target_carrier_outcome_node,
-  target_carrier_model_core_node,
-  target_carrier_algebra_inhabitance_decl_node,
-  target_carrier_probe_heap_node,
-  target_use_site_ownership_catalog_node,
-  target_value_semantics_carriers_node,
-  target_reference_layer_tokens_node,
-  TargetRepresentation,
-  TargetRepresentationChoice,
-  RequiredTraitWitness,
-  TargetCollectionWitnessOrd,
-  TargetCollectionWitnessHash,
-  TargetCollectionWitnessEq,
-  target_collection_set_carrier_node,
-  TargetCollectionReprBTreeSet,
-  TargetCollectionReprHashSet,
-  TargetCollectionReprVec,
-  target_type_expr_atom_emitted,
-  target_type_expr_arrow_emitted,
-  target_type_expr_surface_edge,
-  target_type_expr_instantiation_emitted,
-  target_type_expr_record_emitted,
-  target_type_expr_sum_emitted,
-  target_type_expr_wrapped_emitted,
-  TargetTypeExprFieldSlot,
-  TargetTypeExprInstantiation,
-  TargetTypeExprVariantSlot
-}
-import v2.std.compilers.semantic_decl_emission {
-  TargetSemanticDeclCoproductDecorationRule,
-  TargetSemanticDeclCoproductEnumSurface,
-  TargetSemanticDeclDecorationLine,
-  TargetSemanticDeclEmission,
-  TargetSemanticDeclSerializeProfile,
-  TargetSemanticDeclSurfaceProjection,
-  semantic_decl_binding_spelling_row,
-  semantic_decl_emission_bundle,
-  semantic_decl_lex_ident_row,
-  semantic_decl_lex_literal_row,
-  semantic_decl_lex_whitespace_trivia_row,
-  semantic_decl_serialize_profile_bundle
-}
-import v2.std.node {
-  Arrow,
-  Atom,
-  Cardinality,
-  Conj,
-  Disj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  Instantiation,
-  SyntheticOccurrence
-}
-import v2.std.logic {
-  Bool,
-  bool_node
-}
-import std.algebra {
-  Empty,
-  Cons
-}
-import v2.std.algebra {
-  algebra_binary_fn_node,
-  approximate_field_node,
-  approximate_field_type_node,
-  boolean_algebra_node,
-  boolean_algebra_type_node,
-  fold_list,
-  fold_list_node,
-  fold_list_right,
-  list_append,
-  list_snoc_item,
-  ordered_ring_node,
-  ordered_ring_type_node
-}
-import v2.std.cardinality { Never }
-import v2.std.host_transport {
-  EmitHostRuntimeRow,
-  TargetEmitHostRuntimeRow,
-  HostRuntimeRowPresent,
-  EmittedWithSuffix,
-  FixedText,
-  FixedWidthBytes,
-  HostToolProgram,
-  HostTransportDescriptor,
-  LiteralArg,
-  ProcessInvocation,
-  WorkspaceFile,
-  target_emit_host_runtime_row_unconfigured
-}
-import v2.std.integer {
-  IntegerIntervalSpec,
-  int8_interval_spec,
-  int16_interval_spec,
-  int32_interval_spec,
-  int64_interval_spec,
-  int128_interval_spec,
-  int_platform_interval_spec,
-  integer_interval_spec_node,
-  uint8_interval_spec,
-  uint16_interval_spec,
-  uint32_interval_spec,
-  uint64_interval_spec,
-  uint128_interval_spec,
-  uint_platform_interval_spec
-}
-import v2.std.text { String }
-import extdeps.languages.rust.emit {
-  rust_enum_derives,
-  rust_enum_derives_copy,
-  rust_struct_derives,
-  rust_struct_derives_copy
-}
 
 type RustIntKind
   = Signed
@@ -1532,7 +1240,6 @@ fn rust_free_monoid_collection_apply_vec() -> TargetGenericApply {
     surface: ^rust_collection_surface_vec,
     open: ^rust_token_lt,
     separator: ^rust_token_comma,
-    field_label_separator: optional_absent(),
     close: ^rust_token_gt
   }
 }
@@ -1811,10 +1518,6 @@ fn rust_target_model_core_edges_full(operator_catalog: Node, rules: Node) -> Lis
       target: value_expr_projection_bundle_node(
         projection: rust_value_expression_projection()
       )
-    ),
-    rust_named_edge(
-      name: ^target_model_edge_semantic_decl_emission,
-      target: rust_semantic_decl_emission_bundle_node()
     ),
     rust_named_edge(
       name: ^target_model_edge_operator_realizations,
@@ -2392,110 +2095,6 @@ fn rust_decl_general_lex() -> LexRules {
   ModeledLexRules { root: rust_decl_general_lex_rules() }
 }
 
-fn rust_semantic_decl_lex_rows() -> List<Node> {
-  [
-    semantic_decl_lex_whitespace_trivia_row(),
-    semantic_decl_lex_literal_row(
-      token_class: ^rust_token_derive_struct,
-      text: rust_decl_derive_lex_spelling(text: rust_struct_derives)
-    ),
-    semantic_decl_lex_literal_row(
-      token_class: ^rust_token_derive_struct_copy,
-      text: rust_decl_derive_lex_spelling(text: rust_struct_derives_copy)
-    ),
-    semantic_decl_lex_literal_row(
-      token_class: ^rust_token_derive_enum,
-      text: rust_decl_derive_lex_spelling(text: rust_enum_derives)
-    ),
-    semantic_decl_lex_literal_row(
-      token_class: ^rust_token_derive_enum_copy,
-      text: rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
-    ),
-    semantic_decl_lex_literal_row(token_class: ^rust_token_kw_struct, text: "struct "),
-    semantic_decl_lex_literal_row(token_class: ^rust_token_kw_enum, text: "enum "),
-    semantic_decl_lex_literal_row(token_class: ^rust_token_generic_lt, text: "<"),
-    semantic_decl_lex_literal_row(token_class: ^rust_token_generic_gt, text: ">"),
-    semantic_decl_lex_literal_row(token_class: ^rust_token_lbrace, text: " { "),
-    semantic_decl_lex_literal_row(token_class: ^rust_token_colon, text: ": "),
-    semantic_decl_lex_literal_row(token_class: ^rust_token_comma, text: ", "),
-    semantic_decl_lex_literal_row(token_class: ^rust_token_rbrace, text: " }"),
-    semantic_decl_lex_ident_row(token_class: ^rust_token_ident)
-  ]
-}
-
-fn rust_semantic_decl_binding_spelling_rows() -> List<Node> {
-  [
-    semantic_decl_binding_spelling_row(
-      binding: ^rust_decl_derive_struct_binding,
-      spelling: rust_decl_derive_lex_spelling(text: rust_struct_derives)
-    ),
-    semantic_decl_binding_spelling_row(
-      binding: ^rust_decl_derive_struct_copy_binding,
-      spelling: rust_decl_derive_lex_spelling(text: rust_struct_derives_copy)
-    ),
-    semantic_decl_binding_spelling_row(
-      binding: ^rust_decl_derive_enum_binding,
-      spelling: rust_decl_derive_lex_spelling(text: rust_enum_derives)
-    ),
-    semantic_decl_binding_spelling_row(
-      binding: ^rust_decl_derive_enum_copy_binding,
-      spelling: rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
-    )
-  ]
-}
-
-fn rust_semantic_decl_serialize_profile_bundle_node() -> Node {
-  semantic_decl_serialize_profile_bundle(
-    lex_rows: rust_semantic_decl_lex_rows(),
-    spelling_rows: rust_semantic_decl_binding_spelling_rows()
-  )
-}
-
-fn rust_semantic_decl_surface_projection() -> TargetSemanticDeclSurfaceProjection {
-  TargetSemanticDeclSurfaceProjection {
-    record_decoration_lines: [
-      TargetSemanticDeclDecorationLine {
-        surface_binding: ^rust_decl_derive_struct_binding
-      }
-    ],
-    field_type_before_name: false,
-    type_expr_field_scope: false,
-    struct_typedef_name_after_fields: false,
-    enum_name_after_variants: false,
-    field_type_permit_only_int: false,
-    coproduct_layout: TargetSemanticDeclCoproductEnumSurface,
-    coproduct_decoration_rules: [
-      TargetSemanticDeclCoproductDecorationRule {
-        shape_key: ^semantic_decl_coproduct_shape_default,
-        decoration_lines: [
-          TargetSemanticDeclDecorationLine {
-            surface_binding: ^rust_decl_derive_enum_binding
-          }
-        ]
-      },
-      TargetSemanticDeclCoproductDecorationRule {
-        shape_key: ^semantic_decl_coproduct_shape_all_variants_nullary,
-        decoration_lines: [
-          TargetSemanticDeclDecorationLine {
-            surface_binding: ^rust_decl_derive_enum_copy_binding
-          }
-        ]
-      }
-    ]
-  }
-}
-
-fn rust_semantic_decl_emission_bundle_node() -> Node {
-  semantic_decl_emission_bundle(
-    identity: ^rust_semantic_decl_emission_identity,
-    enum_translation_rules: rust_enum_general_decl_productions_only_translation_rules(),
-    struct_translation_rules: rust_struct_general_decl_productions_only_translation_rules(),
-    enum_serialize_profile: rust_semantic_decl_serialize_profile_bundle_node(),
-    struct_serialize_profile: rust_semantic_decl_serialize_profile_bundle_node(),
-    surface: rust_semantic_decl_surface_projection()
-  )
-}
-
 fn rust_enum_general_decl_structural_target_model() -> TargetModel {
   TargetModel {
     bundle: Node {
@@ -2588,6 +2187,309 @@ fn rust_struct_general_decl_structural_target_model() -> TargetModel {
   }
 }
 
+fn rust_decl_surface_atom(id: Symbol) -> Node { rust_inhabitant_atom(id: id) }
+
+fn rust_decl_surface_pos(target: Node) -> Edge { Edge { label: Positional, target: target } }
+
+fn rust_decl_surface_conj(children: List<Edge>) -> Node {
+  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
+}
+
+fn rust_decl_surface_nil() -> Node { rust_decl_surface_conj(children: []) }
+
+fn rust_decl_surface_cell(item: Node, rest: Node) -> Node {
+  rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: item), rust_decl_surface_pos(target: rest) ])
+}
+
+fn rust_decl_surface_cons_list(items: List<Node>) -> Node {
+  fold_list_right(
+    xs: items,
+    empty: rust_decl_surface_nil(),
+    snoc: fn(acc, item) { rust_decl_surface_cell(item: item, rest: acc) }
+  )
+}
+
+fn rust_decl_surface_variant_nullary(name: Symbol) -> Node {
+  rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)) ])
+}
+
+fn rust_decl_surface_variant_block(variants: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_cons_list(items: variants)) ])
+}
+
+fn rust_decl_surface_type_expr(t: Symbol) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(
+      target: rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_atom(id: t)) ])
+    )
+  ])
+}
+
+fn rust_decl_surface_field(name: Symbol, t: Symbol) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_type_expr(t: t))
+  ])
+}
+
+fn rust_decl_surface_field_block(fields: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_cons_list(items: fields)) ])
+}
+
+fn rust_decl_surface_variant_payload(name: Symbol, fields: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_field_block(fields: fields))
+  ])
+}
+
+fn rust_decl_surface_derive_attr(binding: Symbol) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: binding))
+  ])
+}
+
+fn rust_decl_surface_enum_nongeneric(name: Symbol, derive_binding: Symbol, variants: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_derive_attr(binding: derive_binding)),
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_variant_block(variants: variants))
+  ])
+}
+
+fn rust_decl_surface_struct_nongeneric(name: Symbol, derive_binding: Symbol, fields: List<Node>) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_derive_attr(binding: derive_binding)),
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_field_block(fields: fields))
+  ])
+}
+
+fn rust_coproduct_field_surface_from_edge(edge: Edge) -> Outcome<Node> {
+  match edge.label {
+    Named { name: fname } =>
+      match edge.target.kind {
+        TypeNode { connective: Atom { identity: tid } } =>
+          outcome_accepted(value: rust_decl_surface_field(name: fname, t: tid))
+        _ =>
+          outcome_rejected(
+            d: rust_signature_diagnostic(reason: ^rust_coproduct_field_type_not_atom, node: edge.target)
+          )
+      }
+    Positional =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_coproduct_field_not_named, node: edge.target)
+      )
+  }
+}
+
+fn rust_coproduct_field_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
+  fold_list(
+    xs: edges,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc_o, edge) {
+      bind_outcome(
+        o: acc_o,
+        f: fn(acc) {
+          bind_outcome(
+            o: rust_coproduct_field_surface_from_edge(edge: edge),
+            f: fn(fnode) { outcome_accepted(value: list_snoc_item(xs: acc, item: fnode)) }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn rust_coproduct_variant_surface_named(vname: Symbol, payload: Node) -> Outcome<Node> {
+  match payload.kind {
+    TypeNode { connective: Conj } =>
+      match payload.children {
+        Empty => outcome_accepted(value: rust_decl_surface_variant_nullary(name: vname))
+        Cons { head: _, tail: _ } =>
+          bind_outcome(
+            o: rust_coproduct_field_surfaces(edges: payload.children),
+            f: fn(fields) {
+              outcome_accepted(value: rust_decl_surface_variant_payload(name: vname, fields: fields))
+            }
+          )
+      }
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_coproduct_variant_payload_not_record, node: payload)
+      )
+  }
+}
+
+fn rust_coproduct_variant_surface_from_edge(edge: Edge) -> Outcome<Node> {
+  match edge.label {
+    Named { name: vname } => rust_coproduct_variant_surface_named(vname: vname, payload: edge.target)
+    Positional =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_coproduct_variant_not_named, node: edge.target)
+      )
+  }
+}
+
+fn rust_coproduct_variant_surfaces(edges: List<Edge>) -> Outcome<List<Node>> {
+  fold_list(
+    xs: edges,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc_o, edge) {
+      bind_outcome(
+        o: acc_o,
+        f: fn(acc) {
+          bind_outcome(
+            o: rust_coproduct_variant_surface_from_edge(edge: edge),
+            f: fn(vnode) { outcome_accepted(value: list_snoc_item(xs: acc, item: vnode)) }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn rust_enum_decl_surface_from_coproduct(name: Symbol, coproduct: Node) -> Outcome<Node> {
+  match coproduct.kind {
+    TypeNode { connective: Disj } => {
+      let derive_binding = rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct)
+      bind_outcome(
+        o: rust_coproduct_variant_surfaces(edges: coproduct.children),
+        f: fn(variants) {
+          outcome_accepted(
+            value: rust_decl_surface_enum_nongeneric(
+              name: name,
+              derive_binding: derive_binding,
+              variants: variants
+            )
+          )
+        }
+      )
+    }
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_enum_decl_surface_source_not_coproduct, node: coproduct)
+      )
+  }
+}
+
+fn rust_struct_decl_surface_from_record(name: Symbol, record: Node) -> Outcome<Node> {
+  match record.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: rust_coproduct_field_surfaces(edges: record.children),
+        f: fn(fields) {
+          outcome_accepted(
+            value: rust_decl_surface_struct_nongeneric(
+              name: name,
+              derive_binding: rust_decl_struct_derive_binding(),
+              fields: fields
+            )
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_struct_decl_surface_source_not_record, node: record)
+      )
+  }
+}
+
+fn rust_decl_surface_type_param_list(params: List<Symbol>) -> Node {
+  fold_list_right(
+    xs: params,
+    empty: rust_decl_surface_nil(),
+    snoc: fn(acc, p) { rust_decl_surface_cell(item: rust_decl_surface_atom(id: p), rest: acc) }
+  )
+}
+
+fn rust_decl_surface_generic_params(params: List<Symbol>) -> Node {
+  rust_decl_surface_conj(children: [ rust_decl_surface_pos(target: rust_decl_surface_type_param_list(params: params)) ])
+}
+
+fn rust_decl_surface_enum_generic(
+  name: Symbol,
+  derive_binding: Symbol,
+  params: List<Symbol>,
+  variants: List<Node>
+) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_derive_attr(binding: derive_binding)),
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_generic_params(params: params)),
+    rust_decl_surface_pos(target: rust_decl_surface_variant_block(variants: variants))
+  ])
+}
+
+fn rust_decl_surface_struct_generic(
+  name: Symbol,
+  derive_binding: Symbol,
+  params: List<Symbol>,
+  fields: List<Node>
+) -> Node {
+  rust_decl_surface_conj(children: [
+    rust_decl_surface_pos(target: rust_decl_surface_derive_attr(binding: derive_binding)),
+    rust_decl_surface_pos(target: rust_decl_surface_atom(id: name)),
+    rust_decl_surface_pos(target: rust_decl_surface_generic_params(params: params)),
+    rust_decl_surface_pos(target: rust_decl_surface_field_block(fields: fields))
+  ])
+}
+
+fn rust_enum_decl_surface_from_coproduct_generic(
+  name: Symbol,
+  params: List<Symbol>,
+  coproduct: Node
+) -> Outcome<Node> {
+  match coproduct.kind {
+    TypeNode { connective: Disj } => {
+      let derive_binding = rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct)
+      bind_outcome(
+        o: rust_coproduct_variant_surfaces(edges: coproduct.children),
+        f: fn(variants) {
+          outcome_accepted(
+            value: rust_decl_surface_enum_generic(
+              name: name,
+              derive_binding: derive_binding,
+              params: params,
+              variants: variants
+            )
+          )
+        }
+      )
+    }
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_enum_decl_surface_source_not_coproduct, node: coproduct)
+      )
+  }
+}
+
+fn rust_struct_decl_surface_from_record_generic(
+  name: Symbol,
+  params: List<Symbol>,
+  record: Node
+) -> Outcome<Node> {
+  match record.kind {
+    TypeNode { connective: Conj } =>
+      bind_outcome(
+        o: rust_coproduct_field_surfaces(edges: record.children),
+        f: fn(fields) {
+          outcome_accepted(
+            value: rust_decl_surface_struct_generic(
+              name: name,
+              derive_binding: rust_decl_struct_derive_binding(),
+              params: params,
+              fields: fields
+            )
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: rust_signature_diagnostic(reason: ^rust_struct_decl_surface_source_not_record, node: record)
+      )
+  }
+}
 
 fn rust_grammar_production_fn_add() -> GrammarProduction {
   GrammarProduction {

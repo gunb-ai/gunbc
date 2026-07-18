@@ -1,9 +1,5 @@
 module v2.lens.grounding_ledger
 
-import std.decl_ref { DeclarationRef }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: RatchetForever

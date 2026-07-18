@@ -2,6 +2,8 @@ module std.bmc
 
 import std.types { NonEmptyStr }
 
+
+
 type BmcProtocol = Redfish | Ipmi
 
 type BmcFirmwareFamily = | OpenBmc

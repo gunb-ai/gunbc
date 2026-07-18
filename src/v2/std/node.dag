@@ -194,16 +194,6 @@ fn node_subtree_nodes(root: Node) -> List<Node> {
   )
 }
 
-fn node_subtree_count(n: Node) -> Int {
-  fold_node(
-    n: n,
-    algebra: NodeFold {
-      init: fn(_) { 1 },
-      step: fn(acc, _edge, child_count) { acc + child_count }
-    }
-  )
-}
-
 type NodeFoldTopDown<A,R> {
   init: fn(Node, A) -> R
   child_context: fn(Node, A, Edge) -> A
@@ -445,6 +435,7 @@ fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
       }
   }
 }
+
 fn all_names_distinct(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
@@ -581,173 +572,6 @@ fn named_edge_sort_key(e: Edge) -> Symbol {
   match e.label {
     Named { name: sym } => sym
     Positional => ^canonical_tag_positional_edge
-  }
-}
-
-fn arrow_signature_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, fn(e) {
-    match e.label {
-      Positional => true
-      Named { name: _ } => false
-    }
-  })
-}
-fn arrow_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, fn(e) {
-    match e.label {
-      Named { name: sym } => sym == ^arrow_body_edge
-      Positional => false
-    }
-  })
-}
-fn arrow_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  sort_by(
-    filter(children, fn(e) {
-      match e.label {
-        Named { name: sym } => sym != ^arrow_body_edge
-        Positional => false
-      }
-    }),
-    fn(e) { named_edge_sort_key(e: e) }
-  )
-}
-fn canonicalize_arrow_children_for_content_hash(children: List<Edge>) -> List<Edge> {
-  concat(
-    arrow_signature_edges_for_content_hash(children: children),
-    concat(
-      arrow_other_named_edges_for_content_hash(children: children),
-      arrow_body_edges_for_content_hash(children: children)
-    )
-  )
-}
-fn loop_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, fn(e) {
-    match e.label {
-      Positional => true
-      Named { name: _ } => false
-    }
-  })
-}
-fn loop_bound_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  filter(children, fn(e) {
-    match e.label {
-      Named { name: sym } => sym == ^loop_bound_edge
-      Positional => false
-    }
-  })
-}
-fn loop_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
-  sort_by(
-    filter(children, fn(e) {
-      match e.label {
-        Named { name: sym } => sym != ^loop_bound_edge
-        Positional => false
-      }
-    }),
-    fn(e) { named_edge_sort_key(e: e) }
-  )
-}
-fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edge> {
-  concat(
-    loop_body_edges_for_content_hash(children: children),
-    concat(
-      loop_other_named_edges_for_content_hash(children: children),
-      loop_bound_edges_for_content_hash(children: children)
-    )
-  )
-}
-fn canonicalize_node_for_content_hash(n: Node) -> Node {
-  let base = node_for_structural_equality(n: n)
-  match node_edge_discipline(n: n) {
-    LabeledEdges =>
-      Node {
-        kind: base.kind,
-        children: sort_by(base.children, fn(e) { named_edge_sort_key(e: e) }),
-        occurrence_id: SyntheticOccurrence
-      }
-    NoEdges =>
-      Node {
-        kind: base.kind,
-        children: base.children,
-        occurrence_id: SyntheticOccurrence
-      }
-    PositionalEdges =>
-      Node {
-        kind: base.kind,
-        children: base.children,
-        occurrence_id: SyntheticOccurrence
-      }
-    ArrowBodyEdges =>
-      Node {
-        kind: base.kind,
-        children: canonicalize_arrow_children_for_content_hash(children: base.children),
-        occurrence_id: SyntheticOccurrence
-      }
-    LoopBoundEdges =>
-      Node {
-        kind: base.kind,
-        children: canonicalize_loop_children_for_content_hash(children: base.children),
-        occurrence_id: SyntheticOccurrence
-      }
-  }
-}
-
-fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
-  let n = canonicalize_node_for_content_hash(n: n)
-  fold(n.children, init: algebra.init(n), f: fn(acc, e) {
-    algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
-  })
-}
-
-fn canonical_hash_of_connective(c: Connective) -> ContentHash {
-  match c {
-    Atom { identity: sym } =>
-      content_hash_combine(
-        left: content_hash_atom(value: ^canonical_tag_atom),
-        right: content_hash_atom(value: sym)
-      )
-    Conj => content_hash_atom(value: ^canonical_tag_conj)
-    Disj => content_hash_atom(value: ^canonical_tag_disj)
-    Arrow => content_hash_atom(value: ^canonical_tag_arrow)
-    Cardinality => content_hash_atom(value: ^canonical_tag_cardinality)
-    Instantiation => content_hash_atom(value: ^canonical_tag_instantiation)
-  }
-}
-
-fn canonical_hash_of_behavior(b: Behavior) -> ContentHash {
-  match b {
-    Value => content_hash_atom(value: ^canonical_tag_value)
-    Transform => content_hash_atom(value: ^canonical_tag_transform)
-    Branch => content_hash_atom(value: ^canonical_tag_branch)
-    Loop => content_hash_atom(value: ^canonical_tag_loop)
-    Bind => content_hash_atom(value: ^canonical_tag_bind)
-    Match => content_hash_atom(value: ^canonical_tag_match)
-  }
-}
-
-fn canonical_hash_of_node_kind(kind: NodeKind) -> ContentHash {
-  match kind {
-    TypeNode { connective: c } =>
-      content_hash_combine(
-        left: content_hash_atom(value: ^canonical_tag_type_node),
-        right: canonical_hash_of_connective(c: c)
-      )
-    ComputationNode { behavior: b } =>
-      content_hash_combine(
-        left: content_hash_atom(value: ^canonical_tag_computation_node),
-        right: canonical_hash_of_behavior(b: b)
-      )
-  }
-}
-
-fn canonical_hash_of_edge_label(label: EdgeLabel) -> ContentHash {
-  match label {
-    Named { name: sym } =>
-      content_hash_combine(
-        left: content_hash_atom(value: ^canonical_tag_named_edge),
-        right: content_hash_atom(value: sym)
-      )
-    Positional => content_hash_atom(value: ^canonical_tag_positional_edge)
   }
 }
 
@@ -1499,31 +1323,6 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> ContentHash {
         )
       )
   }
-}
-
-fn bag_hash_digest(empty: ContentHash, xs: List<ContentHash>) -> ContentHash {
-  fold(
-    sort_by(xs, fn(h) { h }),
-    init: empty,
-    f: fn(acc, h) {
-      combine_hash(a: acc, b: h)
-    }
-  )
-}
-
-fn content_hash(n: Node) -> ContentHash {
-  fold_node_content_hash(
-    n: n,
-    algebra: NodeFold {
-      init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
-      step: fn(acc, e, child_hash) {
-        content_hash_combine(
-          left: content_hash_combine(left: acc, right: canonical_hash_of_edge_label(label: e.label)),
-          right: child_hash
-        )
-      }
-    }
-  )
 }
 
 type NodeQuery

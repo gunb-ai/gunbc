@@ -1,35 +1,5 @@
 module v2.lens.fact_density
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SubstrateMandatoryTag }
 
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.node {
-  Node,
-  Edge,
-  Named,
-  Positional,
-  Connective,
-  Atom,
-  Conj,
-  Disj,
-  Arrow,
-  Cardinality,
-  Instantiation,
-  TypeNode,
-  ComputationNode,
-  Symbol
-}
-import v2.std.nat { Nat, Zero, Succ }
-import v2.std.cardinality { NonZeroNat }
-import v2.std.witness { Holds, Witness }
 fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
   s == ^fact_density_kernel_ambient_string ||
     s == ^fact_density_kernel_ambient_int ||

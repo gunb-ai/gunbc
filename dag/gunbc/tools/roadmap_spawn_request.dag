@@ -1,8 +1,5 @@
 module gunbc.tools.roadmap_spawn_request
 
-import extdeps.git
-import gunbc.roadmap_spawner { roadmap_spawn_request_json }
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 
 func roadmap_next_spawnable() -> String {
   let sha_result = git.Core.HeadCommit()
