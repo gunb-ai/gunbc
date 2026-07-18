@@ -40,8 +40,7 @@ import v2.std.effect_reach {
   ShellExecRunSink,
   GunbcCompileEntrySink,
   UnknownHostEffectSink,
-  effect_reach_host_sink_callee_symbols_v0,
-  effect_reach_gunbc_entry_argv_markers_v0
+  effect_reach_host_sink_callee_symbols_v0
 }
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import v2.std.grammar { node_atom_identity_optional }
