@@ -1893,12 +1893,12 @@ fn rust_decl_derive_binding_spellings() -> Map<Symbol, String> {
   let m2 = map_insert(
     m1,
     ^rust_decl_derive_enum_binding,
-    rust_decl_derive_lex_spelling(text: rust_enum_derives)
+    rust_decl_derive_lex_spelling(text: extdeps.languages.rust.emit.rust_enum_derives)
   )
   map_insert(
     m2,
     ^rust_decl_derive_enum_copy_binding,
-    rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
+    rust_decl_derive_lex_spelling(text: extdeps.languages.rust.emit.rust_enum_derives_copy)
   )
 }
 
@@ -2077,8 +2077,8 @@ fn rust_decl_general_lex_rules() -> LexRuleSet {
       rust_whitespace_trivia_rule(),
       rust_decl_derive_lex_rule(token_class: ^rust_token_derive_struct, text: rust_struct_derives),
       rust_decl_derive_lex_rule(token_class: ^rust_token_derive_struct_copy, text: rust_struct_derives_copy),
-      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_enum, text: rust_enum_derives),
-      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_enum_copy, text: rust_enum_derives_copy),
+      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_enum, text: extdeps.languages.rust.emit.rust_enum_derives),
+      rust_decl_derive_lex_rule(token_class: ^rust_token_derive_enum_copy, text: extdeps.languages.rust.emit.rust_enum_derives_copy),
       rust_lex_rule(token_class: ^rust_token_kw_struct, text: "struct "),
       rust_lex_rule(token_class: ^rust_token_kw_enum, text: "enum "),
       rust_lex_rule(token_class: ^rust_token_generic_lt, text: "<"),
