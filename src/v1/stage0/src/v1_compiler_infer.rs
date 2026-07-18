@@ -2925,28 +2925,70 @@ pub fn infer_expr(
                                 }
                             }
                             None => {
-                                let err_texpr = make_named_expr_node(
-                                    name.clone(),
-                                    Rc::new(ExprData::ExprVar { binding_kind: None }),
-                                    Rc::new(vec![]),
-                                    Some(Rc::new(InferredNode::Resolved { node: error_type() })),
-                                    span.clone(),
-                                    span.clone(),
-                                );
-                                Rc::new(InferResult {
-                                    typed: err_texpr.clone(),
-                                    diagnostics: Rc::new(vec![inference_error(
-                                        v1_rt::concat(
-                                            v1_rt::concat(
-                                                "undefined variable '".to_string(),
-                                                name.clone(),
-                                            ),
-                                            "'".to_string(),
-                                        ),
+                                let expected_variant_enum = match expected.clone() {
+                                    Some(exp) => {
+                                        let exp_enum = expand_scrut_type_for_variant_lookup(
+                                            exp.clone(),
+                                            scope.type_env.clone(),
+                                        );
+                                        match find_child_named(
+                                            exp_enum.clone(),
+                                            name.clone(),
+                                            scope.type_env.source_indices.clone(),
+                                        ) {
+                                            Some(_) => Some(exp_enum.clone()),
+                                            None => None,
+                                        }
+                                    }
+                                    None => None,
+                                };
+                                match expected_variant_enum {
+                                    Some(exp_enum) => ok_infer(make_named_expr_node(
+                                        name.clone(),
+                                        Rc::new(ExprData::ExprVar {
+                                            binding_kind: Some(Rc::new(
+                                                VarBindingKind::VariantValueBinding {
+                                                    parent_enum: authored_name_at(
+                                                        scope.type_env.source_indices.clone(),
+                                                        exp_enum.clone(),
+                                                    ),
+                                                },
+                                            )),
+                                        }),
+                                        Rc::new(vec![]),
+                                        Some(Rc::new(InferredNode::Resolved {
+                                            node: exp_enum.clone(),
+                                        })),
                                         span.clone(),
-                                        scope.module_name.clone(),
-                                    )]),
-                                })
+                                        span.clone(),
+                                    )),
+                                    None => {
+                                        let err_texpr = make_named_expr_node(
+                                            name.clone(),
+                                            Rc::new(ExprData::ExprVar { binding_kind: None }),
+                                            Rc::new(vec![]),
+                                            Some(Rc::new(InferredNode::Resolved {
+                                                node: error_type(),
+                                            })),
+                                            span.clone(),
+                                            span.clone(),
+                                        );
+                                        Rc::new(InferResult {
+                                            typed: err_texpr.clone(),
+                                            diagnostics: Rc::new(vec![inference_error(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        "undefined variable '".to_string(),
+                                                        name.clone(),
+                                                    ),
+                                                    "'".to_string(),
+                                                ),
+                                                span.clone(),
+                                                scope.module_name.clone(),
+                                            )]),
+                                        })
+                                    }
+                                }
                             }
                         }
                     },

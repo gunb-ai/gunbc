@@ -1488,21 +1488,42 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                       ))
                   }
                 Absent =>
-                  let err_texpr = make_named_expr_node(
-                    name: name,
-                    expr_data: ExprVar { binding_kind: none },
-                    children: [],
-                    inferred: Present { value: Resolved { node: error_type } },
-                    span: span,
-                    name_span: span
-                  )
-                  InferResult {
-                    typed: err_texpr,
-                    diagnostics: [inference_error(
-                      message: concat("undefined variable '", name, "'"),
-                      span: span,
-                      module_name: scope.module_name
-                    )]
+                  let expected_variant_enum = match expected {
+                    Present { value: exp } =>
+                      let exp_enum = expand_scrut_type_for_variant_lookup(scrut_node: exp, env: scope.type_env)
+                      match find_child_named(n: exp_enum, name: name, source_indices: scope.type_env.source_indices) {
+                        Present { value: _ } => Present { value: exp_enum }
+                        Absent => none
+                      }
+                    Absent => none
+                  }
+                  match expected_variant_enum {
+                    Present { value: exp_enum } =>
+                      ok_infer(texpr: make_named_expr_node(
+                        name: name,
+                        expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
+                        children: [],
+                        inferred: Present { value: Resolved { node: exp_enum } },
+                        span: span,
+                        name_span: span
+                      ))
+                    Absent =>
+                      let err_texpr = make_named_expr_node(
+                        name: name,
+                        expr_data: ExprVar { binding_kind: none },
+                        children: [],
+                        inferred: Present { value: Resolved { node: error_type } },
+                        span: span,
+                        name_span: span
+                      )
+                      InferResult {
+                        typed: err_texpr,
+                        diagnostics: [inference_error(
+                          message: concat("undefined variable '", name, "'"),
+                          span: span,
+                          module_name: scope.module_name
+                        )]
+                      }
                   }
               }
           }
