@@ -3215,7 +3215,6 @@ pub fn resolve_item_types(
                         tp_name.clone(),
                         true,
                     ),
-                    global_bare: e.global_bare.clone(),
                     symbol_index: e.symbol_index.clone(),
                 })
             },

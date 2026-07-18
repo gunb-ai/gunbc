@@ -369,7 +369,7 @@ data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow =
   module_path: "src/v2/compiler/materialization_carriers.dag",
   closure_reads: 35,
   measured_blocker: EmitSurfaceGap,
-  migration_trigger: ^migrate_when_materialize_spine_lane_lands
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
