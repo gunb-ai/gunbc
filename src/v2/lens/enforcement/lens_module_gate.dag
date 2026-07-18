@@ -4,13 +4,13 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import v2.lens.module_graph { ModuleDeclarationFact }
 import v2.lens.registry {
   Bound, LensIdV0, Unbound, lens_registry_v0,
-  BashCompositionRecognizer, Complexity, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
+  Complexity, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
   ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
   DocReachability, DuplicateComputation, ExtdepsExternalAuthority, ExtdepsShapeTransportPolicy,
   FactCardinality, FactDensity, FnFamily, Grounding, HostLanguageTransportScript,
   IdenticalVariantPayload, InertCarrier, InertLens, IntentLinearity, InterfaceSummary,
   LanguagesConsumerCensus, LayeringImports, LeafModelVerification, LiveReadClassification,
-  MachineShape, MediumStructureContainment, MockTotality, MutationAdequacy, NonFoldResidue,
+  MachineShape, MockTotality, MutationAdequacy, NonFoldResidue,
   RealizationVocabularyContainment, ScheduleLens, SimulatedRelationship, StructuralSimilarity,
   Subsumption, Synthesis, TestMigrationDebt, UnitModeling, Vacuity, Visibility, WiringLiveness,
   WitnessCostLocality, Determinism, UnusedParameters, StructuralResolution, TableDecisionTree,
@@ -180,13 +180,6 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       remedy: RemedyShare,
       admission: GenuinelyNewInvariant
     }
-    BashCompositionRecognizer => LensInvariantSurface {
-      module: module,
-      projection: ProjectionShellProgram,
-      verdict_authority: VerdictLensVerdict,
-      remedy: RemedyReport,
-      admission: GenuinelyNewInvariant
-    }
     FnFamily => LensInvariantSurface {
       module: module,
       projection: ProjectionDeclForest,
@@ -335,13 +328,6 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       admission: GenuinelyNewInvariant
     }
     ExtdepsShapeTransportPolicy => LensInvariantSurface {
-      module: module,
-      projection: ProjectionNodeDag,
-      verdict_authority: VerdictFidelityVerdict,
-      remedy: RemedyReport,
-      admission: GenuinelyNewInvariant
-    }
-    MediumStructureContainment => LensInvariantSurface {
       module: module,
       projection: ProjectionNodeDag,
       verdict_authority: VerdictFidelityVerdict,

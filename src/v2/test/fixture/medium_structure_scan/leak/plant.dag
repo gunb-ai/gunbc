@@ -1,3 +1,0 @@
-module v2.test.fixture.medium_structure_scan.leak_plant
-
-data planted_medium_structure_dissolution_note: String = "RawLine.text smuggling vector dissolved with sidecar FULL DELETE PR-B/PR-C (program.dag deleted). This fixture root stays enrolled so planted_leak_test proves the vector is gone: violation_count_live == 0 under explicit scan."

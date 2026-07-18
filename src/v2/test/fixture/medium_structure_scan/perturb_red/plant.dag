@@ -1,3 +1,0 @@
-module v2.test.fixture.medium_structure_scan.perturb_red_plant
-
-data perturb_red_dissolution_note: String = "RawLine.text perturb fixture dissolved with sidecar FULL DELETE PR-B/PR-C. perturb_red_test now verifies canonical containment stays Holds when this inert root is appended."
