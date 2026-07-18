@@ -12086,15 +12086,14 @@ pub fn analyze_rc_match(
             ExprData::ExprCall { .. } => true,
             _ => false,
         };
-        let needs_option_deref_scrut = if (scrutinee_is_optional.clone()
-            && scrutinee_option_rc_inner.clone())
-        {
-            true
-        } else if (!scrutinee_is_optional.clone() && scrutinee_is_rc_wrapped.clone()) {
-            true
-        } else {
-            false
-        };
+        let needs_option_deref_scrut =
+            if (scrutinee_is_optional.clone() && scrutinee_option_rc_inner.clone()) {
+                true
+            } else if (!scrutinee_is_optional.clone() && scrutinee_is_rc_wrapped.clone()) {
+                true
+            } else {
+                false
+            };
         RcMatchAnalysis {
             needs_rc_option_ref: ((arms_want_option.clone() && scrutinee_is_call.clone())
                 && !scrutinee_is_optional.clone()),
