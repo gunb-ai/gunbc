@@ -3307,6 +3307,30 @@ pub fn infer_expr(
                             field_name.clone(),
                             scope.type_env.clone().source_indices.clone(),
                         );
+                        if std::env::var("GUNBC_FIELD_PROBE2").is_ok() && field_name == "member" {
+                            let dump = |n: &Rc<Node>| {
+                                format!(
+                                    "name={} conn={:?} kids={:?}",
+                                    n.name,
+                                    n.connective,
+                                    n.children
+                                        .iter()
+                                        .map(|c| c.name.clone())
+                                        .collect::<std::vec::Vec<_>>()
+                                )
+                            };
+                            eprintln!(
+                                "FIELD2 field={} base_rt[{}] resolved_base[{}] hit={} ftype[{}]",
+                                field_name,
+                                dump(&base_rt),
+                                dump(&resolved_base),
+                                field_type_lookup.is_some(),
+                                field_type_lookup
+                                    .as_ref()
+                                    .map(|f| dump(f))
+                                    .unwrap_or_default(),
+                            );
+                        }
                         match field_type_lookup.clone() {
                             Some(field_type) => {
                                 let field_summary = match field_summary_for_type(

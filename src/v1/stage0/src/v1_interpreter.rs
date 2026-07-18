@@ -1368,10 +1368,14 @@ impl InterpContext {
         let mut fn_nodes = HashMap::new();
         let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
+            let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
                     fn_nodes.insert(name.clone(), item.clone());
+                    if !module_path.is_empty() {
+                        fn_nodes.insert(format!("{}.{}", module_path, name), item.clone());
+                    }
                 }
                 // Service-item detection is node-local: the item node carries the
                 // `transport` that *defines* it as a service, so `item_kind` of the
