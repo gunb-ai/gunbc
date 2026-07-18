@@ -80,43 +80,41 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
 }
 
 pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
-    {
-        let names = container_param_names_for(kind_name.clone());
-        match Rc::new({
+    let names = container_param_names_for(kind_name.clone());
+    match Rc::new({
+        let mut __result = Vec::new();
+        for pair in Rc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new({
-                let mut __result = Vec::new();
-                for pair in Rc::new(
-                    names
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .enumerate()
-                        .map(|(i, v)| (i as i64, v))
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                {
-                    if (pair.0.clone() == index.clone()) {
-                        __result.push(pair);
-                    }
-                }
-                __result
-            })
+            for pair in Rc::new(
+                names
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
             .iter()
             .cloned()
             {
-                __result.push(pair.1.clone());
+                if (pair.0.clone() == index.clone()) {
+                    __result.push(pair);
+                }
             }
             __result
         })
-        .first()
+        .iter()
         .cloned()
         {
-            Some(name) => Some(name.clone()),
-            None => None,
+            __result.push(pair.1.clone());
         }
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(name) => Some(name.clone()),
+        None => None,
     }
 }
 
