@@ -9354,6 +9354,11 @@ fn entry_qualifies_for_skip_without_resolve(
     if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
+    // Additive touch evidence only (Phase 0 effect-reach): a path-literal match may
+    // convert would-skip → run; absence never enables skip beyond today's rules.
+    if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
+        return Ok(false);
+    }
     if !diff_edits.overlapping_data_items.is_empty() {
         let data_item_files: Vec<String> = diff_edits
             .overlapping_data_items
@@ -12474,6 +12479,102 @@ mod node_frontier_plumbing_controls {
         assert!(
             !super::effect_reach_touched_via_path_literals(entry, &facts, &unrelated),
             "unrelated path must not select the 03_normalize behavioral witness"
+        );
+    }
+
+    // Phase 0 monotone-toward-RUN (bridge a): derived census may only UPGRADE toward
+    // ReadsLiveTree — a declared/disposition row must never downgrade because the census
+    // returns empty for its closure.
+    #[test]
+    fn effect_reach_derived_reads_live_tree_never_downgrades_declared_row() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let facts = super::build_module_graph_facts_live(&roots);
+        let entry = "src/v2/test/claim/long/s1_closure_receipt_test.dag";
+        let content = std::fs::read_to_string(ws.join(entry)).expect("s1_closure readable");
+        assert!(
+            super::parse_entry_live_tree_disposition(entry, &content).expect("parse disposition"),
+            "precondition: s1_closure declares ReadsLiveTree"
+        );
+        assert!(
+            !super::effect_reach_derived_reads_live_tree_for_entry(entry, &facts),
+            "precondition: empty census for s1_closure closure (no path-literal→sink flows)"
+        );
+        let mut rows = vec![super::DiscoveryRow {
+            label: "live".to_string(),
+            entry: entry.to_string(),
+            function: "s1_closure_parses_holds".to_string(),
+            reads_live_tree: true,
+        }];
+        super::apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
+        assert!(
+            rows[0].reads_live_tree,
+            "declared ReadsLiveTree must survive apply_effect_reach even when census is empty"
+        );
+    }
+
+    // Phase 0 monotone-toward-RUN (bridge b): effect_reach_touched is additive touch
+    // evidence — it may block skip on literal match but absence must not enable skip
+    // beyond today's rules for a hermetic entry.
+    #[test]
+    fn effect_reach_touched_additive_only_hermetic_baseline_unchanged() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = abs(&ws, FIXTURE);
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let unrelated = vec!["src/v2/std/logic.dag".to_string()];
+        assert!(
+            !super::effect_reach_touched_via_path_literals(
+                &fixture_abs,
+                &index.module_graph_facts,
+                &unrelated,
+            ),
+            "hermetic fixture must not match unrelated path literals"
+        );
+        assert!(
+            super::entry_qualifies_for_skip_without_resolve(
+                &fixture_abs,
+                false,
+                &index.module_graph_facts,
+                &declared,
+                &unrelated,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "absence of literal match must not change skip eligibility for hermetic entry"
+        );
+    }
+
+    #[test]
+    fn effect_reach_touched_additive_blocks_skip_on_literal_match() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
+        let entry_abs = abs(&ws, entry);
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched = vec!["src/v2/compiler/03_normalize.dag".to_string()];
+        assert!(
+            !super::entry_qualifies_for_skip_without_resolve(
+                &entry_abs,
+                false,
+                &index.module_graph_facts,
+                &declared,
+                &touched,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "literal-path touch must convert would-skip into run (additive only)"
         );
     }
 
