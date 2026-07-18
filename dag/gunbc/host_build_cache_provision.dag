@@ -8,8 +8,9 @@ import std.process { ProcessExit, exit_failure }
 import std.resources { Network }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
 import gunbc.host_build_cache_catalog_gate {
-  catalog_id_is_known,
-  provision_build_cache_catalog_refusal_reason,
+  provision_build_cache_catalog_gate_verdict,
+  ProvisionBuildCacheCatalogRealizable,
+  ProvisionBuildCacheCatalogRefused,
 }
 import gunbc.host_effect { HostEffect, ProvisionBuildCache }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
@@ -119,28 +120,29 @@ fn provision_build_cache_verdict(
   catalog_id: CacheInterfaceId,
   observed: BuildCacheDaemonObservation,
 ) -> BuildCacheProvisionVerdict {
-  if !catalog_id_is_known(catalog_id: catalog_id) {
-    ProvisionRefused {
-      cause: RefusalCatalogUnknown,
-      reason: concat("host_build_cache_provision: unknown catalog_id ", catalog_id) as NonEmptyStr,
-    }
-  } else {
-    match observed {
-      DaemonStatsOk { stats_line: line } =>
-        ProvisionConverged { catalog_id: catalog_id, stats_line: line }
-      DaemonAbsent =>
-        ProvisionRefused {
-          cause: RefusalDaemonAbsent,
-          reason: "host_build_cache_provision: sccache daemon absent; fail-closed, no local-build fallback" as NonEmptyStr,
-        }
-      DaemonUnresponsive { detail: d } =>
-        ProvisionRefused { cause: RefusalDaemonUnresponsive, reason: d }
-      DaemonMisconfigured { matched_fragment: frag, detail: d } =>
-        ProvisionRefused {
-          cause: RefusalDaemonMisconfigured,
-          reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
-        }
-    }
+  match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
+    ProvisionBuildCacheCatalogRefused { reason: reason } =>
+      ProvisionRefused {
+        cause: RefusalCatalogUnknown,
+        reason: reason,
+      }
+    ProvisionBuildCacheCatalogRealizable =>
+      match observed {
+        DaemonStatsOk { stats_line: line } =>
+          ProvisionConverged { catalog_id: catalog_id, stats_line: line }
+        DaemonAbsent =>
+          ProvisionRefused {
+            cause: RefusalDaemonAbsent,
+            reason: "host_build_cache_provision: sccache daemon absent; fail-closed, no local-build fallback" as NonEmptyStr,
+          }
+        DaemonUnresponsive { detail: d } =>
+          ProvisionRefused { cause: RefusalDaemonUnresponsive, reason: d }
+        DaemonMisconfigured { matched_fragment: frag, detail: d } =>
+          ProvisionRefused {
+            cause: RefusalDaemonMisconfigured,
+            reason: concat(concat(concat("host_build_cache_provision: ", frag), ": "), d) as NonEmptyStr,
+          }
+      }
   }
 }
 
@@ -183,8 +185,8 @@ fn misconfigured_matches_cited_fragment() -> Bool {
 func provision_build_cache(host: HostIdentity, catalog_id: CacheInterfaceId) -> ProcessExit
   uses net: Network
 {
-  match provision_build_cache_catalog_refusal_reason(catalog_id: catalog_id) {
-    Present { value: reason } => exit_failure(reason: reason as String)
-    Absent => host_toolchain_ensure(host: host, kind: BuildCache)
+  match provision_build_cache_catalog_gate_verdict(catalog_id: catalog_id) {
+    ProvisionBuildCacheCatalogRefused { reason: reason } => exit_failure(reason: reason as String)
+    ProvisionBuildCacheCatalogRealizable => host_toolchain_ensure(host: host, kind: BuildCache)
   }
 }

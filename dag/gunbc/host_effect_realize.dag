@@ -75,7 +75,11 @@ import gunbc.ci_deploy_access {
 }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
-import gunbc.host_build_cache_catalog_gate { provision_build_cache_catalog_refusal_reason }
+import gunbc.host_build_cache_catalog_gate {
+  provision_build_cache_catalog_gate_verdict,
+  ProvisionBuildCacheCatalogRealizable,
+  ProvisionBuildCacheCatalogRefused,
+}
 import extdeps.cache.sccache { sccache_local_id }
 import gunbc.srv3_os_install_reconcile_types {
   srv3_boot_once_approval_grant_path,
@@ -985,10 +989,10 @@ fn realize_provision_build_cache(
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match effect_intent.effect {
     ProvisionBuildCache { catalog_id: id } =>
-      match provision_build_cache_catalog_refusal_reason(catalog_id: id) {
-        Present { value: reason } =>
+      match provision_build_cache_catalog_gate_verdict(catalog_id: id) {
+        ProvisionBuildCacheCatalogRefused { reason: reason } =>
           NotConverged { reason: reason as String, applied: effect_intent }
-        Absent =>
+        ProvisionBuildCacheCatalogRealizable =>
           match effect_intent.transport {
             LocalShell =>
               realize_provision_build_cache_body(
