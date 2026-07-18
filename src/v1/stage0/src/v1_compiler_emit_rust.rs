@@ -8445,6 +8445,17 @@ pub fn rust_phantom_field_name() -> String {
     "_phantom".to_string()
 }
 
+pub fn type_has_fn_fields(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
+    match v1_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
+        Some(ts) => ts.has_fn_fields.clone(),
+        None => false,
+    }
+}
+
+pub fn struct_needs_serde(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
+    !type_has_fn_fields(name.clone(), emit_info.clone())
+}
+
 pub fn emit_struct_from_children(
     name: String,
     type_params: String,
@@ -8456,10 +8467,7 @@ pub fn emit_struct_from_children(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let has_fn_fields = match v1_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
-            Some(ts) => ts.has_fn_fields.clone(),
-            None => false,
-        };
+        let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
         let derives = if has_fn_fields.clone() {
             "#[derive(Clone)]".to_string()
         } else {
@@ -8937,34 +8945,44 @@ pub fn emit_struct_field_from_child(
                 generic_ty.clone()
             }
         };
-        let rename_attr = match Rc::new({
-            let mut __result = Vec::new();
-            for p in child.properties.clone().iter().cloned() {
-                if (field_init_node_name_at(p.clone(), env.source_indices.clone())
-                    == "from_key".to_string())
-                {
-                    __result.push(p);
+        let needs_serde = struct_needs_serde(struct_name.clone(), emit_info.clone());
+        let rename_attr = if !needs_serde.clone() {
+            "".to_string()
+        } else {
+            match Rc::new({
+                let mut __result = Vec::new();
+                for p in child.properties.clone().iter().cloned() {
+                    if (field_init_node_name_at(p.clone(), env.source_indices.clone())
+                        == "from_key".to_string())
+                    {
+                        __result.push(p);
+                    }
                 }
+                __result
+            })
+            .first()
+            .cloned()
+            {
+                Some(prop) => {
+                    match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
+                        ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
+                            LiteralValue::LitStr { value: key, .. } => v1_rt::concat(
+                                v1_rt::concat(
+                                    "    ".to_string(),
+                                    apply_type_template1(
+                                        rust_serde_rename_template_text(),
+                                        key.clone(),
+                                    ),
+                                ),
+                                "\n".to_string(),
+                            ),
+                            _ => "".to_string(),
+                        },
+                        _ => "".to_string(),
+                    }
+                }
+                None => "".to_string(),
             }
-            __result
-        })
-        .first()
-        .cloned()
-        {
-            Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
-                ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
-                    LiteralValue::LitStr { value: key, .. } => v1_rt::concat(
-                        v1_rt::concat(
-                            "    ".to_string(),
-                            apply_type_template1(rust_serde_rename_template_text(), key.clone()),
-                        ),
-                        "\n".to_string(),
-                    ),
-                    _ => "".to_string(),
-                },
-                _ => "".to_string(),
-            },
-            None => "".to_string(),
         };
         emit_rust_field_definition(
             authored_name(env.clone(), child.clone()),
@@ -8972,6 +8990,7 @@ pub fn emit_struct_field_from_child(
             rename_attr.clone(),
             "    ".to_string(),
             rust_visibility_prefix(),
+            needs_serde.clone(),
         )
     }
 }
@@ -8982,22 +9001,24 @@ pub fn emit_rust_field_definition(
     rename_attr: String,
     indent: String,
     visibility: String,
+    needs_serde: bool,
 ) -> String {
     {
         let snake = to_snake(authored.clone());
         let emitted = emit_ident(authored.clone(), RenderTarget::Rust);
-        let keyword_rename =
-            if ((emitted.clone() != snake.clone()) && (rename_attr.clone() == "".to_string())) {
+        let keyword_rename = if ((needs_serde.clone() && (emitted.clone() != snake.clone()))
+            && (rename_attr.clone() == "".to_string()))
+        {
+            v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(indent.clone(), "#[serde(rename = \"".to_string()),
-                        snake.clone(),
-                    ),
-                    "\")]\n".to_string(),
-                )
-            } else {
-                "".to_string()
-            };
+                    v1_rt::concat(indent.clone(), "#[serde(rename = \"".to_string()),
+                    snake.clone(),
+                ),
+                "\")]\n".to_string(),
+            )
+        } else {
+            "".to_string()
+        };
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -9939,6 +9960,7 @@ pub fn emit_variant_from_child(
                                             "".to_string(),
                                             "        ".to_string(),
                                             "".to_string(),
+                                            true,
                                         )
                                     });
                                 }
@@ -9996,6 +10018,7 @@ pub fn emit_variant_from_child(
                                     "".to_string(),
                                     "        ".to_string(),
                                     "".to_string(),
+                                    true,
                                 )
                             });
                         }
