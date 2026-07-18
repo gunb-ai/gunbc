@@ -9654,11 +9654,11 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
             return;
         }
     };
-    // Host budget: the SAME cgroup source the MemoryGovernor reads. Unreadable ->
-    // the modeled law refuses (BudgetRefused), never a fabricated width.
-    let budget_bytes: Option<i64> = crate::memory_governor::binding_high_cgroup_dir()
-        .and_then(|dir| crate::memory_governor::read_cgroup_u64(&dir, "memory.high"))
-        .map(|b| b as i64);
+    // Host budget: the SAME single authority the MemoryGovernor schedules against
+    // (env -> cgroup memory.high -> memory.max -> meminfo). Unreadable -> the modeled
+    // law refuses (BudgetRefused), never a fabricated width.
+    let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
+    let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
     let independence: i64 = std::thread::available_parallelism()
         .map(|n| n.get() as i64)
         .unwrap_or(1);
@@ -9737,10 +9737,14 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
     }
     eprintln!(
         "[realize-advisory] summary: {} function(s), {} with a derived bound, \
-         {} unknown (maturation reserve)",
+         {} unknown (maturation reserve); budget={} source={}",
         derivable + unknown,
         derivable,
-        unknown
+        unknown,
+        budget_bytes
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".to_string()),
+        budget_source,
     );
 }
 

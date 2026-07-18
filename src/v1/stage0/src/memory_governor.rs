@@ -598,33 +598,10 @@ impl MemoryGovernor {
     /// governor replaces the plan-evaluated spawn width, so its one log line is the
     /// width story for the run.
     pub fn from_environment(max_width: usize) -> MemoryGovernor {
-        let env_budget = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
-            .ok()
-            .and_then(|s| s.trim().parse::<u64>().ok());
-        let high_dir = binding_high_cgroup_dir();
-        let cap_dir = binding_cap_cgroup_dir();
-        let (budget, source_label) = if let Some(b) = env_budget {
-            (Some(b), "env GUNBC_MEMORY_BUDGET_BYTES".to_string())
-        } else if let Some(dir) = &high_dir {
-            (
-                read_cgroup_u64(dir, "memory.high"),
-                format!("cgroup memory.high ({})", dir.display()),
-            )
-        } else if let Some(dir) = &cap_dir {
-            (
-                read_cgroup_u64(dir, "memory.max"),
-                format!("cgroup memory.max ({})", dir.display()),
-            )
-        } else if let Some(avail) = mem_available_bytes() {
-            // No cgroup line binds: the kernel's own availability estimate is the honest
-            // pipe — it excludes the co-tenant baseline (runner agent, system services)
-            // that MemTotal would hand to the floor (CI run 29180195694: budget=MemTotal
-            // let demand reach physical RAM and starve the runner agent itself).
-            (Some(avail), "/proc/meminfo MemAvailable".to_string())
-        } else {
-            (mem_total_bytes(), "/proc/meminfo MemTotal".to_string())
-        };
-        let sensor_dir = high_dir.or(cap_dir).or_else(leaf_cgroup_dir);
+        let (budget, source_label) = read_host_budget_bytes();
+        let sensor_dir = binding_high_cgroup_dir()
+            .or_else(binding_cap_cgroup_dir)
+            .or_else(leaf_cgroup_dir);
         let limits = GovernorLimits {
             budget_bytes: budget,
             budget_source: source_label,
@@ -844,6 +821,39 @@ impl Drop for AdmittedSlot {
 // ---- measurement lines consume these same readers) ----
 
 /// The cgroup directory whose `memory.max` is the TIGHTEST along the `/proc/self/cgroup`
+/// The host memory budget in bytes to admit against: env override -> cgroup
+/// memory.high -> memory.max -> /proc/meminfo MemAvailable -> MemTotal, with a
+/// readable source label. Single authority shared by the MemoryGovernor (which
+/// SCHEDULES against it) and the P4 realize advisory (which PREDICTS against it) —
+/// the advisory must price against the same budget the governor uses, never a
+/// partial re-read (§3 single authority).
+pub fn read_host_budget_bytes() -> (Option<u64>, String) {
+    if let Some(b) = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+    {
+        return (Some(b), "env GUNBC_MEMORY_BUDGET_BYTES".to_string());
+    }
+    if let Some(dir) = binding_high_cgroup_dir() {
+        return (
+            read_cgroup_u64(&dir, "memory.high"),
+            format!("cgroup memory.high ({})", dir.display()),
+        );
+    }
+    if let Some(dir) = binding_cap_cgroup_dir() {
+        return (
+            read_cgroup_u64(&dir, "memory.max"),
+            format!("cgroup memory.max ({})", dir.display()),
+        );
+    }
+    if let Some(avail) = mem_available_bytes() {
+        // The kernel's own availability estimate excludes the co-tenant baseline
+        // (runner agent, system services) that MemTotal would hand to the floor.
+        return (Some(avail), "/proc/meminfo MemAvailable".to_string());
+    }
+    (mem_total_bytes(), "/proc/meminfo MemTotal".to_string())
+}
+
 /// leaf→root walk — the effective budget the OOM-killer enforces. `None` when unreadable
 /// or no ancestor sets a numeric cap.
 pub fn binding_cap_cgroup_dir() -> Option<PathBuf> {
