@@ -8,7 +8,7 @@ const ENTRY: &str = "src/v2/test/claim/manual/pbp_body_producer_perf_repro.dag";
 
 const WRONG_TYPE_SRC: &str = r#"module v2.test.manual.pbp_body_producer_wrong_type_repro
 
-import v2.compiler.ingested_fixture_arrows { ingested_add_arrow_with_body }
+import v2.compiler.body_producer { produce_add_arrow_with_body_from_resolved }
 import v2.std.logic { Bool }
 import v2.std.integer { Int }
 

@@ -1,34 +1,5 @@
 module test.claim.bmc_wif_delegation_chain_witness
 
-import std.logic { Bool }
-import std.types { List, String }
-import gunbc.ci_workflow { ci_workflow }
-import gunbc.assimilate.bmc_token_federation {
-  bmc_wif_attribute_condition,
-  bmc_assimilator_sa_email,
-  bmc_role_allowed,
-  bmc_token_smoke_workflow,
-  bmc_token_smoke_job
-}
-import gunbc.assimilate.bmc_wif_delegation_chain {
-  CredentialDelegationStep,
-  GhaOidcIssuance, WifTokenExchange, ServiceAccountImpersonation, SecretVersionAccess,
-  bmc_wif_canary_delegation_chain,
-  bmc_wif_signed_grants,
-  bmc_wif_bootstrap_bindings,
-  bmc_wif_canary_grant,
-  bmc_srv3_admin_access_grant,
-  wif_canary_secret_ref,
-  bmc_srv3_admin_secret_ref,
-  srv3_credential_path_options,
-  OperatorOneHourToken, ActorPinnedWorkflowDispatch, DedicatedActuatorIdentity, ExistingAssimilatorSaBinding,
-  bmc_srv3_admin_legacy_binding,
-  bound_secret_read_capabilities
-}
-import gunbc.auth.secret_access_grant { grant_is_signed, grant_is_legacy }
-import gunbc.auth.secret_ref_credential { secret_ref_credential_authority }
-import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource, secret_ref_hash_known }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

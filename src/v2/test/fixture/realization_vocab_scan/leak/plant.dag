@@ -1,2 +1,1 @@
 module v2.test.fixture.realization_vocab_scan.leak_plant
-import extdeps.languages.bash.program { ShellStmt }

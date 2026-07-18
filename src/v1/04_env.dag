@@ -1,8 +1,5 @@
 module v1.compiler.infer_env
 
-import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at }
-import std.types { SourceSpan }
-import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
@@ -319,7 +316,7 @@ fn union_variant_locals_into_acc(acc: Map<String, TypeBinding>, overlay: Map<Str
       Present { value: incoming } =>
         match map_get(m, name) {
           Absent => map_insert(m, name, incoming)
-          Present { value: existing } => if binding_same_authority(a: existing, b: incoming) { m } else { map_insert(m, name, incoming) }
+          Present { value: _existing } => map_insert(m, name, incoming)
         }
     }
   )

@@ -1,14 +1,5 @@
 module examples.js_site
 
-import std.markup {
-  MarkupNode,
-  MarkupAttr,
-  ElementNode,
-  TextNode,
-}
-import extdeps.communication.medium { Medium, Lossy }
-import std.disposition { Disposition, Scaffold, SubstrateMandatoryTag }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type JsSitePageId = Home | Browse | About
 

@@ -1,37 +1,5 @@
 module v1.compiler.infer_types
 
-import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra }
-import std.algebra {
-  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile,
-  BooleanAlgebraProfile, BooleanAlgebraCollectionProfile,
-  FreeMonoidScalarProfile,
-  FreeMonoidCollectionProfile, PartialFunctionProfile,
-  AlgebraTypeTemplate, ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue,
-  NamedTemplate, ContainerOf, ContainerSource, SameAsReceiver, Named, OptionalOf, WitnessOf, TupleOf, AlgebraTypeVariable,
-  AlgebraFieldTemplate,
-  kernel_algebra_profile,
-  algebra_templates_for_profile
-}
-import v1.std.core {
-  Node, make_param_node, param_node_type_expr,
-  find_child_named, NewlineIndex,
-  Connective, Conj, Disj, NoConnective,
-  Cardinality, Required, CardOptional,
-  NoExprData, ExprLiteral, ExprError,
-  ExprErrorKind, SemanticExprError, InternalExprError,
-  make_expr_node, make_expr_error_node,
-  LiteralValue, LitStr, LitInt, LitFloat, LitBool, LitNull, LitSymbol,
-  is_kernel_type,
-  BinOp, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
-  AlgebraFieldKind, AlgAdd, AlgMul, AlgReciprocal, AlgQuotient, AlgRemainder, AlgCompare, AlgMeet, AlgJoin,
-  InferredNode, Resolved, CompilerError, TypeVariable, has_inferred, is_compiler_error,
-  leaf_node_with_span, no_span, make_span, with_optional_cardinality, with_required_cardinality,
-  unit_type, bool_type, string_type, int_type, float_type, none_type,
-  error_type,
-  default_ident_span, kernel_span,
-  authored_name_at,
-  ErrorNode, make_error_node, InternalError
-}
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -584,11 +552,46 @@ fn callable_inferred(n: Node) -> Node {
   let is_callable = n.params |> count > 0
   if is_callable {
     match n.inferred {
-      Present { value: Resolved { node: ret } } => ret
+      Present { value: Resolved { node: ret } } =>
+        if ret.connective == Arrow { ret } else { make_callable_type(func_params: n.params, ret: ret) }
       Absent => error_type
       _ => error_type
     }
   } else { n }
+}
+
+fn callable_return_type(n: Node) -> Node {
+  if n.params |> count == 0 {
+    match n.inferred {
+      Present { value: Resolved { node: ret } } => ret
+      _ => error_type
+    }
+  } else {
+    match callable_inferred(n: n).inferred {
+      Present { value: Resolved { node: callable } } =>
+        match callable.inferred {
+          Present { value: Resolved { node: ret } } => ret
+          _ => error_type
+        }
+      _ => error_type
+    }
+  }
+}
+
+fn global_bare_callable_binding(binding: TypeBinding) -> Bool {
+  binding.resolved.transport == none
+    && binding.resolved.expr_data == NoExprData
+    && binding.resolved.connective == NoConnective
+    && binding.resolved.inferred != none
+    && binding.resolved.properties |> count == 0
+    && binding.resolved.type_annotation == none
+}
+
+fn value_binding_expr_type_node(resolved: Node) -> Node {
+  match resolved.inferred {
+    Present { value: Resolved { node: ty } } => ty
+    _ => resolved
+  }
 }
 
 fn normalize_access_type_node(n: Node) -> Node {

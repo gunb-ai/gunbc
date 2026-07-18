@@ -1,28 +1,5 @@
 module test.claim.output_policy_witness
 
-import gunbc.output_policy {
-  ChannelPolicy,
-  ClaimResult,
-  Condensed,
-  Diagnostic,
-  Full,
-  Instrumentation,
-  Normal,
-  OutputDecision,
-  Progress,
-  Quiet,
-  ShellTrace,
-  Suppressed,
-  Verbose,
-  Verbosity,
-  VerbosityEnv,
-  channel_decision,
-  env_var_for,
-  resolve_channel_policy,
-  resolve_verbosity,
-  shell_trace_summary_max_columns
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

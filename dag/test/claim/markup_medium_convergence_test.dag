@@ -1,33 +1,5 @@
 module test.claim.markup_medium_convergence
 
-import std.markup {
-  MarkupNode, MarkupAttr, ElementNode, TextNode,
-  MarkupMedium, MarkupBracket, TagDelimiter, EscapeHtml, EscapeRaw,
-  OmitClose,
-  serialize_markup_node_with,
-}
-import extdeps.languages.markdown {
-  commonmark_gfm_spellings,
-  markdown_markup_medium,
-  serialize_markdown_source_with,
-}
-import std.markdown {
-  MarkdownDocument,
-  ParagraphBlock,
-  TextInline,
-  EmphasisInline,
-  StrongInline,
-  LinkInline,
-}
-import extdeps.languages.html {
-  try_serialize_html_source,
-  HtmlEmitResult,
-  EmitOk,
-  EmitRejected,
-  canonical_html_spellings,
-  html_markup_medium,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

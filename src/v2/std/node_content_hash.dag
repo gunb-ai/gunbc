@@ -1,0 +1,215 @@
+module v2.std.node_content_hash
+
+import std.algebra { Cons, Empty }
+import std.types { List }
+import v2.std.algebra { any, fold_list, length, list_snoc_item }
+
+import v2.std.node {
+  ArrowBodyEdges,
+  Behavior,
+  ComputationNode,
+  Connective,
+  Edge,
+  EdgeLabel,
+  LabeledEdges,
+  LoopBoundEdges,
+  Named,
+  Node,
+  NodeFold,
+  NodeKind,
+  NoEdges,
+  Positional,
+  PositionalEdges,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode,
+  Hash,
+  combine_hash,
+  named_edge_sort_key,
+  node_for_structural_equality,
+  node_edge_discipline,
+}
+
+fn edges_where_positional(children: List<Edge>) -> List<Edge> {
+  fold(xs: children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Positional => list_snoc_item(xs: acc, item: e)
+      Named { name: _ } => acc
+    }
+  })
+}
+fn edges_where_named_sym(children: List<Edge>, sym: Symbol) -> List<Edge> {
+  fold(xs: children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Named { name: name } =>
+        if name == sym { list_snoc_item(xs: acc, item: e) } else { acc }
+      Positional => acc
+    }
+  })
+}
+fn edges_where_named_not_sym(children: List<Edge>, sym: Symbol) -> List<Edge> {
+  fold(xs: children, init: Empty, f: fn(acc, e) {
+    match e.label {
+      Named { name: name } =>
+        if name != sym { list_snoc_item(xs: acc, item: e) } else { acc }
+      Positional => acc
+    }
+  })
+}
+fn arrow_signature_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  edges_where_positional(children: children)
+}
+fn arrow_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  edges_where_named_sym(children: children, sym: ^arrow_body_edge)
+}
+fn arrow_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  edges_where_named_not_sym(children: children, sym: ^arrow_body_edge)
+    |> sort_by(e => named_edge_sort_key(e: e))
+}
+fn canonicalize_arrow_children_for_content_hash(children: List<Edge>) -> List<Edge> {
+  concat(
+    arrow_signature_edges_for_content_hash(children: children),
+    concat(
+      arrow_other_named_edges_for_content_hash(children: children),
+      arrow_body_edges_for_content_hash(children: children)
+    )
+  )
+}
+fn loop_body_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  edges_where_positional(children: children)
+}
+fn loop_bound_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  edges_where_named_sym(children: children, sym: ^loop_bound_edge)
+}
+fn loop_other_named_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
+  edges_where_named_not_sym(children: children, sym: ^loop_bound_edge)
+    |> sort_by(e => named_edge_sort_key(e: e))
+}
+fn canonicalize_loop_children_for_content_hash(children: List<Edge>) -> List<Edge> {
+  concat(
+    loop_body_edges_for_content_hash(children: children),
+    concat(
+      loop_other_named_edges_for_content_hash(children: children),
+      loop_bound_edges_for_content_hash(children: children)
+    )
+  )
+}
+fn canonicalize_node_for_content_hash(n: Node) -> Node {
+  let base = node_for_structural_equality(n: n)
+  match node_edge_discipline(n: n) {
+    LabeledEdges =>
+      Node {
+        kind: base.kind,
+        children: base.children |> sort_by(e => named_edge_sort_key(e: e)),
+        occurrence_id: SyntheticOccurrence
+      }
+    NoEdges =>
+      Node {
+        kind: base.kind,
+        children: base.children,
+        occurrence_id: SyntheticOccurrence
+      }
+    PositionalEdges =>
+      Node {
+        kind: base.kind,
+        children: base.children,
+        occurrence_id: SyntheticOccurrence
+      }
+    ArrowBodyEdges =>
+      Node {
+        kind: base.kind,
+        children: canonicalize_arrow_children_for_content_hash(children: base.children),
+        occurrence_id: SyntheticOccurrence
+      }
+    LoopBoundEdges =>
+      Node {
+        kind: base.kind,
+        children: canonicalize_loop_children_for_content_hash(children: base.children),
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
+fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
+  let n = canonicalize_node_for_content_hash(n: n)
+  fold(n.children, init: algebra.init(n), f: fn(acc, e) {
+    algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
+  })
+}
+
+fn canonical_hash_of_connective(c: Connective) -> Hash {
+  match c {
+    Atom { identity: sym } =>
+      hash_combine(
+        a: atom_identity_hash(s: ^canonical_tag_atom),
+        b: atom_identity_hash(s: sym)
+      )
+    Conj => atom_identity_hash(s: ^canonical_tag_conj)
+    Disj => atom_identity_hash(s: ^canonical_tag_disj)
+    Arrow => atom_identity_hash(s: ^canonical_tag_arrow)
+    Cardinality => atom_identity_hash(s: ^canonical_tag_cardinality)
+    Instantiation => atom_identity_hash(s: ^canonical_tag_instantiation)
+  }
+}
+
+fn canonical_hash_of_behavior(b: Behavior) -> Hash {
+  match b {
+    Value => atom_identity_hash(s: ^canonical_tag_value)
+    Transform => atom_identity_hash(s: ^canonical_tag_transform)
+    Branch => atom_identity_hash(s: ^canonical_tag_branch)
+    Loop => atom_identity_hash(s: ^canonical_tag_loop)
+    Bind => atom_identity_hash(s: ^canonical_tag_bind)
+    Match => atom_identity_hash(s: ^canonical_tag_match)
+  }
+}
+
+fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
+  match kind {
+    TypeNode { connective: c } =>
+      hash_combine(
+        a: atom_identity_hash(s: ^canonical_tag_type_node),
+        b: canonical_hash_of_connective(c: c)
+      )
+    ComputationNode { behavior: b } =>
+      hash_combine(
+        a: atom_identity_hash(s: ^canonical_tag_computation_node),
+        b: canonical_hash_of_behavior(b: b)
+      )
+  }
+}
+
+fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
+  match label {
+    Named { name: sym } =>
+      hash_combine(
+        a: atom_identity_hash(s: ^canonical_tag_named_edge),
+        b: atom_identity_hash(s: sym)
+      )
+    Positional => atom_identity_hash(s: ^canonical_tag_positional_edge)
+  }
+}
+
+fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
+  fold(
+    xs |> sort_by(h => h),
+    init: empty,
+    f: fn(acc, h) {
+      combine_hash(a: acc, b: h)
+    }
+  )
+}
+
+fn content_hash(n: Node) -> Hash {
+  fold_node_content_hash(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
+      step: fn(acc, e, child_hash) {
+        hash_combine(
+          a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
+          b: child_hash
+        )
+      }
+    }
+  )
+}

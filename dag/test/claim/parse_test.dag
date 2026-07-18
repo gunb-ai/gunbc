@@ -1,8 +1,5 @@
 module test.claim.parse_test
 
-import tools.parse_witness_transport { run_parse_witness_floor, run_parse_witness_perf }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

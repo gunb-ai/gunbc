@@ -1,51 +1,5 @@
 module v2.test.manual.field_access_emit
 
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.translate {
-  coerce_grounded_node,
-  grammar_inverse_source_validated,
-  target_serialize_source_from_model
-}
-import v2.extdeps.languages.dag {
-  dag_inhabitant_atom,
-  dag_field_access_arrow_domain_conj_node,
-  dag_field_access_body_fixture,
-  dag_fixture_emitted_field_access_fn,
-  dag_fixture_int_inhabitant,
-  dag_field_access_source_text,
-  dag_field_access_target_model,
-  dag_type_atom_node
-}
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_witness }
-import v2.std.cardinality { termination_proof_witness_for_node }
-import v2.std.collection { Map }
-import v2.std.constraints {
-  CanonicalGrounding,
-  CanonicalGroundingWitness
-}
-import v2.std.coercion { CoercionQuality, Exact, Identity, Widened }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

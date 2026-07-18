@@ -1,45 +1,5 @@
 module v2.test.lens_testgen.dag_input_surface
 
-import v2.lens.testgen {
-  Generator,
-  LanguageBehaviorEquivalence,
-  TestgenConcept,
-  bootstrap_claim_generator_for_manual_anchor,
-  lbe_frozen_snapshot_conj_dag_surface,
-  lbe_frozen_snapshot_disj_dag_surface,
-  lbe_frozen_snapshot_transform_dag_surface,
-  lbe_io_mock_conj_dag_surface,
-  lbe_io_mock_disj_dag_surface,
-  lbe_io_mock_transform_dag_surface,
-  lbe_subject_conj_dag_surface,
-  lbe_subject_disj_dag_surface,
-  lbe_subject_transform_dag_surface,
-  testgen_scheduled_language_behavior_generators
-}
-import v2.std.algebra { any, for_all, length }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  ManualLbeConjDagSurface,
-  TestClaimCompilesClaimVariant,
-  TestClassification,
-  TestClaim,
-  Tier1,
-  Unit,
-  manual_claim_anchor,
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.test.manual.connective_anchors {
-  stub_empty_conj,
-  stub_empty_disj,
-  stub_empty_transform
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn lens_testgen_marker_node(marker: Symbol) -> Node {
