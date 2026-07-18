@@ -1,0 +1,81 @@
+module test.claim.live_deploy.operations_witness
+
+import std.logic { Bool }
+import std.types { String, List }
+import extdeps.dpkg { dpkg_status_argv }
+import extdeps.apt { apt_install_argv, package_tailscale, package_nodejs }
+import extdeps.os.systemctl {
+  systemctl_daemon_reload_argv,
+  systemctl_enable_argv,
+  systemctl_restart_argv,
+  systemctl_disable_now_argv,
+}
+import gunbc.live_deploy.operations {
+  argv_join,
+  privileged_command,
+  package_ensure_step,
+  systemd_unit_upsert_steps,
+  systemd_unit_disable_step,
+  systemd_unit_daemon_reload_step,
+}
+import gunbc.live_deploy.spec { gunbc_roadmap_unit_name }
+import v2.std.orchestration { Do, If, Not, ExitZero, Run, DiscardAll }
+import v2.std.collection { Absent, Present }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_dpkg_status_argv_matches_transport() -> Bool {
+  argv_join(argv: dpkg_status_argv(package: package_tailscale)) == "dpkg -s tailscale"
+}
+
+fn witness_apt_install_argv_matches_transport() -> Bool {
+  argv_join(argv: apt_install_argv(package: package_nodejs)) == "apt-get install --yes nodejs"
+}
+
+fn witness_systemctl_restart_argv_matches_transport() -> Bool {
+  argv_join(argv: systemctl_restart_argv(unit: gunbc_roadmap_unit_name)) == "systemctl restart gunbc-roadmap.service"
+}
+
+fn witness_systemctl_disable_now_argv_matches_transport() -> Bool {
+  argv_join(argv: systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name)) == "systemctl disable --now gunbc-roadmap.service"
+}
+
+fn witness_privileged_command_prefixes_sudo_n() -> Bool {
+  privileged_command(argv: systemctl_daemon_reload_argv()) == "sudo -n systemctl daemon-reload"
+}
+
+fn witness_package_ensure_is_idempotent_if() -> Bool {
+  match package_ensure_step(pkg: package_tailscale, privileged: true) {
+    If { cond: Not { inner: ExitZero { run: r } }, then_: _, else_: Absent } =>
+      r.command == "dpkg -s tailscale"
+        && match r.redirect {
+          Present { value: DiscardAll } => true
+          Absent => false
+        }
+    _ => false
+  }
+}
+
+fn witness_systemd_unit_upsert_step_count() -> Bool {
+  count(systemd_unit_upsert_steps(unit: gunbc_roadmap_unit_name)) == 3
+}
+
+fn witness_systemd_unit_upsert_restart_step_spelling() -> Bool {
+  let steps = systemd_unit_upsert_steps(unit: gunbc_roadmap_unit_name)
+  any(steps, s => match s {
+    Do { run: r } => r.command == "sudo -n systemctl restart gunbc-roadmap.service"
+    _ => false
+  })
+}
+
+test fn live_deploy_operations_holds() -> Bool {
+  witness_dpkg_status_argv_matches_transport()
+    && witness_apt_install_argv_matches_transport()
+    && witness_systemctl_restart_argv_matches_transport()
+    && witness_systemctl_disable_now_argv_matches_transport()
+    && witness_privileged_command_prefixes_sudo_n()
+    && witness_package_ensure_is_idempotent_if()
+    && witness_systemd_unit_upsert_step_count()
+    && witness_systemd_unit_upsert_restart_step_spelling()
+}
