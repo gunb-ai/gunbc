@@ -1,12 +1,12 @@
 module v2.compiler.parse
 type ParseProvenanceState {
-  alloc: OccurrenceIdAllocator
-  index: SpanIndex
+  alloc: v2.std.occurrence_id.OccurrenceIdAllocator
+  index: v2.std.provenance.SpanIndex
 }
 
 type ParseArtifact {
   tree: ParseTree
-  span_index: SpanIndex
+  span_index: v2.std.provenance.SpanIndex
 }
 
 type ParseMintSourceResult {
