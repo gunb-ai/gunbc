@@ -32,11 +32,12 @@ import gunbc.membership_reconcile {
 }
 import gunbc.node_http_server_emit { roadmap_dashboard_node_http_server_source }
 import gunbc.live_deploy.operations {
-  package_ensure_step,
-  systemd_unit_upsert_steps,
-  systemd_unit_disable_step,
-  systemd_unit_daemon_reload_step,
-  deploy_run,
+  dpkg_status_command,
+  apt_install_command,
+  systemctl_daemon_reload_command,
+  systemctl_enable_command,
+  systemctl_restart_command,
+  systemctl_disable_now_command,
 }
 import v2.std.orchestration {
   Pipeline, PipelineStep,
@@ -57,7 +58,32 @@ data live_deploy_retract_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSE
 data live_deploy_ensure_dep_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ live-deploy ensure-dependency intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid reconcile-step shell, so the per-dep ConvergePlan step fails loudly rather than a hand-spelled fallback masking the refusal (DESIGN §5: refuse, never widen)\n"
 
 fn deploy_raw(command: String) -> PipelineStep {
-  deploy_run(command: command)
+  Do {
+    run: Run {
+      command: command,
+      env: [],
+      redirect: Absent,
+      capture: Absent
+    }
+  }
+}
+
+fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
+  If {
+    cond: Not { inner: ExitZero {
+      run: Run {
+        command: dpkg_status_command(package: pkg),
+        env: [],
+        redirect: Present { value: DiscardAll },
+        capture: Absent
+      }
+    } },
+    then_: Pipeline {
+      steps: [deploy_raw(command: apt_install_command(package: pkg, privileged: privileged))],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
 }
 
 fn emit_pipeline_or_poison(p: Pipeline, refused: String) -> String {
@@ -175,13 +201,13 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Li
       apply_server_js_write_step(),
       deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/server.js\" ", gunbc_roadmap_server_path)),
     ]
-    SystemdUnit => concat(
-      [
-        apply_systemd_unit_write_step(spec: spec),
-        deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-roadmap.service\" ", gunbc_roadmap_systemd_unit_path)),
-      ],
-      systemd_unit_upsert_steps(unit: spec.service.unit_name)
-    )
+    SystemdUnit => [
+      apply_systemd_unit_write_step(spec: spec),
+      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-roadmap.service\" ", gunbc_roadmap_systemd_unit_path)),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: systemctl_enable_command(unit: spec.service.unit_name, privileged: true)),
+      deploy_raw(command: systemctl_restart_command(unit: spec.service.unit_name, privileged: true)),
+    ]
     TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),
     ]
@@ -194,9 +220,9 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       deploy_raw(command: "sudo -n tailscale serve reset || true"),
     ]
     SystemdUnit => [
-      systemd_unit_disable_step(unit: spec.service.unit_name),
+      deploy_raw(command: concat(systemctl_disable_now_command(unit: spec.service.unit_name, privileged: true), " 2>/dev/null || true")),
       deploy_raw(command: concat("sudo -n rm -f ", gunbc_roadmap_systemd_unit_path)),
-      systemd_unit_daemon_reload_step(),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
     ]
     ServerScript => [
       deploy_raw(command: concat("sudo -n rm -f ", gunbc_roadmap_server_path)),
@@ -217,7 +243,7 @@ fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: Deploym
     EffectUpsert { member: step } =>
       match step {
         Dependency { step: dep } => [
-          package_ensure_step(pkg: dep.package, privileged: true),
+          ensure_apt_package_step(pkg: dep.package, privileged: true),
         ]
         Artifact { step: art } => emit_artifact_upsert(art: art, spec: spec)
       }
@@ -313,7 +339,7 @@ fn live_deploy_systemd_unit_for(spec: DeploymentSpec) -> String {
 fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
   Pipeline {
     steps: [
-      package_ensure_step(pkg: dep.package, privileged: false)
+      ensure_apt_package_step(pkg: dep.package, privileged: false)
     ],
     on_failure: FailFast
   }
