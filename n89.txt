@@ -1,0 +1,35 @@
+NAME	InternalError	function:fold	2
+NAME	InternalError	function:normalize	1
+NAME	InternalError	no field 'base' on type 'PullRequest'	2
+NAME	InternalError	no field 'carried' on type 'T'	7
+NAME	InternalError	no field 'cursor_action' on type 'Frame'	2
+NAME	InternalError	no field 'desired' on type 'V'	2
+NAME	InternalError	no field 'facts' on type 'T'	1
+NAME	InternalError	no field 'head' on type 'PullRequest'	10
+NAME	InternalError	no field 'hostname_short' on type 'V'	2
+NAME	InternalError	no field 'id' on type 'Job'	3
+NAME	InternalError	no field 'mid' on type 'M'	1
+NAME	InternalError	no field 'nonempty' on type ''	1
+NAME	InternalError	no field 'number' on type 'PullRequest'	2
+NAME	InternalError	no field 'payload' on type 'V'	8
+NAME	InternalError	no field 'privilege_denial' on type 'A'	5
+NAME	InternalError	no field 'qualification' on type 'ok'	3
+NAME	InternalError	no field 'refusals' on type 'T'	2
+NAME	InternalError	no field 'rel_path' on type 'DeclFact'	1
+NAME	InternalError	no field 'runner' on type 'Job'	1
+NAME	InternalError	no field 'stdout' on type 'E'	1
+NAME	InternalError	no field 'steps' on type 'Job'	7
+NAME	InternalError	no field 'title' on type 'PullRequest'	2
+NAME	InternalError	no field 'total' on type 'MemoryStats'	1
+NAME	InternalError	no field 'tree' on type 'T'	1
+NAME	InternalError	variable:whole_corpus_scope	1
+NAME	NonExhaustiveMatch	(non-exhaustive)	7
+NAME	TypeMismatch	Container(List,Primitive(std.verification.NanosecondDuration))	2
+NAME	UnresolvedType	DeclFact	1
+NAME	UnresolvedType	OccurrenceIdAllocator	1
+NAME	UnresolvedType	SpanIndex	2
+NAME	UnresolvedType	Terminal	1
+NAME	VariantNotFound	Absent	2
+NAME	VariantNotFound	Dependent	1
+NAME	VariantNotFound	Independent	1
+NAME	VariantNotFound	Present	2

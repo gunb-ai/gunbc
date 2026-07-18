@@ -385,7 +385,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
       let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       match base_result {
         Present { value: mfr } =>
-          let profile = kernel_algebra_profile |> get(authored_name_at(source_indices: source_indices, node: receiver_type))
+          let profile = kernel_profile_lookup(name: authored_name_at(source_indices: source_indices, node: receiver_type))
           let template_match = match profile {
             Present { value: p } =>
               let templates = algebra_templates_for_profile(profile: p)

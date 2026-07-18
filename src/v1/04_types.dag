@@ -68,6 +68,39 @@ fn is_declared_container_alias_spelling(name: String) -> Bool {
   }
 }
 
+fn container_alias_canonical_spelling(algebra: String) -> String? {
+  fold(container_template_alias_rows |> sorted_map_keys, init: none, f: (acc, k) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(container_template_alias_rows, k) {
+          Present { value: v } => if v == algebra { Present { value: k } } else { none }
+          Absent => none
+        }
+    }
+  )
+}
+
+fn container_kind_canonical(name: String) -> String {
+  let last = qualified_last_segment(name: name)
+  match kernel_algebra_profile |> get(last) {
+    Present { value: _ } => last
+    Absent =>
+      match container_template_algebra(name: last) {
+        Present { value: algebra } =>
+          match container_alias_canonical_spelling(algebra: algebra) {
+            Present { value: canonical } => canonical
+            Absent => last
+          }
+        Absent => last
+      }
+  }
+}
+
+fn kernel_profile_lookup(name: String) -> AlgebraProfile? {
+  kernel_algebra_profile |> get(container_kind_canonical(name: name))
+}
+
 fn reground_alias_carrier_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   if n.name != "" && n.name != authored_name_at(source_indices: source_indices, node: n) && is_declared_container_alias_spelling(name: n.name) {
     Node {
@@ -312,7 +345,7 @@ fn instantiate_algebra_field(template: AlgebraFieldTemplate, base: Node, source_
 }
 
 fn enrich_kernel_type(name: String, base: Node, source_indices: Map<String, NewlineIndex>) -> KernelTypeBuild {
-  let profile = kernel_algebra_profile |> get(name)
+  let profile = kernel_profile_lookup(name: name)
   match profile {
     Present { value: p } =>
       let field_bs = algebra_templates_for_profile(profile: p) |> map(template => instantiate_algebra_field(template: template, base: base, source_indices: source_indices))
@@ -441,7 +474,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
           match map_get(subst, "__element__") {
             Present { value: elem } => KernelTypeBuild { ty: elem, diagnostics: [] }
             Absent =>
-              let rname = authored_name_at(source_indices: source_indices, node: receiver)
+              let rname = container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))
               match container_param_name(kind_name: rname, index: 0) {
                 Present { value: n } => KernelTypeBuild { ty: type_variable_node(id: n), diagnostics: [] }
                 Absent =>
@@ -459,7 +492,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
           match map_get(subst, "__key__") {
             Present { value: key } => KernelTypeBuild { ty: key, diagnostics: [] }
             Absent =>
-              let rname = authored_name_at(source_indices: source_indices, node: receiver)
+              let rname = container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))
               match container_param_name(kind_name: rname, index: 0) {
                 Present { value: n } => KernelTypeBuild { ty: type_variable_node(id: n), diagnostics: [] }
                 Absent =>
@@ -477,7 +510,7 @@ fn apply_type_substitution(template: AlgebraTypeTemplate, subst: Map<String, Nod
           match map_get(subst, "__value__") {
             Present { value: val } => KernelTypeBuild { ty: val, diagnostics: [] }
             Absent =>
-              let rname = authored_name_at(source_indices: source_indices, node: receiver)
+              let rname = container_kind_canonical(name: authored_name_at(source_indices: source_indices, node: receiver))
               match container_param_name(kind_name: rname, index: 1) {
                 Present { value: n } => KernelTypeBuild { ty: type_variable_node(id: n), diagnostics: [] }
                 Absent =>

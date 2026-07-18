@@ -1033,7 +1033,7 @@ pub fn enrich_kernel_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     {
-        let profile = v1_rt::map_get(&kernel_algebra_profile(), name.clone());
+        let profile = kernel_profile_lookup(name.clone());
         match profile.clone() {
             Some(p) => {
                 let field_bs = Rc::new({
@@ -1423,7 +1423,10 @@ pub fn apply_type_substitution(
                             diagnostics: Rc::new(vec![]),
                         }),
                         None => {
-                            let rname = authored_name_at(source_indices.clone(), receiver.clone());
+                            let rname = container_kind_canonical(authored_name_at(
+                                source_indices.clone(),
+                                receiver.clone(),
+                            ));
                             match container_param_name(rname.clone(), 0) {
                                 Some(n) => Rc::new(KernelTypeBuild {
                                     ty: type_variable_node(n.clone()),
@@ -1451,7 +1454,10 @@ pub fn apply_type_substitution(
                         diagnostics: Rc::new(vec![]),
                     }),
                     None => {
-                        let rname = authored_name_at(source_indices.clone(), receiver.clone());
+                        let rname = container_kind_canonical(authored_name_at(
+                                source_indices.clone(),
+                                receiver.clone(),
+                            ));
                         match container_param_name(rname.clone(), 0) {
                             Some(n) => Rc::new(KernelTypeBuild {
                                 ty: type_variable_node(n.clone()),
@@ -1479,7 +1485,10 @@ pub fn apply_type_substitution(
                             diagnostics: Rc::new(vec![]),
                         }),
                         None => {
-                            let rname = authored_name_at(source_indices.clone(), receiver.clone());
+                            let rname = container_kind_canonical(authored_name_at(
+                                source_indices.clone(),
+                                receiver.clone(),
+                            ));
                             match container_param_name(rname.clone(), 1) {
                                 Some(n) => Rc::new(KernelTypeBuild {
                                     ty: type_variable_node(n.clone()),
@@ -2797,4 +2806,43 @@ pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
         Some(_) => true,
         None => false,
     }
+}
+
+pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
+    v1_rt::sorted_map_keys(&crate::std_types::container_template_alias_rows())
+        .iter()
+        .cloned()
+        .fold(None, |acc: Option<String>, k: String| match acc {
+            Some(_) => acc,
+            None => match v1_rt::map_get(&crate::std_types::container_template_alias_rows(), k.clone())
+            {
+                Some(v) => {
+                    if (v.clone() == algebra.clone()) {
+                        Some(k.clone())
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            },
+        })
+}
+
+pub fn container_kind_canonical(name: String) -> String {
+    let last = crate::v1_std_core::qualified_last_segment(name.clone());
+    match v1_rt::map_get(&kernel_algebra_profile(), last.clone()) {
+        Some(_) => last.clone(),
+        None => match container_template_algebra(last.clone()) {
+            Some(algebra) => match container_alias_canonical_spelling(algebra.clone()) {
+                Some(canonical) => canonical.clone(),
+                None => last.clone(),
+            },
+            None => last.clone(),
+        },
+    }
+}
+
+pub fn kernel_profile_lookup(name: String) -> Option<crate::std_algebra::AlgebraProfile> {
+    v1_rt::map_get(&kernel_algebra_profile(), container_kind_canonical(name.clone()))
+        .map(|p| p.clone())
 }

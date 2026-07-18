@@ -761,10 +761,13 @@ pub fn lookup_structural_method(
                         );
                         match base_result.clone() {
                             Some(mfr) => {
-                                let profile = v1_rt::map_get(
-                                    &kernel_algebra_profile(),
-                                    authored_name_at(source_indices.clone(), receiver_type.clone()),
-                                );
+                                let profile =
+                                    crate::v1_compiler_infer_types::kernel_profile_lookup(
+                                        authored_name_at(
+                                            source_indices.clone(),
+                                            receiver_type.clone(),
+                                        ),
+                                    );
                                 let template_match = match profile.clone() {
                                     Some(p) => {
                                         let templates = algebra_templates_for_profile(p.clone());
