@@ -12678,42 +12678,7 @@ pub fn substitute_generics_apply(
                 if is_bare.clone() {
                     match v1_rt::map_get(&subst, nm.clone()) {
                         Some(c) => c.clone(),
-                        None => match n.inferred.clone().as_deref().cloned() {
-                            Some(InferredNode::Resolved { node: rt, .. }) => {
-                                let new_rt = substitute_generics_apply(
-                                    rt.clone(),
-                                    subst.clone(),
-                                    source_indices.clone(),
-                                );
-                                if v1_rt::rc_ptr_eq(new_rt.clone(), rt.clone()) {
-                                    n.clone()
-                                } else {
-                                    Rc::new(Node {
-                                        name: n.name.clone(),
-                                        span: n.span.clone(),
-                                        ident_span: n.ident_span.clone(),
-                                        children: n.children.clone(),
-                                        connective: n.connective.clone(),
-                                        params: n.params.clone(),
-                                        inferred: Some(Rc::new(InferredNode::Resolved {
-                                            node: new_rt,
-                                        })),
-                                        return_cardinality: n.return_cardinality.clone(),
-                                        uses: n.uses.clone(),
-                                        body: n.body.clone(),
-                                        transport: n.transport.clone(),
-                                        properties: n.properties.clone(),
-                                        type_annotation: n.type_annotation.clone(),
-                                        is_self_recursive: n.is_self_recursive.clone(),
-                                        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                                        match_pattern: n.match_pattern.clone(),
-                                        expr_data: n.expr_data.clone(),
-                                        ident: None,
-                                    })
-                                }
-                            }
-                            _ => n.clone(),
-                        },
+                        None => n.clone(),
                     }
                 } else {
                     {
