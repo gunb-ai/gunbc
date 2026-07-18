@@ -1,10 +1,10 @@
 module v2.std.determinism
 type DeterminismFact {
   signature: Symbol,
-  classification: DeterminismAxis
+  classification: std.determinism.Determinism
 }
 
-fn determinism_fact_classification(fact: DeterminismFact) -> DeterminismAxis {
+fn determinism_fact_classification(fact: DeterminismFact) -> std.determinism.Determinism {
   fact.classification
 }
 

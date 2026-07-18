@@ -48,7 +48,7 @@ fn node_callee_symbol(n: Node) -> Optional<Symbol> {
   }
 }
 
-fn local_determinism_axis(n: Node) -> DeterminismAxis {
+fn local_determinism_axis(n: Node) -> std.determinism.Determinism {
   match node_callee_symbol(n: n) {
     Present { value: sym } => match determinism_root_for_symbol(registry: determinism_root_registry, s: sym) {
       Present { value: root } => std.determinism.NonDeterministic { source: root.source }
@@ -58,11 +58,11 @@ fn local_determinism_axis(n: Node) -> DeterminismAxis {
   }
 }
 
-fn determinism_axis_fold_step(acc: DeterminismAxis, _: Edge, child: DeterminismAxis) -> DeterminismAxis {
+fn determinism_axis_fold_step(acc: std.determinism.Determinism, _: Edge, child: std.determinism.Determinism) -> std.determinism.Determinism {
   std.determinism.determinism_compose(outer: acc, inner: child)
 }
 
-fn determinism_axis_for_node(n: Node) -> DeterminismAxis {
+fn determinism_axis_for_node(n: Node) -> std.determinism.Determinism {
   fold_node(
     n: n,
     algebra: NodeFold {

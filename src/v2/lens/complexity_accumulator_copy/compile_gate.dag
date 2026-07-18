@@ -50,7 +50,7 @@ fn gate_ledger(findings: List<Finding>) -> GateLedger {
 }
 
 fn accumulator_copy_compile_gate(node: Node) -> Outcome<Witness<Node>> {
-  let ledger = gate_ledger(findings: accumulator_copy_findings(root: node))
+  let ledger = gate_ledger(findings: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: node))
   match ledger.suspects {
     Cons { head: first, tail: rest } =>
       Rejected {
