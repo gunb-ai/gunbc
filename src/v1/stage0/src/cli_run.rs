@@ -1480,7 +1480,117 @@ fn load_compile_clean_entry_sources(
             sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
         }
     }
+    // Reference-derived dependency closure (namespace Rule-1 interim). A qualified
+    // reference `container.member` is a dependency edge exactly as an `import` line
+    // was: with dag/ imports stripped, the import-edge closure alone silently drops
+    // every module reached only by qualified reference (the referenced modules fall
+    // out of the census and their qualified names refuse corpus-wide). Projection is
+    // text-level longest-prefix against the declared module-path index, iterated to
+    // fixpoint; each addition pulls its own import closure. Dissolves into the
+    // parsed-tree reference projection when the Rule-1 terminal step (import as
+    // parse error, deps derived from references) lands.
+    let path_lookup = path_to_source_lookup(index);
+    let mut known_paths: std::collections::HashSet<String> = sources
+        .iter()
+        .flat_map(|s| {
+            [
+                s.path.clone(),
+                workspace_relative_repo_path(&s.path),
+            ]
+        })
+        .collect();
+    let mut scan_queue: Vec<Rc<v1_compiler_compile::SourceFile>> = sources.clone();
+    while let Some(sf) = scan_queue.pop() {
+        for module_path in referenced_module_paths_in_text(&sf.content, index) {
+            let Some(dep) = index.get(&module_path) else {
+                continue;
+            };
+            let dep_rel = workspace_relative_repo_path(&dep.path);
+            if known_paths.contains(&dep_rel) || known_paths.contains(&dep.path) {
+                continue;
+            }
+            if !facts.declares_repo_path(&dep_rel) {
+                return Err(format!(
+                    "reference_closure: referenced module '{module_path}' at '{dep_rel}' \
+                     has no provenance in the module-graph facts pool (fail-closed)"
+                ));
+            }
+            for path in import_closure_live_paths_with_facts(&dep_rel, facts) {
+                let rel = workspace_relative_repo_path(&path);
+                if known_paths.contains(&rel) {
+                    continue;
+                }
+                let Some(dep_sf) = path_lookup.get(&rel).cloned() else {
+                    return Err(format!(
+                        "reference_closure: closure path '{rel}' (via referenced module \
+                         '{module_path}') has no provenance in module index (fail-closed)"
+                    ));
+                };
+                known_paths.insert(rel);
+                known_paths.insert(dep_sf.path.clone());
+                sources.push(dep_sf.clone());
+                scan_queue.push(dep_sf);
+            }
+        }
+    }
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.dedup_by(|a, b| a.path == b.path);
     Ok(sources)
+}
+
+/// Candidate module paths referenced by dotted names in `content`: every maximal
+/// `seg(.seg)+` identifier chain contributes its longest leading prefix that is a
+/// declared module path in `index` (>= 2 segments — a bare single identifier is a
+/// global-bare census reference, never a module projection). String literals are
+/// skipped: a module path inside a string is data (a registry row, prose), not a
+/// reference, and following it over-pulls modules the corpus never resolves against.
+fn referenced_module_paths_in_text(content: &str, index: &ModuleSourceIndex) -> Vec<String> {
+    let bytes = content.as_bytes();
+    let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut out = std::collections::BTreeSet::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'"' {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    i += 1;
+                }
+                i += 1;
+            }
+            i += 1;
+            continue;
+        }
+        if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
+        {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let mut segment_ends: Vec<usize> = Vec::new();
+        loop {
+            while i < bytes.len() && is_ident(bytes[i]) {
+                i += 1;
+            }
+            segment_ends.push(i);
+            if i + 1 < bytes.len() && bytes[i] == b'.' && is_ident_start(bytes[i + 1]) {
+                i += 1;
+            } else {
+                break;
+            }
+        }
+        if segment_ends.len() >= 2 {
+            for k in (2..=segment_ends.len()).rev() {
+                let candidate = &content[start..segment_ends[k - 1]];
+                if index.contains_key(candidate) {
+                    out.insert(candidate.to_string());
+                    break;
+                }
+            }
+        }
+    }
+    out.into_iter().collect()
 }
 
 fn compile_clean_resolve_has_hard_errors(
