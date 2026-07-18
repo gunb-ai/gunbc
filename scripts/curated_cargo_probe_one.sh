@@ -19,15 +19,18 @@ cd "$ROOT"
 
 # shellcheck source=lib/render_cssl_probe_lib_cargo_toml.sh
 source "$ROOT/scripts/lib/render_cssl_probe_lib_cargo_toml.sh"
-# shellcheck source=lib/apply_std_seed_link_assembly.sh
-source "$ROOT/scripts/lib/apply_std_seed_link_assembly.sh"
 
 STD_SEED_LINK="${CSSL_STD_SEED_LINK:-0}"
 
 GUNBC="${GUNBC:-$ROOT/target/release/gunbc}"
+CSSL_ASSEMBLE="${CSSL_ASSEMBLE:-$ROOT/target/release/cssl_assemble}"
 if [[ ! -x "$GUNBC" ]]; then
   CTRL_BUILD_WRAP_CARGO=0 cargo build --release -p v1-compiler --bin gunbc >/dev/null
   GUNBC="$ROOT/target/release/gunbc"
+fi
+if [[ "$STD_SEED_LINK" == "1" && ! -x "$CSSL_ASSEMBLE" ]]; then
+  CTRL_BUILD_WRAP_CARGO=0 cargo build --release -p v1-compiler --bin cssl_assemble >/dev/null
+  CSSL_ASSEMBLE="$ROOT/target/release/cssl_assemble"
 fi
 export GUNBC
 
@@ -64,9 +67,9 @@ MAPPED_GATE=""
 
 if [[ "$EMIT_OK" -eq 1 ]]; then
   if [[ "$STD_SEED_LINK" == "1" ]]; then
-    if ! apply_std_seed_link_assembly "$OUT" "$ROOT/$MODULE_PATH" "$ROOT"; then
+    if ! "$CSSL_ASSEMBLE" --out-dir "$OUT" --entry-dag "$MODULE_PATH" --root "$ROOT" >"$OUT/assemble.log" 2>&1; then
       CARGO_VERDICT="harness_refuse"
-      FIRST_ERROR="std-seed-link assembly failed or entry mutated"
+      FIRST_ERROR="$(grep -m1 'CSSL_ASSEMBLE: REFUSED' "$OUT/assemble.log" || head -1 "$OUT/assemble.log")"
       MAPPED_GATE="HARNESS_SEED_LINK"
       VERDICT="HARNESS_REFUSE"
       printf '%s\t%s\t%s\t%s\t%s\t%s\n' \

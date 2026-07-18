@@ -299,7 +299,6 @@ fn type_env_import_resolves_via_str_bindings_index() {
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
     assert!(
@@ -333,7 +332,6 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
     assert!(
@@ -351,7 +349,6 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
     assert!(
@@ -514,7 +511,6 @@ fn type_env_std_types_type_variable_filtered_from_import() {
         )])),
         intern_table: intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
     let filtered = type_env_for_import("std.types".to_string(), parent);
@@ -605,7 +601,7 @@ fn local_variant_over_glob_imported_variant_is_a_collision() {
 #[test]
 fn global_bare_fallback_resolves_when_corpus_wide_unique() {
     use v1_compiler::v1_compiler_infer_env::{
-        lookup_binding_by_name, GlobalBareLookupState, TypeBinding, TypeEnv,
+        lookup_binding_by_name, GlobalBareLookupState, SymbolIndex, TypeBinding, TypeEnv,
     };
     use v1_compiler::v1_std_core::{
         empty_intern_table, leaf_node_with_span, make_span, SubValueRelation,
@@ -628,13 +624,15 @@ fn global_bare_fallback_resolves_when_corpus_wide_unique() {
         source_indices: Rc::new(im_rc::HashMap::new()),
         intern_table,
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::from_iter([(
-            "Widget".to_string(),
-            Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
-                binding: binding.clone(),
-            }),
-        )])),
-        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
+        symbol_index: Rc::new(SymbolIndex {
+            entries: Rc::new(im_rc::HashMap::new()),
+            global_bare: Rc::new(im_rc::HashMap::from_iter([(
+                "Widget".to_string(),
+                Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
+                    binding: binding.clone(),
+                }),
+            )])),
+        }),
     });
 
     let resolved = lookup_binding_by_name(env, "Widget".to_string())
@@ -648,7 +646,7 @@ fn global_bare_fallback_resolves_when_corpus_wide_unique() {
 #[test]
 fn global_bare_fallback_stays_absent_when_corpus_wide_ambiguous() {
     use v1_compiler::v1_compiler_infer_env::{
-        lookup_binding_by_name, GlobalBareLookupState, TypeEnv,
+        lookup_binding_by_name, GlobalBareLookupState, SymbolIndex, TypeEnv,
     };
     use v1_compiler::v1_std_core::empty_intern_table;
 
@@ -663,11 +661,13 @@ fn global_bare_fallback_stays_absent_when_corpus_wide_ambiguous() {
         source_indices: Rc::new(im_rc::HashMap::new()),
         intern_table: empty_intern_table(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        global_bare: Rc::new(im_rc::HashMap::from_iter([(
-            "Widget".to_string(),
-            Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
-        )])),
-        symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
+        symbol_index: Rc::new(SymbolIndex {
+            entries: Rc::new(im_rc::HashMap::new()),
+            global_bare: Rc::new(im_rc::HashMap::from_iter([(
+                "Widget".to_string(),
+                Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
+            )])),
+        }),
     });
 
     assert!(
