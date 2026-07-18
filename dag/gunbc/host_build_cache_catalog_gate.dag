@@ -5,8 +5,7 @@ import std.types { NonEmptyStr }
 import extdeps.cache.sccache { sccache_local_id }
 import extdeps.cache.cache { cache_catalog }
 
-data provision_build_cache_unknown_catalog_fixture: CacheInterfaceId =
-  "gunbc-test-unknown-cache-interface-id"
+data provision_build_cache_unknown_catalog_fixture: CacheInterfaceId = "gunbc-test-unknown-cache-interface-id"
 
 fn catalog_id_is_known(catalog_id: CacheInterfaceId) -> Bool {
   fold(
