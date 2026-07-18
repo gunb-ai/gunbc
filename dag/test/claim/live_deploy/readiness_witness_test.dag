@@ -28,6 +28,7 @@ import gunbc.host_effect {
   host_effect_read_evidence,
   SshShell,
 }
+import std.types { NonEmptyStr }
 import gunbc.host_effect_realize { host_effect_apply }
 import std.disposition { Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
