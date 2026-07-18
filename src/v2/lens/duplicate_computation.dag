@@ -1,6 +1,7 @@
 module v2.lens.duplicate_computation
 
 import std.disposition { RealizationDispatch }
+import std.materialization_ladder { LadderVerdict, AuthoredDuplication, Frame, FrameKind, SharedStateFrame }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.std.algebra { any, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
@@ -23,15 +24,8 @@ type ComputationDemandFact {
   replication: ReplicationIntent
 }
 
-type DuplicateComputationViolation
-  = DuplicateComputationDemand {
-      computation_key: String
-      unguarded_count: Int
-      sites: List<String>
-    }
-
 data empty_computation_demand_facts: List<ComputationDemandFact> = []
-data empty_duplicate_computation_violations: List<DuplicateComputationViolation> = []
+data empty_duplicate_computation_violations: List<LadderVerdict> = []
 data empty_computation_key_tokens: List<String> = []
 data empty_computation_demand_sites: List<String> = []
 
