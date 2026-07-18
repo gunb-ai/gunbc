@@ -5,10 +5,8 @@ import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_me
 import v2.std.orchestration {
   Do,
   ExitZero,
-  ExprCmdSubst,
   FailFast,
   If,
-  Let,
   Pipeline,
   PipelineStep,
   Predicate,
@@ -66,18 +64,15 @@ fn ci_floor_peak_emit_pipeline(p: Pipeline) -> String {
   }
 }
 
+data ci_floor_peak_while_body_command: String = "d=$(dirname \"$d\")"
+
 fn ci_floor_peak_cgroup_locate_while() -> PipelineStep {
   While {
     cond: ExitZero {
       run: ci_floor_peak_run(command: ci_floor_peak_while_cond_command)
     },
     body: Pipeline {
-      steps: [
-        Let {
-          name: "d",
-          value: ExprCmdSubst { callee: "dirname", args: ["\"$d\""] }
-        }
-      ],
+      steps: [ci_floor_peak_do(command: ci_floor_peak_while_body_command)],
       on_failure: FailFast
     }
   }

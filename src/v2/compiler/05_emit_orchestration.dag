@@ -81,7 +81,7 @@ import v2.std.orchestration {
   EnvBinding
 }
 import std.algebra { FreeMonoid }
-import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent, is_empty }
 import v2.std.collection { List, Map, Optional, Present, Absent }
 import v2.compiler.target_carriers { lossless_source }
 import v2.std.diagnostic {
@@ -864,29 +864,44 @@ fn orch_emit_retry_dispatch(
             exhausted: exhausted,
             medium: medium
           )
-        TailFound { tail: t } =>
-          match list_head(xs: t) {
-            HeadFound { value: l2 } =>
-              match list_tail(xs: t) {
-                TailAbsent =>
-                  orch_emit_retry_levels(
-                    command: command,
-                    level1: l1,
-                    level2: l2,
-                    exhausted: exhausted,
-                    medium: medium
-                  )
-                TailFound { tail: rest } =>
-                  orch_emit_retry_multilevel(
-                    command: command,
-                    level1: l1,
-                    rest: concat([l2], rest),
-                    exhausted: exhausted,
-                    medium: medium
-                  )
+        TailFound { tail: rest } =>
+          match is_empty(rest) {
+            true =>
+              orch_emit_retry_1level(
+                command: command,
+                level: l1,
+                exhausted: exhausted,
+                medium: medium
+              )
+            false =>
+              match list_head(xs: rest) {
+                HeadFound { value: l2 } =>
+                  match list_tail(xs: rest) {
+                    TailFound { tail: more } =>
+                      match is_empty(more) {
+                        true =>
+                          orch_emit_retry_levels(
+                            command: command,
+                            level1: l1,
+                            level2: l2,
+                            exhausted: exhausted,
+                            medium: medium
+                          )
+                        false =>
+                          orch_emit_retry_multilevel(
+                            command: command,
+                            level1: l1,
+                            rest: concat([l2], more),
+                            exhausted: exhausted,
+                            medium: medium
+                          )
+                      }
+                    TailAbsent =>
+                      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
+                  }
+                HeadAbsent =>
+                  outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
               }
-            HeadAbsent =>
-              outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_no_escalations))
           }
       }
   }

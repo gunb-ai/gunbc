@@ -10,9 +10,7 @@ import v2.workflow.ci_floor_peak_emit {
 import v2.std.orchestration {
   Do,
   ExitZero,
-  ExprCmdSubst,
   FailFast,
-  Let,
   Pipeline,
   PipelineStep,
   Run,
@@ -28,6 +26,8 @@ data orch_while_golden_note: String = "Goldens are hand-authored bytes independe
 
 data orch_while_locate_golden: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\"\nwhile [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done"
 
+data orch_while_body_command: String = "d=$(dirname \"$d\")"
+
 fn orch_while_locate_intent() -> PipelineStep {
   While {
     cond: ExitZero {
@@ -40,9 +40,13 @@ fn orch_while_locate_intent() -> PipelineStep {
     },
     body: Pipeline {
       steps: [
-        Let {
-          name: "d",
-          value: ExprCmdSubst { callee: "dirname", args: ["\"$d\""] }
+        Do {
+          run: Run {
+            command: orch_while_body_command,
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
         }
       ],
       on_failure: FailFast
@@ -62,9 +66,13 @@ fn orch_while_locate_perturbed_intent() -> PipelineStep {
     },
     body: Pipeline {
       steps: [
-        Let {
-          name: "d",
-          value: ExprCmdSubst { callee: "dirname", args: ["\"$d\""] }
+        Do {
+          run: Run {
+            command: orch_while_body_command,
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
         }
       ],
       on_failure: FailFast
