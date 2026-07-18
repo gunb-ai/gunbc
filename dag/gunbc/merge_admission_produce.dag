@@ -1,6 +1,6 @@
 module gunbc.merge_admission_produce
 
-import std.types { ContentHash, CommitSha, String, Int, List, Bool }
+import std.types { ContentHash, CommitSha, String, Int, List, Bool, GitRef }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_diff_defaults { ci_merge_base_ref }
@@ -9,7 +9,6 @@ import extdeps.git {
   git_fetch_no_tags_shell,
   git_toplevel_shell_subexpr_with_fallback,
 }
-import std.types { GitRef }
 import extdeps.github.checks {
   CheckConclusion,
   check_conclusion_wire_label,
