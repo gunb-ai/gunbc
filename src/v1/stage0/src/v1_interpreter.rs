@@ -1979,6 +1979,33 @@ fn eval_var(
         }
     }
 
+    // Qualified module.member value projection: the flat item_registry is keyed by
+    // bare name, so dotted references resolve through the qualified fn_nodes keys
+    // and classify by the node itself (mirrors the service-item note above).
+    if name.contains('.') {
+        if let Some(fn_node) = ctx.lookup_fn(&name) {
+            match item_kind(fn_node.clone()) {
+                ItemKind::DataItem => {
+                    if let Some(ref body) = fn_node.body {
+                        let key = Rc::as_ptr(fn_node) as usize;
+                        if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
+                            return Ok(v);
+                        }
+                        let v = eval_expr(body, &Env::empty(), ctx)?;
+                        ctx.data_cache.borrow_mut().insert(key, v.clone());
+                        return Ok(v);
+                    }
+                }
+                ItemKind::FuncItem | ItemKind::FnItem => {
+                    return Ok(Value::Fn {
+                        node: fn_node.clone(),
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
+
     Err(InterpError::NoSuchVariable { name })
 }
 

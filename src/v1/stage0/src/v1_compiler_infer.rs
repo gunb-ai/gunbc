@@ -3032,7 +3032,7 @@ pub fn qualified_value_projection(
                             node: value_type.clone(),
                         })),
                         span.clone(),
-                        span.clone(),
+                        kernel_span(spine.dotted.clone()),
                     )))
                 }
             },
@@ -3309,14 +3309,20 @@ pub fn infer_expr(
                         );
                         if std::env::var("GUNBC_FIELD_PROBE2").is_ok() && field_name == "member" {
                             let dump = |n: &Rc<Node>| {
+                                let self_inf = n
+                                    .inferred
+                                    .as_ref()
+                                    .map(|i| format!("{:?}", i))
+                                    .unwrap_or_default();
                                 format!(
-                                    "name={} conn={:?} kids={:?}",
+                                    "name={} conn={:?} kids={:?} self_inf={:.200}",
                                     n.name,
                                     n.connective,
                                     n.children
                                         .iter()
                                         .map(|c| c.name.clone())
-                                        .collect::<std::vec::Vec<_>>()
+                                        .collect::<std::vec::Vec<_>>(),
+                                    self_inf,
                                 )
                             };
                             eprintln!(

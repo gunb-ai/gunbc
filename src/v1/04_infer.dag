@@ -1522,7 +1522,7 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
                 children: [],
                 inferred: Present { value: Resolved { node: value_type } },
                 span: span,
-                name_span: span
+                name_span: kernel_span(name: spine.dotted)
               )) }
           }
       }
