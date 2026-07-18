@@ -2697,9 +2697,6 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
     ""
   } else {
     let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let zz_debug_line = if import_module == "std.nat" {
-      concat("// ZZDEBUG import_module_enums=[", import_module_enums |> join(separator: ","), "] deduped_names=[", deduped_names |> join(separator: ","), "]")
-    } else { "" }
     let top_level = deduped_names |> filter(n =>
       if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
         true
@@ -2860,7 +2857,6 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
         && !is_host_freemonoid_vec_alias(name: en, corpus_repr: emit_info.corpus_repr))
       |> map(en => concat("use crate::", mod_name, "::", en, "::*;"))
     let all_lines = concat(
-      if zz_debug_line != "" { [zz_debug_line] } else { [] },
       main_lines |> filter(l => l != ""),
       variant_lines |> filter(l => l != ""),
       wildcard_enum_lines

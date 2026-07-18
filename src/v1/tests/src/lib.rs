@@ -172,5 +172,3 @@ mod whole_tree_wiring_enum_test;
 mod width_nat_type_arg_test;
 #[cfg(test)]
 mod witness_option_bridge_test;
-#[cfg(test)]
-mod zz_nat_debug_test;
