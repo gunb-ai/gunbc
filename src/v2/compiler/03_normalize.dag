@@ -34,8 +34,8 @@ import v2.std.compilers.sugar {
   sugar_rule_for_key
 }
 import v2.compiler.body_lowering_fold {
-  body_lower_finish,
-  body_lower_is_deferred_lower_emitted
+  body_lower_finish_for_normalize,
+  body_lower_is_deferred_lower_at_normalize
 }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.extdeps.languages.dag {
