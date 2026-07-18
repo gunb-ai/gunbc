@@ -65,10 +65,10 @@ fn grammar_coverage_tree_root_for_path(path: String) -> String {
   }
 }
 
-fn grammar_coverage_distinct_rel_paths(facts: List<DeclFact>) -> List<String> {
+fn grammar_coverage_distinct_rel_paths(facts: List<v2.std.decl_index.DeclFact>) -> List<String> {
   fold_list(
     xs: facts,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, fact) {
       dedupe_snoc(
         acc: acc,
@@ -81,7 +81,7 @@ fn grammar_coverage_distinct_rel_paths(facts: List<DeclFact>) -> List<String> {
 
 fn grammar_coverage_corpus_roster_live() -> List<String> {
   grammar_coverage_distinct_rel_paths(
-    facts: decl_facts(pool_roots: whole_corpus_scope.roots)
+    facts: decl_facts(pool_roots: v2.lens.enforcement.standing_intent.whole_corpus_scope.roots)
   )
 }
 
@@ -111,7 +111,7 @@ fn grammar_coverage_take_step(
 fn grammar_coverage_take_n(paths: List<String>, n: Int) -> List<String> {
   let acc = fold_list(
     xs: paths,
-    empty: GrammarCoverageTakeAcc { taken: Empty, remaining: n },
+    empty: GrammarCoverageTakeAcc { taken: std.algebra.Empty, remaining: n },
     cons: fn(a, p) {
       grammar_coverage_take_step(acc: a, path: p)
     }
@@ -132,7 +132,7 @@ fn grammar_coverage_ingest_source_text(
         Rejected { diagnostics: d } =>
           ParseRejected { stage: "parse", reason: d.head.reason }
         Accepted { value: artifact, diagnostics: _ } =>
-          match normalize(parse_tree: artifact.tree) {
+          match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
             Rejected { diagnostics: d } =>
               ParseRejected { stage: "normalize", reason: d.head.reason }
             Accepted { value: _, diagnostics: _ } =>
@@ -211,8 +211,8 @@ fn grammar_coverage_tree_census(
       files_attempted: 0,
       parsed_clean: 0,
       rejected_count: 0,
-      rejected_rows: Empty,
-      file_rows: Empty
+      rejected_rows: std.algebra.Empty,
+      file_rows: std.algebra.Empty
     },
     cons: fn(a, p) {
       grammar_coverage_census_fold_step(acc: a, path: p)

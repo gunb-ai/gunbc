@@ -1,6 +1,7 @@
 module gunbc.fleet_converge_cli
 
-data gunbc_converge_cli_stage0_receiver_disposition: Disposition = std.disposition.Terminal {
+
+data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."
 }
 
@@ -58,6 +59,7 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => fallback
     Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => fallback
     OsInstallActuatorToolchainEnsure {} => fallback
+    ProvisionBuildCache { catalog_id: _ } => fallback
     Srv3InstallReconcileObserve { include_git_meta: _ } => fallback
     DurableApprovalGrantRecord => fallback
     DurableApprovalGrantRead => fallback
@@ -67,11 +69,9 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     Srv3SolConsoleCapture => fallback
     Srv3BmcwebSessionLogin => fallback
     Srv3BmcwebTokenExtract => fallback
-    Srv3NbdProxyServe => fallback
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => fallback
     Srv3BootOnceReadBackSleep => fallback
     Srv3ReceiptEmit { lines: _ } => fallback
-    Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => fallback
-    OsInstallActuatorToolchainEnsure => fallback
   }
 }
 

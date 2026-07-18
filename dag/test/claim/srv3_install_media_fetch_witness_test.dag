@@ -14,7 +14,7 @@ test fn install_media_fetch_effect_is_create_if_absent_on_content_sha256() -> Bo
 
 test fn install_media_fetch_already_present_fixture() -> Bool {
   match classify_install_media_fetch(
-    observation: Present { observed_sha256: srv3_ubuntu_install_media_artifact.content_sha256 },
+    observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: srv3_ubuntu_install_media_artifact.content_sha256 },
     artifact: srv3_ubuntu_install_media_artifact,
   ) {
     AlreadyPresent { install_path: p, content_sha256: h } =>
@@ -29,7 +29,7 @@ test fn install_media_fetch_already_present_fixture() -> Bool {
 
 test fn install_media_fetch_hash_mismatch_refusal_fixture() -> Bool {
   match classify_install_media_fetch(
-    observation: Present { observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000" },
+    observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000" },
     artifact: srv3_ubuntu_install_media_artifact,
   ) {
     HashMismatchRefusal { install_path: p, expected_sha256: e, observed_sha256: o } =>

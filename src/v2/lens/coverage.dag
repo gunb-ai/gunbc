@@ -96,7 +96,7 @@ fn missing_coverage<C>(
 ) -> List<Coverage<C>> {
   fold_list_right(
     xs: missing_keys(expected: expected, actual: actual, eq: eq),
-    empty: Empty,
+    empty: std.algebra.Empty,
     snoc: fn(acc, key) {
       Cons { head: coverage_of(key: key), tail: acc }
     }

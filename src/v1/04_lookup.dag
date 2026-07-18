@@ -92,34 +92,14 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
           } }
         } else {
           let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
-          let needs_resolution = qualified_return.connective == NoConnective
-            && (qualified_return.children |> count) > 0
-            && qualified_return.inferred == none
-          if needs_resolution {
-            let sig_env = env_with_type_variable_bindings(env: type_env, tp_names: excluded |> map_keys)
-            let rr = resolve_node(n: qualified_return, env: sig_env, module_name: type_env.module_path)
-            if (rr.diagnostics |> count) > 0 {
-              none
-            } else {
-              Present { value: ResolvedFuncSig {
-                name: name,
-                params: node.params,
-                inferred: rr.resolved,
-                is_async: false,
-                output_provenance: [],
-                variant_provenance: empty_map()
-              } }
-            }
-          } else {
-            Present { value: ResolvedFuncSig {
-              name: name,
-              params: node.params,
-              inferred: qualified_return,
-              is_async: false,
-              output_provenance: [],
-              variant_provenance: empty_map()
-            } }
-          }
+          Present { value: ResolvedFuncSig {
+            name: name,
+            params: node.params,
+            inferred: qualified_return,
+            is_async: false,
+            output_provenance: [],
+            variant_provenance: empty_map()
+          } }
         }
       } else {
         Absent

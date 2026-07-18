@@ -40,7 +40,7 @@ type CapabilityFailureContract {
 
 type OperationBehavior {
   side_effects: SideEffects
-  determinism: DeterminismAxis
+  determinism: std.determinism.Determinism
   failure_modes: List<FailureMode>
   edge_cases: List<EdgeCase>
   confidence: Confidence

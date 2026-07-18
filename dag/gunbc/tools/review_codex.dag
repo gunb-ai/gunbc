@@ -187,7 +187,7 @@ func review_cycle(
     auth_token: github_auth,
     owner: cycle_owner,
     repo: cycle_repo,
-    state: Open
+    state: extdeps.github.pulls.Open
   )
 
   results = for pr in open_prs.pulls {
