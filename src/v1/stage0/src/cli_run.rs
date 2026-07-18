@@ -5010,11 +5010,9 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
-    // Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): built once,
-    // order-independent, over the whole graph before any module typechecks — see
+    // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
+    // built once, order-independent, over the whole graph before any module typechecks — see
     // global_bare_fallback_invariant in v1_compiler_infer_env.
-    let global_bare =
-        v1_compiler_infer::build_global_bare_census(graph.modules.clone(), source_indices.clone());
     let symbol_index =
         build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
 
@@ -5106,7 +5104,6 @@ fn reconcile_with_typed_cache(
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
-                        global_bare.clone(),
                         symbol_index.clone(),
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
@@ -19568,9 +19565,9 @@ mod peel_alias_fixpoint_termination {
                 children: std::rc::Rc::new(im_rc::vector![elem]),
                 ..(*base).clone()
             });
-            // The strip-tree mechanism: the name resolves via the global-bare
-            // CENSUS to an unresolved stub that IS the same parameterized shape
-            // (build_global_bare_census stores unresolved stubs), so
+            // The strip-tree mechanism: the name resolves via SymbolIndex.global_bare
+            // to an unresolved stub that IS the same parameterized shape
+            // (build_symbol_index_census stores unresolved stubs), so
             // resolve_node(n) == n — the resolve fixed point the recurse arm
             // loops on (measured: 3M+ iterations of one peel call pre-guard).
             let census_binding = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeBinding {
@@ -19589,6 +19586,10 @@ mod peel_alias_fixpoint_termination {
                     },
                 ),
             );
+            let symbol_index = std::rc::Rc::new(crate::v1_compiler_infer_env::SymbolIndex {
+                entries: crate::v1_rt::rc_empty_map(),
+                global_bare,
+            });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
@@ -19600,8 +19601,7 @@ mod peel_alias_fixpoint_termination {
                 source_indices: crate::v1_rt::rc_empty_map(),
                 intern_table: crate::v1_std_core::empty_intern_table(),
                 source_visible_names: crate::v1_rt::rc_empty_map(),
-                global_bare,
-                symbol_index: crate::v1_compiler_infer_env::empty_symbol_index(),
+                symbol_index,
             });
             let out = crate::v1_compiler_infer::peel_alias_once_for_field_access(
                 n.clone(),
