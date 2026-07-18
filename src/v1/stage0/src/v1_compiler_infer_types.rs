@@ -144,7 +144,10 @@ pub fn node_is_set_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (node_is_element_collection(n.clone(), source_indices.clone())
-        && (authored_name_at(source_indices.clone(), n.clone()) == "Set".to_string()))
+        && (crate::v1_std_core::qualified_last_segment(authored_name_at(
+            source_indices.clone(),
+            n.clone(),
+        )) == "Set".to_string()))
 }
 
 pub fn canonical_template_name(
@@ -153,7 +156,7 @@ pub fn canonical_template_name(
 ) -> String {
     {
         let nm = authored_name_at(source_indices.clone(), n.clone());
-        match container_template_algebra(nm.clone()) {
+        match container_template_algebra(crate::v1_std_core::qualified_last_segment(nm.clone())) {
             Some(algebra) => algebra.clone(),
             None => nm.clone(),
         }
@@ -161,7 +164,7 @@ pub fn canonical_template_name(
 }
 
 pub fn is_declared_container_alias_spelling(name: String) -> bool {
-    match container_template_algebra(name.clone()) {
+    match container_template_algebra(crate::v1_std_core::qualified_last_segment(name.clone())) {
         Some(_) => true,
         None => false,
     }
