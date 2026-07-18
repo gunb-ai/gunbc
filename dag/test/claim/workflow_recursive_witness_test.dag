@@ -1,22 +1,5 @@
 module test.claim.workflow_recursive_witness
 
-import std.logic { Bool }
-import std.types { NonEmptyStr, List }
-import std.reducible {
-  ReduceVerdict, Reduced, Irreducible, Unknown,
-  reduce_verdict_combine, verdict_eq,
-}
-import std.workflow_recursive {
-  VerdictTree, Leaf, Decomposed,
-  settle_verdict_tree, linearize_verdicts,
-}
-import gunbc.idea_pr_spine {
-  StageStep, IdeaInput, DagModel, Review, review_step,
-  settle, demo_spine_green, demo_spine_unknown,
-}
-import gunbc.review_verdict { Llm, Claude, RequestChanges }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn linearize_steps(steps: List<StageStep>) -> VerdictTree {

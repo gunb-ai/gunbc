@@ -1,5 +1,6 @@
 module tools.merge_admission_gate
 
+
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.types { ContentHash }
 import extdeps.shell
@@ -21,6 +22,8 @@ import gunbc.merge_admission_produce {
   shell_stdout_line,
 }
 import gunbc.ci_failure_class { merge_admission_blocks_merge }
+
+
 
 fn merge_target_tree_hash() -> ContentHash {
   let result = shell.Exec.Run(

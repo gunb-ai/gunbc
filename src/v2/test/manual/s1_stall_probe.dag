@@ -1,26 +1,5 @@
 module v2.test.manual.s1_stall_probe
 
-import extdeps.filesystem.filesystem_io
-import std.algebra { Cons, Empty }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse {
-  ParseExprAccepted,
-  ParseExprRejected,
-  grammar_lookup_production,
-  grammar_validate_for_parse,
-  parse_expr,
-  parse_prov_initial,
-  parse_table_for_production
-}
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { HeadAbsent, HeadFound, list_head }
-import v2.std.collection { List }
-import v2.std.compilers.lexing { token_stream_remaining }
-import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.grammar { ModeledGrammar }
-import v2.std.integer { Int }
-import v2.std.text { String }
-import v2.std.witness { Holds, Violates }
 
 fn stall_offset(path: String) -> Int {
   let lm = dag_language_model()

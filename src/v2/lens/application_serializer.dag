@@ -1,18 +1,5 @@
 module v2.lens.application_serializer
-import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
-import std.disposition { RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-import extdeps.communication.medium { Medium }
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.lens.application { apply_diff }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic {
-  Outcome,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.node { Diff, Node }
 
 type DagSourcePatch {
   before: Medium<String>

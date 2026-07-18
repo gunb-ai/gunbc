@@ -1,23 +1,5 @@
 module v2.test.boundary.english_ingest_fail_closed
 
-import v2.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Unavailable,
-  diagnostics_singleton,
-  node_locus
-}
-import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
-import v2.std.verification {
-  CompilesClaim,
-  DiagnosticClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier3,
-  Boundary,
-  manual_claim_anchor
-}
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence

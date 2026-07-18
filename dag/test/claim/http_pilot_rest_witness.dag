@@ -1,6 +1,5 @@
 module test.claim.http_pilot_rest_witness
 
-import extdeps.test.http_pilot
 
 func witness_get_post_title_nonempty() -> Bool {
   let r = test.HttpPilot.GetPost(post_id: 1)

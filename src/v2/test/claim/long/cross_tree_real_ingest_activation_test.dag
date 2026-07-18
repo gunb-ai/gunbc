@@ -1,31 +1,5 @@
 module v2.test.long.cross_tree_real_ingest_activation
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.program_assembly {
-  ProgramAssemblyFoldFailed,
-  ProgramAssemblyFoldOk,
-  program_assembly_fold_ingest
-}
-import v2.compiler.source_authority {
-  DagSourceReadWitness,
-  SourceRootIngest,
-  source_root_set_from_ingest
-}
-import v2.extdeps.languages.dag { dag_language_model }
-import std.algebra { Cons, Empty }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DagTree, V2Tree }
-import v2.std.cross_tree.resolution {
-  CrossTreeEdgeDecision,
-  EdgeCrossAdmitted,
-  EdgeCrossAmbiguous,
-  EdgeCrossDenied,
-  EdgeNormalResolution,
-  cross_tree_edge_decision
-}
-import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

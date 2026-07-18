@@ -1,21 +1,5 @@
 module v2.test.parse.go
 
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse }
-import v2.extdeps.languages.go { go_source_text, go_lex, go_grammar }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.grammar { ParseTree }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.logic { Bool }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  manual_claim_anchor
-}
 fn go_parse_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^go_parse_bool_true } }, children: [],

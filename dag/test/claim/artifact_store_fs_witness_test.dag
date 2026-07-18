@@ -1,15 +1,5 @@
 module test.claim.artifact_store_fs_witness
 
-import std.logic { Bool }
-import std.types { ContentHash, String }
-import std.content_hash { content_hash_atom }
-import std.artifact_store { ArtifactKey, artifact_key_hash }
-import extdeps.realization.artifact_store_fs {
-  artifact_fs_put, artifact_fs_get, artifact_fs_delete, artifact_fs_list,
-  ArtifactFsLookup, ArtifactFsHit, ArtifactFsMiss,
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data artifact_store_fs_witness_note: String = "P2 host-transport witnesses: the content-addressed roundtrip against the real Filesystem service (wet lane; hermetic runs replay the service mock). Store root under /tmp per the filesystem_write_closure_scale_witness precedent. RED control: a key whose toolchain input differs never serves the stored artifact - stale-never-served on the persistent tier."

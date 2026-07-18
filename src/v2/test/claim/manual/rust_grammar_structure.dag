@@ -1,16 +1,5 @@
 module v2.test.manual.rust_grammar_structure
-import v2.std.language_model { LanguageModel }
 
-import v2.extdeps.languages.rust {
-  rust_formal_production_list_has_lhs,
-  rust_language_model,
-  rust_formal_productions,
-  rust_lex_rules
-}
-import v2.std.grammar { grammar_carries_symbol }
-import v2.std.compilers.lexing { lex_rule_set_token_class_member }
-import v2.std.logic { Bool }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
 
 fn rust_grammar_structure_satisfied(lm: LanguageModel) -> Bool {
   lex_rule_set_token_class_member(rules: rust_lex_rules(), token_class: ^rust_token_kw_let) &&

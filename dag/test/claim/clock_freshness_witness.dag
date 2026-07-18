@@ -1,6 +1,5 @@
 module test.claim.clock_freshness_witness
 
-import extdeps.clock
 
 func witness_clock_now_positive_epoch() -> Bool {
   let r = Clock.Now()

@@ -1,50 +1,5 @@
 module test.claim.runner_unit_live_read_witness
 
-import std.types { Bool, String }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import extdeps.os.systemd {
-  SystemdCgroupMemoryLimit,
-  MemoryLimitUnbounded,
-  MemoryLimitBytes,
-  MemoryLimitAbsent,
-  parse_systemd_memory_limit_show,
-  systemd_memory_max_property,
-  systemd_memory_swap_max_property,
-  systemd_memory_high_property,
-}
-import gunbc.host_converge {
-  ConvergeTarget,
-  PerSlotMemoryCap,
-  ConvergeVerdict,
-  VerdictConverged,
-  Drifted,
-  Absent,
-  gunbc_runner_per_slot_dropin_path,
-  gunbc_runner_per_slot_swap_dropin_path,
-  gunbc_runner_per_slot_high_dropin_path,
-  runner_instance_glob,
-}
-import gunbc.ci_floor_measurement {
-  gunbc_ci_runner_cgroup_memory_cap,
-  RunnerSliceCapEffectiveness,
-  CapEffective,
-  CapUnbounded,
-}
-import gunbc.runner_unit_live_read {
-  RunnerUnitLiveReadRow,
-  RunnerUnitMemoryLiveRead,
-  gunbc_srv1_runner_unit_live_read_fixture,
-  runner_unit_live_read_typed,
-  memory_limit_to_cap_effectiveness,
-  memory_limit_converge_verdict,
-  memory_limit_converge_verdict_for_bytes_value,
-  converge_target_live_verdict,
-  runner_unit_memory_max_drifts_against_cap,
-  runner_unit_swap_max_converged,
-  fixture_live_read,
-}
-import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

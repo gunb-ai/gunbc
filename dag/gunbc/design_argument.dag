@@ -1,9 +1,5 @@
 module gunbc.design_argument
 
-import std.syllogism {
-  Axiom, LogicalAxiom, NonLogicalAxiom,
-  Proposition, Argument
-}
 
 data design_axioms: List<Axiom> = [
   Axiom {

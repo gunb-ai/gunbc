@@ -1,32 +1,5 @@
 module v2.test.emit.rust_variant_construct_emit
 
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.dag {
-  dag_variant_construct_arrow_with_body_fixture,
-  dag_variant_construct_arrow_with_body_wrong_value_fixture
-}
-import v2.extdeps.languages.rust_test {
-  rust_variant_construct_source_text,
-  rust_variant_construct_target_model_staging
-}
-import extdeps.communication.medium { Medium }
-import v2.std.collection { Map }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.witness { Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

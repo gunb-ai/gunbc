@@ -1,21 +1,5 @@
 module v2.test.long.dag_repeat_spine_wellformed
 
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.normalize { normalize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grammar { grammar_named_edge }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Node,
-  SyntheticOccurrence,
-  TypeNode,
-  well_formed,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

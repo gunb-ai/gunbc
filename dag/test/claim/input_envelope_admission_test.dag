@@ -1,23 +1,5 @@
 module test.claim.input_envelope_admission
 
-import gunbc.ci_input_envelope {
-  InputSizeAxis,
-  WitnessCount,
-  SourceNodeCount,
-  CorpusNodeCount,
-  InputBound,
-  InputEnvelope,
-  BoundedInput,
-  EnvelopeUnknown,
-  AdmissionVerdict,
-  Admitted,
-  RefusedOverEnvelope,
-  RefusedUndeclared,
-  input_admitted,
-  gunbc_ci_corpus_envelope,
-}
-import std.measure { Measure }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

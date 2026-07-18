@@ -1,7 +1,5 @@
 module gunbc.cli_run_workspace_root_scaffold
 
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data cli_run_workspace_root_discovery_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
