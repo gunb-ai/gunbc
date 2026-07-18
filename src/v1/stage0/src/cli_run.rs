@@ -9223,17 +9223,26 @@ fn parse_entry_live_tree_disposition(entry: &str, content: &str) -> Result<bool,
             return Err(malformed("missing `:` after the declaration name"));
         };
         let rest = rest.trim_start();
-        let Some(rest) = rest.strip_prefix("LiveTreeDisposition") else {
-            return Err(malformed("type annotation is not `LiveTreeDisposition`"));
+        // Qualification-invariant (namespace lane): the annotation may be the bare
+        // authority name or its qualified projection (v2.std.live_tree.LiveTreeDisposition);
+        // compare the last dot-segment, mirroring type_name_compatible's mixed-spelling
+        // rule. The typechecked roster compile remains the authority behind this text scan.
+        let (annotation, rest) = match rest.find(|c: char| c.is_whitespace() || c == '=') {
+            Some(i) => (&rest[..i], &rest[i..]),
+            None => (rest, ""),
         };
+        if annotation.rsplit('.').next() != Some("LiveTreeDisposition") {
+            return Err(malformed("type annotation is not `LiveTreeDisposition`"));
+        }
         let rest = rest.trim_start();
         let Some(rest) = rest.strip_prefix('=') else {
             return Err(malformed("missing `=` initializer"));
         };
-        let live = match rest.trim() {
+        let live = match rest.trim().rsplit('.').next().unwrap_or("") {
             "ReadsLiveTree" => true,
             "SubstrateInputsOnly" => false,
-            other => {
+            _ => {
+                let other = rest.trim();
                 return Err(malformed(&format!("unknown variant `{other}`")));
             }
         };
