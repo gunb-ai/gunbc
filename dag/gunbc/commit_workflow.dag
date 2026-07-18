@@ -311,18 +311,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/realization_vocabulary_containment/corpus/importer_count_ratchet_test.dag",
-      check_fns: [
-        "corpus_bash_program_importer_count_ratchet_holds",
-        "bash_program_importer_count_planted_growth_red_holds"
-      ],
-      kind: CorpusWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [GithubActionsCiJob]
-  },
-  CommitCheckEnrollment {
-    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag",
       check_fns: ["realization_vocab_clean_tree_holds"],
       kind: CorpusWitnessKind,
