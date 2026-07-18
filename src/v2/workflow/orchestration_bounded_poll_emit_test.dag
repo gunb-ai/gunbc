@@ -21,7 +21,7 @@ data orch_bounded_poll_golden: String = "for __gunbc_poll in $(seq 1 3); do true
 
 fn orch_bounded_poll_intent() -> PipelineStep {
   BoundedPoll {
-    max_attempts: "3",
+    max_attempts: 3,
     body: Pipeline {
       steps: [Do { run: Run { command: "true", env: [], redirect: Absent, capture: Absent } }],
       on_failure: FailFast
@@ -34,7 +34,7 @@ fn orch_bounded_poll_intent() -> PipelineStep {
 
 fn orch_bounded_poll_perturbed_intent() -> PipelineStep {
   BoundedPoll {
-    max_attempts: "4",
+    max_attempts: 4,
     body: Pipeline {
       steps: [Do { run: Run { command: "true", env: [], redirect: Absent, capture: Absent } }],
       on_failure: FailFast

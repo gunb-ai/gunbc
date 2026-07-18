@@ -1,6 +1,7 @@
 module v2.std.orchestration
 
 import v2.std.text { String }
+import std.nat { Nat }
 import std.algebra { FreeMonoid }
 import v2.std.collection { List, Optional }
 import v2.std.diagnostic { EmitDirective }
@@ -68,7 +69,7 @@ type PipelineStep
   | For { binder: Symbol, over: ValueSource, body: Pipeline }
   | While { cond: Predicate, body: Pipeline }
   | BoundedPoll {
-      max_attempts: String,
+      max_attempts: Nat,
       body: Pipeline,
       success: Predicate
     }
