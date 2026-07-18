@@ -1855,12 +1855,11 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
         && (n.connective.clone() == Connective::NoConnective))
 }
 
-pub fn rust_diff_id_ord_carrier_shape_eligible(
-    name: String,
+pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if ((name.clone() != "DiffId".to_string()) || ((children.clone().len() as i64) != 1)) {
+    if ((children.clone().len() as i64) != 1) {
         false
     } else {
         match children.clone().first().cloned() {
@@ -1878,15 +1877,17 @@ pub fn rust_nominal_ord_derives_for_shape(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if rust_diff_id_ord_carrier_shape_eligible(
-        name.clone(),
-        children.clone(),
-        source_indices.clone(),
-    ) {
+    if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
         rust_ord_derives_text()
     } else {
         "".to_string()
     }
+}
+
+pub fn rust_nominal_ord_type_name_eligible(type_name: String) -> bool {
+    ((((type_name.clone() == "Symbol".to_string()) || (type_name.clone() == "DiffId".to_string()))
+        || (type_name.clone() == "FormalNonterminal".to_string()))
+        || (type_name.clone() == "FormalTerminal".to_string()))
 }
 
 pub fn rust_nominal_ord_type_ref_eligible(
@@ -1898,8 +1899,7 @@ pub fn rust_nominal_ord_type_ref_eligible(
         (((((elem_node.children.clone().len() as i64) == 0)
             && ((elem_node.params.clone().len() as i64) == 0))
             && (elem_node.connective.clone() == Connective::NoConnective))
-            && ((type_name.clone() == "Symbol".to_string())
-                || (type_name.clone() == "DiffId".to_string())))
+            && rust_nominal_ord_type_name_eligible(type_name.clone()))
     }
 }
 
@@ -1909,8 +1909,7 @@ pub fn rust_nominal_ord_type_eligible(
 ) -> bool {
     ((rust_nominal_identity_carrier_shape_eligible(elem_node.clone(), source_indices.clone())
         || rust_nominal_ord_type_ref_eligible(elem_node.clone(), source_indices.clone()))
-        || rust_diff_id_ord_carrier_shape_eligible(
-            authored_name_at(source_indices.clone(), elem_node.clone()),
+        || rust_symbol_wrapped_ord_carrier_shape_eligible(
             elem_node.children.clone(),
             source_indices.clone(),
         ))
