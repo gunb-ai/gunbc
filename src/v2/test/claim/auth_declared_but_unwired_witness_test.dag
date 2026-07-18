@@ -1,8 +1,5 @@
 module v2.test.claim.auth_declared_but_unwired_witness
 
-import tools.auth_declared_but_unwired_witness_transport { run_auth_declared_but_unwired_witness }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

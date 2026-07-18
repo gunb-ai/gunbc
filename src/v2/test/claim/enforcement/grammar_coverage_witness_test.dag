@@ -1,30 +1,5 @@
 module v2.test.claim.enforcement.grammar_coverage_witness
 
-import v2.lens.enforcement.grammar_coverage {
-  GrammarCoverageTreeReceipt,
-  ParsedClean,
-  ParseRejected,
-  grammar_coverage_corpus_roster_live,
-  grammar_coverage_ingest_source_text,
-  grammar_coverage_paths_for_tree,
-  grammar_coverage_reject_probe,
-  grammar_coverage_roster_contains_path,
-  grammar_coverage_tree_census,
-  grammar_coverage_take_n,
-  grammar_coverage_receipt_totality_holds,
-  grammar_coverage_rejected_rows_cover_rejects,
-  grammar_coverage_rejected_row_count_sum,
-  grammar_coverage_tree_receipt_eq,
-  grammar_coverage_parse_fraction_bps,
-  grammar_coverage_timing_work_units_match_take_n,
-  grammar_coverage_file_receipt,
-  grammar_coverage_file_reject_locus_matches,
-  grammar_coverage_rejected_row_present
-}
-import v2.std.algebra { length }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

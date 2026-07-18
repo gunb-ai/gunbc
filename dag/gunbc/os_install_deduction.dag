@@ -1,5 +1,6 @@
 module gunbc.os_install_deduction
 
+
 import std.types { String, NonEmptyStr, Timestamp, Bool }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
@@ -10,6 +11,8 @@ import extdeps.os.ubuntu_autoinstall {
   NoCloudNet,
 }
 import product.placement_supply { HostIdentity }
+
+
 
 type TargetDiskState
   = EmptyDisk

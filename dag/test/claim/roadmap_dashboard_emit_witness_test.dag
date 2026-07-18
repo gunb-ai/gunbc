@@ -1,11 +1,5 @@
 module test.claim.roadmap_dashboard_emit_witness
 
-import gunbc.node_http_server_emit {
-  roadmap_dashboard_node_http_server_source,
-  roadmap_dashboard_served_static_route_table,
-  gunbhub_node_http_server_source,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

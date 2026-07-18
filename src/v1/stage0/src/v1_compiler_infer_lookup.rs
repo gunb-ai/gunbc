@@ -12,10 +12,12 @@ pub use crate::std_algebra::{
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
+use crate::v1_compiler_infer_env::lookup_binding_by_name;
 pub use crate::v1_compiler_infer_env::{
     authored_name, is_recursive_type, lookup_type, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
 pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
@@ -30,6 +32,7 @@ use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::error_type;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::FieldAccessStyle::OptionalUnwrap;
@@ -79,8 +82,60 @@ pub fn lookup_in_scope(
     }
 }
 
-pub fn lookup_func_sig(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
-    lookup_resolved_sig(func_env.clone(), name.clone())
+pub fn func_sig_from_global_bare(
+    type_env: Rc<TypeEnv>,
+    name: String,
+) -> Option<Rc<ResolvedFuncSig>> {
+    match infer_builtin_call_type(name.clone()) {
+        Some(_) => None,
+        None => match lookup_binding_by_name(type_env.clone(), name.clone()) {
+            Some(binding) => {
+                let node = binding.resolved.clone();
+                if ((node.params.clone().len() as i64) > 0) || node.inferred.is_some() {
+                    Some(Rc::new(ResolvedFuncSig {
+                        name: name.clone(),
+                        params: node.params.clone(),
+                        inferred: match node.inferred.clone().as_deref().cloned() {
+                            Some(InferredNode::Resolved { node: inferred, .. }) => inferred,
+                            _ => error_type(),
+                        },
+                        is_async: false,
+                        output_provenance: Rc::new(vec![]),
+                        variant_provenance: v1_rt::rc_empty_map(),
+                    }))
+                } else {
+                    None
+                }
+            }
+            None => None,
+        },
+    }
+}
+
+pub fn global_bare_callable_node(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
+    match lookup_binding_by_name(type_env.clone(), name.clone()) {
+        Some(binding) => {
+            if ((binding.resolved.params.clone().len() as i64) > 0)
+                || binding.resolved.inferred.is_some()
+            {
+                Some(binding.resolved.clone())
+            } else {
+                None
+            }
+        }
+        None => None,
+    }
+}
+
+pub fn lookup_func_sig(
+    func_env: Rc<ResolvedFuncEnv>,
+    type_env: Rc<TypeEnv>,
+    name: String,
+) -> Option<Rc<ResolvedFuncSig>> {
+    match lookup_resolved_sig(func_env.clone(), name.clone()) {
+        Some(sig) => Some(sig.clone()),
+        None => func_sig_from_global_bare(type_env.clone(), name.clone()),
+    }
 }
 
 pub fn lookup_field_type_node(

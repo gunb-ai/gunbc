@@ -1,30 +1,5 @@
 module v2.test.manual.emit_directive_gha
 
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import extdeps.communication.medium { Medium }
-import v2.extdeps.languages.bash {
-  emit_directive_bash_emitted_command,
-  emit_directive_bash_target_model
-}
-import v2.extdeps.github.diagnostic_emit { emit_directive_gha_target_model }
-import v2.std.collection { Map }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  EmitDirective,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  SeverityError,
-  SeverityWarning,
-  Unavailable,
-  node_locus
-}
-import v2.std.node { Node }
-import v2.std.witness { Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

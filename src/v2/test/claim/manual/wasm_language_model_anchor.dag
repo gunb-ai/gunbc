@@ -1,13 +1,5 @@
 module v2.test.manual.wasm_language_model_anchor
-import v2.std.language_model { LanguageModel }
 
-import v2.extdeps.languages.wasm {
-  wasm_inhabitant_i32_node,
-  wasm_language_model,
-  wasm_model_core
-}
-import v2.std.model_core { ModelCore }
-import v2.std.node { Node }
 
 type wasm_anchor_language_model = LanguageModel
 

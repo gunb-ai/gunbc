@@ -1,8 +1,5 @@
 module v2.test.compiler.pipeline.infer_stage
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.test.compiler.pipeline.stage_bridge { pipeline_infer_add_fixture_relationship_holds }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,16 +1,5 @@
 module test.claim.v1_source_audit_witness_test
 
-import extdeps.filesystem.filesystem_io
-import extdeps.languages.rust.emit {
-  rt_functions,
-  rt_wraps_result,
-  rt_bridge_function_names,
-  rust_method_templates,
-  rust_method_wraps_result,
-}
-import extdeps.languages.python.emit { python_method_templates_flat }
-import extdeps.languages.go.emit { go_method_templates_flat }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

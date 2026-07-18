@@ -1,4 +1,5 @@
 module v2.std.effects
+<<<<<<< HEAD
 
 import v2.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, SyntheticOccurrence }
 import std.effects {
@@ -7,6 +8,13 @@ import std.effects {
 }
 
 data defork_note: String = "v2.std.effects DISSOLVED onto the single std.effects authority (dag-v2 de-fork, docs/plans/dag-v2-defork-audit.md). The EffectShape<K> / CreateCause<K> TYPE is imported from std, never re-defined here -- what was the v2 fork (EffectShape = IsIdempotent | IsBreaking, a 2-level idempotency-class partition) is GONE: idempotency is DERIVED from the one flat EffectShape (DESIGN 4, ops from inhabitance). This module instantiates the type at K = KeySource (interned Symbol) for the substrate-witness harness (idempotency conformance by apply-once == apply-twice Node graphs) and builds shapes by direct construction. It does NOT call std.effects's predicates: those are concrete to EffectShape<std.KeySource> by the emitter generic-function-bound frontier (see std.effects.generic_predicate_frontier_note), and the harness needs only the type + constructors, not the predicates."
+=======
+type IdempotentShape
+  = ReadEffect
+  | UpsertEffect { key_source: KeySource }
+  | DeleteEffect { key_source: KeySource }
+  | CreateIfAbsentEffect { key_source: KeySource }
+>>>>>>> origin/main
 
 data key_source_representation_note: String = "v2's KeySource is the SUBSTRATE key representation (interned Symbol), the K instantiation of the single std.effects.EffectShape<K> authority for the Node-witness harness -- NOT a fork of std.effects. The verb/cause/idempotency algebra is imported from std; only the key REPRESENTATION differs (Symbol here, String in std's REST derivation). The String/Symbol unification is deferred to the grants key/target re-grounding (docs/plans/effect-namespace-grants.md), never crossed at this seam. dissolve-on = grants grounds key/target on the containment tree (QualifiedName)."
 

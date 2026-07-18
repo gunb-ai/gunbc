@@ -1,33 +1,5 @@
 module test.claim.ci_runner_target_witness
 
-import extdeps.cloud.ubicloud {
-  UbicloudRunnerCatalogRow,
-  ubicloud_runner_catalog,
-  ubicloud_standard_16_arm_catalog
-}
-import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner }
-import extdeps.github.hosted_runners {
-  PrivateRepo,
-  github_hosted_ubuntu_2404_arm_private_catalog,
-  github_hosted_ubuntu_2404_arm_public_catalog
-}
-import extdeps.languages.yaml.gha_workflow { runner_yaml, runner_label_string, string_list_flow }
-import extdeps.languages.yaml.types { yaml_string }
-import gunbc.ci_runner_target {
-  CiRunnerTarget,
-  FleetSelfHosted,
-  UbicloudRunner,
-  GithubHostedRunner,
-  RunnerMemoryRegime,
-  SlotCarved,
-  WholeMachine,
-  ci_runner_target_spec,
-  ci_runner_target_memory_regime,
-  selected_ci_runner_target,
-  gunbc_ci_selected_runner_spec
-}
-import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
-import std.measure { byte_size, byte_size_count, hardware_thread_count_value }
 
 fn witness_fleet_target_projects_fleet_derivation() -> Bool {
   ci_runner_target_spec(target: FleetSelfHosted) == gunbc_ci_runner_spec()

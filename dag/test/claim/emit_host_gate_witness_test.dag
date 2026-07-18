@@ -1,15 +1,5 @@
 module test.claim.emit_host_gate_witness
 
-import std.measure { byte_size_count }
-import tools.emit_host_fixtures {
-  rust_stdout_fixture_source,
-  python_stdout_fixture_source,
-  go_stdout_fixture_source,
-  ts_host_fixture_source,
-  stdout_byte_count,
-  ts_signed_i32_le_byte_count
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -57,7 +57,11 @@ mod generator_match_arm_test;
 #[cfg(test)]
 mod generic_return_clone_bound_test;
 #[cfg(test)]
+mod global_bare_census_coverage_test;
+#[cfg(test)]
 mod global_bare_corpus_census_test;
+#[cfg(test)]
+mod global_bare_variant_locals_receipt_test;
 #[cfg(test)]
 mod gunbhub_serve_program_test;
 #[cfg(test)]
@@ -114,6 +118,8 @@ mod parse_table_memo_amortization_test;
 mod pd3_adversarial;
 #[cfg(test)]
 mod peano_materialization_cap_test;
+#[cfg(test)]
+mod per_module_resolve_memo_equivalence_test;
 #[cfg(test)]
 mod pipeline;
 #[cfg(test)]

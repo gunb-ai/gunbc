@@ -1,29 +1,5 @@
 module v2.test.lens_unused_parameters.non_use_edges
 
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.lens.unused_parameters {
-  IsNonUseDependency,
-  IsStructuralComposition,
-  RequiresResolutionWitness,
-  UseClassificationFact,
-  use_classification_fact_eq,
-  use_classification_witness
-}
-import v2.std.dependency {
-  ClassifiedDependencyView,
-  Contains,
-  DataDependsOn,
-  DependencyView,
-  GeneratedFrom
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.witness { Holds, Witness }
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts,
-  claim_inferred_tree
-}
 data unused_parameters_non_use_child: Node = claim_atom_node(s: ^unused_parameters_non_use_child_symbol)
 
 data unused_parameters_non_use_root: Node = Node {

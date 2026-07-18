@@ -5,7 +5,8 @@ import std.types { ContentHash }
 import v2.std.algebra { length }
 import v2.std.dependency { BarrierBefore, DataDependsOn, DependencyView }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode, content_hash }
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.node_content_hash { content_hash }
 import v2.workflow.operand_flow {
   OperandFlow,
   OperandFlowFootprintMissingRow,

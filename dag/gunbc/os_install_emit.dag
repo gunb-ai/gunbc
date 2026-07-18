@@ -1,5 +1,6 @@
 module gunbc.os_install_emit
 
+
 import std.logic { Bool }
 import std.types { List, String }
 import extdeps.os.ubuntu_autoinstall {
@@ -15,6 +16,8 @@ import extdeps.languages.yaml.types {
   kv, empty_yaml_values
 }
 import extdeps.languages.yaml.emit { serialize_yaml }
+
+
 
 fn identity_entries(id: AutoinstallIdentity) -> List<YamlKeyValue> {
   [

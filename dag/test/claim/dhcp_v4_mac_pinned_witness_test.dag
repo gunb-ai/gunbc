@@ -1,14 +1,5 @@
 module test.claim.dhcp_v4_mac_pinned_witness
 
-import std.logic { Bool }
-import extdeps.dhcp.v4 {
-  dhcp_mac_pinned_reservation_not_contradictory,
-  DhcpClient,
-  StaticConfig,
-  DynamicLease,
-  StaticReservation,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

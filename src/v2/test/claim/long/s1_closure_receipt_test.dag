@@ -1,9 +1,5 @@
 module v2.test.long.s1_closure_receipt
 
-import v2.test.long.s1_closure_receipt_support { s1_closure_failures }
-import v2.std.algebra { is_empty }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
