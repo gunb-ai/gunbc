@@ -79,7 +79,16 @@ impl IdempotencyEvidence {
     }
 }
 
-pub fn is_idempotent_effect<K>(shape: Rc<EffectShape<K>>) -> bool {
+pub fn generic_predicate_frontier_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "EffectShape<K>/CreateCause<K> are GENERIC (the single-authority TYPE, shared across the REST-derivation instantiation K=KeySource here and v2's substrate-witness instantiation K=Symbol). The predicates below are CONCRETE to EffectShape<KeySource>, not generic, by a declared emitter frontier: the v1 Rust emitter lowers every match as `match (*x.clone()).clone()`, so a generic fn matching EffectShape<K> needs `where K: Clone` (and PartialEq for the key `==`), but the emitter emits generic FUNCTIONS without bounds (it bounds generic TYPES via emit_type_params_with_clone_bound, not functions). Making the predicates generic breaks the emitted stage0 seed (std.effects is real compiler seed via v1_compiler_effect_derivation). dissolve-on = emitter emits Clone/PartialEq bounds on generic functions; then these lift to <K>. v2's harness uses the TYPE at K=Symbol and does not call these predicates (it builds Node witnesses), so the concreteness costs nothing today.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     match (*shape.clone()).clone() {
         EffectShape::ReadEffect => true,
         EffectShape::UpsertEffect { .. } => true,
@@ -113,7 +122,7 @@ pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
     }
 }
 
-pub fn create_effect_is_dedupable<K>(shape: Rc<EffectShape<K>>) -> bool {
+pub fn create_effect_is_dedupable(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     match (*shape.clone()).clone() {
         EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
             CreateCause::CreateIfAbsent {
@@ -127,7 +136,10 @@ pub fn create_effect_is_dedupable<K>(shape: Rc<EffectShape<K>>) -> bool {
     }
 }
 
-pub fn create_double_init_collapsible<K>(a: Rc<EffectShape<K>>, b: Rc<EffectShape<K>>) -> bool {
+pub fn create_double_init_collapsible(
+    a: Rc<EffectShape<Rc<KeySource>>>,
+    b: Rc<EffectShape<Rc<KeySource>>>,
+) -> bool {
     match (*a.clone()).clone() {
         EffectShape::CreateEffect { cause: cause_a, .. } => match (*cause_a.clone()).clone() {
             CreateCause::CreateIfAbsent { key_source: ka, .. } => match (*b.clone()).clone() {
@@ -147,12 +159,6 @@ pub fn create_double_init_collapsible<K>(a: Rc<EffectShape<K>>, b: Rc<EffectShap
         },
         _ => false,
     }
-}
-
-pub fn effect_shape_for_create_cause<K>(cause: Rc<CreateCause<K>>) -> Rc<EffectShape<K>> {
-    Rc::new(EffectShape::CreateEffect {
-        cause: cause.clone(),
-    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
