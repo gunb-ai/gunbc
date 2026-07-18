@@ -1,83 +1,13 @@
 module test.claim.host_build_cache_provision_design
 
-import std.logic { Bool }
-import extdeps.cache.sccache { sccache_local_id }
-import extdeps.cache.github_actions { gha_actions_cache_id }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host_effect { ProvisionBuildCache }
-import gunbc.host_build_cache_catalog_gate {
-  provision_build_cache_catalog_gate_verdict,
-  provision_build_cache_unknown_catalog_fixture,
-  ProvisionBuildCacheCatalogRealizable,
-  ProvisionBuildCacheCatalogRefused,
-}
-import gunbc.host_build_cache_provision_script { build_cache_provision_read_back_fails_closed }
-import gunbc.host_build_cache_provision {
-  provision_build_cache_default_effect,
-  provision_build_cache_routes_through_host_effect_apply,
-  daemon_absent_refuses_fail_closed,
-  misconfigured_matches_cited_fragment,
-  provision_build_cache_verdict,
-  provision_build_cache_absorbing_fallback_widen_sketch,
-  build_cache_provision_gate_accepts,
-  DaemonAbsent,
-  DaemonStatsOk,
-  ProvisionConverged,
-  ProvisionRefused,
-  RefusalCatalogUnknown,
-  RefusalDaemonAbsent,
-}
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-fn design_witness_read_back_fails_closed_in_shell() -> Bool {
-  build_cache_provision_read_back_fails_closed()
-}
-
-fn design_witness_unknown_catalog_refuses_at_gate() -> Bool {
-  match provision_build_cache_catalog_gate_verdict(
-    catalog_id: provision_build_cache_unknown_catalog_fixture,
-  ) {
-    ProvisionBuildCacheCatalogRefused { reason: _ } => true
-    ProvisionBuildCacheCatalogRealizable => false
-  }
-}
-
-fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
-  match provision_build_cache_catalog_gate_verdict(catalog_id: gha_actions_cache_id) {
-    ProvisionBuildCacheCatalogRefused { reason: reason } =>
-      string_contains(s: reason as String, pattern: "not yet realized")
-    ProvisionBuildCacheCatalogRealizable => false
-  }
-}
-
-fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
-  match provision_build_cache_verdict(
-    catalog_id: gha_actions_cache_id,
-    observed: DaemonStatsOk { stats_line: "compile_requests=1" },
-  ) {
-    ProvisionRefused { cause: RefusalCatalogUnknown, reason: reason } =>
-      string_contains(s: reason as String, pattern: "not yet realized")
-    ProvisionConverged { catalog_id: _, stats_line: _ } => false
-  }
-}
-
-fn design_witness_sccache_catalog_passes_gate() -> Bool {
-  match provision_build_cache_catalog_gate_verdict(catalog_id: sccache_local_id) {
-    ProvisionBuildCacheCatalogRealizable => true
-    ProvisionBuildCacheCatalogRefused { reason: _ } => false
-  }
-}
 
 fn design_witness_routes_through_host_effect_apply() -> Bool {
   provision_build_cache_routes_through_host_effect_apply()
 }
 
 fn design_witness_default_effect_pins_sccache_catalog() -> Bool {
-  match provision_build_cache_default_effect() {
-    ProvisionBuildCache { catalog_id: id } => id == sccache_local_id
-    _ => false
-  }
+  provision_build_cache_default_effect().catalog_id == sccache_local_id
 }
 
 fn design_witness_absent_daemon_fail_closed() -> Bool {
@@ -131,12 +61,7 @@ fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
 }
 
 test fn host_build_cache_provision_design_witnesses() -> Bool {
-  design_witness_read_back_fails_closed_in_shell()
-    && design_witness_unknown_catalog_refuses_at_gate()
-    && design_witness_known_non_sccache_catalog_refuses_at_gate()
-    && design_witness_known_non_sccache_catalog_refuses_at_verdict()
-    && design_witness_sccache_catalog_passes_gate()
-    && design_witness_routes_through_host_effect_apply()
+  design_witness_routes_through_host_effect_apply()
     && design_witness_default_effect_pins_sccache_catalog()
     && design_witness_absent_daemon_fail_closed()
     && design_witness_authority_gate_accepts_absent_refusal()

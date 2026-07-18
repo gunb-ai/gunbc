@@ -86,13 +86,13 @@ import v2.std.node {
   all_edges_named,
   all_edges_positional,
   connective_edge_discipline,
-  content_hash,
   fold_node,
   match_arm_children_conform_skip_first,
   name_occurrences,
   node_rebuild,
   SyntheticOccurrence
 }
+import v2.std.node_content_hash { content_hash }
 import v2.std.witness { StructuralPropertyWitness }
 import v2.std.node_query {
   arrow_domain_named_param_bindings,

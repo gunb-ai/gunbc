@@ -1,12 +1,5 @@
 module v2.test.long.gap4_parse_tokens_remain
 
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse_module }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.language_model { LanguageModel }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,47 +1,4 @@
 module v2.compiler.source_authority
-import v2.std.language_model { LanguageModel }
-
-import v2.compiler.normalize { normalize }
-import v2.compiler.normalized_tree { NormalizedTree }
-import v2.compiler.parse {
-  ParseArtifact,
-  parse,
-  parse_module,
-}
-import v2.compiler.resolve { resolve, ResolvedTree }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  dag_language_model
-}
-import v2.std.compilers.lexing { TokenStream }
-import v2.std.provenance { span_index_empty }
-import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list, length, list_snoc_item }
-import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  NonEmptyDiagnostics,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  diagnostics_singleton,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.grammar { ParseTree }
-import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
-import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
-import v2.std.cross_tree.resolution { source_root_set_insert }
-import v2.std.provenance { SpanIndex }
-import v2.std.compilers.target_model { TargetModel }
-import extdeps.communication.fidelity_carriers { medium_section_equal }
-import extdeps.communication.medium { DecodeFidelity, Medium }
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.std.text { String }
-import v2.std.witness { Holds, Violates, Witness }
 
 data source_authority_module_note: String = "Wave 2 Gate-A flip lane: v2.compiler.source_authority is the cross-tree ingest and round-trip authority (parse→normalize→resolve→serialize laws over DagSourceReadWitness / SourceRootIngest). Curated seed-linked scaffold defers full tree behavioral oracle until emitter Rc/Optional coherence (#6775) greens rustc on the closure."
 
@@ -199,6 +156,40 @@ fn semantic_ir_from_source(source: Medium<String>) -> Outcome<DagSemanticIr> {
   )
 }
 
+fn source_authority_fn_parse_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^dag_production_fn_add,
+    productions: [dag_grammar_production_fn_add()],
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn source_authority_parse_source_file_tokens(
+  tokens: TokenStream
+) -> Outcome<ParseArtifact> {
+  let root = source_authority_fn_parse_root()
+  match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
+    Accepted { value: validated, diagnostics: _ } =>
+      match parse_production_tree(
+        tokens: token_stream_remaining(stream: tokens),
+        validated: validated,
+        production_name: ^dag_production_fn_add
+      ) {
+        Accepted { value: tree, diagnostics: d } =>
+          outcome_accepted(
+            value: ParseArtifact {
+              tree: tree,
+              span_index: span_index_empty()
+            }
+          )
+        Rejected { diagnostics: r } =>
+          Rejected { diagnostics: r }
+      }
+    Rejected { diagnostics: r } =>
+      Rejected { diagnostics: r }
+  }
+}
+
 fn source_ir_artifact_provenance_from_model(
   source_read: DagSourceReadWitness,
   lm: LanguageModel
@@ -269,15 +260,30 @@ fn source_ir_node_artifact_provenance_add_from_model(
   source_read: DagSourceReadWitness,
   lm: LanguageModel
 ) -> Outcome<NodeArtifactProvenance> {
-  match source_ir_artifact_provenance_from_model(source_read: source_read, lm: lm) {
-    Accepted { value: prov, diagnostics: _ } =>
-      outcome_accepted(
-        value: NodeArtifactProvenance {
-          node: prov.node,
-          artifact: prov.artifact
+  match source_read.artifact.kind {
+    SourceFile =>
+      bind_outcome(
+        o: tokenize(
+          text: source_read.source.carried,
+          file: source_read.compilation_unit,
+          rules: lm.lex
+        ),
+        f: fn(token_stream) {
+          bind_outcome(
+            o: source_authority_parse_source_file_tokens(tokens: token_stream),
+            f: fn(artifact) {
+              outcome_accepted(
+                value: NodeArtifactProvenance {
+                  node: artifact.tree,
+                  artifact: source_read.artifact
+                }
+              )
+            }
+          )
         }
       )
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    _ =>
+      outcome_rejected(d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file))
   }
 }
 

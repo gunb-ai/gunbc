@@ -1,22 +1,5 @@
 module test.claim.dag_compile_clean_shard_a_witness
 
-import tools.dag_compile_clean_partition {
-  witness_partition_entry_root_is_first_witness_layer_root,
-  witness_partition_pool_roots_are_compile_clean_source_roots,
-  witness_compose_all_clean_is_clean,
-  witness_compose_any_failure_fails_closed,
-  witness_compose_associativity,
-  witness_reduce_projection_preserves_compose,
-  witness_empty_compose_is_unknown_reduce,
-  compose_compile_clean_shard_verdicts,
-  ShardClean,
-  ShardFailed
-}
-import tools.dag_compile_clean_shard_transport {
-  run_shard_a_exemplar_compile,
-  shard_a_exemplar_entry_path
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data witness_compose_red_on_injected_failure: Bool = compose_compile_clean_shard_verdicts(

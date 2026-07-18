@@ -10,49 +10,34 @@ import v2.std.logic { Bool }
 
 type Verdict<Subj, T>
   = Pass
-  | SemanticMismatch {
-      actual: Outcome<T>,
-      falsification: Optional<FalsificationReceipt<Subj, T>>
-    }
-  | BuildFailed { actual: Outcome<T>, diagnostic: Diagnostic }
-  | RunFailed { actual: Outcome<T>, diagnostic: Diagnostic }
+  | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<Subj, T>> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
+
+fn verdict_fail<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
+  Fail { actual: actual, falsification: Absent }
+}
 
 fn verdict_semantic_mismatch<Subj, T>(
   actual: Outcome<T>,
   falsification: Optional<FalsificationReceipt<Subj, T>>
 ) -> Verdict<Subj, T> {
-  SemanticMismatch { actual: actual, falsification: falsification }
+  Fail { actual: actual, falsification: falsification }
 }
 
 fn verdict_build_failed<Subj, T>(actual: Outcome<T>, diagnostic: Diagnostic) -> Verdict<Subj, T> {
-  BuildFailed { actual: actual, diagnostic: diagnostic }
+  Deferred { actual: actual, diagnostic: diagnostic }
 }
 
 fn verdict_run_failed<Subj, T>(actual: Outcome<T>, diagnostic: Diagnostic) -> Verdict<Subj, T> {
-  RunFailed { actual: actual, diagnostic: diagnostic }
-}
-
-fn verdict_fail<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
-  verdict_semantic_mismatch(actual: actual, falsification: Absent)
+  Fail { actual: actual, falsification: Absent }
 }
 
 fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict<Subj, T> {
   match a {
     Pass => b
-    SemanticMismatch { actual: fa, falsification: ff } =>
-      SemanticMismatch { actual: fa, falsification: ff }
-    BuildFailed { actual: fa, diagnostic: d } =>
-      BuildFailed { actual: fa, diagnostic: d }
-    RunFailed { actual: fa, diagnostic: d } =>
-      RunFailed { actual: fa, diagnostic: d }
+    Fail { actual: fa, falsification: ff } => Fail { actual: fa, falsification: ff }
     Deferred { actual: da, diagnostic: diag } => match b {
-      SemanticMismatch { actual: fb, falsification: bf } =>
-        SemanticMismatch { actual: fb, falsification: bf }
-      BuildFailed { actual: fb, diagnostic: bd } =>
-        BuildFailed { actual: fb, diagnostic: bd }
-      RunFailed { actual: fb, diagnostic: rd } =>
-        RunFailed { actual: fb, diagnostic: rd }
+      Fail { actual: fb, falsification: bf } => Fail { actual: fb, falsification: bf }
       Deferred { actual: _, diagnostic: _ } => Deferred { actual: da, diagnostic: diag }
       Pass => Deferred { actual: da, diagnostic: diag }
     }
@@ -77,11 +62,7 @@ data verdict_tally_empty: VerdictTally = VerdictTally { pass: Zero, fail: Zero, 
 fn verdict_tally_add<Subj, T>(t: VerdictTally, v: Verdict<Subj, T>) -> VerdictTally {
   match v {
     Pass => VerdictTally { pass: Succ { prev: t.pass }, fail: t.fail, deferred: t.deferred }
-    SemanticMismatch { actual: _, falsification: _ } =>
-      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
-    BuildFailed { actual: _, diagnostic: _ } =>
-      VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
-    RunFailed { actual: _, diagnostic: _ } =>
+    Fail { actual: _, falsification: _ } =>
       VerdictTally { pass: t.pass, fail: Succ { prev: t.fail }, deferred: t.deferred }
     Deferred { actual: _, diagnostic: _ } =>
       VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }

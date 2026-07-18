@@ -31,6 +31,7 @@ import v2.std.passing_candidate_fold {
   PassingCandidateFold
 }
 import v2.std.witness { StructuralPropertyWitness }
+
 type CandidateSet {
   candidates: List<Node>
   closedness: StructuralPropertyWitness

@@ -1,15 +1,5 @@
 module v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_build
 
-import v2.lens.extdeps_shape_transport_policy {
-  ExtdepsTransportArgvFact,
-  ExtdepsTransportFusionFact,
-  ExtdepsTransportKind,
-  extdeps_shape_transport_policy_violation_count
-}
-import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_cargo_build_module }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

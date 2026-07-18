@@ -1,9 +1,5 @@
 module v2.test.languages_consumer_census.corpus.rust_statements_composition_only
 
-import v2.lens.languages_consumer_census { languages_consumer_census_live_is_composition_only }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
