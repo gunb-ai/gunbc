@@ -11,8 +11,6 @@ import gunbc.plans.ci_process_end_to_end { ci_process_end_to_end_plan }
 import gunbc.plans.ci_oom_reclassification { ci_oom_reclassification_plan }
 import gunbc.plans.bounded_input_cost_envelope_scheduling { bounded_input_cost_envelope_scheduling_plan }
 
-
-
 data batch_f_plans: List<Plan> = [
   self_applying_lenses_plan,
   budget_tree_plan,

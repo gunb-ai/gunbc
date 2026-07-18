@@ -17,7 +17,6 @@ import v2.extdeps.languages.bash {
   bash_stmt_assign_target_model
 }
 
-
 fn bash_orch_procedure_tokens() -> List<ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_procedure_name },

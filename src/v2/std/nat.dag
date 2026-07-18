@@ -1,11 +1,6 @@
 module v2.std.nat
-
-import v2.std.algebra {
-  Magma,
-  Semigroup,
-  Monoid,
+import std.algebra {
   CommutativeMonoid,
-  Semiring,
   CommutativeSemiring,
   Ordering,
   Less,

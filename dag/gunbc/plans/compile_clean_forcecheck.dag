@@ -4,8 +4,6 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, AlignRight }
 import gunbc.plans.md_helpers { h2, p, li, ul, ol, quote, cell, row }
 
-
-
 fn compile_clean_forcecheck_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** diagnosis (done, execution-proven) + **(A) partition design** + **blast-radius measured (10 names / 102 sites)**. Scope confirmed by parent `quick-ant-298`: **DESIGN-FIRST + MEASURE-FIRST, land nothing enforcing** — the tree-scoping/registry-partition *flip* is operator-gated (escalates via parent + bright-stag). **DESIGN §5 (fail-closed) is authority.** Work-item `adhoc-6169238c-5e2`. Linked from `ROADMAP.md §0` (line 31, \"inference fail-open — return-type after #5293\") and §1 (floor-coverage). Sibling of [fail-closed-lockdown.md](fail-closed-lockdown.md) §3 (where the pipeline fails open). Adjacent: 2(i) (bright-stag `adhoc-8e5771e1-14a`) grounds `utf8_decode_bytes` as a real std fn — **(A) is what makes such grounding required by construction** so the leak can't recur."),

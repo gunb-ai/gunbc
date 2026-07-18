@@ -1,5 +1,17 @@
 module v2.lens.enforcement.standing_intent
 
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.lens.registry { LensIdV0, Cost }
+import v2.lens.enforcement.vocab {
+  SubjectRoster, ScopeRoster,
+  EnforcementMode, Advisory, AuditOnly, Blocking,
+  ConsumerRequirement, AnyLiveConsumer, OneOf, Exact,
+  ConsumerKind, FloorGate, MergeAdmission, PrePushHook, RoadmapDriftGate,
+  NarrowingReason, BootstrapBlocked, TypeReflectionUnavailable
+}
 
 type IntentProperty
   = LensFamily { lens: LensIdV0 }

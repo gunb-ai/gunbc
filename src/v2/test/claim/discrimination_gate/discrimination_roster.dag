@@ -1,5 +1,51 @@
 module v2.test.discrimination_gate.discrimination_roster
 
+import v2.lens.discrimination { unit_is_discriminating }
+import v2.std.algebra { fold_list, is_empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.diagnostic {
+  Diagnostic,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  diagnostics_singleton
+}
+import v2.std.verification {
+  DiagnosticClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.test.impossible_bug.suboptimal_complexity {
+  claim_within_structural_bound_passes,
+  claim_overcost_against_structural_bound_violates,
+  within_bound_input
+}
+import v2.test.impossible_bug.nested_optional_flatten {
+  claim_optional_chaining_no_double_unwrap,
+  claim_optional_double_unwrap_rejected
+}
+import v2.test.impossible_bug.transport_type_drift {
+  claim_shared_declaration_compiles_both_sides,
+  claim_target_contract_drift_impossible
+}
+import v2.test.impossible_bug.idempotency_contract {
+  claim_idempotent_inhabitant_passes,
+  claim_repeated_append_in_idempotent_position_caught
+}
+import v2.test.impossible_bug.unenumerated_effects {
+  claim_explicit_reread_passes,
+  claim_redundant_read_caught
+}
+import v2.test.impossible_bug.unhandled_diagnostic_paths {
+  claim_division_by_zero_total_or_proven_safe,
+  claim_unproven_division_rejected
+}
 
 data unit_suboptimal_complexity: List<TestClaim> = [
   claim_within_structural_bound_passes,

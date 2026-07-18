@@ -1,6 +1,5 @@
 module v2.std.fn_index
 
-
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import v2.std.collection { List }

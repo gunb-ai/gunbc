@@ -16,10 +16,10 @@ import v2.std.node {
   Node,
   Symbol,
   TypeNode,
+  content_hash,
   node_subtree_nodes,
   node_synthetic,
 }
-import v2.std.node_content_hash { content_hash }
 
 type ModuleId = NonEmptyStr where brand("ModuleId")
 type CompilationUnitId = ContentHash where brand("CompilationUnitId")

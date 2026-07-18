@@ -1,6 +1,5 @@
 module gunbc.srv3_os_install_reconcile_receipt
 
-
 import std.types { String, NonEmptyStr, ContentHash, Timestamp, Bool, Int }
 import std.temporal_effect {
   EffectStepReceipt,
@@ -77,8 +76,6 @@ import gunbc.srv3_os_install_diagnostic {
 }
 import extdeps.bmc.types { BootOverrideDisabled, BootTargetNone, BootOverrideOnce, BootTargetCd }
 import gunbc.srv3_os_install_actuate_workflow { srv3_boot_once_cd_escalation }
-
-
 
 fn bash_var_ref(name: String) -> String {
   concat("$", concat("{", concat(name, "}")))

@@ -1,6 +1,5 @@
 module tools.dag_compile_clean_partition
 
-
 import gunbc.ci_layer_roots { witness_layer_roots, compile_clean_source_roots }
 import std.types { List }
 import std.types { String, Bool }
@@ -8,8 +7,6 @@ import std.reducible {
   ReduceVerdict, Reduced, Irreducible, Unknown,
   reduce_verdicts_located, verdict_eq
 }
-
-
 
 type CompileCleanPartitionBoundary {
   entry_root: String
