@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use v1_compiler::cli_run::{bare_ref_reachability_for_name, BareRefReachability};
 use v1_compiler::v1_compiler_compile::{front_end_sources, SourceFile};
-use v1_compiler::v1_compiler_infer::build_global_bare_census;
+use v1_compiler::v1_compiler_infer::build_symbol_index_census;
 use v1_compiler::v1_compiler_infer_env::GlobalBareLookupState;
 
 fn workspace_root() -> std::path::PathBuf {
@@ -71,7 +71,9 @@ fn load_floor_census(
         .fold(im_rc::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
-    build_global_bare_census(graph.modules.clone(), Rc::new(source_indices))
+    build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
+        .global_bare
+        .clone()
 }
 
 enum CensusInvariantDisposition {
@@ -247,7 +249,9 @@ fn corpus_census_state_of_failing_names() {
         .fold(im_rc::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
-    let census = build_global_bare_census(graph.modules.clone(), Rc::new(source_indices));
+    let census = build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
+        .global_bare
+        .clone();
 
     eprintln!("[corpus] census keys = {}", census.len());
     eprintln!("[corpus] modules     = {}", graph.modules.len());
@@ -307,7 +311,9 @@ fn corpus_ambiguous_roster() {
         .fold(im_rc::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
-    let census = build_global_bare_census(graph.modules.clone(), Rc::new(source_indices));
+    let census = build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
+        .global_bare
+        .clone();
 
     let mut ambiguous: Vec<String> = census
         .iter()
