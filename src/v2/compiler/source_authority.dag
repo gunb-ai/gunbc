@@ -5,13 +5,17 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.normalized_tree { NormalizedTree }
 import v2.compiler.parse {
   ParseArtifact,
+  PreparedGrammar,
   parse,
   parse_module,
+  parse_module_prepared,
+  prepare_grammar,
 }
 import v2.compiler.resolve { resolve, ResolvedTree }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
-  dag_language_model
+  dag_language_model,
+  qualified_name_from_module_node
 }
 import v2.std.compilers.lexing { TokenStream }
 import v2.std.provenance { span_index_empty }
@@ -19,7 +23,9 @@ import std.algebra { Empty, FreeMonoid }
 import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
 import v2.std.diagnostic {
+  Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   NonEmptyDiagnostics,
   Outcome,
@@ -33,6 +39,8 @@ import v2.std.diagnostic {
 }
 import v2.std.grammar { ParseTree }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
@@ -79,6 +87,28 @@ type SourceIrArtifactProvenance {
   artifact: Artifact
   span_index: SpanIndex
 }
+
+data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact: the 27 hand FrontierQualifiedModuleBinding rows and the host-side build_module_path_index both project from here, else two authorities remain (§3). Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
+
+type ModuleStorageProvenance
+  = ParsedFromSource { artifact: Artifact, span_index: SpanIndex }
+  | ProducedByBehavior { producer: Symbol }
+
+type ModuleStorageBinding {
+  module: QualifiedName
+  provenance: ModuleStorageProvenance
+  source_root: SourceRootRef
+}
+
+type ModuleStorageIndex = FreeMonoid<ModuleStorageBinding>
+
+type ModuleStorageFoldState
+  = ModuleStorageFoldOk {
+      bindings: ModuleStorageIndex
+    }
+  | ModuleStorageFoldFailed {
+      diagnostics: NonEmptyDiagnostics
+    }
 
 type SourceAstEqual {
   original: DagSourceAst
@@ -237,6 +267,294 @@ fn source_ir_artifact_provenance(
   source_ir_artifact_provenance_from_model(
     source_read: source_read,
     lm: dag_language_model()
+  )
+}
+
+fn module_storage_binding_from_provenance(
+  prov: SourceIrArtifactProvenance,
+  source_root: SourceRootRef
+) -> Outcome<ModuleStorageBinding> {
+  match qualified_name_from_module_node(root: prov.node) {
+    Accepted { value: qn, diagnostics: _ } =>
+      outcome_accepted(
+        value: ModuleStorageBinding {
+          module: qn,
+          provenance: ParsedFromSource {
+            artifact: prov.artifact,
+            span_index: prov.span_index
+          },
+          source_root: source_root
+        }
+      )
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
+data module_storage_located_refusal_note: String = "The name-derivation refusal FORWARDS the derivation's own diagnostics unchanged rather than substituting a port-level source_authority_diagnostic. Substituting would satisfy 'typed' while destroying 'located' (§5 requires both): qualified_name_from_module_node reports at the offending node, whereas source_authority_port locates only the stage. Dropping that is the same loss of signal the silent-drop arm caused, one tier milder — the caller learns THAT a module name failed but not WHERE. This also keeps the authority path identical to the sibling arm in v2.compiler.program_assembly, so one derivation failure does not produce two different diagnostics depending on which entry point ran."
+
+data module_storage_prepare_once_note: String = "prepare_grammar is hoisted ABOVE the fold, exactly as v2.compiler.program_assembly does (program_assembly_prepare_once_note): the grammar is well-formed-checked, validated, and FIRST/nullable-analyzed ONCE per ingest, then parse_module_prepared reuses the PreparedGrammar for every read. Deriving the binding over a K-module ingest therefore validates the grammar once, not K times — the recompute-per-module cost this dissolves (§6 bare-minimum cost: a proven cost-shape defect is always fixed, and 'K is small here' is not a time-stable fact — K becomes the whole tree once the projections replace the hand tables). Empty ingest is guarded so it never pays the one-time prepare for zero reads, and an invalid grammar fails the whole derivation before any read is parsed, carrying the validation diagnostic — never a per-read silent skip."
+
+fn module_storage_binding_from_parse_artifact(
+  artifact: ParseArtifact,
+  source_read: DagSourceReadWitness
+) -> Outcome<ModuleStorageBinding> {
+  module_storage_binding_from_provenance(
+    prov: SourceIrArtifactProvenance {
+      node: artifact.tree,
+      artifact: source_read.artifact,
+      span_index: artifact.span_index
+    },
+    source_root: source_read.source_root
+  )
+}
+
+fn module_storage_binding_from_read_prepared(
+  source_read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> Outcome<ModuleStorageBinding> {
+  match source_read.artifact.kind {
+    SourceFile =>
+      bind_outcome(
+        o: tokenize(
+          text: source_read.source.carried,
+          file: source_read.compilation_unit,
+          rules: lm.lex
+        ),
+        f: fn(token_stream) {
+          bind_outcome(
+            o: parse_module_prepared(
+              tokens: token_stream,
+              prepared: prepared,
+              validation_residue: residue
+            ),
+            f: fn(artifact) {
+              module_storage_binding_from_parse_artifact(
+                artifact: artifact,
+                source_read: source_read
+              )
+            }
+          )
+        }
+      )
+    _ =>
+      outcome_rejected(
+        d: source_authority_diagnostic(reason: ^source_authority_read_artifact_not_source_file)
+      )
+  }
+}
+
+fn module_storage_binding_from_read_with_model(
+  source_read: DagSourceReadWitness,
+  lm: LanguageModel
+) -> Outcome<ModuleStorageBinding> {
+  match prepare_grammar(grammar: lm.grammar) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prepared, diagnostics: residue } =>
+      module_storage_binding_from_read_prepared(
+        source_read: source_read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue
+      )
+  }
+}
+
+data module_storage_binding_refusal_note: String = "§5 — a failure arm REFUSES, never widens. A read whose module name cannot be derived is a located refusal, NOT a dropped binding: the pre-Phase-1 derivation in v2.compiler.program_assembly kept the root and left the index unchanged on Rejected, so a module that failed name extraction became silently invisible to every downstream lookup (an absorbing fallback in drop form — the deficit's frequency zeroed by construction). Duplicate module within the index is likewise a typed refusal here: it is the modeled form of the host panic at src/v1/stage0/src/cli_run.rs module_path_collision_panic_message, so the live 1:1 binding is enforced by the model rather than incidentally by a Rust panic."
+
+fn module_storage_binding_module(binding: ModuleStorageBinding) -> QualifiedName {
+  binding.module
+}
+
+fn module_storage_binding_module_dotted(binding: ModuleStorageBinding) -> String {
+  qualified_name_to_dotted_string(qn: binding.module)
+}
+
+data module_storage_identity_note: String = "Module identity compares STRUCTURALLY on QualifiedName (= FreeMonoid<Symbol>), never through a rendered dotted string. Routing identity through qualified_name_to_dotted_string would allocate two strings per comparison — n per insert, so n^2 string builds over an ingest — to answer a question the symbol list already answers, and it would make a rendering function load-bearing for identity (§6 bare-minimum cost; §3 the dotted form is a projection FOR DISPLAY, not the identity authority). The hand-rolled qualified_name_eq was already dissolved into structural == when QualifiedName became a FreeMonoid alias; this reuses that, it does not re-mint it."
+
+fn module_storage_index_contains_module(
+  index: ModuleStorageIndex,
+  module: QualifiedName
+) -> Bool {
+  fold_list(
+    xs: index,
+    empty: false,
+    cons: fn(found, binding) {
+      if found {
+        true
+      } else {
+        module_storage_binding_module(binding: binding) == module
+      }
+    }
+  )
+}
+
+fn module_storage_index_insert(
+  index: ModuleStorageIndex,
+  binding: ModuleStorageBinding
+) -> Outcome<ModuleStorageIndex> {
+  if module_storage_index_contains_module(index: index, module: binding.module) {
+    outcome_rejected(
+      d: source_authority_diagnostic(reason: ^source_authority_module_storage_binding_duplicate)
+    )
+  } else {
+    outcome_accepted(value: list_snoc_item(xs: index, item: binding))
+  }
+}
+
+fn module_storage_fold_step(
+  state: ModuleStorageFoldState,
+  read: DagSourceReadWitness,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> ModuleStorageFoldState {
+  match state {
+    ModuleStorageFoldFailed { diagnostics: d } =>
+      ModuleStorageFoldFailed { diagnostics: d }
+    ModuleStorageFoldOk { bindings: acc } =>
+      match module_storage_binding_from_read_prepared(
+        source_read: read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue
+      ) {
+        Rejected { diagnostics: d } =>
+          ModuleStorageFoldFailed { diagnostics: d }
+        Accepted { value: binding, diagnostics: _ } =>
+          match module_storage_index_insert(index: acc, binding: binding) {
+            Rejected { diagnostics: d } =>
+              ModuleStorageFoldFailed { diagnostics: d }
+            Accepted { value: next, diagnostics: _ } =>
+              ModuleStorageFoldOk { bindings: next }
+          }
+      }
+  }
+}
+
+fn module_storage_bindings_from_ingest_prepared(
+  ingest: SourceRootIngest,
+  lm: LanguageModel,
+  prepared: PreparedGrammar,
+  residue: Diagnostics
+) -> Outcome<ModuleStorageIndex> {
+  match fold_list(
+    xs: ingest,
+    empty: ModuleStorageFoldOk { bindings: Empty },
+    cons: fn(state, read) {
+      module_storage_fold_step(
+        state: state,
+        read: read,
+        lm: lm,
+        prepared: prepared,
+        residue: residue
+      )
+    }
+  ) {
+    ModuleStorageFoldOk { bindings: b } => outcome_accepted(value: b)
+    ModuleStorageFoldFailed { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn module_storage_bindings_from_ingest_with_model(
+  ingest: SourceRootIngest,
+  lm: LanguageModel
+) -> Outcome<ModuleStorageIndex> {
+  match ingest {
+    Empty => outcome_accepted(value: Empty)
+    _ =>
+      match prepare_grammar(grammar: lm.grammar) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: prepared, diagnostics: residue } =>
+          module_storage_bindings_from_ingest_prepared(
+            ingest: ingest,
+            lm: lm,
+            prepared: prepared,
+            residue: residue
+          )
+      }
+  }
+}
+
+fn module_storage_bindings_from_ingest(
+  ingest: SourceRootIngest
+) -> Outcome<ModuleStorageIndex> {
+  module_storage_bindings_from_ingest_with_model(
+    ingest: ingest,
+    lm: dag_language_model()
+  )
+}
+
+data module_storage_produced_binding_note: String = "The zero-file case, representable by construction (§2): the body producer already creates modules with no file at all, which is the standing proof that identity cannot be the path. ProducedByBehavior carries the producing behavior instead of an artifact, so such a module enters the binding table honestly rather than being excluded (today source_ir_artifact_provenance_from_model rejects every non-SourceFile artifact, so produced modules cannot enter provenance at all)."
+
+fn module_storage_produced_binding(
+  module: QualifiedName,
+  producer: Symbol,
+  source_root: SourceRootRef
+) -> ModuleStorageBinding {
+  ModuleStorageBinding {
+    module: module,
+    provenance: ProducedByBehavior { producer: producer },
+    source_root: source_root
+  }
+}
+
+fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<String> {
+  match binding.provenance {
+    ParsedFromSource { artifact: a, span_index: _ } =>
+      optional_present(value: a.file_path)
+    ProducedByBehavior { producer: _ } =>
+      optional_absent()
+  }
+}
+
+data module_storage_projection_note: String = "Both requested directions are queries against ONE table (design §2). file → graph region: given a path, the module parsed from it. module → file(s): given a module reference, its current storage — needed ONLY at host boundaries; user code and tool .dag reference modules and never see paths. A produced module answers Absent for storage, which is a real answer, not a miss."
+
+fn module_storage_module_for_path(
+  index: ModuleStorageIndex,
+  file_path: String
+) -> Optional<QualifiedName> {
+  fold_list(
+    xs: index,
+    empty: optional_absent(),
+    cons: fn(found, binding) {
+      match found {
+        Present { value: v } => optional_present(value: v)
+        Absent =>
+          match module_storage_binding_file_path(binding: binding) {
+            Present { value: p } =>
+              if p == file_path {
+                optional_present(value: module_storage_binding_module(binding: binding))
+              } else {
+                optional_absent()
+              }
+            Absent => optional_absent()
+          }
+      }
+    }
+  )
+}
+
+fn module_storage_path_for_module(
+  index: ModuleStorageIndex,
+  module: QualifiedName
+) -> Optional<String> {
+  fold_list(
+    xs: index,
+    empty: optional_absent(),
+    cons: fn(found, binding) {
+      match found {
+        Present { value: v } => optional_present(value: v)
+        Absent =>
+          if module_storage_binding_module(binding: binding) == module {
+            module_storage_binding_file_path(binding: binding)
+          } else {
+            optional_absent()
+          }
+      }
+    }
   )
 }
 
