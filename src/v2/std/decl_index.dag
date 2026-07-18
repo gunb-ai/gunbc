@@ -56,7 +56,7 @@ fn decl_fact_node_has_body(node: Node) -> Bool {
 }
 
 fn decl_facts_fn_items(facts: List<DeclFact>) -> List<DeclFact> {
-  fold(facts, init: Empty, f: fn(acc, fact) {
+  fold(facts, init: std.algebra.Empty, f: fn(acc, fact) {
     if decl_facts_is_fn_like(kind: fact.kind) {
       list_snoc_item(xs: acc, item: fact)
     } else {

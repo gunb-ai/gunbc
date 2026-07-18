@@ -43,7 +43,7 @@ fn body_producer_forward_rows() -> List<BodyProducerForwardRow> {
             head: body_producer_forward_row_let_expr,
             tail: Cons {
               head: body_producer_forward_row_loop_expr,
-              tail: Empty
+              tail: std.algebra.Empty
             }
           }
         }
@@ -59,7 +59,7 @@ fn body_producer_forward_row_count() -> Int {
 fn body_producer_forward_surface_identities() -> List<Symbol> {
   fold_list(
     xs: body_producer_forward_rows(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       list_append(left: acc, right: [row.surface_identity])
     }
