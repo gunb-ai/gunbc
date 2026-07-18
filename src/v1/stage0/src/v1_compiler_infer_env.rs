@@ -35,6 +35,7 @@ pub struct TypeEnv {
     pub intern_table: Rc<InternTable>,
     pub source_visible_names: Rc<HashMap<String, bool>>,
     pub symbol_index: Rc<SymbolIndex>,
+    pub module_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -47,7 +48,7 @@ pub struct TypeBinding {
 pub fn global_bare_fallback_invariant() -> String {
     thread_local! {
         static CACHED: String = {
-            "Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): keyed on the bare declared name, one authority on SymbolIndex.global_bare built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent — mirrors v2's symbol_index_global_bare, docs/plans/namespace-resolution-design.md §7.5). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) PLUS corpus-globally-unique Disj variant aliases (module-local unique AND corpus-wide unique — binding.resolved is the owning coproduct item, never the arm child; ambiguous homonyms stay qualified-path only in SymbolIndex.entries, fail-closed on bare lookup). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss, and only a GlobalBareUniqueBinding resolves; GlobalBareAmbiguousBinding stays Absent (fail-closed, never guesses — §5). Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node). This is what unblocks the import strip: a bare reference that used to resolve via a deleted import chain still resolves here iff its name is globally unique in the corpus.".to_string()
+            "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases; every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment — the candidate whose module path shares the strictly longest leading-segment prefix with the REFERENCING module (TypeEnv.module_path) wins; any tie at the max, including the all-disjoint lcp=0 case, REFUSES (Absent — fail-closed, never guesses, §5; the source must qualify by containment path). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -63,17 +64,28 @@ pub fn qualified_module_projection_invariant() -> String {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GlobalBareCandidate {
+    pub module_path: String,
+    pub binding: Rc<TypeBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum GlobalBareLookupState {
-    GlobalBareUniqueBinding { binding: Rc<TypeBinding> },
-    GlobalBareAmbiguousBinding,
+    GlobalBareUniqueBinding {
+        module_path: String,
+        binding: Rc<TypeBinding>,
+    },
+    GlobalBareAmbiguousBinding {
+        candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
+    },
 }
 impl GlobalBareLookupState {
     pub fn binding(&self) -> Rc<TypeBinding> {
         match self {
             GlobalBareLookupState::GlobalBareUniqueBinding { binding: __val, .. } => __val.clone(),
-            GlobalBareLookupState::GlobalBareAmbiguousBinding => {
-                panic!("no binding on unit variant")
+            GlobalBareLookupState::GlobalBareAmbiguousBinding { .. } => {
+                panic!("no binding on ambiguous variant")
             }
         }
     }
@@ -114,17 +126,45 @@ pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Op
     v1_rt::map_get(&index.entries.clone(), qualified_name.clone())
 }
 
+pub fn global_bare_candidates_contain(
+    candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
+    resolved: Rc<Node>,
+) -> bool {
+    candidates
+        .iter()
+        .any(|c| c.binding.resolved.clone() == resolved.clone())
+}
+
 pub fn symbol_index_track_global_bare(
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    module_path: String,
     binding: Rc<TypeBinding>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
     match v1_rt::map_get(&global_bare, binding.name.clone())
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => global_bare.clone(),
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cands }) => {
+            if global_bare_candidates_contain(cands.clone(), binding.resolved.clone()) {
+                global_bare.clone()
+            } else {
+                let mut appended = (*cands).clone();
+                appended.push_back(Rc::new(GlobalBareCandidate {
+                    module_path: module_path.clone(),
+                    binding: binding.clone(),
+                }));
+                v1_rt::rc_map_insert(
+                    global_bare.clone(),
+                    binding.name.clone(),
+                    Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                        candidates: Rc::new(appended),
+                    }),
+                )
+            }
+        }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-            binding: existing, ..
+            module_path: existing_path,
+            binding: existing,
         }) => {
             if (existing.resolved.clone() == binding.resolved.clone()) {
                 global_bare.clone()
@@ -132,7 +172,18 @@ pub fn symbol_index_track_global_bare(
                 v1_rt::rc_map_insert(
                     global_bare.clone(),
                     binding.name.clone(),
-                    Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
+                    Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                        candidates: Rc::new(vec![
+                            Rc::new(GlobalBareCandidate {
+                                module_path: existing_path.clone(),
+                                binding: existing.clone(),
+                            }),
+                            Rc::new(GlobalBareCandidate {
+                                module_path: module_path.clone(),
+                                binding: binding.clone(),
+                            }),
+                        ]),
+                    }),
                 )
             }
         }
@@ -140,6 +191,7 @@ pub fn symbol_index_track_global_bare(
             global_bare.clone(),
             binding.name.clone(),
             Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
+                module_path: module_path.clone(),
                 binding: binding.clone(),
             }),
         ),
@@ -163,16 +215,23 @@ pub fn symbol_index_insert(
 
 pub fn symbol_index_insert_decl(
     index: Rc<SymbolIndex>,
-    qualified_name: String,
+    module_path: String,
     binding: Rc<TypeBinding>,
 ) -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
         entries: v1_rt::rc_map_insert(
             index.entries.clone(),
-            qualified_name.clone(),
+            v1_rt::concat(
+                v1_rt::concat(module_path.clone(), ".".to_string()),
+                binding.name.clone(),
+            ),
             binding.resolved.clone(),
         ),
-        global_bare: symbol_index_track_global_bare(index.global_bare.clone(), binding.clone()),
+        global_bare: symbol_index_track_global_bare(
+            index.global_bare.clone(),
+            module_path.clone(),
+            binding.clone(),
+        ),
     })
 }
 
@@ -734,6 +793,54 @@ pub fn lookup_qualified_module_projection(
     }
 }
 
+pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
+    if (path.clone() == "".to_string()) {
+        Rc::new(vec![])
+    } else {
+        Rc::new(
+            path.split('.')
+                .map(|s| s.to_string())
+                .collect::<std::vec::Vec<String>>()
+                .into(),
+        )
+    }
+}
+
+pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
+    a.iter()
+        .zip(b.iter())
+        .take_while(|(x, y)| x == y)
+        .count() as i64
+}
+
+pub fn global_bare_nearest_ancestor(
+    env_module_path: String,
+    candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
+) -> Option<Rc<TypeBinding>> {
+    let env_segs = module_path_segments(env_module_path.clone());
+    let mut best_lcp: i64 = -1;
+    let mut best: Option<Rc<TypeBinding>> = None;
+    let mut tie = false;
+    for cand in candidates.iter() {
+        let l = segment_lcp_len(
+            env_segs.clone(),
+            module_path_segments(cand.module_path.clone()),
+        );
+        if l > best_lcp {
+            best_lcp = l;
+            best = Some(cand.binding.clone());
+            tie = false;
+        } else if l == best_lcp {
+            tie = true;
+        }
+    }
+    if tie {
+        None
+    } else {
+        best
+    }
+}
+
 pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
         .as_deref()
@@ -742,7 +849,9 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
             binding: binding, ..
         }) => Some(binding.clone()),
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => None,
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cands }) => {
+            global_bare_nearest_ancestor(env.module_path.clone(), cands.clone())
+        }
         None => None,
     }
 }
@@ -752,7 +861,9 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => true,
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cands }) => {
+            global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()).is_none()
+        }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding: _, .. }) => false,
         None => false,
     }

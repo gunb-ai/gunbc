@@ -573,7 +573,7 @@ pub fn emit_simple_string_interp(
 
 pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
-        type_env: Rc::new(TypeEnv {
+        type_env: Rc::new(TypeEnv { module_path: "".to_string(),
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),

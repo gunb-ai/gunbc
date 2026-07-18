@@ -12519,7 +12519,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                             }
                         },
                     );
-            Rc::new(TypeEnv {
+            Rc::new(TypeEnv { module_path: module_path.clone(),
                 bindings: filtered.clone(),
                 str_bindings: filtered_str.clone(),
                 ancestry_str_bindings: filtered_ancestry.clone(),
@@ -12550,7 +12550,7 @@ pub fn interface_env_for_import_note() -> String {
 pub fn interface_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<TypeEnv> {
     {
         let filtered = type_env_for_import(module_path.clone(), parent_env.clone());
-        Rc::new(TypeEnv {
+        Rc::new(TypeEnv { module_path: module_path.clone(),
             bindings: filtered.bindings.clone(),
             str_bindings: filtered.str_bindings.clone(),
             ancestry_str_bindings: filtered.ancestry_str_bindings.clone(),
@@ -12585,7 +12585,7 @@ pub fn interface_signature_fingerprint_v0_note() -> String {
 }
 
 pub fn interface_env_surface(env: Rc<TypeEnv>) -> Rc<TypeEnv> {
-    Rc::new(TypeEnv {
+    Rc::new(TypeEnv { module_path: env.module_path.clone(),
         bindings: env.bindings.clone(),
         str_bindings: env.str_bindings.clone(),
         ancestry_str_bindings: env.ancestry_str_bindings.clone(),
@@ -12900,10 +12900,7 @@ pub fn symbol_index_insert_item(
         None => index,
         Some(binding) => symbol_index_insert_decl(
             index,
-            v1_rt::concat(
-                v1_rt::concat(module_path.clone(), ".".to_string()),
-                binding.name.clone(),
-            ),
+            module_path.clone(),
             binding.clone(),
         ),
     }
@@ -12991,10 +12988,7 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
                                     match v1_rt::map_get(&corpus_variant_counts, vname.clone()) {
                                         Some(1) => symbol_index_insert_decl(
                                             a2.clone(),
-                                            v1_rt::concat(
-                                                v1_rt::concat(module_path.clone(), ".".to_string()),
-                                                vname.clone(),
-                                            ),
+                                            module_path.clone(),
                                             Rc::new(TypeBinding {
                                                 name: vname.clone(),
                                                 resolved: item.clone(),
@@ -13370,7 +13364,7 @@ pub fn build_type_env(
                     )
                 },
             );
-        let kernel = Rc::new(TypeEnv {
+        let kernel = Rc::new(TypeEnv { module_path: "".to_string(),
             bindings: kernel_bindings.clone(),
             str_bindings: str_bindings_from_bindings(kernel_bindings.clone()),
             ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
@@ -13690,7 +13684,7 @@ pub fn build_type_env(
                 }
             },
         );
-        let unresolved_env = Rc::new(TypeEnv {
+        let unresolved_env = Rc::new(TypeEnv { module_path: module_name_str.clone(),
             bindings: all_local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
             ancestry_str_bindings: ancestry_str_bindings.clone(),
@@ -13711,7 +13705,7 @@ pub fn build_type_env(
         );
         let resolved_env_out = resolved.env.clone();
         let resolved_diags = resolved.diagnostics.clone();
-        let final_env = Rc::new(TypeEnv {
+        let final_env = Rc::new(TypeEnv { module_path: module_name_str.clone(),
             bindings: resolved_env_out.bindings.clone(),
             str_bindings: resolved_env_out.str_bindings.clone(),
             ancestry_str_bindings: resolved_env_out.ancestry_str_bindings.clone(),
@@ -13892,7 +13886,7 @@ pub fn build_type_env_unresolved(
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         );
-        let kernel = Rc::new(TypeEnv {
+        let kernel = Rc::new(TypeEnv { module_path: "".to_string(),
             bindings: kernel_bindings.clone(),
             str_bindings: str_bindings_from_bindings(kernel_bindings.clone()),
             ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
@@ -14161,7 +14155,7 @@ pub fn build_type_env_unresolved(
         let ancestry_str_bindings = ancestry_cache.str_bindings.clone();
         let visible_str_bindings =
             v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
-        let unresolved_env = Rc::new(TypeEnv {
+        let unresolved_env = Rc::new(TypeEnv { module_path: module_name_str.clone(),
             bindings: local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
             ancestry_str_bindings: ancestry_str_bindings.clone(),
@@ -14538,7 +14532,7 @@ pub fn merge_global_bare_variant_locals(
         .clone()
         .iter()
         .fold(state, |acc, (name, lookup)| match lookup.as_ref() {
-            GlobalBareUniqueBinding { binding } => {
+            GlobalBareUniqueBinding { binding, .. } => {
                 let owner = binding.resolved.clone();
                 if owner.connective == Connective::Disj
                     && has_child_named(owner.clone(), name.clone(), source_indices.clone())
@@ -14558,7 +14552,7 @@ pub fn merge_global_bare_variant_locals(
                     acc
                 }
             }
-            GlobalBareAmbiguousBinding => acc,
+            GlobalBareAmbiguousBinding { .. } => acc,
         })
 }
 
@@ -14578,7 +14572,7 @@ pub fn build_global_bare_variant_locals(
     global_bare.clone().iter().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         |acc, (name, lookup)| match lookup.as_ref() {
-            GlobalBareUniqueBinding { binding } => {
+            GlobalBareUniqueBinding { binding, .. } => {
                 let owner = binding.resolved.clone();
                 if owner.connective == Connective::Disj
                     && has_child_named(owner.clone(), name.clone(), source_indices.clone())
@@ -14596,7 +14590,7 @@ pub fn build_global_bare_variant_locals(
                     acc
                 }
             }
-            GlobalBareAmbiguousBinding => acc,
+            GlobalBareAmbiguousBinding { .. } => acc,
         },
     )
 }
@@ -15352,7 +15346,7 @@ pub fn topo_resolve_types(
                     },
                 );
                 return Rc::new(EnvResolveResult {
-                    env: Rc::new(TypeEnv {
+                    env: Rc::new(TypeEnv { module_path: env.module_path.clone(),
                         bindings: stuck_accum.bindings.clone(),
                         str_bindings: stuck_accum.str_bindings.clone(),
                         ancestry_str_bindings: env.ancestry_str_bindings.clone(),
@@ -15433,7 +15427,7 @@ pub fn topo_resolve_types(
         });
         {
             let __tco_0 = next_remaining.clone();
-            let __tco_1 = Rc::new(TypeEnv {
+            let __tco_1 = Rc::new(TypeEnv { module_path: env.module_path.clone(),
                 bindings: ready_accum.bindings.clone(),
                 str_bindings: ready_accum.str_bindings.clone(),
                 ancestry_str_bindings: env.ancestry_str_bindings.clone(),
@@ -16203,7 +16197,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
-                        type_env: Rc::new(TypeEnv {
+                        type_env: Rc::new(TypeEnv { module_path: m.type_env.clone().module_path.clone(),
                             bindings: m.type_env.clone().bindings.clone(),
                             str_bindings: rewired.str_bindings.clone(),
                             ancestry_str_bindings: rewired.ancestry_str_bindings.clone(),
@@ -16415,7 +16409,7 @@ pub fn compiler_kernel_type_env(
                     )
                 },
             );
-        Rc::new(TypeEnv {
+        Rc::new(TypeEnv { module_path: "".to_string(),
             bindings: kernel_bindings.clone(),
             str_bindings: str_bindings_from_bindings(kernel_bindings.clone()),
             ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
@@ -16506,7 +16500,7 @@ pub fn rewire_type_env_parent_links(
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),
-                        type_env: Rc::new(TypeEnv {
+                        type_env: Rc::new(TypeEnv { module_path: m.type_env.clone().module_path.clone(),
                             bindings: m.type_env.clone().bindings.clone(),
                             str_bindings: m.type_env.clone().str_bindings.clone(),
                             ancestry_str_bindings: m.type_env.clone().ancestry_str_bindings.clone(),

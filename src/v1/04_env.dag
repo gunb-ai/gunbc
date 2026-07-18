@@ -13,6 +13,7 @@ type TypeEnv {
   intern_table: InternTable
   source_visible_names: Map<String, Bool>
   symbol_index: SymbolIndex
+  module_path: String
 }
 
 type TypeBinding {
@@ -21,13 +22,18 @@ type TypeBinding {
   provenance: SubValueRelation
 }
 
-data global_bare_fallback_invariant: String = "Corpus-wide bare-name census (namespace-resolution-design.md §8 PR-4): keyed on the bare declared name, one authority on SymbolIndex.global_bare built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent — mirrors v2's symbol_index_global_bare, docs/plans/namespace-resolution-design.md §7.5). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) PLUS corpus-globally-unique Disj variant aliases (module-local unique AND corpus-wide unique — binding.resolved is the owning coproduct item, never the arm child; ambiguous homonyms stay qualified-path only in SymbolIndex.entries, fail-closed on bare lookup). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss, and only a GlobalBareUniqueBinding resolves; GlobalBareAmbiguousBinding stays Absent (fail-closed, never guesses — §5). Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node). This is what unblocks the import strip: a bare reference that used to resolve via a deleted import chain still resolves here iff its name is globally unique in the corpus."
+data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases; every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment — the candidate whose module path shares the strictly longest leading-segment prefix with the REFERENCING module (TypeEnv.module_path) wins; any tie at the max, including the all-disjoint lcp=0 case, REFUSES (Absent — fail-closed, never guesses, §5; the source must qualify by containment path). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node)."
 
 data qualified_module_projection_invariant: String = "Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let type-annotation positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module item paths plus module-unique Disj variant aliases (qualified path always; corpus-unique variants also enter global_bare — mirrors v2 symbol_index_fill_unique_variant_aliases); lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics)."
 
+type GlobalBareCandidate {
+  module_path: String
+  binding: TypeBinding
+}
+
 type GlobalBareLookupState
-  = GlobalBareUniqueBinding { binding: TypeBinding }
-  | GlobalBareAmbiguousBinding
+  = GlobalBareUniqueBinding { module_path: String, binding: TypeBinding }
+  | GlobalBareAmbiguousBinding { candidates: List<GlobalBareCandidate> }
 
 type ImportBinding {
   name: String
@@ -57,19 +63,36 @@ fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
   map_get(index.entries, qualified_name)
 }
 
+fn global_bare_candidates_contain(candidates: List<GlobalBareCandidate>, resolved: Node) -> Bool {
+  candidates |> any(c => c.binding.resolved == resolved)
+}
+
 fn symbol_index_track_global_bare(
   global_bare: Map<String, GlobalBareLookupState>,
+  module_path: String,
   binding: TypeBinding
 ) -> Map<String, GlobalBareLookupState> {
   match map_get(global_bare, binding.name) {
-    Present { value: GlobalBareAmbiguousBinding } => global_bare
-    Present { value: GlobalBareUniqueBinding { binding: existing } } =>
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      if global_bare_candidates_contain(candidates: cands, resolved: binding.resolved) {
+        global_bare
+      } else {
+        map_insert(global_bare, binding.name, GlobalBareAmbiguousBinding {
+          candidates: concat(cands, [GlobalBareCandidate { module_path: module_path, binding: binding }])
+        })
+      }
+    Present { value: GlobalBareUniqueBinding { module_path: existing_path, binding: existing } } =>
       if existing.resolved == binding.resolved {
         global_bare
       } else {
-        map_insert(global_bare, binding.name, GlobalBareAmbiguousBinding)
+        map_insert(global_bare, binding.name, GlobalBareAmbiguousBinding {
+          candidates: [
+            GlobalBareCandidate { module_path: existing_path, binding: existing },
+            GlobalBareCandidate { module_path: module_path, binding: binding }
+          ]
+        })
       }
-    Absent => map_insert(global_bare, binding.name, GlobalBareUniqueBinding { binding: binding })
+    Absent => map_insert(global_bare, binding.name, GlobalBareUniqueBinding { module_path: module_path, binding: binding })
   }
 }
 
@@ -80,10 +103,10 @@ fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Nod
   }
 }
 
-fn symbol_index_insert_decl(index: SymbolIndex, qualified_name: String, binding: TypeBinding) -> SymbolIndex {
+fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: TypeBinding) -> SymbolIndex {
   SymbolIndex {
-    entries: map_insert(index.entries, qualified_name, binding.resolved),
-    global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, binding: binding)
+    entries: map_insert(index.entries, concat(module_path, ".", binding.name), binding.resolved),
+    global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding)
   }
 }
 
@@ -430,18 +453,66 @@ fn lookup_qualified_module_projection(env: TypeEnv, name: String) -> TypeBinding
   }
 }
 
+fn module_path_segments(path: String) -> List<String> {
+  if path == "" { [] } else { path |> split(delimiter: ".") }
+}
+
+type SegmentLcpScan {
+  remaining: List<String>
+  matched: Int
+  live: Bool
+}
+
+fn segment_lcp_len(a: List<String>, b: List<String>) -> Int {
+  let scan = fold(a, init: SegmentLcpScan { remaining: b, matched: 0, live: true }, f: (acc, seg) =>
+    if acc.live {
+      match acc.remaining |> first {
+        Present { value: bh } =>
+          if bh == seg {
+            SegmentLcpScan { remaining: acc.remaining |> skip(1), matched: acc.matched + 1, live: true }
+          } else {
+            SegmentLcpScan { remaining: acc.remaining, matched: acc.matched, live: false }
+          }
+        Absent => SegmentLcpScan { remaining: acc.remaining, matched: acc.matched, live: false }
+      }
+    } else { acc }
+  )
+  scan.matched
+}
+
+type GlobalBareNearestScan {
+  best_lcp: Int
+  best: TypeBinding?
+  tie: Bool
+}
+
+fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<GlobalBareCandidate>) -> TypeBinding? {
+  let env_segs = module_path_segments(path: env_module_path)
+  let scan = fold(candidates, init: GlobalBareNearestScan { best_lcp: 0 - 1, best: none, tie: false }, f: (acc, cand) =>
+    let l = segment_lcp_len(a: env_segs, b: module_path_segments(path: cand.module_path))
+    if l > acc.best_lcp {
+      GlobalBareNearestScan { best_lcp: l, best: Present { value: cand.binding }, tie: false }
+    } else if l == acc.best_lcp {
+      GlobalBareNearestScan { best_lcp: acc.best_lcp, best: acc.best, tie: true }
+    } else { acc }
+  )
+  if scan.tie { Absent } else { scan.best }
+}
+
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
-    Present { value: GlobalBareUniqueBinding { binding: binding } } => Present { value: binding }
-    Present { value: GlobalBareAmbiguousBinding } => Absent
+    Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands)
     Absent => Absent
   }
 }
 
 fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
   match map_get(env.symbol_index.global_bare, name) {
-    Present { value: GlobalBareAmbiguousBinding } => true
-    Present { value: GlobalBareUniqueBinding { binding: _ } } => false
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands) == none
+    Present { value: GlobalBareUniqueBinding { module_path: _, binding: _ } } => false
     Absent => false
   }
 }

@@ -19557,6 +19557,7 @@ mod peel_alias_fixpoint_termination {
                 "PeelFixpointProbe".to_string(),
                 std::rc::Rc::new(
                     crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareUniqueBinding {
+                        module_path: "".to_string(),
                         binding: census_binding,
                     },
                 ),
@@ -19565,7 +19566,7 @@ mod peel_alias_fixpoint_termination {
                 entries: crate::v1_rt::rc_empty_map(),
                 global_bare,
             });
-            let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
+            let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv { module_path: "".to_string(),
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
                 ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
