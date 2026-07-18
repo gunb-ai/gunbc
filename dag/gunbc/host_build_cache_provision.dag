@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, Bool }
 import std.cache_identity { CacheInterfaceId }
 import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, exit_failure }
 import std.resources { Network }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
 import extdeps.cache.cache { cache_catalog }
