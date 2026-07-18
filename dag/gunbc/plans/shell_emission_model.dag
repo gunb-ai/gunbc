@@ -6,7 +6,7 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
 fn shell_emission_model_body() -> List<MarkdownBlock> {
   [
-    BlockquoteBlock { blocks: [p(text: "Operator-signed design (multi-agent audit, verified against live tree). Shell emission lane: medium-agnostic orchestration intent → `emit(intent, Bash)` via the existing `05_emit_orchestration` dispatcher — **not** a new `ShellProgram` AST. DESIGN refs: §2 (intent vs transport vs spelling), §3 (single authority; `program.dag` rostered for dissolution), §4 (`emit = serialize_target ∘ translate` — endgame Q3), §5 (emit-only faithfulness; green by execution vs frozen bytes), §6 (purity-trap fence: no construct without a named live site). Complements [regime-2 shared emission fold](regime2-shared-emission-fold.md) (`std.layout.Doc` = **layout only**, never shell content) and [format-model-reconciliation](format-model-reconciliation.md) (record spelling). Parent arc: [emission-ingestion-inverse.md](emission-ingestion-inverse.md) gap (B). Residual census + arc-completion scoping: [shell-to-dag-residual-census-and-arc-completion.md](shell-to-dag-residual-census-and-arc-completion.md) (witty-ibex-317, #6514).")] },
+    BlockquoteBlock { blocks: [p(text: "Operator-signed design (multi-agent audit, verified against live tree). Shell emission lane: medium-agnostic orchestration intent → `emit(intent, Bash)` via the existing `05_emit_orchestration` dispatcher — **not** a new `ShellProgram` AST. DESIGN refs: §2 (intent vs transport vs spelling), §3 (single authority; `program.dag` deleted #6831 Phase 0), §4 (`emit = serialize_target ∘ translate` — endgame Q3), §5 (emit-only faithfulness; green by execution vs frozen bytes), §6 (purity-trap fence: no construct without a named live site). Complements [regime-2 shared emission fold](regime2-shared-emission-fold.md) (`std.layout.Doc` = **layout only**, never shell content) and [format-model-reconciliation](format-model-reconciliation.md) (record spelling). Parent arc: [emission-ingestion-inverse.md](emission-ingestion-inverse.md) gap (B). Residual census + arc-completion scoping: [shell-to-dag-residual-census-and-arc-completion.md](shell-to-dag-residual-census-and-arc-completion.md) (witty-ibex-317, #6514).")] },
     p(text: "**Status:** planning tracker · **`.dag` carrier is authority** (§6). Linked from `ROADMAP.md` §6. **This PR is docs/authority only** — no emitter/serializer code."),
     h2(text: "1. The finding (reframes the frontier)"),
     p(text: "Shell is emitted as **raw strings** in the residue — `host_effect.dag` still carries `ShellCommand\{script: String\}`. The '~20% built' figure below dates to authoring. As of **2026-07-16**: Slices **0 and 1 (`If` band) are LANDED and operator-signed** (`roadmap_authority.dag` `6-shell-slice0`/`6-shell-slice1`); Slice **2's work is observably complete but its sign-off is pending** (see §5); the remaining arc is Slice 3 (live_deploy), Slice 4 (tail consumers), and the parallel sidecar dissolution. **`roadmap_authority.dag` is the status authority — this doc must never contradict it (§3: one fact, one home).** Status lines here are load-bearing: a stale TODO in this doc caused a worker to be dispatched onto finished work (Slice 0) on 2026-07-16. Read the tree, and check the roadmap carrier, before trusting a slice's status. The arc was never greenfield:"),
@@ -18,7 +18,7 @@ fn shell_emission_model_body() -> List<MarkdownBlock> {
     ]),
     h2(text: "2. The model (locked)"),
     p(text: "**ADOPT:** `intent(std)` → `bash(extdeps)` via `emit(intent, Bash)`, extending the existing dispatcher."),
-    p(text: "**REJECT:** a new `ShellProgram` AST — `dag/extdeps/languages/bash/program.dag` is already rostered for dissolution ([emission-ingestion-inverse.md](emission-ingestion-inverse.md) §2)."),
+    p(text: "**REJECT:** a new `ShellProgram` AST — `dag/extdeps/languages/bash/program.dag` was deleted (#6831, Phase 0); v2 bash grammar rows are the authority ([emission-ingestion-inverse.md](emission-ingestion-inverse.md) §2)."),
     p(text: "**CUT:** host-op vocab (`EnsurePackage`/`EnableService`/`ServePort`) — single consumer (`live_deploy`) + idempotency is already a `host_effect.Policy` fact (`OneShotIdempotent`). Desugar `live_deploy` verbs **inline** to `If\{Not\{ExitZero\{…\}\}, Do\{…\}\}` intent; no minted verb."),
     p(text: "**Binding purity-trap fence (§6):** no construct (grammar arm / intent variant / desugar) added without a **named live site** that emits it; do not grow ingest-direction bash gates to serve emit-only coverage."),
     p(text: "**`std.layout.Doc` stays for LAYOUT only** (line/indent/heredoc-body framing), never for shell content — [regime-2](regime2-shared-emission-fold.md) owns that half."),
@@ -45,8 +45,8 @@ fn shell_emission_model_body() -> List<MarkdownBlock> {
       li(text: "**Slice 4 — tail consumers (pre-runtime residue):** `bmc_token_federation` (two `Do\{Run\}` rows — slice-0 machinery suffices) → `ci_workflow` inline `RunStep`s (case/`uname` → model as `TargetArchitecture`; cross-link ROADMAP §1 `1-inline-shell-defork`) → githooks as a **thin shim** (ensure-built + exec `claim_batch --pre-push` with stdin passed through; the case-rosters/arrays/while-read stdin parse move into the binary)."),
     ]),
     h2(text: "6. Sidecar dissolution (parallel)"),
-    p(text: "`dag/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) had **11 live importers at authoring; the 2026-07-03 census counts 33** — the trend is INVERTED (each test-migration lane mints a new `serialize_bash` witness transport). Land a **fail-closed importer-count ratchet** (current count frozen; a new importer reds) alongside the migration, then migrate all onto the v2 bidirectional bash language and delete `program.dag`+`serialize_bash`."),
-    p(text: "Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emission_ingestion_inverse.dag` (\"11 importers shrinking to 0\") — **cross-link only, do not duplicate** the roster here."),
+    p(text: "**LANDED (#6831, Phase 0):** `dag/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) deleted; the vacuous bash-program importer-count ratchet is pruned with it (resolve fails before the ratchet could fire). Remaining arc work is intent-layer shell→`emit(intent, Bash)` migration (Categories A–C in [shell-intent-emit-realization-design.md](shell-intent-emit-realization-design.md)), not sidecar restoration."),
+    p(text: "Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emission_ingestion_inverse.dag` — **cross-link only, do not duplicate** the roster here."),
     h2(text: "7. Named residue / dissolution triggers"),
     ul(items: [
       li(text: "**(a) Dispatcher endgame (OPEN Q3):** dissolve `05_emit_orchestration`'s hand-dispatch into `06_translate`'s rule table — the §4 endgame that makes \"a new construct is a row\" TRUE."),
@@ -56,7 +56,7 @@ fn shell_emission_model_body() -> List<MarkdownBlock> {
     h2(text: "8. Open questions (unresolved)"),
     ul(items: [
       li(text: "**Q3:** commit to dissolving `05_emit_orchestration` dispatch into `06_translate` rules, or accept per-construct bridges as steady state?"),
-      li(text: "**Q4:** cross-tree — `dag/extdeps/shell/shell.dag` AND `src/v2/extdeps/shell.dag` both declare module `extdeps.shell` (flat-intern collision), and `bash_command_fold.dag:3` imports the dag `program.dag` — resolve via `--dependency-pool-index` precedence now, or fold into the dag/v2 consolidation thread?"),
+      li(text: "**Q4:** cross-tree — `dag/extdeps/shell/shell.dag` AND `src/v2/extdeps/shell.dag` both declare module `extdeps.shell` (flat-intern collision) — resolve via `--dependency-pool-index` precedence now, or fold into the dag/v2 consolidation thread? (`program.dag` import on `bash_command_fold.dag` discharged by #6831.)"),
     ]),
   ]
 }
@@ -66,6 +66,6 @@ data shell_emission_model_plan: Plan = Plan {
   title: "Shell emission model — orchestration intent to bash via emit(intent, Bash)",
   body: shell_emission_model_body(),
   dissolution: HasTrigger {
-    text: "Delete this doc when all shell-emit sites route through emit(intent,Bash), the sidecar program.dag is deleted, and host_effect Phase B has dissolved ShellCommand\{script\} onto modeled orchestration intent."
+    text: "Delete this doc when all shell-emit sites route through emit(intent,Bash), host_effect Phase B has dissolved ShellCommand\{script\} onto modeled orchestration intent, and the intent-layer residual census (Categories A–C) is empty. (`program.dag` sidecar deletion is complete — #6831.)"
   }
 }

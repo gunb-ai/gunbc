@@ -434,3 +434,22 @@ fn bash_build_stmt_list_from_nodes(stmts: List<Node>) -> Node {
       }
   }
 }
+
+fn bash_build_command_from_word_nodes(words: List<Node>) -> Node {
+  bash_build_command_with_words(words: words)
+}
+
+fn bash_build_if_from_stmts(cond: Node, then_stmts: List<Node>) -> Node {
+  bash_build_if(
+    cond: cond,
+    body: bash_build_stmt_list_from_nodes(stmts: then_stmts)
+  )
+}
+
+fn bash_build_subshell_from_stmts(stmts: List<Node>) -> Node {
+  bash_build_subshell(body: bash_build_stmt_list_from_nodes(stmts: stmts))
+}
+
+fn bash_build_word_concat_from_nodes(parts: List<Node>) -> Node {
+  bash_build_word_concat_parts(parts: parts)
+}

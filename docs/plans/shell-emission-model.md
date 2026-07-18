@@ -1,6 +1,6 @@
 # Shell emission model — orchestration intent to bash via emit(intent, Bash)
 
-> Operator-signed design (multi-agent audit, verified against live tree). Shell emission lane: medium-agnostic orchestration intent → `emit(intent, Bash)` via the existing `05_emit_orchestration` dispatcher — **not** a new `ShellProgram` AST. DESIGN refs: §2 (intent vs transport vs spelling), §3 (single authority; `program.dag` rostered for dissolution), §4 (`emit = serialize_target ∘ translate` — endgame Q3), §5 (emit-only faithfulness; green by execution vs frozen bytes), §6 (purity-trap fence: no construct without a named live site). Complements [regime-2 shared emission fold](regime2-shared-emission-fold.md) (`std.layout.Doc` = **layout only**, never shell content) and [format-model-reconciliation](format-model-reconciliation.md) (record spelling). Parent arc: [emission-ingestion-inverse.md](emission-ingestion-inverse.md) gap (B). Residual census + arc-completion scoping: [shell-to-dag-residual-census-and-arc-completion.md](shell-to-dag-residual-census-and-arc-completion.md) (witty-ibex-317, #6514).
+> Operator-signed design (multi-agent audit, verified against live tree). Shell emission lane: medium-agnostic orchestration intent → `emit(intent, Bash)` via the existing `05_emit_orchestration` dispatcher — **not** a new `ShellProgram` AST. DESIGN refs: §2 (intent vs transport vs spelling), §3 (single authority; `program.dag` deleted #6831 Phase 0), §4 (`emit = serialize_target ∘ translate` — endgame Q3), §5 (emit-only faithfulness; green by execution vs frozen bytes), §6 (purity-trap fence: no construct without a named live site). Complements [regime-2 shared emission fold](regime2-shared-emission-fold.md) (`std.layout.Doc` = **layout only**, never shell content) and [format-model-reconciliation](format-model-reconciliation.md) (record spelling). Parent arc: [emission-ingestion-inverse.md](emission-ingestion-inverse.md) gap (B). Residual census + arc-completion scoping: [shell-to-dag-residual-census-and-arc-completion.md](shell-to-dag-residual-census-and-arc-completion.md) (witty-ibex-317, #6514).
 
 **Status:** planning tracker · **`.dag` carrier is authority** (§6). Linked from `ROADMAP.md` §6. **This PR is docs/authority only** — no emitter/serializer code.
 
@@ -17,7 +17,7 @@ Shell is emitted as **raw strings** in the residue — `host_effect.dag` still c
 
 **ADOPT:** `intent(std)` → `bash(extdeps)` via `emit(intent, Bash)`, extending the existing dispatcher.
 
-**REJECT:** a new `ShellProgram` AST — `dag/extdeps/languages/bash/program.dag` is already rostered for dissolution ([emission-ingestion-inverse.md](emission-ingestion-inverse.md) §2).
+**REJECT:** a new `ShellProgram` AST — `dag/extdeps/languages/bash/program.dag` was deleted (#6831, Phase 0); v2 bash grammar rows are the authority ([emission-ingestion-inverse.md](emission-ingestion-inverse.md) §2).
 
 **CUT:** host-op vocab (`EnsurePackage`/`EnableService`/`ServePort`) — single consumer (`live_deploy`) + idempotency is already a `host_effect.Policy` fact (`OneShotIdempotent`). Desugar `live_deploy` verbs **inline** to `If{Not{ExitZero{…}}, Do{…}}` intent; no minted verb.
 
@@ -67,9 +67,9 @@ Shell-orchestration sites are **emit-only** (regime-2 class): no round-trip orac
 
 ## 6. Sidecar dissolution (parallel)
 
-`dag/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) had **11 live importers at authoring; the 2026-07-03 census counts 33** — the trend is INVERTED (each test-migration lane mints a new `serialize_bash` witness transport). Land a **fail-closed importer-count ratchet** (current count frozen; a new importer reds) alongside the migration, then migrate all onto the v2 bidirectional bash language and delete `program.dag`+`serialize_bash`.
+**LANDED (#6831, Phase 0):** `dag/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) deleted; the vacuous bash-program importer-count ratchet is pruned with it (resolve fails before the ratchet could fire). Remaining arc work is intent-layer shell→`emit(intent, Bash)` migration (Categories A–C in [shell-intent-emit-realization-design.md](shell-intent-emit-realization-design.md)), not sidecar restoration.
 
-Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emission_ingestion_inverse.dag` ("11 importers shrinking to 0") — **cross-link only, do not duplicate** the roster here.
+Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emission_ingestion_inverse.dag` — **cross-link only, do not duplicate** the roster here.
 
 ## 7. Named residue / dissolution triggers
 
@@ -80,8 +80,8 @@ Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emi
 ## 8. Open questions (unresolved)
 
 - **Q3:** commit to dissolving `05_emit_orchestration` dispatch into `06_translate` rules, or accept per-construct bridges as steady state?
-- **Q4:** cross-tree — `dag/extdeps/shell/shell.dag` AND `src/v2/extdeps/shell.dag` both declare module `extdeps.shell` (flat-intern collision), and `bash_command_fold.dag:3` imports the dag `program.dag` — resolve via `--dependency-pool-index` precedence now, or fold into the dag/v2 consolidation thread?
+- **Q4:** cross-tree — `dag/extdeps/shell/shell.dag` AND `src/v2/extdeps/shell.dag` both declare module `extdeps.shell` (flat-intern collision) — resolve via `--dependency-pool-index` precedence now, or fold into the dag/v2 consolidation thread? (`program.dag` import on `bash_command_fold.dag` discharged by #6831.)
 
 ## Dissolution trigger (DESIGN §6)
 
-Delete this doc when all shell-emit sites route through emit(intent,Bash), the sidecar program.dag is deleted, and host_effect Phase B has dissolved ShellCommand{script} onto modeled orchestration intent.
+Delete this doc when all shell-emit sites route through emit(intent,Bash), host_effect Phase B has dissolved ShellCommand{script} onto modeled orchestration intent, and the intent-layer residual census (Categories A–C) is empty. (`program.dag` sidecar deletion is complete — #6831.)
