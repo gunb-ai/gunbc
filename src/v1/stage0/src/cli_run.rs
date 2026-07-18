@@ -7806,18 +7806,16 @@ fn witness_admission_entry_function_keys_from_source(content: &str) -> Vec<Strin
 fn witness_admission_explicit_consumer_keys() -> Vec<String> {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
-        let mut keys = witness_admission_entry_function_keys_from_source(
-            ci_layer_roots_authority_content(),
-        );
-        let wet = std::fs::read_to_string(
-            workspace_root().join(WET_RECEIPT_ENROLLMENT_AUTHORITY_REL),
-        )
-        .unwrap_or_else(|e| {
-            panic!(
-                "witness admission: failed to read {}: {e}",
-                WET_RECEIPT_ENROLLMENT_AUTHORITY_REL
-            )
-        });
+        let mut keys =
+            witness_admission_entry_function_keys_from_source(ci_layer_roots_authority_content());
+        let wet =
+            std::fs::read_to_string(workspace_root().join(WET_RECEIPT_ENROLLMENT_AUTHORITY_REL))
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "witness admission: failed to read {}: {e}",
+                        WET_RECEIPT_ENROLLMENT_AUTHORITY_REL
+                    )
+                });
         for key in witness_admission_entry_function_keys_from_source(&wet) {
             if !keys.iter().any(|k| k == &key) {
                 keys.push(key);
@@ -7856,7 +7854,9 @@ pub fn collect_unexecuted_deferred_witnesses(
     orphans
 }
 
-fn refuse_unexecuted_deferred_witnesses(orphans: &[UnexecutedDeferredWitness]) -> Result<(), String> {
+fn refuse_unexecuted_deferred_witnesses(
+    orphans: &[UnexecutedDeferredWitness],
+) -> Result<(), String> {
     if orphans.is_empty() {
         return Ok(());
     }
@@ -12764,7 +12764,9 @@ mod node_frontier_plumbing_controls {
             .find(|r| r.function == "self_host_03_normalize_behavioral_receipt_holds")
             .expect("03_normalize behavioral receipt must be deferred from discovery");
         assert!(
-            normalize.entry.contains("self_host_03_normalize_behavioral_witness_test"),
+            normalize
+                .entry
+                .contains("self_host_03_normalize_behavioral_witness_test"),
             "03_normalize receipt entry: got {}",
             normalize.entry
         );

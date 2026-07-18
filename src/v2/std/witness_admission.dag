@@ -22,12 +22,12 @@ type WitnessAdmissionRefusal
 fn witness_consumer_cadence_is_live(cadence: WitnessConsumerCadence) -> Bool {
   match cadence {
     NoConsumer => false
-    DiscoverySelection
-    | FalsifierSelfHostWet
-    | BinWitnessWet
-    | QuarantineProbeExpectRed
-    | OfflineLocalRecipe
-    | FixtureExplicitRoster => true
+    DiscoverySelection => true
+    FalsifierSelfHostWet => true
+    BinWitnessWet => true
+    QuarantineProbeExpectRed => true
+    OfflineLocalRecipe => true
+    FixtureExplicitRoster => true
   }
 }
 

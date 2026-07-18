@@ -12,7 +12,7 @@ import std.realization_schedule {
   ScheduleWitnessEntry,
   schedule_witness_entry_eq
 }
-import v2.std.algebra { any, contains, fold_list, length, list_snoc_item }
+import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -92,23 +92,23 @@ fn witness_consumer_cadence_for_row(
 ) -> WitnessConsumerCadence {
   let explicit = consumer_for_explicit_rosters(entry: entry, function: function)
   match explicit {
-    NoConsumer => {}
-    _ => return explicit
-  }
-  if !excluded_from_discovery {
-    DiscoverySelection
-  } else if path_matches_any_substring(
-    path: entry,
-    subs: witness_admission_offline_exclusion_substrings
-  ) {
-    OfflineLocalRecipe
-  } else if path_matches_any_substring(
-    path: entry,
-    subs: witness_admission_fixture_exclusion_substrings
-  ) {
-    FixtureExplicitRoster
-  } else {
-    NoConsumer
+    NoConsumer =>
+      if !excluded_from_discovery {
+        DiscoverySelection
+      } else if path_matches_any_substring(
+        path: entry,
+        subs: witness_admission_offline_exclusion_substrings
+      ) {
+        OfflineLocalRecipe
+      } else if path_matches_any_substring(
+        path: entry,
+        subs: witness_admission_fixture_exclusion_substrings
+      ) {
+        FixtureExplicitRoster
+      } else {
+        NoConsumer
+      }
+    _ => explicit
   }
 }
 
@@ -154,7 +154,7 @@ fn witness_admission_explicit_consumer_manifest() -> List<String> {
       concat(falsifier_self_host_wet_entries(), bin_witness_wet_entries),
       known_red_probe_entries
     ),
-    empty: [],
+    empty: Empty,
     cons: fn(acc, w) {
       list_snoc_item(
         xs: acc,

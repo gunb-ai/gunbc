@@ -13,7 +13,7 @@ import gunbc.ci_gate {
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
-import v2.std.algebra { concat, filter, length, list_snoc_item, skip, zip_map }
+import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
@@ -638,18 +638,27 @@ fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
 }
 
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
-  let predict = [gunbc_falsifier_predict_only_batch()]
-  let wet = if falsifier_self_host_wet_batch_enrolled() {
-    [[gunbc_falsifier_self_host_wet_batch()]]
+  let wet_enrolled = falsifier_self_host_wet_batch_enrolled()
+  let probe_enrolled = falsifier_known_red_probe_batch_enrolled()
+  if wet_enrolled && probe_enrolled {
+    [
+      [gunbc_falsifier_predict_only_batch()],
+      [gunbc_falsifier_self_host_wet_batch()],
+      [gunbc_falsifier_known_red_probe_batch()]
+    ]
+  } else if wet_enrolled {
+    [
+      [gunbc_falsifier_predict_only_batch()],
+      [gunbc_falsifier_self_host_wet_batch()]
+    ]
+  } else if probe_enrolled {
+    [
+      [gunbc_falsifier_predict_only_batch()],
+      [gunbc_falsifier_known_red_probe_batch()]
+    ]
   } else {
-    []
+    [[gunbc_falsifier_predict_only_batch()]]
   }
-  let probe = if falsifier_known_red_probe_batch_enrolled() {
-    [[gunbc_falsifier_known_red_probe_batch()]]
-  } else {
-    []
-  }
-  concat(concat(predict, wet), probe)
 }
 
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {

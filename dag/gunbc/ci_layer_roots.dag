@@ -60,6 +60,7 @@ data witness_exclusion_substrings: List<String> = [
   "test/claim/diagnostics_test.dag",
   "effects_rest_transport_parse_witness_test.dag",
   "floor_skip_discovery_witness_test.dag",
+  "synthetic_orphan_admission_witness_test.dag",
   "interp_recorded_fixture_witness_test.dag",
   "test/claim/parse_test.dag",
   "v1_dag_parse_witness_test.dag",
