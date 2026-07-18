@@ -222,6 +222,17 @@ data default_remote: String = "origin"
 
 data default_branch_names: List<String> = ["main", "master"]
 
+type GitDiffRange
+  = TwoDot
+  | ThreeDot
+
+fn git_diff_unified_range_argv(base: GitRef, head: GitRef, range: GitDiffRange) -> List<String> {
+  match range {
+    TwoDot => [base as String, head as String]
+    ThreeDot => [concat(concat(base as String, "..."), head as String)]
+  }
+}
+
 service git.Core {
   operation CurrentBranch {
     input {}
@@ -324,27 +335,13 @@ service git.Core {
   }
 
   operation DiffUnified0 {
-    input { base: GitRef, head: GitRef = "HEAD" }
+    input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
     output {
       diff: String from "stdout"
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["git", "diff", "-U0", "{base}", "{head}"] }
-    exit {
-      0 => Unit
-      128 => String "Invalid ref or not a git repository"
-    }
-  }
-
-  operation DiffUnified0Merge {
-    input { base: GitRef, head: GitRef = "HEAD" }
-    output {
-      diff: String from "stdout"
-      success: Bool from "exit_success"
-    }
-    readonly
-    transport shell { argv: ["git", "diff", "-U0", "{base}...{head}"] }
+    transport shell { argv: ["git", "diff", "-U0", git_diff_unified_range_argv(base: base, head: head, range: range)] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"

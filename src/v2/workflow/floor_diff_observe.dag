@@ -1,6 +1,7 @@
 module v2.workflow.floor_diff_observe
 
 import gunbc.ci_spec {
+  DiffMode,
   DiffPolicy,
   DiffMergeBase,
   DiffTwoDot,
@@ -12,6 +13,9 @@ import extdeps.git
 import extdeps.git {
   GitDiffNameStatusComplete,
   GitDiffNameStatusTruncated,
+  GitDiffRange,
+  TwoDot,
+  ThreeDot,
   git_diff_name_status_parse,
   git_diff_status_entries_touched_paths,
   git_diff_status_entries_departed_paths,
@@ -44,6 +48,13 @@ fn floor_resolved_head(policy: DiffPolicy) -> String {
   floor_env_override_or(env_name: "GUNBC_CI_DIFF_HEAD" as NonEmptyStr, default: policy.head)
 }
 
+fn floor_git_diff_range_of_mode(mode: DiffMode) -> GitDiffRange {
+  match mode {
+    DiffMergeBase => ThreeDot
+    DiffTwoDot => TwoDot
+  }
+}
+
 fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult {
   let unified_injection = shell.Env.Get(name: "GUNBC_CI_DIFF_UNIFIED" as NonEmptyStr)
   match unified_injection.value {
@@ -51,10 +62,7 @@ fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult 
     Absent => {
       let base = floor_resolved_base(policy: policy)
       let head = floor_resolved_head(policy: policy)
-      let result = match policy.mode {
-        DiffMergeBase => git.Core.DiffUnified0Merge(base: base, head: head)
-        DiffTwoDot => git.Core.DiffUnified0(base: base, head: head)
-      }
+      let result = git.Core.DiffUnified0(base: base, head: head, range: floor_git_diff_range_of_mode(mode: policy.mode))
       if result.success {
         UnifiedDiffOk { text: result.diff }
       } else {
