@@ -1,52 +1,52 @@
 module test.claim.runner_slot_enforcement_grounding_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn fixture_slot() -> std.types.NonEmptyStr {
+fn fixture_slot() -> NonEmptyStr {
   "actions-runner@srv1-01.service"
 }
 
-fn fixture_expected_cap() -> std.measure.ByteSize {
-  gunbc.runner_slot_allocation.gunbc_runner_slot_enforcement_expected_cap()
+fn fixture_expected_cap() -> ByteSize {
+  gunbc_runner_slot_enforcement_expected_cap()
 }
 
-fn fixture_drift_cap() -> std.measure.ByteSize {
-  std.measure.byte_size(70391285350)
+fn fixture_drift_cap() -> ByteSize {
+  byte_size(70391285350)
 }
 
-fn is_enforced(e: gunbc.runner_slot_enforcement.RunnerSlotEnforcement) -> Bool {
+fn is_enforced(e: RunnerSlotEnforcement) -> Bool {
   match e {
     RunnerSlotEnforced => true
-    gunbc.runner_slot_enforcement.RunnerSlotUnenforced { reason: _ } => false
+    RunnerSlotUnenforced { reason: _ } => false
   }
 }
 
-fn matching_read() -> std.realization_reconcile.ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
-  std.realization_reconcile.ReadObserved { value: gunbc.ci_floor_measurement.CapEffective { bytes: fixture_expected_cap() } }
+fn matching_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  ReadObserved { value: CapEffective { bytes: fixture_expected_cap() } }
 }
 
-fn unbounded_read() -> std.realization_reconcile.ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
-  std.realization_reconcile.ReadObserved { value: gunbc.ci_floor_measurement.CapUnbounded }
+fn unbounded_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  ReadObserved { value: CapUnbounded }
 }
 
-fn drift_read() -> std.realization_reconcile.ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
-  std.realization_reconcile.ReadObserved { value: gunbc.ci_floor_measurement.CapEffective { bytes: fixture_drift_cap() } }
+fn drift_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  ReadObserved { value: CapEffective { bytes: fixture_drift_cap() } }
 }
 
-fn apply_fixture() -> gunbc.runner_slot_enforcement.RunnerSlotApplyEffect {
-  gunbc.runner_slot_enforcement.runner_slot_apply_effect(slot_unit: fixture_slot(), expected_cap: fixture_expected_cap())
+fn apply_fixture() -> RunnerSlotApplyEffect {
+  runner_slot_apply_effect(slot_unit: fixture_slot(), expected_cap: fixture_expected_cap())
 }
 
-fn evidence_for(read: std.realization_reconcile.ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>) -> gunbc.runner_slot_enforcement.RunnerSlotEnforcement {
-  gunbc.runner_slot_enforcement.runner_slot_evidence_from_reconciliation(
-    r: gunbc.runner_slot_enforcement.reconcile_runner_slot(read: read, expected_cap: fixture_expected_cap(), apply: apply_fixture())
+fn evidence_for(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> RunnerSlotEnforcement {
+  runner_slot_evidence_from_reconciliation(
+    r: reconcile_runner_slot(read: read, expected_cap: fixture_expected_cap(), apply: apply_fixture())
   )
 }
 
-fn converges_for(read: std.realization_reconcile.ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>) -> Bool {
-  std.realization_reconcile.reconciliation_converged(
-    r: gunbc.runner_slot_enforcement.reconcile_runner_slot(read: read, expected_cap: fixture_expected_cap(), apply: apply_fixture())
+fn converges_for(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> Bool {
+  reconciliation_converged(
+    r: reconcile_runner_slot(read: read, expected_cap: fixture_expected_cap(), apply: apply_fixture())
   )
 }
 
@@ -75,37 +75,37 @@ fn witness_drift_read_does_not_converge() -> Bool {
 }
 
 fn witness_absent_read_is_fail_closed() -> Bool {
-  !is_enforced(e: gunbc.runner_slot_enforcement.gunbc_runner_slot_enforcement_committed(expected_cap: fixture_expected_cap()))
+  !is_enforced(e: gunbc_runner_slot_enforcement_committed(expected_cap: fixture_expected_cap()))
 }
 
 fn witness_committed_read_is_absent() -> Bool {
-  !is_enforced(e: gunbc.runner_slot_enforcement.runner_slot_enforcement_evidence(
+  !is_enforced(e: runner_slot_enforcement_evidence(
     slot_unit: fixture_slot(),
     expected_cap: fixture_expected_cap(),
-    read: gunbc.fleet_show_effective_read.gunbc_fleet_runner_slice_cap_show_effective_read
+    read: gunbc_fleet_runner_slice_cap_show_effective_read
   ))
 }
 
 fn witness_uncapped_per_slot_unit_refuses_enforcement() -> Bool {
-  !is_enforced(e: gunbc.runner_slot_enforcement.runner_slot_enforcement_from_unit_read(
-    read: gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: gunbc.runner_unit_live_read.gunbc_srv1_runner_unit_live_read_fixture)
+  !is_enforced(e: runner_slot_enforcement_from_unit_read(
+    read: runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture)
   ))
 }
 
 fn witness_per_slot_committed_uses_allocation_authority_cap() -> Bool {
-  std.measure.byte_size_count(b: fixture_expected_cap()) == std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)
-    && !is_enforced(e: gunbc.runner_slot_enforcement.gunbc_runner_per_slot_enforcement_committed())
+  byte_size_count(b: fixture_expected_cap()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+    && !is_enforced(e: gunbc_runner_per_slot_enforcement_committed())
 }
 
 fn witness_matching_per_slot_unit_read_grounds_enforced() -> Bool {
-  let gunbc.plans.md_helpers.row = gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
+  let row = RunnerUnitLiveReadRow {
     unit: fixture_slot(),
-    memory_max_raw: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)),
+    memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
     memory_swap_max_raw: "0",
     memory_high_raw: "infinity",
     probed_at: "2026-07-14",
   }
-  is_enforced(e: gunbc.runner_slot_enforcement.runner_slot_enforcement_from_unit_read(read: gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: gunbc.plans.md_helpers.row)))
+  is_enforced(e: runner_slot_enforcement_from_unit_read(read: runner_unit_live_read_typed(row: row)))
 }
 
 test fn runner_slot_enforcement_grounding_holds() -> Bool {

@@ -1,70 +1,70 @@
 module test.claim.runnable_resource_profile
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_negligible_profile_is_not_heavy() -> Bool {
-  !std.realization_schedule.runnable_heavy_whole_tree_resolve(profile: std.realization_schedule.runnable_resource_profile_negligible())
+  !runnable_heavy_whole_tree_resolve(profile: runnable_resource_profile_negligible())
 }
 
 fn witness_negligible_profile_declares_hermetic() -> Bool {
-  let gunbc.plans.md_helpers.p = std.realization_schedule.runnable_resource_profile_negligible()
-  std.execution_mode.execution_mode_eq(left: gunbc.plans.md_helpers.p.execution_mode, right: std.execution_mode.Hermetic)
+  let p = runnable_resource_profile_negligible()
+  execution_mode_eq(left: p.execution_mode, right: Hermetic)
 }
 
 fn witness_profile_eq_discriminates_execution_mode() -> Bool {
-  let hermetic = std.realization_schedule.runnable_resource_profile(
+  let hermetic = runnable_resource_profile(
     heavy_whole_tree_resolve: false,
     spawns_host_compiler: false,
-    memory: std.realization_schedule.runnable_memory_substantial(),
-    execution_mode: std.execution_mode.Hermetic
+    memory: runnable_memory_substantial(),
+    execution_mode: Hermetic
   )
-  let wet = std.realization_schedule.runnable_resource_profile(
+  let wet = runnable_resource_profile(
     heavy_whole_tree_resolve: false,
     spawns_host_compiler: false,
-    memory: std.realization_schedule.runnable_memory_substantial(),
-    execution_mode: std.execution_mode.Wet
+    memory: runnable_memory_substantial(),
+    execution_mode: Wet
   )
-  std.realization_schedule.runnable_resource_profile_eq(left: hermetic, right: hermetic)
-    && !std.realization_schedule.runnable_resource_profile_eq(left: hermetic, right: wet)
+  runnable_resource_profile_eq(left: hermetic, right: hermetic)
+    && !runnable_resource_profile_eq(left: hermetic, right: wet)
 }
 
 fn witness_substantial_memory_forbids_corpus_co_residence() -> Bool {
-  let heavy = std.realization_schedule.RunnableSingleClaim {
+  let heavy = RunnableSingleClaim {
     entry: "e"
     function: "f"
-    profile: std.realization_schedule.runnable_resource_profile(
+    profile: runnable_resource_profile(
       heavy_whole_tree_resolve: false,
       spawns_host_compiler: false,
-      memory: std.realization_schedule.runnable_memory_substantial(),
-      execution_mode: std.execution_mode.Wet
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
     )
   }
-  std.realization_schedule.runnable_forbids_corpus_co_residence(r: heavy)
+  runnable_forbids_corpus_co_residence(r: heavy)
 }
 
 fn witness_corpus_never_forbids_co_residence() -> Bool {
-  let corpus = std.realization_schedule.RunnableDiscoveryBatch {
+  let corpus = RunnableDiscoveryBatch {
     source_roots: []
     scan_dirs: []
     explicit_entries: []
-    node_frontier_selection: std.realization_schedule.SelectionOff
-    profile: std.realization_schedule.runnable_resource_profile(
+    node_frontier_selection: SelectionOff
+    profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,
-      memory: std.realization_schedule.runnable_memory_substantial(),
-      execution_mode: std.execution_mode.Wet
+      memory: runnable_memory_substantial(),
+      execution_mode: Wet
     )
     exclude_substrings: []
     discovery_scope_dirs: []
   }
-  !std.realization_schedule.runnable_forbids_corpus_co_residence(r: corpus)
+  !runnable_forbids_corpus_co_residence(r: corpus)
 }
 
 fn witness_memory_class_eq_discriminates_variants() -> Bool {
-  std.realization_schedule.runnable_memory_class_eq(left: std.realization_schedule.runnable_memory_negligible(), right: std.realization_schedule.runnable_memory_negligible())
-    && std.realization_schedule.runnable_memory_class_eq(left: std.realization_schedule.runnable_memory_substantial(), right: std.realization_schedule.runnable_memory_substantial())
-    && !std.realization_schedule.runnable_memory_class_eq(left: std.realization_schedule.runnable_memory_negligible(), right: std.realization_schedule.runnable_memory_substantial())
+  runnable_memory_class_eq(left: runnable_memory_negligible(), right: runnable_memory_negligible())
+    && runnable_memory_class_eq(left: runnable_memory_substantial(), right: runnable_memory_substantial())
+    && !runnable_memory_class_eq(left: runnable_memory_negligible(), right: runnable_memory_substantial())
 }
 
 test fn runnable_resource_profile_witnesses() -> Bool {

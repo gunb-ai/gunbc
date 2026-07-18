@@ -4,21 +4,21 @@ module test.claim.filesystem_write_witness
 func witness_write_then_read_roundtrip() -> Bool {
   let target = "/tmp/gunbc_fs_write_witness.txt"
   let payload = "hello from the v2 file transport\n"
-  let w = v2.extdeps.file_system.Filesystem.Write(path: target, content: payload)
-  let r = v2.extdeps.file_system.Filesystem.Read(path: target)
+  let w = Filesystem.Write(path: target, content: payload)
+  let r = Filesystem.Read(path: target)
   return w.success && (w.bytes_written == 33) && (w.path == target) && r.success && (r.content == payload)
 }
 
 func witness_write_truncates() -> Bool {
   let target = "/tmp/gunbc_fs_write_witness_trunc.txt"
-  let first = v2.extdeps.file_system.Filesystem.Write(path: target, content: "AAAAAAAAAA")
-  let std.measure.second = v2.extdeps.file_system.Filesystem.Write(path: target, content: "bb")
-  let r = v2.extdeps.file_system.Filesystem.Read(path: target)
-  return first.success && std.measure.second.success && (std.measure.second.bytes_written == 2) && (r.content == "bb")
+  let first = Filesystem.Write(path: target, content: "AAAAAAAAAA")
+  let second = Filesystem.Write(path: target, content: "bb")
+  let r = Filesystem.Read(path: target)
+  return first.success && second.success && (second.bytes_written == 2) && (r.content == "bb")
 }
 
 func witness_read_absent_fails_closed() -> Bool {
-  let r = v2.extdeps.file_system.Filesystem.Read(path: "/tmp/gunbc_fs_witness_absent_should_not_exist_42")
+  let r = Filesystem.Read(path: "/tmp/gunbc_fs_witness_absent_should_not_exist_42")
   return !r.success && (r.content == "")
 }
 

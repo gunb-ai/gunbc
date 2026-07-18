@@ -1,53 +1,53 @@
 module test.claim.roadmap_gate
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn mini_doc(node: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_document.RoadmapDocument {
-  gunbc.roadmap_document.RoadmapDocument {
+fn mini_doc(node: RoadmapNode) -> RoadmapDocument {
+  RoadmapDocument {
     preamble: [],
     lead_lanes: [],
-    sections: [gunbc.roadmap_document.RoadmapSection {
+    sections: [RoadmapSection {
       title: "Sign-off gate",
-      elements: [gunbc.roadmap_model.section_group(label: "", nodes: [node], edges: [])],
+      elements: [section_group(label: "", nodes: [node], edges: [])],
     }],
   }
 }
 
-fn emit_node(node: gunbc.roadmap_model.RoadmapNode, merged: List<Int>) -> String {
-  extdeps.languages.markdown.serialize_markdown_source(doc: gunbc.roadmap_document.project_roadmap_to_markdown(doc: mini_doc(node: node), merged: test.claim.roadmap_authority.merged))
+fn emit_node(node: RoadmapNode, merged: List<Int>) -> String {
+  serialize_markdown_source(doc: project_roadmap_to_markdown(doc: mini_doc(node: node), merged: merged))
 }
 
 fn witness_clean_not_drift() -> Bool {
-  !gunbc.roadmap_authority.roadmap_drifted(committed: gunbc.roadmap_authority.expected_roadmap_md())
+  !roadmap_drifted(committed: expected_roadmap_md())
 }
 
 fn witness_hand_edit_drifts() -> Bool {
-  gunbc.roadmap_authority.roadmap_drifted(committed: concat(gunbc.roadmap_authority.expected_roadmap_md(), "\n- [x] **a hand-added line**"))
+  roadmap_drifted(committed: concat(expected_roadmap_md(), "\n- [x] **a hand-added line**"))
 }
 
 fn witness_signed_emits_checked() -> Bool {
-  let node = gunbc.roadmap_authority.sign(
+  let node = sign(
     rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
-    s: gunbc.roadmap_authority.signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
+    s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
   )
-  let test.claim.roadmap_authority.out = emit_node(node: node, merged: [])
-  string_contains(s: test.claim.roadmap_authority.out, pattern: "[x] **signoff witness**")
-    && string_contains(s: test.claim.roadmap_authority.out, pattern: "✓ gunbc.roadmap_authority.signed off: operator")
+  let out = emit_node(node: node, merged: [])
+  string_contains(s: out, pattern: "[x] **signoff witness**")
+    && string_contains(s: out, pattern: "✓ signed off: operator")
 }
 
 fn witness_unsigned_with_evidence_awaiting() -> Bool {
   let node = derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: "")
-  let test.claim.roadmap_authority.out = emit_node(node: node, merged: [5491])
-  string_contains(s: test.claim.roadmap_authority.out, pattern: "[ ] **signoff witness**")
-    && string_contains(s: test.claim.roadmap_authority.out, pattern: "⏳ awaiting gunbc.roadmap_authority.sign-off")
-    && !string_contains(s: test.claim.roadmap_authority.out, pattern: "[x] **signoff witness**")
+  let out = emit_node(node: node, merged: [5491])
+  string_contains(s: out, pattern: "[ ] **signoff witness**")
+    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && !string_contains(s: out, pattern: "[x] **signoff witness**")
 }
 
 fn witness_merge_perturb_does_not_flip_box() -> Bool {
-  let signed_node = gunbc.roadmap_authority.sign(
+  let signed_node = sign(
     rn: derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: ""),
-    s: gunbc.roadmap_authority.signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
+    s: signed(by: "operator", works: true, scope_equivalent: true, as_expected: true),
   )
   let unsigned_node = derivable(id: "signoff-witness", prs: [5491], title: "**signoff witness**", description: "")
   let signed_stays_checked = string_contains(s: emit_node(node: signed_node, merged: []), pattern: "[x] **signoff witness**")

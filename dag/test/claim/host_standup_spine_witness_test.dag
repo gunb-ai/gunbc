@@ -1,21 +1,21 @@
 module test.claim.host_standup_spine
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn spine_step_tag(step: gunbc.host_standup.HostStandupStep) -> Int {
-  match test.claim.materialization_ladder_witness.step.phase {
-    Prefix { phase: gunbc.host_standup.BmcCredentialConverge } => 0
-    Prefix { phase: gunbc.host_standup.OsInstallMechanismResolved } => 1
-    Prefix { phase: gunbc.host_standup.OsInstallActuated } => 2
-    Prefix { phase: gunbc.host_standup.HostConvergePolicyDerived } => 3
-    gunbc.host_standup.Assimilation { phase: gunbc.host_standup.HostIdentityConverge } => 4
-    gunbc.host_standup.Assimilation { phase: gunbc.host_standup.ReachSecretsNetwork } => 5
-    gunbc.host_standup.Assimilation { phase: gunbc.host_standup.RunnerDeploySlot } => 6
-    gunbc.host_standup.Assimilation { phase: gunbc.host_standup.ComputeFabricEnroll } => 7
-    gunbc.host_standup.Assimilation { phase: gunbc.host_standup.GreenPlaceReadiness } => 8
-    gunbc.host_standup.Assimilation { phase: gunbc.host_standup.SessionPlacementEnrollment } => 9
-    gunbc.host_standup.Assimilation { phase: gunbc.host_standup.StandupAssimilationComplete } => 10
+fn spine_step_tag(step: HostStandupStep) -> Int {
+  match step.phase {
+    Prefix { phase: BmcCredentialConverge } => 0
+    Prefix { phase: OsInstallMechanismResolved } => 1
+    Prefix { phase: OsInstallActuated } => 2
+    Prefix { phase: HostConvergePolicyDerived } => 3
+    Assimilation { phase: HostIdentityConverge } => 4
+    Assimilation { phase: ReachSecretsNetwork } => 5
+    Assimilation { phase: RunnerDeploySlot } => 6
+    Assimilation { phase: ComputeFabricEnroll } => 7
+    Assimilation { phase: GreenPlaceReadiness } => 8
+    Assimilation { phase: SessionPlacementEnrollment } => 9
+    Assimilation { phase: StandupAssimilationComplete } => 10
   }
 }
 
@@ -26,7 +26,7 @@ type SpineTagAcc {
 
 fn spine_tags_are_linear() -> Bool {
   fold(
-    gunbc.host_standup.host_standup_spine,
+    host_standup_spine,
     init: SpineTagAcc { ok: true, expected: 0 },
     f: (acc, s) => SpineTagAcc {
       ok: acc.ok && spine_step_tag(step: s) == acc.expected,
@@ -36,156 +36,156 @@ fn spine_tags_are_linear() -> Bool {
 }
 
 test fn host_standup_spine_is_eleven_step_linear_prefix_then_p0_p5() -> Bool {
-  gunbc.host_standup.host_standup_spine_length() == 11
+  host_standup_spine_length() == 11
     && spine_tags_are_linear()
-    && gunbc.host_standup.host_standup_gap_ledger.length() == 11
+    && host_standup_gap_ledger.length() == 11
 }
 
 test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
-  srv3_host_standup_target == gunbc.fleet_intent_network.operator_host_srv3
-    && gunbc.host_standup.srv3_install_mechanism_is_nbd_proxy_no_fallback()
+  srv3_host_standup_target == operator_host_srv3
+    && srv3_install_mechanism_is_nbd_proxy_no_fallback()
 }
 
 test fn srv3_live_fleet_offer_carries_ci() -> Bool {
-  gunbc.ci_fleet.fleet_intent_offers.length() == 3
-    && gunbc.ci_fleet.srv3_offer.supply.physical.identity == gunbc.fleet_intent_network.operator_host_srv3
+  fleet_intent_offers.length() == 3
+    && srv3_offer.supply.physical.identity == operator_host_srv3
 }
 
 test fn credential_probe_projection_matches_onboarding_authority() -> Bool {
-  gunbc.host_standup.credential_probe_maps_factory_default(probe: gunbc.bmc_onboarding.FactoryCredentialActive)
-    && gunbc.host_standup.credential_probe_maps_credentials_rotated(probe: gunbc.bmc_onboarding.RotatedCredentialActive)
+  credential_probe_maps_factory_default(probe: FactoryCredentialActive)
+    && credential_probe_maps_credentials_rotated(probe: RotatedCredentialActive)
 }
 
 test fn host_standup_fleet_converge_policy_is_derived_or_unsound() -> Bool {
-  match gunbc.host_standup.host_standup_fleet_converge_policy() {
-    gunbc.host_converge.ConvergePolicyDerived { hosts: _ } => true
-    gunbc.host_converge.ConvergePolicyUnsound { reason: _ } => true
+  match host_standup_fleet_converge_policy() {
+    ConvergePolicyDerived { hosts: _ } => true
+    ConvergePolicyUnsound { reason: _ } => true
   }
 }
 
 test fn compute_fabric_shape_authority_is_referenced_not_redeclared() -> Bool {
-  product.compute_fabric.witness_fabric_binds_need_to_opportunity()
+  witness_fabric_binds_need_to_opportunity()
 }
 
 test fn green_place_pin_coherent_references_gunbc_gate_not_input_satisfied() -> Bool {
-  let default_gate = gunbc.host_standup.host_standup_p5_default_green_place_gate_verdict()
+  let default_gate = host_standup_p5_default_green_place_gate_verdict()
   match default_gate {
-    gunbc.host_standup.GreenPlaceFromGunbcGate {
+    GreenPlaceFromGunbcGate {
       noop_satisfied_authority: noop,
       marker_satisfied_authority: marker,
       desired_pin_authority: desired,
       gate_verdict: false,
     } =>
-      !gunbc.host_standup.green_place_pin_coherent_satisfied(w: default_gate)
-        && noop == gunbc.host_standup.host_standup_p5_green_place_noop_gate_authority
-        && marker == gunbc.host_standup.host_standup_p5_green_place_marker_gate_authority
-        && desired == gunbc.host_standup.host_standup_p5_desired_pin_authority
-    gunbc.host_standup.GreenPlacePinGap { interim_realization: _ } => false
-    gunbc.host_standup.GreenPlacePinRefused { reason: _ } => false
+      !green_place_pin_coherent_satisfied(w: default_gate)
+        && noop == host_standup_p5_green_place_noop_gate_authority
+        && marker == host_standup_p5_green_place_marker_gate_authority
+        && desired == host_standup_p5_desired_pin_authority
+    GreenPlacePinGap { interim_realization: _ } => false
+    GreenPlacePinRefused { reason: _ } => false
   }
 }
 
 test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Bool {
-  let all_gap = gunbc.host_standup.AssimilationCompleteGate {
-    node_registered: gunbc.host_standup.InputGap { input: gunbc.host_standup.NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
-    resources_present: gunbc.host_standup.InputSatisfied,
-    green_place_pin_coherent: gunbc.host_standup.GreenPlacePinGap { interim_realization: "ctrl:pending" },
-    runner_healthy: gunbc.host_standup.InputSatisfied,
+  let all_gap = AssimilationCompleteGate {
+    node_registered: InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
+    resources_present: InputSatisfied,
+    green_place_pin_coherent: GreenPlacePinGap { interim_realization: "ctrl:pending" },
+    runner_healthy: InputSatisfied,
   }
-  match gunbc.host_standup.assimilation_complete(gate: all_gap) {
-    gunbc.host_standup.AssimilationIncomplete { input: gunbc.host_standup.NodeRegistered, reason: r } =>
+  match assimilation_complete(gate: all_gap) {
+    AssimilationIncomplete { input: NodeRegistered, reason: r } =>
       string_contains(s: r, pattern: "P5:gap-refused:")
     AssimilationComplete => false
   }
-    && match gunbc.host_standup.assimilation_complete(gate: gunbc.host_standup.AssimilationCompleteGate {
-      node_registered: gunbc.host_standup.InputSatisfied,
-      resources_present: gunbc.host_standup.InputRefused { input: gunbc.host_standup.ResourcesPresent, reason: "missing cgroup slice" },
-      green_place_pin_coherent: gunbc.host_standup.host_standup_p5_default_green_place_gate_verdict(),
-      runner_healthy: gunbc.host_standup.InputSatisfied,
+    && match assimilation_complete(gate: AssimilationCompleteGate {
+      node_registered: InputSatisfied,
+      resources_present: InputRefused { input: ResourcesPresent, reason: "missing cgroup slice" },
+      green_place_pin_coherent: host_standup_p5_default_green_place_gate_verdict(),
+      runner_healthy: InputSatisfied,
     }) {
-      gunbc.host_standup.AssimilationIncomplete { input: gunbc.host_standup.ResourcesPresent, reason: _ } => true
+      AssimilationIncomplete { input: ResourcesPresent, reason: _ } => true
       AssimilationComplete => false
     }
 }
 
 test fn assimilation_complete_passes_only_when_all_four_inputs_satisfied() -> Bool {
-  let gate = gunbc.host_standup.AssimilationCompleteGate {
-    node_registered: gunbc.host_standup.InputSatisfied,
-    resources_present: gunbc.host_standup.InputSatisfied,
-    green_place_pin_coherent: gunbc.host_standup.GreenPlaceFromGunbcGate {
-      noop_satisfied_authority: gunbc.host_standup.host_standup_p5_green_place_noop_gate_authority,
-      marker_satisfied_authority: gunbc.host_standup.host_standup_p5_green_place_marker_gate_authority,
-      desired_pin_authority: gunbc.host_standup.host_standup_p5_desired_pin_authority,
+  let gate = AssimilationCompleteGate {
+    node_registered: InputSatisfied,
+    resources_present: InputSatisfied,
+    green_place_pin_coherent: GreenPlaceFromGunbcGate {
+      noop_satisfied_authority: host_standup_p5_green_place_noop_gate_authority,
+      marker_satisfied_authority: host_standup_p5_green_place_marker_gate_authority,
+      desired_pin_authority: host_standup_p5_desired_pin_authority,
       gate_verdict: true,
     },
-    runner_healthy: gunbc.host_standup.InputSatisfied,
+    runner_healthy: InputSatisfied,
   }
-  gunbc.host_standup.assimilation_complete_all_satisfied(gate: gate)
-    && match gunbc.host_standup.assimilation_complete(gate: gate) {
+  assimilation_complete_all_satisfied(gate: gate)
+    && match assimilation_complete(gate: gate) {
       AssimilationComplete => true
-      gunbc.host_standup.AssimilationIncomplete { input: _, reason: _ } => false
+      AssimilationIncomplete { input: _, reason: _ } => false
     }
 }
 
 test fn p3_green_place_contributes_via_gunbc_gate_after_pinned_tree_lands() -> Bool {
-  gunbc.host_standup.host_standup_p3_gunbc_pinned_tree_landed
-    && !gunbc.host_standup.host_standup_p3_fail_closed_blocks_complete()
-    && match gunbc.host_standup.assimilation_complete(gate: gunbc.host_standup.host_standup_default_assimilation_gate_unsatisfied()) {
-      gunbc.host_standup.AssimilationIncomplete { input: gunbc.host_standup.GreenPlacePinCoherent, reason: r } =>
+  host_standup_p3_gunbc_pinned_tree_landed
+    && !host_standup_p3_fail_closed_blocks_complete()
+    && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
+      AssimilationIncomplete { input: GreenPlacePinCoherent, reason: r } =>
         string_contains(s: r, pattern: "gunbc gate verdict false")
-      gunbc.host_standup.AssimilationIncomplete { input: gunbc.host_standup.NodeRegistered, reason: _ } => true
+      AssimilationIncomplete { input: NodeRegistered, reason: _ } => true
       AssimilationComplete => false
     }
 }
 
 test fn assimilation_gate_still_refuses_p0_p2_p4_gaps_when_p3_landed() -> Bool {
-  gunbc.host_standup.host_standup_p3_gunbc_pinned_tree_landed
-    && match gunbc.host_standup.assimilation_complete(gate: gunbc.host_standup.host_standup_default_assimilation_gate_unsatisfied()) {
-      gunbc.host_standup.AssimilationIncomplete { input: gunbc.host_standup.NodeRegistered, reason: r } =>
+  host_standup_p3_gunbc_pinned_tree_landed
+    && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
+      AssimilationIncomplete { input: NodeRegistered, reason: r } =>
         string_contains(s: r, pattern: "P5:gap-refused:")
       AssimilationComplete => false
     }
 }
 
 test fn post_install_dhcp_subsumption_reduces_gap_count_by_one() -> Bool {
-  gunbc.host_standup_assimilation_deduction.srv3_post_install_actuation_verdict(elapsed: std.measure.millisecond(count: 0)) == std.upsert_decision.Converged
-    && gunbc.host_standup.host_standup_gap_count_at_actuation_verdict(verdict: Converged) == (gunbc.host_standup.host_standup_gap_count() - 1)
+  srv3_post_install_actuation_verdict(elapsed: millisecond(count: 0)) == std.upsert_decision.Converged
+    && host_standup_gap_count_at_actuation_verdict(verdict: Converged) == (host_standup_gap_count() - 1)
 }
 
 test fn declared_gap_steps_carry_interim_realization_authority() -> Bool {
   fold(
-    gunbc.host_standup.host_standup_spine,
+    host_standup_spine,
     init: true,
     f: (acc, s) => acc && match s.disposition {
-      gunbc.host_standup.DeclaredGap { interim_realization: path, refusal: r } =>
+      DeclaredGap { interim_realization: path, refusal: r } =>
         string_contains(s: r, pattern: "host_standup:")
           && (string_contains(s: path, pattern: "ctrl:")
             || (string_contains(s: path, pattern: "extdeps.")
               && string_contains(s: path, pattern: "gunbc.")))
-      gunbc.host_standup.ModeledCompose { authorities: refs } => refs.length() > 0
+      ModeledCompose { authorities: refs } => refs.length() > 0
     }
   )
 }
 
 test fn p0_gap_ledger_matches_spine_partial_authorities() -> Bool {
   fold(
-    gunbc.host_standup.host_standup_gap_ledger,
+    host_standup_gap_ledger,
     init: false,
-    f: (acc, gunbc.plans.md_helpers.row) =>
-      acc || (gunbc.plans.md_helpers.row.phase_label == "P0:reach-secrets-network"
-        && gunbc.plans.md_helpers.row.modeling == "partial"
-        && string_contains(s: gunbc.plans.md_helpers.row.authority_or_interim, pattern: "extdeps.tailscale.acl")
-        && string_contains(s: gunbc.plans.md_helpers.row.authority_or_interim, pattern: "gunbc.tailscale_acl"))
+    f: (acc, row) =>
+      acc || (row.phase_label == "P0:reach-secrets-network"
+        && row.modeling == "partial"
+        && string_contains(s: row.authority_or_interim, pattern: "extdeps.tailscale.acl")
+        && string_contains(s: row.authority_or_interim, pattern: "gunbc.tailscale_acl"))
   )
 }
 
 test fn p3_gap_ledger_notes_green_place_dag_writer_path() -> Bool {
   fold(
-    gunbc.host_standup.host_standup_gap_ledger,
+    host_standup_gap_ledger,
     init: false,
-    f: (acc, gunbc.plans.md_helpers.row) =>
-      acc || (gunbc.plans.md_helpers.row.phase_label == "P3:green-place-readiness"
-        && string_contains(s: gunbc.plans.md_helpers.row.authority_or_interim, pattern: "green_place.dag")
-        && string_contains(s: gunbc.plans.md_helpers.row.authority_or_interim, pattern: "read-gunbc-pin.sh"))
+    f: (acc, row) =>
+      acc || (row.phase_label == "P3:green-place-readiness"
+        && string_contains(s: row.authority_or_interim, pattern: "green_place.dag")
+        && string_contains(s: row.authority_or_interim, pattern: "read-gunbc-pin.sh"))
   )
 }

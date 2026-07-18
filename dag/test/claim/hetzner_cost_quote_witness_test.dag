@@ -1,23 +1,23 @@
 module test.claim.hetzner_cost_quote_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn hetzner_cax41_hourly_micros() -> std.nat.Nat {
-  gunbc.ci_fleet.cost_estimate_unit_price_micros(
-    quote: gunbc.ci_fleet.per_second_billed_cost_quote(
-      unit_price: extdeps.cloud.hetzner.cax41_catalog.hourly,
-      currency: extdeps.cloud.hetzner.cax41_catalog.currency,
+  cost_estimate_unit_price_micros(
+    quote: per_second_billed_cost_quote(
+      unit_price: cax41_catalog.hourly,
+      currency: cax41_catalog.currency,
     ),
   )
 }
 
 fn hetzner_cax41_cost_class_is_per_second_billed() -> Bool {
-  let gunbc.plans.md_helpers.quote = gunbc.ci_fleet.per_second_billed_cost_quote(
-    unit_price: extdeps.cloud.hetzner.cax41_catalog.hourly,
-    currency: extdeps.cloud.hetzner.cax41_catalog.currency,
+  let quote = per_second_billed_cost_quote(
+    unit_price: cax41_catalog.hourly,
+    currency: cax41_catalog.currency,
   )
-  match gunbc.plans.md_helpers.quote.model.cost_class {
+  match quote.model.cost_class {
     PerSecondBilled => true
     OwnedMarginalZero => false
     Metered => false
@@ -26,7 +26,7 @@ fn hetzner_cax41_cost_class_is_per_second_billed() -> Bool {
 }
 
 fn hetzner_cax41_currency_is_eur() -> Bool {
-  match extdeps.cloud.hetzner.cax41_catalog.currency {
+  match cax41_catalog.currency {
     Eur => true
     _ => false
   }

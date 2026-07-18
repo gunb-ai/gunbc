@@ -1,71 +1,71 @@
 module test.claim.terminal_capability_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data interactive_tty: extdeps.render.terminal_capability.TerminalEnvironment = extdeps.render.terminal_capability.TerminalEnvironment {
+data interactive_tty: TerminalEnvironment = TerminalEnvironment {
   is_tty: true, ci: false, no_color: false, dumb_term: false
 }
 
-data ci_log: extdeps.render.terminal_capability.TerminalEnvironment = extdeps.render.terminal_capability.TerminalEnvironment {
+data ci_log: TerminalEnvironment = TerminalEnvironment {
   is_tty: false, ci: true, no_color: false, dumb_term: false
 }
 
-data piped_file: extdeps.render.terminal_capability.TerminalEnvironment = extdeps.render.terminal_capability.TerminalEnvironment {
+data piped_file: TerminalEnvironment = TerminalEnvironment {
   is_tty: false, ci: false, no_color: false, dumb_term: false
 }
 
-data no_color_tty: extdeps.render.terminal_capability.TerminalEnvironment = extdeps.render.terminal_capability.TerminalEnvironment {
+data no_color_tty: TerminalEnvironment = TerminalEnvironment {
   is_tty: true, ci: false, no_color: true, dumb_term: false
 }
 
-data demo_viewport: std.render.Viewport = std.render.Viewport { width: 80, height: 24, unit: Chars }
+data demo_viewport: Viewport = Viewport { width: 80, height: 24, unit: Chars }
 
 data dynamic_frame: std.render.Frame = std.render.Frame { lines: [], cursor_action: Overwrite }
 
 fn w_interactive_is_addressable_unicode_color() -> Bool {
-  let test.claim.roadmap_belt_witness.cap = extdeps.render.terminal_capability.detect_capability(env: interactive_tty)
-  test.claim.roadmap_belt_witness.cap.cursor_addressable == true &&
-  test.claim.roadmap_belt_witness.cap.color == true &&
-  match test.claim.roadmap_belt_witness.cap.tier { Unicode => true, _ => false }
+  let cap = detect_capability(env: interactive_tty)
+  cap.cursor_addressable == true &&
+  cap.color == true &&
+  match cap.tier { Unicode => true, _ => false }
 }
 
 fn w_ci_is_append_only_ascii_but_colored() -> Bool {
-  let test.claim.roadmap_belt_witness.cap = extdeps.render.terminal_capability.detect_capability(env: ci_log)
-  test.claim.roadmap_belt_witness.cap.cursor_addressable == false &&
-  test.claim.roadmap_belt_witness.cap.color == true &&
-  match test.claim.roadmap_belt_witness.cap.tier { Ascii => true, _ => false }
+  let cap = detect_capability(env: ci_log)
+  cap.cursor_addressable == false &&
+  cap.color == true &&
+  match cap.tier { Ascii => true, _ => false }
 }
 
 fn w_piped_drops_color_and_cursor() -> Bool {
-  let test.claim.roadmap_belt_witness.cap = extdeps.render.terminal_capability.detect_capability(env: piped_file)
-  test.claim.roadmap_belt_witness.cap.cursor_addressable == false && test.claim.roadmap_belt_witness.cap.color == false
+  let cap = detect_capability(env: piped_file)
+  cap.cursor_addressable == false && cap.color == false
 }
 
 fn w_no_color_opt_out_wins() -> Bool {
-  let test.claim.roadmap_belt_witness.cap = extdeps.render.terminal_capability.detect_capability(env: no_color_tty)
-  test.claim.roadmap_belt_witness.cap.color == false && test.claim.roadmap_belt_witness.cap.cursor_addressable == true
+  let cap = detect_capability(env: no_color_tty)
+  cap.color == false && cap.cursor_addressable == true
 }
 
-fn cursor_is_append(a: std.render.CursorAction) -> Bool {
+fn cursor_is_append(a: CursorAction) -> Bool {
   match a { Append => true, _ => false }
 }
 
-fn cursor_is_overwrite(a: std.render.CursorAction) -> Bool {
+fn cursor_is_overwrite(a: CursorAction) -> Bool {
   match a { Overwrite => true, _ => false }
 }
 
 fn w_ci_frame_cannot_carry_overwrite() -> Bool {
-  let test.claim.roadmap_belt_witness.cap = extdeps.render.terminal_capability.detect_capability(env: ci_log)
-  match extdeps.render.terminal.project_frame(frame: dynamic_frame, viewport: demo_viewport, cap: test.claim.roadmap_belt_witness.cap) {
+  let cap = detect_capability(env: ci_log)
+  match project_frame(frame: dynamic_frame, viewport: demo_viewport, cap: cap) {
     Present { value: f } => cursor_is_append(a: f.cursor_action)
     Absent => false
   }
 }
 
 fn w_interactive_frame_keeps_overwrite() -> Bool {
-  let test.claim.roadmap_belt_witness.cap = extdeps.render.terminal_capability.detect_capability(env: interactive_tty)
-  match extdeps.render.terminal.project_frame(frame: dynamic_frame, viewport: demo_viewport, cap: test.claim.roadmap_belt_witness.cap) {
+  let cap = detect_capability(env: interactive_tty)
+  match project_frame(frame: dynamic_frame, viewport: demo_viewport, cap: cap) {
     Present { value: f } => cursor_is_overwrite(a: f.cursor_action)
     Absent => false
   }
