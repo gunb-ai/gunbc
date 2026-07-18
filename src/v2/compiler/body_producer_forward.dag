@@ -103,14 +103,18 @@ fn body_producer_forward_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   }
 }
 
+fn body_producer_forward_row_for_behavior_identity(surface_identity: Symbol) -> Optional<Node> {
+  match body_producer_forward_select_row(surface_identity: surface_identity) {
+    Accepted { value: row, diagnostics: _ } => optional_present(value: row)
+    Rejected { diagnostics: _ } => optional_absent()
+  }
+}
+
 fn body_producer_forward_row_selected_optional(shell: Node) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: shell) {
     Present { value: surface_identity } =>
       if body_producer_forward_is_behavior_surface_identity(surface_identity: surface_identity) {
-        match body_producer_forward_select_row(surface_identity: surface_identity) {
-          Accepted { value: row, diagnostics: _ } => Present { value: row }
-          Rejected { diagnostics: _ } => Absent
-        }
+        body_producer_forward_row_for_behavior_identity(surface_identity: surface_identity)
       } else {
         optional_absent()
       }
