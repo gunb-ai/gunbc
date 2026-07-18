@@ -128,7 +128,7 @@ type DerivedOpEffect {
   operation_name: String
   method: HttpMethod
   path_template: PathTemplate
-  shape: EffectShape
+  shape: EffectShape<KeySource>
 }
 
 type DeriveOpEffectResult
@@ -144,7 +144,7 @@ type DeriveOpEffectResult
 fn derive_effect_shape(
   method: HttpMethod,
   path: PathTemplate
-) -> EffectShape {
+) -> EffectShape<KeySource> {
   match method {
     GET     => ReadEffect
     HEAD    => ReadEffect
@@ -191,7 +191,7 @@ type ModifierCheck {
   operation_name: String
   declared_idempotent: Bool
   declared_readonly: Bool
-  derived_shape: EffectShape
+  derived_shape: EffectShape<KeySource>
   agreement: ModifierAgreement
 }
 
@@ -250,7 +250,7 @@ fn check_modifier_vs_derivation(
 
 type IdempotencyTestObligation {
   operation_name: String
-  effect_shape: EffectShape
+  effect_shape: EffectShape<KeySource>
   claim: String
   witness_required: Bool
 }
