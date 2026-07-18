@@ -8,7 +8,9 @@ import v2.lens.effect_reach {
   effect_reach_touched_by_paths
 }
 import v2.lens.witness_cost_locality { ModuleImportFact }
+import v2.std.collection { List }
 import v2.std.data_index { DataInitDecl, data_init_decl_facts_live }
+import v2.std.effect_reach { EffectReachClassification }
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -131,6 +133,3 @@ test fn effect_reach_live_03_normalize_witness_derived_host_reading_holds() -> B
     )
   )
 }
-
-import v2.std.collection { List }
-import v2.std.effect_reach { EffectReachClassification }
