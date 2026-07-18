@@ -1157,7 +1157,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
           Present { value: lowered } =>
             outcome_accepted(value: optional_present(value: lowered), diagnostics: fd)
           Absent =>
-            match body_lower_try_let_in_from_node(node: node) {
+                    match body_lower_try_let_in_from_node(node: node) {
                       Rejected { diagnostics: r } => Rejected { diagnostics: r }
                       Accepted { value: let_found, diagnostics: ld } =>
                         match let_found {
@@ -1258,8 +1258,6 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                 }
                             }
                         }
-                                }
-                            }
                         }
                     }
                 }
@@ -1268,7 +1266,6 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
     }
   }
 }
-
 
 fn body_lower_reduce_passthrough(folded: Node) -> Outcome<Node> {
   match parse_production_captured_child_optional(node: folded) {
