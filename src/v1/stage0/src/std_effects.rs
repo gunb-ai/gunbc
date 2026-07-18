@@ -24,19 +24,19 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum EffectShape {
+pub enum EffectShape<K> {
     ReadEffect,
-    UpsertEffect { key_source: Rc<KeySource> },
-    DeleteEffect { key_source: Rc<KeySource> },
-    CreateEffect { cause: Rc<CreateCause> },
+    UpsertEffect { key_source: K },
+    DeleteEffect { key_source: K },
+    CreateEffect { cause: Rc<CreateCause<K>> },
     AppendEffect,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum CreateCause {
+pub enum CreateCause<K> {
     PostAlways,
-    CreateIfAbsent { key_source: Rc<KeySource> },
+    CreateIfAbsent { key_source: K },
     KeylessFallback { method: HttpMethod },
 }
 
@@ -61,16 +61,16 @@ pub enum KeySource {
 #[serde(tag = "_variant")]
 pub enum IdempotencyEvidence {
     LatticeEffect {
-        shape: Rc<EffectShape>,
+        shape: Rc<EffectShape<Rc<KeySource>>>,
     },
     IdentityEffect,
     NonIdempotent {
-        shape: Rc<EffectShape>,
+        shape: Rc<EffectShape<Rc<KeySource>>>,
         reason: String,
     },
 }
 impl IdempotencyEvidence {
-    pub fn shape(&self) -> Rc<EffectShape> {
+    pub fn shape(&self) -> Rc<EffectShape<Rc<KeySource>>> {
         match self {
             IdempotencyEvidence::LatticeEffect { shape: __val, .. } => __val.clone(),
             IdempotencyEvidence::IdentityEffect => panic!("no shape on unit variant"),
@@ -79,7 +79,16 @@ impl IdempotencyEvidence {
     }
 }
 
-pub fn is_idempotent_effect(shape: Rc<EffectShape>) -> bool {
+pub fn generic_predicate_frontier_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "EffectShape<K>/CreateCause<K> are GENERIC (the single-authority TYPE, shared across the REST-derivation instantiation K=KeySource here and v2's substrate-witness instantiation K=Symbol). The predicates below are CONCRETE to EffectShape<KeySource>, not generic, by a declared emitter frontier: the v1 Rust emitter lowers every match as `match (*x.clone()).clone()`, so a generic fn matching EffectShape<K> needs `where K: Clone` (and PartialEq for the key `==`), but the emitter emits generic FUNCTIONS without bounds (it bounds generic TYPES via emit_type_params_with_clone_bound, not functions). Making the predicates generic breaks the emitted stage0 seed (std.effects is real compiler seed via v1_compiler_effect_derivation). dissolve-on = emitter emits Clone/PartialEq bounds on generic functions; then these lift to <K>. v2's harness uses the TYPE at K=Symbol and does not call these predicates (it builds Node witnesses), so the concreteness costs nothing today.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     match (*shape.clone()).clone() {
         EffectShape::ReadEffect => true,
         EffectShape::UpsertEffect { .. } => true,
@@ -113,7 +122,7 @@ pub fn key_source_eq(left: Rc<KeySource>, right: Rc<KeySource>) -> bool {
     }
 }
 
-pub fn create_effect_is_dedupable(shape: Rc<EffectShape>) -> bool {
+pub fn create_effect_is_dedupable(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
     match (*shape.clone()).clone() {
         EffectShape::CreateEffect { cause: cause, .. } => match (*cause.clone()).clone() {
             CreateCause::CreateIfAbsent {
@@ -127,7 +136,10 @@ pub fn create_effect_is_dedupable(shape: Rc<EffectShape>) -> bool {
     }
 }
 
-pub fn create_double_init_collapsible(a: Rc<EffectShape>, b: Rc<EffectShape>) -> bool {
+pub fn create_double_init_collapsible(
+    a: Rc<EffectShape<Rc<KeySource>>>,
+    b: Rc<EffectShape<Rc<KeySource>>>,
+) -> bool {
     match (*a.clone()).clone() {
         EffectShape::CreateEffect { cause: cause_a, .. } => match (*cause_a.clone()).clone() {
             CreateCause::CreateIfAbsent { key_source: ka, .. } => match (*b.clone()).clone() {
@@ -152,7 +164,7 @@ pub fn create_double_init_collapsible(a: Rc<EffectShape>, b: Rc<EffectShape>) ->
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperationEffect {
     pub operation_name: String,
-    pub shape: Rc<EffectShape>,
+    pub shape: Rc<EffectShape<Rc<KeySource>>>,
     pub evidence: Rc<IdempotencyEvidence>,
 }
 
@@ -204,7 +216,7 @@ pub struct DerivedOpEffect {
     pub operation_name: String,
     pub method: HttpMethod,
     pub path_template: Rc<PathTemplate>,
-    pub shape: Rc<EffectShape>,
+    pub shape: Rc<EffectShape<Rc<KeySource>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -222,7 +234,10 @@ pub enum DeriveOpEffectResult {
     },
 }
 
-pub fn derive_effect_shape(method: HttpMethod, path: Rc<PathTemplate>) -> Rc<EffectShape> {
+pub fn derive_effect_shape(
+    method: HttpMethod,
+    path: Rc<PathTemplate>,
+) -> Rc<EffectShape<Rc<KeySource>>> {
     match method.clone() {
         HttpMethod::GET => Rc::new(EffectShape::ReadEffect),
         HttpMethod::HEAD => Rc::new(EffectShape::ReadEffect),
@@ -303,7 +318,7 @@ pub struct ModifierCheck {
     pub operation_name: String,
     pub declared_idempotent: bool,
     pub declared_readonly: bool,
-    pub derived_shape: Rc<EffectShape>,
+    pub derived_shape: Rc<EffectShape<Rc<KeySource>>>,
     pub agreement: Rc<ModifierAgreement>,
 }
 
@@ -376,7 +391,7 @@ pub fn check_modifier_vs_derivation(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyTestObligation {
     pub operation_name: String,
-    pub effect_shape: Rc<EffectShape>,
+    pub effect_shape: Rc<EffectShape<Rc<KeySource>>>,
     pub claim: String,
     pub witness_required: bool,
 }
