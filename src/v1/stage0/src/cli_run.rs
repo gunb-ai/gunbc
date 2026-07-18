@@ -9194,9 +9194,20 @@ fn source_has_path_like_string_data(content: &str) -> bool {
 
 fn source_line_has_path_like_string_data(line: &str) -> bool {
     let trimmed = line.trim();
-    trimmed.starts_with("data ")
-        && ((trimmed.contains("String = \"") || trimmed.contains("String="))
-            && (trimmed.contains(".dag\"") || trimmed.contains("src/") || trimmed.contains("dag/")))
+    if !trimmed.starts_with("data ") {
+        return false;
+    }
+    let value = trimmed
+        .split_once("String = \"")
+        .or_else(|| trimmed.split_once("String=\""))
+        .and_then(|(_, rest)| rest.strip_suffix('"'));
+    let Some(value) = value else {
+        return false;
+    };
+    // Pure storage path only — prose/doc values that mention a path must not classify.
+    !value.contains(' ')
+        && (value.starts_with("src/") || value.starts_with("dag/"))
+        && value.contains(".dag")
 }
 
 fn source_data_path_literal_touches(content: &str, touched: &str) -> bool {

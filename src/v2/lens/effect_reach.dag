@@ -127,9 +127,11 @@ fn data_inits_in_modules(
 }
 
 fn data_init_is_path_literal(decl: DataInitDecl) -> Bool {
-  string_contains(s: decl.literal_fp, pattern: ".dag")
-    || string_contains(s: decl.literal_fp, pattern: "src/")
-    || string_contains(s: decl.literal_fp, pattern: "dag/")
+  starts_with(s: decl.literal_fp, prefix: "str:")
+    && !string_contains(s: decl.literal_fp, pattern: " ")
+    && string_contains(s: decl.literal_fp, pattern: ".dag")
+    && (string_contains(s: decl.literal_fp, pattern: "src/")
+      || string_contains(s: decl.literal_fp, pattern: "dag/"))
 }
 
 fn data_init_fp_matches_path(decl: DataInitDecl, path: String) -> Bool {

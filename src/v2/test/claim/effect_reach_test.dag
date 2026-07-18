@@ -45,6 +45,19 @@ data fixture_path_data_inits: List<DataInitDecl> = [
 
 data fixture_empty_data_inits: List<DataInitDecl> = []
 
+data fixture_prose_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.prose_witness", imports: ["fix.std_logic"] }
+]
+
+data fixture_prose_doc_inits: List<DataInitDecl> = [
+  DataInitDecl {
+    qualified_name: "fix.prose_witness.witness_doc",
+    module: "fix.prose_witness",
+    name: "witness_doc",
+    literal_fp: "str:\"receipt cites src/v2/compiler/03_normalize.dag but never reads it\""
+  }
+]
+
 fn transport_classification() -> EffectReachClassification {
   effect_reach_classification_from_facts(
     entry_module: "fix.witness",
@@ -90,6 +103,18 @@ test fn effect_reach_hermetic_fixture_stays_local_holds() -> Bool {
     data_inits: fixture_empty_data_inits
   )
   classification_is_local(classification: c)
+    && effect_reach_flow_count(classification: c) == 0
+}
+
+test fn effect_reach_prose_string_path_does_not_classify_holds() -> Bool {
+  let c = effect_reach_classification_from_facts(
+    entry_module: "fix.prose_witness",
+    facts: fixture_prose_facts,
+    decls: fn_arrow_decl_facts_live(),
+    data_inits: fixture_prose_doc_inits
+  )
+  classification_is_local(classification: c)
+    && !derived_host_reading(classification: c)
     && effect_reach_flow_count(classification: c) == 0
 }
 
