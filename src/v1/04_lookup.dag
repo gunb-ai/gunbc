@@ -40,13 +40,16 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
   match lookup_binding_by_name(env: type_env, name: name) {
     Present { value: binding } =>
       let node = binding.resolved
-      if (node.params |> count) > 0 || node.inferred != none {
+      if (node.params |> count) > 0 || node.inferred != none || node.type_annotation != none {
         Present { value: ResolvedFuncSig {
           name: name,
           params: node.params,
           inferred: match node.inferred {
             Present { value: inferred } => inferred
-            Absent => error_type
+            Absent => match node.type_annotation {
+              Present { value: ann } => ann
+              Absent => error_type
+            }
           },
           is_async: false,
           output_provenance: [],
