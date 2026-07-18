@@ -4582,7 +4582,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
 
   RcMatchAnalysis {
     needs_rc_option_ref: arms_want_option && scrutinee_is_call && !scrutinee_is_optional,
-    needs_option_deref: arms_want_option && !scrutinee_is_call && !scrutinee_is_optional && scrutinee_is_rc_wrapped,
+    needs_option_deref: arms_want_option && !scrutinee_is_call && (scrutinee_is_optional || scrutinee_is_rc_wrapped),
     needs_deref: if scrutinee_is_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref }
   }
 }
