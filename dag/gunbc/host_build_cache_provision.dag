@@ -9,18 +9,21 @@ import std.resources { Network }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
 import extdeps.cache.cache { cache_catalog }
 import gunbc.host_effect { HostEffect, ProvisionBuildCache }
-import gunbc.host_toolchain_ensure {
-  host_toolchain_ensure,
-  host_toolchain_ensure_routes_through_host_effect_apply,
-  BuildCache,
-}
+import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
 import product.placement_supply { HostIdentity }
 
 data provision_build_cache_widen_sketch_note: String = "RED-control fixture modeling STEP-2 forbidden absorbing fallback (ci_retry_escalation_level2: -u RUSTC_WRAPPER). Must never ship as the authority verdict fold."
 
 data host_build_cache_provision_scope_disposition: Disposition = SingleAuthority
 
-data host_build_cache_provision_realize_scaffold: Disposition = SingleAuthority
+data host_build_cache_provision_realize_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "realize_provision_build_cache",
+    field: WholeDeclaration,
+  }
+}
 
 data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -155,7 +158,14 @@ fn provision_build_cache_default_effect() -> HostEffect {
 }
 
 fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
-  host_toolchain_ensure_routes_through_host_effect_apply()
+  match host_build_cache_provision_realize_scaffold {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
+    } =>
+      m == "gunbc.host_effect_realize" && n == "realize_provision_build_cache"
+    Terminal { reason: _ } => false
+  }
 }
 
 fn daemon_absent_refuses_fail_closed() -> Bool {

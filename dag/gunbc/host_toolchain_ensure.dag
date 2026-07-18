@@ -29,6 +29,15 @@ data host_toolchain_ensure_srv3_fork_scaffold: Disposition = Terminal {
   reason: "srv3_os_install_actuator_toolchain_ensure thinned to host_toolchain_ensure(host: srv3, kind: OsInstallActuator) — no behavioral fork remains."
 }
 
+data host_toolchain_ensure_apply_dispatch_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect_realize",
+    decl_name: "host_effect_apply_gated",
+    field: WholeDeclaration,
+  }
+}
+
 fn host_toolchain_ensure_access(host: HostIdentity) -> DeployAccess? {
   if host == operator_host_srv1 {
     Present { value: host_identity_srv1_access }
@@ -89,12 +98,12 @@ func host_toolchain_ensure(host: HostIdentity, kind: HostToolchainKind) -> Proce
 }
 
 fn host_toolchain_ensure_routes_through_host_effect_apply() -> Bool {
-  match host_toolchain_ensure_srv3_fork_scaffold {
-    Terminal { reason: _ } => true
+  match host_toolchain_ensure_apply_dispatch_scaffold {
     Scaffold {
       dissolves_to: RealizationDispatch,
       bind: DeclarationRef { module_path: m, decl_name: n, field: _ },
     } =>
-      m == "gunbc.host_effect_realize" && n == "realize_provision_build_cache"
+      m == "gunbc.host_effect_realize" && n == "host_effect_apply_gated"
+    Terminal { reason: _ } => false
   }
 }

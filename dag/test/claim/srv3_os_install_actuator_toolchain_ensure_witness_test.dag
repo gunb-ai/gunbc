@@ -26,8 +26,8 @@ test fn srv3_actuator_toolchain_ensure_websocat_installs_to_modeled_path_with_na
 
 test fn srv3_actuator_toolchain_ensure_dissolution_trigger_names_bash_emit_scaffold() -> Bool {
   match os_install_actuator_toolchain_ensure_dissolution_trigger {
-    Terminal { reason: _ } => true
-    Scaffold { dissolves_to: RealizationDispatch, bind: _ } => false
+    Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+    Terminal { reason: _ } => false
   }
     && os_install_actuator_toolchain_ensure_routes_through_host_effect_apply()
 }
