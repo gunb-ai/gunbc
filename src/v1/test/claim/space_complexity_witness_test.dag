@@ -7,9 +7,6 @@ import v1.compiler.complexity {
   SizeExpr, SizeConst, SizeVar, SizeLen,
   space_of, fold_peak_space, eval_cost_expr_concrete, eval_size_expr_concrete,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data space_complexity_witness_note: String = "Space-complexity increment 1a ACCEPT: peak working set as the structural dual of the time cost-expr, proven BEHAVIORALLY through the concrete evaluator (no structural wildcard matches — exhaustive Optional threading only). The headline — a reducing fold is O(n) time but O(1) space (CostSum collapses to its body) — plus the P1 residency duals (sequential CostAdd->CostMax releases: eval 50 not sum 80; parallel CostMax->CostAdd co-resides: eval 80 not max 50), concrete byte evaluation, and the fail-closed frontier (CostUnknown -> the evaluator refuses, the SpaceBoundUnknown counted bottom). All derived, none measured."
 

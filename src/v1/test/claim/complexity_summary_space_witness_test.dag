@@ -9,9 +9,6 @@ import v1.compiler.complexity {
   ComplexitySummary, Certainty, Proven, Conservative,
   space_of, fold_peak_space, derive_peak_space, cost_account_space_from_summary,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data complexity_summary_space_witness_note: String = "Space-complexity integration ACCEPT (space-complexity-design.md 5): ComplexitySummary now carries an OPTIONAL peak_space, derived at the finalized per-function summary via space_of(work) (+ output_size for collection results). cost_account_space_from_summary fills CostAccount.space (basis Derived) by evaluating peak_space at a closed size_env to a concrete ByteSize. Three witnesses: a WITH-peak summary yields the expected bytes; an ABSENT-peak summary returns none (the fail-closed SpaceBoundUnknown frontier, and the RED control that an optional field is skipped by the P0 field wall); a reducing-fold work is O(1) space regardless of n."
 

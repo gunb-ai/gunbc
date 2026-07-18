@@ -7,9 +7,6 @@ import v1.compiler.complexity {
   SizeExpr, SizeVar,
   cost_expr_degree, space_of,
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data space_asymptotic_witness_note: String = "Space-complexity increment 2 ACCEPT: the asymptotic reading, proven through the polynomial DEGREE (cost_expr_degree, exhaustive Optional — no CostBound wildcard). The space degree = degree(space_of(work)) is <= the time degree by construction. Headline decided asymptotically: a reducing fold is O(n) TIME (degree 1) but O(1) SPACE (degree 0); a nested reducing loop is O(n^2) time but still O(1) space (both CostSums collapse); an underivable frontier yields Absent, never a fabricated degree."
 
