@@ -3192,7 +3192,8 @@ pub fn resolve_item_types(
                     }),
                     provenance: Rc::new(SubValueRelation::SubValueUnknown),
                 });
-                Rc::new(TypeEnv { module_path: e.module_path.clone(),
+                Rc::new(TypeEnv {
+                    module_path: e.module_path.clone(),
                     bindings: v1_rt::rc_map_insert(
                         e.bindings.clone(),
                         intern(e.intern_table.clone(), tp_name.clone()).id.clone(),

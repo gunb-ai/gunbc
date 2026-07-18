@@ -807,10 +807,7 @@ pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
 }
 
 pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
-    a.iter()
-        .zip(b.iter())
-        .take_while(|(x, y)| x == y)
-        .count() as i64
+    a.iter().zip(b.iter()).take_while(|(x, y)| x == y).count() as i64
 }
 
 pub fn global_bare_nearest_ancestor(
