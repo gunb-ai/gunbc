@@ -1,0 +1,68 @@
+module v2.workflow.orchestration_bounded_poll_emit_test
+
+import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  BoundedPoll,
+  Do,
+  ExitZero,
+  FailFast,
+  Pipeline,
+  PipelineStep,
+  Run
+}
+import v2.std.collection { Absent }
+import v2.std.diagnostic { Accepted, None, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data orch_bounded_poll_golden: String = "for __gunbc_poll in $(seq 1 3); do true; if true; then break; fi; done"
+
+fn orch_bounded_poll_intent() -> PipelineStep {
+  BoundedPoll {
+    max_attempts: 3,
+    body: Pipeline {
+      steps: [Do { run: Run { command: "true", env: [], redirect: Absent, capture: Absent } }],
+      on_failure: FailFast
+    },
+    success: ExitZero {
+      run: Run { command: "true", env: [], redirect: Absent, capture: Absent }
+    }
+  }
+}
+
+fn orch_bounded_poll_perturbed_intent() -> PipelineStep {
+  BoundedPoll {
+    max_attempts: 4,
+    body: Pipeline {
+      steps: [Do { run: Run { command: "true", env: [], redirect: Absent, capture: Absent } }],
+      on_failure: FailFast
+    },
+    success: ExitZero {
+      run: Run { command: "true", env: [], redirect: Absent, capture: Absent }
+    }
+  }
+}
+
+test fn orch_bounded_poll_emit_matches_golden_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_bounded_poll_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_bounded_poll_golden) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_bounded_poll_emit_has_teeth_holds() -> Bool {
+  match orch_emit_step(
+    s: orch_bounded_poll_perturbed_intent(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != orch_bounded_poll_golden
+    Rejected { diagnostics: _ } => false
+  }
+}
