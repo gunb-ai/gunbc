@@ -1376,23 +1376,7 @@ pub fn kernel_value_declared_type_mismatch(
     type_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if std::env::var("GUNBC_KV_PROBE").is_ok() {
-        let fname = authored_name_at(source_indices.clone(), formal.clone());
-        if fname.contains("Secret") {
-            let aname = authored_name_at(source_indices.clone(), actual.clone());
-            let lk = lookup_type_by_name(type_env.clone(), fname.clone());
-            eprintln!(
-                "KV_PROBE formal={fname} actual={aname} cast={} sct_f={:?} sct_a={:?} lk_conn={:?} lk_children={} lk_ann={} lk_first={:?}",
-                dag_can_cast(aname.clone(), fname.clone()),
-                structural_carrier_template_name(formal.clone(), source_indices.clone()),
-                structural_carrier_template_name(actual.clone(), source_indices.clone()),
-                lk.as_ref().map(|d| d.connective.clone()),
-                lk.as_ref().map(|d| d.children.len()).unwrap_or(0),
-                lk.as_ref().map(|d| d.type_annotation.is_some()).unwrap_or(false),
-                lk.as_ref().and_then(|d| d.children.first().map(|c| authored_name_at(source_indices.clone(), c.clone()))),
-            );
-        }
-    }
+
     if (((formal.connective.clone() == Connective::Arrow)
         || (actual.connective.clone() == Connective::Arrow))
         || ((actual.children.clone().len() as i64) > 0))
@@ -1518,18 +1502,7 @@ pub fn direct_call_arg_type_mismatch(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if std::env::var("GUNBC_KV_PROBE").is_ok() {
-        let fname = authored_name_at(source_indices.clone(), formal.clone());
-        if fname.contains("Secret") {
-            eprintln!(
-                "DCAT_PROBE formal={fname} actual={} brand={} container={} kernel={}",
-                authored_name_at(source_indices.clone(), actual.clone()),
-                nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), type_env.clone(), source_indices.clone()),
-                container_element_nominal_brand_mismatch(formal.clone(), actual.clone(), type_env.clone(), module_name.clone(), source_indices.clone()),
-                kernel_value_declared_type_mismatch(formal.clone(), actual.clone(), type_env.clone(), source_indices.clone()),
-            );
-        }
-    }
+
     if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
         false
     } else {
@@ -13569,19 +13542,20 @@ pub fn census_upgrade_sig_binding(
                     source_indices.clone(),
                 );
                 let ret_result = resolve_node(raw_ret.clone(), env.clone(), module_path.clone());
-                if (ret_result.diagnostics.clone().len() as i64) == 0
-                    && census_resolution_erases_primitive_brand(
-                        raw_ret.clone(),
-                        ret_result.resolved.clone(),
-                        source_indices.clone(),
-                    ) == false
-                {
+                if (ret_result.diagnostics.clone().len() as i64) == 0 {
+                    let preserved =
+                        crate::v1_compiler_infer_resolve::preserve_nominal_brand_on_resolve(
+                            raw_ret.clone(),
+                            ret_result.resolved.clone(),
+                            authored_name_at(source_indices.clone(), raw_ret.clone()),
+                            source_indices.clone(),
+                        );
                     Rc::new(TypeBinding {
                         name: binding.name.clone(),
                         resolved: crate::v1_compiler_infer_env::node_with_inferred(
                             node.clone(),
                             Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {
-                                node: ret_result.resolved.clone(),
+                                node: preserved.clone(),
                             })),
                         ),
                         provenance: binding.provenance.clone(),
@@ -13665,23 +13639,6 @@ pub fn census_upgrade_binding(
     }
 }
 
-pub fn census_resolution_erases_primitive_brand(
-    raw: Rc<Node>,
-    resolved: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (raw.connective == crate::v1_std_core::Connective::NoConnective)
-        && ((raw.children.clone().len() as i64) == 0)
-        && (is_kernel_type(qualified_last_segment(authored_name_at(
-            source_indices.clone(),
-            raw.clone(),
-        ))) == false)
-        && crate::v1_compiler_infer_resolve::is_transparent_primitive_alias_rhs(
-            resolved.clone(),
-            source_indices.clone(),
-        )
-}
-
 pub fn census_upgrade_type_expr(
     raw: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -13716,14 +13673,13 @@ pub fn census_upgrade_type_expr(
         crate::v1_compiler_infer_env::node_with_children(raw.clone(), fields2)
     } else {
         let r = resolve_node(raw.clone(), env.clone(), module_path.clone());
-        if (r.diagnostics.clone().len() as i64) == 0
-            && census_resolution_erases_primitive_brand(
+        if (r.diagnostics.clone().len() as i64) == 0 {
+            crate::v1_compiler_infer_resolve::preserve_nominal_brand_on_resolve(
                 raw.clone(),
                 r.resolved.clone(),
+                authored_name_at(source_indices.clone(), raw.clone()),
                 source_indices.clone(),
-            ) == false
-        {
-            r.resolved.clone()
+            )
         } else {
             raw.clone()
         }
