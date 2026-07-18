@@ -70,8 +70,8 @@ type ParsePositionKey {
 }
 
 type ParseTableRealization {
-  artifact_kind: ArtifactKindId
-  provider_id: CacheInterfaceId
+  artifact_kind: std.cache_identity.ArtifactKindId
+  provider_id: std.cache_identity.CacheInterfaceId
   materialization: Materialization
   grammar_digest: Hash
   token_stream_digest: Hash

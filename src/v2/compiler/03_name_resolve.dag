@@ -356,7 +356,7 @@ fn admit_import_entry(
             diagnostics: resolve_diagnostics(reason: ^resolve_import_not_visible)
           }
         ImportVisible =>
-          match cross_tree_edge_decision(
+          match v2.std.cross_tree.resolution.cross_tree_edge_decision(
             index: index,
             from_qn: subject_qn,
             to_qn: import_edge.target,
@@ -593,7 +593,7 @@ fn resolve_with_admission(
     lm: lm,
     roots: roots,
     admission: admission,
-    index: source_root_index_empty(),
+    index: v2.std.cross_tree.resolution.source_root_index_empty(),
     active_roots: Empty,
     policy: default_name_resolution_policy()
   )

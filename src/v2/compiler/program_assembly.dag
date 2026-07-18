@@ -2,7 +2,7 @@ module v2.compiler.program_assembly
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
       roots: FreeMonoid<Node>,
-      index: SourceRootIndex
+      index: v2.std.cross_tree.resolution.SourceRootIndex
     }
   | ProgramAssemblyFoldFailed {
       diagnostics: NonEmptyDiagnostics

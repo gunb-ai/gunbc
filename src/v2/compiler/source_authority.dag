@@ -20,7 +20,7 @@ type DagSourceReadWitness {
 
   compilation_unit: Symbol
 
-  source_root: SourceRootRef
+  source_root: v2.std.cross_tree.import_model.SourceRootRef
 }
 
 type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
