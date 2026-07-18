@@ -21,8 +21,8 @@ test fn posix_root_identification_holds() -> Bool {
 test fn bmc_least_privilege_via_rbac_holds() -> Bool {
   let admin = extdeps.bmc.types.redfish_account_role_wire(role: extdeps.bmc.types.AccountRoleAdministrator)
   let reader = extdeps.bmc.types.redfish_account_role_wire(role: extdeps.bmc.types.AccountRoleReadOnly)
-  role_has_privilege(policy: redfish_rbac_policy, role: admin, privilege: "ConfigureUsers")
-    && (role_has_privilege(policy: redfish_rbac_policy, role: reader, privilege: "ConfigureUsers") == false)
-    && role_has_privilege(policy: redfish_rbac_policy, role: reader, privilege: "Login")
-    && role_has_privilege(policy: redfish_rbac_policy, role: reader, privilege: "ConfigureSelf")
+  role_has_privilege(policy: extdeps.bmc.access.redfish_rbac_policy, role: admin, privilege: "ConfigureUsers")
+    && (role_has_privilege(policy: extdeps.bmc.access.redfish_rbac_policy, role: reader, privilege: "ConfigureUsers") == false)
+    && role_has_privilege(policy: extdeps.bmc.access.redfish_rbac_policy, role: reader, privilege: "Login")
+    && role_has_privilege(policy: extdeps.bmc.access.redfish_rbac_policy, role: reader, privilege: "ConfigureSelf")
 }
