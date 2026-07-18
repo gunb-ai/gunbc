@@ -3253,6 +3253,26 @@ pub fn emit_phantom_zst_markers_for_enum(children: Rc<Vec<Rc<Node>>>, env: Rc<Ty
     }
 }
 
+pub fn phantom_marker_name_shadowed_by_real_type_item(
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    vname: String,
+) -> bool {
+    {
+        let mut __found = false;
+        for item in items.clone().iter().cloned() {
+            if ((authored_name_at(source_indices.clone(), item.clone()) == vname.clone())
+                && (is_type_alias_item(item.clone(), source_indices.clone())
+                    || is_type_decl_item(item.clone(), source_indices.clone())))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn collect_phantom_zst_marker_names(
     items: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
@@ -3284,7 +3304,7 @@ pub fn collect_phantom_zst_marker_names(
                 if ((child.children.clone().len() as i64) == 0) {
                     {
                         let vname = authored_name(env.clone(), child.clone());
-                        if (is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
+                        if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
                             && !{
                                 let mut __found = false;
                                 for n in inner.clone().iter().cloned() {
@@ -3295,6 +3315,11 @@ pub fn collect_phantom_zst_marker_names(
                                 }
                                 __found
                             })
+                            && !phantom_marker_name_shadowed_by_real_type_item(
+                                items.clone(),
+                                env.source_indices.clone(),
+                                vname.clone(),
+                            ))
                         {
                             v1_rt::concat(inner.clone(), Rc::new(vec![vname.clone()]))
                         } else {
@@ -4991,7 +5016,6 @@ pub fn import_module_enum_scope(
             import_module.clone(),
             typed_modules.clone(),
             source_indices.clone(),
-            type_summaries.clone(),
             module_index.clone(),
         );
         let reexport_parents = match v1_rt::map_get(&export_sets, import_module.clone()) {
@@ -5051,7 +5075,6 @@ pub fn enum_names_in_module(
     module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<String>> {
     match typed_module_by_name(
@@ -5063,30 +5086,19 @@ pub fn enum_names_in_module(
         None => Rc::new(vec![]),
         Some(tm) => Rc::new({
             let mut __result = Vec::new();
-            for n in Rc::new({
+            for item in Rc::new({
                 let mut __result = Vec::new();
-                for item in Rc::new({
-                    let mut __result = Vec::new();
-                    for item in tm.items.clone().iter().cloned() {
-                        if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
-                            __result.push(item);
-                        }
+                for item in tm.items.clone().iter().cloned() {
+                    if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
+                        __result.push(item);
                     }
-                    __result
-                })
-                .iter()
-                .cloned()
-                {
-                    __result.push(authored_name_at(source_indices.clone(), item.clone()));
                 }
                 __result
             })
             .iter()
             .cloned()
             {
-                if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
-                    __result.push(n);
-                }
+                __result.push(authored_name_at(source_indices.clone(), item.clone()));
             }
             __result
         }),
@@ -6235,7 +6247,16 @@ pub fn import_variant_parent_for_name(
     ) {
         "".to_string()
     } else {
-        if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+        if {
+            let mut __found = false;
+            for e in import_module_enums.clone().iter().cloned() {
+                if (e.clone() == n.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
             "".to_string()
         } else {
             match find_variant_parent_in_module(
@@ -6314,6 +6335,15 @@ pub fn emit_specific_import_block(
             "".to_string()
         } else {
             {
+                let import_module_enums = import_module_enum_scope(
+                    import_module.clone(),
+                    registry.clone(),
+                    type_summaries.clone(),
+                    export_sets.clone(),
+                    typed_modules.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                );
                 let top_level = Rc::new({
                     let mut __result = Vec::new();
                     for n in deduped_names.clone().iter().cloned() {
@@ -6330,7 +6360,16 @@ pub fn emit_specific_import_block(
                             true
                         } else {
                             if is_known_variant(type_summaries.clone(), n.clone()) {
-                                is_enum_in_summaries(type_summaries.clone(), n.clone())
+                                {
+                                    let mut __found = false;
+                                    for e in import_module_enums.clone().iter().cloned() {
+                                        if (e.clone() == n.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                }
                             } else {
                                 if imported_name_is_non_emittable_type(
                                     n.clone(),
@@ -6356,19 +6395,19 @@ pub fn emit_specific_import_block(
                     }
                     __result
                 });
-                let import_module_enums = import_module_enum_scope(
-                    import_module.clone(),
-                    registry.clone(),
-                    type_summaries.clone(),
-                    export_sets.clone(),
-                    typed_modules.clone(),
-                    source_indices.clone(),
-                    module_index.clone(),
-                );
                 let imported_enums = Rc::new({
                     let mut __result = Vec::new();
                     for n in deduped_names.clone().iter().cloned() {
-                        if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                        if {
+                            let mut __found = false;
+                            for e in import_module_enums.clone().iter().cloned() {
+                                if (e.clone() == n.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
                             __result.push(n);
                         }
                     }
@@ -6423,7 +6462,16 @@ pub fn emit_specific_import_block(
                             false
                         } else {
                             if is_known_variant(type_summaries.clone(), n.clone()) {
-                                is_enum_in_summaries(type_summaries.clone(), n.clone())
+                                {
+                                    let mut __found = false;
+                                    for e in import_module_enums.clone().iter().cloned() {
+                                        if (e.clone() == n.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                }
                             } else {
                                 true
                             }
@@ -6791,7 +6839,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                         let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone()) {
                             false
                         } else {
-                            if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                            if { let mut __found = false; for e in import_module_enums.clone().iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
                                 false
                             } else {
                                 match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
@@ -6817,10 +6865,19 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     }
                     __result
                 });
-                let imported_enums = Rc::new({
+                let final_imported_enums = Rc::new({
                     let mut __result = Vec::new();
                     for n in top_level.clone().iter().cloned() {
-                        if is_enum_in_summaries(type_summaries.clone(), n.clone()) {
+                        if {
+                            let mut __found = false;
+                            for e in import_module_enums.clone().iter().cloned() {
+                                if (e.clone() == n.clone()) {
+                                    __found = true;
+                                    break;
+                                }
+                            }
+                            __found
+                        } {
                             __result.push(n);
                         }
                     }
@@ -6830,7 +6887,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     let mut __result = Vec::new();
                     for en in Rc::new({
                         let mut __result = Vec::new();
-                        for en in imported_enums.clone().iter().cloned() {
+                        for en in final_imported_enums.clone().iter().cloned() {
                             if (({
                                 let mut __found = false;
                                 for p in parent_list.clone().iter().cloned() {
@@ -8411,6 +8468,17 @@ pub fn rust_phantom_field_name() -> String {
     "_phantom".to_string()
 }
 
+pub fn type_has_fn_fields(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
+    match v1_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
+        Some(ts) => ts.has_fn_fields.clone(),
+        None => false,
+    }
+}
+
+pub fn struct_needs_serde(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
+    !type_has_fn_fields(name.clone(), emit_info.clone())
+}
+
 pub fn emit_struct_from_children(
     name: String,
     type_params: String,
@@ -8422,10 +8490,7 @@ pub fn emit_struct_from_children(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
-        let has_fn_fields = match v1_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
-            Some(ts) => ts.has_fn_fields.clone(),
-            None => false,
-        };
+        let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
         let derives = if has_fn_fields.clone() {
             "#[derive(Clone)]".to_string()
         } else {
@@ -8903,34 +8968,44 @@ pub fn emit_struct_field_from_child(
                 generic_ty.clone()
             }
         };
-        let rename_attr = match Rc::new({
-            let mut __result = Vec::new();
-            for p in child.properties.clone().iter().cloned() {
-                if (field_init_node_name_at(p.clone(), env.source_indices.clone())
-                    == "from_key".to_string())
-                {
-                    __result.push(p);
+        let needs_serde = struct_needs_serde(struct_name.clone(), emit_info.clone());
+        let rename_attr = if !needs_serde.clone() {
+            "".to_string()
+        } else {
+            match Rc::new({
+                let mut __result = Vec::new();
+                for p in child.properties.clone().iter().cloned() {
+                    if (field_init_node_name_at(p.clone(), env.source_indices.clone())
+                        == "from_key".to_string())
+                    {
+                        __result.push(p);
+                    }
                 }
+                __result
+            })
+            .first()
+            .cloned()
+            {
+                Some(prop) => {
+                    match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
+                        ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
+                            LiteralValue::LitStr { value: key, .. } => v1_rt::concat(
+                                v1_rt::concat(
+                                    "    ".to_string(),
+                                    apply_type_template1(
+                                        rust_serde_rename_template_text(),
+                                        key.clone(),
+                                    ),
+                                ),
+                                "\n".to_string(),
+                            ),
+                            _ => "".to_string(),
+                        },
+                        _ => "".to_string(),
+                    }
+                }
+                None => "".to_string(),
             }
-            __result
-        })
-        .first()
-        .cloned()
-        {
-            Some(prop) => match (*field_init_node_value(prop.clone()).expr_data.clone()).clone() {
-                ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
-                    LiteralValue::LitStr { value: key, .. } => v1_rt::concat(
-                        v1_rt::concat(
-                            "    ".to_string(),
-                            apply_type_template1(rust_serde_rename_template_text(), key.clone()),
-                        ),
-                        "\n".to_string(),
-                    ),
-                    _ => "".to_string(),
-                },
-                _ => "".to_string(),
-            },
-            None => "".to_string(),
         };
         emit_rust_field_definition(
             authored_name(env.clone(), child.clone()),
@@ -8938,6 +9013,7 @@ pub fn emit_struct_field_from_child(
             rename_attr.clone(),
             "    ".to_string(),
             rust_visibility_prefix(),
+            needs_serde.clone(),
         )
     }
 }
@@ -8948,22 +9024,24 @@ pub fn emit_rust_field_definition(
     rename_attr: String,
     indent: String,
     visibility: String,
+    needs_serde: bool,
 ) -> String {
     {
         let snake = to_snake(authored.clone());
         let emitted = emit_ident(authored.clone(), RenderTarget::Rust);
-        let keyword_rename =
-            if ((emitted.clone() != snake.clone()) && (rename_attr.clone() == "".to_string())) {
+        let keyword_rename = if ((needs_serde.clone() && (emitted.clone() != snake.clone()))
+            && (rename_attr.clone() == "".to_string()))
+        {
+            v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(indent.clone(), "#[serde(rename = \"".to_string()),
-                        snake.clone(),
-                    ),
-                    "\")]\n".to_string(),
-                )
-            } else {
-                "".to_string()
-            };
+                    v1_rt::concat(indent.clone(), "#[serde(rename = \"".to_string()),
+                    snake.clone(),
+                ),
+                "\")]\n".to_string(),
+            )
+        } else {
+            "".to_string()
+        };
         v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -9905,6 +9983,7 @@ pub fn emit_variant_from_child(
                                             "".to_string(),
                                             "        ".to_string(),
                                             "".to_string(),
+                                            true,
                                         )
                                     });
                                 }
@@ -9962,6 +10041,7 @@ pub fn emit_variant_from_child(
                                     "".to_string(),
                                     "        ".to_string(),
                                     "".to_string(),
+                                    true,
                                 )
                             });
                         }

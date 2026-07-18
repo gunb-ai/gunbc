@@ -1,14 +1,13 @@
 module tools.self_host_03_normalize_behavioral_transport
 
-import extdeps.shell
-import extdeps.filesystem.filesystem_io
-import extdeps.cargo_build
-import extdeps.git
-import extdeps.gunbc
+import tools.self_host_curated_seed_linked_harness {
+  CuratedSeedLinkedShimWrite,
+  cssl_seed_linked_behavioral_receipt
+}
+import v2.std.collection { List }
 import std.logic { Bool }
-import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
 
-data sn_doc: String = "Wave 2 parallel flip (03_normalize self-emit): curated seed-linked behavioral receipt mirroring tools.self_host_parse_engine_hooks_behavioral_transport. Emit ONLY v2.compiler.normalize via gunbc compile --entry; compile gunbc-emitted v2_compiler_normalize.rs in a v1_compiled driver with seed-linked dep shims (dag/tools/self_host_03_normalize_shims/*) and v1-compiler path dep. Entry module is text-carrier-free (0 FreeMonoid/Char/NonEmptyStr in whole file); dep closure is NOT re-emitted via default lib.rs (avoids whole-closure fold_lowering text-carrier trap). BLOCKER (2026-07-16 rustc probe): verbatim emitted v2_compiler_normalize.rs still rustc-refuses under curated harness — Diagnostics::None assigned to Rc<Diagnostics> field; Rc<Option<T>> matched with Some/None without deref; optional_present return vs Option<Rc<SugarKey>> tail. Emit attempt reports 0 diagnostics; cargo is the honest gate. Recorded in sn_emit_surface_rustc_refusal_note."
+data sn_doc: String = "Wave 2 parallel flip (03_normalize self-emit): curated seed-linked behavioral receipt via tools.self_host_curated_seed_linked_harness (converged onto shared cssl authority — DESIGN §3 — do not re-fork a per-module copy). Emit ONLY v2.compiler.normalize via gunbc compile --entry; seed-retained dep shims under dag/tools/self_host_03_normalize_shims/ supply the ABI (text-free; dep closure NOT re-emitted via default lib.rs — avoids whole-closure fold_lowering text-carrier trap). Seed oracle: v1_compiler::v2_compiler_normalize in src/v1/stage0. Behavioral bar: cargo-green witness pairs emitted vs seed on normalize_fold_init + normalize (plain + --inject-fault RED on emitted side). BLOCKER (2026-07-16 rustc probe): verbatim emitted v2_compiler_normalize.rs still rustc-refuses — sn_emit_surface_rustc_refusal_note; cargo is the honest gate until #6775 emitter Rc/Optional coherence greens."
 
 data sn_emit_surface_rustc_refusal_note: String = "emit-surface rustc refusal (03_normalize entry, curated seed-link harness): gunbc compile --entry is clean (48 files, 0 diagnostics) and entry has 0 text-carrier refs, but verbatim v2_compiler_normalize.rs does not rustc-compile with seed-linked minimal dep shims — not fold_lowering text-carrier (deps are shimmed, not re-emitted). Located buckets: (1) Outcome::Accepted { diagnostics: None } where None=Diagnostics::None but field type is Rc<Diagnostics>; (2) match parse_production_emitted_identity_optional(...) { Some(..) } on Rc<Option<String>> without deref; (3) normalize_sugar_key_optional tail returns optional_present (Rc<Option<_>> in full emit) vs declared Option<Rc<SugarKey>>. Distinct from #6767 text-carrier prelude; needs emitter Rc-wrap / Optional coherence fix before frontier flip."
 
@@ -18,116 +17,59 @@ data sn_source_rel: String = "src/v2/compiler/03_normalize.dag"
 
 data sn_shim_lib_rel: String = "dag/tools/self_host_03_normalize_shims/lib.rs"
 
-data sn_shim_algebra_rel: String = "dag/tools/self_host_03_normalize_shims/v2_std_algebra.rs"
-
-data sn_shim_collection_rel: String = "dag/tools/self_host_03_normalize_shims/v2_std_collection.rs"
-
-data sn_shim_grammar_rel: String = "dag/tools/self_host_03_normalize_shims/v2_std_grammar.rs"
-
-data sn_shim_diagnostic_rel: String = "dag/tools/self_host_03_normalize_shims/v2_std_diagnostic.rs"
-
-data sn_shim_node_rel: String = "dag/tools/self_host_03_normalize_shims/v2_std_node.rs"
-
-data sn_shim_sugar_rel: String = "dag/tools/self_host_03_normalize_shims/v2_std_compilers_sugar.rs"
-
-data sn_shim_body_fold_rel: String = "dag/tools/self_host_03_normalize_shims/v2_compiler_body_lowering_fold.rs"
-
-data sn_shim_normalized_tree_rel: String = "dag/tools/self_host_03_normalize_shims/v2_compiler_normalized_tree.rs"
-
-data sn_shim_extdeps_rel: String = "dag/tools/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs"
-
 data sn_shim_driver_rel: String = "dag/tools/self_host_03_normalize_shims/witness_main.rs"
 
-data sn_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_03_normalize_shims/* + sn_cargo_toml + witness driver — seed-linked dep shim files, driver-crate manifest, witness driver. DISSOLVES WHEN gunbc-emitted entry rustc-compiles under seed-linked harness without hand shims AND modeled self-host behavioral-equivalence harness emits comparison driver + manifest."
+data sn_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_03_normalize_shims/* + sn behavioral transport wiring — seed-linked dep shim files and witness driver. DISSOLVES WHEN gunbc-emitted entry rustc-compiles under seed-linked harness without hand shims AND modeled self-host behavioral-equivalence harness emits comparison driver + manifest (cssl_v1_compiled_cargo_toml authority)."
 
 data sn_receipt_pass_marker: String = "SELF_HOST_03_NORMALIZE_BEHAVIORAL_RECEIPT: PASS"
 
-data sn_cargo_features_note: String = "Mirrors peh_cargo_features_note: text_lookup_work_counter feature declared for -D warnings consumers."
-
-fn sn_repo_path(root: String, rel: String) -> String {
-  concat(root, concat("/", rel))
-}
-
-fn sn_cargo_toml(root: String) -> String {
-  concat(
-    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim-rc = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
-    concat(root, "/src/v1/stage0\" }\n")
-  )
-}
+data sn_normalize_shim_writes: List<CuratedSeedLinkedShimWrite> = [
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_algebra.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_algebra.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_collection.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_collection.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_grammar.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_grammar.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_diagnostic.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_diagnostic.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_node.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_node.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_compilers_sugar.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_compilers_sugar.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_compiler_body_lowering_fold.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_compiler_body_lowering_fold.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_compiler_normalized_tree.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_compiler_normalized_tree.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_extdeps_languages_dag.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs"
+  }
+]
 
 fn sn_behavioral_receipt_holds() -> Bool {
-  let root = git.Core.Toplevel()
-  let module_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_source_rel))
-  let lib_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_lib_rel))
-  let algebra_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_algebra_rel))
-  let collection_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_collection_rel))
-  let grammar_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_grammar_rel))
-  let diagnostic_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_diagnostic_rel))
-  let node_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_node_rel))
-  let sugar_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_sugar_rel))
-  let body_fold_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_body_fold_rel))
-  let normalized_tree_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_normalized_tree_rel))
-  let extdeps_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_extdeps_rel))
-  let driver_read = Filesystem.Read(path: sn_repo_path(root: root.path, rel: sn_shim_driver_rel))
-
-  let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
-  let emit = gunbc.WitnessBin.Run(
-    workdir: root.path,
-    bin_path: gunbc_bin,
-    args: [
-      "compile",
-      "--source-root", "dag",
-      "--source-root", "src/v2",
-      "--entry", sn_source_rel,
-      "--output-dir", out_dir.path,
-      "--target", "rust",
-      "--dependency-pool-index", "primary-precedence"
-    ]
+  cssl_seed_linked_behavioral_receipt(
+    source_rel: sn_source_rel,
+    shim_lib_rel: sn_shim_lib_rel,
+    shim_writes: sn_normalize_shim_writes,
+    driver_rel: sn_shim_driver_rel,
+    pass_marker: sn_receipt_pass_marker,
+    claim_entry_rel: "",
+    claim_function: ""
   )
-
-  let src_dir = shell.Mkdir.Parents(path: concat(out_dir.path, "/src"))
-  let lib_written = Filesystem.Write(path: concat(out_dir.path, "/src/lib.rs"), content: lib_read.content)
-  let algebra_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_std_algebra.rs"), content: algebra_read.content)
-  let collection_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_std_collection.rs"), content: collection_read.content)
-  let grammar_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_std_grammar.rs"), content: grammar_read.content)
-  let diagnostic_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_std_diagnostic.rs"), content: diagnostic_read.content)
-  let node_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_std_node.rs"), content: node_read.content)
-  let sugar_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_std_compilers_sugar.rs"), content: sugar_read.content)
-  let body_fold_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_compiler_body_lowering_fold.rs"), content: body_fold_read.content)
-  let normalized_tree_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_compiler_normalized_tree.rs"), content: normalized_tree_read.content)
-  let extdeps_written = Filesystem.Write(path: concat(out_dir.path, "/src/v2_extdeps_languages_dag.rs"), content: extdeps_read.content)
-  let manifest = Filesystem.Write(path: concat(out_dir.path, "/Cargo.toml"), content: sn_cargo_toml(root: root.path))
-  let main_rs = Filesystem.Write(path: concat(out_dir.path, "/src/main.rs"), content: driver_read.content)
-
-  let build = cargo.Build.BuildManifest(
-    workdir: out_dir.path,
-    manifest_path: concat(out_dir.path, "/Cargo.toml"),
-    target_dir: concat(out_dir.path, "/target"),
-    extra_args: ["--release"]
-  )
-
-  let witness_bin_path = concat(out_dir.path, "/target/release/witness")
-  let pass_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path)
-  let fault_run = gunbc.WitnessBin.Run(workdir: out_dir.path, bin_path: witness_bin_path, args: ["--inject-fault"])
-
-  let cleanup_out = shell.Remove.RecursiveForce(path: out_dir.path)
-
-  module_read.success
-    && lib_read.success && algebra_read.success && collection_read.success
-    && grammar_read.success && diagnostic_read.success && node_read.success
-    && sugar_read.success && body_fold_read.success && normalized_tree_read.success
-    && extdeps_read.success && driver_read.success
-    && out_dir.success && gunbc_built && emit.success
-    && src_dir.success
-    && lib_written.success && algebra_written.success && collection_written.success
-    && grammar_written.success && diagnostic_written.success && node_written.success
-    && sugar_written.success && body_fold_written.success && normalized_tree_written.success
-    && extdeps_written.success
-    && manifest.success && main_rs.success
-    && build.success
-    && pass_run.success && string_contains(s: pass_run.stdout, pattern: sn_receipt_pass_marker)
-    && (fault_run.success == false)
-    && cleanup_out.success
 }
