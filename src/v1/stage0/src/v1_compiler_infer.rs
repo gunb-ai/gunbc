@@ -83,9 +83,9 @@ pub use crate::v1_compiler_infer_method::{
 };
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
-    check_match_exhaustiveness, lookup_field_in_variant, lookup_result_subject,
-    lookup_variant_in_type, pattern_binding_type, pattern_subject_from_inferred,
-    pattern_subject_from_node,
+    check_match_exhaustiveness, expand_scrut_type_for_variant_lookup, lookup_field_in_variant,
+    lookup_result_subject, lookup_variant_in_type, pattern_binding_type,
+    pattern_subject_from_inferred, pattern_subject_from_node,
 };
 pub use crate::v1_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v1_compiler_infer_resolve::{
