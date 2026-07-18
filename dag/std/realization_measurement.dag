@@ -27,6 +27,24 @@ type RealizationMeasureEffect
       subject: ContentHash
       work_shape: String
     }
+  | ObservePeakResidentAtSubject {
+      subject: ContentHash
+      work_shape: String
+    }
+
+data space_measure_duality_note: String = "Space composes as time's DUAL (witness-realization plan P1 / memory-control audit F4): sequential steps RELEASE, so seq peak = max; concurrent steps CO-RESIDE, so par peak = add. The earlier receipt rollup summed space over a sequential list - the parallel rule applied to the serial axis - and the keystone witness enshrined the sum; both corrected with this landing. Realized observation: the observed_peak_resident_bytes host builtin (VmHWM, fail-closed when unavailable) is ObservePeakResidentAtSubject's realization seam."
+
+fn space_measure_seq(a: ByteSize, b: ByteSize) -> ByteSize {
+  byte_size(count: nat_max(a: measure_count(m: a), b: measure_count(m: b)))
+}
+
+fn space_measure_par(a: ByteSize, b: ByteSize) -> ByteSize {
+  byte_size(count: measure_count(m: a) + measure_count(m: b))
+}
+
+fn space_measure_list_seq(spaces: List<ByteSize>) -> ByteSize {
+  fold(spaces, init: byte_size(count: 0), f: (acc, s) => space_measure_seq(a: acc, b: s))
+}
 
 fn cost_account_measured_from_time<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   cost_account_measured(time: time)

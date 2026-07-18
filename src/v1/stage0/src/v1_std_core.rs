@@ -2276,7 +2276,11 @@ pub fn shell_transport_node(
     }
 }
 
-pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
+pub fn file_transport_node(
+    base_path: Rc<Node>,
+    verb: Option<Rc<Node>>,
+    span: Rc<SourceSpan>,
+) -> Rc<Node> {
     {
         let path_field = make_field_init_node(
             transport_path_key(),
@@ -2284,12 +2288,19 @@ pub fn file_transport_node(base_path: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node
             make_span(0, 0),
             make_span(0, 0),
         );
-        make_transport_node(
-            Rc::new(vec![path_field.clone()]),
-            Rc::new(vec![]),
-            None,
-            span.clone(),
-        )
+        let props = match verb.clone() {
+            Some(verb_expr) => Rc::new(vec![
+                path_field.clone(),
+                make_field_init_node(
+                    "verb".to_string(),
+                    verb_expr.clone(),
+                    make_span(0, 0),
+                    make_span(0, 0),
+                ),
+            ]),
+            None => Rc::new(vec![path_field.clone()]),
+        };
+        make_transport_node(props.clone(), Rc::new(vec![]), None, span.clone())
     }
 }
 
