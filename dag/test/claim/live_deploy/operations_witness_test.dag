@@ -6,6 +6,7 @@ import extdeps.apt { package_nodejs, package_tailscale, apt_install_argv }
 import extdeps.dpkg { dpkg_status_argv }
 import extdeps.os.systemctl {
   systemctl_daemon_reload_argv,
+  systemctl_enable_argv,
   systemctl_restart_argv,
   systemctl_disable_now_argv,
 }
@@ -13,6 +14,7 @@ import gunbc.live_deploy.operations {
   dpkg_status_command,
   apt_install_command,
   systemctl_daemon_reload_command,
+  systemctl_enable_command,
   systemctl_restart_command,
   systemctl_disable_now_command,
   privileged_command,
@@ -100,6 +102,20 @@ fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
   argv_join(argv: helper) == argv_join(argv: transport)
 }
 
+fn witness_systemctl_enable_argv_matches_transport_row() -> Bool {
+  let helper = systemctl_enable_argv(unit: gunbc_roadmap_unit_name)
+  let transport = shell_materialize_argv_for_operation(
+    systemctl_path,
+    systemctl_service,
+    "Enable",
+    "",
+    "",
+    [],
+    gunbc_roadmap_unit_name as String
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
+}
+
 fn witness_dpkg_status_command_matches_transport() -> Bool {
   dpkg_status_command(package: package_tailscale) == "dpkg -s tailscale"
 }
@@ -114,6 +130,10 @@ fn witness_privileged_apt_install_command() -> Bool {
 
 fn witness_systemctl_restart_command_matches_transport() -> Bool {
   systemctl_restart_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl restart gunbc-roadmap.service"
+}
+
+fn witness_systemctl_enable_command_matches_transport() -> Bool {
+  systemctl_enable_command(unit: gunbc_roadmap_unit_name, privileged: true) == "sudo -n systemctl enable gunbc-roadmap.service"
 }
 
 fn witness_systemctl_disable_now_command_matches_transport() -> Bool {
@@ -131,13 +151,15 @@ fn witness_systemctl_daemon_reload_command_privileged() -> Bool {
 test fn live_deploy_operations_holds() -> Bool {
   witness_dpkg_status_argv_matches_transport_row()
     && witness_apt_install_argv_matches_transport_row()
-    && witness_systemctl_restart_argv_matches_transport_row()
+    &&   witness_systemctl_restart_argv_matches_transport_row()
     && witness_systemctl_disable_now_argv_matches_transport_row()
     && witness_systemctl_daemon_reload_argv_matches_transport_row()
+    && witness_systemctl_enable_argv_matches_transport_row()
     && witness_dpkg_status_command_matches_transport()
     && witness_apt_install_command_matches_transport()
     && witness_privileged_apt_install_command()
     && witness_systemctl_restart_command_matches_transport()
+    && witness_systemctl_enable_command_matches_transport()
     && witness_systemctl_disable_now_command_matches_transport()
     && witness_privileged_command_prefixes_sudo_n()
     && witness_systemctl_daemon_reload_command_privileged()
