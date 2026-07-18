@@ -94,7 +94,12 @@ data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/modu
 
 type ModuleStorageProvenance
   = ParsedFromSource { artifact: Artifact, span_index: SpanIndex }
+  | DeclarationScanned { artifact: Artifact }
   | ProducedByBehavior { producer: Symbol }
+
+data module_storage_declaration_scanned_note: String = "DeclarationScanned records a binding whose module name was read off the DECLARATION LINE, not parsed. The live host producer (build_module_path_index, src/v1/stage0/src/cli_run.rs) derives the mapping via extract_module_path — a substring scan taking the first non-blank, non-comment line starting with 'module ' — so it has no spans and no parse ever ran for those rows. Emitting them as ParsedFromSource would FABRICATE parse provenance with a synthesized span_index standing where real spans belong (§5 fabricated plausible output), and it would defeat the coproduct's entire job, which is to be honest about where a binding came from. Widening span_index to Optional was rejected for the same reason it is a named recurring failure mode: parsed-but-spanless and never-parsed would collapse into one shape (an Option meaning >2 things). Because the scan and the parser are DIFFERENT code paths, they can disagree — and this arm is what makes that disagreement visible to consumers rather than assumed away."
+
+data module_storage_declaration_scanned_dissolution_trigger: String = "dissolve-on: the host producer routing through the real parse path (src/v1/stage0/src/v1_compiler_parse.rs parse_module, which already carries mod_name + its span) instead of extract_module_path. At that point rows upgrade to ParsedFromSource with REAL spans and DeclarationScanned is DELETED — not kept as a second way to say the same thing. Staged deliberately, not deferred vaguely: routing the bootstrap producer through the parser is surgery on the bootstrap path with an unmeasured cost profile and needs its own measured lane (parent ruling 2026-07-18)."
 
 type ModuleStorageBinding {
   module: QualifiedName
@@ -503,9 +508,23 @@ fn module_storage_produced_binding(
   }
 }
 
+fn module_storage_scanned_binding(
+  module: QualifiedName,
+  artifact: Artifact,
+  source_root: SourceRootRef
+) -> ModuleStorageBinding {
+  ModuleStorageBinding {
+    module: module,
+    provenance: DeclarationScanned { artifact: artifact },
+    source_root: source_root
+  }
+}
+
 fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<String> {
   match binding.provenance {
     ParsedFromSource { artifact: a, span_index: _ } =>
+      optional_present(value: a.file_path)
+    DeclarationScanned { artifact: a } =>
       optional_present(value: a.file_path)
     ProducedByBehavior { producer: _ } =>
       optional_absent()

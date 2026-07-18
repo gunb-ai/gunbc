@@ -7,14 +7,16 @@ import v2.compiler.source_authority {
   module_storage_binding_module_dotted,
   module_storage_index_insert,
   module_storage_module_for_path,
-  module_storage_produced_binding
+  module_storage_produced_binding,
+  module_storage_scanned_binding
 }
+import v2.std.artifact { Artifact, SourceFile }
 import v2.std.collection { Absent, Present }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
 
@@ -87,5 +89,39 @@ test fn module_storage_produced_module_answers_absent_for_path_lookup() -> Bool 
   ) {
     Present { value: _ } => false
     Absent => true
+  }
+}
+
+data msb_scanned_path: String = "src/v2/std/msb_scanned_fixture.dag"
+
+data msb_scanned_qn: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons { head: ^std, tail: Cons { head: ^msb_scanned_fixture, tail: Empty } }
+}
+
+data msb_scanned_binding: ModuleStorageBinding = module_storage_scanned_binding(
+  module: msb_scanned_qn,
+  artifact: Artifact {
+    kind: SourceFile,
+    id: ^msb_scanned_artifact,
+    file_path: msb_scanned_path
+  },
+  source_root: V2Tree
+)
+
+data msb_scanned_index: ModuleStorageIndex = Cons { head: msb_scanned_binding, tail: Empty }
+
+test fn module_storage_scanned_module_has_storage() -> Bool {
+  match module_storage_binding_file_path(binding: msb_scanned_binding) {
+    Absent => false
+    Present { value: p } => p == msb_scanned_path
+  }
+}
+
+test fn module_storage_scanned_module_resolves_path_to_module() -> Bool {
+  match module_storage_module_for_path(index: msb_scanned_index, file_path: msb_scanned_path) {
+    Absent => false
+    Present { value: qn } =>
+      qualified_name_to_dotted_string(qn: qn) == "v2.std.msb_scanned_fixture"
   }
 }
