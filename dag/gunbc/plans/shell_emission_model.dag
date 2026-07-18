@@ -45,7 +45,7 @@ fn shell_emission_model_body() -> List<MarkdownBlock> {
       li(text: "**Slice 4 — tail consumers (pre-runtime residue):** `bmc_token_federation` (two `Do\{Run\}` rows — slice-0 machinery suffices) → `ci_workflow` inline `RunStep`s (case/`uname` → model as `TargetArchitecture`; cross-link ROADMAP §1 `1-inline-shell-defork`) → githooks as a **thin shim** (ensure-built + exec `claim_batch --pre-push` with stdin passed through; the case-rosters/arrays/while-read stdin parse move into the binary)."),
     ]),
     h2(text: "6. Sidecar dissolution (parallel)"),
-    p(text: "**LANDED (#6831, Phase 0):** `dag/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) deleted; `bash_program_importer_count_baseline` is 0 and the ratchet locks the shrink. Remaining arc work is intent-layer shell→`emit(intent, Bash)` migration (Categories A–C in [shell-intent-emit-realization-design.md](shell-intent-emit-realization-design.md)), not sidecar restoration."),
+    p(text: "**LANDED (#6831, Phase 0):** `dag/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) deleted; the vacuous bash-program importer-count ratchet is pruned with it (resolve fails before the ratchet could fire). Remaining arc work is intent-layer shell→`emit(intent, Bash)` migration (Categories A–C in [shell-intent-emit-realization-design.md](shell-intent-emit-realization-design.md)), not sidecar restoration."),
     p(text: "Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emission_ingestion_inverse.dag` — **cross-link only, do not duplicate** the roster here."),
     h2(text: "7. Named residue / dissolution triggers"),
     ul(items: [

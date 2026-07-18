@@ -67,7 +67,7 @@ Shell-orchestration sites are **emit-only** (regime-2 class): no round-trip orac
 
 ## 6. Sidecar dissolution (parallel)
 
-**LANDED (#6831, Phase 0):** `dag/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) deleted; `bash_program_importer_count_baseline` is 0 and the ratchet locks the shrink. Remaining arc work is intent-layer shell→`emit(intent, Bash)` migration (Categories A–C in [shell-intent-emit-realization-design.md](shell-intent-emit-realization-design.md)), not sidecar restoration.
+**LANDED (#6831, Phase 0):** `dag/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) deleted; the vacuous bash-program importer-count ratchet is pruned with it (resolve fails before the ratchet could fire). Remaining arc work is intent-layer shell→`emit(intent, Bash)` migration (Categories A–C in [shell-intent-emit-realization-design.md](shell-intent-emit-realization-design.md)), not sidecar restoration.
 
 Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emission_ingestion_inverse.dag` — **cross-link only, do not duplicate** the roster here.
 
