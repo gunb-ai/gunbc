@@ -34,8 +34,13 @@ data ci_sccache_opportunistic_detect_scaffold: Disposition = Scaffold {
   }
 }
 
-data ci_cargo_eagain_fallback_level2_scaffold: Disposition = Terminal {
-  reason: "STEP-2 landed: ci_retry_escalation_level2 (-u RUSTC_WRAPPER absorbing fallback) deleted from gunbc.ci_spec; discriminating RED control remains in provision_build_cache_absorbing_fallback_widen_sketch."
+data ci_cargo_eagain_fallback_level2_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "ci_retry_escalation_level2",
+    field: WholeDeclaration,
+  }
 }
 
 type BuildCacheDaemonObservation
