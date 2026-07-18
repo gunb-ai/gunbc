@@ -65,7 +65,7 @@ fn constrain_line(line: Line, max_width: Int, tier: Tier) -> Line? {
   }
 }
 
-fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame? {
+fn constrain_frame(frame: std.render.Frame, viewport: Viewport, tier: Tier) -> std.render.Frame? {
   let result = fold(frame.lines,
     init: Present { value: [] },
     f: (acc, line) => match acc {
@@ -83,7 +83,7 @@ fn constrain_frame(frame: Frame, viewport: Viewport, tier: Tier) -> Frame? {
   }
 }
 
-fn project_frame(frame: Frame, viewport: Viewport, cap: RenderCapability) -> Frame? {
+fn project_frame(frame: std.render.Frame, viewport: Viewport, cap: RenderCapability) -> std.render.Frame? {
   match constrain_frame(frame: frame, viewport: viewport, tier: cap.tier) {
     Present { value: f } => Present { value: Frame { lines: f.lines, cursor_action: cursor_action_under(requested: f.cursor_action, cap: cap) } }
     Absent => none
@@ -121,7 +121,7 @@ fn serialize_line(line: Line, cap: RenderCapability) -> String {
   concat(pad, body)
 }
 
-fn serialize_frame(frame: Frame, cap: RenderCapability) -> String {
+fn serialize_frame(frame: std.render.Frame, cap: RenderCapability) -> String {
   let rendered = map(frame.lines, line => serialize_line(line: line, cap: cap))
   join(rendered, "\n")
 }
