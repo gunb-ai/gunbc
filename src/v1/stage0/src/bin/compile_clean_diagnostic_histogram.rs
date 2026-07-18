@@ -109,6 +109,23 @@ fn main() -> ExitCode {
         }
     }
 
+    if std::env::var("COMPILE_CLEAN_HISTOGRAM_DUMP_SITES")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
+        println!("--- SITES ---");
+        for d in diags.iter() {
+            let (class, name) = compile_clean_diagnostic_histogram_key(d);
+            let span = diagnostic_to_span(d.diagnostic.clone());
+            println!(
+                "SITE\t{class}\t{name}\t{}\t{}\t{}",
+                diagnostic_decl_file(d),
+                span.start,
+                span.end
+            );
+        }
+    }
+
     // Residue probes: fold + type-mismatch pair (namespace migration lane).
     let fold_count = count_message_substr(&diags, "function 'fold' not found in scope");
     let iec_count = count_type_mismatch_name(&diags, "integer_exact_contract");
