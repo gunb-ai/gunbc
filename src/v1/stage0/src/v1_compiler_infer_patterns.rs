@@ -7,7 +7,9 @@ pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitBool;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name, symbol_index_lookup};
+pub use crate::v1_compiler_infer_env::{
+    lookup_type, lookup_type_by_name, qualified_last_segment, symbol_index_lookup,
+};
 pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
 };
@@ -499,7 +501,25 @@ pub fn lookup_variant_in_type(
             let source_indices = env.source_indices.clone();
             if v1_rt::contains(variant_name.clone(), ".".to_string()) {
                 match symbol_index_lookup(env.symbol_index.clone(), variant_name.clone()) {
-                    Some(resolved) => node_lookup_resolved(resolved.clone()),
+                    Some(resolved) => {
+                        if resolved.connective.clone() == Connective::Disj {
+                            match find_child_named(
+                                resolved.clone(),
+                                qualified_last_segment(variant_name.clone()),
+                                source_indices.clone(),
+                            ) {
+                                Some(variant_child) => node_lookup_resolved(variant_child.clone()),
+                                None => variant_not_found_result(
+                                    scrut_node.clone(),
+                                    variant_name.clone(),
+                                    module_name.clone(),
+                                    source_indices.clone(),
+                                ),
+                            }
+                        } else {
+                            node_lookup_resolved(resolved.clone())
+                        }
+                    }
                     None => variant_not_found_result(
                         scrut_node.clone(),
                         variant_name.clone(),

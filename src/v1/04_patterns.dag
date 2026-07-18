@@ -191,7 +191,16 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
       let source_indices = env.source_indices
       if contains(variant_name, ".") {
         match symbol_index_lookup(index: env.symbol_index, qualified_name: variant_name) {
-          Present { value: resolved } => node_lookup_resolved(node: resolved)
+          Present { value: resolved } =>
+            if resolved.connective == Disj {
+              match find_child_named(n: resolved, name: qualified_last_segment(name: variant_name), source_indices: source_indices) {
+                Present { value: variant_child } => node_lookup_resolved(node: variant_child)
+                Absent =>
+                  variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
+              }
+            } else {
+              node_lookup_resolved(node: resolved)
+            }
           Absent =>
             variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
         }

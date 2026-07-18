@@ -822,6 +822,13 @@ pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
     }
 }
 
+pub fn qualified_last_segment(name: String) -> String {
+    match module_path_segments(name.clone()).last() {
+        Some(s) => s.clone(),
+        None => name.clone(),
+    }
+}
+
 pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
     a.iter().zip(b.iter()).take_while(|(x, y)| x == y).count() as i64
 }

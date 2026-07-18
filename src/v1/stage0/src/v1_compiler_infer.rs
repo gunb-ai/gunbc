@@ -2817,6 +2817,19 @@ pub fn field_access_spine(
     }
 }
 
+pub fn binding_is_namespace_root_nominal(binding: Rc<TypeBinding>) -> bool {
+    binding.resolved.name == binding.name
+        && binding.resolved.connective.clone() == Connective::NoConnective
+        && binding.resolved.children.len() == 0
+}
+
+pub fn spine_root_is_shadowed(scope: Rc<InferScope>, root: String) -> bool {
+    match v1_rt::map_get(&scope.locals.clone(), root) {
+        Some(root_binding) => !binding_is_namespace_root_nominal(root_binding),
+        None => false,
+    }
+}
+
 pub fn qualified_value_projection(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
@@ -2824,9 +2837,9 @@ pub fn qualified_value_projection(
 ) -> Option<Rc<InferResult>> {
     match field_access_spine(texpr.clone(), scope.type_env.clone().source_indices.clone()) {
         None => None,
-        Some(spine) => match v1_rt::map_get(&scope.locals.clone(), spine.root.clone()) {
-            Some(_) => None,
-            None => match symbol_index_lookup(
+        Some(spine) => match spine_root_is_shadowed(scope.clone(), spine.root.clone()) {
+            true => None,
+            false => match symbol_index_lookup(
                 scope.type_env.clone().symbol_index.clone(),
                 spine.dotted.clone(),
             ) {
@@ -4092,6 +4105,38 @@ match bare_s.clone() {
                 let span = texpr.span.clone();
                 let recv = method_receiver(texpr.clone());
                 let mc_args = method_arg_nodes(texpr.clone());
+                if let Some(recv_spine) =
+                    field_access_spine(recv.clone(), scope.type_env.clone().source_indices.clone())
+                {
+                    if !spine_root_is_shadowed(scope.clone(), recv_spine.root.clone()) {
+                        let dotted = v1_rt::concat(
+                            v1_rt::concat(recv_spine.dotted.clone(), ".".to_string()),
+                            method_name.clone(),
+                        );
+                        if symbol_index_lookup(
+                            scope.type_env.clone().symbol_index.clone(),
+                            dotted.clone(),
+                        )
+                        .is_some()
+                        {
+                            return infer_expr(
+                                make_named_expr_node(
+                                    dotted.clone(),
+                                    Rc::new(ExprData::ExprCall {
+                                        call_semantics: Some(CallSemantics::PlainCallSemantics),
+                                        descent_evidence: None,
+                                    }),
+                                    mc_args.clone(),
+                                    None,
+                                    span.clone(),
+                                    kernel_span(dotted.clone()),
+                                ),
+                                scope.clone(),
+                                expected.clone(),
+                            );
+                        }
+                    }
+                }
                 let recv_result = infer_expr(recv.clone(), scope.clone(), None);
                 let recv_typed = recv_result.typed.clone();
                 let recv_diags = recv_result.diagnostics.clone();
@@ -13093,7 +13138,7 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
                                                 v1_rt::concat(module_path.clone(), ".".to_string()),
                                                 vname.clone(),
                                             ),
-                                            child.clone(),
+                                            item.clone(),
                                         ),
                                     }
                                 }

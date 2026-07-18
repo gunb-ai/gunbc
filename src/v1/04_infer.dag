@@ -1423,13 +1423,26 @@ fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) ->
   }
 }
 
+fn binding_is_namespace_root_nominal(binding: TypeBinding) -> Bool {
+  binding.resolved.name == binding.name
+    && binding.resolved.connective == NoConnective
+    && (binding.resolved.children |> count) == 0
+}
+
+fn spine_root_is_shadowed(scope: InferScope, root: String) -> Bool {
+  match map_get(scope.locals, root) {
+    Present { value: root_binding } => !binding_is_namespace_root_nominal(binding: root_binding)
+    Absent => false
+  }
+}
+
 fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) -> InferResult? {
   match field_access_spine(texpr: texpr, source_indices: scope.type_env.source_indices) {
     Absent => none
     Present { value: spine } =>
-      match map_get(scope.locals, spine.root) {
-        Present { value: _ } => none
-        Absent =>
+      match spine_root_is_shadowed(scope: scope, root: spine.root) {
+        true => none
+        false =>
           match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: spine.dotted) {
             Absent => none
             Present { value: decl } =>
@@ -2080,6 +2093,34 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       let recv = method_receiver(texpr: texpr)
       let mc_args = method_arg_nodes(texpr: texpr)
+      let qualified_direct_call = match field_access_spine(texpr: recv, source_indices: scope.type_env.source_indices) {
+        Absent => none
+        Present { value: recv_spine } =>
+          match spine_root_is_shadowed(scope: scope, root: recv_spine.root) {
+            true => none
+            false =>
+              let dotted = concat(recv_spine.dotted, ".", method_name)
+              match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: dotted) {
+                Absent => none
+                Present { value: _ } =>
+                  Present { value: infer_expr(
+                    texpr: make_named_expr_node(
+                      name: dotted,
+                      expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                      children: mc_args,
+                      inferred: none,
+                      span: span,
+                      name_span: kernel_span(name: dotted)
+                    ),
+                    scope: scope,
+                    expected: expected
+                  ) }
+              }
+          }
+      }
+      match qualified_direct_call {
+        Present { value: qdc } => qdc
+        Absent =>
       let recv_result = infer_expr(texpr: recv, scope: scope, expected: none)
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
@@ -2149,6 +2190,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       InferResult {
         typed: mc_texpr,
         diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), pipe_fb.kernel_diags), concat(method_resolution.diagnostics, mc_template_diags))
+      }
       }
 
     ExprMatch =>
@@ -6139,7 +6181,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                   symbol_index_insert(
                     index: a2,
                     qualified_name: concat(module_path, ".", vname),
-                    resolved: child
+                    resolved: item
                   )
               }
             _ => a2
