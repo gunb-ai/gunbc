@@ -307,9 +307,9 @@ test fn effects_post_parent_path_witnesses() -> Bool {
 
 test fn effects_create_if_absent_dedup_witnesses() -> Bool {
   let key = InputField { field: "id" }
-  let shape = CreateEffect { cause: CreateIfAbsent { key_source: key } }
+  let shape = CreateEffect { cause: std.effects.CreateIfAbsent { key_source: key } }
   let key_b = InputField { field: "b" }
-  let shape_b = CreateEffect { cause: CreateIfAbsent { key_source: key_b } }
+  let shape_b = CreateEffect { cause: std.effects.CreateIfAbsent { key_source: key_b } }
   let always = CreateEffect { cause: PostAlways }
 
   is_idempotent_effect(shape: shape)
@@ -324,7 +324,7 @@ test fn effects_create_if_absent_dedup_witnesses() -> Bool {
 
 test fn effects_create_if_absent_modifier_witnesses() -> Bool {
   let key = InputField { field: "id" }
-  let shape = CreateEffect { cause: CreateIfAbsent { key_source: key } }
+  let shape = CreateEffect { cause: std.effects.CreateIfAbsent { key_source: key } }
   match parse_path_template(raw: "/secrets") {
     ParsedPathTemplate { template: secrets_path } =>
       match parse_path_template(raw: "/versions") {

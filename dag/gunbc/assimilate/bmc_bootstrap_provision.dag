@@ -30,7 +30,7 @@ pattern bmc_bootstrap_provision_srv3() -> {
   pool_op: String,
   provider_op: String
 }
-  uses net: Network
+  uses net: std.resources.Network
 {
   node auth: shell.GCloud.AuthPrintAccessToken()
 

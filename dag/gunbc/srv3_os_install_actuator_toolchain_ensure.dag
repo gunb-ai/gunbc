@@ -19,7 +19,7 @@ data os_install_actuator_toolchain_ensure_dissolution_trigger: Disposition = Sca
 }
 
 func srv3_os_install_actuator_toolchain_ensure() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let target = HostOs { node: srv3_os_install_actuator_host }
   let access = ci_deploy_srv1_operator_access

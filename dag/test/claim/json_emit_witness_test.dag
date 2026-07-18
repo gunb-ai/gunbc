@@ -4,7 +4,7 @@ module test.claim.json_emit_witness
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_json_cites_rfc8259() -> Bool {
-  match extdeps_external_authority_anchor {
+  match extdeps.languages.json.emit.extdeps_external_authority_anchor {
     ExternalAuthority { uri } => uri.locator == "www.rfc-editor.org/rfc/rfc8259"
   }
 }

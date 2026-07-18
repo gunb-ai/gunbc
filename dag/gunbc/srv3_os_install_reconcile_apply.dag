@@ -19,7 +19,7 @@ fn process_exit_succeeded(exit: ProcessExit) -> Bool {
 }
 
 func srv3_os_install_reconcile_apply() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let intent = srv3_os_install_attempt_intent
   let grant_r = srv3_durable_approval_grant_read_apply()

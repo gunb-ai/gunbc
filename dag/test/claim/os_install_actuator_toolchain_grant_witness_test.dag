@@ -33,7 +33,7 @@ test fn srv3_actuator_host_label_is_declared() -> Bool {
 
 test fn srv3_actuator_toolchain_authority_cites_openbmc_virtual_media() -> Bool {
   string_contains(
-    s: extdeps_external_authority_anchor.uri.locator,
+    s: extdeps.bmc.os_install_actuator_toolchain.extdeps_external_authority_anchor.uri.locator,
     pattern: "openbmc/docs/blob/master/designs/virtual-media.md",
   )
 }

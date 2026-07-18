@@ -110,7 +110,7 @@ fn witness_srv1_width_drifts_from_declared_count_after_recarve() -> Bool {
       runner_width_converge_verdict(
         observed: read.active_count,
         desired: declared_runner_count()
-      ) == Drifted
+      ) == gunbc.host_converge.Drifted
     Absent => false
   }
 }
@@ -121,7 +121,7 @@ fn witness_srv2_width_drifts_from_declared_count() -> Bool {
       runner_width_converge_verdict(
         observed: read.active_count,
         desired: declared_runner_count()
-      ) == Drifted
+      ) == gunbc.host_converge.Drifted
     Absent => false
   }
 }

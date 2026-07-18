@@ -4,7 +4,7 @@ module gunbc.parse_allowlist
 type ParseDebtTag = V2ParserDebt { reason: String, ref: String }
 
 type ParseAllowlistEntry {
-  path: FilePath
+  path: std.types.FilePath
   tag: ParseDebtTag
 }
 

@@ -187,7 +187,7 @@ fn witness_cache_uses_runner_context_not_env() -> Bool {
 fn witness_cache_runner_env_scope_red_control() -> Bool {
 
   let bad = ExpressionTemplate { segments: [
-    Interpolation { expression: ContextAccess { context: Env, path: ["CARGO_HOME"] } },
+    Interpolation { expression: ContextAccess { context: extdeps.github.expressions.Env, path: ["CARGO_HOME"] } },
     LiteralText { text: "/registry/index/" }
   ] }
   !(template_uses_context(template: bad, target: Runner) &&
@@ -202,7 +202,7 @@ fn witness_no_runner_env_context_red_control() -> Bool {
 
   let bad = concat(ci_workflow_expression_templates, [
     ExpressionTemplate { segments: [
-      Interpolation { expression: ContextAccess { context: Env, path: ["RUNNER_TEMP"] } }
+      Interpolation { expression: ContextAccess { context: extdeps.github.expressions.Env, path: ["RUNNER_TEMP"] } }
     ] }
   ])
   any_template_accesses_runner_var_via_env(templates: bad)

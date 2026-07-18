@@ -11,7 +11,7 @@ test fn pre_install_within_budget_is_absent_not_converged() -> Bool {
 }
 
 test fn post_install_lease_row_deduces_converged_noop() -> Bool {
-  srv3_post_install_actuation_verdict(elapsed: zero_elapsed) == Converged
+  srv3_post_install_actuation_verdict(elapsed: zero_elapsed) == std.upsert_decision.Converged
     && deduce_os_install_actuated_satisfied(verdict: Converged)
     && match decision_for_os_install_actuation_verdict(
       verdict: Converged,

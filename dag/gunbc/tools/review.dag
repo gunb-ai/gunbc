@@ -3,7 +3,7 @@ module gunbc.tools.review
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: CronSchedule = CronSchedule {
-  minute: Step { start: 0, step: 10 },
+  minute: extdeps.cron.schedule_model.Step { start: 0, step: 10 },
   hour: Wildcard,
   day_of_month: Wildcard,
   month: Wildcard,

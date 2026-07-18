@@ -1,13 +1,13 @@
 module product.hardware_selection
 
 
-type Milliwatt = Measure<Power, Milli, Nat>
+type Milliwatt = Measure<Power, Milli, std.nat.Nat>
 
-fn milliwatt(count: Nat) -> Milliwatt {
+fn milliwatt(count: std.nat.Nat) -> Milliwatt {
   Milliwatt { count: count }
 }
 
-fn milliwatt_count(w: Milliwatt) -> Nat {
+fn milliwatt_count(w: Milliwatt) -> std.nat.Nat {
   measure_count(m: w)
 }
 

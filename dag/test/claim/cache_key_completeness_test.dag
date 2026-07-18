@@ -73,14 +73,14 @@ fn witness_complete_red_on_undercited() -> Bool {
 }
 
 fn witness_verdict_holds_on_sound_cited() -> Bool {
-  match cache_key_completeness_verdict(facts: sound_cited_facts(), module_name: witness_module) {
+  match v2.extdeps.cache.key_completeness_verdict.cache_key_completeness_verdict(facts: sound_cited_facts(), module_name: witness_module) {
     Holds => true
     _ => false
   }
 }
 
 fn witness_verdict_violation_on_undercited() -> Bool {
-  match cache_key_completeness_verdict(facts: undercited_native_facts(), module_name: witness_module) {
+  match v2.extdeps.cache.key_completeness_verdict.cache_key_completeness_verdict(facts: undercited_native_facts(), module_name: witness_module) {
     Violation { diagnostic: _ } => true
     _ => false
   }

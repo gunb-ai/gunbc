@@ -313,7 +313,7 @@ fn evaluate_terminal_record(
   CanTransition { to: CodeChangeTerminal { stage: to } }
 }
 
-fn classify_github_pr_terminal_anchor(pr: PullRequest) -> CodeChangeStage? {
+fn classify_github_pr_terminal_anchor(pr: extdeps.github.pulls.PullRequest) -> CodeChangeStage? {
   github_pr_terminal_anchor(pr: pr)
 }
 
@@ -350,7 +350,7 @@ fn decide_code_change_transition(request: CodeChangeTransitionRequest) -> CodeCh
 service gunbc.CodeChangeWorkflow {
   operation ClassifyGithubPrTerminalAnchor {
     input {
-      pr: PullRequest
+      pr: extdeps.github.pulls.PullRequest
     }
     output {
       anchor: CodeChangeStage?

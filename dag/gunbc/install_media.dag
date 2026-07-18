@@ -33,7 +33,7 @@ fn decision_for_seeded_install_media_obs(
 
 fn classify_seeded_install_media_upsert(
   obs: SeededInstallMediaObservation,
-) -> UpsertClassification<SeededInstallMediaPlan> {
+) -> std.upsert_decision.UpsertClassificationUpsertClassificationUpsertClassification<SeededInstallMediaPlan> {
   let verdict = classify_seeded_install_media(obs: obs)
   UpsertClassification {
     verdict: verdict,

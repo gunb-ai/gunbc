@@ -7,7 +7,7 @@ fn w_openai_tool_call_type_known() -> Bool {
   let row = ToolCall {
     id: "call_1",
     type: OpenAiToolCallFunction,
-    function: FunctionCall { name: "get_weather", arguments: "{}" },
+    function: extdeps.llm.openai.FunctionCall { name: "get_weather", arguments: "{}" },
   }
   row.type == OpenAiToolCallFunction
     && openai_tool_call_type_label(OpenAiToolCallFunction) == "function"
@@ -141,7 +141,7 @@ fn w_anthropic_messages_object_type() -> Bool {
   let body = AnthropicMessages200Body {
     id: "msg_01",
     type: MessagesObjectMessage {},
-    role: Assistant {},
+    role: extdeps.llm.anthropic.Assistant {},
     content: [MessagesTextBlock { text: "hi", citations: none }],
     model: "claude-sonnet-4-6",
     stop_reason: EndTurn,
@@ -151,7 +151,7 @@ fn w_anthropic_messages_object_type() -> Bool {
       output_tokens: 1,
       cache_creation_input_tokens: none,
       cache_read_input_tokens: none,
-      service_tier: Present { value: Standard },
+      service_tier: Present { value: extdeps.llm.anthropic.Standard },
     },
     container: none,
   }

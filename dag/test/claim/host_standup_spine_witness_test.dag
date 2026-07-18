@@ -148,7 +148,7 @@ test fn assimilation_gate_still_refuses_p0_p2_p4_gaps_when_p3_landed() -> Bool {
 }
 
 test fn post_install_dhcp_subsumption_reduces_gap_count_by_one() -> Bool {
-  srv3_post_install_actuation_verdict(elapsed: millisecond(count: 0)) == Converged
+  srv3_post_install_actuation_verdict(elapsed: millisecond(count: 0)) == std.upsert_decision.Converged
     && host_standup_gap_count_at_actuation_verdict(verdict: Converged) == (host_standup_gap_count() - 1)
 }
 

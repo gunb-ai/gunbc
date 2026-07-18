@@ -40,7 +40,7 @@ fn iam_decide(request: AccessRequest<IamPrincipal, S3Action, NonEmptyStr>) -> Ac
      && request.subject.mfa_present {
     Permit
   } else {
-    Deny { reason: none }
+    std.access.Deny { reason: none }
   }
 }
 

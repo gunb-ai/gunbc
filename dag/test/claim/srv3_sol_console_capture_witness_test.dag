@@ -14,5 +14,5 @@ test fn srv3_sol_console_capture_intent_uses_obmc_cli() -> Bool {
 
 test fn sol_console_redfish_serial_transport_cites_dmtf_authority() -> Bool {
   sol_console_transport_authority_for(transport: RedfishSerialInterface) == redfish_serial_interface_authority
-    && sol_console_transport_authority_for(transport: ObmcConsoleCli) == extdeps_external_authority_anchor
+    && sol_console_transport_authority_for(transport: ObmcConsoleCli) == extdeps.bmc.serial_console.extdeps_external_authority_anchor
 }

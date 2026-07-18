@@ -8,7 +8,7 @@ fn orch_if_streq_empty_then_golden() -> String {
 }
 
 fn orch_if_streq_empty_then_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: StrEmpty { operand: "\"$1\"" },
     then_: Pipeline {
       steps: [
@@ -28,7 +28,7 @@ fn orch_if_streq_empty_then_intent() -> PipelineStep {
 }
 
 fn orch_if_streq_empty_then_perturbed_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: StrEmpty { operand: "\"$2\"" },
     then_: Pipeline {
       steps: [
@@ -52,7 +52,7 @@ fn orch_if_streq_else_golden() -> String {
 }
 
 fn orch_if_streq_else_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: StrEq { lhs: "\"$1\"", rhs: "\"$2\"" },
     then_: Pipeline {
       steps: [
@@ -90,7 +90,7 @@ fn orch_if_exit_zero_negated_golden() -> String {
 }
 
 fn orch_if_exit_zero_negated_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: Not {
       inner: ExitZero {
         run: Run {
@@ -123,7 +123,7 @@ fn orch_if_run_redirect_ignore_fail_golden() -> String {
 }
 
 fn orch_if_run_redirect_ignore_fail_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: ExitZero {
       run: Run {
         command: "(cd \"$checkout\" && git fetch --prune origin)",
@@ -154,7 +154,7 @@ fn orch_if_log_matches_golden() -> String {
 }
 
 fn orch_if_log_matches_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: LogMatches {
       source: "\"$BUILD_LOG\"",
       pattern: "EAGAIN|Resource temporarily unavailable"
@@ -181,8 +181,8 @@ fn orch_if_and_tests_golden() -> String {
 }
 
 fn orch_if_and_tests_intent() -> PipelineStep {
-  If {
-    cond: And {
+  v2.std.orchestration.If {
+    cond: v2.std.orchestration.And {
       lhs: StrNonempty { operand: "\"$ctrl_pin\"" },
       rhs: StrNonempty { operand: "\"$dag_pin\"" }
     },
@@ -206,7 +206,7 @@ fn orch_if_and_tests_intent() -> PipelineStep {
 test fn orch_if_streq_empty_then_holds() -> Bool {
   match orch_emit_step(s: orch_if_streq_empty_then_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == orch_if_streq_empty_then_golden()) && (dg == None)
+      (source.carried == orch_if_streq_empty_then_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -222,7 +222,7 @@ test fn orch_if_streq_empty_then_has_teeth_holds() -> Bool {
 test fn orch_if_streq_else_holds() -> Bool {
   match orch_emit_step(s: orch_if_streq_else_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == orch_if_streq_else_golden()) && (dg == None)
+      (source.carried == orch_if_streq_else_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -230,7 +230,7 @@ test fn orch_if_streq_else_holds() -> Bool {
 test fn orch_if_exit_zero_negated_holds() -> Bool {
   match orch_emit_step(s: orch_if_exit_zero_negated_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == orch_if_exit_zero_negated_golden()) && (dg == None)
+      (source.carried == orch_if_exit_zero_negated_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -238,7 +238,7 @@ test fn orch_if_exit_zero_negated_holds() -> Bool {
 test fn orch_if_run_redirect_ignore_fail_holds() -> Bool {
   match orch_emit_step(s: orch_if_run_redirect_ignore_fail_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == orch_if_run_redirect_ignore_fail_golden()) && (dg == None)
+      (source.carried == orch_if_run_redirect_ignore_fail_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -246,7 +246,7 @@ test fn orch_if_run_redirect_ignore_fail_holds() -> Bool {
 test fn orch_if_log_matches_holds() -> Bool {
   match orch_emit_step(s: orch_if_log_matches_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == orch_if_log_matches_golden()) && (dg == None)
+      (source.carried == orch_if_log_matches_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -254,7 +254,7 @@ test fn orch_if_log_matches_holds() -> Bool {
 test fn orch_if_and_tests_holds() -> Bool {
   match orch_emit_step(s: orch_if_and_tests_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == orch_if_and_tests_golden()) && (dg == None)
+      (source.carried == orch_if_and_tests_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

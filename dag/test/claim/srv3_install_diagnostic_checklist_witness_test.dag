@@ -90,7 +90,7 @@ test fn serve_absent_observed_is_serve_down_not_ready() -> Bool {
     actuator_serve: ServeObserved {
       process: NbdkitAbsent,
       port: ServePortAbsent,
-      session: TokenPresent,
+      session: gunbc.srv3_os_install_diagnostic.TokenPresent,
       iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
     },
     bmc_websocket: WebsocketUpgradeAccepted,

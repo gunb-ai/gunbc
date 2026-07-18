@@ -45,7 +45,7 @@ fn posix_decide(request: AccessRequest<PosixSubject, PosixAction, FilePermission
   if posix_bit(bits: posix_class_bits(perms: request.object, subject: request.subject), action: request.action) {
     Permit
   } else {
-    Deny { reason: none }
+    std.access.Deny { reason: none }
   }
 }
 
@@ -110,7 +110,7 @@ fn rbac_decide(policy: RbacPolicy, request: AccessRequest<NonEmptyStr, NonEmptyS
   if rbac_user_has_permission(policy: policy, user: request.subject, perm: { operation: request.action, object: request.object }) {
     Permit
   } else {
-    Deny { reason: none }
+    std.access.Deny { reason: none }
   }
 }
 

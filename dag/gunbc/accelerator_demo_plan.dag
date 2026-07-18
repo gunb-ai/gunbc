@@ -47,16 +47,16 @@ fn demo_kernel_step(placement: Placement) -> RealizedStep<Nano> {
   RealizedStep {
     shape: ReadEffect
     placement: placement
-    materialization: Recompute
+    materialization: std.realization.Recompute
     cost: demo_plan_total()
   }
 }
 
-fn relu_mul_add_schedule() -> Schedule {
+fn relu_mul_add_schedule() -> std.realization_schedule.Schedule {
   [[RunnableKernelWorkload { fused_op_count: relu_mul_add_fused_op_count }]]
 }
 
-fn build_realization_plan(schedule: Schedule) -> RealizationPlan<Nano> {
+fn build_realization_plan(schedule: std.realization_schedule.Schedule) -> RealizationPlan<Nano> {
   RealizationPlan {
     target: demo_target_label
     objective: RealizationObjective { goals: [] }

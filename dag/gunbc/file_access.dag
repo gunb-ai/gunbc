@@ -57,7 +57,7 @@ fn decision_for_file_access(obs: FileAccessObservation) -> UpsertDecision<FileAc
 fn classify_file_access_upsert(
   scope: FileTreeScope,
   obs: FileAccessObservation,
-) -> UpsertClassification<FileAccessPlan> {
+) -> std.upsert_decision.UpsertClassificationUpsertClassificationUpsertClassification<FileAccessPlan> {
   UpsertClassification {
     verdict: classify_file_access(obs: obs),
     decision: decision_for_file_access(obs: obs),

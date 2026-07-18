@@ -5,7 +5,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 
 
-fn getrandom_octets(count: Int) -> List<UInt8>? {
+fn getrandom_octets(count: Int) -> List<std.integer.UInt8>? {
   base64_decode(s: Urandom.ReadBytes(count: count).octets_b64, variant: Standard)
 }
 

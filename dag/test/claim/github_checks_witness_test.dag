@@ -13,7 +13,7 @@ data sample_check_run_success: CheckRun = CheckRun {
   name: "gunbc-ci",
   head_sha: "abc123def456",
   status: Completed,
-  conclusion: Success,
+  conclusion: extdeps.github.checks.Success,
   started_at: null,
   completed_at: null,
   output: sample_check_output,

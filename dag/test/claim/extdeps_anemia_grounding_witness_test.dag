@@ -6,7 +6,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data sample_email: Email = "author@example.com"
 data sample_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
 data sample_ref: GitRef = "feature/widgets"
-data sample_path: FilePath = "dag/extdeps/git/git.dag"
+data sample_path: std.types.FilePath = "dag/extdeps/git/git.dag"
 
 fn w_git_author_email_grounded() -> Bool {
   let author = GitAuthor {
@@ -51,11 +51,11 @@ fn w_review_comment_path_grounded() -> Bool {
 }
 
 fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
-  let pr = PullRequest {
+  let pr = extdeps.github.pulls.PullRequest {
     number: 42,
     title: "Ground extdeps git/github fields",
     body: none,
-    state: Open,
+    state: extdeps.github.pulls.Open,
     html_url: "https://github.com/mock/pull/42",
     user: GitHubUser { login: "mock-user", id: 1, type: User },
     head: PullRequestRef {

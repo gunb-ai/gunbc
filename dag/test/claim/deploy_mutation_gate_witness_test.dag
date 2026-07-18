@@ -20,8 +20,8 @@ fn srv2_host_observation() -> DeployTargetHostObservation {
 }
 
 fn witness_decision_meet_preserves_left_denial_reason() -> Bool {
-  let left = Deny { reason: Present { value: "host-deny-reason" } }
-  let right = Deny { reason: Present { value: "access-deny-reason" } }
+  let left = std.access.Deny { reason: Present { value: "host-deny-reason" } }
+  let right = std.access.Deny { reason: Present { value: "access-deny-reason" } }
   match decision_meet(a: left, b: right) {
     Deny { reason: r } =>
       match r {

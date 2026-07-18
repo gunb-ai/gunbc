@@ -139,11 +139,11 @@ fn witness_rtx5090_execution_lane_count_grounded() -> Bool {
 }
 
 fn witness_rtx5090_memory_bandwidth_grounded() -> Bool {
-  bandwidth_count(b: nvidia_rtx_5090_catalog.memory_bandwidth) == 1792000000000
+  std.measure.bandwidth_count(b: nvidia_rtx_5090_catalog.memory_bandwidth) == 1792000000000
 }
 
 fn witness_m5_memory_bandwidth_grounded() -> Bool {
-  bandwidth_count(b: apple_m5_gpu_catalog.memory_bandwidth) == 153000000000
+  std.measure.bandwidth_count(b: apple_m5_gpu_catalog.memory_bandwidth) == 153000000000
 }
 
 fn witness_rtx5090_compute_capability_grounded() -> Bool {

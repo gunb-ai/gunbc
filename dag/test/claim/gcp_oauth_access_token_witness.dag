@@ -1,9 +1,9 @@
 module test.claim.gcp_oauth_access_token_witness
 
 
-data witness_adc_path: FilePath = "/tmp/gunbc_gcp_oauth_witness_adc.json"
+data witness_adc_path: std.types.FilePath = "/tmp/gunbc_gcp_oauth_witness_adc.json"
 
-data null_adc_path: FilePath? = none
+data null_adc_path: std.types.FilePath? = none
 
 fn secret_eq(a: Secret, b: Secret) -> Bool {
   (a as String) == (b as String)

@@ -3,7 +3,7 @@ module test.claim.realization_scale_agnostic
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn milli(count: Nat) -> Measure<Time, Milli, Nat> {
+fn milli(count: std.nat.Nat) -> Measure<Time, Milli, std.nat.Nat> {
   time_measure(count: count)
 }
 

@@ -103,7 +103,7 @@ fn decision_for_process_port_verdict(
 fn classify_process_port_upsert(
   scope: ProcessPortScope,
   obs: ProcessPortObservation,
-) -> UpsertClassification<ProcessLeasePlan> {
+) -> std.upsert_decision.UpsertClassificationUpsertClassificationUpsertClassificationUpsertClassificationUpsertClassification<ProcessLeasePlan> {
   let verdict = classify_process_port(scope: scope, obs: obs)
   UpsertClassification {
     verdict: verdict,

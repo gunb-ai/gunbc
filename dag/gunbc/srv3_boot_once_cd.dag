@@ -36,19 +36,19 @@ fn srv3_boot_cd_override_mode_refusal(mode: RedfishBootSourceOverrideMode) -> St
 }
 
 func srv3_boot_once_cd() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_default_approval)
 }
 
 func srv3_boot_once_cd_operator_approved() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_operator_granted_approval)
 }
 
 func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let disposition = srv3_boot_once_cd_workflow_disposition(approval: approval)
   let refusal = workflow_destructive_step_refusal_reason(disposition: disposition)
@@ -65,7 +65,7 @@ func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
 }
 
 func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let plan = new_altra_onboarding_plan
   let host = plan.bmc.host
