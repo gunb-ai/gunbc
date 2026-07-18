@@ -1,7 +1,7 @@
 module v2.lens.duplicate_computation
 
 import std.disposition { RealizationDispatch }
-import std.materialization_ladder { LadderVerdict, AuthoredDuplication, Frame, FrameKind, SharedStateFrame }
+import std.materialization_ladder { LadderVerdict, AuthoredDuplication, Frame, SharedStateFrame }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.std.algebra { any, fold_list, length, list_snoc_item }
 import v2.std.collection { List }
@@ -27,7 +27,6 @@ type ComputationDemandFact {
 data empty_computation_demand_facts: List<ComputationDemandFact> = []
 data empty_duplicate_computation_violations: List<LadderVerdict> = []
 data empty_computation_key_tokens: List<String> = []
-data empty_computation_demand_sites: List<String> = []
 
 fn computation_placement_flag(token: String) -> Bool {
   token == "--output-dir"
@@ -172,14 +171,6 @@ fn unguarded_demands_for_key(facts: List<ComputationDemandFact>, key: String) ->
   )
 }
 
-fn demand_sites_of(facts: List<ComputationDemandFact>) -> List<String> {
-  fold_list(
-    xs: facts,
-    empty: empty_computation_demand_sites,
-    cons: fn(acc, f) { list_snoc_item(xs: acc, item: f.site) }
-  )
-}
-
 fn computation_demand_group_admissible(group: List<ComputationDemandFact>) -> Bool {
   let observed = length(xs: group)
   if observed <= 1 {
@@ -189,7 +180,11 @@ fn computation_demand_group_admissible(group: List<ComputationDemandFact>) -> Bo
   }
 }
 
-fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<DuplicateComputationViolation> {
+fn authored_duplication_lca(key: String) -> List<Frame> {
+  [Frame { name: key, kind: SharedStateFrame }]
+}
+
+fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<LadderVerdict> {
   fold_list(
     xs: distinct_computation_keys(facts: facts),
     empty: empty_duplicate_computation_violations,
@@ -198,10 +193,10 @@ fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<
       if computation_demand_group_admissible(group: group) {
         acc
       } else {
-        list_snoc_item(xs: acc, item: DuplicateComputationDemand {
-          computation_key: key,
-          unguarded_count: length(xs: group),
-          sites: demand_sites_of(facts: group)
+        list_snoc_item(xs: acc, item: AuthoredDuplication {
+          identity: key,
+          lca: authored_duplication_lca(key: key),
+          site_count: length(xs: group)
         })
       }
     }
