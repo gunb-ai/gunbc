@@ -1,0 +1,27 @@
+module v2.workflow.debug_emit_output
+
+import v2.workflow.ci_floor_peak_emit { ci_cgroup_peak_locate_shell }
+import v2.workflow.orchestration_retry_emit_test {
+  ci_cargo_eagain_retry_core_golden,
+  retry_eagain_example_command
+}
+import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.test.manual.retry_eagain_bash { retry_eagain_intent }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.text { String }
+
+fn main() -> String {
+  ci_cgroup_peak_locate_shell()
+}
+
+fn retry_main() -> String {
+  match orch_emit_step(s: retry_eagain_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "REJECTED"
+  }
+}
+
+fn retry_golden() -> String {
+  ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command)
+}
