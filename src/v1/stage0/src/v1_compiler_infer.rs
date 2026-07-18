@@ -56,7 +56,8 @@ pub use crate::v1_compiler_infer_env::{
     inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name,
     lookup_binding_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
     merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    put_inductive_field, put_inductive_field_cross, qualified_last_segment,
+    put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
+    qualified_last_segment, qualify_borrowed_inferred, qualify_borrowed_type_names,
     str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
     symbol_index_insert_service, symbol_index_lookup,
 };
@@ -2906,13 +2907,19 @@ pub fn qualified_value_projection(
             ) {
                 None => None,
                 Some(decl) => {
-                    let value_type = match decl.inferred.clone().as_deref().cloned() {
+                    let raw_value_type = match decl.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => rt,
                         _ => match decl.type_annotation.clone() {
                             Some(ann) => ann,
                             None => decl.clone(),
                         },
                     };
+                    let value_type = qualify_borrowed_type_names(
+                        raw_value_type.clone(),
+                        qualified_all_but_last(spine.dotted.clone()),
+                        scope.type_env.clone(),
+                        v1_rt::rc_empty_map::<String, bool>(),
+                    );
                     Some(ok_infer(make_named_expr_node(
                         spine.dotted.clone(),
                         Rc::new(ExprData::ExprVar {
@@ -13136,6 +13143,7 @@ pub fn symbol_index_insert_item(
         symbol_index_insert_service(
             with_decl,
             authored_name_at(source_indices.clone(), item.clone()),
+            module_path.clone(),
             item.clone(),
         )
     } else {
@@ -15208,7 +15216,8 @@ pub fn build_module_context(
                     &env.symbol_index.services.clone(),
                     sname.clone(),
                 ) {
-                    Some(sitem) => {
+                    Some(sentry) => {
+                        let sitem = sentry.item.clone();
                         let entries = Rc::new(
                             sitem
                                 .children
@@ -15221,7 +15230,12 @@ pub fn build_module_context(
                                             c.clone(),
                                         ),
                                         outputs: inferred_to_outputs(
-                                            c.inferred.clone(),
+                                            qualify_borrowed_inferred(
+                                                c.inferred.clone(),
+                                                sentry.module_path.clone(),
+                                                env.clone(),
+                                                v1_rt::rc_empty_map::<String, bool>(),
+                                            ),
                                             c.span.clone(),
                                             env.source_indices.clone(),
                                         ),

@@ -12,7 +12,11 @@ pub use crate::std_algebra::{
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
-use crate::v1_compiler_infer_env::lookup_binding_by_name;
+use crate::v1_compiler_infer_env::{
+    borrowed_generic_param_names, global_bare_nearest_ancestor_candidate, lookup_binding_by_name,
+    lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names,
+    symbol_index_lookup, GlobalBareLookupState,
+};
 pub use crate::v1_compiler_infer_env::{
     authored_name, is_recursive_type, lookup_type, lookup_type_for,
 };
@@ -82,39 +86,114 @@ pub fn lookup_in_scope(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BorrowedCensusDecl {
+    pub owner_module_path: String,
+    pub node: Rc<Node>,
+}
+
+pub fn borrowed_census_decl(
+    type_env: Rc<TypeEnv>,
+    name: String,
+) -> Option<Rc<BorrowedCensusDecl>> {
+    if v1_rt::contains(name.clone(), ".".to_string()) {
+        match symbol_index_lookup(type_env.symbol_index.clone(), name.clone()) {
+            Some(node) => Some(Rc::new(BorrowedCensusDecl {
+                owner_module_path: qualified_all_but_last(name.clone()),
+                node: node.clone(),
+            })),
+            None => None,
+        }
+    } else {
+        match v1_rt::map_get(
+            &type_env.symbol_index.clone().global_bare.clone(),
+            name.clone(),
+        )
+        .as_deref()
+        .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                module_path: mp,
+                binding: b,
+            }) => Some(Rc::new(BorrowedCensusDecl {
+                owner_module_path: mp.clone(),
+                node: b.resolved.clone(),
+            })),
+            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cands }) => {
+                match global_bare_nearest_ancestor_candidate(
+                    type_env.module_path.clone(),
+                    cands.clone(),
+                ) {
+                    Some(cand) => Some(Rc::new(BorrowedCensusDecl {
+                        owner_module_path: cand.module_path.clone(),
+                        node: cand.binding.resolved.clone(),
+                    })),
+                    None => None,
+                }
+            }
+            None => None,
+        }
+    }
+}
+
 pub fn func_sig_from_global_bare(
     type_env: Rc<TypeEnv>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
     match infer_builtin_call_type(name.clone()) {
         Some(_) => None,
-        None => match lookup_binding_by_name(type_env.clone(), name.clone()) {
-            Some(binding) => {
-                let node = binding.resolved.clone();
-                if ((node.params.clone().len() as i64) > 0)
-                    || node.inferred.is_some()
-                    || node.type_annotation.is_some()
-                {
-                    Some(Rc::new(ResolvedFuncSig {
-                        name: name.clone(),
-                        params: node.params.clone(),
-                        inferred: match node.inferred.clone().as_deref().cloned() {
+        None => {
+            let borrowed = match lookup_binding_by_name_local(type_env.clone(), name.clone()) {
+                Some(binding) => Some(Rc::new(BorrowedCensusDecl {
+                    owner_module_path: type_env.module_path.clone(),
+                    node: binding.resolved.clone(),
+                })),
+                None => borrowed_census_decl(type_env.clone(), name.clone()),
+            };
+            match borrowed {
+                Some(bd) => {
+                    let node = bd.node.clone();
+                    if ((node.params.clone().len() as i64) > 0)
+                        || node.inferred.is_some()
+                        || node.type_annotation.is_some()
+                    {
+                        let excluded = borrowed_generic_param_names(
+                            node.params.clone(),
+                            type_env.source_indices.clone(),
+                        );
+                        let raw_return = match node.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved { node: inferred, .. }) => inferred,
                             _ => match node.type_annotation.clone() {
                                 Some(ann) => ann.clone(),
                                 None => error_type(),
                             },
-                        },
-                        is_async: false,
-                        output_provenance: Rc::new(vec![]),
-                        variant_provenance: v1_rt::rc_empty_map(),
-                    }))
-                } else {
-                    None
+                        };
+                        let qualified_return =
+                            if bd.owner_module_path.clone() == type_env.module_path.clone() {
+                                raw_return.clone()
+                            } else {
+                                qualify_borrowed_type_names(
+                                    raw_return.clone(),
+                                    bd.owner_module_path.clone(),
+                                    type_env.clone(),
+                                    excluded.clone(),
+                                )
+                            };
+                        Some(Rc::new(ResolvedFuncSig {
+                            name: name.clone(),
+                            params: node.params.clone(),
+                            inferred: qualified_return.clone(),
+                            is_async: false,
+                            output_provenance: Rc::new(vec![]),
+                            variant_provenance: v1_rt::rc_empty_map(),
+                        }))
+                    } else {
+                        None
+                    }
                 }
+                None => None,
             }
-            None => None,
-        },
+        }
     }
 }
 

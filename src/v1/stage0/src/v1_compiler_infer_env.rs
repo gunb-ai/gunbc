@@ -248,12 +248,20 @@ pub fn symbol_index_insert_decl(
 pub fn symbol_index_insert_service(
     index: Rc<SymbolIndex>,
     name: String,
+    module_path: String,
     item: Rc<Node>,
 ) -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
         entries: index.entries.clone(),
         global_bare: index.global_bare.clone(),
-        services: v1_rt::rc_map_insert(index.services.clone(), name.clone(), item.clone()),
+        services: v1_rt::rc_map_insert(
+            index.services.clone(),
+            name.clone(),
+            Rc::new(ServiceCensusEntry {
+                module_path: module_path.clone(),
+                item: item.clone(),
+            }),
+        ),
     })
 }
 
@@ -775,19 +783,23 @@ pub fn str_bindings_from_bindings(
     )
 }
 
-pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+pub fn lookup_binding_by_name_local(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
         None => match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
             Some(binding) => Some(binding.clone()),
             None => match intern_find(env.intern_table.clone(), name.clone()) {
-                Some(id) => match v1_rt::map_get(&env.bindings.clone(), id.clone()) {
-                    Some(binding) => Some(binding.clone()),
-                    None => lookup_binding_after_global_bare(env.clone(), name.clone()),
-                },
-                None => lookup_binding_after_global_bare(env.clone(), name.clone()),
+                Some(id) => v1_rt::map_get(&env.bindings.clone(), id.clone()),
+                None => None,
             },
         },
+    }
+}
+
+pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    match lookup_binding_by_name_local(env.clone(), name.clone()) {
+        Some(binding) => Some(binding.clone()),
+        None => lookup_binding_after_global_bare(env.clone(), name.clone()),
     }
 }
 
@@ -839,13 +851,13 @@ pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
     a.iter().zip(b.iter()).take_while(|(x, y)| x == y).count() as i64
 }
 
-pub fn global_bare_nearest_ancestor(
+pub fn global_bare_nearest_ancestor_candidate(
     env_module_path: String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
-) -> Option<Rc<TypeBinding>> {
+) -> Option<Rc<GlobalBareCandidate>> {
     let env_segs = module_path_segments(env_module_path.clone());
     let mut best_lcp: i64 = -1;
-    let mut best: Option<Rc<TypeBinding>> = None;
+    let mut best: Option<Rc<GlobalBareCandidate>> = None;
     let mut tie = false;
     for cand in candidates.iter() {
         let l = segment_lcp_len(
@@ -854,7 +866,7 @@ pub fn global_bare_nearest_ancestor(
         );
         if l > best_lcp {
             best_lcp = l;
-            best = Some(cand.binding.clone());
+            best = Some(cand.clone());
             tie = false;
         } else if l == best_lcp {
             tie = true;
@@ -864,6 +876,190 @@ pub fn global_bare_nearest_ancestor(
         None
     } else {
         best
+    }
+}
+
+pub fn global_bare_nearest_ancestor(
+    env_module_path: String,
+    candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
+) -> Option<Rc<TypeBinding>> {
+    match global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone()) {
+        Some(cand) => Some(cand.binding.clone()),
+        None => None,
+    }
+}
+
+pub fn global_bare_owner_module(
+    env: Rc<TypeEnv>,
+    owner_module_path: String,
+    name: String,
+) -> Option<String> {
+    match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+        .as_deref()
+        .cloned()
+    {
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            module_path: mp, ..
+        }) => Some(mp.clone()),
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cands }) => {
+            match global_bare_nearest_ancestor_candidate(owner_module_path.clone(), cands.clone()) {
+                Some(cand) => Some(cand.module_path.clone()),
+                None => None,
+            }
+        }
+        None => None,
+    }
+}
+
+pub fn borrowed_generic_param_names(
+    params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, bool>> {
+    let mut acc = v1_rt::rc_empty_map::<String, bool>();
+    for p in params.iter() {
+        let pt = crate::v1_std_core::param_node_type_expr(p.clone());
+        let pname = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
+        let tname = authored_name_at(source_indices.clone(), pt.clone());
+        if pt.children.len() as i64 == 0
+            && pt.connective.clone() == crate::v1_std_core::Connective::NoConnective
+            && pname.clone() != "".to_string()
+            && (pname.clone() == tname.clone() || pname.clone() == pt.name.clone())
+        {
+            acc = v1_rt::rc_map_insert(acc.clone(), pname.clone(), true);
+        }
+    }
+    acc
+}
+
+pub fn qualify_borrowed_type_names(
+    n: Rc<Node>,
+    owner_module_path: String,
+    env: Rc<TypeEnv>,
+    excluded: Rc<HashMap<String, bool>>,
+) -> Rc<Node> {
+    let qualified_children: Rc<Vec<Rc<Node>>> = Rc::new(
+        n.children
+            .iter()
+            .map(|c| {
+                qualify_borrowed_type_names(
+                    c.clone(),
+                    owner_module_path.clone(),
+                    env.clone(),
+                    excluded.clone(),
+                )
+            })
+            .collect::<Vec<Rc<Node>>>(),
+    );
+    let name = authored_name_at(env.source_indices.clone(), n.clone());
+    let is_type_var = matches!(
+        n.inferred.as_deref(),
+        Some(crate::v1_std_core::InferredNode::TypeVariable { .. })
+    );
+    let rewrite = n.connective.clone() == crate::v1_std_core::Connective::NoConnective
+        && name.clone() != "".to_string()
+        && !v1_rt::contains(name.clone(), ".".to_string())
+        && !crate::std_types::is_kernel_type(name.clone())
+        && !v1_rt::map_has(&excluded, name.clone())
+        && !is_type_var;
+    let owner_hit = if rewrite {
+        global_bare_owner_module(env.clone(), owner_module_path.clone(), name.clone())
+    } else {
+        None
+    };
+    match owner_hit {
+        Some(mp) => {
+            if mp.clone() == "".to_string() {
+                node_with_children(n.clone(), qualified_children.clone())
+            } else {
+                let qname = v1_rt::concat(
+                    v1_rt::concat(mp.clone(), ".".to_string()),
+                    name.clone(),
+                );
+                Rc::new(Node {
+                    name: qname.clone(),
+                    ident: None,
+                    span: n.span.clone(),
+                    ident_span: Some(crate::v1_std_core::kernel_span(qname.clone())),
+                    children: qualified_children.clone(),
+                    connective: n.connective.clone(),
+                    params: n.params.clone(),
+                    inferred: n.inferred.clone(),
+                    return_cardinality: n.return_cardinality.clone(),
+                    uses: n.uses.clone(),
+                    body: n.body.clone(),
+                    transport: n.transport.clone(),
+                    properties: n.properties.clone(),
+                    type_annotation: n.type_annotation.clone(),
+                    is_self_recursive: n.is_self_recursive,
+                    has_non_tail_self_call: n.has_non_tail_self_call,
+                    match_pattern: n.match_pattern.clone(),
+                    expr_data: n.expr_data.clone(),
+                })
+            }
+        }
+        None => node_with_children(n.clone(), qualified_children.clone()),
+    }
+}
+
+pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
+    Rc::new(Node {
+        name: n.name.clone(),
+        ident: n.ident,
+        span: n.span.clone(),
+        ident_span: n.ident_span.clone(),
+        children: children.clone(),
+        connective: n.connective.clone(),
+        params: n.params.clone(),
+        inferred: n.inferred.clone(),
+        return_cardinality: n.return_cardinality.clone(),
+        uses: n.uses.clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
+        properties: n.properties.clone(),
+        type_annotation: n.type_annotation.clone(),
+        is_self_recursive: n.is_self_recursive,
+        has_non_tail_self_call: n.has_non_tail_self_call,
+        match_pattern: n.match_pattern.clone(),
+        expr_data: n.expr_data.clone(),
+    })
+}
+
+pub fn qualify_borrowed_inferred(
+    inferred: Option<Rc<crate::v1_std_core::InferredNode>>,
+    owner_module_path: String,
+    env: Rc<TypeEnv>,
+    excluded: Rc<HashMap<String, bool>>,
+) -> Option<Rc<crate::v1_std_core::InferredNode>> {
+    match inferred.as_deref() {
+        Some(crate::v1_std_core::InferredNode::Resolved { node: t }) => {
+            Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {
+                node: qualify_borrowed_type_names(
+                    t.clone(),
+                    owner_module_path.clone(),
+                    env.clone(),
+                    excluded.clone(),
+                ),
+            }))
+        }
+        _ => inferred.clone(),
+    }
+}
+
+pub fn qualified_all_but_last(name: String) -> String {
+    let segs = module_path_segments(name.clone());
+    let seg_count = segs.len() as i64;
+    if seg_count <= 1 {
+        "".to_string()
+    } else {
+        let mut acc = "".to_string();
+        for seg in segs.iter().take((seg_count - 1) as usize) {
+            if acc.clone() == "".to_string() {
+                acc = seg.clone();
+            } else {
+                acc = v1_rt::concat(v1_rt::concat(acc.clone(), ".".to_string()), seg.clone());
+            }
+        }
+        acc
     }
 }
 
