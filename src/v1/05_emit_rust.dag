@@ -2833,7 +2833,9 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
     let variant_lines = parent_list |> map(parent =>
       if is_host_freemonoid_vec_alias(name: parent, corpus_repr: emit_info.corpus_repr) { "" } else {
       let variants = deduped_names |> filter(n =>
-        if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+        if n == "None" || n == "Some" {
+          false
+        } else if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
           false
         } else if import_module_enums |> any(e => e == n) {
           false
@@ -4884,7 +4886,7 @@ fn is_optional_carrier_call(expr: Node, source_indices: Map<String, NewlineIndex
 }
 
 fn wrap_optional_carrier_for_option_rc(expr_str: String) -> String {
-  concat("(*", expr_str, ").clone()")
+  expr_str
 }
 
 fn coerce_rc_optional_carrier_to_option_rc(expr_str: String, expr: Node, expected: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {

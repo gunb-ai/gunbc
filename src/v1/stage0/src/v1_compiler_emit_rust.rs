@@ -6836,7 +6836,9 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                     "".to_string()
                 } else {
                     {
-                        let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone()) {
+                        let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if (n.clone() == "None".to_string() || n.clone() == "Some".to_string()) {
+                            false
+                        } else if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone()) {
                             false
                         } else {
                             if { let mut __found = false; for e in import_module_enums.clone().iter().cloned() { if (e.clone() == n.clone()) { __found = true; break; } } __found } {
@@ -13008,10 +13010,10 @@ pub fn is_optional_carrier_call(
 }
 
 pub fn wrap_optional_carrier_for_option_rc(expr_str: String) -> String {
-    v1_rt::concat(
-        v1_rt::concat("(*".to_string(), expr_str.clone()),
-        ").clone()".to_string(),
-    )
+    // optional_present/optional_absent already return native `Option<Rc<T>>` when their argument is
+    // the emitter's Rc-wrapped construction, so they already inhabit the declared `Option<Rc<T>>`
+    // return; no coercion is needed. The prior `(*expr).clone()` derefed the Option itself (E0614).
+    expr_str
 }
 
 pub fn coerce_rc_optional_carrier_to_option_rc(
