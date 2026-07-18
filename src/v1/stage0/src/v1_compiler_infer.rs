@@ -13653,6 +13653,54 @@ pub fn census_resolution_erases_primitive_brand(
         )
 }
 
+pub fn census_upgrade_type_expr(
+    raw: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_path: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    if raw.connective != crate::v1_std_core::Connective::NoConnective
+        && (raw.children.clone().len() as i64) > 0
+    {
+        let fields2: Rc<Vec<Rc<Node>>> = Rc::new(
+            raw.children
+                .iter()
+                .cloned()
+                .map(|f| match f.inferred.clone().as_deref().cloned() {
+                    Some(crate::v1_std_core::InferredNode::Resolved { node: ft, .. }) => {
+                        crate::v1_compiler_infer_env::node_with_inferred(
+                            f.clone(),
+                            Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {
+                                node: census_upgrade_type_expr(
+                                    ft.clone(),
+                                    env.clone(),
+                                    module_path.clone(),
+                                    source_indices.clone(),
+                                ),
+                            })),
+                        )
+                    }
+                    _ => f.clone(),
+                })
+                .collect::<Vec<_>>(),
+        );
+        crate::v1_compiler_infer_env::node_with_children(raw.clone(), fields2)
+    } else {
+        let r = resolve_node(raw.clone(), env.clone(), module_path.clone());
+        if (r.diagnostics.clone().len() as i64) == 0
+            && census_resolution_erases_primitive_brand(
+                raw.clone(),
+                r.resolved.clone(),
+                source_indices.clone(),
+            ) == false
+        {
+            r.resolved.clone()
+        } else {
+            raw.clone()
+        }
+    }
+}
+
 pub fn census_upgrade_service_item(
     item: Rc<Node>,
     module_path: String,
@@ -13671,23 +13719,17 @@ pub fn census_upgrade_service_item(
             .cloned()
             .map(|c| match c.inferred.clone().as_deref().cloned() {
                 Some(crate::v1_std_core::InferredNode::Resolved { node: raw_out, .. }) => {
-                    let r = resolve_node(raw_out.clone(), env.clone(), module_path.clone());
-                    if (r.diagnostics.clone().len() as i64) == 0
-                        && census_resolution_erases_primitive_brand(
-                            raw_out.clone(),
-                            r.resolved.clone(),
-                            source_indices.clone(),
-                        ) == false
-                    {
-                        crate::v1_compiler_infer_env::node_with_inferred(
-                            c.clone(),
-                            Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {
-                                node: r.resolved.clone(),
-                            })),
-                        )
-                    } else {
-                        c.clone()
-                    }
+                    crate::v1_compiler_infer_env::node_with_inferred(
+                        c.clone(),
+                        Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {
+                            node: census_upgrade_type_expr(
+                                raw_out.clone(),
+                                env.clone(),
+                                module_path.clone(),
+                                source_indices.clone(),
+                            ),
+                        })),
+                    )
                 }
                 _ => c.clone(),
             })

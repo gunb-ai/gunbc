@@ -6364,15 +6364,30 @@ fn census_resolution_erases_primitive_brand(raw: Node, resolved: Node, source_in
     && is_transparent_primitive_alias_rhs(structural: resolved, source_indices: source_indices)
 }
 
+fn census_upgrade_type_expr(raw: Node, env: TypeEnv, module_path: String, source_indices: Map<String, NewlineIndex>) -> Node {
+  if raw.connective != NoConnective && (raw.children |> count) > 0 {
+    let fields2 = raw.children |> map(f =>
+      match f.inferred {
+        Present { value: Resolved { node: ft } } =>
+          node_with_inferred(n: f, inferred: Present { value: Resolved { node: census_upgrade_type_expr(raw: ft, env: env, module_path: module_path, source_indices: source_indices) } })
+        _ => f
+      }
+    )
+    node_with_children(n: raw, children: fields2)
+  } else {
+    let r = resolve_node(n: raw, env: env, module_name: module_path)
+    if (r.diagnostics |> count) == 0 && census_resolution_erases_primitive_brand(raw: raw, resolved: r.resolved, source_indices: source_indices) == false {
+      r.resolved
+    } else { raw }
+  }
+}
+
 fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> Node {
   let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
   let ops2 = item.children |> map(c =>
     match c.inferred {
       Present { value: Resolved { node: raw_out } } =>
-        let r = resolve_node(n: raw_out, env: env, module_name: module_path)
-        if (r.diagnostics |> count) == 0 && census_resolution_erases_primitive_brand(raw: raw_out, resolved: r.resolved, source_indices: source_indices) == false {
-          node_with_inferred(n: c, inferred: Present { value: Resolved { node: r.resolved } })
-        } else { c }
+        node_with_inferred(n: c, inferred: Present { value: Resolved { node: census_upgrade_type_expr(raw: raw_out, env: env, module_path: module_path, source_indices: source_indices) } })
       _ => c
     }
   )
