@@ -1,6 +1,7 @@
 module gunbc.host_effect
 
 import std.types { String, Int, NonEmptyStr, List, ContentHash }
+import std.cache_identity { CacheInterfaceId }
 import std.access { AccessDecision }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -30,6 +31,7 @@ type HostEffect =
       iso_content_hash: ContentHash,
     }
   | OsInstallActuatorToolchainEnsure {}
+  | ProvisionBuildCache { catalog_id: CacheInterfaceId }
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
   | Srv3InstallReconcileObserve { include_git_meta: Bool }
   | DurableApprovalGrantRecord
