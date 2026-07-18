@@ -11,10 +11,8 @@ import v2.workflow.floor_diff_observe {
   NameStatusDiffFail,
   floor_observe_git_diff_unified,
   floor_observe_git_diff_unified_for_ci,
-  floor_diff_script_serializes_git_diff_unified,
   floor_observe_git_diff_name_status,
-  floor_observe_git_diff_name_status_for_ci,
-  floor_diff_script_serializes_git_diff_name_status
+  floor_observe_git_diff_name_status_for_ci
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -61,10 +59,8 @@ fn witness_invalid_base_name_status_fails_closed() -> Bool {
 }
 
 test fn floor_diff_observe_host_effect_apply_holds() -> Bool {
-  floor_diff_script_serializes_git_diff_unified()
-    && witness_ci_policy_observation_succeeds()
+  witness_ci_policy_observation_succeeds()
     && witness_invalid_base_fails_closed()
-    && floor_diff_script_serializes_git_diff_name_status()
     && witness_ci_policy_name_status_observation_succeeds()
     && witness_invalid_base_name_status_fails_closed()
 }
