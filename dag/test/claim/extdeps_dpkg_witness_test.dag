@@ -17,18 +17,16 @@ fn argv_join(argv: List<String>) -> String {
 }
 
 fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
-  argv_join(argv: dpkg_status_argv(package: package_tailscale))
-    == argv_join(
-      argv: shell_materialize_argv_for_operation(
-        dpkg_status_path,
-        dpkg_status_service,
-        dpkg_status_operation,
-        package_tailscale as String,
-        "",
-        [],
-        ""
-      )
-    )
+  let helper = dpkg_status_argv(package: package_tailscale)
+  let transport = shell_materialize_argv_for_operation(
+    dpkg_status_path,
+    dpkg_status_service,
+    dpkg_status_operation,
+    package_tailscale as String,
+    "",
+    []
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 test fn extdeps_dpkg_status_argv_holds() -> Bool {

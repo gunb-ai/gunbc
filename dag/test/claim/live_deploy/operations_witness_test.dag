@@ -34,78 +34,70 @@ fn argv_join(argv: List<String>) -> String {
 }
 
 fn witness_dpkg_status_argv_matches_transport_row() -> Bool {
-  argv_join(argv: dpkg_status_argv(package: package_tailscale))
-    == argv_join(
-      argv: shell_materialize_argv_for_operation(
-        "dag/extdeps/package_managers/dpkg.dag",
-        "dpkg.Package",
-        "Status",
-        package_tailscale as String,
-        "",
-        [],
-        ""
-      )
-    )
+  let helper = dpkg_status_argv(package: package_tailscale)
+  let transport = shell_materialize_argv_for_operation(
+    "dag/extdeps/package_managers/dpkg.dag",
+    "dpkg.Package",
+    "Status",
+    package_tailscale as String,
+    "",
+    []
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 fn witness_apt_install_argv_matches_transport_row() -> Bool {
-  argv_join(argv: apt_install_argv(package: package_nodejs))
-    == argv_join(
-      argv: shell_materialize_argv_for_operation(
-        apt_install_path,
-        apt_install_service,
-        apt_install_operation,
-        package_nodejs as String,
-        "",
-        [],
-        ""
-      )
-    )
+  let helper = apt_install_argv(package: package_nodejs)
+  let transport = shell_materialize_argv_for_operation(
+    apt_install_path,
+    apt_install_service,
+    apt_install_operation,
+    package_nodejs as String,
+    "",
+    []
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 fn witness_systemctl_restart_argv_matches_transport_row() -> Bool {
-  argv_join(argv: systemctl_restart_argv(unit: gunbc_roadmap_unit_name))
-    == argv_join(
-      argv: shell_materialize_argv_for_operation(
-        systemctl_path,
-        systemctl_service,
-        "Restart",
-        "",
-        "",
-        [],
-        gunbc_roadmap_unit_name as String
-      )
-    )
+  let helper = systemctl_restart_argv(unit: gunbc_roadmap_unit_name)
+  let transport = shell_materialize_argv_for_operation(
+    systemctl_path,
+    systemctl_service,
+    "Restart",
+    "",
+    "",
+    [],
+    gunbc_roadmap_unit_name as String
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 fn witness_systemctl_disable_now_argv_matches_transport_row() -> Bool {
-  argv_join(argv: systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name))
-    == argv_join(
-      argv: shell_materialize_argv_for_operation(
-        systemctl_path,
-        systemctl_service,
-        "DisableNow",
-        "",
-        "",
-        [],
-        gunbc_roadmap_unit_name as String
-      )
-    )
+  let helper = systemctl_disable_now_argv(unit: gunbc_roadmap_unit_name)
+  let transport = shell_materialize_argv_for_operation(
+    systemctl_path,
+    systemctl_service,
+    "DisableNow",
+    "",
+    "",
+    [],
+    gunbc_roadmap_unit_name as String
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 fn witness_systemctl_daemon_reload_argv_matches_transport_row() -> Bool {
-  argv_join(argv: systemctl_daemon_reload_argv())
-    == argv_join(
-      argv: shell_materialize_argv_for_operation(
-        systemctl_path,
-        systemctl_service,
-        "DaemonReload",
-        "",
-        "",
-        [],
-        ""
-      )
-    )
+  let helper = systemctl_daemon_reload_argv()
+  let transport = shell_materialize_argv_for_operation(
+    systemctl_path,
+    systemctl_service,
+    "DaemonReload",
+    "",
+    "",
+    []
+  )
+  argv_join(argv: helper) == argv_join(argv: transport)
 }
 
 fn witness_dpkg_status_command_matches_transport() -> Bool {
