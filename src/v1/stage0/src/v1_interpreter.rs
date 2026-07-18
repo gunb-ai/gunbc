@@ -5757,7 +5757,10 @@ fn map_shell_outputs(
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
+        let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
         let value = match from_key.as_deref() {
+            Some("stdout") if is_optional_field && result.exit_code != 0 => Value::Null,
+            Some("stderr") if is_optional_field && result.exit_code != 0 => Value::Null,
             Some("stdout") => Value::Str(result.stdout.clone()),
             Some("stderr") => Value::Str(result.stderr.clone()),
             Some("exit_success") => Value::Bool(result.exit_code == 0),
