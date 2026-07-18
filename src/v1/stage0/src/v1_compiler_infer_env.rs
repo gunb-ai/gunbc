@@ -1370,10 +1370,7 @@ pub fn inductive_fields_list_to_map(
     )
 }
 
-pub fn env_with_type_variable_bindings(
-    env: Rc<TypeEnv>,
-    tp_names: Rc<Vec<String>>,
-) -> Rc<TypeEnv> {
+pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String>>) -> Rc<TypeEnv> {
     tp_names
         .clone()
         .iter()

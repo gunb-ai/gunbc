@@ -65,7 +65,7 @@ fn grammar_coverage_tree_root_for_path(path: String) -> String {
   }
 }
 
-fn grammar_coverage_distinct_rel_paths(facts: List<v2.std.decl_index.DeclFact>) -> List<String> {
+fn grammar_coverage_distinct_rel_paths(facts: List<DeclFact>) -> List<String> {
   fold_list(
     xs: facts,
     empty: std.algebra.Empty,
@@ -81,7 +81,7 @@ fn grammar_coverage_distinct_rel_paths(facts: List<v2.std.decl_index.DeclFact>) 
 
 fn grammar_coverage_corpus_roster_live() -> List<String> {
   grammar_coverage_distinct_rel_paths(
-    facts: decl_facts(pool_roots: v2.lens.enforcement.standing_intent.whole_corpus_scope.roots)
+    facts: decl_facts(pool_roots: whole_corpus_scope.roots)
   )
 }
 
@@ -132,7 +132,7 @@ fn grammar_coverage_ingest_source_text(
         Rejected { diagnostics: d } =>
           ParseRejected { stage: "parse", reason: d.head.reason }
         Accepted { value: artifact, diagnostics: _ } =>
-          match v2.compiler.normalize.normalize(parse_tree: artifact.tree) {
+          match normalize(parse_tree: artifact.tree) {
             Rejected { diagnostics: d } =>
               ParseRejected { stage: "normalize", reason: d.head.reason }
             Accepted { value: _, diagnostics: _ } =>
