@@ -18,8 +18,11 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
-import v2.std.qualified_name { qualified_name_from_segment_list, qualified_name_to_dotted_string }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
+import std.algebra { Cons, Empty }
+
+data msb_qualified_name_collision_note: String = "QualifiedName values here are constructed directly from Cons/Empty rather than via qualified_name_from_segment_list, because that name is FORKED across the flat fn namespace: v2.std.qualified_name declares (segments: List<String>) -> FreeMonoid<Symbol> while v2.extdeps.languages.dag:5659 declares (segments: List<Symbol>, root: Node) -> Outcome<QualifiedName>. The resolver binds the extdeps one inside this closure, so the std helper silently yields an Outcome-wrapped value and any match on FreeMonoid goes non-exhaustive at runtime. Pre-existing §3 fork, unrelated to the binding authority — recorded here so this witness does not depend on which side wins resolution."
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -71,6 +74,16 @@ data msb_unparseable_read: DagSourceReadWitness = DagSourceReadWitness {
   source_root: V2Tree
 }
 
+data msb_fixture_qn: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons { head: ^std, tail: Cons { head: ^msb_fixture, tail: Empty } }
+}
+
+data msb_produced_qn: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons { head: ^std, tail: Cons { head: ^msb_produced_fixture, tail: Empty } }
+}
+
 data msb_ingest: SourceRootIngest = [msb_read, msb_other_read]
 data msb_duplicate_ingest: SourceRootIngest = [msb_read, msb_duplicate_read]
 data msb_unparseable_ingest: SourceRootIngest = [msb_unparseable_read]
@@ -93,7 +106,7 @@ test fn module_storage_path_projection_holds() -> Bool {
     Accepted { value: index, diagnostics: _ } =>
       match module_storage_path_for_module(
         index: index,
-        module: qualified_name_from_segment_list(segments: ["v2", "std", "msb_fixture"])
+        module: msb_fixture_qn
       ) {
         Absent => false
         Present { value: p } => p == msb_v2_path
@@ -116,7 +129,7 @@ test fn module_storage_underivable_module_name_refuses() -> Bool {
 }
 
 data msb_produced_binding: ModuleStorageBinding = module_storage_produced_binding(
-  module: qualified_name_from_segment_list(segments: ["v2", "std", "msb_produced_fixture"]),
+  module: msb_produced_qn,
   producer: ^msb_body_producer,
   source_root: V2Tree
 )
@@ -128,3 +141,4 @@ test fn module_storage_produced_module_has_no_storage() -> Bool {
       module_storage_binding_module_dotted(binding: msb_produced_binding) == "v2.std.msb_produced_fixture"
   }
 }
+
