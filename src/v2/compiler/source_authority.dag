@@ -314,6 +314,8 @@ fn module_storage_binding_module_dotted(binding: ModuleStorageBinding) -> String
   qualified_name_to_dotted_string(qn: binding.module)
 }
 
+data module_storage_identity_note: String = "Module identity compares STRUCTURALLY on QualifiedName (= FreeMonoid<Symbol>), never through a rendered dotted string. Routing identity through qualified_name_to_dotted_string would allocate two strings per comparison — n per insert, so n^2 string builds over an ingest — to answer a question the symbol list already answers, and it would make a rendering function load-bearing for identity (§6 bare-minimum cost; §3 the dotted form is a projection FOR DISPLAY, not the identity authority). The hand-rolled qualified_name_eq was already dissolved into structural == when QualifiedName became a FreeMonoid alias; this reuses that, it does not re-mint it."
+
 fn module_storage_index_contains_module(
   index: ModuleStorageIndex,
   module: QualifiedName
@@ -325,7 +327,7 @@ fn module_storage_index_contains_module(
       if found {
         true
       } else {
-        module_storage_binding_module_dotted(binding: binding) == qualified_name_to_dotted_string(qn: module)
+        module_storage_binding_module(binding: binding) == module
       }
     }
   )
@@ -453,7 +455,7 @@ fn module_storage_path_for_module(
       match found {
         Present { value: v } => optional_present(value: v)
         Absent =>
-          if module_storage_binding_module_dotted(binding: binding) == qualified_name_to_dotted_string(qn: module) {
+          if module_storage_binding_module(binding: binding) == module {
             module_storage_binding_file_path(binding: binding)
           } else {
             optional_absent()
