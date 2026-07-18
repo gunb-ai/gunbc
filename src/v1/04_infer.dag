@@ -90,7 +90,8 @@ import v1.compiler.infer_env {
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
   SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
-  env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred
+  env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
+  ServiceCensusEntry
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -6279,6 +6280,21 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
   } else { binding }
 }
 
+fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> Node {
+  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  let ops2 = item.children |> map(c =>
+    match c.inferred {
+      Present { value: Resolved { node: raw_out } } =>
+        let r = resolve_node(n: raw_out, env: env, module_name: module_path)
+        if (r.diagnostics |> count) == 0 {
+          node_with_inferred(n: c, inferred: Present { value: Resolved { node: r.resolved } })
+        } else { c }
+      _ => c
+    }
+  )
+  node_with_children(n: item, children: ops2)
+}
+
 fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let entry_keys = sorted_map_keys(index.entries)
   let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
@@ -6309,7 +6325,16 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
       Absent => acc
     }
   )
-  SymbolIndex { entries: entries2, global_bare: global2, services: index.services }
+  let service_keys = sorted_map_keys(index.services)
+  let services2 = fold(service_keys, init: index.services, f: (acc, k) =>
+    match map_get(index.services, k) {
+      Present { value: sentry } =>
+        let upgraded = census_upgrade_service_item(item: sentry.item, module_path: sentry.module_path, census: index, source_indices: source_indices)
+        if upgraded == sentry.item { acc } else { map_insert(acc, k, ServiceCensusEntry { module_path: sentry.module_path, item: upgraded }) }
+      Absent => acc
+    }
+  )
+  SymbolIndex { entries: entries2, global_bare: global2, services: services2 }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {

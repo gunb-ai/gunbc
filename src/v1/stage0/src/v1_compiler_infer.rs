@@ -13449,6 +13449,43 @@ pub fn census_upgrade_sig_binding(
     }
 }
 
+pub fn census_upgrade_service_item(
+    item: Rc<Node>,
+    module_path: String,
+    census: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    let env = census_fn_sig_env(
+        census.clone(),
+        module_path.clone(),
+        Rc::new(vec![]),
+        source_indices.clone(),
+    );
+    let ops2: Rc<Vec<Rc<Node>>> = Rc::new(
+        item.children
+            .iter()
+            .cloned()
+            .map(|c| match c.inferred.clone().as_deref().cloned() {
+                Some(crate::v1_std_core::InferredNode::Resolved { node: raw_out, .. }) => {
+                    let r = resolve_node(raw_out.clone(), env.clone(), module_path.clone());
+                    if (r.diagnostics.clone().len() as i64) == 0 {
+                        crate::v1_compiler_infer_env::node_with_inferred(
+                            c.clone(),
+                            Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {
+                                node: r.resolved.clone(),
+                            })),
+                        )
+                    } else {
+                        c.clone()
+                    }
+                }
+                _ => c.clone(),
+            })
+            .collect::<Vec<_>>(),
+    );
+    crate::v1_compiler_infer_env::node_with_children(item.clone(), ops2)
+}
+
 pub fn census_with_resolved_fn_sigs(
     index: Rc<SymbolIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -13545,10 +13582,38 @@ pub fn census_with_resolved_fn_sigs(
             None => acc,
         },
     );
+    let service_keys = v1_rt::sorted_map_keys(&index.services);
+    let services2 = service_keys.iter().cloned().fold(
+        index.services.clone(),
+        |acc: Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::ServiceCensusEntry>>>,
+         k: String| match v1_rt::map_get(&index.services, k.clone()) {
+            Some(sentry) => {
+                let upgraded = census_upgrade_service_item(
+                    sentry.item.clone(),
+                    sentry.module_path.clone(),
+                    index.clone(),
+                    source_indices.clone(),
+                );
+                if upgraded.clone() == sentry.item.clone() {
+                    acc
+                } else {
+                    v1_rt::rc_map_insert(
+                        acc.clone(),
+                        k.clone(),
+                        Rc::new(crate::v1_compiler_infer_env::ServiceCensusEntry {
+                            module_path: sentry.module_path.clone(),
+                            item: upgraded.clone(),
+                        }),
+                    )
+                }
+            }
+            None => acc,
+        },
+    );
     Rc::new(SymbolIndex {
         entries: entries2.clone(),
         global_bare: global2.clone(),
-        services: index.services.clone(),
+        services: services2.clone(),
     })
 }
 
