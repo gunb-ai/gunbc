@@ -8102,7 +8102,7 @@ pub struct StructuralBoundResult {
 pub struct ComplexityReport {
     pub function_classes: Rc<HashMap<String, String>>,
     pub space_classes: Rc<HashMap<String, String>>,
-    pub function_space_bytes: Rc<HashMap<String, ByteSize>>,
+    pub function_space_bytes: Rc<HashMap<String, i64>>,
     pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
     pub structural_bounds: Rc<Vec<Rc<StructuralBoundResult>>>,
 }
@@ -8111,7 +8111,7 @@ pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport {
         function_classes: v1_rt::rc_empty_map::<String, String>(),
         space_classes: v1_rt::rc_empty_map::<String, String>(),
-        function_space_bytes: v1_rt::rc_empty_map::<String, ByteSize<Memory, One, Nat>>(),
+        function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
         violations: Rc::new(vec![]),
         structural_bounds: Rc::new(vec![]),
     })
@@ -8855,7 +8855,7 @@ pub struct TopoBuildAcc {
     pub table: Rc<CostInternTable>,
     pub classes: Rc<HashMap<String, String>>,
     pub space_classes: Rc<HashMap<String, String>>,
-    pub function_space_bytes: Rc<HashMap<String, ByteSize>>,
+    pub function_space_bytes: Rc<HashMap<String, i64>>,
     pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
     pub fan_in: Rc<HashMap<String, i64>>,
     pub processed: Rc<HashMap<String, bool>>,
@@ -10201,7 +10201,7 @@ pub fn build_complexity_report(
                 table: empty_cost_intern_table(),
                 classes: v1_rt::rc_empty_map::<String, String>(),
                 space_classes: v1_rt::rc_empty_map::<String, String>(),
-                function_space_bytes: v1_rt::rc_empty_map::<String, ByteSize<Memory, One, Nat>>(),
+                function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
                 violations: Rc::new(vec![]),
                 fan_in: fan_in.clone(),
                 processed: v1_rt::rc_empty_map::<String, bool>(),
@@ -10241,7 +10241,7 @@ pub fn build_complexity_report(
                         Some(bs) => v1_rt::rc_map_insert(
                             acc.function_space_bytes.clone(),
                             func_name.clone(),
-                            bs.clone(),
+                            byte_size_count(bs.clone()),
                         ),
                         None => acc.function_space_bytes.clone(),
                     };
