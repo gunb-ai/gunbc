@@ -25,6 +25,9 @@ import gunbc.roadmap_belt_actuate {
   belt_actuate_spawn_member,
   belt_actuate_teardown_member,
 }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn nid(s: String) -> RoadmapNodeId { s }
 
