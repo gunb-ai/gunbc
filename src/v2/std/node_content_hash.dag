@@ -140,40 +140,40 @@ fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
 fn canonical_hash_of_connective(c: Connective) -> Hash {
   match c {
     Atom { identity: sym } =>
-      hash_combine(
-        a: atom_identity_hash(s: ^canonical_tag_atom),
-        b: atom_identity_hash(s: sym)
+      content_hash_combine(
+        left: content_hash_atom(value: ^canonical_tag_atom),
+        right: content_hash_atom(value: sym)
       )
-    Conj => atom_identity_hash(s: ^canonical_tag_conj)
-    Disj => atom_identity_hash(s: ^canonical_tag_disj)
-    Arrow => atom_identity_hash(s: ^canonical_tag_arrow)
-    Cardinality => atom_identity_hash(s: ^canonical_tag_cardinality)
-    Instantiation => atom_identity_hash(s: ^canonical_tag_instantiation)
+    Conj => content_hash_atom(value: ^canonical_tag_conj)
+    Disj => content_hash_atom(value: ^canonical_tag_disj)
+    Arrow => content_hash_atom(value: ^canonical_tag_arrow)
+    Cardinality => content_hash_atom(value: ^canonical_tag_cardinality)
+    Instantiation => content_hash_atom(value: ^canonical_tag_instantiation)
   }
 }
 
 fn canonical_hash_of_behavior(b: Behavior) -> Hash {
   match b {
-    Value => atom_identity_hash(s: ^canonical_tag_value)
-    Transform => atom_identity_hash(s: ^canonical_tag_transform)
-    Branch => atom_identity_hash(s: ^canonical_tag_branch)
-    Loop => atom_identity_hash(s: ^canonical_tag_loop)
-    Bind => atom_identity_hash(s: ^canonical_tag_bind)
-    Match => atom_identity_hash(s: ^canonical_tag_match)
+    Value => content_hash_atom(value: ^canonical_tag_value)
+    Transform => content_hash_atom(value: ^canonical_tag_transform)
+    Branch => content_hash_atom(value: ^canonical_tag_branch)
+    Loop => content_hash_atom(value: ^canonical_tag_loop)
+    Bind => content_hash_atom(value: ^canonical_tag_bind)
+    Match => content_hash_atom(value: ^canonical_tag_match)
   }
 }
 
 fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
   match kind {
     TypeNode { connective: c } =>
-      hash_combine(
-        a: atom_identity_hash(s: ^canonical_tag_type_node),
-        b: canonical_hash_of_connective(c: c)
+      content_hash_combine(
+        left: content_hash_atom(value: ^canonical_tag_type_node),
+        right: canonical_hash_of_connective(c: c)
       )
     ComputationNode { behavior: b } =>
-      hash_combine(
-        a: atom_identity_hash(s: ^canonical_tag_computation_node),
-        b: canonical_hash_of_behavior(b: b)
+      content_hash_combine(
+        left: content_hash_atom(value: ^canonical_tag_computation_node),
+        right: canonical_hash_of_behavior(b: b)
       )
   }
 }
@@ -181,11 +181,11 @@ fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
 fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
   match label {
     Named { name: sym } =>
-      hash_combine(
-        a: atom_identity_hash(s: ^canonical_tag_named_edge),
-        b: atom_identity_hash(s: sym)
+      content_hash_combine(
+        left: content_hash_atom(value: ^canonical_tag_named_edge),
+        right: content_hash_atom(value: sym)
       )
-    Positional => atom_identity_hash(s: ^canonical_tag_positional_edge)
+    Positional => content_hash_atom(value: ^canonical_tag_positional_edge)
   }
 }
 
@@ -205,9 +205,9 @@ fn content_hash(n: Node) -> Hash {
     algebra: NodeFold {
       init: fn(n0) { canonical_hash_of_node_kind(kind: n0.kind) },
       step: fn(acc, e, child_hash) {
-        hash_combine(
-          a: hash_combine(a: acc, b: canonical_hash_of_edge_label(label: e.label)),
-          b: child_hash
+        content_hash_combine(
+          left: content_hash_combine(left: acc, right: canonical_hash_of_edge_label(label: e.label)),
+          right: child_hash
         )
       }
     }

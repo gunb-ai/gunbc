@@ -28,7 +28,6 @@ pattern credential_chain(
   service_account: ServiceAccountEmail?,
   secret_name: NonEmptyStr,
   project_id: GcpProjectId,
-  scheme: String = "Bearer",
   header_name: String?,
   source_id: NonEmptyStr,
   required_scopes: List<String>,
@@ -59,7 +58,7 @@ pattern credential_chain(
   return {
     token: build_token(
       payload: utf8_secret_from_access_payload(payload: secret.payload),
-      scheme: scheme,
+      scheme: Bearer,
       header_name: header_name,
       source_id: source_id,
       required_scopes: required_scopes
