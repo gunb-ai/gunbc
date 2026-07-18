@@ -1,20 +1,9 @@
 module v2.test.realization_vocabulary_containment.lens_unit.discriminators
 
-import v2.lens.layering_imports { LayerImportFact }
-import v2.lens.realization_vocabulary_containment {
-  realization_vocab_exception_roster,
-  realization_vocab_leak_count,
-  realization_vocab_leak_count_canonical
-}
-import v2.std.collection { List }
-import v2.std.layer { LayerPrefixStd, LayerPrefixExtdeps }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data sidecar_module: String = "extdeps.languages.typescript.program"
+data sidecar_module: String = "extdeps.languages.bash.program"
 
 data fresh_leak_facts: List<LayerImportFact> = [
   LayerImportFact {
@@ -43,7 +32,7 @@ test fn realization_edge_import_is_not_leak_holds() -> Bool {
 data rostered_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dag/gunbc/node_http_server_emit.dag",
+    path: "dag/tools/host_prelude.dag",
     import_module: sidecar_module
   }
 ]
@@ -52,7 +41,8 @@ test fn rostered_consumer_import_is_not_leak_holds() -> Bool {
   realization_vocab_leak_count_canonical(facts: rostered_import_facts) == 0
 }
 
-data roster_without_node_http_emit: List<String> = [
+data roster_without_host_prelude: List<String> = [
+  "dag/tools/build_step.dag",
   "dag/tools/dag_compile_clean_transport.dag",
   "dag/tools/emit_host_transport.dag",
   "dag/tools/layering_imports_transport.dag",
@@ -63,7 +53,7 @@ data roster_without_node_http_emit: List<String> = [
 test fn de_rostered_consumer_import_is_leak_holds() -> Bool {
   realization_vocab_leak_count(
     facts: rostered_import_facts,
-    roster: roster_without_node_http_emit
+    roster: roster_without_host_prelude
   ) == 1
 }
 

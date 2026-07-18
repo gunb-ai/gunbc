@@ -1,19 +1,5 @@
 module gunbc.host_identity_access
 
-import std.types { List, NonEmptyStr }
-import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import gunbc.fleet_posix_accounts {
-  FleetAccountOperator,
-  fleet_posix_principal,
-  grounded_posix_principal_name,
-  fleet_hostnamectl_command_path,
-}
-import gunbc.host_effect { HostEffectTransport, SshShell }
-import gunbc.ci_deploy_access {
-  DeployAccess,
-  grounded_principal_privileged_commands,
-}
 
 data host_identity_hostnamectl_path: NonEmptyStr = fleet_hostnamectl_command_path
 

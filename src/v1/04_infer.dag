@@ -1441,7 +1441,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               ))
           }
         Absent =>
-          match lookup_func_sig(func_env: scope.func_env, name: name) {
+          match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name) {
             Present { value: fsig } =>
               if (fsig.params |> count) == 0 {
                 ok_infer(texpr: make_named_expr_node(
@@ -1463,21 +1463,68 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 ))
               }
             Absent =>
-              let err_texpr = make_named_expr_node(
-                name: name,
-                expr_data: ExprVar { binding_kind: none },
-                children: [],
-                inferred: Present { value: Resolved { node: error_type } },
-                span: span,
-                name_span: span
-              )
-              InferResult {
-                typed: err_texpr,
-                diagnostics: [inference_error(
-                  message: concat("undefined variable '", name, "'"),
-                  span: span,
-                  module_name: scope.module_name
-                )]
+              match lookup_binding_by_name(env: scope.type_env, name: name) {
+                Present { value: gbinding } =>
+                  let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
+                  match scope_parent {
+                    Present { value: scope_enum } =>
+                      ok_infer(texpr: make_named_expr_node(
+                        name: name,
+                        expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
+                        children: [],
+                        inferred: Present { value: Resolved { node: gbinding.resolved } },
+                        span: span,
+                        name_span: span
+                      ))
+                    Absent =>
+                      let binding_kind = infer_var_binding_kind(scope: scope, name: name)
+                      ok_infer(texpr: make_named_expr_node(
+                        name: name,
+                        expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
+                        children: [],
+                        inferred: Present { value: Resolved { node: gbinding.resolved } },
+                        span: span,
+                        name_span: span
+                      ))
+                  }
+                Absent =>
+                  let expected_variant_enum = match expected {
+                    Present { value: exp } =>
+                      let exp_enum = expand_scrut_type_for_variant_lookup(scrut_node: exp, env: scope.type_env)
+                      match find_child_named(n: exp_enum, name: name, source_indices: scope.type_env.source_indices) {
+                        Present { value: _ } => Present { value: exp_enum }
+                        Absent => none
+                      }
+                    Absent => none
+                  }
+                  match expected_variant_enum {
+                    Present { value: exp_enum } =>
+                      ok_infer(texpr: make_named_expr_node(
+                        name: name,
+                        expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
+                        children: [],
+                        inferred: Present { value: Resolved { node: exp_enum } },
+                        span: span,
+                        name_span: span
+                      ))
+                    Absent =>
+                      let err_texpr = make_named_expr_node(
+                        name: name,
+                        expr_data: ExprVar { binding_kind: none },
+                        children: [],
+                        inferred: Present { value: Resolved { node: error_type } },
+                        span: span,
+                        name_span: span
+                      )
+                      InferResult {
+                        typed: err_texpr,
+                        diagnostics: [inference_error(
+                          message: concat("undefined variable '", name, "'"),
+                          span: span,
+                          module_name: scope.module_name
+                        )]
+                      }
+                  }
               }
           }
       }
@@ -1573,7 +1620,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       let call_args = texpr.children
 
-      let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
+      let sig = lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
       let sig_params = match sig {
         Present { value: s } => s.params
         Absent => []
@@ -1932,17 +1979,29 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Present { value: ctor_result } => ctor_result
             Absent =>
               let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
+              let global_bare_callable = match type_match {
+                Present { value: _ } => none
+                Absent => global_bare_callable_node(type_env: scope.type_env, name: func_name)
+              }
               let resolved_type = match type_match {
                 Present { value: tn } => tn
-                Absent => error_type
+                Absent => match global_bare_callable {
+                  Present { value: gnode } =>
+                    if (gnode.params |> count) > 0 { callable_inferred(n: gnode) }
+                    else { callable_return_type(n: gnode) }
+                  Absent => error_type
+                }
               }
               let call_diags = match type_match {
                 Present { value: _ } => []
-                Absent => [inference_error(
-                  message: concat("function '", func_name, "' not found in scope"),
-                  span: span,
-                  module_name: scope.module_name
-                )]
+                Absent => match global_bare_callable {
+                  Present { value: _ } => []
+                  Absent => [inference_error(
+                    message: concat("function '", func_name, "' not found in scope"),
+                    span: span,
+                    module_name: scope.module_name
+                  )]
+                }
               }
               InferResult {
                 typed: make_named_expr_node(
@@ -3390,7 +3449,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match lookup_func_sig(func_env: ctx.func_env, name: callee) {
+      match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
         Present { value: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -3408,7 +3467,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
       }
     ExprMethodCall { method_semantics: _ } =>
       let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match lookup_func_sig(func_env: ctx.func_env, name: callee) {
+      match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
         Present { value: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -3558,7 +3617,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      let from_provenance = match lookup_func_sig(func_env: ctx.func_env, name: callee) {
+      let from_provenance = match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
         Present { value: sig } =>
           match sig.output_provenance |> first {
             Present { value: param_map } =>
@@ -3825,7 +3884,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             ArithmeticDescent { param: _, factor: _ } => inner_rel
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              let from_provenance = match lookup_func_sig(func_env: ctx.func_env, name: callee) {
+              let from_provenance = match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
                 Present { value: sig } =>
                   match sig.output_provenance |> first {
                     Present { value: param_map } =>
@@ -4148,7 +4207,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
-          match lookup_func_sig(func_env: ctx.func_env, name: callee) {
+          match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
             Present { value: sig } =>
               if map_keys(sig.variant_provenance) |> count > 0 { Present { value: sig } }
               else { none }
@@ -4624,7 +4683,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
 
     ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: expr, source_indices: type_env.source_indices)
-      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_env: func_env, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
+      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_env: func_env, type_env: type_env, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       if map_keys(callee_result) |> count > 0 { callee_result }
       else {
         let is_shrink = match ms {
@@ -4752,11 +4811,11 @@ fn call_args_by_name(call: Node, source_indices: Map<String, NewlineIndex>) -> M
   )
 }
 
-fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
+fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
   let recv = method_receiver(texpr: call)
   let mc_args = method_arg_nodes(texpr: call)
-  let base = match lookup_func_sig(func_env: func_env, name: mname) {
+  let base = match lookup_func_sig(func_env: func_env, type_env: type_env, name: mname) {
     Present { value: sig } =>
       match sig.params |> first {
         Present { value: first_p } =>
@@ -4775,7 +4834,7 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, source_indice
 }
 
 fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
-  match lookup_func_sig(func_env: func_env, name: callee) {
+  match lookup_func_sig(func_env: func_env, type_env: type_env, name: callee) {
     Present { value: sig } =>
       match sig.output_provenance |> first {
         Present { value: callee_prov } =>
@@ -5026,7 +5085,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
-      match lookup_func_sig(func_env: func_env, name: callee) {
+      match lookup_func_sig(func_env: func_env, type_env: type_env, name: callee) {
         Present { value: sig } =>
           if authored_name_at(source_indices: type_env.source_indices, node: sig.inferred) == parent_enum
             && (map_keys(sig.variant_provenance) |> count > 0) {
@@ -5899,6 +5958,15 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown } }
+  } else if item.body != none && item.transport == none {
+    let fn_node = Node {
+      name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+      connective: NoConnective, params: item.params, inferred: item.inferred,
+      return_cardinality: item.return_cardinality,
+      uses: [], body: none, transport: none, properties: [],
+      type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
   } else if item.inferred != none && item.params |> count == 0 && item.body == none {
     let alias_node = Node {
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],

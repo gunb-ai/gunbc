@@ -1,5 +1,6 @@
 module v2.lens.affected_set.entry_selection
 
+
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.lens.affected_set.corpus_dependency_view {
@@ -21,6 +22,8 @@ import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.text { String, string_is_empty }
 import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
+
+
 
 data entry_file_touched_grain_interim: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

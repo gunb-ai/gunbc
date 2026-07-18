@@ -1,23 +1,5 @@
 module v2.test.lens_coverage.hollow_type_defect_key
 
-import v2.lens.coverage {
-  CoverageDefectAcceptance,
-  CoverageDefectAcceptanceKey,
-  HollowType,
-  coverage_defect_hollow_type
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data hollow_type_authority_node: Node = Node {

@@ -1,48 +1,6 @@
 module v1.compiler.infer_lookup
 
-import v1.std.core {
-  Node, param_node_type_expr,
-  authored_name_at, NewlineIndex, find_child_named, has_child_named,
-  InferredNode, Resolved, TypeVariable,
-  Cardinality, Required,
-  MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics, ServiceMethodSemantics,
-  FieldAccessStyle, OptionalUnwrap,
-  FieldValueShape, PlainValue, OptionalValue,
-  FieldSummary,
-  with_optional_cardinality, with_required_cardinality,
-  Connective, Conj, Disj, NoConnective,
-  ErrorNode,
-
-  CardOptional
-}
-import std.algebra {
-  CollectionSizeEffect, CostShape, AlgebraFieldTemplate,
-  AlgebraTypeTemplate, ReceiverSelf, ContainerOf, ContainerSource, SameAsReceiver, Named,
-  kernel_algebra_profile, algebra_templates_for_profile
-}
-import v1.compiler.infer_types {
-  child_type_node,
-  make_container_type,
-  nominal_type_ref,
-  normalize_access_type_node, node_is_keyed_collection, node_is_set_collection,
-  method_receiver_element_node,
-  emit_map_has,
-  enrich_kernel_type, is_declared_container_alias_spelling, reground_alias_carrier_identity
-}
-import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, authored_name,
-  is_recursive_type, lookup_type, lookup_type_for
-}
-import v1.compiler.infer_emit_info {
-  build_struct_field_summaries, build_enum_field_summaries
-}
-import v1.compiler.infer_sigs {
-  ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig
-}
-import v1.compiler.infer_service {
-  OpEntry, ServiceMethodResult,
-  check_service_method_call_node
-}
+import v1.compiler.infer_method { infer_builtin_call_type }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -68,8 +26,47 @@ fn lookup_in_scope(locals: Map<String, TypeBinding>, name: String) -> Node? {
   }
 }
 
-fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
-  lookup_resolved_sig(env: func_env, name: name)
+fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
+  match lookup_resolved_sig(env: func_env, name: name) {
+    Present { value: sig } => Present { value: sig }
+    Absent => func_sig_from_global_bare(type_env: type_env, name: name)
+  }
+}
+
+fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
+  match infer_builtin_call_type(name: name) {
+    Present { value: _ } => none
+    Absent =>
+  match lookup_binding_by_name(env: type_env, name: name) {
+    Present { value: binding } =>
+      let node = binding.resolved
+      if (node.params |> count) > 0 || node.inferred != none {
+        Present { value: ResolvedFuncSig {
+          name: name,
+          params: node.params,
+          inferred: match node.inferred {
+            Present { value: inferred } => inferred
+            Absent => error_type
+          },
+          is_async: false,
+          output_provenance: [],
+          variant_provenance: empty_map()
+        } }
+      } else {
+        Absent
+      }
+    Absent => Absent
+  }
+  }
+}
+
+fn global_bare_callable_node(type_env: TypeEnv, name: String) -> Node? {
+  match lookup_binding_by_name(env: type_env, name: name) {
+    Present { value: binding } =>
+      if (binding.resolved.params |> count) > 0 || binding.resolved.inferred != none { Present { value: binding.resolved } }
+      else { none }
+    Absent => none
+  }
 }
 
 fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {

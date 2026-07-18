@@ -1,24 +1,5 @@
 module v2.test.intent_linearity.lens_unit.runtime_axis
 
-import v2.lens.intent_linearity {
-  chain_has_lowerable_cost,
-  chain_has_runtime_lowering_candidate,
-  chain_is_redundant,
-  level_is_linear
-}
-import v2.std.node {
-  Cardinality,
-  ComputationNode,
-  Edge,
-  Node,
-  Positional,
-  Transform,
-  TypeNode,
-  node_synthetic
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

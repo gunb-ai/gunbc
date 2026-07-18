@@ -1,7 +1,5 @@
 module test.claim.ci_exclusion_proof
 
-import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

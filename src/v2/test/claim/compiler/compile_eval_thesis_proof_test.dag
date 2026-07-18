@@ -1,32 +1,5 @@
 module v2.test.claim.compiler.compile_eval_thesis_proof
 
-import v2.compiler.eval { eval_diagnostic }
-import v2.compiler.compile {
-  Eval,
-  EvalResult,
-  compile,
-  compile_inferred
-}
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.runtimes.v2_evaluator {
-  v2_eval_bool_literal_pin,
-  v2_eval_bool_true_primitive,
-  v2_eval_unit_literal_pin
-}
-import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Map }
-import extdeps.communication.medium { Lossless, Medium }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.runtime {
-  RuntimeValueNodeProjected,
-  RuntimeValueNodeUnrepresentable,
-  runtime_value_node_projection
-}
-import v2.std.witness { Holds, Violates, Witness }
-import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
