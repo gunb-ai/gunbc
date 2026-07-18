@@ -5909,6 +5909,15 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown } }
+  } else if item.body != none && item.transport == none {
+    let fn_node = Node {
+      name: item.name, span: item.span, ident_span: item.ident_span, children: [],
+      connective: NoConnective, params: item.params, inferred: item.inferred,
+      return_cardinality: item.return_cardinality,
+      uses: [], body: none, transport: none, properties: [],
+      type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
+    }
+    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
   } else if item.inferred != none && item.params |> count == 0 && item.body == none {
     let alias_node = Node {
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
