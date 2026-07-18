@@ -105,7 +105,7 @@ fn host_identity_plan_effect_script(plan: HostIdentityPlan) -> String? {
 
 data host_identity_hostname_key_source: KeySource = CompositeKey { fields: ["host", "hostname_short"] }
 
-data host_identity_hostname_effect_shape: EffectShape = UpsertEffect { key_source: host_identity_hostname_key_source }
+data host_identity_hostname_effect_shape: EffectShape<KeySource> = UpsertEffect { key_source: host_identity_hostname_key_source }
 
 data host_identity_hostname_idempotency_evidence: IdempotencyEvidence = LatticeEffect { shape: host_identity_hostname_effect_shape }
 
