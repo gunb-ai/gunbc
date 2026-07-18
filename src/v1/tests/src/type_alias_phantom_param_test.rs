@@ -14,7 +14,9 @@
 //! Guard: only fire when params are genuinely absent. A param-using alias like
 //! `type Wrapper<T> = List<T>` has `T` referenced in the RHS → no substitution → left unchanged.
 
-use crate::helpers::{compile_dag_named, compile_dag_named_with_source_roots, find_file, v2_layer_roots};
+use crate::helpers::{
+    compile_dag_named, compile_dag_named_with_source_roots, find_file, v2_layer_roots,
+};
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 
 const FIXTURE: &str = concat!(
