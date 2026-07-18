@@ -1492,12 +1492,7 @@ fn load_compile_clean_entry_sources(
     let path_lookup = path_to_source_lookup(index);
     let mut known_paths: std::collections::HashSet<String> = sources
         .iter()
-        .flat_map(|s| {
-            [
-                s.path.clone(),
-                workspace_relative_repo_path(&s.path),
-            ]
-        })
+        .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
         .collect();
     let mut scan_queue: Vec<Rc<v1_compiler_compile::SourceFile>> = sources.clone();
     while let Some(sf) = scan_queue.pop() {
