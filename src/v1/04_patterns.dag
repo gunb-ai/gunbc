@@ -69,7 +69,19 @@ fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
           match decl.inferred {
             Present { value: Resolved { node: target } } =>
               let target_is_disj = target.connective == Disj
-              if target_is_disj { target } else { scrut_node }
+              let target_is_generic_use = target.connective == NoConnective && target.children |> count > 0
+              if target_is_disj {
+                target
+              } else if target_is_generic_use {
+                let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+                let substituted = substitute_type_slots(
+                  n: target,
+                  slot_bindings: subst,
+                  decl_name: name,
+                  source_indices: env.source_indices
+                )
+                expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
+              } else { scrut_node }
             _ => scrut_node
           }
         } else {

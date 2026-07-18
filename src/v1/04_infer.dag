@@ -3042,7 +3042,11 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
     let next_name = carrier_name
 
     let is_optional = structural.return_cardinality == CardOptional
-    let stop = is_optional || next_name == "" || emit_map_has(m: seen, key: next_name)
+    if is_optional {
+      let expanded_inner = expand_alias_chain_for_field_access(n: with_required_cardinality(n: structural), env: env, module_name: module_name, origin_name: origin_name, seen: seen, lossy: lossy)
+      with_optional_cardinality(n: expanded_inner)
+    } else {
+    let stop = next_name == "" || emit_map_has(m: seen, key: next_name)
     if stop {
       structural
     } else {
@@ -3060,6 +3064,7 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
           expand_alias_chain_for_field_access(n: next_n, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
         Absent => structural
       }
+    }
     }
   }
 }

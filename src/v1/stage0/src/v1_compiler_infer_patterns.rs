@@ -162,8 +162,26 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                                     Some(InferredNode::Resolved { node: target, .. }) => {
                                         let target_is_disj =
                                             (target.connective.clone() == Connective::Disj);
+                                        let target_is_generic_use = (target.connective.clone()
+                                            == Connective::NoConnective)
+                                            && ((target.children.clone().len() as i64) > 0);
                                         if target_is_disj.clone() {
                                             target.clone()
+                                        } else if target_is_generic_use {
+                                            let subst = generic_use_slot_bindings(
+                                                scrut_node.clone(),
+                                                env.clone(),
+                                            );
+                                            let substituted = substitute_type_slots(
+                                                target.clone(),
+                                                subst.clone(),
+                                                name.clone(),
+                                                env.source_indices.clone(),
+                                            );
+                                            expand_scrut_type_for_variant_lookup(
+                                                substituted.clone(),
+                                                env.clone(),
+                                            )
                                         } else {
                                             scrut_node.clone()
                                         }

@@ -6150,7 +6150,18 @@ pub fn expand_alias_chain_for_field_access(
         } else {
             let next_name = carrier.name.clone();
             let is_optional = (structural.return_cardinality.clone() == Cardinality::CardOptional);
-            let stop = ((is_optional.clone() || (next_name.clone() == "".to_string()))
+            if is_optional {
+                let expanded_inner = expand_alias_chain_for_field_access(
+                    with_required_cardinality(structural.clone()),
+                    env.clone(),
+                    module_name.clone(),
+                    origin_name.clone(),
+                    seen.clone(),
+                    lossy,
+                );
+                break with_optional_cardinality(expanded_inner);
+            }
+            let stop = ((next_name.clone() == "".to_string())
                 || emit_map_has(seen.clone(), next_name.clone()));
             if stop.clone() {
                 break structural.clone();
