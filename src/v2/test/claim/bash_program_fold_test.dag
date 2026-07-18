@@ -20,7 +20,7 @@ import v2.extdeps.languages.bash_build {
   bash_build_word_lit,
   bash_build_word_var
 }
-import v2.extdeps.languages.bash_emit {
+import v2.workflow.bash_emit {
   BashEmitSpecial,
   BashEmitStmt,
   BashEmitTagged,

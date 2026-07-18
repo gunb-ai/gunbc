@@ -44,7 +44,7 @@ import v2.extdeps.languages.bash_command_fold {
   bash_fold_target_model_for_emitted_witness,
   bash_fold_with_redir_wrong_target_model_witness
 }
-import v2.extdeps.languages.bash_emit {
+import v2.workflow.bash_emit {
   BashEmitStmt,
   bash_emit_env_prefixed,
   bash_emit_from_target,
@@ -57,7 +57,7 @@ import v2.extdeps.languages.bash_emit {
   bash_emit_wrong_target_oracle_holds
 }
 import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates, Witness }
