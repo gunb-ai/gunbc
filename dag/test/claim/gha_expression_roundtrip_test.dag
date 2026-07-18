@@ -1,69 +1,69 @@
 module test.claim.gha_expression_roundtrip
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn core_expr() -> Expression {
-  LogicalOr {
-    left: LogicalOr {
+fn core_expr() -> extdeps.github.expressions.Expression {
+  extdeps.github.expressions.LogicalOr {
+    left: extdeps.github.expressions.LogicalOr {
       left: extdeps.github.expressions.FunctionCall {
-        function: HashFiles,
-        args: [ StringLiteral { value: "Cargo.lock" }, StringLiteral { value: "Cargo.toml" } ],
+        function: extdeps.github.expressions.HashFiles,
+        args: [ extdeps.github.expressions.StringLiteral { value: "Cargo.lock" }, extdeps.github.expressions.StringLiteral { value: "Cargo.toml" } ],
       },
-      right: ContextAccess { context: Github, path: ["event", "number"] },
+      right: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Github, path: ["event", "number"] },
     },
-    right: ContextAccess { context: Runner, path: ["os"] },
+    right: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["os"] },
   }
 }
 
-fn core_template() -> ExpressionTemplate {
-  ExpressionTemplate {
+fn core_template() -> extdeps.github.expressions.ExpressionTemplate {
+  extdeps.github.expressions.ExpressionTemplate {
     segments: [
-      LiteralText { text: "cargo-ci-" },
-      Interpolation { expression: ContextAccess { context: Runner, path: ["os"] } },
-      LiteralText { text: "-" },
-      Interpolation { expression: ContextAccess { context: Runner, path: ["arch"] } },
+      extdeps.github.expressions.LiteralText { text: "cargo-ci-" },
+      Interpolation { expression: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["os"] } },
+      extdeps.github.expressions.LiteralText { text: "-" },
+      Interpolation { expression: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["arch"] } },
     ],
   }
 }
 
 fn witness_roundtrip_expression() -> Bool {
-  match ingest_expression(src: serialize_expression(expression: core_expr())) {
+  match extdeps.github.expressions.ingest_expression(src: extdeps.github.expressions.serialize_expression(expression: core_expr())) {
     Present { value: v } => v == core_expr()
     Absent => false
   }
 }
 
 fn witness_roundtrip_template() -> Bool {
-  match ingest_template(src: serialize_template(template: core_template())) {
+  match extdeps.github.expressions.ingest_template(src: extdeps.github.expressions.serialize_template(template: core_template())) {
     Present { value: v } => v == core_template()
     Absent => false
   }
 }
 
-fn override_spellings(path_sep: String, or_op: String) -> ExpressionSpellings {
-  ExpressionSpellings {
+fn override_spellings(path_sep: String, or_op: String) -> extdeps.github.expressions.ExpressionSpellings {
+  extdeps.github.expressions.ExpressionSpellings {
     path_sep: path_sep,
-    call_open: default_expression_spellings.call_open,
-    call_close: default_expression_spellings.call_close,
-    arg_sep: default_expression_spellings.arg_sep,
-    string_quote: default_expression_spellings.string_quote,
+    call_open: extdeps.github.expressions.default_expression_spellings.call_open,
+    call_close: extdeps.github.expressions.default_expression_spellings.call_close,
+    arg_sep: extdeps.github.expressions.default_expression_spellings.arg_sep,
+    string_quote: extdeps.github.expressions.default_expression_spellings.string_quote,
     or_op: or_op,
-    interp_open: default_expression_spellings.interp_open,
-    interp_close: default_expression_spellings.interp_close,
+    interp_open: extdeps.github.expressions.default_expression_spellings.interp_open,
+    interp_close: extdeps.github.expressions.default_expression_spellings.interp_close,
   }
 }
 
-fn perturbed_path_sep() -> ExpressionSpellings {
-  override_spellings(path_sep: "->", or_op: default_expression_spellings.or_op)
+fn perturbed_path_sep() -> extdeps.github.expressions.ExpressionSpellings {
+  override_spellings(path_sep: "->", or_op: extdeps.github.expressions.default_expression_spellings.or_op)
 }
 
-fn perturbed_or_op() -> ExpressionSpellings {
-  override_spellings(path_sep: default_expression_spellings.path_sep, or_op: " OR ")
+fn perturbed_or_op() -> extdeps.github.expressions.ExpressionSpellings {
+  override_spellings(path_sep: extdeps.github.expressions.default_expression_spellings.path_sep, or_op: " OR ")
 }
 
-fn roundtrips_under(sp: ExpressionSpellings) -> Bool {
-  match ingest_expression_with(src: serialize_expression_with(expression: core_expr(), sp: sp), sp: sp) {
+fn roundtrips_under(sp: extdeps.github.expressions.ExpressionSpellings) -> Bool {
+  match extdeps.github.expressions.ingest_expression_with(src: extdeps.github.expressions.serialize_expression_with(expression: core_expr(), sp: sp), sp: sp) {
     Present { value: v } => v == core_expr()
     Absent => false
   }
@@ -73,8 +73,8 @@ fn witness_roundtrip_under_perturbed_rows() -> Bool {
   roundtrips_under(sp: perturbed_path_sep()) && roundtrips_under(sp: perturbed_or_op())
 }
 
-fn ingest_reads(sp: ExpressionSpellings) -> Bool {
-  match ingest_expression(src: serialize_expression_with(expression: core_expr(), sp: sp)) {
+fn ingest_reads(sp: extdeps.github.expressions.ExpressionSpellings) -> Bool {
+  match extdeps.github.expressions.ingest_expression(src: extdeps.github.expressions.serialize_expression_with(expression: core_expr(), sp: sp)) {
     Present { value: v } => !(v == core_expr())
     Absent => true
   }
@@ -84,30 +84,30 @@ fn witness_ingest_reads_rows() -> Bool {
   ingest_reads(sp: perturbed_path_sep()) && ingest_reads(sp: perturbed_or_op())
 }
 
-fn left_nested_or() -> Expression {
-  LogicalOr {
-    left: LogicalOr {
-      left: ContextAccess { context: Runner, path: ["os"] },
-      right: ContextAccess { context: Runner, path: ["arch"] },
+fn left_nested_or() -> extdeps.github.expressions.Expression {
+  extdeps.github.expressions.LogicalOr {
+    left: extdeps.github.expressions.LogicalOr {
+      left: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["os"] },
+      right: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["arch"] },
     },
-    right: ContextAccess { context: Runner, path: ["temp"] },
+    right: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["temp"] },
   }
 }
 
-fn right_nested_or() -> Expression {
-  LogicalOr {
-    left: ContextAccess { context: Runner, path: ["os"] },
-    right: LogicalOr {
-      left: ContextAccess { context: Runner, path: ["arch"] },
-      right: ContextAccess { context: Runner, path: ["temp"] },
+fn right_nested_or() -> extdeps.github.expressions.Expression {
+  extdeps.github.expressions.LogicalOr {
+    left: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["os"] },
+    right: extdeps.github.expressions.LogicalOr {
+      left: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["arch"] },
+      right: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["temp"] },
     },
   }
 }
 
 fn witness_or_associativity_partition() -> Bool {
-  match ingest_expression(src: serialize_expression(expression: left_nested_or())) {
+  match extdeps.github.expressions.ingest_expression(src: extdeps.github.expressions.serialize_expression(expression: left_nested_or())) {
     Present { value: left_v } =>
-      match ingest_expression(src: serialize_expression(expression: right_nested_or())) {
+      match extdeps.github.expressions.ingest_expression(src: extdeps.github.expressions.serialize_expression(expression: right_nested_or())) {
         Present { value: right_v } => (left_v == left_nested_or()) && !(right_v == right_nested_or())
         Absent => false
       }
@@ -115,21 +115,21 @@ fn witness_or_associativity_partition() -> Bool {
   }
 }
 
-fn frontier_string_with_or() -> Expression {
-  StringLiteral { value: "a || b" }
+fn frontier_string_with_or() -> extdeps.github.expressions.Expression {
+  extdeps.github.expressions.StringLiteral { value: "a || b" }
 }
 
-fn frontier_nested_multiarg_call() -> Expression {
+fn frontier_nested_multiarg_call() -> extdeps.github.expressions.Expression {
   extdeps.github.expressions.FunctionCall {
     function: extdeps.github.expressions.Contains,
     args: [
-      ContextAccess { context: Github, path: ["event"] },
+      extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Github, path: ["event"] },
       extdeps.github.expressions.FunctionCall {
-        function: Format,
+        function: extdeps.github.expressions.Format,
         args: [
-          StringLiteral { value: "v" },
-          ContextAccess { context: Runner, path: ["os"] },
-          ContextAccess { context: Runner, path: ["arch"] },
+          extdeps.github.expressions.StringLiteral { value: "v" },
+          extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["os"] },
+          extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["arch"] },
         ],
       },
     ],
@@ -137,11 +137,11 @@ fn frontier_nested_multiarg_call() -> Expression {
 }
 
 fn witness_frontier_not_roundtripped() -> Bool {
-  match ingest_expression(src: serialize_expression(expression: right_nested_or())) {
+  match extdeps.github.expressions.ingest_expression(src: extdeps.github.expressions.serialize_expression(expression: right_nested_or())) {
     Present { value: v1 } =>
-      match ingest_expression(src: serialize_expression(expression: frontier_string_with_or())) {
+      match extdeps.github.expressions.ingest_expression(src: extdeps.github.expressions.serialize_expression(expression: frontier_string_with_or())) {
         Present { value: v2 } =>
-          match ingest_expression(src: serialize_expression(expression: frontier_nested_multiarg_call())) {
+          match extdeps.github.expressions.ingest_expression(src: extdeps.github.expressions.serialize_expression(expression: frontier_nested_multiarg_call())) {
             Present { value: v3 } =>
               !(v1 == right_nested_or())
                 && !(v2 == frontier_string_with_or())
@@ -155,9 +155,9 @@ fn witness_frontier_not_roundtripped() -> Bool {
 }
 
 fn witness_core_advertised_lossless() -> Bool {
-  match ingest_expression(src: serialize_expression(expression: core_expr())) {
+  match extdeps.github.expressions.ingest_expression(src: extdeps.github.expressions.serialize_expression(expression: core_expr())) {
     Present { value: v } => {
-      let m = source_medium_carried(carried: v, fidelity: Lossless)
+      let m = extdeps.communication.fidelity_carriers.source_medium_carried(carried: v, fidelity: Lossless)
       match m.fidelity {
         Lossless => m.carried == core_expr()
         Lossy => false
@@ -170,10 +170,10 @@ fn witness_core_advertised_lossless() -> Bool {
 fn witness_emit_non_regression() -> Bool {
   let e = core_expr()
   let t = core_template()
-  (serialize_expression(expression: e) == serialize_expression_with(expression: e, sp: default_expression_spellings))
-    && (serialize_template(template: t) == serialize_template_with(template: t, sp: default_expression_spellings))
-    && (serialize_expression(expression: e) == "hashFiles('Cargo.lock', 'Cargo.toml') || github.event.number || runner.os")
-    && (serialize_template(template: t) == "cargo-ci-${{ runner.os }}-${{ runner.arch }}")
+  (extdeps.github.expressions.serialize_expression(expression: e) == extdeps.github.expressions.serialize_expression_with(expression: e, sp: extdeps.github.expressions.default_expression_spellings))
+    && (extdeps.github.expressions.serialize_template(template: t) == extdeps.github.expressions.serialize_template_with(template: t, sp: extdeps.github.expressions.default_expression_spellings))
+    && (extdeps.github.expressions.serialize_expression(expression: e) == "hashFiles('Cargo.lock', 'Cargo.toml') || github.event.number || runner.os")
+    && (extdeps.github.expressions.serialize_template(template: t) == "cargo-ci-${{ runner.os }}-${{ runner.arch }}")
 }
 
 test fn gha_expression_roundtrip_keystone_holds() -> Bool {

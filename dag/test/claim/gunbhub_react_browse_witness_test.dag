@@ -1,12 +1,12 @@
 module test.claim.gunbhub_react_browse_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn browse_page_html() -> String {
-  match try_serialize_html_source(node: gunbhub_browse_page()) {
-    EmitOk { html: h } => h
-    EmitRejected { reason: _ } => ""
+  match extdeps.languages.html.try_serialize_html_source(node: gunbc.gunbhub_serve.gunbhub_browse_page()) {
+    extdeps.languages.html.EmitOk { html: h } => h
+    extdeps.languages.html.EmitRejected { reason: _ } => ""
   }
 }
 

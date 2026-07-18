@@ -1,31 +1,31 @@
 module test.claim.realization_width_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn synthetic_plan_total() -> CostAccount<Nano> {
-  cost_account_predicted_zero()
+fn synthetic_plan_total() -> std.realization_schedule.CostAccount<std.measure.Nano> {
+  std.realization_schedule.cost_account_predicted_zero()
 }
 
 data compile_gate_fn: String = "dag_compile_clean_gate_passes"
 data gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 
-fn witness_threads_64() -> HardwareThreadCount {
-  hardware_thread_count(64)
+fn witness_threads_64() -> std.measure.HardwareThreadCount {
+  std.measure.hardware_thread_count(64)
 }
 
-fn witness_threads_4() -> HardwareThreadCount {
-  hardware_thread_count(4)
+fn witness_threads_4() -> std.measure.HardwareThreadCount {
+  std.measure.hardware_thread_count(4)
 }
 
-fn synthetic_plan() -> RealizationPlan<Nano> {
-  RealizationPlan {
+fn synthetic_plan() -> std.realization_schedule.RealizationPlan<std.measure.Nano> {
+  std.realization_schedule.RealizationPlan {
     target: "width-witness-target"
-    objective: RealizationObjective { goals: [] }
+    objective: std.realization_schedule.RealizationObjective { goals: [] }
     schedule: [
-      [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
+      [std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: std.realization_schedule.runnable_resource_profile_negligible() }],
       [
-        RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
+        std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: std.realization_schedule.runnable_resource_profile_negligible() }
       ]
     ]
     total: synthetic_plan_total()
@@ -33,7 +33,7 @@ fn synthetic_plan() -> RealizationPlan<Nano> {
 }
 
 fn witness_under_cap_uses_shard_count() -> Bool {
-  witness_spawn_width_capped_by_hardware(
+  std.realization_width.witness_spawn_width_capped_by_hardware(
     shard_count: 8,
     hardware_threads: witness_threads_64(),
     expected: 8
@@ -41,7 +41,7 @@ fn witness_under_cap_uses_shard_count() -> Bool {
 }
 
 fn witness_over_cap_uses_hardware_threads() -> Bool {
-  witness_spawn_width_capped_by_hardware(
+  std.realization_width.witness_spawn_width_capped_by_hardware(
     shard_count: 128,
     hardware_threads: witness_threads_64(),
     expected: 64
@@ -49,7 +49,7 @@ fn witness_over_cap_uses_hardware_threads() -> Bool {
 }
 
 fn witness_brief_green_8_shards_4_threads() -> Bool {
-  witness_spawn_width_capped_by_hardware(
+  std.realization_width.witness_spawn_width_capped_by_hardware(
     shard_count: 8,
     hardware_threads: witness_threads_4(),
     expected: 4
@@ -57,7 +57,7 @@ fn witness_brief_green_8_shards_4_threads() -> Bool {
 }
 
 fn witness_topology_unchanged_by_width_fold() -> Bool {
-  witness_width_fold_preserves_schedule_topology(
+  std.realization_width.witness_width_fold_preserves_schedule_topology(
     plan: synthetic_plan(),
     shard_count: 8,
     hardware_threads: witness_threads_4()
@@ -65,8 +65,8 @@ fn witness_topology_unchanged_by_width_fold() -> Bool {
 }
 
 fn witness_degenerate_shard_count_fail_closed_serial() -> Bool {
-  hardware_thread_count_value(
-    t: bounded_host_spawn_width(
+  std.measure.hardware_thread_count_value(
+    t: std.realization_width.bounded_host_spawn_width(
       shard_count: 0,
       hardware_threads: witness_threads_64()
     )
@@ -74,18 +74,18 @@ fn witness_degenerate_shard_count_fail_closed_serial() -> Bool {
 }
 
 fn witness_budget_ignoring_fold_red_on_8_4() -> Bool {
-  witness_budget_ignoring_fold_fails(
+  std.realization_width.witness_budget_ignoring_fold_fails(
     shard_count: 8,
     hardware_threads: witness_threads_4()
   )
 }
 
 fn witness_measured_balance_discriminator() -> Bool {
-  witness_measured_cost_affects_shard_balance()
+  std.realization_width.witness_measured_cost_affects_shard_balance()
 }
 
 fn witness_memory_non_binding_at_7() -> Bool {
-  witness_memory_term_non_binding_uses_shard_count(
+  std.realization_width.witness_memory_term_non_binding_uses_shard_count(
     shard_count: 7,
     hardware_threads: witness_threads_64()
   )
@@ -100,12 +100,12 @@ test fn realization_width_witnesses() -> Bool {
     && witness_budget_ignoring_fold_red_on_8_4()
     && witness_measured_balance_discriminator()
     && witness_memory_non_binding_at_7()
-    && witness_tight_budget_backs_off_below_shard_count()
-    && witness_unreadable_budget_falls_back_conservative()
-    && witness_safety_fraction_is_load_bearing()
-    && witness_subunit_budget_admits_one()
-    && witness_pids_term_binds_below_cores_and_memory()
-    && witness_memory_term_still_binds_under_three_term_fold()
-    && witness_unreadable_pids_budget_falls_back_conservative()
-    && witness_subunit_pids_budget_admits_one()
+    && std.realization_width.witness_tight_budget_backs_off_below_shard_count()
+    && std.realization_width.witness_unreadable_budget_falls_back_conservative()
+    && std.realization_width.witness_safety_fraction_is_load_bearing()
+    && std.realization_width.witness_subunit_budget_admits_one()
+    && std.realization_width.witness_pids_term_binds_below_cores_and_memory()
+    && std.realization_width.witness_memory_term_still_binds_under_three_term_fold()
+    && std.realization_width.witness_unreadable_pids_budget_falls_back_conservative()
+    && std.realization_width.witness_subunit_pids_budget_admits_one()
 }

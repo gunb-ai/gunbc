@@ -1,21 +1,21 @@
 module test.claim.srv3_os_install_actuator_toolchain_ensure
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn srv3_actuator_toolchain_ensure_uses_github_release_for_websocat() -> Bool {
-  srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt()
-    && srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated()
+  gunbc.host_effect_realize.srv3_actuator_toolchain_realizer_websocat_uses_github_release_not_apt()
+    && gunbc.host_effect_realize.srv3_actuator_toolchain_realizer_apt_install_is_privileged_gated()
 }
 
 test fn srv3_actuator_toolchain_ensure_websocat_installs_to_modeled_path_with_namespace_upsert() -> Bool {
-  srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_namespace_upsert()
+  gunbc.host_effect_realize.srv3_actuator_toolchain_realizer_websocat_installs_to_modeled_path_with_namespace_upsert()
 }
 
 test fn srv3_actuator_toolchain_ensure_dissolution_trigger_names_bash_emit_scaffold() -> Bool {
-  match os_install_actuator_toolchain_ensure_dissolution_trigger {
-    Scaffold { dissolves_to: RealizationDispatch, bind: _ } => true
+  match gunbc.srv3_os_install_actuator_toolchain_ensure.os_install_actuator_toolchain_ensure_dissolution_trigger {
+    std.disposition.Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: _ } => true
     Terminal { reason: _ } => false
   }
-    && os_install_actuator_toolchain_ensure_routes_through_host_effect_apply()
+    && gunbc.srv3_os_install_actuator_toolchain_ensure.os_install_actuator_toolchain_ensure_routes_through_host_effect_apply()
 }

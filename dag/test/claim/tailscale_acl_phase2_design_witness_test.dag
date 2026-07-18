@@ -1,126 +1,126 @@
 module test.claim.tailscale_acl_phase2_design_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn witness_secret_homed_in_gunbai_secrets() -> Bool {
-  operator_tailscale_acl_secret_bindings.first().project == bmc_secrets_project_id
-    && operator_tailscale_acl_secret_bindings.first().secret == (tailscale_acl_ephemeral_token_secret_id as String)
+  gunbc.tailscale_acl_phase2_credential.operator_tailscale_acl_secret_bindings.first().project == gunbc.assimilate.bmc_token_federation.bmc_secrets_project_id
+    && gunbc.tailscale_acl_phase2_credential.operator_tailscale_acl_secret_bindings.first().secret == (gunbc.tailscale_acl_phase2_credential.tailscale_acl_ephemeral_token_secret_id as String)
 }
 
 fn witness_operator_user_principal_accessor_only() -> Bool {
-  operator_bindings_are_user_principal_accessor_only(bindings: operator_tailscale_acl_secret_bindings)
-    && operator_tailscale_acl_secret_bindings.first().role == role_secretmanager_secret_accessor
-    && operator_principal_member() == fleet_operator_gcp_iam_member()
-    && string_contains(s: operator_principal_member(), pattern: tailscale_acl_operator_email() as String)
-    && tailscale_acl_operator_email() == fleet_operator_email
+  gunbc.tailscale_acl_phase2_credential.operator_bindings_are_user_principal_accessor_only(bindings: gunbc.tailscale_acl_phase2_credential.operator_tailscale_acl_secret_bindings)
+    && gunbc.tailscale_acl_phase2_credential.operator_tailscale_acl_secret_bindings.first().role == extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor
+    && gunbc.tailscale_acl_phase2_credential.operator_principal_member() == gunbc.fleet_posix_accounts.fleet_operator_gcp_iam_member()
+    && string_contains(s: gunbc.tailscale_acl_phase2_credential.operator_principal_member(), pattern: gunbc.tailscale_acl_phase2_credential.tailscale_acl_operator_email() as String)
+    && gunbc.tailscale_acl_phase2_credential.tailscale_acl_operator_email() == gunbc.fleet_posix_accounts.fleet_operator_email
 }
 
 fn witness_excludes_repo_scoped_wif_structurally() -> Bool {
-  !operator_bindings_admit_repo_scoped_wif(bindings: operator_tailscale_acl_secret_bindings)
-    && !operator_bindings_admit_bmc_assimilator_sa(bindings: operator_tailscale_acl_secret_bindings)
-    && string_contains(s: bmc_wif_principal_set(), pattern: bmc_federated_github_repo)
+  !gunbc.tailscale_acl_phase2_credential.operator_bindings_admit_repo_scoped_wif(bindings: gunbc.tailscale_acl_phase2_credential.operator_tailscale_acl_secret_bindings)
+    && !gunbc.tailscale_acl_phase2_credential.operator_bindings_admit_bmc_assimilator_sa(bindings: gunbc.tailscale_acl_phase2_credential.operator_tailscale_acl_secret_bindings)
+    && string_contains(s: gunbc.assimilate.bmc_token_federation.bmc_wif_principal_set(), pattern: gunbc.assimilate.bmc_token_federation.bmc_federated_github_repo)
 }
 
 fn witness_wif_binding_perturbation_reddens() -> Bool {
-  let poisoned_wif = SecretAccessBinding {
-    member: bmc_wif_principal_set(),
-    role: role_secretmanager_secret_accessor,
-    secret: tailscale_acl_ephemeral_token_secret_id as String,
-    project: bmc_secrets_project_id,
+  let poisoned_wif = gunbc.assimilate.bmc_token_federation.SecretAccessBinding {
+    member: gunbc.assimilate.bmc_token_federation.bmc_wif_principal_set(),
+    role: extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor,
+    secret: gunbc.tailscale_acl_phase2_credential.tailscale_acl_ephemeral_token_secret_id as String,
+    project: gunbc.assimilate.bmc_token_federation.bmc_secrets_project_id,
   }
-  let poisoned_sa = SecretAccessBinding {
-    member: bmc_assimilator_sa_member(),
-    role: role_secretmanager_secret_accessor,
-    secret: tailscale_acl_ephemeral_token_secret_id as String,
-    project: bmc_secrets_project_id,
+  let poisoned_sa = gunbc.assimilate.bmc_token_federation.SecretAccessBinding {
+    member: gunbc.assimilate.bmc_token_federation.bmc_assimilator_sa_member(),
+    role: extdeps.cloud.gcp.iam.role_secretmanager_secret_accessor,
+    secret: gunbc.tailscale_acl_phase2_credential.tailscale_acl_ephemeral_token_secret_id as String,
+    project: gunbc.assimilate.bmc_token_federation.bmc_secrets_project_id,
   }
-  operator_bindings_admit_repo_scoped_wif(bindings: [poisoned_wif])
-    && operator_bindings_admit_bmc_assimilator_sa(bindings: [poisoned_sa])
-    && !operator_bindings_are_user_principal_accessor_only(bindings: [poisoned_wif])
+  gunbc.tailscale_acl_phase2_credential.operator_bindings_admit_repo_scoped_wif(bindings: [poisoned_wif])
+    && gunbc.tailscale_acl_phase2_credential.operator_bindings_admit_bmc_assimilator_sa(bindings: [poisoned_sa])
+    && !gunbc.tailscale_acl_phase2_credential.operator_bindings_are_user_principal_accessor_only(bindings: [poisoned_wif])
 }
 
 fn witness_credential_flow_binds_auth_pattern_authorities() -> Bool {
-  tailscale_acl_credential_flow_uses_auth_patterns()
-    && tailscale_acl_gcp_secret_credential_authority.decl_name == "gcp_secret_credential"
-    && tailscale_acl_adc_refresh_credential_authority.decl_name == "gcp_oauth_access_token_via_adc_refresh"
-    && tailscale_acl_optional_impersonation_authority.module_path == "gunbc.auth.optional_impersonation"
-    && tailscale_acl_optional_impersonation_authority.decl_name == "optional_impersonation"
-    && match tailscale_acl_operator_adc_strategy {
-      AdcRefresh { adc_path: _ } => true
+  gunbc.tailscale_acl_phase2_credential.tailscale_acl_credential_flow_uses_auth_patterns()
+    && gunbc.tailscale_acl_phase2_credential.tailscale_acl_gcp_secret_credential_authority.decl_name == "gcp_secret_credential"
+    && gunbc.tailscale_acl_phase2_credential.tailscale_acl_adc_refresh_credential_authority.decl_name == "gcp_oauth_access_token_via_adc_refresh"
+    && gunbc.tailscale_acl_phase2_credential.tailscale_acl_optional_impersonation_authority.module_path == "gunbc.auth.optional_impersonation"
+    && gunbc.tailscale_acl_phase2_credential.tailscale_acl_optional_impersonation_authority.decl_name == "optional_impersonation"
+    && match gunbc.tailscale_acl_phase2_credential.tailscale_acl_operator_adc_strategy {
+      extdeps.cloud.gcp.gcp.AdcRefresh { adc_path: _ } => true
       _ => false
     }
 }
 
 fn witness_ephemeral_lifetime_matches_optional_impersonation_cap() -> Bool {
-  second_count(s: tailscale_acl_ephemeral_lifetime) == 3600
-    && string_contains(s: tailscale_acl_ephemeral_token_secret_id as String, pattern: "ephemeral")
+  std.measure.second_count(s: gunbc.tailscale_acl_phase2_credential.tailscale_acl_ephemeral_lifetime) == 3600
+    && string_contains(s: gunbc.tailscale_acl_phase2_credential.tailscale_acl_ephemeral_token_secret_id as String, pattern: "ephemeral")
 }
 
 fn witness_fail_closed_on_absent_or_expired_token() -> Bool {
-  ephemeral_token_gate_fail_closed(gate: TokenAbsent { reason: "not dispensed" })
-    && ephemeral_token_gate_fail_closed(gate: TokenExpired { reason: "ttl elapsed" })
-    && !ephemeral_token_gate_valid(
-      gate: TokenAbsent { reason: "not dispensed" },
-      now: second(count: 1000)
+  gunbc.tailscale_acl_phase2_credential.ephemeral_token_gate_fail_closed(gate: gunbc.tailscale_acl_phase2_credential.TokenAbsent { reason: "not dispensed" })
+    && gunbc.tailscale_acl_phase2_credential.ephemeral_token_gate_fail_closed(gate: gunbc.tailscale_acl_phase2_credential.TokenExpired { reason: "ttl elapsed" })
+    && !gunbc.tailscale_acl_phase2_credential.ephemeral_token_gate_valid(
+      gate: gunbc.tailscale_acl_phase2_credential.TokenAbsent { reason: "not dispensed" },
+      now: std.measure.second(count: 1000)
     )
-    && ephemeral_token_gate_valid(
+    && gunbc.tailscale_acl_phase2_credential.ephemeral_token_gate_valid(
       gate: gunbc.tailscale_acl_phase2_credential.TokenPresent {
-        token: "tskey-witness" as Secret,
-        issued_at: second(count: 1000),
-        lifetime: second(count: 3600),
+        token: "tskey-witness" as std.types.Secret,
+        issued_at: std.measure.second(count: 1000),
+        lifetime: std.measure.second(count: 3600),
       },
-      now: second(count: 2000)
+      now: std.measure.second(count: 2000)
     )
-    && !tailscale_ephemeral_token_within_ttl(
-      issued_at: second(count: 1000),
-      lifetime: second(count: 3600),
-      now: second(count: 5000)
+    && !gunbc.tailscale_acl_phase2_credential.tailscale_ephemeral_token_within_ttl(
+      issued_at: std.measure.second(count: 1000),
+      lifetime: std.measure.second(count: 3600),
+      now: std.measure.second(count: 5000)
     )
 }
 
 fn witness_diff_gate_refuses_auto_upsert() -> Bool {
-  acl_auto_upsert_refused(gate: DiffPending { diff: PoliciesMatch })
-    && acl_auto_upsert_refused(gate: DiffPending {
-      diff: PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
+  gunbc.tailscale_acl_phase2_credential.acl_auto_upsert_refused(gate: gunbc.tailscale_acl_phase2_credential.DiffPending { diff: gunbc.tailscale_acl_phase2_credential.PoliciesMatch })
+    && gunbc.tailscale_acl_phase2_credential.acl_auto_upsert_refused(gate: gunbc.tailscale_acl_phase2_credential.DiffPending {
+      diff: gunbc.tailscale_acl_phase2_credential.PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
     })
-    && acl_auto_upsert_refused(gate: RefusedAutoUpsert { reason: "operator has not confirmed" })
-    && acl_upsert_wet_shape_is_diff_print_only(shape: DiffPrintOnly {
-      diff: PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
+    && gunbc.tailscale_acl_phase2_credential.acl_auto_upsert_refused(gate: gunbc.tailscale_acl_phase2_credential.RefusedAutoUpsert { reason: "operator has not confirmed" })
+    && gunbc.tailscale_acl_phase2_credential.acl_upsert_wet_shape_is_diff_print_only(shape: gunbc.tailscale_acl_phase2_credential.DiffPrintOnly {
+      diff: gunbc.tailscale_acl_phase2_credential.PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
     })
-    && !acl_upsert_wet_shape_is_diff_print_only(shape: LiveWriteRefused { reason: "design only" })
+    && !gunbc.tailscale_acl_phase2_credential.acl_upsert_wet_shape_is_diff_print_only(shape: gunbc.tailscale_acl_phase2_credential.LiveWriteRefused { reason: "design only" })
 }
 
 fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
-  acl_upsert_permitted(
-    gate: OperatorConfirmed {
+  gunbc.tailscale_acl_phase2_credential.acl_upsert_permitted(
+    gate: gunbc.tailscale_acl_phase2_credential.OperatorConfirmed {
       emitted: "{}",
-      token: "tskey-witness" as Secret,
-      issued_at: second(count: 1000),
-      lifetime: second(count: 3600),
+      token: "tskey-witness" as std.types.Secret,
+      issued_at: std.measure.second(count: 1000),
+      lifetime: std.measure.second(count: 3600),
     },
-    now: second(count: 2000)
+    now: std.measure.second(count: 2000)
   )
-    && !acl_upsert_permitted(
-      gate: OperatorConfirmed {
+    && !gunbc.tailscale_acl_phase2_credential.acl_upsert_permitted(
+      gate: gunbc.tailscale_acl_phase2_credential.OperatorConfirmed {
         emitted: "{}",
-        token: "tskey-witness" as Secret,
-        issued_at: second(count: 1000),
-        lifetime: second(count: 3600),
+        token: "tskey-witness" as std.types.Secret,
+        issued_at: std.measure.second(count: 1000),
+        lifetime: std.measure.second(count: 3600),
       },
-      now: second(count: 5000)
+      now: std.measure.second(count: 5000)
     )
 }
 
 fn witness_phase2_is_design_only_scaffold() -> Bool {
-  match tailscale_acl_phase2_live_write_disposition {
-      Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+  match gunbc.tailscale_acl_phase2_credential.tailscale_acl_phase2_live_write_disposition {
+      std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
       _ => false
     }
 }
 
 fn witness_design_spine() -> Bool {
-  tailscale_acl_phase2_credential_design_holds()
+  gunbc.tailscale_acl_phase2_credential.tailscale_acl_phase2_credential_design_holds()
 }
 
 test fn tailscale_acl_phase2_design_witnesses() -> Bool {

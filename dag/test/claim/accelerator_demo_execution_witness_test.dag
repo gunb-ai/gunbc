@@ -7,17 +7,17 @@ fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
   match gunbc.accelerator_demo_render.project_outcome_view(
     outcome: gunbc.accelerator_demo_recognizer.recognize_accelerator_program(program: gunbc.accelerator_demo_program.relu_mul_add_pure_program)
   ) {
-    DemoRecognized { plan: view } =>
+    gunbc.accelerator_demo_render.DemoRecognized { plan: view } =>
       view.fused_op_count == 3
         && view.placement_label == "LocalAccelerator"
         && view.fidelity_label == "Lossless"
-    DemoRefused { reason_label: _ } => false
+    gunbc.accelerator_demo_render.DemoRefused { reason_label: _ } => false
   }
 }
 
 fn witness_pure_program_structurally_recognized() -> Bool {
   match gunbc.accelerator_demo_recognizer.recognize_accelerator_program(program: gunbc.accelerator_demo_program.relu_mul_add_pure_program) {
-    Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => true
+    gunbc.accelerator_demo_plan.Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => true
     Refused { reason: _ } => false
   }
 }

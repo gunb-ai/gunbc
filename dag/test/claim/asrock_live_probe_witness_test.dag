@@ -1,43 +1,43 @@
 module test.claim.asrock_live_probe
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn srv3_live_bmc_host_is_grounded() -> Bool {
   asrock_srv3_live_bmc_host == "192.168.1.192"
 }
 
 test fn live_probe_firmware_matches_shipped_catalog_row() -> Bool {
-  live_probe_confirms_shipped_firmware_version()
+  extdeps.boards.asrock_rack.live_probe_confirms_shipped_firmware_version()
     && asrock_srv3_live_probe_firmware_version == "2.07.00"
-    && asrock_altrad8ud_shipped_bmc_firmware_capabilities.firmware.version == "2.07.00"
+    && extdeps.boards.asrock_rack.asrock_altrad8ud_shipped_bmc_firmware_capabilities.firmware.version == "2.07.00"
 }
 
 test fn live_probe_redfish_virtual_media_absent_matches_catalog() -> Bool {
-  live_probe_confirms_redfish_virtual_media_absent()
-    && firmware_has_capability(
-      row: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
-      cap: CapabilityVirtualMedia
+  extdeps.boards.asrock_rack.live_probe_confirms_redfish_virtual_media_absent()
+    && extdeps.bmc.capability.firmware_has_capability(
+      gunbc.plans.md_helpers.row: extdeps.boards.asrock_rack.asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+      cap: extdeps.bmc.capability.CapabilityVirtualMedia
     ) == false
 }
 
 test fn live_probe_rows_cover_vm_and_nbd_get_surfaces() -> Bool {
-  list_length(items: asrock_srv3_live_readonly_probe_rows) == 7
-    && live_probe_confirms_nbd_proxy_vm_slot_ws_present()
-    && live_probe_confirms_nbd_slot_ws_absent()
-    && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint
+  std.types.list_length(items: extdeps.boards.asrock_rack.asrock_srv3_live_readonly_probe_rows) == 7
+    && extdeps.boards.asrock_rack.live_probe_confirms_nbd_proxy_vm_slot_ws_present()
+    && extdeps.boards.asrock_rack.live_probe_confirms_nbd_slot_ws_absent()
+    && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == extdeps.bmc.webui.nbd_proxy.VmSlotIndexEndpoint
     && fold(
-      asrock_srv3_live_readonly_probe_rows,
+      extdeps.boards.asrock_rack.asrock_srv3_live_readonly_probe_rows,
       init: false,
-      f: (acc, row) =>
-        acc || (row.locator == ("/redfish/v1/Systems/system/VirtualMedia" as NonEmptyStr)
-          && row.verdict == ProbeAbsent)
+      f: (acc, gunbc.plans.md_helpers.row) =>
+        acc || (gunbc.plans.md_helpers.row.locator == ("/redfish/v1/Systems/system/VirtualMedia" as std.types.NonEmptyStr)
+          && gunbc.plans.md_helpers.row.verdict == ProbeAbsent)
     )
 }
 
 test fn shipped_row_nbd_proxy_capability_requires_ws_dry_run_receipt() -> Bool {
-  firmware_has_capability(
-    row: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
-    cap: CapabilityNbdProxyVirtualMedia
+  extdeps.bmc.capability.firmware_has_capability(
+    gunbc.plans.md_helpers.row: extdeps.boards.asrock_rack.asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+    cap: extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia
   )
 }

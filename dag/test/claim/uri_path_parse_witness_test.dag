@@ -1,33 +1,33 @@
 module test.claim.uri_path_parse_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn param_path(prefix: String, param_name: String) -> String {
   concat(prefix, "/", "{", param_name, "}")
 }
 
 fn witness_literal_path_parses() -> Bool {
-  match parse_path_template(raw: "/users") {
-    ParsedPathTemplate { template: t } =>
-      !has_path_params(template: t) && t.tokens.length() == 1
+  match extdeps.uri_path.parse_path_template(raw: "/users") {
+    extdeps.uri_path.ParsedPathTemplate { template: t } =>
+      !std.http_path.has_path_params(template: t) && t.tokens.length() == 1
     MalformedPathTemplate => false
   }
 }
 
 fn witness_param_path_has_params() -> Bool {
-  match parse_path_template(raw: param_path(prefix: "/users", param_name: "uid")) {
-    ParsedPathTemplate { template: t } =>
-      has_path_params(template: t) && t.tokens.length() == 2
+  match extdeps.uri_path.parse_path_template(raw: param_path(prefix: "/users", param_name: "uid")) {
+    extdeps.uri_path.ParsedPathTemplate { template: t } =>
+      std.http_path.has_path_params(template: t) && t.tokens.length() == 2
     MalformedPathTemplate => false
   }
 }
 
 fn witness_last_param_roundtrips() -> Bool {
   let expected = "uid"
-  match parse_path_template(raw: param_path(prefix: "/users", param_name: expected)) {
-    ParsedPathTemplate { template: t } =>
-      match last_path_param(template: t) {
+  match extdeps.uri_path.parse_path_template(raw: param_path(prefix: "/users", param_name: expected)) {
+    extdeps.uri_path.ParsedPathTemplate { template: t } =>
+      match std.http_path.last_path_param(template: t) {
         Present { value: name } => name == expected
         Absent => false
       }
@@ -40,31 +40,31 @@ fn witness_nested_path_parses() -> Bool {
     param_path(prefix: "/orgs", param_name: "org-name"),
     param_path(prefix: "/repos", param_name: "repo-name"),
   )
-  match parse_path_template(raw: path) {
-    ParsedPathTemplate { template: t } =>
-      has_path_params(template: t) && t.tokens.length() == 4
+  match extdeps.uri_path.parse_path_template(raw: path) {
+    extdeps.uri_path.ParsedPathTemplate { template: t } =>
+      std.http_path.has_path_params(template: t) && t.tokens.length() == 4
     MalformedPathTemplate => false
   }
 }
 
 fn witness_empty_root_path_parses() -> Bool {
-  match parse_path_template(raw: "/") {
-    ParsedPathTemplate { template: t } => t.tokens.length() == 0
+  match extdeps.uri_path.parse_path_template(raw: "/") {
+    extdeps.uri_path.ParsedPathTemplate { template: t } => t.tokens.length() == 0
     MalformedPathTemplate => false
   }
 }
 
 fn witness_malformed_unclosed_brace_rejects() -> Bool {
   let bad = concat("/segment/", "{", "param-no-close")
-  match parse_path_template(raw: bad) {
+  match extdeps.uri_path.parse_path_template(raw: bad) {
     MalformedPathTemplate => true
     ParsedPathTemplate => false
   }
 }
 
 fn witness_malformed_discriminates_from_valid() -> Bool {
-  let valid = parse_path_template(raw: param_path(prefix: "/a", param_name: "b-param"))
-  let invalid = parse_path_template(raw: concat("/a/", "{", "{", "b", "}", "}"))
+  let valid = extdeps.uri_path.parse_path_template(raw: param_path(prefix: "/a", param_name: "b-param"))
+  let invalid = extdeps.uri_path.parse_path_template(raw: concat("/a/", "{", "{", "b", "}", "}"))
   match valid {
     ParsedPathTemplate =>
       match invalid {
@@ -76,19 +76,19 @@ fn witness_malformed_discriminates_from_valid() -> Bool {
 }
 
 fn witness_render_path_template_binds_params() -> Bool {
-  let template = PathTemplate {
+  let template = std.http_path.PathTemplate {
     tokens: [
-      LiteralToken { text: "/vm/" },
-      ParamToken { name: "slot" },
-      LiteralToken { text: "/" },
-      ParamToken { name: "index" },
+      std.http_path.LiteralToken { text: "/vm/" },
+      std.http_path.ParamToken { name: "slot" },
+      std.http_path.LiteralToken { text: "/" },
+      std.http_path.ParamToken { name: "index" },
     ],
   }
-  render_path_template(
+  std.http_path.render_path_template(
     template: template,
     params: [
-      PathParamBinding { name: "slot", value: "0" },
-      PathParamBinding { name: "index", value: "0" },
+      std.http_path.PathParamBinding { name: "slot", value: "0" },
+      std.http_path.PathParamBinding { name: "index", value: "0" },
     ],
   ) == "/vm/0/0"
 }

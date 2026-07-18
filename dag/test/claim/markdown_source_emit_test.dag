@@ -1,36 +1,36 @@
 module test.claim.markdown_source_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn sample_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn sample_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
-      HeadingBlock { level: H1, inlines: [ TextInline { text: "Roadmap" } ] },
-      ParagraphBlock {
+      std.markdown.HeadingBlock { level: H1, inlines: [ std.markdown.TextInline { text: "Roadmap" } ] },
+      std.markdown.ParagraphBlock {
         inlines: [
-          TextInline { text: "See " },
-          LinkInline {
-            inlines: [ TextInline { text: "plan" } ],
+          std.markdown.TextInline { text: "See " },
+          std.markdown.LinkInline {
+            inlines: [ std.markdown.TextInline { text: "plan" } ],
             url: "docs/plan.md",
           },
-          TextInline { text: "." },
+          std.markdown.TextInline { text: "." },
         ],
       },
-      TaskListBlock {
+      std.markdown.TaskListBlock {
         items: [
-          MarkdownTaskItem {
+          std.markdown.MarkdownTaskItem {
             state: Checked,
-            blocks: [ ParagraphBlock { inlines: [ TextInline { text: "done item" } ] } ],
+            blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "done item" } ] } ],
           },
-          MarkdownTaskItem {
+          std.markdown.MarkdownTaskItem {
             state: Unchecked,
             blocks: [
-              ParagraphBlock { inlines: [ TextInline { text: "todo item" } ] },
-              UnorderedListBlock {
+              std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "todo item" } ] },
+              std.markdown.UnorderedListBlock {
                 items: [
-                  MarkdownListItem {
-                    blocks: [ ParagraphBlock { inlines: [ TextInline { text: "subnote" } ] } ],
+                  std.markdown.MarkdownListItem {
+                    blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "subnote" } ] } ],
                   },
                 ],
               },
@@ -38,51 +38,51 @@ fn sample_doc() -> MarkdownDocument {
           },
         ],
       },
-      UnorderedListBlock {
+      std.markdown.UnorderedListBlock {
         items: [
-          MarkdownListItem {
+          std.markdown.MarkdownListItem {
             blocks: [
-              ParagraphBlock {
+              std.markdown.ParagraphBlock {
                 inlines: [
-                  StrongInline { inlines: [ TextInline { text: "bold" } ] },
-                  TextInline { text: " and " },
-                  EmphasisInline { inlines: [ TextInline { text: "italic" } ] },
+                  std.markdown.StrongInline { inlines: [ std.markdown.TextInline { text: "bold" } ] },
+                  std.markdown.TextInline { text: " and " },
+                  std.markdown.EmphasisInline { inlines: [ std.markdown.TextInline { text: "italic" } ] },
                 ],
               },
             ],
           },
         ],
       },
-      OrderedListBlock {
+      std.markdown.OrderedListBlock {
         items: [
-          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "one" } ] } ] },
-          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "two" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "one" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "two" } ] } ] },
         ],
       },
-      CodeBlock { code: "let x = 1;\n" },
-      TableBlock {
-        header: MarkdownTableRow {
+      std.markdown.CodeBlock { code: "let x = 1;\n" },
+      std.markdown.TableBlock {
+        header: std.markdown.MarkdownTableRow {
           cells: [
-            MarkdownTableCell { inlines: [ TextInline { text: "h1" } ] },
-            MarkdownTableCell { inlines: [ TextInline { text: "h2" } ] },
+            std.markdown.MarkdownTableCell { inlines: [ std.markdown.TextInline { text: "h1" } ] },
+            std.markdown.MarkdownTableCell { inlines: [ std.markdown.TextInline { text: "h2" } ] },
           ],
         },
         alignments: [ AlignNone, AlignCenter ],
         rows: [
-          MarkdownTableRow {
+          std.markdown.MarkdownTableRow {
             cells: [
-              MarkdownTableCell { inlines: [ TextInline { text: "a" } ] },
-              MarkdownTableCell { inlines: [ TextInline { text: "b" } ] },
+              std.markdown.MarkdownTableCell { inlines: [ std.markdown.TextInline { text: "a" } ] },
+              std.markdown.MarkdownTableCell { inlines: [ std.markdown.TextInline { text: "b" } ] },
             ],
           },
         ],
       },
-      BlockquoteBlock {
+      std.markdown.BlockquoteBlock {
         blocks: [
-          ParagraphBlock {
+          std.markdown.ParagraphBlock {
             inlines: [
-              TextInline { text: "quote " },
-              CodeInline { text: "code" },
+              std.markdown.TextInline { text: "quote " },
+              std.markdown.CodeInline { text: "code" },
             ],
           },
         ],
@@ -119,55 +119,55 @@ fn expected_markdown() -> String {
 }
 
 fn witness_exact_bytes() -> Bool {
-  serialize_markdown_source(doc: sample_doc()) == expected_markdown()
+  extdeps.languages.markdown.serialize_markdown_source(doc: sample_doc()) == expected_markdown()
 }
 
-fn code_only_doc(code: String) -> MarkdownDocument {
-  MarkdownDocument { blocks: [ CodeBlock { code: code } ] }
+fn code_only_doc(code: String) -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument { blocks: [ std.markdown.CodeBlock { code: code } ] }
 }
 
 fn witness_code_block_closing_fence_on_own_line() -> Bool {
-  let no_nl = serialize_markdown_source(doc: code_only_doc(code: "let x = 1;"))
-  let with_nl = serialize_markdown_source(doc: code_only_doc(code: "let x = 1;\n"))
+  let no_nl = extdeps.languages.markdown.serialize_markdown_source(doc: code_only_doc(code: "let x = 1;"))
+  let with_nl = extdeps.languages.markdown.serialize_markdown_source(doc: code_only_doc(code: "let x = 1;\n"))
   (no_nl == "```\nlet x = 1;\n```\n") && (no_nl == with_nl)
 }
 
-fn perturbed_bullet_spellings() -> MarkdownSpellings {
-  MarkdownSpellings {
-    heading_marker: commonmark_gfm_spellings.heading_marker,
-    heading_sep: commonmark_gfm_spellings.heading_sep,
+fn perturbed_bullet_spellings() -> extdeps.languages.markdown.MarkdownSpellings {
+  extdeps.languages.markdown.MarkdownSpellings {
+    heading_marker: extdeps.languages.markdown.commonmark_gfm_spellings.heading_marker,
+    heading_sep: extdeps.languages.markdown.commonmark_gfm_spellings.heading_sep,
     unordered_bullet: "+ ",
-    ordered_suffix: commonmark_gfm_spellings.ordered_suffix,
-    task_checked: commonmark_gfm_spellings.task_checked,
-    task_unchecked: commonmark_gfm_spellings.task_unchecked,
-    emphasis_delim: commonmark_gfm_spellings.emphasis_delim,
-    strong_delim: commonmark_gfm_spellings.strong_delim,
-    code_span_delim: commonmark_gfm_spellings.code_span_delim,
-    code_fence: commonmark_gfm_spellings.code_fence,
-    link_text_open: commonmark_gfm_spellings.link_text_open,
-    link_text_close: commonmark_gfm_spellings.link_text_close,
-    link_url_open: commonmark_gfm_spellings.link_url_open,
-    link_url_close: commonmark_gfm_spellings.link_url_close,
-    image_marker: commonmark_gfm_spellings.image_marker,
-    table_pipe: commonmark_gfm_spellings.table_pipe,
-    table_cell_pad: commonmark_gfm_spellings.table_cell_pad,
-    table_align_none: commonmark_gfm_spellings.table_align_none,
-    table_align_left: commonmark_gfm_spellings.table_align_left,
-    table_align_center: commonmark_gfm_spellings.table_align_center,
-    table_align_right: commonmark_gfm_spellings.table_align_right,
-    blockquote_marker: commonmark_gfm_spellings.blockquote_marker,
-    list_indent: commonmark_gfm_spellings.list_indent,
-    block_separator: commonmark_gfm_spellings.block_separator,
-    thematic_break: commonmark_gfm_spellings.thematic_break,
+    ordered_suffix: extdeps.languages.markdown.commonmark_gfm_spellings.ordered_suffix,
+    task_checked: extdeps.languages.markdown.commonmark_gfm_spellings.task_checked,
+    task_unchecked: extdeps.languages.markdown.commonmark_gfm_spellings.task_unchecked,
+    emphasis_delim: extdeps.languages.markdown.commonmark_gfm_spellings.emphasis_delim,
+    strong_delim: extdeps.languages.markdown.commonmark_gfm_spellings.strong_delim,
+    code_span_delim: extdeps.languages.markdown.commonmark_gfm_spellings.code_span_delim,
+    code_fence: extdeps.languages.markdown.commonmark_gfm_spellings.code_fence,
+    link_text_open: extdeps.languages.markdown.commonmark_gfm_spellings.link_text_open,
+    link_text_close: extdeps.languages.markdown.commonmark_gfm_spellings.link_text_close,
+    link_url_open: extdeps.languages.markdown.commonmark_gfm_spellings.link_url_open,
+    link_url_close: extdeps.languages.markdown.commonmark_gfm_spellings.link_url_close,
+    image_marker: extdeps.languages.markdown.commonmark_gfm_spellings.image_marker,
+    table_pipe: extdeps.languages.markdown.commonmark_gfm_spellings.table_pipe,
+    table_cell_pad: extdeps.languages.markdown.commonmark_gfm_spellings.table_cell_pad,
+    table_align_none: extdeps.languages.markdown.commonmark_gfm_spellings.table_align_none,
+    table_align_left: extdeps.languages.markdown.commonmark_gfm_spellings.table_align_left,
+    table_align_center: extdeps.languages.markdown.commonmark_gfm_spellings.table_align_center,
+    table_align_right: extdeps.languages.markdown.commonmark_gfm_spellings.table_align_right,
+    blockquote_marker: extdeps.languages.markdown.commonmark_gfm_spellings.blockquote_marker,
+    list_indent: extdeps.languages.markdown.commonmark_gfm_spellings.list_indent,
+    block_separator: extdeps.languages.markdown.commonmark_gfm_spellings.block_separator,
+    thematic_break: extdeps.languages.markdown.commonmark_gfm_spellings.thematic_break,
   }
 }
 
-fn tiny_list_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn tiny_list_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
-      UnorderedListBlock {
+      std.markdown.UnorderedListBlock {
         items: [
-          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "x" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "x" } ] } ] },
         ],
       },
     ],
@@ -175,8 +175,8 @@ fn tiny_list_doc() -> MarkdownDocument {
 }
 
 fn witness_row_driven_bullet() -> Bool {
-  let canonical = serialize_markdown_source_with(doc: tiny_list_doc(), sp: commonmark_gfm_spellings)
-  let perturbed = serialize_markdown_source_with(doc: tiny_list_doc(), sp: perturbed_bullet_spellings())
+  let canonical = extdeps.languages.markdown.serialize_markdown_source_with(doc: tiny_list_doc(), sp: extdeps.languages.markdown.commonmark_gfm_spellings)
+  let perturbed = extdeps.languages.markdown.serialize_markdown_source_with(doc: tiny_list_doc(), sp: perturbed_bullet_spellings())
   (canonical == "- x\n") && (perturbed == "+ x\n") && !(canonical == perturbed)
 }
 

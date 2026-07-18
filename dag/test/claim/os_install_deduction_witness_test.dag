@@ -1,47 +1,47 @@
 module test.claim.os_install_deduction
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+data witness_autoinstall_with_storage: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
   autoinstall_version: 1,
-  delivery: NoCloudLocal,
+  delivery: extdeps.os.ubuntu_autoinstall.NoCloudLocal,
   fully_automated: true,
-  target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-  identity: srv3_autoinstall_identity,
+  target_distribution: gunbc.os_install.srv3_ubuntu_autoinstall_on_iso.target_distribution,
+  identity: gunbc.os_install.srv3_autoinstall_identity,
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
-  storage_policy: StoragePolicyDirectLayout,
+  storage_policy: extdeps.os.ubuntu_autoinstall.StoragePolicyDirectLayout,
 }
 
-data witness_autoinstall_without_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+data witness_autoinstall_without_storage: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
   autoinstall_version: 1,
-  delivery: NoCloudLocal,
+  delivery: extdeps.os.ubuntu_autoinstall.NoCloudLocal,
   fully_automated: true,
-  target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-  identity: srv3_autoinstall_identity,
+  target_distribution: gunbc.os_install.srv3_ubuntu_autoinstall_on_iso.target_distribution,
+  identity: gunbc.os_install.srv3_autoinstall_identity,
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
-  storage_policy: StoragePolicyAbsent,
+  storage_policy: extdeps.os.ubuntu_autoinstall.StoragePolicyAbsent,
 }
 
 test fn srv3_on_iso_direct_layout_complete_for_unattended_on_foreign_disk() -> Bool {
-  fold_nbd_proxy_os_install_preflight_verdict(
-    payload: srv3_ubuntu_autoinstall_on_iso,
-    disk: ForeignOsPresent,
-  ) == CompleteForUnattended
-    && match srv3_ubuntu_autoinstall_on_iso.storage_policy {
+  gunbc.os_install_deduction.fold_nbd_proxy_os_install_preflight_verdict(
+    payload: gunbc.os_install.srv3_ubuntu_autoinstall_on_iso,
+    disk: gunbc.os_install_deduction.ForeignOsPresent,
+  ) == gunbc.os_install_deduction.CompleteForUnattended
+    && match gunbc.os_install.srv3_ubuntu_autoinstall_on_iso.storage_policy {
       StoragePolicyDirectLayout => true
       StoragePolicyAbsent => false
     }
 }
 
 test fn foreign_disk_without_storage_is_not_bootable() -> Bool {
-  match fold_nbd_proxy_os_install_preflight_verdict(
+  match gunbc.os_install_deduction.fold_nbd_proxy_os_install_preflight_verdict(
     payload: witness_autoinstall_without_storage,
-    disk: ForeignOsPresent,
+    disk: gunbc.os_install_deduction.ForeignOsPresent,
   ) {
     AutoinstallIncompleteNotBootable => true
     CompleteForUnattended => false
@@ -50,24 +50,24 @@ test fn foreign_disk_without_storage_is_not_bootable() -> Bool {
 }
 
 test fn unknown_disk_without_storage_needs_observation() -> Bool {
-  fold_nbd_proxy_os_install_preflight_verdict(
+  gunbc.os_install_deduction.fold_nbd_proxy_os_install_preflight_verdict(
     payload: witness_autoinstall_without_storage,
-    disk: UnknownDiskState,
-  ) == RequiresDiskObservation
+    disk: gunbc.os_install_deduction.UnknownDiskState,
+  ) == gunbc.os_install_deduction.RequiresDiskObservation
 }
 
 test fn empty_disk_without_storage_requires_policy() -> Bool {
-  fold_nbd_proxy_os_install_preflight_verdict(
+  gunbc.os_install_deduction.fold_nbd_proxy_os_install_preflight_verdict(
     payload: witness_autoinstall_without_storage,
-    disk: EmptyDisk,
-  ) == RequiresStoragePolicy
+    disk: gunbc.os_install_deduction.EmptyDisk,
+  ) == gunbc.os_install_deduction.RequiresStoragePolicy
 }
 
 test fn direct_layout_storage_is_complete_for_unattended() -> Bool {
-  fold_nbd_proxy_os_install_preflight_verdict(
+  gunbc.os_install_deduction.fold_nbd_proxy_os_install_preflight_verdict(
     payload: witness_autoinstall_with_storage,
-    disk: ForeignOsPresent,
-  ) == CompleteForUnattended
+    disk: gunbc.os_install_deduction.ForeignOsPresent,
+  ) == gunbc.os_install_deduction.CompleteForUnattended
     && match witness_autoinstall_with_storage.storage_policy {
       StoragePolicyDirectLayout => true
       StoragePolicyAbsent => false
@@ -75,16 +75,16 @@ test fn direct_layout_storage_is_complete_for_unattended() -> Bool {
 }
 
 test fn removing_storage_policy_flips_ready_to_boot_witness() -> Bool {
-  match fold_nbd_proxy_os_install_preflight_verdict(
+  match gunbc.os_install_deduction.fold_nbd_proxy_os_install_preflight_verdict(
     payload: witness_autoinstall_without_storage,
-    disk: ForeignOsPresent,
+    disk: gunbc.os_install_deduction.ForeignOsPresent,
   ) {
     CompleteForUnattended => false
     _ => true
   }
-    && match fold_nbd_proxy_os_install_preflight_verdict(
+    && match gunbc.os_install_deduction.fold_nbd_proxy_os_install_preflight_verdict(
       payload: witness_autoinstall_with_storage,
-      disk: ForeignOsPresent,
+      disk: gunbc.os_install_deduction.ForeignOsPresent,
     ) {
       CompleteForUnattended => true
       _ => false
@@ -92,31 +92,31 @@ test fn removing_storage_policy_flips_ready_to_boot_witness() -> Bool {
 }
 
 test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
-  let net_payload = UbuntuAutoinstallPayload {
+  let net_payload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
     autoinstall_version: 1,
     delivery: NoCloudNet {
-      seed_url: Uri {
-        scheme: Https,
+      seed_url: extdeps.uri.Uri {
+        scheme: extdeps.uri.Https,
         locator: "install.srv3.lan/ubuntu-24.04/autoinstall/",
       },
     },
     fully_automated: true,
-    target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-    identity: srv3_autoinstall_identity,
+    target_distribution: gunbc.os_install.srv3_ubuntu_autoinstall_on_iso.target_distribution,
+    identity: gunbc.os_install.srv3_autoinstall_identity,
     locale: "en_US.UTF-8",
     keyboard_layout: "us",
     install_openssh_server: true,
-    storage_policy: StoragePolicyDirectLayout,
+    storage_policy: extdeps.os.ubuntu_autoinstall.StoragePolicyDirectLayout,
   }
-  match fold_nbd_proxy_os_install_preflight_verdict(payload: net_payload, disk: EmptyDisk) {
+  match gunbc.os_install_deduction.fold_nbd_proxy_os_install_preflight_verdict(payload: net_payload, disk: gunbc.os_install_deduction.EmptyDisk) {
     IncompleteSeedDelivery => true
     _ => false
   }
 }
 
 test fn requires_storage_policy_plans_remaster() -> Bool {
-  match plan_for_os_install_preflight_verdict(
-    verdict: RequiresStoragePolicy,
+  match gunbc.os_install_deduction.plan_for_os_install_preflight_verdict(
+    verdict: gunbc.os_install_deduction.RequiresStoragePolicy,
   ) {
     RemasterWithStoragePolicy => true
     _ => false
@@ -124,8 +124,8 @@ test fn requires_storage_policy_plans_remaster() -> Bool {
 }
 
 test fn incomplete_not_bootable_plans_refuse_until_declared() -> Bool {
-  match plan_for_os_install_preflight_verdict(
-    verdict: AutoinstallIncompleteNotBootable,
+  match gunbc.os_install_deduction.plan_for_os_install_preflight_verdict(
+    verdict: gunbc.os_install_deduction.AutoinstallIncompleteNotBootable,
   ) {
     RefuseUntilStoragePolicyDeclared => true
     _ => false
@@ -133,20 +133,20 @@ test fn incomplete_not_bootable_plans_refuse_until_declared() -> Bool {
 }
 
 test fn direct_layout_emits_storage_yaml() -> Bool {
-  let ud = autoinstall_user_data(payload: witness_autoinstall_with_storage)
+  let ud = gunbc.os_install_emit.autoinstall_user_data(payload: witness_autoinstall_with_storage)
   string_contains(s: ud, pattern: "layout:")
     && string_contains(s: ud, pattern: "direct")
 }
 
 test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {
-  match runtime_verdict_from_kvm_attestation(
-    attestation: KvmOperatorAttestation {
-      target: operator_host_srv3,
-      observed_screen: SubiquityStorageScreen,
+  match gunbc.os_install_deduction.runtime_verdict_from_kvm_attestation(
+    attestation: gunbc.os_install_deduction.KvmOperatorAttestation {
+      target: gunbc.fleet_intent_network.operator_host_srv3,
+      observed_screen: gunbc.os_install_deduction.SubiquityStorageScreen,
       observed_at: "2026-07-02T23:00:00Z",
-      attested_by: "operator" as NonEmptyStr,
+      attested_by: "operator" as std.types.NonEmptyStr,
     },
-    preflight: AutoinstallIncompleteNotBootable,
+    preflight: gunbc.os_install_deduction.AutoinstallIncompleteNotBootable,
   ) {
     InstallerAwaitingStorage => true
     _ => false
@@ -154,18 +154,18 @@ test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {
 }
 
 test fn non_automated_is_not_unattended_ready() -> Bool {
-  let manual_payload = UbuntuAutoinstallPayload {
+  let manual_payload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
     autoinstall_version: 1,
-    delivery: NoCloudLocal,
+    delivery: extdeps.os.ubuntu_autoinstall.NoCloudLocal,
     fully_automated: false,
-    target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
-    identity: srv3_autoinstall_identity,
+    target_distribution: gunbc.os_install.srv3_ubuntu_autoinstall_on_iso.target_distribution,
+    identity: gunbc.os_install.srv3_autoinstall_identity,
     locale: "en_US.UTF-8",
     keyboard_layout: "us",
     install_openssh_server: true,
-    storage_policy: StoragePolicyDirectLayout,
+    storage_policy: extdeps.os.ubuntu_autoinstall.StoragePolicyDirectLayout,
   }
-  match fold_nbd_proxy_os_install_preflight_verdict(payload: manual_payload, disk: EmptyDisk) {
+  match gunbc.os_install_deduction.fold_nbd_proxy_os_install_preflight_verdict(payload: manual_payload, disk: gunbc.os_install_deduction.EmptyDisk) {
     NotUnattendedByPolicy => true
     CompleteForUnattended => false
     _ => false
@@ -173,14 +173,14 @@ test fn non_automated_is_not_unattended_ready() -> Bool {
 }
 
 test fn kvm_firmware_setup_is_weak_idle_observation() -> Bool {
-  match runtime_verdict_from_kvm_attestation(
-    attestation: KvmOperatorAttestation {
-      target: operator_host_srv3,
-      observed_screen: FirmwareSetup,
+  match gunbc.os_install_deduction.runtime_verdict_from_kvm_attestation(
+    attestation: gunbc.os_install_deduction.KvmOperatorAttestation {
+      target: gunbc.fleet_intent_network.operator_host_srv3,
+      observed_screen: gunbc.os_install_deduction.FirmwareSetup,
       observed_at: "2026-07-02T23:00:00Z",
-      attested_by: "operator" as NonEmptyStr,
+      attested_by: "operator" as std.types.NonEmptyStr,
     },
-    preflight: CompleteForUnattended,
+    preflight: gunbc.os_install_deduction.CompleteForUnattended,
   ) {
     KvmFirmwareIdleObserved => true
     _ => false
@@ -188,14 +188,14 @@ test fn kvm_firmware_setup_is_weak_idle_observation() -> Bool {
 }
 
 test fn kvm_login_prompt_is_weak_not_os_installed() -> Bool {
-  match runtime_verdict_from_kvm_attestation(
-    attestation: KvmOperatorAttestation {
-      target: operator_host_srv3,
-      observed_screen: LoginPrompt,
+  match gunbc.os_install_deduction.runtime_verdict_from_kvm_attestation(
+    attestation: gunbc.os_install_deduction.KvmOperatorAttestation {
+      target: gunbc.fleet_intent_network.operator_host_srv3,
+      observed_screen: gunbc.os_install_deduction.LoginPrompt,
       observed_at: "2026-07-02T23:00:00Z",
-      attested_by: "operator" as NonEmptyStr,
+      attested_by: "operator" as std.types.NonEmptyStr,
     },
-    preflight: CompleteForUnattended,
+    preflight: gunbc.os_install_deduction.CompleteForUnattended,
   ) {
     KvmSuggestsOsBooted => true
     RuntimeOsInstalled => false

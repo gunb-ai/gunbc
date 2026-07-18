@@ -1,11 +1,11 @@
 module test.claim.medium_fidelity
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 type ProbeVerdict = Dominates | Incomparable
 
-fn is_lossless(f: DecodeFidelity) -> Bool {
+fn is_lossless(f: extdeps.communication.medium.DecodeFidelity) -> Bool {
   match f {
     Lossless => true
     Lossy => false

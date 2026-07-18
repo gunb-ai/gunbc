@@ -1,95 +1,95 @@
 module test.claim.fleet_converge_cli_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn witness_converge_cli_srv1_routes_to_slice1_not_realize_frontier() -> Bool {
-  converge_cli_routes_to_slice1(host: "srv1")
-    && match host_converge_slice1_fixture_receipt() {
-      Present { value: receipt } => receipt.host == operator_host_srv1
+  gunbc.fleet_converge_cli.converge_cli_routes_to_slice1(host: "srv1")
+    && match gunbc.host_converge_slice1.host_converge_slice1_fixture_receipt() {
+      Present { value: receipt } => receipt.host == gunbc.fleet_intent_network.operator_host_srv1
       Absent => false
     }
 }
 
 fn witness_converge_cli_run_srv2_fails_closed_on_knob_frontier() -> Bool {
-  let r = converge_cli_run(host: "srv2")
+  let r = gunbc.fleet_converge_cli.converge_cli_run(host: "srv2")
   r.host == "srv2"
     && r.applied == 0
     && r.drifted == 0
-    && converge_verdict_label(v: r.verdict) == "absent"
-    && !converge_cli_receipt_converged(r: r)
+    && gunbc.host_converge.converge_verdict_label(v: r.verdict) == "absent"
+    && !gunbc.fleet_converge_cli.converge_cli_receipt_converged(r: r)
     && match r.reason {
       Present { value: cause } =>
         match cause {
-          KnobFrontier { reason: why } => string_contains(s: why, pattern: "host_converge_realize")
-          PolicyUnsound { reason: _ } => false
-          UnknownHost { host: _ } => false
-          ComputeInventoryAbsent { host: _ } => false
+          gunbc.fleet_converge_cli.KnobFrontier { reason: why } => string_contains(s: why, pattern: "host_converge_realize")
+          gunbc.fleet_converge_cli.PolicyUnsound { reason: _ } => false
+          gunbc.fleet_converge_cli.UnknownHost { host: _ } => false
+          gunbc.fleet_converge_cli.ComputeInventoryAbsent { host: _ } => false
         }
       _ => false
     }
 }
 
 fn witness_converge_cli_run_unknown_host_refuses() -> Bool {
-  let r = converge_cli_run(host: "no-such-fleet-host")
+  let r = gunbc.fleet_converge_cli.converge_cli_run(host: "no-such-fleet-host")
   r.host == "no-such-fleet-host"
     && r.applied == 0
     && r.drifted == 0
-    && converge_verdict_label(v: r.verdict) == "absent"
-    && !converge_cli_receipt_converged(r: r)
+    && gunbc.host_converge.converge_verdict_label(v: r.verdict) == "absent"
+    && !gunbc.fleet_converge_cli.converge_cli_receipt_converged(r: r)
     && match r.reason {
       Present { value: cause } =>
         match cause {
-          UnknownHost { host: h } => h == "no-such-fleet-host"
-          PolicyUnsound { reason: _ } => false
-          KnobFrontier { reason: _ } => false
-          ComputeInventoryAbsent { host: _ } => false
+          gunbc.fleet_converge_cli.UnknownHost { host: h } => h == "no-such-fleet-host"
+          gunbc.fleet_converge_cli.PolicyUnsound { reason: _ } => false
+          gunbc.fleet_converge_cli.KnobFrontier { reason: _ } => false
+          gunbc.fleet_converge_cli.ComputeInventoryAbsent { host: _ } => false
         }
       _ => false
     }
 }
 
 fn witness_converge_cli_unknown_host_and_compute_inventory_absent_are_distinct_causes() -> Bool {
-  let unknown = UnknownHost { host: "no-such-fleet-host" }
-  let inventory_absent = ComputeInventoryAbsent { host: "gunbc-ci-fleet" }
+  let unknown = gunbc.fleet_converge_cli.UnknownHost { host: "no-such-fleet-host" }
+  let inventory_absent = gunbc.fleet_converge_cli.ComputeInventoryAbsent { host: "gunbc-ci-fleet" }
   match unknown {
-    UnknownHost { host: _ } =>
+    gunbc.fleet_converge_cli.UnknownHost { host: _ } =>
       match inventory_absent {
-        ComputeInventoryAbsent { host: _ } => true
-        UnknownHost { host: _ } => false
-        PolicyUnsound { reason: _ } => false
-        KnobFrontier { reason: _ } => false
+        gunbc.fleet_converge_cli.ComputeInventoryAbsent { host: _ } => true
+        gunbc.fleet_converge_cli.UnknownHost { host: _ } => false
+        gunbc.fleet_converge_cli.PolicyUnsound { reason: _ } => false
+        gunbc.fleet_converge_cli.KnobFrontier { reason: _ } => false
       }
-    ComputeInventoryAbsent { host: _ } => false
-    PolicyUnsound { reason: _ } => false
-    KnobFrontier { reason: _ } => false
+    gunbc.fleet_converge_cli.ComputeInventoryAbsent { host: _ } => false
+    gunbc.fleet_converge_cli.PolicyUnsound { reason: _ } => false
+    gunbc.fleet_converge_cli.KnobFrontier { reason: _ } => false
   }
-    && converge_cli_refusal_message(cause: unknown) != converge_cli_refusal_message(cause: inventory_absent)
-    && string_contains(s: converge_cli_refusal_message(cause: unknown), pattern: "unknown fleet host identity")
+    && gunbc.fleet_converge_cli.converge_cli_refusal_message(cause: unknown) != gunbc.fleet_converge_cli.converge_cli_refusal_message(cause: inventory_absent)
+    && string_contains(s: gunbc.fleet_converge_cli.converge_cli_refusal_message(cause: unknown), pattern: "unknown fleet host identity")
     && string_contains(
-      s: converge_cli_refusal_message(cause: inventory_absent),
+      s: gunbc.fleet_converge_cli.converge_cli_refusal_message(cause: inventory_absent),
       pattern: "absent from compute inventory"
     )
 }
 
 fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
-  let srv2 = converge_cli_run(host: "srv2")
-  let unknown = converge_cli_run(host: "no-such-fleet-host")
+  let srv2 = gunbc.fleet_converge_cli.converge_cli_run(host: "srv2")
+  let unknown = gunbc.fleet_converge_cli.converge_cli_run(host: "no-such-fleet-host")
   match srv2.reason {
     Present { value: srv2_cause } =>
       match unknown.reason {
         Present { value: unknown_cause } =>
           match srv2_cause {
-            KnobFrontier { reason: _ } =>
+            gunbc.fleet_converge_cli.KnobFrontier { reason: _ } =>
               match unknown_cause {
-                UnknownHost { host: _ } => true
-                PolicyUnsound { reason: _ } => false
-                KnobFrontier { reason: _ } => false
-                ComputeInventoryAbsent { host: _ } => false
+                gunbc.fleet_converge_cli.UnknownHost { host: _ } => true
+                gunbc.fleet_converge_cli.PolicyUnsound { reason: _ } => false
+                gunbc.fleet_converge_cli.KnobFrontier { reason: _ } => false
+                gunbc.fleet_converge_cli.ComputeInventoryAbsent { host: _ } => false
               }
-            PolicyUnsound { reason: _ } => false
-            UnknownHost { host: _ } => false
-            ComputeInventoryAbsent { host: _ } => false
+            gunbc.fleet_converge_cli.PolicyUnsound { reason: _ } => false
+            gunbc.fleet_converge_cli.UnknownHost { host: _ } => false
+            gunbc.fleet_converge_cli.ComputeInventoryAbsent { host: _ } => false
           }
         _ => false
       }
@@ -98,23 +98,23 @@ fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
 }
 
 fn witness_converge_cli_receipt_line_matches_byte_locked_grammar() -> Bool {
-  let converged = ConvergeCliReceipt { host: "srv9", applied: 3, drifted: 0, verdict: VerdictConverged, reason: none }
-  let refused = ConvergeCliReceipt {
+  let converged = gunbc.fleet_converge_cli.ConvergeCliReceipt { host: "srv9", applied: 3, drifted: 0, verdict: gunbc.host_converge.VerdictConverged, reason: none }
+  let refused = gunbc.fleet_converge_cli.ConvergeCliReceipt {
     host: "srv1",
     applied: 0,
     drifted: 0,
-    verdict: converge_verdict(effective: "", expected: "refused"),
-    reason: Present { value: KnobFrontier { reason: "refused" } },
+    verdict: gunbc.host_converge.converge_verdict(effective: "", expected: "refused"),
+    reason: Present { value: gunbc.fleet_converge_cli.KnobFrontier { reason: "refused" } },
   }
-  converge_cli_receipt_line(r: converged) == "converge-receipt host=srv9 applied=3 drifted=0 verdict=converged"
-    && converge_cli_receipt_line(r: refused) == "converge-receipt host=srv1 applied=0 drifted=0 verdict=absent"
+  gunbc.fleet_converge_cli.converge_cli_receipt_line(r: converged) == "converge-receipt host=srv9 applied=3 drifted=0 verdict=converged"
+    && gunbc.fleet_converge_cli.converge_cli_receipt_line(r: refused) == "converge-receipt host=srv1 applied=0 drifted=0 verdict=absent"
 }
 
 fn witness_converge_cli_output_projects_receipt_and_exit_signal() -> Bool {
-  let out = converge_cli_output(host: "no-such-fleet-host")
-  out.line == "converge-receipt host=no-such-fleet-host applied=0 drifted=0 verdict=absent"
-    && !out.converged
-    && match out.reason {
+  let test.claim.roadmap_authority.out = gunbc.fleet_converge_cli.converge_cli_output(host: "no-such-fleet-host")
+  test.claim.roadmap_authority.out.line == "converge-receipt host=no-such-fleet-host applied=0 drifted=0 verdict=absent"
+    && !test.claim.roadmap_authority.out.converged
+    && match test.claim.roadmap_authority.out.reason {
       Present { value: why } => string_contains(s: why, pattern: "unknown fleet host identity")
       _ => false
     }

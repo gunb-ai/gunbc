@@ -1,18 +1,18 @@
 module test.claim.string_family_cast
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn string_to_secret(s: String) -> Secret {
-  s as Secret
+fn string_to_secret(s: String) -> std.types.Secret {
+  s as std.types.Secret
 }
 
-fn string_to_nonempty(s: String) -> NonEmptyStr {
-  s as NonEmptyStr
+fn string_to_nonempty(s: String) -> std.types.NonEmptyStr {
+  s as std.types.NonEmptyStr
 }
 
-fn string_to_secret_value(s: String) -> SecretValue {
-  s as SecretValue
+fn string_to_secret_value(s: String) -> std.types.SecretValue {
+  s as std.types.SecretValue
 }
 
 test fn string_family_cast_holds() -> Bool {

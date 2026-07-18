@@ -1,74 +1,74 @@
 module test.claim.commit_workflow_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn witness_ci_spec_projects_from_roster() -> Bool {
-  gate_lists_eq(left: gunbc_ci_floor_gates, right: commit_workflow_ci_floor_gates)
+  gunbc.commit_workflow.gate_lists_eq(left: gunbc.ci_spec.gunbc_ci_floor_gates, right: gunbc.commit_workflow.commit_workflow_ci_floor_gates)
 }
 
 fn witness_local_tidy_spec_projects_from_roster() -> Bool {
-  local_tidy_lists_eq(left: local_tidy_checks, right: commit_workflow_local_tidy_checks)
+  gunbc.commit_workflow.local_tidy_lists_eq(left: gunbc.local_tidy_spec.local_tidy_checks, right: gunbc.commit_workflow.commit_workflow_local_tidy_checks)
 }
 
 fn witness_ci_jobs_share_yaml_handler() -> Bool {
-  realization_handler_for_surface(surface: GithubActionsCiJob) == CiYamlHandler
-    && realization_artifact_for_surface(surface: GithubActionsCiJob) == CiYamlArtifact
+  gunbc.commit_workflow.realization_handler_for_surface(surface: gunbc.commit_workflow.GithubActionsCiJob) == gunbc.commit_workflow.CiYamlHandler
+    && gunbc.commit_workflow.realization_artifact_for_surface(surface: gunbc.commit_workflow.GithubActionsCiJob) == CiYamlArtifact
 }
 
 fn witness_pre_push_handler_binding() -> Bool {
-  realization_handler_for_surface(surface: GitPrePushHook) == GitPrePushScriptHandler
-    && realization_artifact_for_surface(surface: GitPrePushHook) == GithooksPrePushArtifact
+  gunbc.commit_workflow.realization_handler_for_surface(surface: gunbc.commit_workflow.GitPrePushHook) == gunbc.commit_workflow.GitPrePushScriptHandler
+    && gunbc.commit_workflow.realization_artifact_for_surface(surface: gunbc.commit_workflow.GitPrePushHook) == GithooksPrePushArtifact
 }
 
 fn witness_realization_bindings_match_dispatch() -> Bool {
-  fold(commit_workflow_realization_bindings, init: true, f: fn(acc, b) {
+  fold(gunbc.commit_workflow.commit_workflow_realization_bindings, init: true, f: fn(acc, b) {
     acc
-      && realization_handler_for_surface(surface: b.surface) == b.handler
-      && realization_artifact_for_surface(surface: b.surface) == b.artifact
+      && gunbc.commit_workflow.realization_handler_for_surface(surface: b.surface) == b.handler
+      && gunbc.commit_workflow.realization_artifact_for_surface(surface: b.surface) == b.artifact
   })
 }
 
 fn witness_realization_artifact_paths() -> Bool {
-  realization_artifact_path(surface: GithubActionsCiJob) == artifact_path(a: CiYamlArtifact)
-    && realization_artifact_path(surface: GitPrePushHook) == artifact_path(a: GithooksPrePushArtifact)
+  gunbc.commit_workflow.realization_artifact_path(surface: gunbc.commit_workflow.GithubActionsCiJob) == artifact_path(a: CiYamlArtifact)
+    && gunbc.commit_workflow.realization_artifact_path(surface: gunbc.commit_workflow.GitPrePushHook) == artifact_path(a: GithooksPrePushArtifact)
 }
 
 fn witness_roster_nonempty() -> Bool {
-  length(commit_gate_roster) > 0
-    && length(commit_workflow_realization_bindings) == 2
+  v2.std.algebra.length(gunbc.commit_workflow.commit_gate_roster) > 0
+    && v2.std.algebra.length(gunbc.commit_workflow.commit_workflow_realization_bindings) == 2
 }
 
 fn witness_roster_spans_wellformed() -> Bool {
-  roster_witness_spans_wellformed(roster: commit_gate_roster)
+  gunbc.commit_workflow.roster_witness_spans_wellformed(roster: gunbc.commit_workflow.commit_gate_roster)
 }
 
 fn witness_span_undeclared_is_wellformed() -> Bool {
-  witness_span_wellformed(span: SpanUndeclared)
+  gunbc.commit_workflow.witness_span_wellformed(span: std.realization_schedule.SpanUndeclared)
 }
 
 fn witness_span_accepts_declared_seam() -> Bool {
-  witness_span_wellformed(span: SpanSeams {
-    seams: [WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" }]
+  gunbc.commit_workflow.witness_span_wellformed(span: std.realization_schedule.SpanSeams {
+    seams: [std.realization_schedule.WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" }]
   })
 }
 
 fn witness_span_rejects_self_seam() -> Bool {
-  !witness_span_wellformed(span: SpanSeams {
-    seams: [WitnessSeam { producer: "v2.04_infer", consumer: "v2.04_infer" }]
+  !gunbc.commit_workflow.witness_span_wellformed(span: std.realization_schedule.SpanSeams {
+    seams: [std.realization_schedule.WitnessSeam { producer: "v2.04_infer", consumer: "v2.04_infer" }]
   })
 }
 
 fn witness_span_rejects_duplicate_seams() -> Bool {
-  !witness_span_wellformed(span: SpanSeams {
+  !gunbc.commit_workflow.witness_span_wellformed(span: std.realization_schedule.SpanSeams {
     seams: [
-      WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" },
-      WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" }
+      std.realization_schedule.WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" },
+      std.realization_schedule.WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" }
     ]
   })
 }
 
 fn witness_span_rejects_empty_seam_list() -> Bool {
-  !witness_span_wellformed(span: SpanSeams { seams: [] })
+  !gunbc.commit_workflow.witness_span_wellformed(span: std.realization_schedule.SpanSeams { seams: [] })
 }
 
 test fn commit_workflow_witnesses() -> Bool {

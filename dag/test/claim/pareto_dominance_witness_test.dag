@@ -1,34 +1,34 @@
 module test.claim.pareto_dominance
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn compare_axes(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> List<AxisComparison> {
+fn compare_axes(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> List<std.pareto.AxisComparison> {
   [
-    axis_comparison_int(goal: HigherIsBetter, a: a_cap, b: b_cap),
-    axis_comparison_int(goal: LowerIsBetter, a: a_cost, b: b_cost)
+    std.pareto.axis_comparison_int(goal: HigherIsBetter, a: a_cap, b: b_cap),
+    std.pareto.axis_comparison_int(goal: LowerIsBetter, a: a_cost, b: b_cost)
   ]
 }
 
-fn verdict_of(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> DominanceVerdict {
-  dominance_of_comparisons(comparisons: compare_axes(a_cap: a_cap, a_cost: a_cost, b_cap: b_cap, b_cost: b_cost))
+fn verdict_of(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> std.pareto.DominanceVerdict {
+  std.pareto.dominance_of_comparisons(comparisons: compare_axes(a_cap: a_cap, a_cost: a_cost, b_cap: b_cap, b_cost: b_cost))
 }
 
 fn dominates_when_better_on_all_axes() -> Bool {
-  verdict_dominates(v: verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200))
+  std.pareto.verdict_dominates(v: verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200))
 }
 
 fn dominated_is_the_mirror() -> Bool {
-  verdict_is_dominated(v: verdict_of(a_cap: 32, a_cost: 200, b_cap: 64, b_cost: 100))
+  std.pareto.verdict_is_dominated(v: verdict_of(a_cap: 32, a_cost: 200, b_cap: 64, b_cost: 100))
 }
 
 fn equivalent_when_identical() -> Bool {
-  verdict_is_equivalent(v: verdict_of(a_cap: 48, a_cost: 150, b_cap: 48, b_cost: 150))
+  std.pareto.verdict_is_equivalent(v: verdict_of(a_cap: 48, a_cost: 150, b_cap: 48, b_cost: 150))
 }
 
 fn incomparable_is_not_a_tie() -> Bool {
   let v = verdict_of(a_cap: 64, a_cost: 200, b_cap: 32, b_cost: 100)
-  verdict_is_incomparable(v: v) && !verdict_is_equivalent(v: v)
+  std.pareto.verdict_is_incomparable(v: v) && !std.pareto.verdict_is_equivalent(v: v)
 }
 
 fn dominated_candidate_is_off_front() -> Bool {
@@ -37,7 +37,7 @@ fn dominated_candidate_is_off_front() -> Bool {
     verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200),
     verdict_of(a_cap: 16, a_cost: 100, b_cap: 32, b_cost: 200)
   ]
-  any_dominates(verdicts: pool) && !on_pareto_front(verdicts: pool)
+  std.pareto.any_dominates(verdicts: pool) && !std.pareto.on_pareto_front(verdicts: pool)
 }
 
 fn undominated_candidate_stays_on_front() -> Bool {
@@ -46,7 +46,7 @@ fn undominated_candidate_stays_on_front() -> Bool {
     verdict_of(a_cap: 32, a_cost: 50, b_cap: 64, b_cost: 100),
     verdict_of(a_cap: 32, a_cost: 200, b_cap: 64, b_cost: 100)
   ]
-  on_pareto_front(verdicts: pool) && !any_dominates(verdicts: pool)
+  std.pareto.on_pareto_front(verdicts: pool) && !std.pareto.any_dominates(verdicts: pool)
 }
 
 test fn pareto_dominance_holds() -> Bool {

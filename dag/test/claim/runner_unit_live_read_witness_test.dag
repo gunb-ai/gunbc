@@ -1,7 +1,7 @@
 module test.claim.runner_unit_live_read_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn fixture_host() -> String {
   "srv1"
@@ -11,65 +11,65 @@ fn fixture_unit() -> String {
   "actions-runner@srv1-01.service"
 }
 
-fn fixture_memory_max_target() -> ConvergeTarget {
-  PerSlotMemoryCap {
-    dropin_path: gunbc_runner_per_slot_dropin_path,
-    instance_glob: runner_instance_glob(host: fixture_host()),
-    property: systemd_memory_max_property,
-    bytes_value: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
+fn fixture_memory_max_target() -> gunbc.host_converge.ConvergeTarget {
+  gunbc.host_converge.PerSlotMemoryCap {
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path,
+    instance_glob: gunbc.host_converge.runner_instance_glob(host: fixture_host()),
+    property: extdeps.os.systemd.systemd_memory_max_property,
+    bytes_value: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)),
   }
 }
 
-fn fixture_swap_max_target() -> ConvergeTarget {
-  PerSlotMemoryCap {
-    dropin_path: gunbc_runner_per_slot_swap_dropin_path,
-    instance_glob: runner_instance_glob(host: fixture_host()),
-    property: systemd_memory_swap_max_property,
-    bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)),
+fn fixture_swap_max_target() -> gunbc.host_converge.ConvergeTarget {
+  gunbc.host_converge.PerSlotMemoryCap {
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_swap_dropin_path,
+    instance_glob: gunbc.host_converge.runner_instance_glob(host: fixture_host()),
+    property: extdeps.os.systemd.systemd_memory_swap_max_property,
+    bytes_value: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_swap_max)),
   }
 }
 
-fn matching_swap_max_row() -> RunnerUnitLiveReadRow {
-  RunnerUnitLiveReadRow {
+fn matching_swap_max_row() -> gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
+  gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
     unit: fixture_unit(),
-    memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
-    memory_swap_max_raw: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)),
+    memory_max_raw: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)),
+    memory_swap_max_raw: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_swap_max)),
     memory_high_raw: "infinity",
     probed_at: "2026-07-10",
   }
 }
 
-fn fixture_high_target() -> ConvergeTarget {
-  PerSlotMemoryCap {
-    dropin_path: gunbc_runner_per_slot_high_dropin_path,
-    instance_glob: runner_instance_glob(host: fixture_host()),
-    property: systemd_memory_high_property,
-    bytes_value: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high)),
+fn fixture_high_target() -> gunbc.host_converge.ConvergeTarget {
+  gunbc.host_converge.PerSlotMemoryCap {
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_high_dropin_path,
+    instance_glob: gunbc.host_converge.runner_instance_glob(host: fixture_host()),
+    property: extdeps.os.systemd.systemd_memory_high_property,
+    bytes_value: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high)),
   }
 }
 
-fn matching_high_row() -> RunnerUnitLiveReadRow {
-  RunnerUnitLiveReadRow {
+fn matching_high_row() -> gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
+  gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
     unit: fixture_unit(),
-    memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
-    memory_swap_max_raw: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)),
-    memory_high_raw: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_high)),
+    memory_max_raw: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)),
+    memory_swap_max_raw: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_swap_max)),
+    memory_high_raw: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.runner_slot_allocation.gunbc_runner_slot_desired().memory_high)),
     probed_at: "2026-07-11",
   }
 }
 
-fn matching_memory_max_row() -> RunnerUnitLiveReadRow {
-  RunnerUnitLiveReadRow {
+fn matching_memory_max_row() -> gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
+  gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
     unit: fixture_unit(),
-    memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
+    memory_max_raw: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)),
     memory_swap_max_raw: "0",
     memory_high_raw: "infinity",
     probed_at: "2026-07-01",
   }
 }
 
-fn drift_memory_max_row() -> RunnerUnitLiveReadRow {
-  RunnerUnitLiveReadRow {
+fn drift_memory_max_row() -> gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
+  gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
     unit: fixture_unit(),
     memory_max_raw: "30000000000",
     memory_swap_max_raw: "0",
@@ -79,35 +79,35 @@ fn drift_memory_max_row() -> RunnerUnitLiveReadRow {
 }
 
 fn witness_parse_infinity_is_unbounded() -> Bool {
-  match parse_systemd_memory_limit_show(raw: "infinity") {
+  match extdeps.os.systemd.parse_systemd_memory_limit_show(raw: "infinity") {
     MemoryLimitUnbounded => true
     _ => false
   }
 }
 
 fn witness_parse_bytes_is_typed() -> Bool {
-  match parse_systemd_memory_limit_show(raw: "17179869184") {
-    MemoryLimitBytes { bytes: b } =>
-      byte_size_count(b: b) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+  match extdeps.os.systemd.parse_systemd_memory_limit_show(raw: "17179869184") {
+    extdeps.os.systemd.MemoryLimitBytes { bytes: b } =>
+      std.measure.byte_size_count(b: b) == std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)
     _ => false
   }
 }
 
 fn witness_parse_empty_is_absent() -> Bool {
-  match parse_systemd_memory_limit_show(raw: "") {
+  match extdeps.os.systemd.parse_systemd_memory_limit_show(raw: "") {
     MemoryLimitAbsent => true
     _ => false
   }
 }
 
 fn witness_fixture_read_types_all_three_properties() -> Bool {
-  let read = fixture_live_read()
+  let read = gunbc.runner_unit_live_read.fixture_live_read()
   match read.memory_max {
     MemoryLimitUnbounded => true
     _ => false
   }
     && match read.memory_swap_max {
-      MemoryLimitBytes { bytes: b } => byte_size_count(b: b) == 0
+      extdeps.os.systemd.MemoryLimitBytes { bytes: b } => std.measure.byte_size_count(b: b) == 0
       _ => false
     }
     && match read.memory_high {
@@ -117,69 +117,69 @@ fn witness_fixture_read_types_all_three_properties() -> Bool {
 }
 
 fn witness_fixture_memory_max_drifts_against_model_cap() -> Bool {
-  runner_unit_memory_max_drifts_against_cap(
-    read: fixture_live_read(),
-    desired_cap: gunbc_ci_runner_cgroup_memory_cap
+  gunbc.runner_unit_live_read.runner_unit_memory_max_drifts_against_cap(
+    read: gunbc.runner_unit_live_read.fixture_live_read(),
+    desired_cap: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap
   )
 }
 
 fn witness_fixture_swap_max_drifts_against_desired() -> Bool {
-  match converge_target_live_verdict(read: fixture_live_read(), target: fixture_swap_max_target()) {
+  match gunbc.runner_unit_live_read.converge_target_live_verdict(read: gunbc.runner_unit_live_read.fixture_live_read(), target: fixture_swap_max_target()) {
     Present { value: Drifted } => true
     _ => false
   }
 }
 
 fn witness_matching_swap_read_converges_on_desired() -> Bool {
-  runner_unit_swap_max_converged(
-    read: runner_unit_live_read_typed(row: matching_swap_max_row()),
+  gunbc.runner_unit_live_read.runner_unit_swap_max_converged(
+    read: gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: matching_swap_max_row()),
     target: fixture_swap_max_target()
   )
 }
 
 fn witness_fixture_high_drifts_against_desired() -> Bool {
-  match converge_target_live_verdict(read: fixture_live_read(), target: fixture_high_target()) {
+  match gunbc.runner_unit_live_read.converge_target_live_verdict(read: gunbc.runner_unit_live_read.fixture_live_read(), target: fixture_high_target()) {
     Present { value: Drifted } => true
     _ => false
   }
 }
 
 fn witness_matching_high_read_converges_on_desired() -> Bool {
-  match converge_target_live_verdict(
-    read: runner_unit_live_read_typed(row: matching_high_row()),
+  match gunbc.runner_unit_live_read.converge_target_live_verdict(
+    read: gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: matching_high_row()),
     target: fixture_high_target()
   ) {
-    Present { value: VerdictConverged } => true
+    Present { value: gunbc.host_converge.VerdictConverged } => true
     _ => false
   }
 }
 
 fn witness_matching_read_converges_on_memory_max_target() -> Bool {
-  let read = runner_unit_live_read_typed(row: matching_memory_max_row())
-  match converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
-    Present { value: VerdictConverged } => true
+  let read = gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: matching_memory_max_row())
+  match gunbc.runner_unit_live_read.converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
+    Present { value: gunbc.host_converge.VerdictConverged } => true
     _ => false
   }
 }
 
 fn witness_drift_read_fails_memory_max_target() -> Bool {
-  let read = runner_unit_live_read_typed(row: drift_memory_max_row())
-  match converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
+  let read = gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: drift_memory_max_row())
+  match gunbc.runner_unit_live_read.converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
     Present { value: Drifted } => true
     _ => false
   }
 }
 
 fn witness_target_bytes_value_is_single_authority() -> Bool {
-  let read = runner_unit_live_read_typed(row: drift_memory_max_row())
-  let target = PerSlotMemoryCap {
-    dropin_path: gunbc_runner_per_slot_dropin_path,
-    instance_glob: runner_instance_glob(host: fixture_host()),
-    property: systemd_memory_max_property,
+  let read = gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: drift_memory_max_row())
+  let target = gunbc.host_converge.PerSlotMemoryCap {
+    dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path,
+    instance_glob: gunbc.host_converge.runner_instance_glob(host: fixture_host()),
+    property: extdeps.os.systemd.systemd_memory_max_property,
     bytes_value: "30000000000",
   }
-  match converge_target_live_verdict(read: read, target: target) {
-    Present { value: VerdictConverged } => true
+  match gunbc.runner_unit_live_read.converge_target_live_verdict(read: read, target: target) {
+    Present { value: gunbc.host_converge.VerdictConverged } => true
     _ => false
   }
 }
@@ -191,21 +191,21 @@ fn witness_perturbed_fixture_read_diff_red_on_memory_max() -> Bool {
 }
 
 fn witness_memory_limit_absent_routes_to_absent_verdict() -> Bool {
-  memory_limit_converge_verdict_for_bytes_value(
-    observed: MemoryLimitAbsent,
-    bytes_value: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
+  gunbc.runner_unit_live_read.memory_limit_converge_verdict_for_bytes_value(
+    observed: extdeps.os.systemd.MemoryLimitAbsent,
+    bytes_value: v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)),
   ) == Absent
 }
 
 fn witness_cap_effectiveness_projection_matches_runner_slot_type() -> Bool {
-  let read = runner_unit_live_read_typed(row: matching_memory_max_row())
-  match memory_limit_to_cap_effectiveness(lim: read.memory_max) {
-    Present { value: CapEffective { bytes: b } } =>
-      byte_size_count(b: b) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+  let read = gunbc.runner_unit_live_read.runner_unit_live_read_typed(row: matching_memory_max_row())
+  match gunbc.runner_unit_live_read.memory_limit_to_cap_effectiveness(lim: read.memory_max) {
+    Present { value: gunbc.ci_floor_measurement.CapEffective { bytes: b } } =>
+      std.measure.byte_size_count(b: b) == std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)
     _ => false
   }
-    && match memory_limit_to_cap_effectiveness(lim: read.memory_swap_max) {
-      Present { value: CapEffective { bytes: b } } => byte_size_count(b: b) == 0
+    && match gunbc.runner_unit_live_read.memory_limit_to_cap_effectiveness(lim: read.memory_swap_max) {
+      Present { value: gunbc.ci_floor_measurement.CapEffective { bytes: b } } => std.measure.byte_size_count(b: b) == 0
       _ => false
     }
 }

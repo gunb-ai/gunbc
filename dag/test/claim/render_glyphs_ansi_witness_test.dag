@@ -1,19 +1,19 @@
 module test.claim.render_glyphs_ansi_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn w_completed_ascii() -> Bool {
-  match resolve_symbol(id: NodeCompleted, tier: Ascii) {
+  match extdeps.render.glyphs.resolve_symbol(id: std.symbols.NodeCompleted, tier: Ascii) {
     Present { value: s } => s == "[x]"
     Absent => false
   }
 }
 
 fn w_completed_unicode_differs_from_ascii() -> Bool {
-  match resolve_symbol(id: NodeCompleted, tier: Unicode) {
+  match extdeps.render.glyphs.resolve_symbol(id: std.symbols.NodeCompleted, tier: Unicode) {
     Present { value: u } =>
-      match resolve_symbol(id: NodeCompleted, tier: Ascii) {
+      match extdeps.render.glyphs.resolve_symbol(id: std.symbols.NodeCompleted, tier: Ascii) {
         Present { value: a } => u != a
         Absent => false
       }
@@ -22,18 +22,18 @@ fn w_completed_unicode_differs_from_ascii() -> Bool {
 }
 
 fn w_glyph_at_selects_matching_tier_text() -> Bool {
-  let g = glyphs_for_tiers(
-    emoji: glyph(text: "E"),
-    unicode: glyph(text: "U"),
-    ascii: glyph(text: "A")
+  let g = extdeps.render.tier_glyphs.glyphs_for_tiers(
+    emoji: extdeps.render.glyph.glyph(text: "E"),
+    unicode: extdeps.render.glyph.glyph(text: "U"),
+    ascii: extdeps.render.glyph.glyph(text: "A")
   )
-  glyph_at(glyphs: g, tier: Ascii) == "A" &&
-  glyph_at(glyphs: g, tier: Unicode) == "U" &&
-  glyph_at(glyphs: g, tier: Emoji) == "E"
+  extdeps.render.tier_glyphs.glyph_at(glyphs: g, tier: Ascii) == "A" &&
+  extdeps.render.tier_glyphs.glyph_at(glyphs: g, tier: Unicode) == "U" &&
+  extdeps.render.tier_glyphs.glyph_at(glyphs: g, tier: Emoji) == "E"
 }
 
 fn w_failed_color_is_error() -> Bool {
-  match symbol_color(id: NodeFailed) {
+  match extdeps.render.glyphs.symbol_color(id: std.symbols.NodeFailed) {
     Present { value: c } =>
       match c {
         Error => true
@@ -44,7 +44,7 @@ fn w_failed_color_is_error() -> Bool {
 }
 
 fn w_success_ansi_is_256_green() -> Bool {
-  match ansi_code(c: Success) {
+  match extdeps.render.ansi.ansi_code(c: Success) {
     Present { value: code } => code == "\x1b[38;5;34m"
     Absent => false
   }

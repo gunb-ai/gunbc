@@ -1,12 +1,12 @@
 module test.claim.parse_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn parse_witness_floor_holds() -> Bool {
-  run_parse_witness_floor()
+  tools.parse_witness_transport.run_parse_witness_floor()
 }
 
 test fn parse_witness_perf_holds() -> Bool {
-  run_parse_witness_perf()
+  tools.parse_witness_transport.run_parse_witness_perf()
 }

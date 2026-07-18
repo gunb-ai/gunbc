@@ -1,76 +1,76 @@
 module test.claim.srv3_install_media_fetch
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data real_execution_split_doc: String = "The three shell.Mktemp.Dir/Filesystem.Write real-execution witnesses formerly here moved to srv3_install_media_fetch_real_execution_witness_test.dag (no mock_response on those shell ops - dag/extdeps/shell/shell.dag - so they cannot run in CI's default Hermetic discovery corpus and are re-enrolled there as declared Wet entries)."
 
 test fn install_media_fetch_effect_is_create_if_absent_on_content_sha256() -> Bool {
-  match install_media_fetch_effect_shape {
-    CreateEffect { cause: CreateIfAbsent { key_source: InputField { field: "content_sha256" } } } => true
+  match gunbc.srv3_install_media_fetch.install_media_fetch_effect_shape {
+    std.effects.CreateEffect { cause: CreateIfAbsent { key_source: InputField { field: "content_sha256" } } } => true
     _ => false
   }
 }
 
 test fn install_media_fetch_already_present_fixture() -> Bool {
-  match classify_install_media_fetch(
-    observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: srv3_ubuntu_install_media_artifact.content_sha256 },
-    artifact: srv3_ubuntu_install_media_artifact,
+  match gunbc.srv3_install_media_fetch.classify_install_media_fetch(
+    observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: gunbc.srv3_ubuntu_install_media_artifact.srv3_ubuntu_install_media_artifact.content_sha256 },
+    artifact: gunbc.srv3_ubuntu_install_media_artifact.srv3_ubuntu_install_media_artifact,
   ) {
-    AlreadyPresent { install_path: p, content_sha256: h } =>
-      p == srv3_ubuntu_install_media_install_path
-        && h == srv3_ubuntu_install_media_artifact.content_sha256
-        && install_media_fetch_verdict_is_idempotent_skip(
-          verdict: AlreadyPresent { install_path: p, content_sha256: h },
+    gunbc.srv3_install_media_fetch.AlreadyPresent { install_path: gunbc.plans.md_helpers.p, content_sha256: h } =>
+      gunbc.plans.md_helpers.p == gunbc.srv3_install_media_fetch.srv3_ubuntu_install_media_install_path
+        && h == gunbc.srv3_ubuntu_install_media_artifact.srv3_ubuntu_install_media_artifact.content_sha256
+        && gunbc.srv3_install_media_fetch.install_media_fetch_verdict_is_idempotent_skip(
+          verdict: gunbc.srv3_install_media_fetch.AlreadyPresent { install_path: gunbc.plans.md_helpers.p, content_sha256: h },
         )
     _ => false
   }
 }
 
 test fn install_media_fetch_hash_mismatch_refusal_fixture() -> Bool {
-  match classify_install_media_fetch(
+  match gunbc.srv3_install_media_fetch.classify_install_media_fetch(
     observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000" },
-    artifact: srv3_ubuntu_install_media_artifact,
+    artifact: gunbc.srv3_ubuntu_install_media_artifact.srv3_ubuntu_install_media_artifact,
   ) {
-    HashMismatchRefusal { install_path: p, expected_sha256: e, observed_sha256: o } =>
-      p == srv3_ubuntu_install_media_install_path
-        && e == srv3_ubuntu_install_media_artifact.content_sha256
+    gunbc.srv3_install_media_fetch.HashMismatchRefusal { install_path: gunbc.plans.md_helpers.p, expected_sha256: e, observed_sha256: o } =>
+      gunbc.plans.md_helpers.p == gunbc.srv3_install_media_fetch.srv3_ubuntu_install_media_install_path
+        && e == gunbc.srv3_ubuntu_install_media_artifact.srv3_ubuntu_install_media_artifact.content_sha256
         && o == "0000000000000000000000000000000000000000000000000000000000000000"
-        && install_media_fetch_verdict_is_idempotent_skip(
-          verdict: HashMismatchRefusal { install_path: p, expected_sha256: e, observed_sha256: o },
+        && gunbc.srv3_install_media_fetch.install_media_fetch_verdict_is_idempotent_skip(
+          verdict: gunbc.srv3_install_media_fetch.HashMismatchRefusal { install_path: gunbc.plans.md_helpers.p, expected_sha256: e, observed_sha256: o },
         ) == false
     _ => false
   }
 }
 
 test fn install_media_fetch_absent_plans_mirror_order() -> Bool {
-  match classify_install_media_fetch(
+  match gunbc.srv3_install_media_fetch.classify_install_media_fetch(
     observation: Absent,
-    artifact: srv3_ubuntu_install_media_artifact,
+    artifact: gunbc.srv3_ubuntu_install_media_artifact.srv3_ubuntu_install_media_artifact,
   ) {
-    FetchRequired { install_path: p, mirror_order: mirrors } =>
-      p == srv3_ubuntu_install_media_install_path
-        && mirrors == ubuntu_install_media_mirror_rows
-        && mirrors.first().host == ReleasesUbuntuCom
-        && mirrors.skip(n: 1).first().host == CdimageUbuntuCom
+    gunbc.srv3_install_media_fetch.FetchRequired { install_path: gunbc.plans.md_helpers.p, mirror_order: mirrors } =>
+      gunbc.plans.md_helpers.p == gunbc.srv3_install_media_fetch.srv3_ubuntu_install_media_install_path
+        && mirrors == extdeps.os.ubuntu_install_media.ubuntu_install_media_mirror_rows
+        && mirrors.first().host == extdeps.os.ubuntu_install_media.ReleasesUbuntuCom
+        && mirrors.skip(n: 1).first().host == extdeps.os.ubuntu_install_media.CdimageUbuntuCom
     _ => false
   }
 }
 
 test fn install_media_fetch_first_mirror_is_releases_then_cdimage() -> Bool {
-  let url = install_media_fetch_first_mirror_url(artifact: srv3_ubuntu_install_media_artifact)
+  let url = gunbc.srv3_install_media_fetch.install_media_fetch_first_mirror_url(artifact: gunbc.srv3_ubuntu_install_media_artifact.srv3_ubuntu_install_media_artifact)
   string_contains(s: url as String, pattern: "releases.ubuntu.com/24.04/ubuntu-24.04.3-live-server-arm64.iso")
 }
 
 test fn srv3_install_media_fetch_scope_facts() -> Bool {
-  srv3_install_media_fetch_install_path_is_versioned()
-    && srv3_install_media_fetch_actuator_host_is_srv1()
-    && match srv3_install_media_fetch_shell_runner_scaffold {
-      Scaffold { dissolves_to: _, bind: _ } => false
+  gunbc.srv3_install_media_fetch.srv3_install_media_fetch_install_path_is_versioned()
+    && gunbc.srv3_install_media_fetch.srv3_install_media_fetch_actuator_host_is_srv1()
+    && match gunbc.srv3_install_media_fetch.srv3_install_media_fetch_shell_runner_scaffold {
+      std.disposition.Scaffold { dissolves_to: _, bind: _ } => false
       Terminal { reason: _ } => true
     }
-    && match install_media_fetch_bash_emit_dissolution_trigger {
-      Scaffold { dissolves_to: _, bind: _ } => false
+    && match extdeps.os.ubuntu_install_media_fetch.install_media_fetch_bash_emit_dissolution_trigger {
+      std.disposition.Scaffold { dissolves_to: _, bind: _ } => false
       Terminal { reason: _ } => true
     }
 }

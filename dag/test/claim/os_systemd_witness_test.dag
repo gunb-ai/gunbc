@@ -1,36 +1,36 @@
 module test.claim.os_systemd_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn witness_active_wire_decodes_to_active() -> Bool {
-  match parse_systemd_unit_active_state(raw: "active") {
+  match extdeps.os.systemd.parse_systemd_unit_active_state(raw: "active") {
     Present { value: Active } => true
     _ => false
   }
 }
 
 test fn witness_wrong_case_does_not_decode() -> Bool {
-  match parse_systemd_unit_active_state(raw: "ACTIVE") {
+  match extdeps.os.systemd.parse_systemd_unit_active_state(raw: "ACTIVE") {
     none => true
     _ => false
   }
 }
 
 test fn witness_roundtrip_failed() -> Bool {
-  systemd_unit_active_state_wire_label(s: Failed) == "failed"
+  extdeps.os.systemd.systemd_unit_active_state_wire_label(s: Failed) == "failed"
 }
 
 test fn witness_memory_limit_infinity_roundtrip() -> Bool {
-  systemd_memory_limit_wire_label(lim: MemoryLimitUnbounded) == "infinity"
+  extdeps.os.systemd.systemd_memory_limit_wire_label(lim: extdeps.os.systemd.MemoryLimitUnbounded) == "infinity"
 }
 
 test fn witness_memory_limit_bytes_roundtrip() -> Bool {
-  let cap = gunbc_ci_runner_cgroup_memory_cap
-  let raw = to_string(byte_size_count(b: cap))
-  match parse_systemd_memory_limit_show(raw: raw) {
-    MemoryLimitBytes { bytes: b } =>
-      systemd_memory_limit_wire_label(lim: MemoryLimitBytes { bytes: b }) == raw
+  let test.claim.roadmap_belt_witness.cap = gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap
+  let raw = v1.compiler.emit_core_support.to_string(std.measure.byte_size_count(b: test.claim.roadmap_belt_witness.cap))
+  match extdeps.os.systemd.parse_systemd_memory_limit_show(raw: raw) {
+    extdeps.os.systemd.MemoryLimitBytes { bytes: b } =>
+      extdeps.os.systemd.systemd_memory_limit_wire_label(lim: extdeps.os.systemd.MemoryLimitBytes { bytes: b }) == raw
     _ => false
   }
 }

@@ -1,13 +1,13 @@
 module test.claim.nbd_proxy_endpoint
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn altrad8ud_nbd_proxy_primary_endpoint_is_vm_slot_index() -> Bool {
-  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint
+  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == extdeps.bmc.webui.nbd_proxy.VmSlotIndexEndpoint
 }
 
 test fn altrad8ud_nbd_proxy_nbd_slot_absent_on_2_07_00() -> Bool {
-  list_length(items: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints) == 1
-    && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints.first() == NbdSlotEndpoint
+  std.types.list_length(items: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints) == 1
+    && extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints.first() == NbdSlotEndpoint
 }

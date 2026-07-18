@@ -1,96 +1,96 @@
 module test.claim.grounded_principal_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn witness_runner_fiction_not_in_roster() -> Bool {
-  !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
-    && match fleet_posix_account_from_name(name: "runner" as NonEmptyStr) {
+  !gunbc.fleet_posix_accounts.fleet_posix_account_exists(name: "runner" as std.types.NonEmptyStr)
+    && match gunbc.fleet_posix_accounts.fleet_posix_account_from_name(name: "runner" as std.types.NonEmptyStr) {
       Present { value: _ } => false
       Absent => true
     }
 }
 
 fn witness_ghrunner_is_ci_deploy_principal() -> Bool {
-  let deploy_name = grounded_posix_principal_name(p: ci_deploy_srv1_access.principal)
-  let roster_name = grounded_posix_principal_name(p: fleet_posix_principal(key: FleetAccountCiRunner))
+  let deploy_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(gunbc.plans.md_helpers.p: gunbc.ci_deploy_access.ci_deploy_srv1_access.principal)
+  let roster_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(gunbc.plans.md_helpers.p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountCiRunner))
   deploy_name == "ghrunner" && deploy_name == roster_name
 }
 
 fn witness_operator_is_manual_deploy_principal() -> Bool {
-  let deploy_name = grounded_posix_principal_name(p: ci_deploy_srv1_operator_access.principal)
-  let roster_name = grounded_posix_principal_name(p: fleet_posix_principal(key: FleetAccountOperator))
+  let deploy_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(gunbc.plans.md_helpers.p: gunbc.ci_deploy_access.ci_deploy_srv1_operator_access.principal)
+  let roster_name = gunbc.fleet_posix_accounts.grounded_posix_principal_name(gunbc.plans.md_helpers.p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountOperator))
   deploy_name == "briansrls" && deploy_name == roster_name
 }
 
 fn witness_briansrls_fork_dissolved() -> Bool {
-  host_identity_operator_principal_name() == "briansrls"
-    && tailscale_acl_operator_email() == fleet_operator_email
-    && operator_principal_member() == fleet_operator_gcp_iam_member()
+  gunbc.host_identity_access.host_identity_operator_principal_name() == "briansrls"
+    && gunbc.tailscale_acl_phase2_credential.tailscale_acl_operator_email() == gunbc.fleet_posix_accounts.fleet_operator_email
+    && gunbc.tailscale_acl_phase2_credential.operator_principal_member() == gunbc.fleet_posix_accounts.fleet_operator_gcp_iam_member()
     && string_contains(
-      s: operator_principal_member(),
-      pattern: host_identity_operator_principal_name() as String
+      s: gunbc.tailscale_acl_phase2_credential.operator_principal_member(),
+      pattern: gunbc.host_identity_access.host_identity_operator_principal_name() as String
     )
 }
 
 fn witness_declared_probe_names_principal() -> Bool {
-  posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountCiRunner))
-    && posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountOperator))
-    && posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountRoot))
+  gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(gunbc.plans.md_helpers.p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountCiRunner))
+    && gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(gunbc.plans.md_helpers.p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountOperator))
+    && gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(gunbc.plans.md_helpers.p: gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountRoot))
 }
 
 fn witness_declared_probe_mismatch_red() -> Bool {
-  let p = fleet_posix_principal(key: FleetAccountCiRunner)
-  let poisoned = GroundedPosixPrincipal {
-    posix: p.posix,
-    sudo_grants: p.sudo_grants,
-    declared_probe: PosixAccountDeclaredProbe {
-      probed_at: p.declared_probe.probed_at,
+  let gunbc.plans.md_helpers.p = gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountCiRunner)
+  let poisoned = gunbc.fleet_posix_accounts.GroundedPosixPrincipal {
+    posix: gunbc.plans.md_helpers.p.posix,
+    sudo_grants: gunbc.plans.md_helpers.p.sudo_grants,
+    declared_probe: gunbc.fleet_posix_accounts.PosixAccountDeclaredProbe {
+      probed_at: gunbc.plans.md_helpers.p.declared_probe.probed_at,
       probe_command: "id runner",
-      host: p.declared_probe.host,
+      host: gunbc.plans.md_helpers.p.declared_probe.host,
     },
   }
-  !posix_declared_probe_names_principal(p: poisoned)
+  !gunbc.fleet_posix_accounts.posix_declared_probe_names_principal(gunbc.plans.md_helpers.p: poisoned)
 }
 
 fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
-  let principal = fleet_posix_principal(key: FleetAccountCiRunner)
-  let grounded = grounded_principal_privileged_commands(p: principal)
-  let composed = srv1_live_deploy_privileged_commands()
-  length(grounded) == 5
-    && length(composed) == 5
+  let principal = gunbc.fleet_posix_accounts.fleet_posix_principal(key: gunbc.fleet_posix_accounts.FleetAccountCiRunner)
+  let grounded = gunbc.ci_deploy_access.grounded_principal_privileged_commands(gunbc.plans.md_helpers.p: principal)
+  let composed = gunbc.ci_deploy_access.srv1_live_deploy_privileged_commands()
+  v2.std.algebra.length(grounded) == 5
+    && v2.std.algebra.length(composed) == 5
     && composed == grounded
-    && grounded.first().path == deploy_access_apt_get_binary_path
-    && !any(grounded, c => c.path == "/usr/bin/bash")
+    && grounded.first().path == gunbc.ci_deploy_access.deploy_access_apt_get_binary_path
+    && !v2.std.algebra.any(grounded, c => c.path == "/usr/bin/bash")
 }
 
 fn witness_preflight_shell_is_dash_safe() -> Bool {
-  deploy_preflight_shell_header == "set -eu"
-    && !string_contains(s: deploy_preflight_shell_header, pattern: "pipefail")
+  gunbc.ci_deploy_access.deploy_preflight_shell_header == "set -eu"
+    && !string_contains(s: gunbc.ci_deploy_access.deploy_preflight_shell_header, pattern: "pipefail")
 }
 
 fn witness_gha_runner_context_is_not_os_account() -> Bool {
-  context_name(context: Runner) == "runner"
-    && !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
+  extdeps.github.expressions.context_name(context: extdeps.github.expressions.Runner) == "runner"
+    && !gunbc.fleet_posix_accounts.fleet_posix_account_exists(name: "runner" as std.types.NonEmptyStr)
 }
 
 fn witness_operator_secret_binding_uses_fleet_gcp_member() -> Bool {
-  operator_tailscale_acl_secret_bindings.first().member == fleet_operator_gcp_iam_member()
-    && operator_principal_member() == fleet_operator_gcp_iam_member()
+  gunbc.tailscale_acl_phase2_credential.operator_tailscale_acl_secret_bindings.first().member == gunbc.fleet_posix_accounts.fleet_operator_gcp_iam_member()
+    && gunbc.tailscale_acl_phase2_credential.operator_principal_member() == gunbc.fleet_posix_accounts.fleet_operator_gcp_iam_member()
 }
 
-fn srv1_host_observation() -> DeployTargetHostObservation {
-  deploy_target_host_fixture_observation(
+fn srv1_host_observation() -> gunbc.ci_deploy_target_host.DeployTargetHostObservation {
+  gunbc.ci_deploy_target_host.deploy_target_host_fixture_observation(
     hostname: "srv1",
     runner_name: "actions-runner@srv1-01.service"
   )
 }
 
 fn witness_ci_runner_grounded_access_gate_permits() -> Bool {
-  match deploy_mutation_gate(
-    access: ci_deploy_srv1_access,
+  match gunbc.ci_deploy_access.deploy_mutation_gate(
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
     fixture_actor: Present {
-      value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
+      value: gunbc.ci_deploy_access.deploy_access_privileged_fixture_actor(access: gunbc.ci_deploy_access.ci_deploy_srv1_access)
     },
     fixture_host: Present { value: srv1_host_observation() }
   ) {
@@ -100,10 +100,10 @@ fn witness_ci_runner_grounded_access_gate_permits() -> Bool {
 }
 
 fn witness_operator_grounded_access_gate_permits() -> Bool {
-  match deploy_mutation_gate(
-    access: ci_deploy_srv1_operator_access,
+  match gunbc.ci_deploy_access.deploy_mutation_gate(
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_operator_access,
     fixture_actor: Present {
-      value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_operator_access)
+      value: gunbc.ci_deploy_access.deploy_access_privileged_fixture_actor(access: gunbc.ci_deploy_access.ci_deploy_srv1_operator_access)
     },
     fixture_host: Present { value: srv1_host_observation() }
   ) {
@@ -113,9 +113,9 @@ fn witness_operator_grounded_access_gate_permits() -> Bool {
 }
 
 fn witness_deploy_preflight_script_is_dash_safe() -> Bool {
-  let script = deploy_access_preflight_script(access: ci_deploy_srv1_access)
+  let script = gunbc.ci_deploy_access.deploy_access_preflight_script(access: gunbc.ci_deploy_access.ci_deploy_srv1_access)
   !string_contains(s: script, pattern: "pipefail")
-    && string_contains(s: script, pattern: deploy_preflight_shell_header)
+    && string_contains(s: script, pattern: gunbc.ci_deploy_access.deploy_preflight_shell_header)
 }
 
 test fn grounded_principal_witnesses() -> Bool {

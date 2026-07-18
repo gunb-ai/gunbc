@@ -1,40 +1,40 @@
 module test.claim.realization_schedule_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data synthetic_target: ContentHash = "realization-schedule-witness-v1"
 data compile_gate_fn: String = "dag_compile_clean_gate_passes"
 data gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 
-fn synthetic_correct_schedule() -> List<List<Runnable>> {
+fn synthetic_correct_schedule() -> List<List<std.realization_schedule.Runnable>> {
   [
-    [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
+    [std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: std.realization_schedule.runnable_resource_profile_negligible() }],
     [
-      RunnableDiscoveryBatch {
+      std.realization_schedule.RunnableDiscoveryBatch {
         source_roots: ["dag"]
         scan_dirs: []
         explicit_entries: []
-        node_frontier_selection: SelectionOff
-        profile: runnable_resource_profile_negligible()
+        node_frontier_selection: std.realization_schedule.SelectionOff
+        profile: std.realization_schedule.runnable_resource_profile_negligible()
         exclude_substrings: []
         discovery_scope_dirs: []
       },
-      RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: runnable_resource_profile_negligible() }
+      std.realization_schedule.RunnableSingleClaim { entry: gate_entry, function: "emit_host_gate_passes", profile: std.realization_schedule.runnable_resource_profile_negligible() }
     ]
   ]
 }
 
-fn synthetic_correct_plan() -> RealizationPlan {
-  RealizationPlan {
+fn synthetic_correct_plan() -> std.realization_schedule.RealizationPlan {
+  std.realization_schedule.RealizationPlan {
     target: synthetic_target
-    objective: RealizationObjective { goals: [] }
+    objective: std.realization_schedule.RealizationObjective { goals: [] }
     schedule: synthetic_correct_schedule()
-    total: cost_account_predicted_zero()
+    total: std.realization_schedule.cost_account_predicted_zero()
   }
 }
 
-fn perturbed_schedule_wrong_order(correct: List<List<Runnable>>) -> List<List<Runnable>> {
+fn perturbed_schedule_wrong_order(correct: List<List<std.realization_schedule.Runnable>>) -> List<List<std.realization_schedule.Runnable>> {
   [
     correct.skip(n: 1).first(),
     correct.first()
@@ -47,24 +47,24 @@ fn witness_schedule_lens_green_on_synthetic_plan() -> Bool {
     compile_gate_fn: compile_gate_fn
   ) {
     Holds => true
-    Violation { diagnostic: _ } => false
-    NotApplicable { diagnostic: _ } => false
-    Unrealized { diagnostic: _ } => false
+    v2.std.lens_verdict.Violation { diagnostic: _ } => false
+    v2.std.lens_verdict.NotApplicable { diagnostic: _ } => false
+    v2.std.lens_verdict.Unrealized { diagnostic: _ } => false
   }
 }
 
 fn witness_schedule_lens_red_when_corpus_runs_first_on_synthetic() -> Bool {
-  let perturbed = RealizationPlan {
+  let perturbed = std.realization_schedule.RealizationPlan {
     target: synthetic_target
-    objective: RealizationObjective { goals: [] }
+    objective: std.realization_schedule.RealizationObjective { goals: [] }
     schedule: perturbed_schedule_wrong_order(correct: synthetic_correct_schedule())
-    total: cost_account_predicted_zero()
+    total: std.realization_schedule.cost_account_predicted_zero()
   }
   match v2.lens.schedule_lens.schedule_lens_verdict_for_ci_floor(plan: perturbed, compile_gate_fn: compile_gate_fn) {
     Holds => false
-    Violation { diagnostic: _ } => true
-    NotApplicable { diagnostic: _ } => false
-    Unrealized { diagnostic: _ } => false
+    v2.std.lens_verdict.Violation { diagnostic: _ } => true
+    v2.std.lens_verdict.NotApplicable { diagnostic: _ } => false
+    v2.std.lens_verdict.Unrealized { diagnostic: _ } => false
   }
 }
 

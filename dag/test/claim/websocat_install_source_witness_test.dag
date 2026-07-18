@@ -1,14 +1,14 @@
 module test.claim.websocat_install_source
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn websocat_cli_tool_installs_via_github_release_not_apt() -> Bool {
-  match websocat_cli_tool.installable_via.first() {
-    SourceGitHubRelease { repo: r, tag: t, install_path: p, asset_aarch64: _, asset_x86_64: _ } =>
-      r == websocat_github_repo
-        && t == websocat_github_tag
-        && p == websocat_install_path
+  match extdeps.tools.websocat.websocat_cli_tool.installable_via.first() {
+    extdeps.tools.SourceGitHubRelease { repo: r, tag: t, install_path: gunbc.plans.md_helpers.p, asset_aarch64: _, asset_x86_64: _ } =>
+      r == extdeps.tools.websocat.websocat_github_repo
+        && t == extdeps.tools.websocat.websocat_github_tag
+        && gunbc.plans.md_helpers.p == extdeps.tools.websocat.websocat_install_path
     _ => false
   }
 }

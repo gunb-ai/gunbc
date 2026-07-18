@@ -1,20 +1,20 @@
 module test.claim.layout_render_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data flat_proto: LayoutProtocol = LayoutProtocol { indent_unit: "" }
-data yaml_proto: LayoutProtocol = LayoutProtocol { indent_unit: "  " }
+data flat_proto: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
+data yaml_proto: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "  " }
 
-fn flat_doc() -> Doc {
-  doc_concat(parts: [doc_line_of(text: "a"), doc_line_of(text: "b")])
+fn flat_doc() -> std.layout.Doc {
+  std.layout.doc_concat(parts: [std.layout.doc_line_of(text: "a"), std.layout.doc_line_of(text: "b")])
 }
 
-fn nested_doc(levels: Int) -> Doc {
-  doc_concat(parts: [
-    doc_text(text: "root:"),
-    DocLine,
-    doc_nest(levels: levels, body: doc_concat(parts: [doc_text(text: "child"), DocLine]))
+fn nested_doc(levels: Int) -> std.layout.Doc {
+  std.layout.doc_concat(parts: [
+    std.layout.doc_text(text: "root:"),
+    std.layout.DocLine,
+    std.layout.doc_nest(levels: levels, body: std.layout.doc_concat(parts: [std.layout.doc_text(text: "child"), std.layout.DocLine]))
   ])
 }
 
@@ -37,21 +37,21 @@ fn witness_indent_unit_discriminates() -> Bool {
 }
 
 fn witness_blank_line_carries_no_indent() -> Bool {
-  let d = doc_concat(parts: [doc_text(text: "k:"), DocLine, doc_blank(), doc_nest(levels: 3, body: doc_concat(parts: [doc_text(text: "x"), DocLine]))])
+  let d = std.layout.doc_concat(parts: [std.layout.doc_text(text: "k:"), std.layout.DocLine, std.layout.doc_blank(), std.layout.doc_nest(levels: 3, body: std.layout.doc_concat(parts: [std.layout.doc_text(text: "x"), std.layout.DocLine]))])
   render(doc: d, proto: yaml_proto) == "k:\n\n      x\n"
 }
 
 fn witness_trailing_line_no_trailing_indent() -> Bool {
-  let d = doc_nest(levels: 2, body: doc_concat(parts: [doc_text(text: "deep"), DocLine]))
+  let d = std.layout.doc_nest(levels: 2, body: std.layout.doc_concat(parts: [std.layout.doc_text(text: "deep"), std.layout.DocLine]))
   render(doc: d, proto: yaml_proto) == "    deep\n"
 }
 
 fn witness_dash_nest_alignment() -> Bool {
-  let item = doc_concat(parts: [
-    doc_text(text: "- "),
-    doc_nest(levels: 1, body: doc_concat(parts: [doc_text(text: "name: a"), DocLine, doc_text(text: "run: x"), DocLine]))
+  let v2.test.resolve.qualified_module_projection_g1b_fixture.item = std.layout.doc_concat(parts: [
+    std.layout.doc_text(text: "- "),
+    std.layout.doc_nest(levels: 1, body: std.layout.doc_concat(parts: [std.layout.doc_text(text: "name: a"), std.layout.DocLine, std.layout.doc_text(text: "run: x"), std.layout.DocLine]))
   ])
-  render(doc: item, proto: yaml_proto) == "- name: a\n  run: x\n"
+  render(doc: v2.test.resolve.qualified_module_projection_g1b_fixture.item, proto: yaml_proto) == "- name: a\n  run: x\n"
 }
 
 fn witness_render_is_format_agnostic() -> Bool {

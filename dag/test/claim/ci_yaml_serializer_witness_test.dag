@@ -1,38 +1,38 @@
 module test.claim.ci_yaml_serializer_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn witness_fetch_depth_is_int_not_string() -> Bool {
-  let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])
-  let out = serialize_yaml(v: with_block)
-  (out == "fetch-depth: 0\n") && (out != "fetch-depth: \"0\"\n")
+  let with_block = extdeps.languages.yaml.types.yaml_mapping(entries: [extdeps.languages.yaml.types.kv(key: "fetch-depth", value: extdeps.languages.yaml.types.yaml_int(n: 0))])
+  let test.claim.roadmap_authority.out = extdeps.languages.yaml.emit.serialize_yaml(v: with_block)
+  (test.claim.roadmap_authority.out == "fetch-depth: 0\n") && (test.claim.roadmap_authority.out != "fetch-depth: \"0\"\n")
 }
 
 fn witness_rustflags_empty_string_quoted() -> Bool {
-  let with_block = yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))])
-  serialize_yaml(v: with_block) == "rustflags: ''\n"
+  let with_block = extdeps.languages.yaml.types.yaml_mapping(entries: [extdeps.languages.yaml.types.kv(key: "rustflags", value: extdeps.languages.yaml.types.yaml_string(s: ""))])
+  extdeps.languages.yaml.emit.serialize_yaml(v: with_block) == "rustflags: ''\n"
 }
 
 fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
-  let job = ci_workflow.jobs.first()
-  match steps_yaml(steps: job.steps) {
-    YamlSequence { elements: els } => (els.length() == job.steps.length()) && (els.length() > 0)
+  let test.claim.materialization_ladder_witness.job = gunbc.ci_workflow.ci_workflow.jobs.first()
+  match extdeps.languages.yaml.gha_workflow.steps_yaml(steps: test.claim.materialization_ladder_witness.job.steps) {
+    YamlSequence { elements: els } => (els.length() == test.claim.materialization_ladder_witness.job.steps.length()) && (els.length() > 0)
     _ => false
   }
 }
 
 fn witness_step_sequence_only_serializes() -> Bool {
-  let step = step_yaml(step: ci_workflow.jobs.first().steps.first())
-  serialize_yaml(v: yaml_sequence(elements: concat(empty_yaml_values, [step]))) != ""
+  let test.claim.materialization_ladder_witness.step = extdeps.languages.yaml.gha_workflow.step_yaml(test.claim.materialization_ladder_witness.step: gunbc.ci_workflow.ci_workflow.jobs.first().steps.first())
+  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.types.yaml_sequence(elements: concat(extdeps.languages.yaml.types.empty_yaml_values, [test.claim.materialization_ladder_witness.step]))) != ""
 }
 
 fn witness_step_mapping_serializes() -> Bool {
-  serialize_yaml(v: step_yaml(step: ci_workflow.jobs.first().steps.first())) != ""
+  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.step_yaml(test.claim.materialization_ladder_witness.step: gunbc.ci_workflow.ci_workflow.jobs.first().steps.first())) != ""
 }
 
 fn witness_first_step_is_mapping() -> Bool {
-  match steps_yaml(steps: ci_workflow.jobs.first().steps) {
+  match extdeps.languages.yaml.gha_workflow.steps_yaml(steps: gunbc.ci_workflow.ci_workflow.jobs.first().steps) {
     YamlSequence { elements: els } =>
       match els.first() {
         YamlMapping { entries: _ } => true
@@ -43,41 +43,41 @@ fn witness_first_step_is_mapping() -> Bool {
 }
 
 fn witness_one_step_serializes() -> Bool {
-  let first = ci_workflow.jobs.first().steps.first()
-  serialize_yaml(v: yaml_mapping(entries: [
-    kv(key: "steps", value: yaml_sequence(elements: concat(empty_yaml_values, [step_yaml(step: first)])))
+  let first = gunbc.ci_workflow.ci_workflow.jobs.first().steps.first()
+  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.types.yaml_mapping(entries: [
+    extdeps.languages.yaml.types.kv(key: "steps", value: extdeps.languages.yaml.types.yaml_sequence(elements: concat(extdeps.languages.yaml.types.empty_yaml_values, [extdeps.languages.yaml.gha_workflow.step_yaml(test.claim.materialization_ladder_witness.step: first)])))
   ])) != ""
 }
 
 fn witness_steps_wrapped_serializes() -> Bool {
-  serialize_yaml(v: yaml_mapping(entries: [
-    kv(key: "steps", value: steps_yaml(steps: ci_workflow.jobs.first().steps))
+  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.types.yaml_mapping(entries: [
+    extdeps.languages.yaml.types.kv(key: "steps", value: extdeps.languages.yaml.gha_workflow.steps_yaml(steps: gunbc.ci_workflow.ci_workflow.jobs.first().steps))
   ])) != ""
 }
 
 fn witness_jobs_yaml_serializes() -> Bool {
-  serialize_yaml(v: yaml_mapping(entries: [
-    kv(key: "jobs", value: jobs_yaml(jobs: ci_workflow.jobs))
+  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.types.yaml_mapping(entries: [
+    extdeps.languages.yaml.types.kv(key: "jobs", value: extdeps.languages.yaml.gha_workflow.jobs_yaml(jobs: gunbc.ci_workflow.ci_workflow.jobs))
   ])) != ""
 }
 
 fn witness_project_workflow_serializes() -> Bool {
-  serialize_yaml(v: project_workflow_to_yaml(workflow: ci_workflow)) != ""
+  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.project_workflow_to_yaml(workflow: gunbc.ci_workflow.ci_workflow)) != ""
 }
 
 fn witness_ci_yaml_gate_red_on_perturbed_bytes() -> Bool {
-  let expected = expected_ci_yml()
-  ci_yml_drifted(committed: concat(expected, "\n# perturb")) &&
-    !ci_yml_drifted(committed: expected)
+  let expected = gunbc.ci_yaml_emit.expected_ci_yml()
+  gunbc.ci_yaml_emit.ci_yml_drifted(committed: concat(expected, "\n# perturb")) &&
+    !gunbc.ci_yaml_emit.ci_yml_drifted(committed: expected)
 }
 
 fn witness_ci_yaml_gate_red_on_wrong_fetch_depth_type() -> Bool {
-  let expected = expected_ci_yml()
-  ci_yml_drifted(committed: concat("fetch-depth: \"0\"\n", expected))
+  let expected = gunbc.ci_yaml_emit.expected_ci_yml()
+  gunbc.ci_yaml_emit.ci_yml_drifted(committed: concat("fetch-depth: \"0\"\n", expected))
 }
 
 fn witness_cache_path_block_scalar() -> Bool {
-  let yaml = expected_ci_yml()
+  let yaml = gunbc.ci_yaml_emit.expected_ci_yml()
   string_contains(
     s: yaml,
     pattern: "          path: |\n            ${{ runner.temp }}/cargo/registry/index/"
@@ -95,7 +95,7 @@ fn witness_cache_path_block_scalar() -> Bool {
 }
 
 fn witness_restore_keys_block_scalar_indent() -> Bool {
-  let yaml = expected_ci_yml()
+  let yaml = gunbc.ci_yaml_emit.expected_ci_yml()
   string_contains(
     s: yaml,
     pattern: "          restore-keys: |\n            cargo-ci-${{ runner.os }}-${{ runner.arch }}-\n"
@@ -104,7 +104,7 @@ fn witness_restore_keys_block_scalar_indent() -> Bool {
 }
 
 fn witness_rustup_run_block_scalar_not_quoted() -> Bool {
-  let yaml = expected_ci_yml()
+  let yaml = gunbc.ci_yaml_emit.expected_ci_yml()
   let rustup_line = concat(
     "          rustup default \"$(rustup show active-toolchain | awk '",
     concat(concat("{", "print $1; exit"), concat("}", "')\""))
@@ -114,7 +114,7 @@ fn witness_rustup_run_block_scalar_not_quoted() -> Bool {
 }
 
 fn witness_cache_key_plain_not_quoted() -> Bool {
-  let yaml = expected_ci_yml()
+  let yaml = gunbc.ci_yaml_emit.expected_ci_yml()
   string_contains(s: yaml, pattern: "          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles") &&
     !string_contains(s: yaml, pattern: "key: \"cargo-ci")
 }
@@ -127,12 +127,12 @@ fn witness_multiline_without_block_scalar_is_invalid() -> Bool {
     ),
     ""
   )
-  !string_contains(s: expected_ci_yml(), pattern: broken)
+  !string_contains(s: gunbc.ci_yaml_emit.expected_ci_yml(), pattern: broken)
 }
 
 fn witness_cache_path_not_flat_multiline_sibling() -> Bool {
   !string_contains(
-    s: expected_ci_yml(),
+    s: gunbc.ci_yaml_emit.expected_ci_yml(),
     pattern: concat(
       "          path: ${{ runner.temp }}/cargo/registry/index/\n",
       "        ${{ runner.temp }}/cargo/registry/cache/"
@@ -142,13 +142,13 @@ fn witness_cache_path_not_flat_multiline_sibling() -> Bool {
 
 fn witness_restore_keys_content_deeper_than_key() -> Bool {
   !string_contains(
-    s: expected_ci_yml(),
+    s: gunbc.ci_yaml_emit.expected_ci_yml(),
     pattern: "          restore-keys: |\n          cargo-ci-"
   )
 }
 
 fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
-  let yaml = expected_ci_yml()
+  let yaml = gunbc.ci_yaml_emit.expected_ci_yml()
   string_contains(s: yaml, pattern: "if sccache --show-stats >/dev/null 2>&1; then") &&
     string_contains(s: yaml, pattern: "RUSTC_WRAPPER=sccache") &&
     string_contains(s: yaml, pattern: "CARGO_INCREMENTAL=0") &&
@@ -158,17 +158,17 @@ fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
 }
 
 fn witness_cargo_jobs_derived_and_jobserver_decoupled() -> Bool {
-  let yaml = expected_ci_yml()
-  let n = ci_cargo_build_jobs_count()
+  let yaml = gunbc.ci_yaml_emit.expected_ci_yml()
+  let n = gunbc.ci_workflow.ci_cargo_build_jobs_count()
   string_contains(s: yaml, pattern: "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\"") &&
-    string_contains(s: yaml, pattern: concat("CARGO_BUILD_JOBS=", concat(to_string(n), "\""))) &&
+    string_contains(s: yaml, pattern: concat("CARGO_BUILD_JOBS=", concat(v1.compiler.emit_core_support.to_string(n), "\""))) &&
     !string_contains(s: yaml, pattern: "CARGO_BUILD_JOBS=1\"") &&
     !string_contains(s: yaml, pattern: "CARGO_BUILD_JOBS=2\"") &&
     n >= 2
 }
 
 fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
-  let yaml = expected_ci_yml()
+  let yaml = gunbc.ci_yaml_emit.expected_ci_yml()
   let floor_script = gunbc_ci_floor_run(spec: gunbc_ci_spec)
   let build_script = ci_release_build_script()
   string_contains(s: yaml, pattern: "Build release bins (claim_executor + gunbc)") &&
@@ -195,7 +195,7 @@ fn witness_cache_runner_env_scope_red_control() -> Bool {
 }
 
 fn witness_no_runner_vars_accessed_via_env_context() -> Bool {
-  !any_template_accesses_runner_var_via_env(templates: ci_workflow_expression_templates)
+  !extdeps.github.expressions.any_template_accesses_runner_var_via_env(templates: ci_workflow_expression_templates)
 }
 
 fn witness_no_runner_env_context_red_control() -> Bool {
@@ -205,7 +205,7 @@ fn witness_no_runner_env_context_red_control() -> Bool {
       Interpolation { expression: ContextAccess { context: extdeps.github.expressions.Env, path: ["RUNNER_TEMP"] } }
     ] }
   ])
-  any_template_accesses_runner_var_via_env(templates: bad)
+  extdeps.github.expressions.any_template_accesses_runner_var_via_env(templates: bad)
 }
 
 test fn ci_yaml_serializer_keystone_holds() -> Bool {

@@ -1,12 +1,12 @@
 module test.claim.roadmap_authority
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn merged() -> List<Int> { authored_merged_prs() }
+fn merged() -> List<Int> { gunbc.roadmap_authority.authored_merged_prs() }
 
 fn emit_with(m: List<Int>) -> String {
-  serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: m))
+  extdeps.languages.markdown.serialize_markdown_source(doc: gunbc.roadmap_document.project_roadmap_to_markdown(doc: gunbc.roadmap_authority.roadmap_authority(), merged: m))
 }
 fn out() -> String { emit_with(m: merged()) }
 

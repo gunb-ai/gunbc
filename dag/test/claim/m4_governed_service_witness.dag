@@ -32,14 +32,14 @@ service GovernedProbe {
   }
 }
 
-data m4_probe_case_allowed: PublishedMockCase = PublishedMockCase {
+data m4_probe_case_allowed: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "GovernedProbe.Allowed",
   service: "GovernedProbe",
   operation: "Allowed",
   case_id: 0
 }
 
-data m4_governed_probe_corpus: List<PublishedMockCase> = [
+data m4_governed_probe_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   m4_probe_case_allowed
 ]
 

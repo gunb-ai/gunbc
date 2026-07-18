@@ -1,10 +1,10 @@
 module test.claim.yaml_quoting_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn ser_kv(k: String, s: String) -> String {
-  serialize_yaml(v: yaml_mapping(entries: [kv(key: k, value: yaml_string(s: s))]))
+  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.types.yaml_mapping(entries: [extdeps.languages.yaml.types.kv(key: k, value: extdeps.languages.yaml.types.yaml_string(s: s))]))
 }
 
 fn witness_reserved_word_is_quoted() -> Bool {

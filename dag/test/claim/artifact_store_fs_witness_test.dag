@@ -1,14 +1,14 @@
 module test.claim.artifact_store_fs_witness
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
 data artifact_store_fs_witness_note: String = "P2 host-transport witnesses: the content-addressed roundtrip against the real Filesystem service (wet lane; hermetic runs replay the service mock). Store root under /tmp per the filesystem_write_closure_scale_witness precedent. RED control: a key whose toolchain input differs never serves the stored artifact - stale-never-served on the persistent tier."
 
 data fs_store_root: String = "/tmp/gunbc_artifact_store_witness"
 
-fn stored_key(toolchain: String) -> ContentHash {
-  artifact_key_hash(key: ArtifactKey {
-    closure_digest: content_hash_atom(value: "fs-transport-closure-fixture"),
+fn stored_key(toolchain: String) -> std.types.ContentHash {
+  std.artifact_store.artifact_key_hash(key: std.artifact_store.ArtifactKey {
+    closure_digest: std.content_hash.content_hash_atom(value: "fs-transport-closure-fixture"),
     emitter_identity: "v1-seed",
     target_language: "rust",
     toolchain: toolchain
@@ -20,8 +20,8 @@ test fn artifact_fs_roundtrip_holds() -> Bool {
   let payload = "artifact-payload-bytes-fixture"
   let put_ok = artifact_fs_put(store_root: fs_store_root, key: key, payload: payload)
   let served = match artifact_fs_get(store_root: fs_store_root, key: key) {
-    ArtifactFsHit { payload: p } => p == payload
-    ArtifactFsMiss { path: _ } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsHit { payload: gunbc.plans.md_helpers.p } => gunbc.plans.md_helpers.p == payload
+    extdeps.realization.artifact_store_fs.ArtifactFsMiss { path: _ } => false
   }
   put_ok && served
 }
@@ -29,13 +29,13 @@ test fn artifact_fs_roundtrip_holds() -> Bool {
 test fn artifact_fs_delete_then_misses_holds() -> Bool {
   let key = stored_key(toolchain: "delete-case")
   let put_ok = artifact_fs_put(store_root: fs_store_root, key: key, payload: "to-be-evicted")
-  let listed = artifact_fs_list(store_root: fs_store_root) |> any(e => string_contains(e, key))
+  let listed = artifact_fs_list(store_root: fs_store_root) |> v2.std.algebra.any(e => string_contains(e, key))
   let deleted = artifact_fs_delete(store_root: fs_store_root, key: key)
   let missed = match artifact_fs_get(store_root: fs_store_root, key: key) {
-    ArtifactFsHit { payload: _ } => false
-    ArtifactFsMiss { path: _ } => true
+    extdeps.realization.artifact_store_fs.ArtifactFsHit { payload: _ } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsMiss { path: _ } => true
   }
-  let unlisted = (artifact_fs_list(store_root: fs_store_root) |> any(e => string_contains(e, key))) == false
+  let unlisted = (artifact_fs_list(store_root: fs_store_root) |> v2.std.algebra.any(e => string_contains(e, key))) == false
   put_ok && listed && deleted && missed && unlisted
 }
 
@@ -44,8 +44,8 @@ test fn artifact_fs_mutated_input_misses_holds() -> Bool {
   let mutated = stored_key(toolchain: "1.94.0")
   let put_ok = artifact_fs_put(store_root: fs_store_root, key: key, payload: "original-toolchain-artifact")
   let miss = match artifact_fs_get(store_root: fs_store_root, key: mutated) {
-    ArtifactFsHit { payload: _ } => false
-    ArtifactFsMiss { path: _ } => true
+    extdeps.realization.artifact_store_fs.ArtifactFsHit { payload: _ } => false
+    extdeps.realization.artifact_store_fs.ArtifactFsMiss { path: _ } => true
   }
   put_ok && miss && (key == mutated) == false
 }

@@ -1,16 +1,16 @@
 module test.claim.host_identity_observation_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn srv1_os_target() -> NodeControlPlane {
-  HostOs { node: srv1_host }
+fn srv1_os_target() -> gunbc.host_effect.NodeControlPlane {
+  HostOs { node: gunbc.fleet_intent.srv1_host }
 }
 
-fn require_dns_label(raw: String) -> DnsLabel {
-  match parse_dns_label_raw(raw: raw) {
+fn require_dns_label(raw: String) -> extdeps.dns.domain_name.DnsLabel {
+  match extdeps.dns.domain_name.parse_dns_label_raw(raw: raw) {
     Ok { value: label } => label
-    Err { value: _ } => "unreachable" as DnsLabel
+    Err { value: _ } => "unreachable" as extdeps.dns.domain_name.DnsLabel
   }
 }
 
@@ -19,45 +19,45 @@ fn witness_hostname_script_is_modeled_constant() -> Bool {
 }
 
 fn witness_fixture_observation_types_srv1_observed_hostname() -> Bool {
-  let obs = fixture_host_identity_observation()
+  let obs = gunbc.host_identity_observation.fixture_host_identity_observation()
   obs.short_hostname == "altrad8ud-1l2t-1"
     && obs.probed_at == "2026-07-02"
-    && host_identity_observation_nonempty(obs: obs)
+    && gunbc.host_identity_observation.host_identity_observation_nonempty(obs: obs)
 }
 
 fn witness_fixture_observation_types_srv2_observed_hostname() -> Bool {
-  let obs = fixture_host_identity_observation_srv2()
+  let obs = gunbc.host_identity_observation.fixture_host_identity_observation_srv2()
   obs.short_hostname == "alstrad8d-1l2t-2"
-    && host_identity_observation_nonempty(obs: obs)
+    && gunbc.host_identity_observation.host_identity_observation_nonempty(obs: obs)
 }
 
 fn witness_empty_stdout_is_absent() -> Bool {
-  match host_identity_observation_from_stdout(stdout: "  \n", probed_at: "2026-07-02") {
+  match gunbc.host_identity_observation.host_identity_observation_from_stdout(stdout: "  \n", probed_at: "2026-07-02") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
 fn witness_trimmed_stdout_is_typed() -> Bool {
-  match host_identity_observation_from_stdout(stdout: "  altrad8ud-1l2t-1\n", probed_at: "2026-07-02") {
+  match gunbc.host_identity_observation.host_identity_observation_from_stdout(stdout: "  altrad8ud-1l2t-1\n", probed_at: "2026-07-02") {
     Present { value: obs } => obs.short_hostname == "altrad8ud-1l2t-1"
     Absent => false
   }
 }
 
 fn witness_host_effect_apply_hostname_read_converges() -> Bool {
-  reconciliation_converged(r: host_identity_observation_apply(
+  std.realization_reconcile.reconciliation_converged(r: gunbc.host_identity_observation.host_identity_observation_apply(
     target: srv1_os_target(),
     transport: LocalShell
   ))
 }
 
 fn witness_host_effect_apply_failure_is_not_observation() -> Bool {
-  match host_identity_observation_from_apply(
-    r: host_effect_apply(
+  match gunbc.host_identity_observation.host_identity_observation_from_apply(
+    r: gunbc.host_effect_realize.host_effect_apply(
       target: srv1_os_target(),
       effect: ShellCommand { script: "exit 1" },
-      evidence: host_effect_identity_evidence,
+      evidence: gunbc.host_effect.host_effect_identity_evidence,
       transport: LocalShell
     ),
     probed_at: "2026-07-02"
@@ -68,93 +68,93 @@ fn witness_host_effect_apply_failure_is_not_observation() -> Bool {
 }
 
 fn witness_fixture_row_materializes_deployed_intent_v0() -> Bool {
-  let d = deployed_intent_v0_from_observation_row(
-    fleet_slot: operator_host_srv1,
-    target_host: srv1_host,
-    row: gunbc_srv1_host_identity_observation_fixture_row,
+  let d = gunbc.deployed_intent_v0.deployed_intent_v0_from_observation_row(
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv1,
+    target_host: gunbc.fleet_intent.srv1_host,
+    row: gunbc.host_identity_observation.gunbc_srv1_host_identity_observation_fixture_row,
   )
-  deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
-    && deployed_intent_observed_differs_from_fleet_slot(d: d)
+  gunbc.deployed_intent_v0.deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
+    && gunbc.deployed_intent_v0.deployed_intent_observed_differs_from_fleet_slot(d: d)
 }
 
 fn witness_persisted_base_records_observed_not_design() -> Bool {
-  let d = gunbc_srv1_deployed_intent_v0_persisted
-  deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
-    && d.fleet_slot == operator_host_srv1
-    && deployed_intent_observed_differs_from_fleet_slot(d: d)
+  let d = gunbc.deployed_intent_v0.gunbc_srv1_deployed_intent_v0_persisted
+  gunbc.deployed_intent_v0.deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
+    && d.fleet_slot == gunbc.fleet_intent_network.operator_host_srv1
+    && gunbc.deployed_intent_v0.deployed_intent_observed_differs_from_fleet_slot(d: d)
 }
 
 fn witness_srv2_persisted_base_records_typo_hostname() -> Bool {
-  let d = gunbc_srv2_deployed_intent_v0_persisted
-  deployed_intent_observed_short_hostname(d: d) == "alstrad8d-1l2t-2"
-    && d.fleet_slot == operator_host_srv2
-    && deployed_intent_observed_differs_from_fleet_slot(d: d)
+  let d = gunbc.deployed_intent_v0.gunbc_srv2_deployed_intent_v0_persisted
+  gunbc.deployed_intent_v0.deployed_intent_observed_short_hostname(d: d) == "alstrad8d-1l2t-2"
+    && d.fleet_slot == gunbc.fleet_intent_network.operator_host_srv2
+    && gunbc.deployed_intent_v0.deployed_intent_observed_differs_from_fleet_slot(d: d)
 }
 
 fn witness_design_intent_conflation_red() -> Bool {
-  let wrong_row = HostIdentityObservationRow {
-    short_hostname_raw: operator_host_srv1,
+  let wrong_row = gunbc.host_identity_observation.HostIdentityObservationRow {
+    short_hostname_raw: gunbc.fleet_intent_network.operator_host_srv1,
     probed_at: "2026-07-02",
   }
-  let conflated = deployed_intent_v0_from_observation_row(
-    fleet_slot: operator_host_srv1,
-    target_host: srv1_host,
+  let conflated = gunbc.deployed_intent_v0.deployed_intent_v0_from_observation_row(
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv1,
+    target_host: gunbc.fleet_intent.srv1_host,
     row: wrong_row,
   )
-  !deployed_intent_observed_differs_from_fleet_slot(d: conflated)
-    && deployed_intent_observed_short_hostname(d: conflated) == operator_host_srv1
+  !gunbc.deployed_intent_v0.deployed_intent_observed_differs_from_fleet_slot(d: conflated)
+    && gunbc.deployed_intent_v0.deployed_intent_observed_short_hostname(d: conflated) == gunbc.fleet_intent_network.operator_host_srv1
 }
 
 fn witness_srv1_ssh_transport_targets_operator_host() -> Bool {
-  match srv1_host_identity_ssh_transport() {
-    SshShell { ssh_host: h } => h == operator_host_srv1
+  match gunbc.host_identity_adopt.srv1_host_identity_ssh_transport() {
+    gunbc.host_effect.SshShell { ssh_host: h } => h == gunbc.fleet_intent_network.operator_host_srv1
     LocalShell => false
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
+    gunbc.host_effect.EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
 }
 
 fn witness_adopt_receipt_materializes_fixture_observation() -> Bool {
-  let obs = fixture_host_identity_observation()
-  let receipt = host_identity_adopt_receipt(
-    fleet_slot: operator_host_srv1,
-    target_host: srv1_host,
+  let obs = gunbc.host_identity_observation.fixture_host_identity_observation()
+  let receipt = gunbc.host_identity_adopt.host_identity_adopt_receipt(
+    fleet_slot: gunbc.fleet_intent_network.operator_host_srv1,
+    target_host: gunbc.fleet_intent.srv1_host,
     observation: obs,
-    transport: srv1_host_identity_ssh_transport(),
+    transport: gunbc.host_identity_adopt.srv1_host_identity_ssh_transport(),
     read_converged: true,
   )
-  host_identity_adopt_receipt_is_valid(receipt: receipt)
+  gunbc.host_identity_adopt.host_identity_adopt_receipt_is_valid(receipt: receipt)
     && receipt.observed_short_hostname == "altrad8ud-1l2t-1"
-    && receipt.key.host == operator_host_srv1
-    && host_identity_transport_label(transport: srv1_host_identity_ssh_transport()) == "SshShell:srv1"
+    && receipt.key.host == gunbc.fleet_intent_network.operator_host_srv1
+    && gunbc.host_identity_adopt.host_identity_transport_label(transport: gunbc.host_identity_adopt.srv1_host_identity_ssh_transport()) == "SshShell:srv1"
 }
 
 fn witness_already_converged_host_receipt_is_valid() -> Bool {
-  let obs = host_identity_observation_from_stdout(stdout: operator_host_srv1, probed_at: "2026-07-02")
+  let obs = gunbc.host_identity_observation.host_identity_observation_from_stdout(stdout: gunbc.fleet_intent_network.operator_host_srv1, probed_at: "2026-07-02")
   match obs {
     Present { value: o } => {
-      let receipt = host_identity_adopt_receipt(
-        fleet_slot: operator_host_srv1,
-        target_host: srv1_host,
+      let receipt = gunbc.host_identity_adopt.host_identity_adopt_receipt(
+        fleet_slot: gunbc.fleet_intent_network.operator_host_srv1,
+        target_host: gunbc.fleet_intent.srv1_host,
         observation: o,
-        transport: srv1_host_identity_ssh_transport(),
+        transport: gunbc.host_identity_adopt.srv1_host_identity_ssh_transport(),
         read_converged: true,
       )
-      host_identity_adopt_receipt_is_valid(receipt: receipt)
-        && !deployed_intent_observed_differs_from_fleet_slot(d: receipt.deployed_intent)
+      gunbc.host_identity_adopt.host_identity_adopt_receipt_is_valid(receipt: receipt)
+        && !gunbc.deployed_intent_v0.deployed_intent_observed_differs_from_fleet_slot(d: receipt.deployed_intent)
     }
     Absent => false
   }
 }
 
 fn witness_adopt_model_hash_is_stable() -> Bool {
-  host_identity_knob_key(host: operator_host_srv1).host == operator_host_srv1
-    && host_identity_adopt_model_hash() == host_identity_adopt_model_hash()
+  gunbc.host_identity_knob.host_identity_knob_key(host: gunbc.fleet_intent_network.operator_host_srv1).host == gunbc.fleet_intent_network.operator_host_srv1
+    && gunbc.host_identity_adopt.host_identity_adopt_model_hash() == gunbc.host_identity_adopt.host_identity_adopt_model_hash()
 }
 
 fn witness_desired_intent_from_modeled_fleet_slot() -> Bool {
-  match gunbc_srv1_deployed_intent_v1 {
+  match gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
-      match deployed_intent_v1_desired_hostname_short(fleet_slot: operator_host_srv1) {
+      match gunbc.deployed_intent_v1.deployed_intent_v1_desired_hostname_short(fleet_slot: gunbc.fleet_intent_network.operator_host_srv1) {
         Present { value: derived } => desired.desired_hostname_short == derived
         Absent => false
       }
@@ -163,53 +163,53 @@ fn witness_desired_intent_from_modeled_fleet_slot() -> Bool {
 }
 
 fn witness_patch_emits_exactly_one_modify_hunk() -> Bool {
-  match host_identity_patch_from_intents(
+  match gunbc.host_identity_knob.host_identity_patch_from_intents(
     base_hostname: "altrad8ud-1l2t-1",
     observed_hostname: "altrad8ud-1l2t-1",
-    desired_hostname: operator_host_srv1,
+    desired_hostname: gunbc.fleet_intent_network.operator_host_srv1,
   ) {
-    KeyedApplyHunk { from: f, to: t } =>
-      f.hostname_short == "altrad8ud-1l2t-1" && t.hostname_short == operator_host_srv1
+    std.change.KeyedApplyHunk { from: f, to: t } =>
+      f.hostname_short == "altrad8ud-1l2t-1" && t.hostname_short == gunbc.fleet_intent_network.operator_host_srv1
     _ => false
   }
 }
 
 fn witness_patch_noop_when_already_converged() -> Bool {
-  host_identity_precondition_is_noop(
-    verdict: host_identity_patch_from_intents(
-      base_hostname: operator_host_srv1,
-      observed_hostname: operator_host_srv1,
-      desired_hostname: operator_host_srv1,
+  gunbc.host_identity_converge.host_identity_precondition_is_noop(
+    verdict: gunbc.host_identity_knob.host_identity_patch_from_intents(
+      base_hostname: gunbc.fleet_intent_network.operator_host_srv1,
+      observed_hostname: gunbc.fleet_intent_network.operator_host_srv1,
+      desired_hostname: gunbc.fleet_intent_network.operator_host_srv1,
     )
   )
 }
 
 fn witness_drift_conflict_red_no_apply_arm() -> Bool {
-  host_identity_precondition_is_conflict(
-    verdict: host_identity_patch_from_intents(
+  gunbc.host_identity_converge.host_identity_precondition_is_conflict(
+    verdict: gunbc.host_identity_knob.host_identity_patch_from_intents(
       base_hostname: "altrad8ud-1l2t-1",
       observed_hostname: "unexpected-host",
-      desired_hostname: operator_host_srv1,
+      desired_hostname: gunbc.fleet_intent_network.operator_host_srv1,
     )
   )
-    && !host_identity_precondition_permits_apply(
-      verdict: host_identity_patch_from_intents(
+    && !gunbc.host_identity_converge.host_identity_precondition_permits_apply(
+      verdict: gunbc.host_identity_knob.host_identity_patch_from_intents(
         base_hostname: "altrad8ud-1l2t-1",
         observed_hostname: "unexpected-host",
-        desired_hostname: operator_host_srv1,
+        desired_hostname: gunbc.fleet_intent_network.operator_host_srv1,
       ),
-      desired_hostname: operator_host_srv1,
+      desired_hostname: gunbc.fleet_intent_network.operator_host_srv1,
     )
 }
 
 fn witness_precondition_conflict_blocks_mutation() -> Bool {
-  let base = gunbc_srv1_deployed_intent_v0_persisted
-  match gunbc_srv1_deployed_intent_v1 {
+  let base = gunbc.deployed_intent_v0.gunbc_srv1_deployed_intent_v0_persisted
+  match gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
-      match host_identity_observation_from_stdout(stdout: "unexpected-host", probed_at: "2026-07-02") {
+      match gunbc.host_identity_observation.host_identity_observation_from_stdout(stdout: "unexpected-host", probed_at: "2026-07-02") {
         Present { value: obs } =>
-          host_identity_precondition_is_conflict(
-            verdict: host_identity_precondition_verdict(base: base, observed: obs, desired: desired)
+          gunbc.host_identity_converge.host_identity_precondition_is_conflict(
+            verdict: gunbc.host_identity_converge.host_identity_precondition_verdict(base: base, observed: obs, desired: desired)
           )
         Absent => false
       }
@@ -218,23 +218,23 @@ fn witness_precondition_conflict_blocks_mutation() -> Bool {
 }
 
 fn witness_conflict_plan_has_no_effect_script_structural_no_shell() -> Bool {
-  let base = gunbc_srv1_deployed_intent_v0_persisted
-  match gunbc_srv1_deployed_intent_v1 {
+  let base = gunbc.deployed_intent_v0.gunbc_srv1_deployed_intent_v0_persisted
+  match gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
-      match host_identity_observation_from_stdout(stdout: "unexpected-host", probed_at: "2026-07-02") {
+      match gunbc.host_identity_observation.host_identity_observation_from_stdout(stdout: "unexpected-host", probed_at: "2026-07-02") {
         Present { value: obs } => {
-          let verdict = host_identity_precondition_verdict(base: base, observed: obs, desired: desired)
-          let plan = host_identity_plan_from_verdict(
+          let verdict = gunbc.host_identity_converge.host_identity_precondition_verdict(base: base, observed: obs, desired: desired)
+          let plan = gunbc.host_identity_converge.host_identity_plan_from_verdict(
             verdict: verdict,
-            base: deployed_intent_observed_short_hostname(d: base) as DnsLabel,
+            base: gunbc.deployed_intent_v0.deployed_intent_observed_short_hostname(d: base) as extdeps.dns.domain_name.DnsLabel,
             desired: desired.desired_hostname_short,
           )
-          match host_identity_apply_gated(
-            access: host_identity_srv1_access,
+          match gunbc.host_identity_converge.host_identity_apply_gated(
+            access: gunbc.host_identity_access.host_identity_srv1_access,
             target: srv1_os_target(),
             plan: plan,
-            transport: srv1_host_identity_ssh_transport(),
-            fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
+            transport: gunbc.host_identity_adopt.srv1_host_identity_ssh_transport(),
+            fixture_actor: Present { value: gunbc.ci_deploy_access.deploy_access_unprivileged_fixture_actor() }
           ) {
             Absent => true
             Present { value: _ } => false
@@ -247,24 +247,24 @@ fn witness_conflict_plan_has_no_effect_script_structural_no_shell() -> Bool {
 }
 
 fn witness_converge_from_base_conflict_is_none_red() -> Bool {
-  let target = HostIdentityAssimilationTarget {
-    fleet_slot: gunbc_srv1_deployed_intent_v0_persisted.fleet_slot,
-    target_host: srv1_host,
+  let target = gunbc.host_identity_assimilation.HostIdentityAssimilationTarget {
+    fleet_slot: gunbc.deployed_intent_v0.gunbc_srv1_deployed_intent_v0_persisted.fleet_slot,
+    target_host: gunbc.fleet_intent.srv1_host,
     control_plane: srv1_os_target(),
-    transport: srv1_host_identity_ssh_transport(),
-    access: host_identity_srv1_access,
-    persisted_base: gunbc_srv1_deployed_intent_v0_persisted,
-    desired: gunbc_srv1_deployed_intent_v1,
+    transport: gunbc.host_identity_adopt.srv1_host_identity_ssh_transport(),
+    access: gunbc.host_identity_access.host_identity_srv1_access,
+    persisted_base: gunbc.deployed_intent_v0.gunbc_srv1_deployed_intent_v0_persisted,
+    desired: gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1,
   }
-  match gunbc_srv1_deployed_intent_v1 {
+  match gunbc.deployed_intent_v1.gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
-      match host_identity_observation_from_stdout(stdout: "unexpected-host", probed_at: "2026-07-02") {
+      match gunbc.host_identity_observation.host_identity_observation_from_stdout(stdout: "unexpected-host", probed_at: "2026-07-02") {
         Present { value: obs } =>
-          match host_identity_converge_with_observation(
+          match gunbc.host_identity_assimilation.host_identity_converge_with_observation(
             target: target,
             desired: desired,
             precondition_obs: obs,
-            probed_at: "2026-07-02" as NonEmptyStr,
+            probed_at: "2026-07-02" as std.types.NonEmptyStr,
           ) {
             Absent => true
             Present { value: _ } => false
@@ -278,39 +278,39 @@ fn witness_converge_from_base_conflict_is_none_red() -> Bool {
 data host_identity_mutation_marker: String = "host-identity-mutation-marker-9c2e"
 
 fn witness_unprivileged_refusal_no_shell() -> Bool {
-  let plan = ApplyPlan {
-    base: deployed_intent_observed_short_hostname(d: gunbc_srv1_deployed_intent_v0_persisted) as DnsLabel,
-    desired: require_dns_label(raw: operator_host_srv1 as String),
+  let plan = gunbc.host_identity_converge.ApplyPlan {
+    base: gunbc.deployed_intent_v0.deployed_intent_observed_short_hostname(d: gunbc.deployed_intent_v0.gunbc_srv1_deployed_intent_v0_persisted) as extdeps.dns.domain_name.DnsLabel,
+    desired: require_dns_label(raw: gunbc.fleet_intent_network.operator_host_srv1 as String),
   }
-  match host_identity_apply_gated(
-    access: host_identity_srv1_access,
+  match gunbc.host_identity_converge.host_identity_apply_gated(
+    access: gunbc.host_identity_access.host_identity_srv1_access,
     target: srv1_os_target(),
     plan: plan,
-    transport: srv1_host_identity_ssh_transport(),
-    fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
+    transport: gunbc.host_identity_adopt.srv1_host_identity_ssh_transport(),
+    fixture_actor: Present { value: gunbc.ci_deploy_access.deploy_access_unprivileged_fixture_actor() }
   ) {
     Present { value: r } =>
-      host_identity_unprivileged_refusal_has_no_marker(r: r, marker: host_identity_mutation_marker)
+      gunbc.host_identity_converge.host_identity_unprivileged_refusal_has_no_marker(r: r, marker: host_identity_mutation_marker)
     Absent => false
   }
 }
 
 fn witness_stale_readback_not_converged() -> Bool {
-  match host_identity_observation_from_stdout(
+  match gunbc.host_identity_observation.host_identity_observation_from_stdout(
     stdout: "altrad8ud-1l2t-1",
     probed_at: "2026-07-02"
   ) {
     Present { value: obs } =>
-      !host_identity_read_back_matches(
+      !gunbc.host_identity_converge.host_identity_read_back_matches(
         observed: obs,
-        desired_hostname: require_dns_label(raw: operator_host_srv1 as String),
+        desired_hostname: require_dns_label(raw: gunbc.fleet_intent_network.operator_host_srv1 as String),
       )
     Absent => false
   }
 }
 
 fn witness_invalid_desired_hostname_unwritable() -> Bool {
-  match parse_dns_label_raw(raw: "") {
+  match extdeps.dns.domain_name.parse_dns_label_raw(raw: "") {
     Err { value: _ } => true
     Ok { value: _ } => false
   }

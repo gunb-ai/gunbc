@@ -1,70 +1,70 @@
 module test.claim.markdown_markup_xss_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn sample_readme_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn sample_readme_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
-      HeadingBlock {
+      std.markdown.HeadingBlock {
         level: H1,
-        inlines: [ TextInline { text: "README" } ],
+        inlines: [ std.markdown.TextInline { text: "README" } ],
       },
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          TextInline { text: "Visit " },
-          LinkInline {
-            inlines: [ TextInline { text: "home" } ],
+          std.markdown.TextInline { text: "Visit " },
+          std.markdown.LinkInline {
+            inlines: [ std.markdown.TextInline { text: "home" } ],
             url: "https://gunbc.dev",
           },
-          TextInline { text: " for docs." },
+          std.markdown.TextInline { text: " for docs." },
         ],
       },
-      UnorderedListBlock {
+      std.markdown.UnorderedListBlock {
         items: [
-          MarkdownListItem {
+          std.markdown.MarkdownListItem {
             blocks: [
-              ParagraphBlock {
+              std.markdown.ParagraphBlock {
                 inlines: [
-                  StrongInline {
-                    inlines: [ TextInline { text: "bold" } ],
+                  std.markdown.StrongInline {
+                    inlines: [ std.markdown.TextInline { text: "bold" } ],
                   },
-                  TextInline { text: " and " },
-                  EmphasisInline {
-                    inlines: [ TextInline { text: "italic" } ],
+                  std.markdown.TextInline { text: " and " },
+                  std.markdown.EmphasisInline {
+                    inlines: [ std.markdown.TextInline { text: "italic" } ],
                   },
                 ],
               },
             ],
           },
-          MarkdownListItem {
+          std.markdown.MarkdownListItem {
             blocks: [
-              ParagraphBlock {
+              std.markdown.ParagraphBlock {
                 inlines: [
-                  TextInline { text: "inline " },
-                  CodeInline { text: "fn main()" },
+                  std.markdown.TextInline { text: "inline " },
+                  std.markdown.CodeInline { text: "fn main()" },
                 ],
               },
             ],
           },
         ],
       },
-      CodeBlock { code: "let x = 1;\n" },
+      std.markdown.CodeBlock { code: "let x = 1;\n" },
     ],
   }
 }
 
 fn witness_markdown_reduces_and_serializes() -> Bool {
-  match try_serialize_markdown_document(doc: sample_readme_doc()) {
-    Serialized { html: h } =>
+  match extdeps.languages.markdown.try_serialize_markdown_document(doc: sample_readme_doc()) {
+    std.markup.Serialized { html: h } =>
       h == concat(
         concat(
           concat(
             concat(
-              "<div><h1>README</h1><p>Visit <a href=\"https://gunbc.dev\">home</a> for docs.</p>",
-              "<ul><li><p><strong>bold</strong> and <em>italic</em></p></li>",
+              "<div><h1>README</h1><gunbc.plans.md_helpers.p>Visit <a href=\"https://gunbc.dev\">home</a> for docs.</gunbc.plans.md_helpers.p>",
+              "<ul><li><gunbc.plans.md_helpers.p><strong>bold</strong> and <em>italic</em></gunbc.plans.md_helpers.p></li>",
             ),
-            "<li><p>inline <code>fn main()</code></p></li></ul>",
+            "<li><gunbc.plans.md_helpers.p>inline <code>fn main()</code></gunbc.plans.md_helpers.p></li></ul>",
           ),
           "<pre><code>let x = 1;\n</code></pre>",
         ),
@@ -75,29 +75,29 @@ fn witness_markdown_reduces_and_serializes() -> Bool {
 }
 
 fn witness_markdown_uses_one_serialize_fragment_fold() -> Bool {
-  let via_consumer = serialize_markdown_document(doc: sample_readme_doc())
-  let via_fold = serialize_fragment(
-    frag: markdown_document_to_fragment(doc: sample_readme_doc())
+  let via_consumer = extdeps.languages.markdown.serialize_markdown_document(doc: sample_readme_doc())
+  let via_fold = extdeps.languages.html_fragment.serialize_fragment(
+    frag: std.markdown.markdown_document_to_fragment(doc: sample_readme_doc())
   )
   via_consumer == via_fold
 }
 
 fn witness_ordered_list_serializes() -> Bool {
-  let doc = MarkdownDocument {
+  let doc = std.markdown.MarkdownDocument {
     blocks: [
-      OrderedListBlock {
+      std.markdown.OrderedListBlock {
         items: [
-          MarkdownListItem {
+          std.markdown.MarkdownListItem {
             blocks: [
-              ParagraphBlock {
-                inlines: [ TextInline { text: "one" } ],
+              std.markdown.ParagraphBlock {
+                inlines: [ std.markdown.TextInline { text: "one" } ],
               },
             ],
           },
-          MarkdownListItem {
+          std.markdown.MarkdownListItem {
             blocks: [
-              ParagraphBlock {
-                inlines: [ TextInline { text: "two" } ],
+              std.markdown.ParagraphBlock {
+                inlines: [ std.markdown.TextInline { text: "two" } ],
               },
             ],
           },
@@ -105,48 +105,48 @@ fn witness_ordered_list_serializes() -> Bool {
       },
     ],
   }
-  match try_serialize_markdown_document(doc: doc) {
-    Serialized { html: h } => h == "<div><ol><li><p>one</p></li><li><p>two</p></li></ol></div>"
+  match extdeps.languages.markdown.try_serialize_markdown_document(doc: doc) {
+    std.markup.Serialized { html: h } => h == "<div><ol><li><gunbc.plans.md_helpers.p>one</gunbc.plans.md_helpers.p></li><li><gunbc.plans.md_helpers.p>two</gunbc.plans.md_helpers.p></li></ol></div>"
     Rejected { reason: _ } => false
   }
 }
 
 fn witness_image_serializes() -> Bool {
-  let doc = MarkdownDocument {
+  let doc = std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          ImageInline { alt: "logo", url: "/static/logo.png" },
+          std.markdown.ImageInline { alt: "logo", url: "/static/logo.png" },
         ],
       },
     ],
   }
-  match try_serialize_markdown_document(doc: doc) {
-    Serialized { html: h } =>
-      h == "<div><p><img src=\"/static/logo.png\" alt=\"logo\"></p></div>"
+  match extdeps.languages.markdown.try_serialize_markdown_document(doc: doc) {
+    std.markup.Serialized { html: h } =>
+      h == "<div><gunbc.plans.md_helpers.p><img src=\"/static/logo.png\" alt=\"logo\"></gunbc.plans.md_helpers.p></div>"
     Rejected { reason: _ } => false
   }
 }
 
 fn witness_heading_levels_map_to_tags() -> Bool {
-  let doc = MarkdownDocument {
+  let doc = std.markdown.MarkdownDocument {
     blocks: [
-      HeadingBlock { level: H2, inlines: [ TextInline { text: "sub" } ] },
+      std.markdown.HeadingBlock { level: H2, inlines: [ std.markdown.TextInline { text: "sub" } ] },
     ],
   }
-  match try_serialize_markdown_document(doc: doc) {
-    Serialized { html: h } => h == "<div><h2>sub</h2></div>"
+  match extdeps.languages.markdown.try_serialize_markdown_document(doc: doc) {
+    std.markup.Serialized { html: h } => h == "<div><h2>sub</h2></div>"
     Rejected { reason: _ } => false
   }
 }
 
-fn javascript_link_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn javascript_link_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          LinkInline {
-            inlines: [ TextInline { text: "click" } ],
+          std.markdown.LinkInline {
+            inlines: [ std.markdown.TextInline { text: "click" } ],
             url: "javascript:alert(1)",
           },
         ],
@@ -155,12 +155,12 @@ fn javascript_link_doc() -> MarkdownDocument {
   }
 }
 
-fn data_image_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn data_image_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          ImageInline {
+          std.markdown.ImageInline {
             alt: "x",
             url: "data:text/html,<script>alert(1)</script>",
           },
@@ -171,35 +171,35 @@ fn data_image_doc() -> MarkdownDocument {
 }
 
 fn witness_javascript_link_rejects() -> Bool {
-  match try_serialize_markdown_document(doc: javascript_link_doc()) {
+  match extdeps.languages.markdown.try_serialize_markdown_document(doc: javascript_link_doc()) {
     Rejected { reason: _ } => true
-    Serialized { html: _ } => false
+    std.markup.Serialized { html: _ } => false
   }
 }
 
 fn witness_data_image_rejects() -> Bool {
-  match try_serialize_markdown_document(doc: data_image_doc()) {
+  match extdeps.languages.markdown.try_serialize_markdown_document(doc: data_image_doc()) {
     Rejected { reason: _ } => true
-    Serialized { html: _ } => false
+    std.markup.Serialized { html: _ } => false
   }
 }
 
 fn witness_escape_url_passes_javascript_scheme() -> Bool {
-  escape_url(s: "javascript:alert(1)") == "javascript:alert(1)"
+  std.markup.escape_url(s: "javascript:alert(1)") == "javascript:alert(1)"
 }
 
 fn witness_javascript_link_reject_discriminates_from_char_escape() -> Bool {
-  let unchecked = serialize_markdown_document(doc: javascript_link_doc())
+  let unchecked = extdeps.languages.markdown.serialize_markdown_document(doc: javascript_link_doc())
   witness_javascript_link_rejects()
     && witness_escape_url_passes_javascript_scheme()
-    && unchecked == "<div><p><a href=\"javascript:alert(1)\">click</a></p></div>"
+    && unchecked == "<div><gunbc.plans.md_helpers.p><a href=\"javascript:alert(1)\">click</a></gunbc.plans.md_helpers.p></div>"
 }
 
 fn witness_data_image_reject_discriminates_from_char_escape() -> Bool {
   witness_data_image_rejects()
     && starts_with(
-      s: serialize_markdown_document(doc: data_image_doc()),
-      prefix: "<div><p><img src=\"data:"
+      s: extdeps.languages.markdown.serialize_markdown_document(doc: data_image_doc()),
+      prefix: "<div><gunbc.plans.md_helpers.p><img src=\"data:"
     )
 }
 
@@ -225,31 +225,31 @@ fn witness_relative_link_accepted() -> Bool {
 }
 
 fn witness_https_link_serializes() -> Bool {
-  let doc = MarkdownDocument {
+  let doc = std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          LinkInline {
-            inlines: [ TextInline { text: "home" } ],
+          std.markdown.LinkInline {
+            inlines: [ std.markdown.TextInline { text: "home" } ],
             url: "https://gunbc.dev",
           },
         ],
       },
     ],
   }
-  match try_serialize_markdown_document(doc: doc) {
-    Serialized { html: h } =>
-      h == "<div><p><a href=\"https://gunbc.dev\">home</a></p></div>"
+  match extdeps.languages.markdown.try_serialize_markdown_document(doc: doc) {
+    std.markup.Serialized { html: h } =>
+      h == "<div><gunbc.plans.md_helpers.p><a href=\"https://gunbc.dev\">home</a></gunbc.plans.md_helpers.p></div>"
     Rejected { reason: _ } => false
   }
 }
 
 fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
-  let doc = MarkdownDocument {
+  let doc = std.markdown.MarkdownDocument {
     blocks: [
-      ParagraphBlock {
+      std.markdown.ParagraphBlock {
         inlines: [
-          LinkInline {
+          std.markdown.LinkInline {
             inlines: [],
             url: "x\"&<y onmouseover=z",
           },
@@ -257,9 +257,9 @@ fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
       },
     ],
   }
-  match try_serialize_markdown_document(doc: doc) {
-    Serialized { html: h } =>
-      h == "<div><p><a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a></p></div>"
+  match extdeps.languages.markdown.try_serialize_markdown_document(doc: doc) {
+    std.markup.Serialized { html: h } =>
+      h == "<div><gunbc.plans.md_helpers.p><a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a></gunbc.plans.md_helpers.p></div>"
     Rejected { reason: _ } => false
   }
 }

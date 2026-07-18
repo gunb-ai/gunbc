@@ -1,14 +1,14 @@
 module test.claim.github_checks_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-data sample_check_output: CheckOutput = CheckOutput {
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data sample_check_output: extdeps.github.checks.CheckOutput = extdeps.github.checks.CheckOutput {
   title: "CI passed",
   summary: "All checks green",
   annotations_count: 0,
 }
 
-data sample_check_run_success: CheckRun = CheckRun {
+data sample_check_run_success: extdeps.github.checks.CheckRun = extdeps.github.checks.CheckRun {
   id: 42,
   name: "gunbc-ci",
   head_sha: "abc123def456",
@@ -20,7 +20,7 @@ data sample_check_run_success: CheckRun = CheckRun {
   html_url: "https://github.com/gunb-ai/gunbc/actions/runs/42",
 }
 
-data sample_check_run_pending: CheckRun = CheckRun {
+data sample_check_run_pending: extdeps.github.checks.CheckRun = extdeps.github.checks.CheckRun {
   id: 43,
   name: "gunbc-ci",
   head_sha: "abc123def456",
@@ -28,7 +28,7 @@ data sample_check_run_pending: CheckRun = CheckRun {
   conclusion: null,
   started_at: null,
   completed_at: null,
-  output: CheckOutput {
+  output: extdeps.github.checks.CheckOutput {
     title: null,
     summary: null,
     annotations_count: 0,
@@ -36,7 +36,7 @@ data sample_check_run_pending: CheckRun = CheckRun {
   html_url: "https://github.com/gunb-ai/gunbc/actions/runs/43",
 }
 
-data sample_check_list_one: CheckRunList = CheckRunList {
+data sample_check_list_one: extdeps.github.checks.CheckRunList = extdeps.github.checks.CheckRunList {
   total_count: 1,
   check_runs: [sample_check_run_success],
 }
@@ -74,52 +74,52 @@ test fn witness_check_list_has_one_run() -> Bool {
 }
 
 test fn witness_in_progress_wire_decodes_to_in_progress() -> Bool {
-  match parse_check_status(raw: "in_progress") {
+  match extdeps.github.checks.parse_check_status(raw: "in_progress") {
     Present { value: InProgress } => true
     _ => false
   }
 }
 
 test fn witness_completed_wire_decodes_to_completed() -> Bool {
-  match parse_check_status(raw: "completed") {
+  match extdeps.github.checks.parse_check_status(raw: "completed") {
     Present { value: Completed } => true
     _ => false
   }
 }
 
 test fn witness_wrong_case_status_does_not_decode() -> Bool {
-  match parse_check_status(raw: "IN_PROGRESS") {
+  match extdeps.github.checks.parse_check_status(raw: "IN_PROGRESS") {
     none => true
     _ => false
   }
 }
 
 test fn witness_check_status_roundtrip_in_progress() -> Bool {
-  check_status_wire_label(s: InProgress) == "in_progress"
+  extdeps.github.checks.check_status_wire_label(s: InProgress) == "in_progress"
 }
 
 test fn witness_timed_out_wire_decodes_to_timed_out() -> Bool {
-  match parse_check_conclusion(raw: "timed_out") {
+  match extdeps.github.checks.parse_check_conclusion(raw: "timed_out") {
     Present { value: TimedOut } => true
     _ => false
   }
 }
 
 test fn witness_success_wire_decodes_to_success() -> Bool {
-  match parse_check_conclusion(raw: "success") {
+  match extdeps.github.checks.parse_check_conclusion(raw: "success") {
     Present { value: Success } => true
     _ => false
   }
 }
 
 test fn witness_wrong_case_conclusion_does_not_decode() -> Bool {
-  match parse_check_conclusion(raw: "TIMED_OUT") {
+  match extdeps.github.checks.parse_check_conclusion(raw: "TIMED_OUT") {
     none => true
     _ => false
   }
 }
 
 test fn witness_check_conclusion_roundtrip_timed_out() -> Bool {
-  check_conclusion_wire_label(c: TimedOut) == "timed_out"
+  extdeps.github.checks.check_conclusion_wire_label(c: TimedOut) == "timed_out"
 }
 

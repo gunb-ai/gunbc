@@ -1,19 +1,19 @@
 module test.claim.measure_magnitude_carrier
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn measure_nat_magnitude_roundtrip_holds() -> Bool {
-  byte_size_count(byte_size(42)) == 42
-    && mebibyte_count(mebibyte(128)) == 128
-    && millicore_count(millicore(100)) == 100
+  std.measure.byte_size_count(std.measure.byte_size(42)) == 42
+    && std.measure.mebibyte_count(std.measure.mebibyte(128)) == 128
+    && std.measure.millicore_count(std.measure.millicore(100)) == 100
 }
 
-fn signed_microvolts(n: Int) -> Measure<ElectricPotential, Micro, Int> {
-  Measure { count: n }
+fn signed_microvolts(n: Int) -> std.measure.Measure<std.measure.ElectricPotential, std.measure.Micro, Int> {
+  std.measure.Measure { count: n }
 }
 
-fn signed_microvolts_count(v: Measure<ElectricPotential, Micro, Int>) -> Int {
+fn signed_microvolts_count(v: std.measure.Measure<std.measure.ElectricPotential, std.measure.Micro, Int>) -> Int {
   v.count
 }
 
@@ -22,9 +22,9 @@ test fn measure_signed_magnitude_roundtrip_holds() -> Bool {
 }
 
 test fn celsius_subzero_absolute_roundtrip_holds() -> Bool {
-  celsius_count(celsius(-12)) == -12
+  std.measure.celsius_count(std.measure.celsius(-12)) == -12
 }
 
 test fn measure_two_hop_alias_count_roundtrip_holds() -> Bool {
-  money_amount_micro_count(money_amount_micro(99)) == 99
+  std.measure.money_amount_micro_count(std.measure.money_amount_micro(99)) == 99
 }

@@ -1,17 +1,17 @@
 module test.claim.stage0_emit_model_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn w_hand_maintained_not_classified_generated() -> Bool {
-  !is_generated_stage0_file(basename: "cli_run.rs") &&
-  !is_generated_stage0_file(basename: "v1_interpreter.rs") &&
-  !is_generated_stage0_file(basename: "main.rs")
+  !gunbc.stage0_emit_model.is_generated_stage0_file(basename: "cli_run.rs") &&
+  !gunbc.stage0_emit_model.is_generated_stage0_file(basename: "v1_interpreter.rs") &&
+  !gunbc.stage0_emit_model.is_generated_stage0_file(basename: "main.rs")
 }
 
 fn w_emit_naming_rule() -> Bool {
-  stage0_module_emit_basename(module_path: "v1.compiler.emit_rust") == "v1_compiler_emit_rust" &&
-  stage0_module_emit_filename(module_path: "gunbc.stage0_emit_model") == "gunbc_stage0_emit_model.rs"
+  gunbc.stage0_emit_model.stage0_module_emit_basename(module_path: "v1.compiler.emit_rust") == "v1_compiler_emit_rust" &&
+  gunbc.stage0_emit_model.stage0_module_emit_filename(module_path: "gunbc.stage0_emit_model") == "gunbc_stage0_emit_model.rs"
 }
 
 test fn stage0_emit_model_witnesses() -> Bool {

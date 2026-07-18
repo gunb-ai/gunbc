@@ -1,14 +1,14 @@
 module test.claim.merge_admission_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data roster_surface_only_variant: List<CommitCheckEnrollment> = concat(
-  [CommitCheckEnrollment {
-    check: CommitSpecGate { gate: EmitHostGate },
-    surfaces: [GitPrePushHook]
+data roster_surface_only_variant: List<gunbc.commit_workflow.CommitCheckEnrollment> = concat(
+  [gunbc.commit_workflow.CommitCheckEnrollment {
+    check: gunbc.commit_workflow.CommitSpecGate { gate: gunbc.ci_gate.EmitHostGate },
+    surfaces: [gunbc.commit_workflow.GitPrePushHook]
   }],
-  commit_gate_roster.skip(n: 1)
+  gunbc.commit_workflow.commit_gate_roster.skip(n: 1)
 )
 
 data scenario_base_b0: ContentHash = "merge-admission-witness-base-b0"
@@ -16,7 +16,7 @@ data scenario_base_b1: ContentHash = "merge-admission-witness-base-b1"
 data scenario_roster_r0: ContentHash = "merge-admission-witness-roster-r0"
 data scenario_roster_r1: ContentHash = "merge-admission-witness-roster-r1"
 
-data scenario_pr_x_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
+data scenario_pr_x_receipt: gunbc.merge_admission.MergeAdmissionReceipt = gunbc.merge_admission.MergeAdmissionReceipt {
   pr_number: Present { value: 5933 },
   head_sha: "abc1234def5678901234567890abcd1234567890",
   base_tree_hash: scenario_base_b0,
@@ -24,8 +24,8 @@ data scenario_pr_x_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
   conclusion: Success,
 }
 
-fn scenario_stale_base_admits_policy(policy: AdmissionPolicy) -> Bool {
-  policy_admits(
+fn scenario_stale_base_admits_policy(policy: gunbc.merge_admission.AdmissionPolicy) -> Bool {
+  gunbc.merge_admission.policy_admits(
     policy: policy,
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b1,
@@ -33,8 +33,8 @@ fn scenario_stale_base_admits_policy(policy: AdmissionPolicy) -> Bool {
   )
 }
 
-fn scenario_stale_roster_admits_policy(policy: AdmissionPolicy) -> Bool {
-  policy_admits(
+fn scenario_stale_roster_admits_policy(policy: gunbc.merge_admission.AdmissionPolicy) -> Bool {
+  gunbc.merge_admission.policy_admits(
     policy: policy,
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b0,
@@ -43,27 +43,27 @@ fn scenario_stale_roster_admits_policy(policy: AdmissionPolicy) -> Bool {
 }
 
 test fn per_pr_gate_only_red_on_stale_base() -> Bool {
-  scenario_stale_base_admits_policy(policy: PerPrGateOnly)
+  scenario_stale_base_admits_policy(policy: gunbc.merge_admission.PerPrGateOnly)
 }
 
 test fn require_up_to_date_catches_stale_base() -> Bool {
-  !scenario_stale_base_admits_policy(policy: RequireUpToDateBase)
+  !scenario_stale_base_admits_policy(policy: gunbc.merge_admission.RequireUpToDateBase)
 }
 
 test fn require_up_to_date_misses_stale_roster() -> Bool {
-  scenario_stale_roster_admits_policy(policy: RequireUpToDateBase)
+  scenario_stale_roster_admits_policy(policy: gunbc.merge_admission.RequireUpToDateBase)
 }
 
 test fn keyed_receipt_blocks_stale_base() -> Bool {
-  !scenario_stale_base_admits_policy(policy: KeyedReceipt)
+  !scenario_stale_base_admits_policy(policy: gunbc.merge_admission.KeyedReceipt)
 }
 
 test fn keyed_receipt_blocks_stale_roster() -> Bool {
-  !scenario_stale_roster_admits_policy(policy: KeyedReceipt)
+  !scenario_stale_roster_admits_policy(policy: gunbc.merge_admission.KeyedReceipt)
 }
 
 test fn keyed_receipt_admits_when_fresh() -> Bool {
-  receipt_is_admissible(
+  gunbc.merge_admission.receipt_is_admissible(
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b0,
     current_roster_hash: scenario_roster_r0,
@@ -71,20 +71,20 @@ test fn keyed_receipt_admits_when_fresh() -> Bool {
 }
 
 test fn gate_roster_hash_sensitive_to_roster_content() -> Bool {
-  let empty_roster_hash = gate_roster_content_hash(roster: [])
-  let truncated_roster_hash = gate_roster_content_hash(roster: commit_gate_roster.skip(n: 1))
-  (empty_roster_hash != current_gate_roster_hash)
-    && (truncated_roster_hash != current_gate_roster_hash)
+  let empty_roster_hash = gunbc.merge_admission.gate_roster_content_hash(roster: [])
+  let truncated_roster_hash = gunbc.merge_admission.gate_roster_content_hash(roster: gunbc.commit_workflow.commit_gate_roster.skip(n: 1))
+  (empty_roster_hash != gunbc.merge_admission.current_gate_roster_hash)
+    && (truncated_roster_hash != gunbc.merge_admission.current_gate_roster_hash)
     && (empty_roster_hash != truncated_roster_hash)
 }
 
 test fn gate_roster_hash_unchanged_on_surface_only_move() -> Bool {
-  gate_roster_content_hash(roster: roster_surface_only_variant) == current_gate_roster_hash
+  gunbc.merge_admission.gate_roster_content_hash(roster: roster_surface_only_variant) == gunbc.merge_admission.current_gate_roster_hash
 }
 
 test fn gunbc_repo_standard_is_squash_only() -> Bool {
-  gunbc_repo_standard.default_branch == "main"
-    && length(gunbc_repo_standard.allowed_strategies) == 1
-    && gunbc_repo_standard.allowed_strategies.first() == SquashMerge
-    && gunbc_repo_standard.require_up_to_date == false
+  gunbc.merge_admission.gunbc_repo_standard.default_branch == "main"
+    && v2.std.algebra.length(gunbc.merge_admission.gunbc_repo_standard.allowed_strategies) == 1
+    && gunbc.merge_admission.gunbc_repo_standard.allowed_strategies.first() == gunbc.merge_admission.SquashMerge
+    && gunbc.merge_admission.gunbc_repo_standard.require_up_to_date == false
 }

@@ -1,57 +1,57 @@
 module test.claim.config_record_emit_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data flat_proto: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+data flat_proto: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
 
-fn render_field(knobs: SerializationKnobs, key: String, value: String) -> String {
+fn render_field(knobs: std.languages.SerializationKnobs, key: String, value: String) -> String {
   render(
-    doc: serialize_field_doc(knobs: knobs, f: serial_field(key: key, value: serial_scalar(text: value))),
+    doc: std.serialize.serialize_field_doc(knobs: knobs, f: std.serialize.serial_field(key: key, value: std.serialize.serial_scalar(text: value))),
     proto: flat_proto
   )
 }
 
-fn render_fields(knobs: SerializationKnobs, fields: List<SerialField>) -> String {
-  render(doc: serialize_fields_doc(knobs: knobs, fields: fields), proto: flat_proto)
+fn render_fields(knobs: std.languages.SerializationKnobs, fields: List<std.languages.SerialField>) -> String {
+  render(doc: std.serialize.serialize_fields_doc(knobs: knobs, fields: fields), proto: flat_proto)
 }
 
-fn render_record(knobs: SerializationKnobs, fields: List<SerialField>) -> String {
-  render(doc: serialize_record_doc(knobs: knobs, fields: fields), proto: flat_proto)
+fn render_record(knobs: std.languages.SerializationKnobs, fields: List<std.languages.SerialField>) -> String {
+  render(doc: std.serialize.serialize_record_doc(knobs: knobs, fields: fields), proto: flat_proto)
 }
 
 fn witness_yaml_field_uses_colon_separator() -> Bool {
-  match yaml_format.record {
+  match std.languages.yaml_format.record {
     null => false
     knobs => render_field(knobs: knobs, key: "name", value: "gunbc") == "name: gunbc"
   }
 }
 
 fn witness_toml_field_uses_equals_and_double_quotes() -> Bool {
-  match toml_format.record {
+  match std.languages.toml_format.record {
     null => false
     knobs => render_field(knobs: knobs, key: "name", value: "gunbc") == "name = \"gunbc\""
   }
 }
 
 fn witness_makefile_field_uses_equals_no_quotes() -> Bool {
-  match makefile_format.record {
+  match std.languages.makefile_format.record {
     null => false
     knobs => render_field(knobs: knobs, key: "CC", value: "gcc") == "CC = gcc"
   }
 }
 
 fn witness_gitignore_has_no_record_knobs() -> Bool {
-  match gitignore_format.record {
+  match std.languages.gitignore_format.record {
     null => true
     _ => false
   }
 }
 
 fn witness_yaml_toml_fields_differ() -> Bool {
-  match yaml_format.record {
+  match std.languages.yaml_format.record {
     null => false
-    yaml_knobs => match toml_format.record {
+    yaml_knobs => match std.languages.toml_format.record {
       null => false
       toml_knobs =>
         render_field(knobs: yaml_knobs, key: "k", value: "v") !=
@@ -61,43 +61,43 @@ fn witness_yaml_toml_fields_differ() -> Bool {
 }
 
 fn witness_yaml_two_fields_newline_joined() -> Bool {
-  match yaml_format.record {
+  match std.languages.yaml_format.record {
     null => false
     knobs =>
       render_fields(knobs: knobs, fields: [
-        serial_field(key: "host", value: serial_scalar(text: "localhost")),
-        serial_field(key: "port", value: serial_scalar(text: "8080"))
+        std.serialize.serial_field(key: "host", value: std.serialize.serial_scalar(text: "localhost")),
+        std.serialize.serial_field(key: "port", value: std.serialize.serial_scalar(text: "8080"))
       ]) == "host: localhost\nport: 8080"
   }
 }
 
 fn witness_manifest_knobs_space_separated() -> Bool {
   render_fields(
-    knobs: manifest_record_knobs,
+    knobs: gunbc.runner_deploy_emit.manifest_record_knobs,
     fields: [
-      serial_field(key: "host", value: serial_scalar(text: "srv1")),
-      serial_field(key: "runner_count", value: serial_scalar(text: "4"))
+      std.serialize.serial_field(key: "host", value: std.serialize.serial_scalar(text: "srv1")),
+      std.serialize.serial_field(key: "runner_count", value: std.serialize.serial_scalar(text: "4"))
     ]
   ) == "host=srv1 runner_count=4"
 }
 
 fn witness_json_knobs_produce_quoted_record() -> Bool {
   render_record(
-    knobs: json_record_knobs,
+    knobs: std.languages.json_record_knobs,
     fields: [
-      serial_field(key: "host", value: serial_scalar(text: "srv1")),
-      serial_field(key: "runner_count", value: serial_scalar(text: "4"))
+      std.serialize.serial_field(key: "host", value: std.serialize.serial_scalar(text: "srv1")),
+      std.serialize.serial_field(key: "runner_count", value: std.serialize.serial_scalar(text: "4"))
     ]
   ) == "{\"host\": \"srv1\", \"runner_count\": \"4\"}"
 }
 
 fn witness_same_fields_differ_across_knobs() -> Bool {
   let fields = [
-    serial_field(key: "host", value: serial_scalar(text: "srv1")),
-    serial_field(key: "runner_count", value: serial_scalar(text: "4"))
+    std.serialize.serial_field(key: "host", value: std.serialize.serial_scalar(text: "srv1")),
+    std.serialize.serial_field(key: "runner_count", value: std.serialize.serial_scalar(text: "4"))
   ]
-  render_record(knobs: manifest_record_knobs, fields: fields) !=
-    render_record(knobs: json_record_knobs, fields: fields)
+  render_record(knobs: gunbc.runner_deploy_emit.manifest_record_knobs, fields: fields) !=
+    render_record(knobs: std.languages.json_record_knobs, fields: fields)
 }
 
 test fn config_record_emit_keystone_holds() -> Bool {

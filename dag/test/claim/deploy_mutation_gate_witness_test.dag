@@ -1,19 +1,19 @@
 module test.claim.deploy_mutation_gate_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data mutation_gate_marker: String = "deploy-mutation-gate-marker-c4e2"
 
-fn srv1_host_observation() -> DeployTargetHostObservation {
-  deploy_target_host_fixture_observation(
+fn srv1_host_observation() -> gunbc.ci_deploy_target_host.DeployTargetHostObservation {
+  gunbc.ci_deploy_target_host.deploy_target_host_fixture_observation(
     hostname: "srv1",
     runner_name: "actions-runner@srv1-01.service"
   )
 }
 
-fn srv2_host_observation() -> DeployTargetHostObservation {
-  deploy_target_host_fixture_observation(
+fn srv2_host_observation() -> gunbc.ci_deploy_target_host.DeployTargetHostObservation {
+  gunbc.ci_deploy_target_host.deploy_target_host_fixture_observation(
     hostname: "srv2",
     runner_name: "actions-runner@srv2-09.service"
   )
@@ -22,7 +22,7 @@ fn srv2_host_observation() -> DeployTargetHostObservation {
 fn witness_decision_meet_preserves_left_denial_reason() -> Bool {
   let left = std.access.Deny { reason: Present { value: "host-deny-reason" } }
   let right = std.access.Deny { reason: Present { value: "access-deny-reason" } }
-  match decision_meet(a: left, b: right) {
+  match std.access.decision_meet(a: left, b: right) {
     Deny { reason: r } =>
       match r {
         Present { value: why } => why == "host-deny-reason"
@@ -33,33 +33,33 @@ fn witness_decision_meet_preserves_left_denial_reason() -> Bool {
 }
 
 fn witness_wrong_host_unprivileged_both_deny_surfaces_host_reason_only() -> Bool {
-  let gate = deploy_mutation_gate(
-    access: ci_deploy_srv1_access,
-    fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
+  let gate = gunbc.ci_deploy_access.deploy_mutation_gate(
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
+    fixture_actor: Present { value: gunbc.ci_deploy_access.deploy_access_unprivileged_fixture_actor() },
     fixture_host: Present { value: srv2_host_observation() }
   )
   match gate {
     Deny { reason: _ } =>
-      let why = deploy_access_decision_reason(d: gate)
-      string_contains(s: why, pattern: deploy_target_host_refusal_prefix)
-        && !string_contains(s: why, pattern: deploy_access_refusal_prefix)
+      let why = gunbc.ci_deploy_access.deploy_access_decision_reason(d: gate)
+      string_contains(s: why, pattern: gunbc.ci_deploy_target_host.deploy_target_host_refusal_prefix)
+        && !string_contains(s: why, pattern: gunbc.ci_deploy_access.deploy_access_refusal_prefix)
     Permit => false
   }
 }
 
 fn witness_wrong_host_unprivileged_both_deny_refused_before_shell() -> Bool {
-  match live_deploy_fold(
-    spec: deployment_spec_srv1(),
+  match gunbc.live_deploy.apply.live_deploy_fold(
+    spec: gunbc.live_deploy.spec.deployment_spec_srv1(),
     script: concat("echo ", mutation_gate_marker, " && exit 99"),
     transport: LocalShell,
-    access: ci_deploy_srv1_access,
-    fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
+    fixture_actor: Present { value: gunbc.ci_deploy_access.deploy_access_unprivileged_fixture_actor() },
     fixture_host: Present { value: srv2_host_observation() }
   ) {
-    NotConverged { reason: why, applied: intent } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: Deny { reason: _ } } =>
-          string_contains(s: why, pattern: deploy_target_host_refusal_prefix)
+          string_contains(s: why, pattern: gunbc.ci_deploy_target_host.deploy_target_host_refusal_prefix)
             && !string_contains(s: why, pattern: mutation_gate_marker)
         _ => false
       }
@@ -68,27 +68,27 @@ fn witness_wrong_host_unprivileged_both_deny_refused_before_shell() -> Bool {
 }
 
 fn witness_wrong_host_privileged_gate_denies() -> Bool {
-  let gate = deploy_mutation_gate(
-    access: ci_deploy_srv1_access,
+  let gate = gunbc.ci_deploy_access.deploy_mutation_gate(
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
     fixture_actor: Present {
-      value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
+      value: gunbc.ci_deploy_access.deploy_access_privileged_fixture_actor(access: gunbc.ci_deploy_access.ci_deploy_srv1_access)
     },
     fixture_host: Present { value: srv2_host_observation() }
   )
   match gate {
     Deny { reason: _ } =>
       string_contains(
-        s: deploy_access_decision_reason(d: gate),
-        pattern: deploy_target_host_refusal_prefix
+        s: gunbc.ci_deploy_access.deploy_access_decision_reason(d: gate),
+        pattern: gunbc.ci_deploy_target_host.deploy_target_host_refusal_prefix
       )
     Permit => false
   }
 }
 
 fn witness_right_host_unprivileged_gate_denies() -> Bool {
-  match deploy_mutation_gate(
-    access: ci_deploy_srv1_access,
-    fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
+  match gunbc.ci_deploy_access.deploy_mutation_gate(
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
+    fixture_actor: Present { value: gunbc.ci_deploy_access.deploy_access_unprivileged_fixture_actor() },
     fixture_host: Present { value: srv1_host_observation() }
   ) {
     Deny { reason: _ } => true
@@ -97,10 +97,10 @@ fn witness_right_host_unprivileged_gate_denies() -> Bool {
 }
 
 fn witness_right_host_privileged_gate_permits() -> Bool {
-  match deploy_mutation_gate(
-    access: ci_deploy_srv1_access,
+  match gunbc.ci_deploy_access.deploy_mutation_gate(
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
     fixture_actor: Present {
-      value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
+      value: gunbc.ci_deploy_access.deploy_access_privileged_fixture_actor(access: gunbc.ci_deploy_access.ci_deploy_srv1_access)
     },
     fixture_host: Present { value: srv1_host_observation() }
   ) {
@@ -110,17 +110,17 @@ fn witness_right_host_privileged_gate_permits() -> Bool {
 }
 
 fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
-  match live_deploy_fold(
-    spec: deployment_spec_srv1(),
+  match gunbc.live_deploy.apply.live_deploy_fold(
+    spec: gunbc.live_deploy.spec.deployment_spec_srv1(),
     script: concat("echo ", mutation_gate_marker, " && exit 99"),
     transport: LocalShell,
-    access: ci_deploy_srv1_access,
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
     fixture_actor: Present {
-      value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
+      value: gunbc.ci_deploy_access.deploy_access_privileged_fixture_actor(access: gunbc.ci_deploy_access.ci_deploy_srv1_access)
     },
     fixture_host: Present { value: srv2_host_observation() }
   ) {
-    NotConverged { reason: why, applied: intent } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: Deny { reason: _ } } =>
           !string_contains(s: why, pattern: mutation_gate_marker)
@@ -131,15 +131,15 @@ fn witness_wrong_host_privileged_refused_before_shell() -> Bool {
 }
 
 fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
-  match live_deploy_fold(
-    spec: deployment_spec_srv1(),
+  match gunbc.live_deploy.apply.live_deploy_fold(
+    spec: gunbc.live_deploy.spec.deployment_spec_srv1(),
     script: concat("echo ", mutation_gate_marker, " && exit 99"),
     transport: LocalShell,
-    access: ci_deploy_srv1_access,
-    fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() },
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
+    fixture_actor: Present { value: gunbc.ci_deploy_access.deploy_access_unprivileged_fixture_actor() },
     fixture_host: Present { value: srv1_host_observation() }
   ) {
-    NotConverged { reason: why, applied: intent } =>
+    std.realization_reconcile.NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: Deny { reason: _ } } =>
           !string_contains(s: why, pattern: mutation_gate_marker)
@@ -150,13 +150,13 @@ fn witness_right_host_unprivileged_refused_before_shell() -> Bool {
 }
 
 fn witness_right_host_privileged_may_apply() -> Bool {
-  reconciliation_converged(r: live_deploy_fold(
-    spec: deployment_spec_srv1(),
+  std.realization_reconcile.reconciliation_converged(r: gunbc.live_deploy.apply.live_deploy_fold(
+    spec: gunbc.live_deploy.spec.deployment_spec_srv1(),
     script: "true",
     transport: LocalShell,
-    access: ci_deploy_srv1_access,
+    access: gunbc.ci_deploy_access.ci_deploy_srv1_access,
     fixture_actor: Present {
-      value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
+      value: gunbc.ci_deploy_access.deploy_access_privileged_fixture_actor(access: gunbc.ci_deploy_access.ci_deploy_srv1_access)
     },
     fixture_host: Present { value: srv1_host_observation() }
   ))

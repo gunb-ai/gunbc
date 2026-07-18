@@ -1,17 +1,17 @@
 module test.claim.fleet_intent_storage
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn every_host_carries_its_real_drive() -> Bool {
-  list_length(items: srv1_host.storage) == 1
-    && list_length(items: srv2_host.storage) == 1
-    && list_length(items: srv3_host.storage) == 1
+  std.types.list_length(items: gunbc.fleet_intent.srv1_host.storage) == 1
+    && std.types.list_length(items: gunbc.fleet_intent.srv2_host.storage) == 1
+    && std.types.list_length(items: gunbc.fleet_intent.srv3_host.storage) == 1
 }
 
 test fn srv1_drive_is_catalog_grounded_wd_sn850x() -> Bool {
-  byte_size_count(storage_device_capacity(d: srv1_nvme0)) == 2000398934016
-    && match storage_device_pcie_link(d: srv1_nvme0) {
+  std.measure.byte_size_count(extdeps.storage.types.storage_device_capacity(d: gunbc.fleet_intent.srv1_nvme0)) == 2000398934016
+    && match extdeps.storage.types.storage_device_pcie_link(d: gunbc.fleet_intent.srv1_nvme0) {
       Present { value: link } =>
         link.lane_count == 4
           && match link.generation {
@@ -24,8 +24,8 @@ test fn srv1_drive_is_catalog_grounded_wd_sn850x() -> Bool {
 }
 
 test fn srv3_drive_is_catalog_grounded_samsung_970_evo_plus_2tb() -> Bool {
-  byte_size_count(storage_device_capacity(d: srv3_nvme0)) == 2000398934016
-    && match storage_device_pcie_link(d: srv3_nvme0) {
+  std.measure.byte_size_count(extdeps.storage.types.storage_device_capacity(d: gunbc.fleet_intent.srv3_nvme0)) == 2000398934016
+    && match extdeps.storage.types.storage_device_pcie_link(d: gunbc.fleet_intent.srv3_nvme0) {
       Present { value: link } =>
         match link.generation {
           Gen3 => true
@@ -37,12 +37,12 @@ test fn srv3_drive_is_catalog_grounded_samsung_970_evo_plus_2tb() -> Bool {
 }
 
 test fn drive_serial_is_pending_until_in_band_enumeration() -> Bool {
-  (storage_device_serial(d: srv1_nvme0) == none) && (storage_device_serial(d: srv3_nvme0) == none)
+  (extdeps.storage.types.storage_device_serial(d: gunbc.fleet_intent.srv1_nvme0) == none) && (extdeps.storage.types.storage_device_serial(d: gunbc.fleet_intent.srv3_nvme0) == none)
 }
 
 test fn bmc_cannot_observe_drives_even_though_they_are_known() -> Bool {
-  match route_observation(channel: OutOfBand, class: StorageInventory) {
-    ChannelCannotObserve { channel: _, class: _ } => true
+  match extdeps.observability.route_observation(channel: extdeps.observability.OutOfBand, class: extdeps.observability.StorageInventory) {
+    extdeps.observability.ChannelCannotObserve { channel: _, class: _ } => true
     RoutedTo { channel: _ } => false
   }
 }

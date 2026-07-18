@@ -1,10 +1,10 @@
 module test.claim.cache_purity_verdict
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn sample_violation() -> CachePurityViolation {
-  CachePurityViolation {
+fn sample_violation() -> extdeps.realization.cache_purity.CachePurityViolation {
+  extdeps.realization.cache_purity.CachePurityViolation {
     content_key: "deadbeefdeadbeef",
     unkeyed_axis: "session_intern_state",
     warm_digest: "1111111111111111",
@@ -13,15 +13,15 @@ fn sample_violation() -> CachePurityViolation {
 }
 
 fn witness_pure_on_match() -> Bool {
-  match cache_purity_verdict(warm_equals_cold: true, violation: sample_violation()) {
+  match extdeps.realization.cache_purity.cache_purity_verdict(warm_equals_cold: true, violation: sample_violation()) {
     Pure => true
     _ => false
   }
 }
 
 fn witness_impure_on_divergence() -> Bool {
-  match cache_purity_verdict(warm_equals_cold: false, violation: sample_violation()) {
-    Impure { violation: _ } => true
+  match extdeps.realization.cache_purity.cache_purity_verdict(warm_equals_cold: false, violation: sample_violation()) {
+    extdeps.realization.cache_purity.Impure { violation: _ } => true
     _ => false
   }
 }

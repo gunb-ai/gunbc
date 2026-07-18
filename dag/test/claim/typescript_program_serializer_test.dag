@@ -1,61 +1,61 @@
 module test.claim.typescript_program_serializer
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn minimal_add_program() -> TsProgram {
-  TsProgram {
+fn minimal_add_program() -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [],
     statements: [
-      ts_const(
+      extdeps.languages.typescript.program.ts_const(
         name: "x",
-        value: ts_binop(
-          left: ts_lit_num(text: "1"),
+        value: extdeps.languages.typescript.program.ts_binop(
+          left: extdeps.languages.typescript.program.ts_lit_num(text: "1"),
           op: "+",
-          right: ts_lit_num(text: "2")
+          right: extdeps.languages.typescript.program.ts_lit_num(text: "2")
         )
       ),
     ],
   }
 }
 
-fn regex_literal_program() -> TsProgram {
-  TsProgram {
+fn regex_literal_program() -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [],
     statements: [
-      ts_const(name: "re", value: ts_lit_regex(source: "^\\/$")),
+      extdeps.languages.typescript.program.ts_const(name: "re", value: extdeps.languages.typescript.program.ts_lit_regex(source: "^\\/$")),
     ],
   }
 }
 
 test fn typescript_program_serialize_const_holds() -> Bool {
-  serialize_typescript_program(p: minimal_add_program()) == "const x = 1 + 2;"
+  extdeps.languages.typescript.program.serialize_typescript_program(p: minimal_add_program()) == "const x = 1 + 2;"
 }
 
 test fn typescript_program_serialize_regex_holds() -> Bool {
-  serialize_typescript_program(p: regex_literal_program()) == "const re = /^\\/$/;"
+  extdeps.languages.typescript.program.serialize_typescript_program(p: regex_literal_program()) == "const re = /^\\/$/;"
 }
 
 test fn typescript_program_serialize_arrow_expr_body_holds() -> Bool {
-  serialize_typescript_program(p: TsProgram {
+  extdeps.languages.typescript.program.serialize_typescript_program(p: extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [],
     statements: [
-      ts_const(
+      extdeps.languages.typescript.program.ts_const(
         name: "ok",
-        value: ts_call(
-          callee: ts_member(object: ts_ident(name: "routes"), property: "some"),
+        value: extdeps.languages.typescript.program.ts_call(
+          callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "routes"), property: "some"),
           args: [
-            ts_arrow(
+            extdeps.languages.typescript.program.ts_arrow(
               params: ["r"],
-              body: ts_expr_stmt(expr: ts_call(
-                callee: ts_member(
-                  object: ts_member(object: ts_ident(name: "r"), property: "pathRe"),
+              body: extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
+                callee: extdeps.languages.typescript.program.ts_member(
+                  object: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "r"), property: "pathRe"),
                   property: "test"
                 ),
-                args: [ts_ident(name: "path")]
+                args: [extdeps.languages.typescript.program.ts_ident(name: "path")]
               ))
             ),
           ]
@@ -66,22 +66,22 @@ test fn typescript_program_serialize_arrow_expr_body_holds() -> Bool {
 }
 
 test fn typescript_program_serialize_create_server_fragment_holds() -> Bool {
-  let src = serialize_typescript_program(p: TsProgram {
+  let src = extdeps.languages.typescript.program.serialize_typescript_program(p: extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: true,
     header_lines: ["test"],
     statements: [
-      ts_expr_stmt(expr: ts_call(
-        callee: ts_member(
-          object: ts_call(callee: ts_ident(name: "require"), args: [ts_lit_str(value: "http")]),
+      extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
+        callee: extdeps.languages.typescript.program.ts_member(
+          object: extdeps.languages.typescript.program.ts_call(callee: extdeps.languages.typescript.program.ts_ident(name: "require"), args: [extdeps.languages.typescript.program.ts_lit_str(value: "http")]),
           property: "createServer"
         ),
         args: [
-          ts_arrow(
+          extdeps.languages.typescript.program.ts_arrow(
             params: ["req", "res"],
-            body: ts_block(stmts: [
-              ts_expr_stmt(expr: ts_call(
-                callee: ts_member(object: ts_ident(name: "res"), property: "end"),
-                args: [ts_lit_str(value: "ok")]
+            body: extdeps.languages.typescript.program.ts_block(stmts: [
+              extdeps.languages.typescript.program.ts_expr_stmt(expr: extdeps.languages.typescript.program.ts_call(
+                callee: extdeps.languages.typescript.program.ts_member(object: extdeps.languages.typescript.program.ts_ident(name: "res"), property: "end"),
+                args: [extdeps.languages.typescript.program.ts_lit_str(value: "ok")]
               )),
             ])
           ),

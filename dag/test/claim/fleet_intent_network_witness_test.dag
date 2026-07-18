@@ -1,21 +1,21 @@
 module test.claim.fleet_intent_network
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn fleet_intent_network_container_to_bmc_allowed() -> Bool {
-  network_reachability(from: ContainerRunner, to: BmcManagement)
+  product.network_topology.network_reachability(from: ContainerRunner, to: product.network_topology.BmcManagement)
 }
 
 test fn fleet_intent_network_container_to_host_lan_denied() -> Bool {
-  network_reachability(from: ContainerRunner, to: HostLan) == false
+  product.network_topology.network_reachability(from: ContainerRunner, to: product.network_topology.HostLan) == false
 }
 
 test fn fleet_intent_network_topology_endpoint_count_holds() -> Bool {
-  list_length(items: fleet_intent_network.endpoints) == 8
+  std.types.list_length(items: gunbc.fleet_intent_network.fleet_intent_network.endpoints) == 8
 }
 
 test fn fleet_intent_network_srv1_addresses_holds() -> Bool {
-  srv1_host_lan_endpoint.address == "192.168.1.185"
-    && srv1_bmc_endpoint.address == "192.168.1.183"
+  gunbc.fleet_intent_network.srv1_host_lan_endpoint.address == "192.168.1.185"
+    && gunbc.fleet_intent_network.srv1_bmc_endpoint.address == "192.168.1.183"
 }

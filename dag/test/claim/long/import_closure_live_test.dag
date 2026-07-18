@@ -1,9 +1,9 @@
 module test.claim.long.import_closure_live
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
 
-data expected_conformance_closure: FreeMonoid<String> = [
+data expected_conformance_closure: std.algebra.FreeMonoid<String> = [
   "dag/test/claim/module_graph/conformance_imports_only.dag",
   "dag/std/algebra.dag",
   "dag/std/error_primitives.dag",
@@ -21,44 +21,44 @@ data conformance_entry: String = "dag/test/claim/module_graph/conformance_import
 
 data bogus_never_imported: String = "src/v2/std/__bogus_never_imported__.dag"
 
-data no_paths: FreeMonoid<String> = []
+data no_paths: std.algebra.FreeMonoid<String> = []
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn set_subset(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
-  for_all(xs: xs, predicate: fn(x) { contains(xs: ys, item: x, eq: string_eq) })
+fn set_subset(xs: std.algebra.FreeMonoid<String>, ys: std.algebra.FreeMonoid<String>) -> Bool {
+  v2.std.algebra.for_all(xs: xs, predicate: fn(x) { v2.std.algebra.contains(xs: ys, item: x, eq: string_eq) })
 }
 
-fn set_equal(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
+fn set_equal(xs: std.algebra.FreeMonoid<String>, ys: std.algebra.FreeMonoid<String>) -> Bool {
   set_subset(xs: xs, ys: ys) && set_subset(xs: ys, ys: xs)
 }
 
-fn declared_paths() -> FreeMonoid<String> {
+fn declared_paths() -> std.algebra.FreeMonoid<String> {
   expected_conformance_closure
 }
 
-fn declared_without_entry() -> FreeMonoid<String> {
-  fold_list(
+fn declared_without_entry() -> std.algebra.FreeMonoid<String> {
+  v2.std.algebra.fold_list(
     xs: declared_paths(),
     empty: no_paths,
-    cons: fn(acc, p) {
-      if string_eq(a: p, b: conformance_entry) {
+    cons: fn(acc, gunbc.plans.md_helpers.p) {
+      if string_eq(a: gunbc.plans.md_helpers.p, b: conformance_entry) {
         acc
       } else {
-        list_snoc_item(xs: acc, item: p)
+        v2.std.algebra.list_snoc_item(xs: acc, item: gunbc.plans.md_helpers.p)
       }
     }
   )
 }
 
-fn declared_with_bogus() -> FreeMonoid<String> {
-  list_snoc_item(xs: declared_paths(), item: bogus_never_imported)
+fn declared_with_bogus() -> std.algebra.FreeMonoid<String> {
+  v2.std.algebra.list_snoc_item(xs: declared_paths(), item: bogus_never_imported)
 }
 
-fn derived_conformance_closure() -> FreeMonoid<String> {
-  import_closure_live(entry_path: conformance_entry, pool_roots: witness_layer_roots)
+fn derived_conformance_closure() -> std.algebra.FreeMonoid<String> {
+  v2.lens.module_graph.import_closure_live(entry_path: conformance_entry, pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 }
 
 test fn dag_import_closure_live_witness_bundle_holds() -> Bool {

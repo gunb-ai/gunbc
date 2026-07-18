@@ -1,105 +1,105 @@
 module test.claim.extdeps_llm_type_grounding_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn w_openai_tool_call_type_known() -> Bool {
-  let row = ToolCall {
+  let gunbc.plans.md_helpers.row = extdeps.llm.openai.ToolCall {
     id: "call_1",
-    type: OpenAiToolCallFunction,
+    type: extdeps.llm.openai.OpenAiToolCallFunction,
     function: extdeps.llm.openai.FunctionCall { name: "get_weather", arguments: "{}" },
   }
-  row.type == OpenAiToolCallFunction
-    && openai_tool_call_type_label(OpenAiToolCallFunction) == "function"
+  gunbc.plans.md_helpers.row.type == extdeps.llm.openai.OpenAiToolCallFunction
+    && extdeps.llm.openai.openai_tool_call_type_label(extdeps.llm.openai.OpenAiToolCallFunction) == "function"
 }
 
 fn w_openai_tool_call_type_other_accepts_extension() -> Bool {
-  match parse_openai_tool_call_type("custom_tool") {
-    OpenAiToolCallTypeOther { raw: r } => r == "custom_tool"
+  match extdeps.llm.openai.parse_openai_tool_call_type("custom_tool") {
+    extdeps.llm.openai.OpenAiToolCallTypeOther { raw: r } => r == "custom_tool"
     OpenAiToolCallFunction => false
   }
 }
 
 fn w_openai_responses_output_content_type() -> Bool {
-  let row = OpenAiResponses200OutputContent {
-    type: OpenAiResponsesOutputText,
+  let gunbc.plans.md_helpers.row = extdeps.llm.openai.OpenAiResponses200OutputContent {
+    type: extdeps.llm.openai.OpenAiResponsesOutputText,
     text: "hello",
     annotations: none,
   }
-  row.type == OpenAiResponsesOutputText
-    && openai_responses_output_content_type_label(OpenAiResponsesOutputText) == "output_text"
+  gunbc.plans.md_helpers.row.type == extdeps.llm.openai.OpenAiResponsesOutputText
+    && extdeps.llm.openai.openai_responses_output_content_type_label(extdeps.llm.openai.OpenAiResponsesOutputText) == "output_text"
 }
 
 fn w_openai_responses_output_content_type_other() -> Bool {
-  match parse_openai_responses_output_content_type("refusal") {
-    OpenAiResponsesOutputContentTypeOther { raw: r } => r == "refusal"
+  match extdeps.llm.openai.parse_openai_responses_output_content_type("refusal") {
+    extdeps.llm.openai.OpenAiResponsesOutputContentTypeOther { raw: r } => r == "refusal"
     OpenAiResponsesOutputText => false
   }
 }
 
 fn w_openai_responses_output_item_type() -> Bool {
-  let row = OpenAiResponses200OutputItem {
+  let gunbc.plans.md_helpers.row = extdeps.llm.openai.OpenAiResponses200OutputItem {
     id: Present { value: "msg_1" },
-    type: OpenAiResponsesOutputMessage,
+    type: extdeps.llm.openai.OpenAiResponsesOutputMessage,
     status: none,
     role: none,
     content: [],
   }
-  row.type == OpenAiResponsesOutputMessage
-    && openai_responses_output_item_type_label(OpenAiResponsesOutputMessage) == "message"
+  gunbc.plans.md_helpers.row.type == extdeps.llm.openai.OpenAiResponsesOutputMessage
+    && extdeps.llm.openai.openai_responses_output_item_type_label(extdeps.llm.openai.OpenAiResponsesOutputMessage) == "message"
 }
 
 fn w_openai_responses_output_item_type_other() -> Bool {
-  match parse_openai_responses_output_item_type("reasoning") {
-    OpenAiResponsesOutputItemTypeOther { raw: r } => r == "reasoning"
+  match extdeps.llm.openai.parse_openai_responses_output_item_type("reasoning") {
+    extdeps.llm.openai.OpenAiResponsesOutputItemTypeOther { raw: r } => r == "reasoning"
     OpenAiResponsesOutputMessage => false
   }
 }
 
 fn w_openai_responses_status_known_and_other() -> Bool {
-  let label_ok = openai_responses_status_label(OpenAiResponsesStatusCompleted) == "completed"
-  let known_routes_to_known = match parse_openai_responses_status("incomplete") {
+  let label_ok = extdeps.llm.openai.openai_responses_status_label(extdeps.llm.openai.OpenAiResponsesStatusCompleted) == "completed"
+  let known_routes_to_known = match extdeps.llm.openai.parse_openai_responses_status("incomplete") {
     OpenAiResponsesStatusIncomplete => true
-    OpenAiResponsesStatusOther { raw: _ } => false
+    extdeps.llm.openai.OpenAiResponsesStatusOther { raw: _ } => false
     _ => false
   }
-  let unknown_routes_to_other = match parse_openai_responses_status("future_status") {
-    OpenAiResponsesStatusOther { raw: r } => r == "future_status"
+  let unknown_routes_to_other = match extdeps.llm.openai.parse_openai_responses_status("future_status") {
+    extdeps.llm.openai.OpenAiResponsesStatusOther { raw: r } => r == "future_status"
     _ => false
   }
   label_ok && known_routes_to_known && unknown_routes_to_other
 }
 
 fn w_openai_responses_output_item_status_known_and_other() -> Bool {
-  let row = OpenAiResponses200OutputItem {
+  let gunbc.plans.md_helpers.row = extdeps.llm.openai.OpenAiResponses200OutputItem {
     id: Present { value: "msg_1" },
-    type: OpenAiResponsesOutputMessage,
-    status: Present { value: OpenAiResponsesOutputItemInProgress },
+    type: extdeps.llm.openai.OpenAiResponsesOutputMessage,
+    status: Present { value: extdeps.llm.openai.OpenAiResponsesOutputItemInProgress },
     role: none,
     content: [],
   }
-  let row_ok = match row.status {
-    Present { value: s } => openai_responses_output_item_status_label(s) == "in_progress"
+  let row_ok = match gunbc.plans.md_helpers.row.status {
+    Present { value: s } => extdeps.llm.openai.openai_responses_output_item_status_label(s) == "in_progress"
     Absent => false
   }
-  let unknown_routes_to_other = match parse_openai_responses_output_item_status("future_item_status") {
-    OpenAiResponsesOutputItemStatusOther { raw: r } => r == "future_item_status"
+  let unknown_routes_to_other = match extdeps.llm.openai.parse_openai_responses_output_item_status("future_item_status") {
+    extdeps.llm.openai.OpenAiResponsesOutputItemStatusOther { raw: r } => r == "future_item_status"
     _ => false
   }
   row_ok && unknown_routes_to_other
 }
 
 fn w_openai_error_type_known_and_other() -> Bool {
-  let known = OpenAiErrorDetails {
+  let known = extdeps.llm.openai_errors.OpenAiErrorDetails {
     message: "bad",
-    type: OpenAiInvalidRequestError,
+    type: extdeps.llm.openai_errors.OpenAiInvalidRequestError,
     param: none,
     code: none,
   }
-  known.type == OpenAiInvalidRequestError
-    && openai_error_type_label(OpenAiInvalidRequestError) == "invalid_request_error"
-    && match parse_openai_error_type("new_vendor_error") {
-      OpenAiErrorTypeOther { raw: r } => r == "new_vendor_error"
+  known.type == extdeps.llm.openai_errors.OpenAiInvalidRequestError
+    && extdeps.llm.openai_errors.openai_error_type_label(extdeps.llm.openai_errors.OpenAiInvalidRequestError) == "invalid_request_error"
+    && match extdeps.llm.openai_errors.parse_openai_error_type("new_vendor_error") {
+      extdeps.llm.openai_errors.OpenAiErrorTypeOther { raw: r } => r == "new_vendor_error"
       OpenAiInvalidRequestError => false
       OpenAiAuthenticationError => false
       OpenAiPermissionError => false
@@ -111,18 +111,18 @@ fn w_openai_error_type_known_and_other() -> Bool {
 }
 
 fn w_anthropic_image_media_type() -> Bool {
-  let source = Base64Image { media_type: ImageJpeg, data: "abc" }
+  let source = extdeps.llm.anthropic.Base64Image { media_type: extdeps.llm.anthropic.ImageJpeg, data: "abc" }
   match source {
-    Base64Image { media_type: mt, data: _ } =>
-      mt == ImageJpeg
-        && anthropic_image_media_type_label(ImageJpeg) == "image/jpeg"
-    UrlImage { url: _ } => false
+    extdeps.llm.anthropic.Base64Image { media_type: mt, data: _ } =>
+      mt == extdeps.llm.anthropic.ImageJpeg
+        && extdeps.llm.anthropic.anthropic_image_media_type_label(extdeps.llm.anthropic.ImageJpeg) == "image/jpeg"
+    extdeps.llm.anthropic.UrlImage { url: _ } => false
   }
 }
 
 fn w_anthropic_image_media_type_other() -> Bool {
-  match parse_anthropic_image_media_type("image/heic") {
-    AnthropicImageMediaTypeOther { raw: r } => r == "image/heic"
+  match extdeps.llm.anthropic.parse_anthropic_image_media_type("image/heic") {
+    extdeps.llm.anthropic.AnthropicImageMediaTypeOther { raw: r } => r == "image/heic"
     ImageJpeg => false
     ImagePng => false
     ImageGif => false
@@ -131,22 +131,22 @@ fn w_anthropic_image_media_type_other() -> Bool {
 }
 
 fn w_cache_control_type() -> Bool {
-  let row = CacheControl { type: CacheEphemeral {} }
-  match row.type {
-    CacheEphemeral {} => cache_control_type_label(CacheEphemeral {}) == "ephemeral"
+  let gunbc.plans.md_helpers.row = extdeps.llm.anthropic.CacheControl { type: extdeps.llm.anthropic.CacheEphemeral {} }
+  match gunbc.plans.md_helpers.row.type {
+    extdeps.llm.anthropic.CacheEphemeral {} => extdeps.llm.anthropic.cache_control_type_label(extdeps.llm.anthropic.CacheEphemeral {}) == "ephemeral"
   }
 }
 
 fn w_anthropic_messages_object_type() -> Bool {
-  let body = AnthropicMessages200Body {
+  let body = extdeps.llm.anthropic.AnthropicMessages200Body {
     id: "msg_01",
-    type: MessagesObjectMessage {},
+    type: extdeps.llm.anthropic.MessagesObjectMessage {},
     role: extdeps.llm.anthropic.Assistant {},
-    content: [MessagesTextBlock { text: "hi", citations: none }],
+    content: [extdeps.llm.anthropic.MessagesTextBlock { text: "hi", citations: none }],
     model: "claude-sonnet-4-6",
     stop_reason: EndTurn,
     stop_sequence: none,
-    usage: AnthropicMessages200Usage {
+    usage: extdeps.llm.anthropic.AnthropicMessages200Usage {
       input_tokens: 1,
       output_tokens: 1,
       cache_creation_input_tokens: none,
@@ -156,21 +156,21 @@ fn w_anthropic_messages_object_type() -> Bool {
     container: none,
   }
   match body.type {
-    MessagesObjectMessage {} =>
-      anthropic_messages_object_type_label(MessagesObjectMessage {}) == "message"
+    extdeps.llm.anthropic.MessagesObjectMessage {} =>
+      extdeps.llm.anthropic.anthropic_messages_object_type_label(extdeps.llm.anthropic.MessagesObjectMessage {}) == "message"
   }
 }
 
 fn w_anthropic_error_envelope_and_detail_types() -> Bool {
-  let envelope_ok = match anthropic_error_example.type {
-    AnthropicErrorEnvelope {} =>
-      anthropic_error_envelope_type_label(AnthropicErrorEnvelope {}) == "error"
+  let envelope_ok = match extdeps.llm.anthropic_errors.anthropic_error_example.type {
+    extdeps.llm.anthropic_errors.AnthropicErrorEnvelope {} =>
+      extdeps.llm.anthropic_errors.anthropic_error_envelope_type_label(extdeps.llm.anthropic_errors.AnthropicErrorEnvelope {}) == "error"
   }
   envelope_ok
-    && anthropic_error_example.error.type == AnthropicAuthenticationError
-    && anthropic_error_type_label(AnthropicAuthenticationError) == "authentication_error"
-    && match parse_anthropic_error_type("future_error_kind") {
-      AnthropicErrorTypeOther { raw: r } => r == "future_error_kind"
+    && extdeps.llm.anthropic_errors.anthropic_error_example.error.type == extdeps.llm.anthropic_errors.AnthropicAuthenticationError
+    && extdeps.llm.anthropic_errors.anthropic_error_type_label(extdeps.llm.anthropic_errors.AnthropicAuthenticationError) == "authentication_error"
+    && match extdeps.llm.anthropic_errors.parse_anthropic_error_type("future_error_kind") {
+      extdeps.llm.anthropic_errors.AnthropicErrorTypeOther { raw: r } => r == "future_error_kind"
       AnthropicAuthenticationError => false
       AnthropicInvalidRequestError => false
       AnthropicRateLimitError => false

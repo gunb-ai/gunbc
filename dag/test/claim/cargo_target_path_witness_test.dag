@@ -1,40 +1,40 @@
 module test.claim.cargo_target_path
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn render(parts: FilePathParts) -> String {
+fn render(parts: std.types.FilePathParts) -> String {
   fold(parts.segments, init: "", f: fn(acc, seg) {
     if acc == "" { concat(acc, seg) } else { concat(acc, concat("/", seg)) }
   })
 }
 
-fn render_target(target: CargoTarget, package_name: String) -> String {
-  render(parts: cargo_target_source_path(target: target, package_name: package_name))
+fn render_target(target: extdeps.cargo.CargoTarget, package_name: String) -> String {
+  render(parts: extdeps.cargo.cargo_target_source_path(target: target, package_name: package_name))
 }
 
 fn render_candidates(stem: String) -> String {
-  fold(rust_module_candidate_paths(stem: stem), init: "", f: fn(acc, parts) {
+  fold(extdeps.cargo.rust_module_candidate_paths(stem: stem), init: "", f: fn(acc, parts) {
     if acc == "" { render(parts: parts) } else { concat(acc, concat(";", render(parts: parts))) }
   })
 }
 
 fn lib_lands_on_src_lib() -> Bool {
-  render_target(target: Lib, package_name: "v1-compiler") == "src/lib.rs"
+  render_target(target: extdeps.cargo.Lib, package_name: "v1-compiler") == "src/lib.rs"
 }
 
 fn package_bin_collapses_to_main() -> Bool {
-  render_target(target: Bin { name: "v1-compiler" }, package_name: "v1-compiler") == "src/main.rs"
+  render_target(target: extdeps.cargo.Bin { name: "v1-compiler" }, package_name: "v1-compiler") == "src/main.rs"
 }
 
 fn other_bin_lands_under_src_bin() -> Bool {
-  render_target(target: Bin { name: "helper" }, package_name: "v1-compiler") == "src/bin/helper.rs"
+  render_target(target: extdeps.cargo.Bin { name: "helper" }, package_name: "v1-compiler") == "src/bin/helper.rs"
 }
 
 fn test_example_bench_dirs() -> Bool {
-  render_target(target: CargoTest { name: "integration" }, package_name: "v1-compiler") == "tests/integration.rs"
-    && render_target(target: Example { name: "demo" }, package_name: "v1-compiler") == "examples/demo.rs"
-    && render_target(target: Bench { name: "throughput" }, package_name: "v1-compiler") == "benches/throughput.rs"
+  render_target(target: extdeps.cargo.CargoTest { name: "integration" }, package_name: "v1-compiler") == "tests/integration.rs"
+    && render_target(target: extdeps.cargo.Example { name: "demo" }, package_name: "v1-compiler") == "examples/demo.rs"
+    && render_target(target: extdeps.cargo.Bench { name: "throughput" }, package_name: "v1-compiler") == "benches/throughput.rs"
 }
 
 fn module_stem_two_candidates() -> Bool {
@@ -42,11 +42,11 @@ fn module_stem_two_candidates() -> Bool {
 }
 
 fn edition_tokens_render() -> Bool {
-  rust_edition_str(edition: Edition2015) == "2015"
-    && rust_edition_str(edition: Edition2018) == "2018"
-    && rust_edition_str(edition: Edition2021) == "2021"
-    && rust_edition_str(edition: Edition2024) == "2024"
-    && rust_edition_str(edition: default_rust_edition) == "2021"
+  extdeps.cargo.rust_edition_str(edition: extdeps.cargo.Edition2015) == "2015"
+    && extdeps.cargo.rust_edition_str(edition: extdeps.cargo.Edition2018) == "2018"
+    && extdeps.cargo.rust_edition_str(edition: extdeps.cargo.Edition2021) == "2021"
+    && extdeps.cargo.rust_edition_str(edition: extdeps.cargo.Edition2024) == "2024"
+    && extdeps.cargo.rust_edition_str(edition: extdeps.cargo.default_rust_edition) == "2021"
 }
 
 test fn cargo_target_path_witnesses() -> Bool {

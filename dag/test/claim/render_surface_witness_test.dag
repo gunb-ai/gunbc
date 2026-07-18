@@ -1,24 +1,24 @@
 module test.claim.render_surface_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data plain_cap: RenderCapability = RenderCapability {
+data plain_cap: std.render.RenderCapability = std.render.RenderCapability {
   color: false, tier: Ascii, cursor_addressable: false
 }
 
-fn plain_span(text: String) -> Span {
-  Span { text: text, style: SpanStyle { color: none, bold: false, italic: false, symbol: none } }
+fn plain_span(text: String) -> std.render.Span {
+  std.render.Span { text: text, style: std.render.SpanStyle { color: none, bold: false, italic: false, symbol: none } }
 }
 
 fn one_line_frame(text: String) -> std.render.Frame {
   std.render.Frame {
-    lines: [Line { spans: [plain_span(text: text)], indent: 0, max_width: none }],
+    lines: [std.render.Line { spans: [plain_span(text: text)], indent: 0, max_width: none }],
     cursor_action: Append
   }
 }
 
-data sample_doc: Document = Document {
+data sample_doc: std.render.Document = std.render.Document {
   blocks: [
     std.render.Group { title: "host effects", frame: one_line_frame(text: "[file] read foo.dag") },
     std.render.Leaf { frame: one_line_frame(text: "PASS some_witness") }
@@ -26,38 +26,38 @@ data sample_doc: Document = Document {
 }
 
 fn w_detect_github() -> Bool {
-  match detect_target(env: SurfaceEnv { github_actions: true }) {
+  match extdeps.render.surface.detect_target(env: extdeps.render.surface.SurfaceEnv { github_actions: true }) {
     GithubActions => true
     PlainTerminal => false
   }
 }
 
 fn w_detect_plain() -> Bool {
-  match detect_target(env: SurfaceEnv { github_actions: false }) {
+  match extdeps.render.surface.detect_target(env: extdeps.render.surface.SurfaceEnv { github_actions: false }) {
     PlainTerminal => true
     GithubActions => false
   }
 }
 
 fn w_github_wraps_group_in_workflow_commands() -> Bool {
-  let out = serialize_document(doc: sample_doc, target: GithubActions, cap: plain_cap)
-  string_contains(s: out, pattern: "::group::host effects") &&
-  string_contains(s: out, pattern: "[file] read foo.dag") &&
-  string_contains(s: out, pattern: "::endgroup::") &&
-  string_contains(s: out, pattern: "PASS some_witness")
+  let test.claim.roadmap_authority.out = extdeps.render.surface.serialize_document(doc: sample_doc, target: GithubActions, cap: plain_cap)
+  string_contains(s: test.claim.roadmap_authority.out, pattern: "::group::host effects") &&
+  string_contains(s: test.claim.roadmap_authority.out, pattern: "[file] read foo.dag") &&
+  string_contains(s: test.claim.roadmap_authority.out, pattern: "::endgroup::") &&
+  string_contains(s: test.claim.roadmap_authority.out, pattern: "PASS some_witness")
 }
 
 fn w_plain_terminal_uses_header_not_commands() -> Bool {
-  let out = serialize_document(doc: sample_doc, target: PlainTerminal, cap: plain_cap)
-  string_contains(s: out, pattern: "── host effects ──") &&
-  string_contains(s: out, pattern: "[file] read foo.dag") &&
-  !string_contains(s: out, pattern: "::group::") &&
-  !string_contains(s: out, pattern: "::endgroup::")
+  let test.claim.roadmap_authority.out = extdeps.render.surface.serialize_document(doc: sample_doc, target: PlainTerminal, cap: plain_cap)
+  string_contains(s: test.claim.roadmap_authority.out, pattern: "── host effects ──") &&
+  string_contains(s: test.claim.roadmap_authority.out, pattern: "[file] read foo.dag") &&
+  !string_contains(s: test.claim.roadmap_authority.out, pattern: "::group::") &&
+  !string_contains(s: test.claim.roadmap_authority.out, pattern: "::endgroup::")
 }
 
 fn w_close_line_is_explicit_only_on_github() -> Bool {
-  let gha = group_syntax(target: GithubActions)
-  let term = group_syntax(target: PlainTerminal)
+  let gha = extdeps.render.surface.group_syntax(target: GithubActions)
+  let term = extdeps.render.surface.group_syntax(target: PlainTerminal)
   match gha.close_line {
     Present { value: c } => c == "::endgroup::"
     Absent => false
@@ -69,8 +69,8 @@ fn w_close_line_is_explicit_only_on_github() -> Bool {
 }
 
 fn w_resolve_group_syntax_keys_off_github_flag() -> Bool {
-  let gha = resolve_group_syntax(github_actions: true)
-  let term = resolve_group_syntax(github_actions: false)
+  let gha = extdeps.render.surface.resolve_group_syntax(github_actions: true)
+  let term = extdeps.render.surface.resolve_group_syntax(github_actions: false)
   gha.open_prefix == "::group::" &&
   term.open_prefix == "── "
 }

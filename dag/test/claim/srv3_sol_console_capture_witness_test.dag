@@ -1,18 +1,18 @@
 module test.claim.srv3_sol_console_capture
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn srv3_sol_console_capture_intent_uses_obmc_cli() -> Bool {
-  match srv3_sol_console_capture_intent.transport {
+  match gunbc.srv3_sol_console_intent.srv3_sol_console_capture_intent.transport {
     ObmcConsoleCli => true
     RedfishSerialInterface => false
   }
-    && srv3_sol_console_capture_log_path_is_declared()
-    && srv3_sol_console_capture_carries_dissolution_trigger()
+    && gunbc.srv3_sol_console_capture.srv3_sol_console_capture_log_path_is_declared()
+    && gunbc.srv3_sol_console_capture.srv3_sol_console_capture_carries_dissolution_trigger()
 }
 
 test fn sol_console_redfish_serial_transport_cites_dmtf_authority() -> Bool {
-  sol_console_transport_authority_for(transport: RedfishSerialInterface) == redfish_serial_interface_authority
-    && sol_console_transport_authority_for(transport: ObmcConsoleCli) == extdeps.bmc.serial_console.extdeps_external_authority_anchor
+  extdeps.bmc.serial_console.sol_console_transport_authority_for(transport: extdeps.bmc.serial_console.RedfishSerialInterface) == extdeps.bmc.serial_console.redfish_serial_interface_authority
+    && extdeps.bmc.serial_console.sol_console_transport_authority_for(transport: extdeps.bmc.serial_console.ObmcConsoleCli) == extdeps.bmc.serial_console.extdeps_external_authority_anchor
 }

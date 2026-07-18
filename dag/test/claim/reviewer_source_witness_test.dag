@@ -1,7 +1,7 @@
 module test.claim.reviewer_source_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_policy_id: NonEmptyStr = "sec-1"
 data witness_policy_version: NonEmptyStr = "v2"
@@ -9,22 +9,22 @@ data witness_jane_qa: NonEmptyStr = "jane-qa"
 data witness_policy_string: NonEmptyStr = "policy"
 
 fn witness_agent_claude_is_llm() -> Bool {
-  match reviewer_source(reviewer: AgentReviewer { provider: Claude }) {
+  match gunbc.review_verdict.reviewer_source(reviewer: gunbc.review_verdict.AgentReviewer { provider: gunbc.review_verdict.Claude }) {
     LlmSource => true
     _ => false
   }
 }
 
 fn witness_human_seat_reviewer_is_human() -> Bool {
-  match reviewer_source(reviewer: HumanSeatReviewer) {
+  match gunbc.review_verdict.reviewer_source(reviewer: gunbc.review_verdict.HumanSeatReviewer) {
     Human => true
     _ => false
   }
 }
 
 fn witness_unattributed_jane_qa_is_unattributed() -> Bool {
-  match reviewer_source(
-    reviewer: UnattributedReviewer { provider_name: witness_jane_qa }
+  match gunbc.review_verdict.reviewer_source(
+    reviewer: gunbc.review_verdict.UnattributedReviewer { provider_name: witness_jane_qa }
   ) {
     Unattributed => true
     _ => false
@@ -32,8 +32,8 @@ fn witness_unattributed_jane_qa_is_unattributed() -> Bool {
 }
 
 fn witness_unattributed_policy_string_is_unattributed() -> Bool {
-  match reviewer_source(
-    reviewer: UnattributedReviewer { provider_name: witness_policy_string }
+  match gunbc.review_verdict.reviewer_source(
+    reviewer: gunbc.review_verdict.UnattributedReviewer { provider_name: witness_policy_string }
   ) {
     Unattributed => true
     _ => false
@@ -41,9 +41,9 @@ fn witness_unattributed_policy_string_is_unattributed() -> Bool {
 }
 
 fn witness_policy_reviewer_is_policy() -> Bool {
-  match reviewer_source(
-    reviewer: PolicyReviewer {
-      policy: PolicyRef { id: witness_policy_id, version: witness_policy_version }
+  match gunbc.review_verdict.reviewer_source(
+    reviewer: gunbc.review_verdict.PolicyReviewer {
+      policy: gunbc.review_verdict.PolicyRef { id: witness_policy_id, version: witness_policy_version }
     }
   ) {
     Policy => true
@@ -63,10 +63,10 @@ test fn reviewer_source_witnesses() -> Bool {
   all_reviewer_source_witnesses()
 }
 
-func reviewer_source_witness_gate() -> ProcessExit {
+func reviewer_source_witness_gate() -> std.process.ProcessExit {
   return if all_reviewer_source_witnesses() {
     ExitSuccess
   } else {
-    exit_failure(reason: "reviewer_source witness failed")
+    std.process.exit_failure(reason: "reviewer_source witness failed")
   }
 }

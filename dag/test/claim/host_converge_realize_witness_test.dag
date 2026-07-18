@@ -1,31 +1,31 @@
 module test.claim.host_converge_realize_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn fixture_slice_property_knob() -> ConvergeKnob {
-  ConvergeKnob {
-    slice: GunbcSlice,
+fn fixture_slice_property_knob() -> gunbc.host_converge.ConvergeKnob {
+  gunbc.host_converge.ConvergeKnob {
+    slice: gunbc.host_converge.GunbcSlice,
     name: "fixture_slice_cap",
     desired: "100",
-    target: SliceProperty {
+    target: gunbc.host_converge.SliceProperty {
       unit: "fixture.slice",
-      property: systemd_memory_max_property,
+      property: extdeps.os.systemd.systemd_memory_max_property,
       apply_value: "100",
       expected_effective: "100",
     },
-    apply_mode: FreshStandup,
-    no_op: BlindApply,
+    apply_mode: gunbc.host_converge.FreshStandup,
+    no_op: gunbc.host_converge.BlindApply,
   }
 }
 
 fn witness_every_knob_target_has_kind_label() -> Bool {
-  converge_target_kind_label(t: fixture_slice_property_knob().target) == "SliceProperty"
-    && converge_target_kind_label(t: fixture_slice_property_knob().target) != ""
+  gunbc.host_converge_realize.converge_target_kind_label(t: fixture_slice_property_knob().target) == "SliceProperty"
+    && gunbc.host_converge_realize.converge_target_kind_label(t: fixture_slice_property_knob().target) != ""
 }
 
 fn witness_knob_interpreter_fail_closed_unimplemented() -> Bool {
-  match interpret_converge_knob(knob: fixture_slice_property_knob()) {
+  match gunbc.host_converge_realize.interpret_converge_knob(knob: fixture_slice_property_knob()) {
     KnobUnimplemented { knob_name: name, target_kind: kind, reason: why } =>
       name == "fixture_slice_cap"
         && kind == "SliceProperty"
@@ -35,26 +35,26 @@ fn witness_knob_interpreter_fail_closed_unimplemented() -> Bool {
 }
 
 fn witness_host_converge_refuses_on_first_knob() -> Bool {
-  match interpret_host_converge(host_converge: HostConverge {
-    identity: operator_host_srv3,
+  match gunbc.host_converge_realize.interpret_host_converge(host_converge: gunbc.host_converge.HostConverge {
+    identity: gunbc.fleet_intent_network.operator_host_srv3,
     knobs: [fixture_slice_property_knob()],
-    membership: NoMembershipProbe,
+    membership: gunbc.host_converge.NoMembershipProbe,
   }) {
     ConvergeHostRefused { reason: why } =>
       string_contains(s: why, pattern: "fixture_slice_cap")
-    ConvergeHostInterpreted { knob_count: _, stdout: _ } => false
+    gunbc.host_converge_realize.ConvergeHostInterpreted { knob_count: _, stdout: _ } => false
   }
 }
 
 fn witness_empty_host_converge_refuses() -> Bool {
-  match interpret_host_converge(host_converge: HostConverge {
-    identity: operator_host_srv3,
+  match gunbc.host_converge_realize.interpret_host_converge(host_converge: gunbc.host_converge.HostConverge {
+    identity: gunbc.fleet_intent_network.operator_host_srv3,
     knobs: [],
-    membership: NoMembershipProbe,
+    membership: gunbc.host_converge.NoMembershipProbe,
   }) {
     ConvergeHostRefused { reason: why } =>
       string_contains(s: why, pattern: "zero knobs")
-    ConvergeHostInterpreted { knob_count: _, stdout: _ } => false
+    gunbc.host_converge_realize.ConvergeHostInterpreted { knob_count: _, stdout: _ } => false
   }
 }
 

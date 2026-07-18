@@ -1,13 +1,13 @@
 module test.claim.workflow_recursive_gate
 
 
-func main() -> ProcessExit {
-  let w = workflow_kernel_witnessed()
-  if workflow_kernel_all_verified(w) {
+func main() -> std.process.ProcessExit {
+  let w = test.claim.workflow_recursive_witness.workflow_kernel_witnessed()
+  if test.claim.workflow_recursive_witness.workflow_kernel_all_verified(w) {
     ExitSuccess
   } else {
-    ExitFailure {
-      code: exit_code_general_error,
+    std.process.ExitFailure {
+      code: std.process.exit_code_general_error,
       reason: "recursive VerdictTree fail-closed located fold witness failed — a descendant Unknown failed to latch its ancestors, lost its located axis, or the flat spine diverged from its linear instance",
     }
   }

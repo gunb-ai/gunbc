@@ -1,105 +1,105 @@
 module test.claim.cache_layer_planner
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data cheap_recompute: CostAccount = cost_account_measured(
-  time: nanosecond_duration(count: 1000),
+data cheap_recompute: CostAccount = std.realization_schedule.cost_account_measured(
+  time: std.verification.nanosecond_duration(count: 1000),
 )
 
-data expensive_recompute: CostAccount = cost_account_measured(
-  time: nanosecond_duration(count: 50000000),
+data expensive_recompute: CostAccount = std.realization_schedule.cost_account_measured(
+  time: std.verification.nanosecond_duration(count: 50000000),
 )
 
-data wan_deployment: CacheDeploymentBackends = CacheDeploymentBackends {
+data wan_deployment: std.cache_interface.CacheDeploymentBackends = std.cache_interface.CacheDeploymentBackends {
   available: [
-    parse_table_memo_id,
-    sccache_local_id,
-    buildbuddy_cas_id,
-    gha_actions_cache_id,
+    extdeps.realization.parse_table_memo.parse_table_memo_id,
+    extdeps.cache.sccache.sccache_local_id,
+    extdeps.cache.buildbuddy.buildbuddy_cas_id,
+    extdeps.cache.github_actions.gha_actions_cache_id,
   ],
 }
 
-data gha_only_deployment: CacheDeploymentBackends = CacheDeploymentBackends {
-  available: [gha_actions_cache_id],
+data gha_only_deployment: std.cache_interface.CacheDeploymentBackends = std.cache_interface.CacheDeploymentBackends {
+  available: [extdeps.cache.github_actions.gha_actions_cache_id],
 }
 
 fn witness_cheap_recompute_skips_wan_layers() -> Bool {
-  let plan = plan_cache_layers(
+  let plan = std.cache_interface.plan_cache_layers(
     deployment: wan_deployment,
     recompute: cheap_recompute,
-    catalog: cache_catalog_rows,
-    default_order: cache_layer_default_order,
+    catalog: extdeps.cache.cache.cache_catalog_rows,
+    default_order: extdeps.cache.cache.cache_layer_default_order,
   )
-  cache_layer_plan_contains_id(plan: plan, id: parse_table_memo_id)
-    && cache_layer_plan_contains_id(plan: plan, id: sccache_local_id)
-    && !cache_layer_plan_contains_id(plan: plan, id: buildbuddy_cas_id)
-    && !cache_layer_plan_contains_id(plan: plan, id: gha_actions_cache_id)
+  std.cache_interface.cache_layer_plan_contains_id(plan: plan, id: extdeps.realization.parse_table_memo.parse_table_memo_id)
+    && std.cache_interface.cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.sccache.sccache_local_id)
+    && !std.cache_interface.cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.buildbuddy.buildbuddy_cas_id)
+    && !std.cache_interface.cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.github_actions.gha_actions_cache_id)
 }
 
 fn witness_expensive_recompute_reaches_wan_layers() -> Bool {
-  let plan = plan_cache_layers(
+  let plan = std.cache_interface.plan_cache_layers(
     deployment: wan_deployment,
     recompute: expensive_recompute,
-    catalog: cache_catalog_rows,
-    default_order: cache_layer_default_order,
+    catalog: extdeps.cache.cache.cache_catalog_rows,
+    default_order: extdeps.cache.cache.cache_layer_default_order,
   )
-  cache_layer_plan_contains_id(plan: plan, id: buildbuddy_cas_id)
-    && cache_layer_plan_contains_id(plan: plan, id: gha_actions_cache_id)
+  std.cache_interface.cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.buildbuddy.buildbuddy_cas_id)
+    && std.cache_interface.cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.github_actions.gha_actions_cache_id)
 }
 
 fn witness_plan_orders_locality_nearest_first() -> Bool {
-  let plan = plan_cache_layers(
+  let plan = std.cache_interface.plan_cache_layers(
     deployment: wan_deployment,
     recompute: expensive_recompute,
-    catalog: cache_catalog_rows,
-    default_order: cache_layer_default_order,
+    catalog: extdeps.cache.cache.cache_catalog_rows,
+    default_order: extdeps.cache.cache.cache_layer_default_order,
   )
-  cache_layer_plan_respects_locality_order(plan: plan, catalog: cache_catalog_rows)
+  std.cache_interface.cache_layer_plan_respects_locality_order(plan: plan, catalog: extdeps.cache.cache.cache_catalog_rows)
 }
 
 fn witness_plan_primary_and_fallback_projections() -> Bool {
-  let plan = plan_cache_layers(
+  let plan = std.cache_interface.plan_cache_layers(
     deployment: wan_deployment,
     recompute: expensive_recompute,
-    catalog: cache_catalog_rows,
-    default_order: cache_layer_default_order,
+    catalog: extdeps.cache.cache.cache_catalog_rows,
+    default_order: extdeps.cache.cache.cache_layer_default_order,
   )
-  cache_layer_plan_primary(plan: plan) == parse_table_memo_id
-    && cache_layer_plan_fallback(plan: plan) == sccache_local_id
+  std.cache_interface.cache_layer_plan_primary(plan: plan) == extdeps.realization.parse_table_memo.parse_table_memo_id
+    && std.cache_interface.cache_layer_plan_fallback(plan: plan) == extdeps.cache.sccache.sccache_local_id
 }
 
 fn witness_unavailable_backends_omitted() -> Bool {
-  let plan = plan_cache_layers(
+  let plan = std.cache_interface.plan_cache_layers(
     deployment: gha_only_deployment,
     recompute: expensive_recompute,
-    catalog: cache_catalog_rows,
-    default_order: cache_layer_default_order,
+    catalog: extdeps.cache.cache.cache_catalog_rows,
+    default_order: extdeps.cache.cache.cache_layer_default_order,
   )
-  cache_layer_plan_contains_id(plan: plan, id: gha_actions_cache_id)
-    && !cache_layer_plan_contains_id(plan: plan, id: sccache_local_id)
-    && !cache_layer_plan_contains_id(plan: plan, id: rustup_toolchain_store_id)
+  std.cache_interface.cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.github_actions.gha_actions_cache_id)
+    && !std.cache_interface.cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.sccache.sccache_local_id)
+    && !std.cache_interface.cache_layer_plan_contains_id(plan: plan, id: extdeps.cache.rustup.rustup_toolchain_store_id)
 }
 
 fn witness_empty_plan_means_recompute_only() -> Bool {
-  let plan = plan_cache_layers(
-    deployment: CacheDeploymentBackends { available: [] },
+  let plan = std.cache_interface.plan_cache_layers(
+    deployment: std.cache_interface.CacheDeploymentBackends { available: [] },
     recompute: expensive_recompute,
-    catalog: cache_catalog_rows,
-    default_order: cache_layer_default_order,
+    catalog: extdeps.cache.cache.cache_catalog_rows,
+    default_order: extdeps.cache.cache.cache_layer_default_order,
   )
   plan.layers.length() == 0
 }
 
 fn witness_vendor_only_key_inputs_omission_is_explicit() -> Bool {
-  sccache_local_projected.key_derivation.vendor_only_key_inputs_omitted
-    && !parse_table_memo_projected.key_derivation.vendor_only_key_inputs_omitted
+  extdeps.cache.cache.sccache_local_projected.key_derivation.vendor_only_key_inputs_omitted
+    && !extdeps.cache.cache.parse_table_memo_projected.key_derivation.vendor_only_key_inputs_omitted
 }
 
 fn witness_vendor_transport_encoding_projection_is_honest() -> Bool {
-  sccache_local_projected.transport_encoding == NativeInternalEncoding
-    && !sccache_local_projected.vendor_transport_encoding_collapsed
-    && cargo_target_dir_projected.vendor_transport_encoding_collapsed
+  extdeps.cache.cache.sccache_local_projected.transport_encoding == std.cache_interface.NativeInternalEncoding
+    && !extdeps.cache.cache.sccache_local_projected.vendor_transport_encoding_collapsed
+    && extdeps.cache.cache.cargo_target_dir_projected.vendor_transport_encoding_collapsed
 }
 
 test fn cache_layer_planner_witnesses() -> Bool {

@@ -1,9 +1,9 @@
 module test.claim.realization_reconcile_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-fn is_share(m: Materialization) -> Bool {
+fn is_share(m: std.realization.Materialization) -> Bool {
   match m {
     Share => true
     Recompute => false
@@ -11,51 +11,51 @@ fn is_share(m: Materialization) -> Bool {
   }
 }
 
-fn step_create_if_absent(field: String) -> RealizedStep {
-  RealizedStep {
-    shape: CreateEffect { cause: std.effects.CreateIfAbsent { key_source: InputField { field: field } } },
-    placement: LocalInProcess,
-    materialization: Recompute,
-    cost: cost_account_predicted_zero()
+fn step_create_if_absent(field: String) -> std.realization.RealizedStep {
+  std.realization.RealizedStep {
+    shape: std.effects.CreateEffect { cause: std.effects.CreateIfAbsent { key_source: InputField { field: field } } },
+    placement: std.realization.LocalInProcess,
+    materialization: std.cache_interface.Recompute,
+    cost: std.realization_schedule.cost_account_predicted_zero()
   }
 }
 
-fn step_post_always() -> RealizedStep {
-  RealizedStep {
-    shape: CreateEffect { cause: PostAlways },
-    placement: LocalInProcess,
-    materialization: Recompute,
-    cost: cost_account_predicted_zero()
+fn step_post_always() -> std.realization.RealizedStep {
+  std.realization.RealizedStep {
+    shape: std.effects.CreateEffect { cause: std.effects.PostAlways },
+    placement: std.realization.LocalInProcess,
+    materialization: std.cache_interface.Recompute,
+    cost: std.realization_schedule.cost_account_predicted_zero()
   }
 }
 
-fn has_exactly_one_share<S>(steps: List<RealizedStep<S>>) -> Bool {
-  (steps |> filter(e => is_share(m: e.materialization)) |> length) == 1
+fn has_exactly_one_share<S>(steps: List<std.realization.RealizedStep<S>>) -> Bool {
+  (steps |> v2.std.algebra.filter(e => is_share(m: e.materialization)) |> v2.std.algebra.length) == 1
 }
 
-fn has_no_share<S>(steps: List<RealizedStep<S>>) -> Bool {
-  (steps |> filter(e => is_share(m: e.materialization)) |> length) == 0
+fn has_no_share<S>(steps: List<std.realization.RealizedStep<S>>) -> Bool {
+  (steps |> v2.std.algebra.filter(e => is_share(m: e.materialization)) |> v2.std.algebra.length) == 0
 }
 
 fn witness_same_keysource_collapses_to_share() -> Bool {
-  let out = std.realization.reconcile(steps: [
+  let test.claim.roadmap_authority.out = std.realization.reconcile(steps: [
     step_create_if_absent(field: "id"),
     step_create_if_absent(field: "id")
   ])
-  (out |> length) == 1 && has_exactly_one_share(steps: out)
+  (test.claim.roadmap_authority.out |> v2.std.algebra.length) == 1 && has_exactly_one_share(steps: test.claim.roadmap_authority.out)
 }
 
 fn witness_different_keysource_does_not_collapse() -> Bool {
-  let out = std.realization.reconcile(steps: [
+  let test.claim.roadmap_authority.out = std.realization.reconcile(steps: [
     step_create_if_absent(field: "id"),
     step_create_if_absent(field: "other")
   ])
-  (out |> length) == 2 && has_no_share(steps: out)
+  (test.claim.roadmap_authority.out |> v2.std.algebra.length) == 2 && has_no_share(steps: test.claim.roadmap_authority.out)
 }
 
 fn witness_post_always_never_collapses() -> Bool {
-  let out = std.realization.reconcile(steps: [ step_post_always(), step_post_always() ])
-  (out |> length) == 2 && has_no_share(steps: out)
+  let test.claim.roadmap_authority.out = std.realization.reconcile(steps: [ step_post_always(), step_post_always() ])
+  (test.claim.roadmap_authority.out |> v2.std.algebra.length) == 2 && has_no_share(steps: test.claim.roadmap_authority.out)
 }
 
 test fn reconcile_share_collapse_witnesses() -> Bool {

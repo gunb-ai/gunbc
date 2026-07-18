@@ -1,10 +1,10 @@
 module test.claim.react_jsx_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn browse_page_jsx() -> String {
-  serialize_jsx_component(fn_name: "GunbhubBrowsePage", node: gunbhub_browse_page())
+  extdeps.languages.react_jsx.serialize_jsx_component(fn_name: "GunbhubBrowsePage", node: gunbc.gunbhub_serve.gunbhub_browse_page())
 }
 
 fn witness_browse_page_jsx_exact_bytes() -> Bool {
@@ -13,24 +13,24 @@ fn witness_browse_page_jsx_exact_bytes() -> Bool {
 }
 
 fn witness_fn_name_in_output() -> Bool {
-  let a = serialize_jsx_component(fn_name: "PageA", node: gunbhub_browse_page())
-  let b = serialize_jsx_component(fn_name: "PageB", node: gunbhub_browse_page())
+  let a = extdeps.languages.react_jsx.serialize_jsx_component(fn_name: "PageA", node: gunbc.gunbhub_serve.gunbhub_browse_page())
+  let b = extdeps.languages.react_jsx.serialize_jsx_component(fn_name: "PageB", node: gunbc.gunbhub_serve.gunbhub_browse_page())
   a.starts_with(prefix: "export function PageA():") &&
   b.starts_with(prefix: "export function PageB():") &&
   !(a == b)
 }
 
 fn witness_hostile_href_rejected() -> Bool {
-  match try_serialize_jsx_component(fn_name: "HostilePage", node: gunbhub_hostile_page()) {
-    JsxRejected { reason: _ } => true
-    JsxOk { tsx: _ } => false
+  match extdeps.languages.react_jsx.try_serialize_jsx_component(fn_name: "HostilePage", node: gunbc.gunbhub_serve.gunbhub_hostile_page()) {
+    extdeps.languages.react_jsx.JsxRejected { reason: _ } => true
+    extdeps.languages.react_jsx.JsxOk { tsx: _ } => false
   }
 }
 
 fn witness_safe_page_emits_ok() -> Bool {
-  match try_serialize_jsx_component(fn_name: "GunbhubBrowsePage", node: gunbhub_browse_page()) {
-    JsxOk { tsx: s } => s.starts_with(prefix: "export function GunbhubBrowsePage():")
-    JsxRejected { reason: _ } => false
+  match extdeps.languages.react_jsx.try_serialize_jsx_component(fn_name: "GunbhubBrowsePage", node: gunbc.gunbhub_serve.gunbhub_browse_page()) {
+    extdeps.languages.react_jsx.JsxOk { tsx: s } => s.starts_with(prefix: "export function GunbhubBrowsePage():")
+    extdeps.languages.react_jsx.JsxRejected { reason: _ } => false
   }
 }
 
