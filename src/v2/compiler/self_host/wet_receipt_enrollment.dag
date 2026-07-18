@@ -56,6 +56,11 @@ data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = 
     module_path: "src/v2/compiler/03_body_producer.dag",
     entry: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag",
     function: "self_host_body_producer_behavioral_receipt_holds"
+  },
+  SelfHostWetReceiptBinding {
+    module_path: "src/v2/compiler/03_normalize.dag",
+    entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
+    function: "self_host_03_normalize_behavioral_receipt_holds"
   }
 ]
 
