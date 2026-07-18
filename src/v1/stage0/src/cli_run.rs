@@ -7677,15 +7677,14 @@ pub fn collect_deferred_discovery_rows(
             };
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read deferred discovery entry {rel}: {e}"))?;
-            let reads_live_tree = parse_entry_live_tree_disposition(&rel, &content)?;
-            let derived = effect_reach_derived_reads_live_tree_for_entry(&rel, &facts);
+            let reads_live_tree = reads_live_tree_effective(&rel, &content, &facts)?;
             for (function, _) in scan_test_decl_lines(&content) {
                 if seen.insert((rel.clone(), function.clone())) {
                     out.push(DeferredDiscoveryRow {
                         entry: rel.clone(),
                         function,
                         exclude_reason: exclude_reason.clone(),
-                        reads_live_tree: reads_live_tree || derived,
+                        reads_live_tree,
                     });
                 }
             }
@@ -9153,6 +9152,9 @@ fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
 // Phase 0): detects string-carried path literals in the import closure combined with
 // host-effect sink operations. DISSOLUTION: typed `SourceRef` at host boundaries makes
 // bare-string file dependencies unwritable; this scaffold deletes with that construction.
+// SYNC: sink markers and path-literal heuristics must stay aligned with
+// `v2.std.effect_reach` (`effect_reach_host_sink_callee_symbols_v0`) and the `.dag`
+// lens — the Node-tree fold is semantic authority; this Rust layer routes discovery only.
 const EFFECT_REACH_HOST_SINK_MARKERS: &[&str] = &[
     "Filesystem.Read",
     "WitnessBin.Run",

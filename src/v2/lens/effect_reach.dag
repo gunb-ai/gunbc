@@ -39,6 +39,7 @@ import v2.std.effect_reach {
   WitnessBinRunSink,
   ShellExecRunSink,
   GunbcCompileEntrySink,
+  UnknownHostEffectSink,
   effect_reach_host_sink_callee_symbols_v0,
   effect_reach_gunbc_entry_argv_markers_v0
 }
@@ -147,7 +148,7 @@ fn sink_kind_for_callee(callee_text: String) -> HostEffectSinkKind {
     || string_eq(a: callee_text, b: "Exec.Run") {
     ShellExecRunSink
   } else {
-    FilesystemReadSink
+    UnknownHostEffectSink
   }
 }
 
@@ -173,6 +174,8 @@ fn sink_kind_eq(a: HostEffectSinkKind, b: HostEffectSinkKind) -> Bool {
       match b { ShellExecRunSink => true _ => false }
     GunbcCompileEntrySink =>
       match b { GunbcCompileEntrySink => true _ => false }
+    UnknownHostEffectSink =>
+      match b { UnknownHostEffectSink => true _ => false }
   }
 }
 
@@ -250,23 +253,27 @@ fn flows_from_sink_call(
   data_inits: List<DataInitDecl>
 ) -> List<EffectReachFlow> {
   let sink = sink_kind_for_callee(callee_text: callee_text)
-  match list_head(xs: args) {
-    HeadFound { value: arg } =>
-      let text = symbol_lexeme(sym: arg)
-      let path = path_literal_from_lexeme(
-        text: text,
-        param_names: param_names,
-        data_inits: data_inits
-      )
-      [
-        EffectReachFlow {
-          sink: sink,
-          path_literal: path,
-          init_literal_fp: ""
-        }
-      ]
-    HeadAbsent =>
-      [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
+  match sink {
+    UnknownHostEffectSink => empty_flow_list
+    _ =>
+      match list_head(xs: args) {
+        HeadFound { value: arg } =>
+          let text = symbol_lexeme(sym: arg)
+          let path = path_literal_from_lexeme(
+            text: text,
+            param_names: param_names,
+            data_inits: data_inits
+          )
+          [
+            EffectReachFlow {
+              sink: sink,
+              path_literal: path,
+              init_literal_fp: ""
+            }
+          ]
+        HeadAbsent =>
+          [EffectReachFlow { sink: sink, path_literal: "", init_literal_fp: "" }]
+      }
   }
 }
 

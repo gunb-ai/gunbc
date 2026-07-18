@@ -9,6 +9,7 @@ type HostEffectSinkKind
   | WitnessBinRunSink
   | ShellExecRunSink
   | GunbcCompileEntrySink
+  | UnknownHostEffectSink
 
 type EffectReachFlow {
   sink: HostEffectSinkKind
