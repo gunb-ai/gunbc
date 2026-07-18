@@ -233,7 +233,7 @@ type GroundingEvidenceSchema
   | Sg5Evidence { source_carrier: Node }
 
 type PerTargetGroundingReceipt {
-  host_run: EmitHostRunReceipt
+  host_run: v2.std.host_run.EmitHostRunReceipt
 }
 
 fn per_target_grounding_receipt_target(receipt: PerTargetGroundingReceipt) -> TargetModel {
@@ -245,9 +245,9 @@ type HostVerdictSurfaceExecutionStatus
   | AuthoringTimeVerdictSurface
 
 type PerTargetTestClaimReceipt {
-  host_run: EmitHostRunReceipt
+  host_run: v2.std.host_run.EmitHostRunReceipt
   execution_status: HostVerdictSurfaceExecutionStatus
-  verdict_tally: VerdictTally
+  verdict_tally: v2.std.verdict.VerdictTally
 }
 
 fn per_target_testclaim_receipt_target(receipt: PerTargetTestClaimReceipt) -> TargetModel {

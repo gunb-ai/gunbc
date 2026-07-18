@@ -6349,6 +6349,21 @@ fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, c
   }
 }
 
+fn census_qualify_leaf_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
+  let node = binding.resolved
+  let excluded = fold(
+    node.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices)),
+    init: map_insert(empty_map(), binding.name, true),
+    f: (acc, nm) => map_insert(acc, nm, true)
+  )
+  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  TypeBinding {
+    name: binding.name,
+    resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: excluded)),
+    provenance: binding.provenance
+  }
+}
+
 fn census_upgrade_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
   if census_binding_is_generic_sig(binding: binding, source_indices: source_indices) {
     census_upgrade_sig_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
@@ -6356,6 +6371,8 @@ fn census_upgrade_binding(binding: TypeBinding, module_path: String, census: Sym
     census_qualify_sig_return_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
   } else if binding.resolved.connective != NoConnective {
     census_upgrade_type_decl_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
+  } else if binding.resolved.inferred != none {
+    census_qualify_leaf_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
   } else { binding }
 }
 

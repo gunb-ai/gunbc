@@ -1240,6 +1240,7 @@ fn rust_free_monoid_collection_apply_vec() -> TargetGenericApply {
     surface: ^rust_collection_surface_vec,
     open: ^rust_token_lt,
     separator: ^rust_token_comma,
+    field_label_separator: optional_absent(),
     close: ^rust_token_gt
   }
 }

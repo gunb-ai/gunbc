@@ -13642,9 +13642,55 @@ pub fn census_upgrade_binding(
             census.clone(),
             source_indices.clone(),
         )
+    } else if binding.resolved.inferred.is_some() {
+        census_qualify_leaf_binding(
+            binding.clone(),
+            module_path.clone(),
+            census.clone(),
+            source_indices.clone(),
+        )
     } else {
         binding.clone()
     }
+}
+
+pub fn census_qualify_leaf_binding(
+    binding: Rc<TypeBinding>,
+    module_path: String,
+    census: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeBinding> {
+    let node = binding.resolved.clone();
+    let excluded = node
+        .params
+        .iter()
+        .cloned()
+        .map(|p| generic_param_name_at(p.clone(), source_indices.clone()))
+        .fold(
+            v1_rt::rc_map_insert(v1_rt::rc_empty_map(), binding.name.clone(), true),
+            |acc: Rc<HashMap<String, bool>>, nm: String| {
+                v1_rt::rc_map_insert(acc.clone(), nm.clone(), true)
+            },
+        );
+    let env = census_fn_sig_env(
+        census.clone(),
+        module_path.clone(),
+        Rc::new(vec![]),
+        source_indices.clone(),
+    );
+    Rc::new(TypeBinding {
+        name: binding.name.clone(),
+        resolved: crate::v1_compiler_infer_env::node_with_inferred(
+            node.clone(),
+            qualify_borrowed_inferred(
+                node.inferred.clone(),
+                module_path.clone(),
+                env.clone(),
+                excluded.clone(),
+            ),
+        ),
+        provenance: binding.provenance.clone(),
+    })
 }
 
 pub fn census_upgrade_type_expr(
