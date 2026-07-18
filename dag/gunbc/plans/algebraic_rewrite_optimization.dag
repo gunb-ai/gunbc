@@ -4,8 +4,6 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, cell, row }
 
-
-
 fn algebraic_rewrite_optimization_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** design spec · **POST-STABILITY EXPANSION** (operator 2026-06-21: budget-gate validation holds the stability §3 for now; this rewrite-*construction* design is relocated to **`ROADMAP.md` §5**, homed with self-hosting — IR-rewrite/canonicalization is most natural once `.dag` is the self-hosted truth). Do not build the rewrite catalog in the stability window; the cost-lens *foundation* (#5437 `symbolic_max` + per-fn subject) stays in-window as §3 budget-gate plumbing. **DESIGN.md + the carriers remain the authority** (DESIGN §6). A rule's real state is its branch/PR + the rule-row carrier."),

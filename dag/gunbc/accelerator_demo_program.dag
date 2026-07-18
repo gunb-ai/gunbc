@@ -1,5 +1,6 @@
 module gunbc.accelerator_demo_program
 
+import std.types { Int, List, Bool }
 
 type ElementwiseArrayOp
   = ElemwiseMul

@@ -1,5 +1,9 @@
 module test.claim.build_artifact_corruption_probe_witness
 
+import tools.build_step_transport {
+  witness_zero_byte_artifact_rejected_by_execution,
+  witness_nonempty_executable_accepted_by_execution
+}
 
 data build_artifact_corruption_probe_doc: String = "Wet bin-witness execution probes for tools.build_step_transport. The typed corruption-probe harness (shell.Mktemp, Filesystem.Write, gunbc.WitnessBin.Run on claim_executor --verify-build-artifacts) exercises live host effects, so it runs in the declared bin-witness wet batch, not hermetic discovery. The substrate serialize-shape checks stay in build_artifact_verification_witness_test."
 

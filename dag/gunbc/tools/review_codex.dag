@@ -1,5 +1,12 @@
 module gunbc.tools.review_codex
 
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Step, render_cron_schedule }
+import gunbc.tools.cron_tag { upsert_tagged_cron_tab }
+import extdeps.github.pulls
+import std.types { CommitSha }
+import extdeps.llm.cli
+import extdeps.shell
+import std.credentials { CredentialSource, EnvVar }
 
 data default_model: String = "gpt-5.4"
 data default_reasoning_effort: String = "xhigh"

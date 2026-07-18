@@ -1,4 +1,34 @@
 module v2.std.cross_tree.resolution
+
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { HeadAbsent, HeadFound, fold_list, list_head }
+import v2.std.cross_tree.import_model {
+  CoFundamental,
+  CrossTreeAdmitted,
+  CrossTreeDenied,
+  CrossTreeImport,
+  DagTree,
+  LessFundamental,
+  MoreFundamental,
+  SourceRootRef,
+  SourceRootSet,
+  TreeFundamentalityOrder,
+  V2Tree,
+  cross_tree_import_admitted,
+  source_root_ref_eq,
+  source_root_set_contains
+}
+import v2.std.layer {
+  LayerPrefix,
+  LayerPrefixCompiler,
+  LayerPrefixExtdeps,
+  LayerPrefixStd,
+  LayerPrefixWorkflow
+}
+import v2.std.logic { Bool }
+import v2.std.qualified_name { QualifiedName, qualified_name_from_dotted_string }
+import v2.std.text { String }
+
 type SourceRootBinding {
   module: QualifiedName
   root: SourceRootRef

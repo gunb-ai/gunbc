@@ -1,6 +1,5 @@
 module gunbc.gitignore_authority
 
-
 import gunbc.gitignore_model {
   IgnoreGroup, Producer,
   DerivableProducerKind, CitedProducerKind,
@@ -27,8 +26,6 @@ import gunbc.gitignore_model {
   ClaimMapDir, ScratchProbeFile,
   GunbcPlanningDir, ScriptsFixturesDir
 }
-
-
 
 data gitignore_authority: List<IgnoreGroup> = [
   IgnoreGroup {

@@ -4,8 +4,6 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, MarkdownTableRow, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell }
 
-
-
 fn disposition_carrier_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** planning tracker · **DESIGN.md + carriers are authority** (§6 no parallel ledger). Linked from `ROADMAP.md §0`. The first instance of a standing practice: now that `.dag` is mature **and lens exists** (it did not when the `🟡` comments were written), every modeling ambiguity we used to skip gets **confronted** — resolved into construction or a justified-terminal lens, not a comment."),

@@ -1,5 +1,10 @@
 module std.numerical_contract
 
+import std.approximate_field {
+  RoundingMode,
+  ToNearestEven,
+}
+import std.types { Bool }
 
 type FmaContractionPolicy
   = FmaContractionPermitted

@@ -1,5 +1,26 @@
 module v2.test.lens_synthesis.polynomial_dominates_linear
 
+import v2.lens.cost {
+  LinearCost,
+  PolynomialCost,
+  PolynomialDegree,
+  SizeVariable,
+  symbolic_cost_dominates
+}
+import v2.std.cardinality { NonZeroNat }
+import v2.std.logic { Bool }
+import v2.std.nat { Zero }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data synthesis_poly_x: Node = Node {

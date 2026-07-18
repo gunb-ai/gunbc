@@ -1,0 +1,15 @@
+module v2.test.claim.self_host.wave1_gate1_a1_fn_body_seam_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.test.claim.body_lowering.fn_body_seam_witness_helpers {
+  wave1_gate1_a1_fn_body_seam_red_invalid_shell_wrapper_retained_holds
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data wave1_gate1_a1_fn_body_seam_note: String = "Wave 1 Gate 1 A1 fn_body seam fast-lane receipt: invalid-shell wrapper-retained RED only (under 5s per-PR discovery budget). Execution proofs (shell lowering, fn_decl ordering, normalize Arrow+Transform, premature-shell RED) live in long/wave1_gate1_a1_fn_body_seam_witness_test.dag via fn_body_seam_witness_helpers."
+
+test fn wave1_gate1_a1_fn_body_seam_red_invalid_shell_wrapper_retained_witness_holds() -> Bool {
+  wave1_gate1_a1_fn_body_seam_red_invalid_shell_wrapper_retained_holds()
+}

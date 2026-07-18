@@ -1,4 +1,47 @@
 module v2.compiler.normalize
+
+import v2.std.algebra { list_snoc_item }
+import v2.std.collection { Absent, Present, optional_absent, optional_present }
+import v2.std.grammar { ParseTree }
+
+import v2.std.diagnostic {
+  Correction,
+  Diagnostic,
+  Diagnostics,
+  node_locus,
+  Outcome,
+  UserInputBoundary,
+  Accepted,
+  None,
+  diagnostics_merge,
+  diagnostics_singleton,
+  rejected_with_pending
+}
+import v2.std.node {
+  Atom,
+  Edge,
+  Node,
+  Symbol,
+  TypeNode,
+  node_rebuild,
+  well_formed
+}
+import v2.std.compilers.sugar {
+  ProductionIdentityKey,
+  SugarKey,
+  SurfaceAtomKey,
+  apply_sugar,
+  sugar_rule_for_key
+}
+import v2.compiler.body_lowering_fold {
+  body_lower_finish_for_normalize,
+  body_lower_is_deferred_lower_at_normalize
+}
+import v2.compiler.normalized_tree { NormalizedTree }
+import v2.extdeps.languages.dag {
+  parse_production_emitted_identity_optional
+}
+
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
     reason: ^normalize_reason_post_normalize_not_well_formed,
@@ -74,28 +117,69 @@ fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Nod
 }
 
 fn normalize_node(n: Node) -> Outcome<Node> {
+  normalize_node_ctx(n: n, under_fn_decl: false)
+}
+
+fn normalize_scope_under_fn_decl(under_fn_decl: Bool, emitted: Symbol) -> Bool {
+  under_fn_decl || (emitted == ^dag_surface_fn_decl)
+}
+
+fn normalize_fn_body_pass_through_at_seam(emitted: Symbol, under_fn_decl: Bool) -> Bool {
+  (emitted == ^dag_surface_fn_body) && under_fn_decl
+}
+
+fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: emitted } =>
-      if body_lower_is_deferred_lower_emitted(emitted: emitted) {
-        match body_lower_finish(n: n, folded: n, cd: None) {
+      if body_lower_is_deferred_lower_at_normalize(
+        emitted: emitted,
+        under_fn_decl: normalize_scope_under_fn_decl(under_fn_decl: under_fn_decl, emitted: emitted)
+      ) {
+        match body_lower_finish_for_normalize(
+          n: n,
+          folded: n,
+          cd: None,
+          fn_body_pass_through: normalize_fn_body_pass_through_at_seam(
+            emitted: emitted,
+            under_fn_decl: normalize_scope_under_fn_decl(
+              under_fn_decl: under_fn_decl,
+              emitted: emitted
+            )
+          )
+        ) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: after_body, diagnostics: cd0 } =>
             normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
         }
       } else {
-        normalize_node_fold_children(n: n)
+        normalize_node_fold_children_ctx(
+          n: n,
+          under_fn_decl: normalize_scope_under_fn_decl(
+            under_fn_decl: under_fn_decl,
+            emitted: emitted
+          )
+        )
       }
-    Absent => normalize_node_fold_children(n: n)
+    Absent => normalize_node_fold_children_ctx(n: n, under_fn_decl: under_fn_decl)
   }
 }
 
-fn normalize_node_fold_children(n: Node) -> Outcome<Node> {
+fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
   match fold(n.children, init: normalize_fold_init(n: n), f: fn(acc, e) {
-    normalize_fold_step(acc: acc, edge: e, child: normalize_node(n: e.target))
+    normalize_fold_step(
+      acc: acc,
+      edge: e,
+      child: normalize_node_ctx(n: e.target, under_fn_decl: under_fn_decl)
+    )
   }) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: folded, diagnostics: cd } =>
-      match body_lower_finish(n: n, folded: folded, cd: cd) {
+      match body_lower_finish_for_normalize(
+        n: n,
+        folded: folded,
+        cd: cd,
+        fn_body_pass_through: false
+      ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: after_body, diagnostics: cd0 } =>
           normalize_sugar_finish(n: n, folded: after_body, cd: cd0)

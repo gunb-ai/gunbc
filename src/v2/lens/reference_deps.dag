@@ -1,5 +1,78 @@
 module v2.lens.reference_deps
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.coverage { dedupe_snoc }
+import v2.lens.enforcement.grammar_coverage { grammar_coverage_distinct_rel_paths }
+import v2.lens.module_graph {
+  ImportClosureBfsState,
+  ImportResolutionFact,
+  ModuleDeclarationFact,
+  bfs_absorb_neighbors,
+  build_module_to_path,
+  import_closure_bfs_walk,
+  import_closure_live_excluding,
+  import_resolution_facts_live,
+  map_lookup_where_rejected_unreachable,
+  module_declaration_facts_live,
+  module_graph_exclude_substrings,
+  no_paths,
+  snoc_unseen_list
+}
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
+  dag_language_model,
+  parse_production_captured_child_optional,
+  parse_production_emitted_identity_optional,
+  parse_qualified_name_segments_from_capture,
+  parse_subtree_find_production_captured,
+  qualified_name_from_module_node,
+  qualified_name_from_segment_list
+}
+import v2.std.algebra {
+  any,
+  bag_eq,
+  contains,
+  fold_list,
+  for_all,
+  is_empty,
+  is_prefix_of,
+  length,
+  list_head,
+  list_snoc_item,
+  HeadFound,
+  HeadAbsent
+}
+import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert }
+import v2.std.decl_index { decl_facts }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Edge, Node, Symbol }
+import v2.std.node_query { find_named_child }
+import v2.std.qualified_name {
+  QualifiedName,
+  qualified_name_from_dotted_string,
+  qualified_name_from_node,
+  qualified_name_to_dotted_string
+}
+import v2.std.text { String }
 
 type ReferenceResolutionFact {
   path: String

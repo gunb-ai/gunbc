@@ -13,21 +13,6 @@ import gunbc.commit_workflow {
 }
 import tools.rust_stage0_gates { rust_monolith_suffixes, path_is_rust_monolith }
 
-import std.disposition { Disposition, Scaffold, RealizationDispatch }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.ci_layer_roots { witness_layer_roots }
-import gunbc.generated_artifact { committed_generated_artifacts, artifact_path }
-import gunbc.ci_gate { GeneratedArtifactDriftGate }
-import gunbc.commit_workflow {
-  LocalTidyCheck, LocalTidyWitnessCheck, LocalTidyGateCheck, LocalTidyCargoFmtCheck,
-  commit_gate_roster,
-  project_local_tidy_checks,
-  doc_reachability_witness_entry
-}
-import tools.rust_stage0_gates { rust_monolith_suffixes }
-
-
-
 data local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
 
 data generated_artifact_drift_gate_entry: String = "dag/tools/generated_artifact_gate.dag"

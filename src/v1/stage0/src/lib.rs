@@ -121,6 +121,7 @@ pub mod v2_compiler_body_producer;
 pub mod v2_compiler_compile;
 pub mod v2_compiler_discovery_enumeration;
 pub mod v2_compiler_infer;
+pub mod v2_compiler_normalize;
 pub mod v2_compiler_parse_engine_hooks;
 pub mod v2_compiler_program_assembly;
 pub mod v2_compiler_program_partition;
