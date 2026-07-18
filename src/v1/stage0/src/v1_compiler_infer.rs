@@ -1323,9 +1323,11 @@ pub fn brand_grounds_transparently_to(
                 && match resolved.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {
                         let target_name = authored_name_at(source_indices.clone(), target.clone());
-                        is_kernel_type(target_name.clone())
-                            && target_name
-                                == authored_name_at(source_indices.clone(), other.clone())
+                        let other_name = authored_name_at(source_indices.clone(), other.clone());
+                        (is_kernel_type(target_name.clone())
+                            && target_name.clone() == other_name.clone())
+                            || (qualified_last_segment(target_name.clone())
+                                == qualified_last_segment(other_name.clone()))
                     }
                     _ => false,
                 }
@@ -13538,7 +13540,13 @@ pub fn census_upgrade_sig_binding(
                     source_indices.clone(),
                 );
                 let ret_result = resolve_node(raw_ret.clone(), env.clone(), module_path.clone());
-                if (ret_result.diagnostics.clone().len() as i64) == 0 {
+                if (ret_result.diagnostics.clone().len() as i64) == 0
+                    && census_resolution_erases_primitive_brand(
+                        raw_ret.clone(),
+                        ret_result.resolved.clone(),
+                        source_indices.clone(),
+                    ) == false
+                {
                     Rc::new(TypeBinding {
                         name: binding.name.clone(),
                         resolved: crate::v1_compiler_infer_env::node_with_inferred(
@@ -13628,6 +13636,23 @@ pub fn census_upgrade_binding(
     }
 }
 
+pub fn census_resolution_erases_primitive_brand(
+    raw: Rc<Node>,
+    resolved: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (raw.connective == crate::v1_std_core::Connective::NoConnective)
+        && ((raw.children.clone().len() as i64) == 0)
+        && (is_kernel_type(qualified_last_segment(authored_name_at(
+            source_indices.clone(),
+            raw.clone(),
+        ))) == false)
+        && crate::v1_compiler_infer_resolve::is_transparent_primitive_alias_rhs(
+            resolved.clone(),
+            source_indices.clone(),
+        )
+}
+
 pub fn census_upgrade_service_item(
     item: Rc<Node>,
     module_path: String,
@@ -13647,7 +13672,13 @@ pub fn census_upgrade_service_item(
             .map(|c| match c.inferred.clone().as_deref().cloned() {
                 Some(crate::v1_std_core::InferredNode::Resolved { node: raw_out, .. }) => {
                     let r = resolve_node(raw_out.clone(), env.clone(), module_path.clone());
-                    if (r.diagnostics.clone().len() as i64) == 0 {
+                    if (r.diagnostics.clone().len() as i64) == 0
+                        && census_resolution_erases_primitive_brand(
+                            raw_out.clone(),
+                            r.resolved.clone(),
+                            source_indices.clone(),
+                        ) == false
+                    {
                         crate::v1_compiler_infer_env::node_with_inferred(
                             c.clone(),
                             Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {

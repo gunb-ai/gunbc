@@ -119,7 +119,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve, is_transparent_primitive_alias_rhs,
   resolve_generic_use_decl,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
@@ -773,7 +773,9 @@ fn brand_grounds_transparently_to(name: String, other: Node, type_env: TypeEnv, 
         && match resolved.inferred {
           Present { value: Resolved { node: target } } =>
             let target_name = authored_name_at(source_indices: source_indices, node: target)
-            is_kernel_type(name: target_name) && target_name == authored_name_at(source_indices: source_indices, node: other)
+            let other_name = authored_name_at(source_indices: source_indices, node: other)
+            (is_kernel_type(name: target_name) && target_name == other_name)
+              || qualified_last_segment(name: target_name) == qualified_last_segment(name: other_name)
           _ => false
         }
     Absent => false
@@ -6319,7 +6321,7 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
         let tp_names = fn_type_param_names(item: node, source_indices: source_indices)
         let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: tp_names, source_indices: source_indices)
         let ret_result = resolve_node(n: raw_ret, env: env, module_name: module_path)
-        if (ret_result.diagnostics |> count) == 0 {
+        if (ret_result.diagnostics |> count) == 0 && census_resolution_erases_primitive_brand(raw: raw_ret, resolved: ret_result.resolved, source_indices: source_indices) == false {
           TypeBinding {
             name: binding.name,
             resolved: node_with_inferred(n: node, inferred: Present { value: Resolved { node: ret_result.resolved } }),
@@ -6356,13 +6358,19 @@ fn census_upgrade_binding(binding: TypeBinding, module_path: String, census: Sym
   } else { binding }
 }
 
+fn census_resolution_erases_primitive_brand(raw: Node, resolved: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  raw.connective == NoConnective && (raw.children |> count) == 0
+    && is_kernel_type(name: qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: raw))) == false
+    && is_transparent_primitive_alias_rhs(structural: resolved, source_indices: source_indices)
+}
+
 fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> Node {
   let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
   let ops2 = item.children |> map(c =>
     match c.inferred {
       Present { value: Resolved { node: raw_out } } =>
         let r = resolve_node(n: raw_out, env: env, module_name: module_path)
-        if (r.diagnostics |> count) == 0 {
+        if (r.diagnostics |> count) == 0 && census_resolution_erases_primitive_brand(raw: raw_out, resolved: r.resolved, source_indices: source_indices) == false {
           node_with_inferred(n: c, inferred: Present { value: Resolved { node: r.resolved } })
         } else { c }
       _ => c
