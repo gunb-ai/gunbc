@@ -146,7 +146,7 @@ pub fn create_double_init_collapsible(
                 EffectShape::CreateEffect { cause: cause_b, .. } => {
                     match (*cause_b.clone()).clone() {
                         CreateCause::CreateIfAbsent { key_source: kb, .. } => {
-                            (ka.clone() == kb.clone())
+                            key_source_eq(ka.clone(), kb.clone())
                         }
                         CreateCause::PostAlways => false,
                         CreateCause::KeylessFallback { method: method, .. } => false,

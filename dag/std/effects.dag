@@ -85,7 +85,7 @@ fn create_double_init_collapsible(a: EffectShape<KeySource>, b: EffectShape<KeyS
           match b {
             CreateEffect { cause: cause_b } =>
               match cause_b {
-                CreateIfAbsent { key_source: kb } => ka == kb
+                CreateIfAbsent { key_source: kb } => key_source_eq(left: ka, right: kb)
                 PostAlways => false
                 KeylessFallback { method: method } => false
               }
