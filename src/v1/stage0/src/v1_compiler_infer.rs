@@ -13156,6 +13156,19 @@ pub fn build_symbol_index_census(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
+    if std::env::var("GUNBC_CENSUS_PROBE").is_ok() {
+        let mut prefixes: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for m in modules.iter() {
+            let p = authored_name_at(source_indices.clone(), m.module.clone());
+            let root = p.split('.').next().unwrap_or("").to_string();
+            *prefixes.entry(root).or_default() += 1;
+            if p.starts_with("v2.") {
+                eprintln!("CENSUS_PROBE module present: {p}");
+            }
+        }
+        eprintln!("CENSUS_PROBE modules={} roots={prefixes:?}", modules.len());
+    }
     let corpus_variant_counts =
         corpus_disj_variant_name_counts(modules.clone(), source_indices.clone());
     modules.clone().iter().cloned().fold(
