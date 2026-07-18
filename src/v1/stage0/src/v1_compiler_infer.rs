@@ -3714,10 +3714,18 @@ pub fn infer_expr(
                     && func_name.contains("membership_effects")
                 {
                     eprintln!(
-                        "SIGPATH2 func={} sig_present={} subst_keys={:?}",
+                        "SIGPATH2 func={} sig_present={} subst={:?}",
                         func_name,
                         sig.is_some(),
-                        call_subst.keys().collect::<std::vec::Vec<_>>(),
+                        call_subst
+                            .iter()
+                            .map(|(k, v)| (
+                                k.clone(),
+                                v.name.clone(),
+                                format!("{:?}", v.connective),
+                                v.children.len()
+                            ))
+                            .collect::<std::vec::Vec<_>>(),
                     );
                 }
                 let typed_args = Rc::new({

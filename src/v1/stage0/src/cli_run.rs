@@ -6875,7 +6875,7 @@ pub fn owned_data_decls_for_entry(
                 entry_module
             ));
         }
-        let info = graph.item_registry.get(&decl_name).ok_or_else(|| {
+        let info = typed_module.item_registry.get(&decl_name).ok_or_else(|| {
             format!(
                 "{entry_path}: owned data '{}' missing from item_registry",
                 decl_name
@@ -6922,7 +6922,7 @@ pub fn owned_data_decls_for_entry(
     }
 
     let discovered: HashSet<&str> = records.iter().map(|r| r.decl_name.as_str()).collect();
-    for (decl_name, info) in graph.item_registry.iter() {
+    for (decl_name, info) in typed_module.item_registry.iter() {
         if info.kind == ItemKind::DataItem
             && info.module_name == entry_module
             && decl_name.starts_with("unified_claim_")
