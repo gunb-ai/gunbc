@@ -9155,11 +9155,15 @@ fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
 // SYNC: sink markers and path-literal heuristics must stay aligned with
 // `v2.std.effect_reach` (`effect_reach_host_sink_callee_symbols_v0`) and the `.dag`
 // lens — the Node-tree fold is semantic authority; this Rust layer routes discovery only.
+// SYNC: must match `v2.std.effect_reach` `effect_reach_host_sink_callee_symbols_v0` exactly.
 const EFFECT_REACH_HOST_SINK_MARKERS: &[&str] = &[
+    "Read",
     "Filesystem.Read",
     "WitnessBin.Run",
     "gunbc.WitnessBin.Run",
+    "Run",
     "shell.Exec.Run",
+    "Exec.Run",
 ];
 
 fn source_has_path_like_string_data(content: &str) -> bool {
@@ -12606,6 +12610,24 @@ mod node_frontier_plumbing_controls {
                 &[fixture_path.to_string()],
             ),
             "struct/path fixture mentions must not count as effect-reach touch evidence"
+        );
+    }
+
+    #[test]
+    fn effect_reach_host_sink_markers_aligned_with_std_authority() {
+        const AUTHORITY: &[&str] = &[
+            "Read",
+            "Filesystem.Read",
+            "WitnessBin.Run",
+            "gunbc.WitnessBin.Run",
+            "Run",
+            "shell.Exec.Run",
+            "Exec.Run",
+        ];
+        assert_eq!(
+            super::EFFECT_REACH_HOST_SINK_MARKERS,
+            AUTHORITY,
+            "Rust bridge markers must match v2.std.effect_reach effect_reach_host_sink_callee_symbols_v0"
         );
     }
 
