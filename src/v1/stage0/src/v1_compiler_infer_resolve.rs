@@ -516,6 +516,15 @@ pub fn substitute_type_slots(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let tv_slot = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+                v1_rt::map_get(&slot_bindings, tv_id)
+            }
+            _ => None,
+        };
+        if let Some(concrete) = tv_slot {
+            return concrete.clone();
+        }
         let is_slot = (((((n.children.clone().len() as i64) == 0)
             && (n.connective.clone() == Connective::NoConnective))
             && (n.body.clone() == None))

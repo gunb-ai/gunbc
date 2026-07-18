@@ -243,6 +243,11 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
 }
 
 fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>) -> Node {
+  let tv_slot = match n.inferred {
+    Present { value: TypeVariable { id: tv_id } } => map_get(slot_bindings, tv_id)
+    _ => none
+  }
+  if tv_slot != none { return tv_slot.value }
   let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
   if is_slot {
     match map_get(slot_bindings, authored_name_at(source_indices: source_indices, node: n)) {
