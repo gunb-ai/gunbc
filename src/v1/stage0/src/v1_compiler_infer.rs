@@ -3804,6 +3804,28 @@ pub fn infer_expr(
                                     dump(&s.inferred),
                                     dump(&resolved_type),
                                 );
+                                fn walk_tv(n: &Rc<Node>, path: &str, depth: usize) {
+                                    if depth > 6 {
+                                        return;
+                                    }
+                                    match n.inferred.as_deref() {
+                                        Some(InferredNode::TypeVariable { id, .. }) => {
+                                            eprintln!("SIGPATH4 {}/{} TV id={}", path, n.name, id);
+                                        }
+                                        Some(InferredNode::Resolved { node: t, .. }) => {
+                                            walk_tv(
+                                                t,
+                                                &format!("{}/{}~inf", path, n.name),
+                                                depth + 1,
+                                            );
+                                        }
+                                        _ => {}
+                                    }
+                                    for c in n.children.iter() {
+                                        walk_tv(c, &format!("{}/{}", path, n.name), depth + 1);
+                                    }
+                                }
+                                walk_tv(&resolved_type, "", 0);
                             }
                         }
                         let value_params_for_check = Rc::new({
