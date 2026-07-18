@@ -1045,6 +1045,52 @@ pub fn record_lit_expanded_from_expected(
     }
 }
 
+pub fn record_lit_expected_coproduct(
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match expected.clone() {
+        Some(exp) => {
+            let resolved = match lookup_type_for(scope.type_env.clone(), exp.clone()) {
+                Some(r) => r.clone(),
+                None => exp.clone(),
+            };
+            if resolved.connective == Connective::Disj {
+                Some(resolved.clone())
+            } else {
+                None
+            }
+        }
+        None => None,
+    }
+}
+
+pub fn record_lit_variant_from_expected(
+    type_name: Option<String>,
+    expected: Option<Rc<Node>>,
+    scope: Rc<InferScope>,
+) -> Option<Rc<Node>> {
+    match type_name.clone() {
+        Some(tn) => match record_lit_expected_coproduct(expected.clone(), scope.clone()) {
+            Some(coproduct) => Rc::new({
+                let mut __result = Vec::new();
+                for v in coproduct.children.clone().iter().cloned() {
+                    if (authored_name_at(scope.type_env.clone().source_indices.clone(), v.clone())
+                        == qualified_last_segment(tn.clone()))
+                    {
+                        __result.push(v);
+                    }
+                }
+                __result
+            })
+            .first()
+            .cloned(),
+            None => None,
+        },
+        None => None,
+    }
+}
+
 pub fn record_lit_fields_from_expected(
     type_name: Option<String>,
     expected: Option<Rc<Node>>,
@@ -6344,11 +6390,21 @@ pub fn infer_record_lit(
                     scope.clone(),
                 ) {
                     Some(fields) => fields.clone(),
-                    None => match expected.clone() {
-                        Some(_) => record_lit_expected_fields(type_name.clone(), scope.clone()),
-                        None => match record_lit_alias_struct_fields(tn.clone(), scope.clone()) {
-                            Some(fields) => fields.clone(),
-                            None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                    None => match record_lit_variant_from_expected(
+                        type_name.clone(),
+                        expected.clone(),
+                        scope.clone(),
+                    ) {
+                        Some(variant_node) => variant_node.children.clone(),
+                        None => match expected.clone() {
+                            Some(_) => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                            None => match record_lit_alias_struct_fields(tn.clone(), scope.clone())
+                            {
+                                Some(fields) => fields.clone(),
+                                None => {
+                                    record_lit_expected_fields(type_name.clone(), scope.clone())
+                                }
+                            },
                         },
                     },
                 },
@@ -6399,24 +6455,31 @@ pub fn infer_record_lit(
                     Some(variant_node) => variant_node.children.clone(),
                     None => Rc::new(vec![]),
                 },
-                None => match record_lit_instantiated_fields(
+                None => match record_lit_variant_from_expected(
                     type_name.clone(),
                     expected.clone(),
                     scope.clone(),
                 ) {
-                    Some(inst_fields) => inst_fields.clone(),
-                    None => match lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) {
-                        Some(decl) => {
-                            if (((decl.connective.clone() == Connective::Conj)
-                                && ((decl.params.clone().len() as i64) == 0))
-                                && ((decl.children.clone().len() as i64) > 0))
-                            {
-                                decl.children.clone()
-                            } else {
-                                Rc::new(vec![])
+                    Some(variant_node) => variant_node.children.clone(),
+                    None => match record_lit_instantiated_fields(
+                        type_name.clone(),
+                        expected.clone(),
+                        scope.clone(),
+                    ) {
+                        Some(inst_fields) => inst_fields.clone(),
+                        None => match lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) {
+                            Some(decl) => {
+                                if (((decl.connective.clone() == Connective::Conj)
+                                    && ((decl.params.clone().len() as i64) == 0))
+                                    && ((decl.children.clone().len() as i64) > 0))
+                                {
+                                    decl.children.clone()
+                                } else {
+                                    Rc::new(vec![])
+                                }
                             }
-                        }
-                        None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                            None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                        },
                     },
                 },
             }
@@ -6745,7 +6808,16 @@ pub fn infer_record_lit(
                             Some(local_node) => {
                                 lookup_type_for(scope.type_env.clone(), local_node.clone())
                             }
-                            None => None,
+                            None => match record_lit_variant_from_expected(
+                                type_name.clone(),
+                                expected.clone(),
+                                scope.clone(),
+                            ) {
+                                Some(_) => {
+                                    record_lit_expected_coproduct(expected.clone(), scope.clone())
+                                }
+                                None => None,
+                            },
                         }
                     }
                 };
