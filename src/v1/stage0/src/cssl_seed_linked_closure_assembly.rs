@@ -113,21 +113,22 @@ fn copy_std_bridge(dest: &Path, bridge_src: &Path) -> Result<(), AssemblyError> 
 
 /// SCAFFOLD — see `cssl_emit_artifact_sanitize_scaffold_debt` in
 /// `dag/tools/self_host_curated_seed_linked_harness.dag`. String-scrub on emitted
-/// `v2_std_integer.rs` / `v2_std_witness.rs` only; dissolve-on #6775 emitter defects.
+/// `v2_std_witness.rs` only; dissolve-on #6775 emitter defects. The `v2_std_integer.rs`
+/// arm (blind Int128..UInt8 line-range strip, no duplicate detection) was removed
+/// 2026-07-18: real-entry reproduction against the production `cssl_seed_linked_behavioral_receipt`
+/// path (04_infer.dag, full closure, primary-precedence pool) found the emit source
+/// already writes exactly one copy of each struct — the strip was silently deleting the
+/// only legitimate copy, not a duplicate. Its dissolve-on trigger was already satisfied.
 fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> {
     let name = path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or_default();
-    if name != "v2_std_integer.rs" && name != "v2_std_witness.rs" {
+    if name != "v2_std_witness.rs" {
         return Ok(());
     }
     let content = fs::read_to_string(path)?;
-    let sanitized = if name == "v2_std_integer.rs" {
-        sanitize_integer_inhabitant_dupes(&content)
-    } else {
-        sanitize_witness_import_conflict(&content)
-    };
+    let sanitized = sanitize_witness_import_conflict(&content);
     if sanitized != content {
         eprintln!(
             "CSSL_ASSEMBLE: sanitize scaffold applied to {}",
@@ -136,25 +137,6 @@ fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> 
         fs::write(path, sanitized)?;
     }
     Ok(())
-}
-
-fn sanitize_integer_inhabitant_dupes(content: &str) -> String {
-    let mut out = Vec::new();
-    let mut skip = false;
-    for line in content.lines() {
-        if line.trim() == "pub struct Int128;" {
-            skip = true;
-            continue;
-        }
-        if skip {
-            if line.trim() == "pub struct UInt8;" {
-                skip = false;
-            }
-            continue;
-        }
-        out.push(line);
-    }
-    out.join("\n")
 }
 
 fn sanitize_witness_import_conflict(content: &str) -> String {

@@ -1,5 +1,11 @@
 module test.claim.typed_witness_invocation
 
+import extdeps.shell
+import extdeps.git
+import extdeps.gunbc
+import gunbc.cli_services
+import tools.host_prelude { run_witness_bin }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -56,4 +62,25 @@ test fn typed_is_nonempty_positive_holds() -> Bool {
 test fn typed_is_nonempty_zero_byte_red_control_holds() -> Bool {
   let result = shell.Test.IsNonEmpty(path: "/dev/null")
   result.nonempty == false
+}
+
+test fn typed_gunbc_cli_run_claim_holds() -> Bool {
+  let result = gunbc.Cli.Run(
+    workdir: "/",
+    bin_path: "/bin/true",
+    source_roots: ["dag"],
+    entry: "noop.dag",
+    function: "noop",
+    claim_run: false
+  )
+  result.success
+}
+
+test fn typed_claim_executor_verify_build_artifacts_red_control_holds() -> Bool {
+  let result = claim_executor.Executor.VerifyBuildArtifacts(
+    workdir: "/",
+    bin_path: "/bin/false",
+    artifact_paths: ["/bin/sh"]
+  )
+  result.success == false
 }

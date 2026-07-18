@@ -61,9 +61,9 @@ fn witness_dependency_ensure_is_idempotent() -> Bool {
     dep: DeploymentDependencyStep { kind: NodeJsPackage, package: package_nodejs }
   )
   string_contains(s: tailscale, pattern: "dpkg -s tailscale")
-    && string_contains(s: tailscale, pattern: "apt-get install -y tailscale")
+    && string_contains(s: tailscale, pattern: "apt-get install --yes tailscale")
     && string_contains(s: nodejs, pattern: "dpkg -s nodejs")
-    && string_contains(s: nodejs, pattern: "apt-get install -y nodejs")
+    && string_contains(s: nodejs, pattern: "apt-get install --yes nodejs")
 }
 
 fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
@@ -73,8 +73,8 @@ fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
     && string_contains(s: sh, pattern: "[Service]")
     && string_contains(s: sh, pattern: "sudo -n systemctl restart gunbc-roadmap.service")
     && string_contains(s: sh, pattern: "sudo -n tailscale serve --bg 8080")
-    && string_contains(s: sh, pattern: "if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install -y tailscale; fi")
-    && string_contains(s: sh, pattern: "if ! dpkg -s nodejs >/dev/null 2>&1; then sudo -n apt-get install -y nodejs; fi")
+    && string_contains(s: sh, pattern: "if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install --yes tailscale; fi")
+    && string_contains(s: sh, pattern: "if ! dpkg -s nodejs >/dev/null 2>&1; then sudo -n apt-get install --yes nodejs; fi")
     && string_contains(s: sh, pattern: "fold=apply verdict=converged")
 }
 
