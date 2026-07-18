@@ -1,5 +1,30 @@
 module v2.lens.complexity_accumulator_copy.compile_gate
 
+import std.algebra { Cons, Empty }
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
+import v2.lens.complexity_accumulator_copy { Finding, Poly2Suspect, Unclassifiable }
+import v2.lens.complexity_accumulator_copy.analyze { accumulator_copy_findings, finding_is_suspect }
+import v2.std.algebra { list_reverse }
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Diagnostic,
+  Diagnostics,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_with_diagnostics
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.text { String }
+import v2.std.witness { Holds, Witness }
 
 data compile_gate_law: String = "The accumulator-copy lens as a compile citizen (operator ruling 2026-07-13: a complexity violation FAILS COMPILATION, inheriting compile's affected-set scoping; the witness lane is the red control, never the enforcement). Gate semantics split the Finding coproduct on the suspect/refusal axis the lens already carries: a Poly2Suspect (proven copied-accumulator, DESIGN 6 bare-minimum-cost) REJECTS — the diagnostic is located at the finding node and the rejection tail carries the full finding ledger; Unclassifiable refusal causes are the undecidable residue and ride the Accepted diagnostics channel — typed per-cause, located, counted (the 5 stopped-line ledger), never gating and never silently dropped. Grain: this gate runs ONCE at the tree root (the lens is a rooted carrier-threading walk; running it per subtree node is O(n^2) — the enforcement of the complexity lens violating the complexity lens), so it enrolls in the root-grain required roster, not the per-node roster."
 

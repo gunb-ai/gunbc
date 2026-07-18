@@ -1,5 +1,10 @@
 module test.claim.typed_witness_invocation
 
+import extdeps.shell
+import extdeps.git
+import extdeps.gunbc
+import tools.host_prelude { run_witness_bin }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -7,7 +7,6 @@ import v2.std.integer_value_set {
 }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, well_formed, SyntheticOccurrence }
 import v2.std.node_query { find_named_child }
-
 fn refinement_widening_predicate_algebra(
   source: Node,
   candidate: Node,

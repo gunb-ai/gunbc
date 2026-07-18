@@ -1,5 +1,32 @@
 module v2.test.lens_mutation_adequacy.mutation_adequacy_test
 
+import v2.std.logic { Bool }
+import std.algebra { Empty }
+import v2.std.node { Node, node_synthetic, TypeNode, Atom }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.diagnostic {
+  Diagnostic,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  diagnostics_singleton
+}
+import v2.std.verification {
+  CompilesClaim,
+  DiagnosticClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.lens.mutation_adequacy {
+  MutationCoverage,
+  StructureMutation,
+  is_adequate
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

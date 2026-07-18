@@ -1,5 +1,6 @@
 module gunbc.compile_source_model
 
+import std.logic { Bool }
 
 type DependencyPoolIndex
   = StrictPoolIndex

@@ -1,4 +1,39 @@
 module v2.compiler.materialization_carriers
+
+import std.types { List, String }
+import std.cache_identity {
+  CacheInterfaceId,
+  ArtifactKindId,
+  parse_table_artifact_kind,
+}
+import std.realization {
+  Materialization, Memoize, Recompute, Share,
+  RealizedStep, Placement, LocalInProcess,
+}
+import std.measure { Nano }
+import std.realization_schedule { cost_account_predicted_zero }
+import std.effects { ReadEffect }
+import std.materialization_ladder {
+  Frame, FrameKind, SharedStateFrame, IsolatedChildrenFrame,
+  FrameDemand, DemandNature, PureComputation,
+  CacheProvider, CoversAllComputations,
+  LadderVerdict,
+  materialization_ladder, materialization_ladder_holds,
+  empty_frame_path, no_cost_floor_exemptions, no_cache_providers,
+  verdict_is_accepted_single_recompute,
+  verdict_is_refused_no_provider,
+  verdict_is_refused_scope_too_narrow,
+}
+import extdeps.cache.materialization {
+  CatalogProviderProjection, provider_from_catalog,
+  projected_providers, projection_refusal_count, projection_is_refused,
+}
+import extdeps.realization.parse_table_memo { parse_table_memo_facts, parse_table_memo_id }
+import extdeps.realization.compile_stage_memo { compile_stage_memo_facts, compile_stage_memo_id }
+import std.disposition { Disposition, Terminal }
+import v2.std.staging { CacheProbe, resolve_probe }
+import v2.std.diagnostic { Outcome }
+
 data v2_compiler_materialization_memo_gate_predicate_contract: Disposition = Terminal {
   reason: "Structural coproduct reader over std.realization.Materialization (materialization_allows_memo_store — Memoize => store permitted, Recompute/Share => refused) — closed by the three declared Materialization variants; .dag authority for parse_table_lookup/insert and cached_stage_governed; discriminating corpus: parse_table_memo_governed_witness_test.dag + compiler_materialization_witness_test.dag."
 }

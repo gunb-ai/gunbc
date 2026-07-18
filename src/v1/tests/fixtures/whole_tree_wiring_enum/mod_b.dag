@@ -1,5 +1,6 @@
 module wt.b
 
+import wt.common { Flag }
 
 fn wt_b_wired(q: Flag) -> Flag {
   q

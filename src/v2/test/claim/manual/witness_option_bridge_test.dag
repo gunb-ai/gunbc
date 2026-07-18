@@ -1,5 +1,11 @@
 module v2.test.manual.witness_option_bridge
 
+import v2.std.collection { Map, Absent, Present, empty_map, map_get, map_insert }
+import v2.std.diagnostic { Accepted, Rejected, Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
+import v2.std.logic { Bool }
+import v2.std.witness { Violates }
+import v2.test.lens_affected_set.excluded_propagation_proof { excluded_propagation_proof_claim_holds }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

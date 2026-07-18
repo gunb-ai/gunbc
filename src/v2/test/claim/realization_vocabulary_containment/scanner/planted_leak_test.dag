@@ -1,5 +1,13 @@
 module v2.test.realization_vocabulary_containment.scanner.planted_leak
 
+import v2.lens.realization_vocabulary_containment {
+  realization_vocab_leak_count_live,
+  realization_vocab_containment_clean_live
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -9,8 +9,7 @@ import v2.std.dependency {
   classify_dependency_kind
 }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.node_content_hash { content_hash }
+import v2.std.node { Node, content_hash }
 import std.measure { ByteSize }
 import std.types { ContentHash }
 import v2.workflow.realization_runner {

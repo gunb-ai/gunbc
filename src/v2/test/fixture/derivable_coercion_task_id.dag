@@ -1,5 +1,11 @@
 module v2.test.fixture.derivable_coercion_task_id
 
+import v2.std.model_core {
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSurfaceSpelling
+}
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.witness { StructuralPropertyWitness }
 
 fn task_id_inhabitant_atom(id: Symbol) -> Node {
   Node {

@@ -1,5 +1,74 @@
 module test.claim.host_standup_spine
 
+import std.logic { Bool }
+import std.types { Int }
+import std.measure { millisecond }
+import gunbc.host_standup {
+  host_standup_spine,
+  host_standup_spine_length,
+  host_standup_gap_count,
+  host_standup_gap_count_at_actuation_verdict,
+  host_standup_gap_ledger,
+  srv3_host_standup_target,
+  srv3_install_mechanism_is_nbd_proxy_no_fallback,
+  credential_probe_maps_factory_default,
+  credential_probe_maps_credentials_rotated,
+  host_standup_fleet_converge_policy,
+  assimilation_complete,
+  assimilation_complete_all_satisfied,
+  AssimilationCompleteGate,
+  AssimilationComplete,
+  AssimilationIncomplete,
+  InputSatisfied,
+  InputGap,
+  InputRefused,
+  NodeRegistered,
+  ResourcesPresent,
+  RunnerSlotHealthy,
+  GreenPlacePinCoherent,
+  GreenPlacePinCoherentWitness,
+  GreenPlaceFromGunbcGate,
+  GreenPlacePinGap,
+  GreenPlacePinRefused,
+  host_standup_p5_green_place_noop_gate_authority,
+  host_standup_p5_green_place_marker_gate_authority,
+  host_standup_p5_desired_pin_authority,
+  host_standup_p5_default_green_place_gate_verdict,
+  green_place_pin_coherent_satisfied,
+  host_standup_p3_fail_closed_blocks_complete,
+  host_standup_p3_gunbc_pinned_tree_landed,
+  host_standup_default_assimilation_gate_unsatisfied,
+  HostStandupStep,
+  Prefix,
+  Assimilation,
+  BmcCredentialConverge,
+  OsInstallMechanismResolved,
+  OsInstallActuated,
+  HostConvergePolicyDerived,
+  HostIdentityConverge,
+  ReachSecretsNetwork,
+  RunnerDeploySlot,
+  BuildCacheProvision,
+  ComputeFabricEnroll,
+  GreenPlaceReadiness,
+  SessionPlacementEnrollment,
+  StandupAssimilationComplete,
+  DeclaredGap,
+  ModeledCompose,
+}
+import gunbc.bmc_onboarding {
+  FactoryCredentialActive,
+  RotatedCredentialActive,
+}
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import std.upsert_decision { Converged }
+import gunbc.host_standup_assimilation_deduction {
+  srv3_post_install_actuation_verdict,
+}
+import gunbc.ci_fleet { fleet_intent_offers, srv3_offer }
+import gunbc.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound }
+import product.compute_fabric { witness_fabric_binds_need_to_opportunity }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -12,10 +81,11 @@ fn spine_step_tag(step: HostStandupStep) -> Int {
     Assimilation { phase: HostIdentityConverge } => 4
     Assimilation { phase: ReachSecretsNetwork } => 5
     Assimilation { phase: RunnerDeploySlot } => 6
-    Assimilation { phase: ComputeFabricEnroll } => 7
-    Assimilation { phase: GreenPlaceReadiness } => 8
-    Assimilation { phase: SessionPlacementEnrollment } => 9
-    Assimilation { phase: StandupAssimilationComplete } => 10
+    Assimilation { phase: BuildCacheProvision } => 7
+    Assimilation { phase: ComputeFabricEnroll } => 8
+    Assimilation { phase: GreenPlaceReadiness } => 9
+    Assimilation { phase: SessionPlacementEnrollment } => 10
+    Assimilation { phase: StandupAssimilationComplete } => 11
   }
 }
 
@@ -35,10 +105,30 @@ fn spine_tags_are_linear() -> Bool {
   ).ok
 }
 
-test fn host_standup_spine_is_eleven_step_linear_prefix_then_p0_p5() -> Bool {
-  host_standup_spine_length() == 11
+test fn host_standup_spine_is_twelve_step_linear_prefix_then_p0_p5() -> Bool {
+  host_standup_spine_length() == 12
     && spine_tags_are_linear()
-    && host_standup_gap_ledger.length() == 11
+    && host_standup_gap_ledger.length() == 12
+}
+
+test fn p1b_build_cache_provision_spine_row_landed() -> Bool {
+  fold(
+    host_standup_spine,
+    init: false,
+    f: (acc, s) =>
+      acc || match s.phase {
+        Assimilation { phase: BuildCacheProvision } =>
+          s.label == "P1b:build-cache-provision"
+            && match s.disposition {
+              ModeledCompose { authorities: refs } =>
+                refs.length() >= 3
+                  && string_contains(s: s.label, pattern: "build-cache-provision")
+              DeclaredGap { interim_realization: _, refusal: _ } => false
+            }
+        Prefix { phase: _ } => acc
+        Assimilation { phase: _ } => acc
+      }
+  )
 }
 
 test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {

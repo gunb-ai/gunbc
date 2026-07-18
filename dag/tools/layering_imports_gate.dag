@@ -1,13 +1,10 @@
 module tools.layering_imports_gate
 
-
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import tools.layering_imports_transport {
   run_clean_tree_gate,
   run_scanner_perturb_receipts
 }
-
-
 
 func run_layering_imports_gate_body() -> ProcessExit {
   let clean = run_clean_tree_gate()
