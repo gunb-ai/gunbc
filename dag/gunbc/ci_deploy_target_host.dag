@@ -12,6 +12,7 @@ import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell, EmitArtifa
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 
+
 type DeployTargetHostProof
   = RunnerIdentityOnHost { host: HostIdentity }
   | SshExplicitHost { host: HostIdentity, ssh_host: NonEmptyStr }

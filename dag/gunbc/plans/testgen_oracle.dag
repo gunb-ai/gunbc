@@ -4,6 +4,8 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, p, li, ol, cell, row }
 
+
+
 fn testgen_oracle_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** audit + direction · **DESIGN.md + carriers are authority** (§6). Linked from `ROADMAP.md` §4 *Testgen as the bug-class oracle*. (Was a §0 lock-down subject — its output is now floor-discovered, #5434.) The operator's frame: testgen is the answer to *\"how do we prevent the next CLASS of bugs, and how do they relate to structure?\"* — cover a class by **generating witnesses from the declared structure**, not one hand-written witness per bug. That is the construction principle (§0) applied to test coverage: instance-by-instance witnesses are validation; a generator over structure is construction."),

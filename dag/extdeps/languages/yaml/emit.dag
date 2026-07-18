@@ -1,5 +1,6 @@
 module extdeps.languages.yaml.emit
 
+import std.types { List }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.languages.yaml.types {
@@ -21,6 +22,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data yaml_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "  " }
+
+data empty_doc_parts: List<Doc> = []
 
 fn is_expression(s: String) -> Bool {
   starts_with(s: s, prefix: "${{")
@@ -119,8 +122,12 @@ fn nested_body_doc(body: Doc) -> Doc {
 }
 
 fn multiline_block_doc(prefix: String, s: String) -> Doc {
-  let lines = filter(split(s: s, delimiter: "\n"), l => l != "")
-  let content = fold(lines, init: [], f: (acc, l) => append(acc, items: [DocLine, doc_text(text: l)]))
+  let content = fold(split(s: s, delimiter: "\n"), init: empty_doc_parts, f: (acc, l) => {
+    match l == "" {
+      true => acc
+      false => concat(acc, [DocLine, doc_text(text: l)])
+    }
+  })
   doc_concat(parts: [
     doc_text(text: concat(prefix, "|")),
     doc_nest(levels: 1, body: doc_concat(parts: content)),

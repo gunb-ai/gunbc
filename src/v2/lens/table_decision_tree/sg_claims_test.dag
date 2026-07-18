@@ -1,20 +1,5 @@
 module v2.test.lens_table_decision_tree.sg_claims
 
-import v2.std.lens_verdict {
-  Holds,
-  LensVerdict,
-  Unrealized,
-  lens_verdict_diagnostic_locus_module,
-  lens_verdict_module_unrealized,
-}
-import v2.lens.table_decision_tree {
-  table_decision_tree_fact_for_fn
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
-import v2.test.lens_common.infer_fixture { claim_atom_node }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

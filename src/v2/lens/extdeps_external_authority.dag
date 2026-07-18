@@ -1,26 +1,5 @@
 module v2.lens.extdeps_external_authority
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SubstrateMandatoryTag, SingleAuthority }
 
-import extdeps.uri {
-  Http,
-  Https,
-  File,
-  Ftp,
-  UriScheme,
-  uri_scheme_is_http
-}
-import v2.std.algebra {
-  filter,
-  fold_list,
-  is_empty,
-  length,
-  list_snoc_item
-}
-import v2.std.collection { List, Optional, Present, Absent }
-import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName }
-import v2.std.text { String }
 
 type ExtdepsExternalAuthorityAnchorStatus
   = AnchorAbsent

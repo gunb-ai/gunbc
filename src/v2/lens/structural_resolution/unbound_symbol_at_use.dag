@@ -1,30 +1,5 @@
 module v2.test.lens_structural_resolution.unbound_symbol_at_use
 
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.test.lens_common.infer_fixture { claim_inferred_facts }
-import v2.compiler.resolve { unbound_symbol_diagnostic }
-import v2.lens.structural_resolution {
-  StructuralResolutionFact,
-  UnboundSymbolAtUse,
-  fact_eq,
-  fact_single_dependency_projects_status
-}
-import v2.std.dependency { ClassifiedDependencyView }
-import v2.test.lens_structural_resolution.claim_carrier {
-  LensStructuralResolutionClaim,
-  lens_structural_resolution_actual
-}
-import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { Map }
-import v2.std.constraints {
-  CanonicalGroundingWitness
-}
-import v2.std.dependency {
-  BindsTo,
-  DependencyView
-}
-import v2.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 data sr_unbound_claim_hash: Hash = sr_unbound_claim_hash
 
 fn sr_unbound_claim_atom(s: Symbol) -> Node {

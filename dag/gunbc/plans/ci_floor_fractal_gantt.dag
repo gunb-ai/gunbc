@@ -4,6 +4,8 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
 
+
+
 fn ci_floor_fractal_gantt_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** measurement doc + infrastructure PR — on top of the #5747 (name-resolution memoisation) + #5757 (Value::Record HashMap→sorted-Vec) baseline. **DESIGN.md + the carriers remain the authority** — this doc is a timestamped profiling receipt, not a fact ledger. Its dissolution trigger is the realization_measurement_loop plan landing a durable `.dag`-native Gantt carrier that supersedes this prose receipt."),

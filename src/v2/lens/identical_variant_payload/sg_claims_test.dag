@@ -1,25 +1,6 @@
 module v2.test.lens_identical_variant_payload.sg_claims
 
-import v2.std.lens_verdict {
-  Holds,
-  LensVerdict,
-  Unrealized,
-  lens_verdict_diagnostic_locus_module,
-  lens_verdict_module_unrealized,
-}
-import v2.lens.identical_variant_payload {
-  identical_variant_payload_fact_for_type
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.test.lens_common.infer_fixture { claim_atom_node }
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data ivp_witness_type_node: Node = claim_atom_node(s: ^ivp_witness_type_symbol)

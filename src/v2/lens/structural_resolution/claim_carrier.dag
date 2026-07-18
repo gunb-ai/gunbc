@@ -1,8 +1,5 @@
 module v2.test.lens_structural_resolution.claim_carrier
 
-import v2.compiler.infer { InferredTree }
-import v2.lens.structural_resolution { StructuralResolutionFact, at }
-import v2.std.witness { Witness }
 
 type LensStructuralResolutionClaim {
   input: InferredTree

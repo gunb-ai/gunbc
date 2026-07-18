@@ -1,15 +1,5 @@
 module v2.test.claim.create_if_absent_double_init_witness_test
 
-import v2.std.effects {
-  create_always_shape,
-  create_double_init_collapsible,
-  create_effect_is_dedupable,
-  create_if_absent_shape,
-  sample_create_if_absent_key_b,
-  sample_create_if_absent_key_source
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

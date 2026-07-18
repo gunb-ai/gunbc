@@ -1,34 +1,5 @@
 module test.claim.reconcile_in_process_cache
 
-import std.types { Bool, ContentHash }
-import std.cache_identity {
-  parse_source_artifact_kind,
-  typed_module_artifact_kind,
-  resolved_graph_artifact_kind,
-}
-import std.cache_interface {
-  ArtifactIdentity,
-  HandAuthoredString,
-  NativeInternalHash,
-  ContentAddressedByValue,
-  PerHostFilesystem,
-  InProcess,
-  StructuredArtifact,
-  MissThenCreate,
-}
-import extdeps.cache.cache {
-  cache_interface_facts_from_catalog,
-  cache_key_projection_transport,
-}
-import extdeps.cache.types { catalog_key_derivation_classification }
-import extdeps.realization.reconcile_in_process {
-  parse_cache_facts,
-  typed_module_cache_facts,
-  parse_cache_id,
-  typed_module_cache_id,
-}
-import extdeps.realization.resolved_graph { resolved_graph_cache_facts, resolved_graph_cache_id }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -26,6 +26,7 @@ import std.content_hash { content_hash_atom, content_hash_combine, content_hash_
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
+
 type MergeStrategy
   = SquashMerge
   | MergeCommit

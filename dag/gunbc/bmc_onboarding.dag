@@ -1,5 +1,6 @@
 module gunbc.bmc_onboarding
 
+
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { FactoryLogin, CredentialFlow, Stored }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
@@ -9,6 +10,8 @@ import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishAccountRole, 
 import gunbc.os_install_mechanism { srv3_install_boot_target }
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
+
+
 
 type BmcOnboardingPhase =
     FactoryDefault

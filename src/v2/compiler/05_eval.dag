@@ -85,19 +85,18 @@ import v2.std.node {
   Value,
   Arrow,
   Atom,
-  bag_hash_digest,
-  combine_hash,
-  content_hash,
   ByteOffsetCacheEligible,
   ByteOffsetCacheIneligible,
   ByteOffsetCacheKey,
   byte_offset_cache_key,
+  combine_hash,
   fold_node,
   is_positional,
   node_for_structural_equality,
   well_formed,
   SyntheticOccurrence
 }
+import v2.std.node_content_hash { bag_hash_digest, content_hash }
 import v2.std.node_query { find_arrow_body_child, node_positional_child_targets }
 import v2.std.diagnostic {
   AmbiguousIntent,

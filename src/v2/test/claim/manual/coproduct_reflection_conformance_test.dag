@@ -1,19 +1,5 @@
 module v2.test.manual.coproduct_reflection_conformance
 
-import std.algebra { Empty }
-import v2.std.algebra { bag_eq, fold_list, list_snoc_item }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Behavior,
-  Symbol
-}
-import v2.std.node_query {
-  coproduct_arm_keys,
-  coproduct_nullary_inhabitants
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

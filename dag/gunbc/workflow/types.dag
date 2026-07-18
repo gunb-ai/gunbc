@@ -1,18 +1,6 @@
 module gunbc.workflow.types
 
-import std.types {
-  ContentHash,
-  FermiDepth,
-  FilePath,
-  Milliseconds,
-  NonEmptyStr,
-  Timestamp
-}
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
-import extdeps.uri { Uri }
-import gunbc.review_verdict { FindingSeverity }
-
-type ArtifactKind = DesignDoc | Review | Plan | CiReport
+type ArtifactKind = DesignDoc | Review | PlanDoc | CiReport
 type AuthorSource = Llm | Human
 
 type ReviewDimension = Coherence | Quality | Requirements | Aspirational

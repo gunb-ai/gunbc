@@ -4,6 +4,8 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownDocument, MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone }
 import gunbc.plans.md_helpers { h2, h3, p, li, li_blocks, ul, ol, cell, row }
 
+
+
 fn invert_hand_maintained_body() -> List<MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "The §7 self-hosting recursion applied **beyond the compiler**: every hand-maintained artifact (`ROADMAP.md`, doc indexes, eventually more) is a *second representation* of an authority that already lives in the substrate — so it drifts. Invert it: the `.dag` model is the authority, the artifact is an **emitted projection**, drift-gated (`generated == committed`) exactly as `ci.yml` already is. Flagship: the ROADMAP. DESIGN refs: §2 (no dual representation), §3 (single authority), §5 (construction over validation — the projection makes the defect class *unwritable*), §6 (emission = ingestion⁻¹; the doc medium), §7 (the recursion — the repo emits its own scaffolding).")] },

@@ -1,18 +1,5 @@
 module v2.test.lens_identity_captured_navigation
 
-import v2.lens.identity_captured_navigation { Finding }
-import v2.lens.identity_captured_navigation.analyze {
-  identity_captured_navigation_findings,
-  finding_is_suspect
-}
-import v2.std.algebra { list_map }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
-import v2.std.provenance { span_index_empty }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
