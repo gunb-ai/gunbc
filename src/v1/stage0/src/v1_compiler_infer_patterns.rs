@@ -847,6 +847,11 @@ pub fn check_match_exhaustiveness(
                                                 )
                                             }
                                         }
+                                        LiteralValue::LitNull { .. } => v1_rt::rc_map_insert(
+                                            acc.clone(),
+                                            "Absent".to_string(),
+                                            true,
+                                        ),
                                         _ => acc.clone(),
                                     }
                                 }
