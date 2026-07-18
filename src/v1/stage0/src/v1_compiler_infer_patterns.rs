@@ -90,16 +90,13 @@ pub fn expand_scrut_from_decl(
                 && (scrut_node.children.clone().len() as i64) > 0
             {
                 let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                let substituted = substitute_type_slots_scoped(
+                substitute_type_slots_scoped(
                     decl.clone(),
                     subst.clone(),
                     authored_name_at(env.source_indices.clone(), decl.clone()),
                     env.source_indices.clone(),
                     true,
-                );
-                resolve_node(substituted.clone(), env.clone(), env.module_path.clone())
-                    .resolved
-                    .clone()
+                )
             } else {
                 decl
             }

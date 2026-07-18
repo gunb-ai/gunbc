@@ -2004,6 +2004,30 @@ fn eval_var(
                 _ => {}
             }
         }
+        // Qualified unit-variant value (module.Variant): the compile-side projection
+        // resolved the owning coproduct into this node's inferred — reuse that binding
+        // rather than re-looking the name up (single authority; fail-closed otherwise).
+        if let Some(inf) = node.inferred.as_deref() {
+            if let crate::v1_std_core::InferredNode::Resolved { node: ty, .. } = inf {
+                if ty.connective == crate::v1_std_core::Connective::Disj {
+                    let last = name.rsplit('.').next().unwrap_or(&name).to_string();
+                    let arm = ty
+                        .children
+                        .iter()
+                        .find(|c| authored_name_at(ctx.si(), (*c).clone()) == last);
+                    if let Some(arm) = arm {
+                        if arm.children.is_empty() {
+                            let ty_name = authored_name_at(ctx.si(), ty.clone());
+                            return Ok(Value::Variant {
+                                type_name: ctx.sym(&ty_name),
+                                variant_name: ctx.sym(&last),
+                                fields: Rc::new(vec![]),
+                            });
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Err(InterpError::NoSuchVariable { name })
