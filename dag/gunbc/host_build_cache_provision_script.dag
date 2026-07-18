@@ -130,6 +130,31 @@ fn build_cache_ensure_daemon_body() -> String {
   )
 }
 
+fn build_cache_read_back_body() -> String {
+  concat(
+    "if stats_out=\"$(sccache --show-stats 2>&1)\"; then\n",
+    concat(
+      "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"\n",
+      concat(
+        "  printf '%s\\n' \"$stats_out\"\n",
+        concat(
+          "  exit 0\n",
+          concat(
+            "else\n",
+            concat(
+              "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=FAILED sccache unhealthy after ensure\"\n",
+              concat(
+                "  printf '%s\\n' \"$stats_out\"\n",
+                "  exit 1\n",
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
 fn build_cache_provision_script_body() -> String {
   concat(
     "set -euo pipefail\n",
@@ -141,34 +166,7 @@ fn build_cache_provision_script_body() -> String {
           "printf '%s\\n' \"BuildCacheProvisionReceipt: ensure=starting\"\n",
           concat(
             build_cache_ensure_daemon_body(),
-            concat(
-              "stats_rc=0\n",
-              concat(
-                "stats_out=\"$(sccache --show-stats 2>&1)\" || stats_rc=$?\n",
-                concat(
-                  "if [ \"$stats_rc\" -eq 0 ]; then\n",
-                  concat(
-                    "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"\n",
-                    concat(
-                      "  printf '%s\\n' \"$stats_out\"\n",
-                      concat(
-                        "  exit 0\n",
-                        concat(
-                          "else\n",
-                          concat(
-                            "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=failed rc=$stats_rc\"\n",
-                            concat(
-                              "  printf '%s\\n' \"$stats_out\"\n",
-                              "  exit \"$stats_rc\"\n",
-                            )
-                          )
-                        )
-                      )
-                    )
-                  )
-                )
-              )
-            )
+            build_cache_read_back_body(),
           )
         )
       )
@@ -178,11 +176,14 @@ fn build_cache_provision_script_body() -> String {
 
 fn build_cache_provision_read_back_fails_closed() -> Bool {
   string_contains(
-    s: build_cache_provision_script_body(),
-    pattern: "read_back=failed",
+    s: build_cache_read_back_body(),
+    pattern: "read_back=FAILED",
   ) && string_contains(
-    s: build_cache_provision_script_body(),
-    pattern: "exit \"$stats_rc\"",
+    s: build_cache_read_back_body(),
+    pattern: "exit 1",
+  ) && !string_contains(
+    s: build_cache_read_back_body(),
+    pattern: "stats_rc",
   )
 }
 
