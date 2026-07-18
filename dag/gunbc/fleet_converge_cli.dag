@@ -22,6 +22,7 @@ import gunbc.host_effect {
   RedfishAction,
   Srv3InstallDiagnosticObserve,
   OsInstallActuatorToolchainEnsure,
+  ProvisionBuildCache,
   Srv3InstallReconcileObserve,
   DurableApprovalGrantRecord,
   DurableApprovalGrantRead,
@@ -104,6 +105,7 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => fallback
     Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => fallback
     OsInstallActuatorToolchainEnsure {} => fallback
+    ProvisionBuildCache { catalog_id: _ } => fallback
     Srv3InstallReconcileObserve { include_git_meta: _ } => fallback
     DurableApprovalGrantRecord => fallback
     DurableApprovalGrantRead => fallback
