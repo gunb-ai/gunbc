@@ -40,24 +40,26 @@ pub fn has_path_params(template: Rc<PathTemplate>) -> bool {
 }
 
 pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
-    let params = Rc::new({
-        let mut __result = Vec::new();
-        for t in template.tokens.clone().iter().cloned() {
-            if match (*t.clone()).clone() {
-                UrlPathToken::ParamToken { .. } => true,
-                UrlPathToken::LiteralToken { .. } => false,
-            } {
-                __result.push(t);
+    {
+        let params = Rc::new({
+            let mut __result = Vec::new();
+            for t in template.tokens.clone().iter().cloned() {
+                if match (*t.clone()).clone() {
+                    UrlPathToken::ParamToken { .. } => true,
+                    UrlPathToken::LiteralToken { .. } => false,
+                } {
+                    __result.push(t);
+                }
             }
+            __result
+        });
+        match params.clone().last().cloned() {
+            Some(tok) => match (*tok.clone()).clone() {
+                UrlPathToken::ParamToken { name: n, .. } => Some(n.clone()),
+                UrlPathToken::LiteralToken { .. } => None,
+            },
+            None => None,
         }
-        __result
-    });
-    match params.clone().last().cloned() {
-        Some(tok) => match (*tok.clone()).clone() {
-            UrlPathToken::ParamToken { name: n, .. } => Some(n.clone()),
-            UrlPathToken::LiteralToken { .. } => None,
-        },
-        None => None,
     }
 }
 

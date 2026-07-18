@@ -90,25 +90,27 @@ pub fn trace_push_frame(trace: Rc<Trace>, frame: Rc<TraceFrame>) -> Rc<Trace> {
 }
 
 pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
-    let n = (trace.stack.clone().len() as i64);
-    if (n.clone() <= 1) {
-        Rc::new(Trace {
-            events: trace.events.clone(),
-            stack: Rc::new(vec![]),
-        })
-    } else {
-        Rc::new(Trace {
-            events: trace.events.clone(),
-            stack: Rc::new(
-                trace
-                    .stack
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .take((n.clone() - 1) as usize)
-                    .collect::<Vec<_>>(),
-            ),
-        })
+    {
+        let n = (trace.stack.clone().len() as i64);
+        if (n.clone() <= 1) {
+            Rc::new(Trace {
+                events: trace.events.clone(),
+                stack: Rc::new(vec![]),
+            })
+        } else {
+            Rc::new(Trace {
+                events: trace.events.clone(),
+                stack: Rc::new(
+                    trace
+                        .stack
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .take((n.clone() - 1) as usize)
+                        .collect::<Vec<_>>(),
+                ),
+            })
+        }
     }
 }
 
@@ -137,8 +139,10 @@ pub enum TraceFilter {
 }
 
 pub fn event_matches_span(event: Rc<TraceEvent>, filter_start: i64, filter_end: i64) -> bool {
-    let sp = event_span(event.clone());
-    ((sp.start.clone() >= filter_start.clone()) && (sp.start.clone() < filter_end.clone()))
+    {
+        let sp = event_span(event.clone());
+        ((sp.start.clone() >= filter_start.clone()) && (sp.start.clone() < filter_end.clone()))
+    }
 }
 
 pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<TraceEvent>>> {
