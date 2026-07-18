@@ -666,6 +666,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn effect_reach_inference_bridge_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER,
+            "cli_run_effect_reach_inference_bridge"
+        );
+    }
+
+    #[test]
     fn truncate_histogram_label_respects_utf8_boundaries() {
         let max = 80;
         let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
@@ -9148,14 +9156,28 @@ fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
     parse_entry_live_tree_disposition(entry, &content)
 }
 
-// Host-fed inference bridge for `v2.lens.effect_reach` (module-identity-storage-binding
-// Phase 0): detects string-carried path literals in the import closure combined with
-// host-effect sink operations. DISSOLUTION: typed `SourceRef` at host boundaries makes
-// bare-string file dependencies unwritable; this scaffold deletes with that construction.
-// SYNC: sink markers and path-literal heuristics must stay aligned with
-// `v2.std.effect_reach` (`effect_reach_host_sink_callee_symbols_v0`) and the `.dag`
-// lens — the Node-tree fold is semantic authority; this Rust layer routes discovery only.
-// SYNC: must match `v2.std.effect_reach` `effect_reach_host_sink_callee_symbols_v0` exactly.
+// SCAFFOLD (§7 HAND-RUST — `cli_run_effect_reach_inference_bridge`):
+// Lane: module-identity-storage-binding Phase 0 — host-fed derived `ReadsLiveTree` and
+// path-literal touch evidence routing floor discovery admission until typed `SourceRef`
+// at host boundaries makes bare-string file dependencies unwritable.
+// Unblock: discovery admission consumes `v2.lens.effect_reach` classification directly
+// (same dissolution as the `.dag` lens `WallAfterGrounding{ dissolves_to: SingleAuthority }`).
+// DELETE WHEN dissolved: `reads_live_tree_effective`, `apply_effect_reach_derived_reads_live_tree`,
+// `effect_reach_touched_via_path_literals`, `effect_reach_derived_reads_live_tree_for_entry`,
+// and `EFFECT_REACH_HOST_SINK_MARKERS` (~150 LOC).
+// Receipt: `rg cli_run_effect_reach_inference_bridge src/v1/stage0/src/cli_run.rs` == 1 until
+// deletion; drift gate `effect_reach_host_sink_markers_v0_is_synced_with_dag_authority`.
+pub(crate) const CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER: &str =
+    "cli_run_effect_reach_inference_bridge";
+
+/// Receipted Rust mirror of `v2.std.effect_reach` `effect_reach_host_sink_callee_symbols_v0`
+/// (`src/v2/std/effect_reach.dag`) — host-sink callee symbols for the derived census.
+/// Under-approximating this list lets `reads_live_tree` stay false and discovery skip when
+/// the `.dag` lens would classify host-reading (§5 fail-open on the skip axis); the drift gate
+/// below evaluates the `.dag` authority through a real interpreter context.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER` / §7):
+/// dissolves when typed `SourceRef` at host boundaries deletes this bridge.
 const EFFECT_REACH_HOST_SINK_MARKERS: &[&str] = &[
     "Read",
     "Filesystem.Read",
@@ -9304,6 +9326,70 @@ fn apply_effect_reach_derived_reads_live_tree(
         {
             row.reads_live_tree = true;
         }
+    }
+}
+
+#[cfg(test)]
+mod effect_reach_host_sink_markers_drift_gate_tests {
+    use super::{
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
+        workspace_root, EFFECT_REACH_HOST_SINK_MARKERS,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::collections::HashSet;
+
+    const EFFECT_REACH_STD_ENTRY: &str = "src/v2/std/effect_reach.dag";
+
+    fn dag_host_sink_callee_symbols() -> HashSet<String> {
+        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
+        let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
+        let (graph, indices) =
+            resolve_entry_with_index_for_discovery_corpus(&index, EFFECT_REACH_STD_ENTRY)
+                .unwrap_or_else(|e| panic!("resolve {EFFECT_REACH_STD_ENTRY}: {e}"));
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+        let val = v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::eval_data_item_value(&ctx, "effect_reach_host_sink_callee_symbols_v0")
+        })
+        .unwrap_or_else(|e| panic!("eval effect_reach_host_sink_callee_symbols_v0: {e}"))
+        .unwrap_or_else(|| {
+            panic!("effect_reach_host_sink_callee_symbols_v0 not found as a data item")
+        });
+        let Value::List(items) = val else {
+            panic!("effect_reach_host_sink_callee_symbols_v0 is not a List: {val:?}");
+        };
+        items
+            .iter()
+            .map(|item| match item {
+                Value::Str(s) => s.clone(),
+                other => panic!(
+                    "effect_reach_host_sink_callee_symbols_v0 entry is not a String: {other:?}"
+                ),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn effect_reach_host_sink_markers_v0_is_synced_with_dag_authority() {
+        let dag_symbols = dag_host_sink_callee_symbols();
+        let rust_symbols: HashSet<String> = EFFECT_REACH_HOST_SINK_MARKERS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let missing_from_rust: Vec<&String> = dag_symbols.difference(&rust_symbols).collect();
+        assert!(
+            missing_from_rust.is_empty(),
+            "`.dag` authority `effect_reach_host_sink_callee_symbols_v0` declares sink symbol(s) \
+             {missing_from_rust:?} not mirrored in Rust `EFFECT_REACH_HOST_SINK_MARKERS` \
+             (src/v1/stage0/src/cli_run.rs) — axis skips fail-open when the Rust bridge \
+             under-approximates the authority"
+        );
+        let extra_in_rust: Vec<&String> = rust_symbols.difference(&dag_symbols).collect();
+        assert!(
+            extra_in_rust.is_empty(),
+            "Rust `EFFECT_REACH_HOST_SINK_MARKERS` declares sink symbol(s) {extra_in_rust:?} \
+             absent from `.dag` authority `effect_reach_host_sink_callee_symbols_v0` — keep the \
+             single roster in sync (§3)"
+        );
     }
 }
 
@@ -12624,24 +12710,6 @@ mod node_frontier_plumbing_controls {
                 &[fixture_path.to_string()],
             ),
             "struct/path fixture mentions must not count as effect-reach touch evidence"
-        );
-    }
-
-    #[test]
-    fn effect_reach_host_sink_markers_aligned_with_std_authority() {
-        const AUTHORITY: &[&str] = &[
-            "Read",
-            "Filesystem.Read",
-            "WitnessBin.Run",
-            "gunbc.WitnessBin.Run",
-            "Run",
-            "shell.Exec.Run",
-            "Exec.Run",
-        ];
-        assert_eq!(
-            super::EFFECT_REACH_HOST_SINK_MARKERS,
-            AUTHORITY,
-            "Rust bridge markers must match v2.std.effect_reach effect_reach_host_sink_callee_symbols_v0"
         );
     }
 
