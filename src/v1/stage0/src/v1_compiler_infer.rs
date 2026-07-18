@@ -54,9 +54,10 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 pub use crate::v1_compiler_infer_env::{
     empty_symbol_index, empty_type_env_cache, global_bare_is_ambiguous, inductive_fields_for,
     inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
-    lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
-    merge_type_env_cache_guarded, put_inductive_field, put_inductive_field_cross,
-    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    lookup_binding_by_name, lookup_type_by_name, lookup_type_for, merge_inductive_fields,
+    merge_type_env_cache, merge_type_env_cache_guarded, put_inductive_field,
+    put_inductive_field_cross, str_bindings_from_bindings, symbol_index_insert,
+    symbol_index_insert_decl,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
@@ -2884,29 +2885,69 @@ pub fn infer_expr(
                                 ))
                             }
                         }
-                        None => {
-                            let err_texpr = make_named_expr_node(
-                                name.clone(),
-                                Rc::new(ExprData::ExprVar { binding_kind: None }),
-                                Rc::new(vec![]),
-                                Some(Rc::new(InferredNode::Resolved { node: error_type() })),
-                                span.clone(),
-                                span.clone(),
-                            );
-                            Rc::new(InferResult {
-                                typed: err_texpr.clone(),
-                                diagnostics: Rc::new(vec![inference_error(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "undefined variable '".to_string(),
+                        None => match lookup_binding_by_name(scope.type_env.clone(), name.clone()) {
+                            Some(gbinding) => {
+                                let scope_parent =
+                                    lookup_variant_parent_enum(scope.clone(), name.clone());
+                                match scope_parent.clone() {
+                                    Some(scope_enum) => ok_infer(make_named_expr_node(
+                                        name.clone(),
+                                        Rc::new(ExprData::ExprVar {
+                                            binding_kind: Some(Rc::new(
+                                                VarBindingKind::VariantValueBinding {
+                                                    parent_enum: scope_enum.clone(),
+                                                },
+                                            )),
+                                        }),
+                                        Rc::new(vec![]),
+                                        Some(Rc::new(InferredNode::Resolved {
+                                            node: gbinding.resolved.clone(),
+                                        })),
+                                        span.clone(),
+                                        span.clone(),
+                                    )),
+                                    None => {
+                                        let binding_kind =
+                                            infer_var_binding_kind(scope.clone(), name.clone());
+                                        ok_infer(make_named_expr_node(
                                             name.clone(),
-                                        ),
-                                        "'".to_string(),
-                                    ),
+                                            Rc::new(ExprData::ExprVar {
+                                                binding_kind: Some(binding_kind.clone()),
+                                            }),
+                                            Rc::new(vec![]),
+                                            Some(Rc::new(InferredNode::Resolved {
+                                                node: gbinding.resolved.clone(),
+                                            })),
+                                            span.clone(),
+                                            span.clone(),
+                                        ))
+                                    }
+                                }
+                            }
+                            None => {
+                                let err_texpr = make_named_expr_node(
+                                    name.clone(),
+                                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                                    Rc::new(vec![]),
+                                    Some(Rc::new(InferredNode::Resolved { node: error_type() })),
                                     span.clone(),
-                                    scope.module_name.clone(),
-                                )]),
-                            })
+                                    span.clone(),
+                                );
+                                Rc::new(InferResult {
+                                    typed: err_texpr.clone(),
+                                    diagnostics: Rc::new(vec![inference_error(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                "undefined variable '".to_string(),
+                                                name.clone(),
+                                            ),
+                                            "'".to_string(),
+                                        ),
+                                        span.clone(),
+                                        scope.module_name.clone(),
+                                    )]),
+                                })
+                            }
                         }
                     },
                 }
@@ -12832,13 +12873,17 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
                         |a2: Rc<SymbolIndex>, child: Rc<Node>| {
                             let vname = authored_name_at(source_indices.clone(), child.clone());
                             match v1_rt::map_get(&counts, vname.clone()) {
-                                Some(1) => symbol_index_insert(
+                                Some(1) => symbol_index_insert_decl(
                                     a2.clone(),
                                     v1_rt::concat(
                                         v1_rt::concat(module_path.clone(), ".".to_string()),
                                         vname.clone(),
                                     ),
-                                    child.clone(),
+                                    Rc::new(TypeBinding {
+                                        name: vname.clone(),
+                                        resolved: child.clone(),
+                                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                    }),
                                 ),
                                 _ => a2.clone(),
                             }
