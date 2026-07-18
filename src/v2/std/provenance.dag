@@ -2,7 +2,7 @@ module v2.std.provenance
 type OriginEvent
   = FromSource { locus: Locus }
   | DerivedBy { producer: Symbol, from: List<OccurrenceId> }
-  | GeneratedBy { generator: GeneratorId, from: List<OccurrenceId> }
+  | GeneratedBy { generator: v2.std.artifact.GeneratorId, from: List<OccurrenceId> }
 
 fn origin_event_from_source(locus: Locus) -> OriginEvent {
   FromSource { locus: locus }

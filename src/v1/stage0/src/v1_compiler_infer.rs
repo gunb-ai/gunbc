@@ -13385,8 +13385,18 @@ pub fn build_symbol_index_census_raw(
                 },
             )
         };
-        for probe_name in ["PullRequest", "Job", "Medium", "Monoid", "Frame"] {
-            let gb = v1_rt::map_get(&built.global_bare, probe_name.to_string());
+        let probe_names_raw = std::env::var("GUNBC_CENSUS_PROBE").unwrap_or_default();
+        let probe_names: std::vec::Vec<String> =
+            if probe_names_raw == "1" || probe_names_raw.is_empty() {
+                ["PullRequest", "Job", "Medium", "Monoid", "Frame"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            } else {
+                probe_names_raw.split(',').map(|s| s.to_string()).collect()
+            };
+        for probe_name in probe_names {
+            let gb = v1_rt::map_get(&built.global_bare, probe_name.clone());
             let entry_count = built
                 .entries
                 .keys()
