@@ -24,6 +24,8 @@ import gunbc.roadmap_belt_actuate {
   BeltTeardownOutcome, ReapedSession, TeardownFailed,
   belt_actuate_spawn_member,
   belt_actuate_teardown_member,
+  BeltObserve, Observed, ObserveRefused,
+  belt_observe_from_result,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -158,6 +160,60 @@ fn witness_teardown_member_refuses_desired_shape() -> Bool {
   is_teardown_failed(o: belt_actuate_teardown_member(m: m, workdir: "/"))
 }
 
+fn observe_live_count(o: BeltObserve) -> Int {
+  match o {
+    Observed { live: live } => count(live)
+    ObserveRefused { reason: _ } => -1
+  }
+}
+
+fn is_observe_refused(o: BeltObserve) -> Bool {
+  match o {
+    ObserveRefused { reason: _ } => true
+    Observed { live: _ } => false
+  }
+}
+
+fn witness_observe_parses_live_on_success() -> Bool {
+  observe_live_count(o: belt_observe_from_result(
+    success: true,
+    stdout: "gunbc-dispatch-a: 1 windows",
+    stderr: "",
+  )) == 1
+}
+
+fn witness_observe_empty_on_no_server() -> Bool {
+  observe_live_count(o: belt_observe_from_result(
+    success: false,
+    stdout: "",
+    stderr: "no server running on /tmp/tmux-1000/default",
+  )) == 0
+}
+
+fn witness_observe_empty_on_no_sessions() -> Bool {
+  observe_live_count(o: belt_observe_from_result(
+    success: false,
+    stdout: "",
+    stderr: "no sessions",
+  )) == 0
+}
+
+fn witness_observe_refuses_permission_error() -> Bool {
+  is_observe_refused(o: belt_observe_from_result(
+    success: false,
+    stdout: "",
+    stderr: "error connecting to /tmp/tmux-1000/default (Permission denied)",
+  ))
+}
+
+fn witness_observe_refuses_empty_stderr_failure() -> Bool {
+  is_observe_refused(o: belt_observe_from_result(
+    success: false,
+    stdout: "",
+    stderr: "",
+  ))
+}
+
 test fn roadmap_belt_actuate_witnesses() -> Bool {
   witness_exec_ok_runs_echo()
     && witness_exec_refuses_missing_program()
@@ -167,4 +223,9 @@ test fn roadmap_belt_actuate_witnesses() -> Bool {
     && witness_exec_all_fails_on_later_step()
     && witness_spawn_member_refuses_observed_shape()
     && witness_teardown_member_refuses_desired_shape()
+    && witness_observe_parses_live_on_success()
+    && witness_observe_empty_on_no_server()
+    && witness_observe_empty_on_no_sessions()
+    && witness_observe_refuses_permission_error()
+    && witness_observe_refuses_empty_stderr_failure()
 }
