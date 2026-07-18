@@ -1938,9 +1938,10 @@ fn eval_var(
         if ctx.sym_eq(sym, "Zero") {
             return Ok(Value::Int(0));
         }
+        let vn = ctx.resolve(sym);
         return Ok(Value::Variant {
             type_name: ctx.sym(parent_enum),
-            variant_name: sym,
+            variant_name: ctx.sym(vn.rsplit('.').next().unwrap_or(&vn)),
             fields: Rc::new(vec![]),
         });
     }
@@ -4145,7 +4146,7 @@ fn eval_record_lit(
         }
         Ok(Value::Variant {
             type_name: ctx.sym(pe),
-            variant_name: ctx.sym(&type_name),
+            variant_name: ctx.sym(type_name.rsplit('.').next().unwrap_or(&type_name)),
             fields: Rc::new(fields),
         })
     } else {
