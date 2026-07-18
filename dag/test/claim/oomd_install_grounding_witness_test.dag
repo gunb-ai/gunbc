@@ -224,7 +224,7 @@ fn partial_migration_read() -> OomdEffectiveRead {
   }
 }
 
-fn grounding_is_enforced(g: Grounding<OomdEnforcementEvidence>) -> Bool {
+fn grounding_is_enforced(g: std.realization_reconcile.Grounding<OomdEnforcementEvidence>) -> Bool {
   match g {
     Grounds { evidence: e } =>
       match e {
