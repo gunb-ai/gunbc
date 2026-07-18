@@ -1736,6 +1736,7 @@ mod compiler_tests {
                         module_index.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        std::rc::Rc::new(HashMap::new()),
                         crate::v1_compiler_infer_env::empty_symbol_index(),
                     );
                     let env_elapsed = t_env.elapsed();
@@ -1774,6 +1775,7 @@ mod compiler_tests {
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
+                        std::rc::Rc::new(HashMap::new()),
                         crate::v1_compiler_infer_env::empty_symbol_index(),
                     );
                     let full_elapsed = t_full.elapsed();
