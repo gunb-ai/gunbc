@@ -827,31 +827,6 @@ fn accumulator_copy_findings(root: Node) -> List<Finding> {
   analyze(node: root, carriers: Empty, bindings: Empty, iterating: false)
 }
 
-fn tree_contains_surface_postfix_expr(root: Node) -> Bool {
-  match parse_production_emitted_identity_optional(node: root) {
-    Present { value: id } =>
-      if id == ^dag_surface_postfix_expr {
-        true
-      } else {
-        fold(root.children, init: false, f: fn(found, e) {
-          if found {
-            true
-          } else {
-            tree_contains_surface_postfix_expr(root: e.target)
-          }
-        })
-      }
-    Absent =>
-      fold(root.children, init: false, f: fn(found, e) {
-        if found {
-          true
-        } else {
-          tree_contains_surface_postfix_expr(root: e.target)
-        }
-      })
-  }
-}
-
 fn tree_contains_lowered_loop(root: Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Loop } => true
@@ -861,20 +836,6 @@ fn tree_contains_lowered_loop(root: Node) -> Bool {
           true
         } else {
           tree_contains_lowered_loop(root: e.target)
-        }
-      })
-  }
-}
-
-fn tree_contains_lowered_transform(root: Node) -> Bool {
-  match root.kind {
-    ComputationNode { behavior: Transform } => true
-    _ =>
-      fold(root.children, init: false, f: fn(found, e) {
-        if found {
-          true
-        } else {
-          tree_contains_lowered_transform(root: e.target)
         }
       })
   }
