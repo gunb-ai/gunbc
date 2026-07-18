@@ -87,7 +87,7 @@ import v1.compiler.infer_env {
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
-  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service
+  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -1400,6 +1400,59 @@ fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope)
   ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
 }
 
+type FieldAccessSpine {
+  root: String
+  dotted: String
+}
+
+fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) -> FieldAccessSpine? {
+  match texpr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      let name = expr_var_name_at(texpr: texpr, source_indices: source_indices)
+      Present { value: FieldAccessSpine { root: name, dotted: name } }
+    ExprFieldAccess { summary: _ } =>
+      match field_access_spine(texpr: field_access_base(texpr: texpr), source_indices: source_indices) {
+        Present { value: base_spine } =>
+          Present { value: FieldAccessSpine {
+            root: base_spine.root,
+            dotted: concat(base_spine.dotted, ".", field_access_field_at(texpr: texpr, source_indices: source_indices))
+          } }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) -> InferResult? {
+  match field_access_spine(texpr: texpr, source_indices: scope.type_env.source_indices) {
+    Absent => none
+    Present { value: spine } =>
+      match map_get(scope.locals, spine.root) {
+        Present { value: _ } => none
+        Absent =>
+          match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: spine.dotted) {
+            Absent => none
+            Present { value: decl } =>
+              let value_type = match decl.inferred {
+                Present { value: Resolved { node: rt } } => rt
+                _ => match decl.type_annotation {
+                  Present { value: ann } => ann
+                  Absent => decl
+                }
+              }
+              Present { value: ok_infer(texpr: make_named_expr_node(
+                name: spine.dotted,
+                expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
+                children: [],
+                inferred: Present { value: Resolved { node: value_type } },
+                span: span,
+                name_span: span
+              )) }
+          }
+      }
+  }
+}
+
 fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
@@ -1533,6 +1586,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let field_name = field_access_field_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
       let base_expr = field_access_base(texpr: texpr)
+      match qualified_value_projection(texpr: texpr, scope: scope, span: span) {
+        Present { value: proj } => proj
+        Absent =>
       let base_result = infer_expr(texpr: base_expr, scope: scope, expected: none)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
@@ -1612,6 +1668,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 }
             }
           }
+      }
       }
       }
 

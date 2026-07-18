@@ -58,6 +58,7 @@ pub use crate::v1_compiler_infer_env::{
     merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
     put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
     symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
+    symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
@@ -2780,6 +2781,80 @@ pub fn infer_arg_with_element_type(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FieldAccessSpine {
+    pub root: String,
+    pub dotted: String,
+}
+
+pub fn field_access_spine(
+    texpr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<FieldAccessSpine>> {
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprVar { binding_kind: _, .. } => {
+            let name = expr_var_name_at(texpr.clone(), source_indices.clone());
+            Some(Rc::new(FieldAccessSpine {
+                root: name.clone(),
+                dotted: name.clone(),
+            }))
+        }
+        ExprData::ExprFieldAccess { summary: _, .. } => {
+            match field_access_spine(field_access_base(texpr.clone()), source_indices.clone()) {
+                Some(base_spine) => Some(Rc::new(FieldAccessSpine {
+                    root: base_spine.root.clone(),
+                    dotted: v1_rt::concat(
+                        v1_rt::concat(base_spine.dotted.clone(), ".".to_string()),
+                        field_access_field_at(texpr.clone(), source_indices.clone()),
+                    ),
+                })),
+                None => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+pub fn qualified_value_projection(
+    texpr: Rc<Node>,
+    scope: Rc<InferScope>,
+    span: Rc<SourceSpan>,
+) -> Option<Rc<InferResult>> {
+    match field_access_spine(texpr.clone(), scope.type_env.clone().source_indices.clone()) {
+        None => None,
+        Some(spine) => match v1_rt::map_get(&scope.locals.clone(), spine.root.clone()) {
+            Some(_) => None,
+            None => match symbol_index_lookup(
+                scope.type_env.clone().symbol_index.clone(),
+                spine.dotted.clone(),
+            ) {
+                None => None,
+                Some(decl) => {
+                    let value_type = match decl.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: rt, .. }) => rt,
+                        _ => match decl.type_annotation.clone() {
+                            Some(ann) => ann,
+                            None => decl.clone(),
+                        },
+                    };
+                    Some(ok_infer(make_named_expr_node(
+                        spine.dotted.clone(),
+                        Rc::new(ExprData::ExprVar {
+                            binding_kind: Some(Rc::new(VarBindingKind::FunctionValueBinding)),
+                        }),
+                        Rc::new(vec![]),
+                        Some(Rc::new(InferredNode::Resolved {
+                            node: value_type.clone(),
+                        })),
+                        span.clone(),
+                        span.clone(),
+                    )))
+                }
+            },
+        },
+    }
+}
+
 pub fn infer_expr(
     texpr: Rc<Node>,
     scope: Rc<InferScope>,
@@ -3007,6 +3082,9 @@ pub fn infer_expr(
                 );
                 let span = texpr.span.clone();
                 let base_expr = field_access_base(texpr.clone());
+                if let Some(proj) = qualified_value_projection(texpr.clone(), scope.clone(), span.clone()) {
+                    return proj;
+                }
                 let base_result = infer_expr(base_expr.clone(), scope.clone(), None);
                 let base_typed = base_result.typed.clone();
                 let base_diags = base_result.diagnostics.clone();
