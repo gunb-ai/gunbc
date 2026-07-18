@@ -1038,6 +1038,26 @@ mod compiler_tests {
                 source_indices.clone()
             )
         );
+        let formal_nonterminal = shaped_type_node("FormalNonterminal", vec![symbol.clone()]);
+        let formal_terminal = shaped_type_node("FormalTerminal", vec![symbol.clone()]);
+        assert!(
+            crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                formal_nonterminal.clone(),
+                source_indices.clone()
+            )
+        );
+        assert!(
+            crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                formal_terminal.clone(),
+                source_indices.clone()
+            )
+        );
+        assert!(
+            crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
+                named_type_node("FormalNonterminal"),
+                source_indices.clone()
+            )
+        );
         assert!(
             !crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
                 shaped_type_node("Symbol", vec![named_type_node("Float")]),
