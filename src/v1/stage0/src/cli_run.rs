@@ -14709,6 +14709,21 @@ mod reference_edge_producer_tests {
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
+    // 2026-07-18 backfill: four sites that landed unrostered on main while the affected-set
+    // selection predict-skipped the corpus-read nfr witness for their landing diffs (same
+    // masking class as the dated blocks below). Their files predate this PR and this PR does
+    // not touch them; they surfaced here only because this PR edits the roster (a .rs change),
+    // which re-runs the whole-corpus nfr_roster_receipt under the nextest gate — the same role
+    // the nightly cold sweep plays. Declared so the ratchet re-arms. local_tidy landed with the
+    // shell->dag bash de-fork (#6751), a one-special-variant dispatch (LocalTidyCargoFmtCheck
+    // special, else the glob fallback) — burns down with local_tidy_spec's fold migration. The
+    // three *_eq rows are structural equality (param scrutinee, off-variant `_ => false`),
+    // siblings to the std eq rows below; dissolve with derived equality from inhabitance
+    // (dag/std/algebra, DESIGN §3/§4).
+    "dag/gunbc/local_tidy_spec.dag::local_tidy_path_matches_trigger",
+    "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_remedy_eq",
+    "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_verdict_authority_eq",
+    "src/v2/lens/vacuity.dag::vacuity_evidence_eq",
     // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
     // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
     // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
