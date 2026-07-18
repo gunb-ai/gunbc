@@ -22,8 +22,8 @@ use std::process::ExitCode;
 use std::rc::Rc;
 
 use v1_compiler::cli_run::{
-    census_module_contributes_declarations, compile_clean_diagnostic_histogram_key,
-    compile_clean_whole_tree_hard_diagnostics, peak_rss_vhwm_bytes, workspace_root,
+    compile_clean_diagnostic_histogram_key, compile_clean_whole_tree_hard_diagnostics,
+    peak_rss_vhwm_bytes, workspace_root,
 };
 use v1_compiler::v1_std_core::{diagnostic_to_span, ErrorNode};
 
@@ -85,12 +85,7 @@ fn main() -> ExitCode {
     let mut file_ranked: Vec<(String, usize)> = by_file.into_iter().collect();
     file_ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     for (file, count) in file_ranked.iter().take(50) {
-        let gate = if census_module_contributes_declarations(file) {
-            "gate_true"
-        } else {
-            "gate_false"
-        };
-        println!("FILE\t{file}\t{count}\t{gate}");
+        println!("FILE\t{file}\t{count}");
     }
 
     println!("--- CLASS_NAME (top 50 by count) ---");
