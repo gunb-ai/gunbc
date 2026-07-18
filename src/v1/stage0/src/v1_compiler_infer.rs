@@ -3881,7 +3881,16 @@ match bare_s.clone() {
                                                         {
                                                             Some(tn) => tn.clone(),
                                                             None => match global_bare_callable.clone() {
-                                                                Some(gnode) => callable_inferred(gnode.clone()),
+                                                                Some(gnode) => {
+                                                                    if (gnode.params.clone().len() as i64) > 0 {
+                                                                        callable_inferred(gnode.clone())
+                                                                    } else {
+                                                                        match gnode.inferred.clone().as_deref().cloned() {
+                                                                            Some(InferredNode::Resolved { node: ret, .. }) => ret,
+                                                                            _ => error_type(),
+                                                                        }
+                                                                    }
+                                                                }
                                                                 None => error_type(),
                                                             },
                                                         };

@@ -91,7 +91,7 @@ pub fn func_sig_from_global_bare(
         None => match lookup_binding_by_name(type_env.clone(), name.clone()) {
             Some(binding) => {
                 let node = binding.resolved.clone();
-                if ((node.params.clone().len() as i64) > 0) || node.body.is_some() {
+                if ((node.params.clone().len() as i64) > 0) || node.inferred.is_some() {
                     Some(Rc::new(ResolvedFuncSig {
                         name: name.clone(),
                         params: node.params.clone(),

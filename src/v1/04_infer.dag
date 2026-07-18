@@ -1965,7 +1965,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               let resolved_type = match type_match {
                 Present { value: tn } => tn
                 Absent => match global_bare_callable {
-                  Present { value: gnode } => callable_inferred(n: gnode)
+                  Present { value: gnode } =>
+                    if (gnode.params |> count) > 0 { callable_inferred(n: gnode) }
+                    else { callable_return_type(n: gnode) }
                   Absent => error_type
                 }
               }
