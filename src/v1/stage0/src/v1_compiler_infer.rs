@@ -1260,9 +1260,35 @@ pub fn module_skips_direct_call_arg_check(module_name: String) -> bool {
     }
 }
 
+pub fn brand_grounds_transparently_to(
+    name: String,
+    other: Rc<Node>,
+    type_env: Rc<TypeEnv>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match lookup_type_by_name(type_env.clone(), name.clone()) {
+        Some(resolved) => {
+            resolved.connective.clone() == Connective::NoConnective
+                && resolved.children.len() == 0
+                && resolved.inferred.is_some()
+                && match resolved.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: target, .. }) => {
+                        let target_name = authored_name_at(source_indices.clone(), target.clone());
+                        is_kernel_type(target_name.clone())
+                            && target_name
+                                == authored_name_at(source_indices.clone(), other.clone())
+                    }
+                    _ => false,
+                }
+        }
+        None => false,
+    }
+}
+
 pub fn nominal_call_arg_brand_mismatch(
     formal: Rc<Node>,
     actual: Rc<Node>,
+    type_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -1272,11 +1298,24 @@ pub fn nominal_call_arg_brand_mismatch(
             && (actual.connective.clone() != Connective::Arrow))
             && (formal_name.clone() != "".to_string()))
             && (actual_name.clone() != "".to_string()))
-            && (formal_name.clone() != actual_name.clone()))
+            && (qualified_last_segment(formal_name.clone())
+                != qualified_last_segment(actual_name.clone())))
             && (structural_carrier_template_name(formal.clone(), source_indices.clone())
                 == structural_carrier_template_name(actual.clone(), source_indices.clone())))
             && !is_declared_container_alias_spelling(formal_name.clone()))
             && !is_declared_container_alias_spelling(actual_name.clone()))
+            && !brand_grounds_transparently_to(
+                formal_name.clone(),
+                actual.clone(),
+                type_env.clone(),
+                source_indices.clone(),
+            )
+            && !brand_grounds_transparently_to(
+                actual_name.clone(),
+                formal.clone(),
+                type_env.clone(),
+                source_indices.clone(),
+            )
     }
 }
 
@@ -1313,7 +1352,8 @@ pub fn kernel_value_declared_type_mismatch(
                 {
                     let formal_name = authored_name_at(source_indices.clone(), formal_base.clone());
                     if (((formal_name.clone() == "".to_string())
-                        || (formal_name.clone() == actual_name.clone()))
+                        || (qualified_last_segment(formal_name.clone())
+                            == qualified_last_segment(actual_name.clone())))
                         || dag_can_cast(actual_name.clone(), formal_name.clone()))
                     {
                         false
@@ -1390,6 +1430,7 @@ pub fn container_element_nominal_brand_mismatch(
                     nominal_call_arg_brand_mismatch(
                         formal_el.clone(),
                         actual_el.clone(),
+                        type_env.clone(),
                         source_indices.clone(),
                     )
                 }
@@ -1412,20 +1453,23 @@ pub fn direct_call_arg_type_mismatch(
     if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
         false
     } else {
-        ((nominal_call_arg_brand_mismatch(formal.clone(), actual.clone(), source_indices.clone())
-            || container_element_nominal_brand_mismatch(
-                formal.clone(),
-                actual.clone(),
-                type_env.clone(),
-                module_name.clone(),
-                source_indices.clone(),
-            ))
-            || kernel_value_declared_type_mismatch(
-                formal.clone(),
-                actual.clone(),
-                type_env.clone(),
-                source_indices.clone(),
-            ))
+        ((nominal_call_arg_brand_mismatch(
+            formal.clone(),
+            actual.clone(),
+            type_env.clone(),
+            source_indices.clone(),
+        ) || container_element_nominal_brand_mismatch(
+            formal.clone(),
+            actual.clone(),
+            type_env.clone(),
+            module_name.clone(),
+            source_indices.clone(),
+        )) || kernel_value_declared_type_mismatch(
+            formal.clone(),
+            actual.clone(),
+            type_env.clone(),
+            source_indices.clone(),
+        ))
     }
 }
 
@@ -1506,15 +1550,22 @@ pub fn direct_call_arg_mismatch_diags(
                                              formal_name={} formal_conn={:?} formal_inf={} \
                                              actual_name={} actual_conn={:?} actual_inf={} \
                                              brand={} kernel={}",
-                                            authored_name_at(source_indices.clone(), formal.clone()),
+                                            authored_name_at(
+                                                source_indices.clone(),
+                                                formal.clone()
+                                            ),
                                             formal.connective,
                                             formal.inferred.is_some(),
-                                            authored_name_at(source_indices.clone(), actual.clone()),
+                                            authored_name_at(
+                                                source_indices.clone(),
+                                                actual.clone()
+                                            ),
                                             actual.connective,
                                             actual.inferred.is_some(),
                                             nominal_call_arg_brand_mismatch(
                                                 formal.clone(),
                                                 actual.clone(),
+                                                type_env.clone(),
                                                 source_indices.clone()
                                             ),
                                             kernel_value_declared_type_mismatch(

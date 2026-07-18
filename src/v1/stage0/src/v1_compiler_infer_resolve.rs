@@ -236,7 +236,10 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                 by_ident.is_some(),
                 by_name.is_some(),
                 by_name.as_ref().map(|r| r.connective.clone()),
-                by_name.as_ref().map(|r| r.inferred.is_some()).unwrap_or(false),
+                by_name
+                    .as_ref()
+                    .map(|r| r.inferred.is_some())
+                    .unwrap_or(false),
             );
         }
         match lookup_type_for(env.clone(), n.clone()) {
