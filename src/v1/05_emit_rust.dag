@@ -4558,6 +4558,19 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
   }
 }
 
+fn scrutinee_is_option_rc_inner(scrutinee: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match scrutinee.inferred {
+    Present { value: Resolved { node: rt } } =>
+      if rt.return_cardinality == CardOptional {
+        let inner = with_required_cardinality(n: rt)
+        let inner_name = authored_name_at(source_indices: source_indices, node: inner)
+        set_contains(shared_types, inner_name)
+          || rust_type_is_rc_wrapped(type_name: render_rust_type(n: inner, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices))
+      } else { false }
+    _ => false
+  }
+}
+
 fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RcMatchAnalysis {
   let arm_analyses = arms |> map(arm =>
     analyze_rc_pattern(pattern: arm_pattern(n: arm), scrut_type: scrut_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
@@ -4573,6 +4586,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
       } else { false }
     _ => false
   }
+  let scrutinee_option_rc_inner = scrutinee_is_option_rc_inner(scrutinee: scrutinee, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
   let arms_want_option = arm_analyses |> any(a => a.matches_option_rc_variant)
   let arms_want_deref = arm_analyses |> any(a => a.matches_rc_variant)
   let scrutinee_is_call = match scrutinee.expr_data {
@@ -4582,7 +4596,9 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
 
   RcMatchAnalysis {
     needs_rc_option_ref: arms_want_option && scrutinee_is_call && !scrutinee_is_optional,
-    needs_option_deref: arms_want_option && !scrutinee_is_call && !scrutinee_is_optional && scrutinee_is_rc_wrapped,
+    needs_option_deref: arms_want_option && !scrutinee_is_call && (
+      (scrutinee_is_optional && scrutinee_option_rc_inner) || (!scrutinee_is_optional && scrutinee_is_rc_wrapped)
+    ),
     needs_deref: if scrutinee_is_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref }
   }
 }
