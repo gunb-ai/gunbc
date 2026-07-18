@@ -1208,6 +1208,16 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                       diagnostics: lcd
                                     )
                                   Absent =>
+                        match body_lower_try_fold_loop(node: node) {
+                          Rejected { diagnostics: r } => Rejected { diagnostics: r }
+                          Accepted { value: fold_result, diagnostics: fd } =>
+                            match fold_result {
+                              Present { value: lowered } =>
+                                outcome_accepted(
+                                  value: optional_present(value: lowered),
+                                  diagnostics: fd
+                                )
+                              Absent =>
                         match body_lower_try_primary_ident_call(node: node) {
                           Rejected { diagnostics: r } => Rejected { diagnostics: r }
                           Accepted { value: primary_call, diagnostics: pcd } =>
@@ -1232,16 +1242,6 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                           Present { value: lowered } =>
                                             outcome_accepted(value: optional_present(value: lowered))
                                           Absent =>
-                                            match body_lower_try_fold_loop(node: node) {
-                                              Rejected { diagnostics: r } =>
-                                                Rejected { diagnostics: r }
-                                              Accepted { value: fold_result, diagnostics: _ } =>
-                                                match fold_result {
-                                                  Present { value: lowered } =>
-                                                    outcome_accepted(
-                                                      value: optional_present(value: lowered)
-                                                    )
-                                                  Absent =>
                                                     let stripped = body_lower_unwrap_surface_shell(node: node)
                                                     match body_lower_try_postfix_projection(node: stripped) {
                                                       Rejected { diagnostics: r } =>
@@ -1254,6 +1254,17 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                                               diagnostics: spd
                                                             )
                                                           Absent =>
+                                                            match body_lower_try_fold_loop(node: stripped) {
+                                                              Rejected { diagnostics: r } =>
+                                                                Rejected { diagnostics: r }
+                                                              Accepted { value: stripped_fold, diagnostics: sfd } =>
+                                                                match stripped_fold {
+                                                                  Present { value: lowered } =>
+                                                                    outcome_accepted(
+                                                                      value: optional_present(value: lowered),
+                                                                      diagnostics: sfd
+                                                                    )
+                                                                  Absent =>
                                                             match body_lower_try_primary_ident_call(node: stripped) {
                                                               Rejected { diagnostics: r } =>
                                                                 Rejected { diagnostics: r }
@@ -1271,24 +1282,21 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                                                           value: optional_present(value: lowered)
                                                                         )
                                                                       Absent =>
-                                                                        match body_lower_try_fold_loop(node: stripped) {
-                                                                          Rejected { diagnostics: r } =>
-                                                                            Rejected { diagnostics: r }
-                                                                          Accepted { value: stripped_fold, diagnostics: _ } =>
-                                                                            outcome_accepted(value: stripped_fold)
-                                                                        }
+                                                                        outcome_accepted(value: optional_absent())
                                                                     }
                                                                 }
+                                                            }
                                                             }
                                                         }
                                                     }
                                                 }
-                                            }
                                         }
                                     }
                                 }
                             }
                         }
+                            }
+                          }
                         }
                     }
                 }
