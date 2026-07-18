@@ -1,28 +1,28 @@
 module test.claim.access_iam_validation
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn decision_is_permit(d: AccessDecision) -> Bool {
+fn decision_is_permit(d: std.access.AccessDecision) -> Bool {
   match d { Permit => true  Deny { reason: _ } => false }
 }
 
-fn decision_is_deny(d: AccessDecision) -> Bool {
+fn decision_is_deny(d: std.access.AccessDecision) -> Bool {
   match d { Deny { reason: _ } => true  Permit => false }
 }
 
 type IamPrincipal {
-  arn: NonEmptyStr
-  source_locality: NetworkLocality
+  arn: std.types.NonEmptyStr
+  source_locality: product.network_topology.NetworkLocality
   mfa_present: Bool
 }
 
 type S3Action {
-  operation: NonEmptyStr
-  prefix: NonEmptyStr
+  operation: std.types.NonEmptyStr
+  prefix: std.types.NonEmptyStr
 }
 
-fn locality_is_internal(l: NetworkLocality) -> Bool {
+fn locality_is_internal(l: product.network_topology.NetworkLocality) -> Bool {
   match l {
     Internet => false
     Loopback => true
@@ -34,7 +34,7 @@ fn locality_is_internal(l: NetworkLocality) -> Bool {
   }
 }
 
-fn iam_decide(request: AccessRequest<IamPrincipal, S3Action, NonEmptyStr>) -> AccessDecision {
+fn iam_decide(request: std.access.AccessRequest<IamPrincipal, S3Action, std.types.NonEmptyStr>) -> std.access.AccessDecision {
   if locality_is_internal(l: request.subject.source_locality)
      && request.action.prefix == "reports/"
      && request.subject.mfa_present {
@@ -44,7 +44,7 @@ fn iam_decide(request: AccessRequest<IamPrincipal, S3Action, NonEmptyStr>) -> Ac
   }
 }
 
-data iam_access_policy: AccessPolicy<IamPrincipal, S3Action, NonEmptyStr> = {
+data iam_access_policy: std.access.AccessPolicy<IamPrincipal, S3Action, std.types.NonEmptyStr> = {
   decide: iam_decide
 }
 

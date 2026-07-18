@@ -81,7 +81,7 @@ fn recognized_outcome(
     kernel_step: demo_kernel_step(placement: demo_accelerator_placement())
     contract: contract
     fidelity: fidelity
-    target_medium: simd_kernel_target_medium_name
+    target_medium: extdeps.languages.simd.kernel.simd_kernel_target_medium_name
   }
 }
 
