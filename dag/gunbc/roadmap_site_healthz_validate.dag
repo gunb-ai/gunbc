@@ -1,5 +1,7 @@
 module gunbc.roadmap_site_healthz_validate
 
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 data roadmap_site_healthz_parse_scratch: String = "/tmp/gunbc_roadmap_site_healthz.json"
 
