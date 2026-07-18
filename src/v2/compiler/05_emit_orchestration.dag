@@ -87,7 +87,6 @@ import v2.compiler.target_carriers { lossless_source }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
-  EmitDirective,
   ExternalContractUnknown,
   Outcome,
   Rejected,
@@ -649,27 +648,14 @@ fn orch_emit_retry_2level(
   )
 }
 
-fn orch_escalation_log_matches_pattern(level: EscalationLevel) -> Optional<String> {
-  match level.detect {
-    LogMatches { source: _, pattern: p } => Present { value: p }
-    ExitZero { run: _ } => Absent
-    StrEq { lhs: _, rhs: _ } => Absent
-    StrEmpty { operand: _ } => Absent
-    StrNonempty { operand: _ } => Absent
-    Not { inner: _ } => Absent
-    And { lhs: _, rhs: _ } => Absent
-    Or { lhs: _, rhs: _ } => Absent
-  }
-}
-
 fn orch_emit_retry_1level(
   command: String,
   level: EscalationLevel,
   exhausted: String,
   medium: OrchestrationEmitMedium
 ) -> Outcome<Medium<String>> {
-  match orch_escalation_log_matches_pattern(level: level) {
-    Present { value: pattern } =>
+  match level.detect {
+    LogMatches { source: _, pattern: grep_pat } =>
       bind_outcome(
         o: orch_emit_retry_run(command: command, env: [], medium: medium),
         f: fn(m1) {
@@ -682,7 +668,7 @@ fn orch_emit_retry_1level(
                 target: medium.realize_retry_1level(
                   m1.carried,
                   m2.carried,
-                  pattern,
+                  grep_pat,
                   level.warning.message,
                   exhausted
                 )
@@ -691,7 +677,7 @@ fn orch_emit_retry_1level(
           )
         }
       )
-    Absent =>
+    _ =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
   }
 }
@@ -720,8 +706,8 @@ fn orch_emit_retry_escalation_tail(
   match list_head(xs: levels) {
     HeadAbsent => outcome_accepted(exhausted)
     HeadFound { value: level } =>
-      match orch_escalation_log_matches_pattern(level: level) {
-        Present { value: pattern } =>
+      match level.detect {
+        LogMatches { source: _, pattern: grep_pat } =>
           match list_tail(xs: levels) {
             TailAbsent =>
               bind_outcome(
@@ -754,7 +740,7 @@ fn orch_emit_retry_escalation_tail(
                             ),
                             concat(
                               concat(
-                                concat(concat("      if grep -qiE '", pattern), "' \"$RETRY_LOG\"; then\n"),
+                                concat(concat("      if grep -qiE '", grep_pat), "' \"$RETRY_LOG\"; then\n"),
                                 concat("        ", orch_retry_warning_spelling(level: level))
                               ),
                               concat("        ", inner)
@@ -774,7 +760,7 @@ fn orch_emit_retry_escalation_tail(
                 }
               )
           }
-        Absent =>
+        _ =>
           outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
       }
   }
@@ -787,8 +773,8 @@ fn orch_emit_retry_multilevel(
   exhausted: String,
   medium: OrchestrationEmitMedium
 ) -> Outcome<Medium<String>> {
-  match orch_escalation_log_matches_pattern(level: level1) {
-    Present { value: pattern1 } =>
+  match level1.detect {
+    LogMatches { source: _, pattern: grep_pat1 } =>
       bind_outcome(
         o: orch_emit_retry_run(command: command, env: [], medium: medium),
         f: fn(m1) {
@@ -807,7 +793,7 @@ fn orch_emit_retry_multilevel(
                     concat(
                       concat(") 2>&1 | tee \"$BUILD_LOG\"; then\n", "  if grep -qiE '"),
                       concat(
-                        concat(pattern1, "' \"$BUILD_LOG\"; then\n"),
+                        concat(grep_pat1, "' \"$BUILD_LOG\"; then\n"),
                         concat(
                           concat("    ", orch_retry_warning_spelling(level: level1)),
                           concat(
@@ -827,7 +813,7 @@ fn orch_emit_retry_multilevel(
           )
         }
       )
-    Absent =>
+    _ =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
   }
 }
@@ -839,10 +825,10 @@ fn orch_emit_retry_levels(
   exhausted: String,
   medium: OrchestrationEmitMedium
 ) -> Outcome<Medium<String>> {
-  match orch_escalation_log_matches_pattern(level: level1) {
-    Present { value: p1 } =>
-      match orch_escalation_log_matches_pattern(level: level2) {
-        Present { value: p2 } =>
+  match level1.detect {
+    LogMatches { source: _, pattern: p1 } =>
+      match level2.detect {
+        LogMatches { source: _, pattern: p2 } =>
           orch_emit_retry_2level(
             command: command,
             pattern1: p1,
@@ -854,11 +840,9 @@ fn orch_emit_retry_levels(
             exhausted: exhausted,
             medium: medium
           )
-        Absent =>
-          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
+        _ => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level2_not_logmatches))
       }
-    Absent =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
+    _ => outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_retry_level1_not_logmatches))
   }
 }
 
