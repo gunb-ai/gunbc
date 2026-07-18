@@ -34,6 +34,14 @@ type BodyProducerForwardRow {
   surface_identity: Symbol
 }
 
+data body_producer_forward_row_fn_decl: BodyProducerForwardRow = BodyProducerForwardRow {
+  surface_identity: ^dag_surface_fn_decl
+}
+
+data body_producer_forward_row_fn_body: BodyProducerForwardRow = BodyProducerForwardRow {
+  surface_identity: ^dag_surface_fn_body
+}
+
 data body_producer_forward_row_match_expr: BodyProducerForwardRow = BodyProducerForwardRow {
   surface_identity: ^dag_surface_match_expr
 }
@@ -52,14 +60,20 @@ data body_producer_forward_row_loop_expr: BodyProducerForwardRow = BodyProducerF
 
 fn body_producer_forward_rows() -> List<BodyProducerForwardRow> {
   Cons {
-    head: body_producer_forward_row_match_expr,
+    head: body_producer_forward_row_fn_decl,
     tail: Cons {
-      head: body_producer_forward_row_if_expr,
+      head: body_producer_forward_row_fn_body,
       tail: Cons {
-        head: body_producer_forward_row_let_expr,
+        head: body_producer_forward_row_match_expr,
         tail: Cons {
-          head: body_producer_forward_row_loop_expr,
-          tail: Empty
+          head: body_producer_forward_row_if_expr,
+          tail: Cons {
+            head: body_producer_forward_row_let_expr,
+            tail: Cons {
+              head: body_producer_forward_row_loop_expr,
+              tail: Empty
+            }
+          }
         }
       }
     }
@@ -80,10 +94,14 @@ fn body_producer_forward_surface_identities() -> List<Symbol> {
   )
 }
 
-fn body_producer_forward_is_behavior_surface_identity(surface_identity: Symbol) -> Bool {
+fn body_producer_forward_is_registered_surface_identity(surface_identity: Symbol) -> Bool {
   fold(body_producer_forward_rows(), init: false, f: fn(acc, row) {
     acc || (row.surface_identity == surface_identity)
   })
+}
+
+fn body_producer_forward_is_behavior_surface_identity(surface_identity: Symbol) -> Bool {
+  body_producer_forward_is_registered_surface_identity(surface_identity: surface_identity)
 }
 
 fn body_producer_forward_grammar_rules() -> Node {

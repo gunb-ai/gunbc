@@ -60,7 +60,7 @@ import std.realization_width {
 
 type Independence = Independent | Dependent | Unknown
 
-fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Independence {
+fn independence_from_effect_shapes(left: EffectShape<KeySource>, right: EffectShape<KeySource>) -> Independence {
   match left {
     ReadEffect => match right {
       ReadEffect => Independent
@@ -101,7 +101,7 @@ type Placement
 type Materialization = Recompute | Memoize | Share
 
 type RealizedStep<S> {
-  shape: EffectShape
+  shape: EffectShape<KeySource>
   placement: Placement
   materialization: Materialization
   cost: CostAccount<S>

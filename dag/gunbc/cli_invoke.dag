@@ -1,0 +1,140 @@
+module gunbc.cli_invoke
+
+import std.types { FilePath, String }
+
+data cli_invoke_shell_spelling_dissolve_trigger: String = "dissolve-on: cli_invoke _shell builders — interim GHA emit surface for Phase 3a; delete when gunbc run / claim_executor call sites render through bash emit (shell→intent open thread, docs/plans/shell-intent-emit-realization-design.md Phase 3 completion)."
+
+type SourceRootShellStyle
+  = SourceRootBare
+  | SourceRootRooted { root_var: String }
+
+data claim_executor_bin_name: String = "claim_executor"
+data gunbc_bin_name: String = "gunbc"
+
+fn source_root_transport_argv(roots: List<String>) -> List<String> {
+  fold(roots, init: [], f: (acc, r) => concat(acc, ["--source-root", r]))
+}
+
+fn source_root_shell_flag(root: String, style: SourceRootShellStyle) -> String {
+  match style {
+    SourceRootBare => concat(" --source-root ", root)
+    SourceRootRooted { root_var: v } =>
+      concat(" --source-root \"", concat(concat(v, "/"), concat(root, "\"")))
+  }
+}
+
+fn source_roots_shell_flags(roots: List<String>, style: SourceRootShellStyle) -> String {
+  fold(roots, init: "", f: (acc, r) => concat(acc, source_root_shell_flag(root: r, style: style)))
+}
+
+fn release_bin_shell_path(bin_name: String) -> String {
+  concat(concat("\"$ROOT/target/release/", bin_name), "\"")
+}
+
+fn claim_executor_bin_shell() -> String {
+  release_bin_shell_path(bin_name: claim_executor_bin_name)
+}
+
+fn gunbc_bin_shell() -> String {
+  release_bin_shell_path(bin_name: gunbc_bin_name)
+}
+
+fn claim_executor_notice_title_normalized(notice_title: String?) -> String? {
+  match notice_title {
+    Present { value: title } =>
+      if title == "" { none } else { Present { value: title } }
+    Absent => none
+  }
+}
+
+fn claim_executor_run_plan_transport_argv(
+  source_roots: List<String>,
+  plan_entry: String,
+  plan_function: String,
+  notice_title: String?
+) -> List<String> {
+  let base = concat(
+    source_root_transport_argv(roots: source_roots),
+    ["--plan-entry", plan_entry, "--plan-function", plan_function]
+  )
+  match claim_executor_notice_title_normalized(notice_title: notice_title) {
+    Present { value: title } => concat(base, ["--notice-title", title])
+    Absent => base
+  }
+}
+
+fn claim_executor_verify_artifacts_transport_argv(artifact_paths: List<String>) -> List<String> {
+  concat(["--verify-build-artifacts"], artifact_paths)
+}
+
+fn gunbc_run_transport_argv(
+  source_roots: List<String>,
+  entry: String,
+  function: String,
+  claim_run: Bool
+) -> List<String> {
+  let base = concat(
+    concat(["run"], source_root_transport_argv(roots: source_roots)),
+    ["--entry", entry, "--function", function]
+  )
+  if claim_run {
+    concat(base, ["--claim-run"])
+  } else {
+    base
+  }
+}
+
+fn claim_executor_notice_title_shell_suffix(notice_title: String?) -> String {
+  match claim_executor_notice_title_normalized(notice_title: notice_title) {
+    Present { value: title } => concat(concat(" --notice-title \"", title), "\"")
+    Absent => ""
+  }
+}
+
+fn claim_executor_run_plan_shell(
+  source_roots: List<String>,
+  plan_entry: String,
+  plan_function: String,
+  notice_title: String?,
+  rooted: Bool
+) -> String {
+  let style = if rooted {
+    SourceRootRooted { root_var: "$ROOT" }
+  } else {
+    SourceRootBare
+  }
+  let flags = source_roots_shell_flags(roots: source_roots, style: style)
+  let notice = claim_executor_notice_title_shell_suffix(notice_title: notice_title)
+  concat(
+    concat(claim_executor_bin_shell(), flags),
+    concat(
+      concat(concat(" --plan-entry ", plan_entry), concat(" --plan-function ", plan_function)),
+      notice
+    )
+  )
+}
+
+fn claim_executor_verify_artifacts_shell(artifact_paths: List<String>) -> String {
+  let paths = fold(artifact_paths, init: "", f: (acc, p) => concat(acc, concat(" ", p)))
+  concat(concat(concat(claim_executor_bin_shell(), " --verify-build-artifacts"), paths), "\n")
+}
+
+fn gunbc_run_shell(
+  source_roots: List<String>,
+  entry: String,
+  function: String,
+  rooted: Bool,
+  claim_run: Bool
+) -> String {
+  let style = if rooted {
+    SourceRootRooted { root_var: "$ROOT" }
+  } else {
+    SourceRootBare
+  }
+  let flags = source_roots_shell_flags(roots: source_roots, style: style)
+  let claim = if claim_run { " --claim-run" } else { "" }
+  concat(
+    concat(concat(gunbc_bin_shell(), " run"), flags),
+    concat(concat(concat(" --entry ", entry), concat(" --function ", function)), concat(claim, "\n"))
+  )
+}

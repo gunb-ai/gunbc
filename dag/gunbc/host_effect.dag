@@ -138,6 +138,6 @@ fn host_effect_is_converge_loop_evidence(evidence: IdempotencyEvidence) -> Bool 
   evidence == host_effect_converge_loop_evidence
 }
 
-fn host_effect_lattice_evidence(shape: EffectShape) -> IdempotencyEvidence {
+fn host_effect_lattice_evidence(shape: EffectShape<KeySource>) -> IdempotencyEvidence {
   LatticeEffect { shape: shape }
 }
