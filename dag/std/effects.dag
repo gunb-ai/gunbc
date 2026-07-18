@@ -31,7 +31,9 @@ type IdempotencyEvidence
   | IdentityEffect
   | NonIdempotent { shape: EffectShape<KeySource>, reason: String }
 
-fn is_idempotent_effect<K>(shape: EffectShape<K>) -> Bool {
+data generic_predicate_frontier_note: String = "EffectShape<K>/CreateCause<K> are GENERIC (the single-authority TYPE, shared across the REST-derivation instantiation K=KeySource here and v2's substrate-witness instantiation K=Symbol). The predicates below are CONCRETE to EffectShape<KeySource>, not generic, by a declared emitter frontier: the v1 Rust emitter lowers every match as `match (*x.clone()).clone()`, so a generic fn matching EffectShape<K> needs `where K: Clone` (and PartialEq for the key `==`), but the emitter emits generic FUNCTIONS without bounds (it bounds generic TYPES via emit_type_params_with_clone_bound, not functions). Making the predicates generic breaks the emitted stage0 seed (std.effects is real compiler seed via v1_compiler_effect_derivation). dissolve-on = emitter emits Clone/PartialEq bounds on generic functions; then these lift to <K>. v2's harness uses the TYPE at K=Symbol and does not call these predicates (it builds Node witnesses), so the concreteness costs nothing today."
+
+fn is_idempotent_effect(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     ReadEffect => true
     UpsertEffect => true
@@ -63,7 +65,7 @@ fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
   }
 }
 
-fn create_effect_is_dedupable<K>(shape: EffectShape<K>) -> Bool {
+fn create_effect_is_dedupable(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
       match cause {
@@ -75,7 +77,7 @@ fn create_effect_is_dedupable<K>(shape: EffectShape<K>) -> Bool {
   }
 }
 
-fn create_double_init_collapsible<K>(a: EffectShape<K>, b: EffectShape<K>) -> Bool {
+fn create_double_init_collapsible(a: EffectShape<KeySource>, b: EffectShape<KeySource>) -> Bool {
   match a {
     CreateEffect { cause: cause_a } =>
       match cause_a {
@@ -94,10 +96,6 @@ fn create_double_init_collapsible<K>(a: EffectShape<K>, b: EffectShape<K>) -> Bo
       }
     _ => false
   }
-}
-
-fn effect_shape_for_create_cause<K>(cause: CreateCause<K>) -> EffectShape<K> {
-  CreateEffect { cause: cause }
 }
 
 type OperationEffect {
