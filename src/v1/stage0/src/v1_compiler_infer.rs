@@ -13449,6 +13449,99 @@ pub fn census_upgrade_sig_binding(
     }
 }
 
+pub fn census_qualify_decl_references(
+    n: Rc<Node>,
+    owner_module_path: String,
+    env: Rc<TypeEnv>,
+    excluded: Rc<HashMap<String, bool>>,
+) -> Rc<Node> {
+    let inf2 = qualify_borrowed_inferred(
+        n.inferred.clone(),
+        owner_module_path.clone(),
+        env.clone(),
+        excluded.clone(),
+    );
+    let ch2: Rc<Vec<Rc<Node>>> = Rc::new(
+        n.children
+            .iter()
+            .cloned()
+            .map(|c| {
+                census_qualify_decl_references(
+                    c.clone(),
+                    owner_module_path.clone(),
+                    env.clone(),
+                    excluded.clone(),
+                )
+            })
+            .collect::<Vec<_>>(),
+    );
+    crate::v1_compiler_infer_env::node_with_children(
+        crate::v1_compiler_infer_env::node_with_inferred(n.clone(), inf2.clone()),
+        ch2,
+    )
+}
+
+pub fn census_upgrade_type_decl_binding(
+    binding: Rc<TypeBinding>,
+    module_path: String,
+    census: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeBinding> {
+    let node = binding.resolved.clone();
+    let excluded = node
+        .params
+        .iter()
+        .cloned()
+        .map(|p| generic_param_name_at(p.clone(), source_indices.clone()))
+        .fold(
+            v1_rt::rc_map_insert(v1_rt::rc_empty_map(), binding.name.clone(), true),
+            |acc: Rc<HashMap<String, bool>>, nm: String| {
+                v1_rt::rc_map_insert(acc.clone(), nm.clone(), true)
+            },
+        );
+    let env = census_fn_sig_env(
+        census.clone(),
+        module_path.clone(),
+        Rc::new(vec![]),
+        source_indices.clone(),
+    );
+    Rc::new(TypeBinding {
+        name: binding.name.clone(),
+        resolved: census_qualify_decl_references(
+            node.clone(),
+            module_path.clone(),
+            env.clone(),
+            excluded.clone(),
+        ),
+        provenance: binding.provenance.clone(),
+    })
+}
+
+pub fn census_upgrade_binding(
+    binding: Rc<TypeBinding>,
+    module_path: String,
+    census: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeBinding> {
+    if census_binding_is_borrowable_generic_sig(binding.clone(), source_indices.clone()) {
+        census_upgrade_sig_binding(
+            binding.clone(),
+            module_path.clone(),
+            census.clone(),
+            source_indices.clone(),
+        )
+    } else if binding.resolved.connective != crate::v1_std_core::Connective::NoConnective {
+        census_upgrade_type_decl_binding(
+            binding.clone(),
+            module_path.clone(),
+            census.clone(),
+            source_indices.clone(),
+        )
+    } else {
+        binding.clone()
+    }
+}
+
 pub fn census_upgrade_service_item(
     item: Rc<Node>,
     module_path: String,
@@ -13498,7 +13591,7 @@ pub fn census_with_resolved_fn_sigs(
             k.clone(),
         ) {
             Some(node) => {
-                let upgraded = census_upgrade_sig_binding(
+                let upgraded = census_upgrade_binding(
                     Rc::new(TypeBinding {
                         name: qualified_last_segment(k.clone()),
                         resolved: node.clone(),
@@ -13533,7 +13626,7 @@ pub fn census_with_resolved_fn_sigs(
                 module_path: mp,
                 binding: b,
             }) => {
-                let b2 = census_upgrade_sig_binding(
+                let b2 = census_upgrade_binding(
                     b.clone(),
                     mp.clone(),
                     index.clone(),
@@ -13561,7 +13654,7 @@ pub fn census_with_resolved_fn_sigs(
                             .map(|c| {
                                 Rc::new(crate::v1_compiler_infer_env::GlobalBareCandidate {
                                     module_path: c.module_path.clone(),
-                                    binding: census_upgrade_sig_binding(
+                                    binding: census_upgrade_binding(
                                         c.binding.clone(),
                                         c.module_path.clone(),
                                         index.clone(),

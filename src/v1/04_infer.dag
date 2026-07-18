@@ -6280,6 +6280,35 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
   } else { binding }
 }
 
+fn census_qualify_decl_references(n: Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> Node {
+  let inf2 = qualify_borrowed_inferred(inferred: n.inferred, owner_module_path: owner_module_path, env: env, excluded: excluded)
+  let ch2 = n.children |> map(c => census_qualify_decl_references(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
+  node_with_children(n: node_with_inferred(n: n, inferred: inf2), children: ch2)
+}
+
+fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
+  let node = binding.resolved
+  let excluded = fold(
+    node.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices)),
+    init: map_insert(empty_map(), binding.name, true),
+    f: (acc, nm) => map_insert(acc, nm, true)
+  )
+  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  TypeBinding {
+    name: binding.name,
+    resolved: census_qualify_decl_references(n: node, owner_module_path: module_path, env: env, excluded: excluded),
+    provenance: binding.provenance
+  }
+}
+
+fn census_upgrade_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
+  if census_binding_is_borrowable_generic_sig(binding: binding, source_indices: source_indices) {
+    census_upgrade_sig_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
+  } else if binding.resolved.connective != NoConnective {
+    census_upgrade_type_decl_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
+  } else { binding }
+}
+
 fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> Node {
   let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
   let ops2 = item.children |> map(c =>
@@ -6300,7 +6329,7 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
   let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
     match map_get(index.entries, k) {
       Present { value: node } =>
-        let upgraded = census_upgrade_sig_binding(
+        let upgraded = census_upgrade_binding(
           binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown },
           module_path: qualified_all_but_last(name: k),
           census: index,
@@ -6314,12 +6343,12 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
   let global2 = fold(bare_keys, init: index.global_bare, f: (acc, k) =>
     match map_get(index.global_bare, k) {
       Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-        let b2 = census_upgrade_sig_binding(binding: b, module_path: mp, census: index, source_indices: source_indices)
+        let b2 = census_upgrade_binding(binding: b, module_path: mp, census: index, source_indices: source_indices)
         if b2.resolved == b.resolved { acc } else { map_insert(acc, k, GlobalBareUniqueBinding { module_path: mp, binding: b2 }) }
       Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
         let cands2 = cands |> map(c => GlobalBareCandidate {
           module_path: c.module_path,
-          binding: census_upgrade_sig_binding(binding: c.binding, module_path: c.module_path, census: index, source_indices: source_indices)
+          binding: census_upgrade_binding(binding: c.binding, module_path: c.module_path, census: index, source_indices: source_indices)
         })
         map_insert(acc, k, GlobalBareAmbiguousBinding { candidates: cands2 })
       Absent => acc
