@@ -9643,7 +9643,7 @@ fn realize_advisory_optional_int(
 /// the governor is demoted (§5). The packing LAW stays modeled: `realize_advisory`
 /// is interpreted through the bridge, never reimplemented in Rust (§2). Gated by
 /// `GUNBC_REALIZE_ADVISORY`.
-fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[DiscoveryRow]) {
+pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[DiscoveryRow]) {
     use v1_interpreter::Value;
     // The witness graphs don't import std.realize_pack, so interpret the law in its
     // own ctx, built once.
