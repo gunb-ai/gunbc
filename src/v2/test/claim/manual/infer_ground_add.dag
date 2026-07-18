@@ -94,6 +94,10 @@ fn infer_receipt_interpretation() -> InterpretationAlgebra {
     bind: BindInterpreter {
       bind_value: infer_receipt_bind_value
     }
+  ,
+    match: MatchInterpreter {
+      choose_arm: v2.std.runtime.runtime_reject_match_arm
+    }
   }
 }
 
