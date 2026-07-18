@@ -147,7 +147,6 @@ pub fn func_sig_from_global_bare(
                 })),
                 None => borrowed_census_decl(type_env.clone(), name.clone()),
             };
-            if std::env::var("GUNBC_SIG_PROBE").is_ok()
                 && (name == "get" || name == "first" || name == "lookup")
             {
                 match borrowed.as_ref() {

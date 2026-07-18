@@ -141,18 +141,6 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
         let is_generic_use = (((scrut_node.connective.clone() == Connective::NoConnective)
             && ((scrut_node.children.clone().len() as i64) > 0))
             && is_user_generic_use_site(scrut_node.clone(), env.clone()));
-        if std::env::var("GUNBC_VNF_ENV_PROBE").is_ok() && name.contains("FreeMonoid") {
-            let lk = lookup_type_by_name(env.clone(), name.clone());
-            eprintln!(
-                "ESFTN name={} generic_use={} lookup={} decl_conn={:?} decl_params={} decl_children={}",
-                name,
-                is_generic_use,
-                lk.is_some(),
-                lk.as_ref().map(|d| d.connective.clone()),
-                lk.as_ref().map(|d| d.params.len()).unwrap_or(0),
-                lk.as_ref().map(|d| d.children.len()).unwrap_or(0),
-            );
-        }
         match lookup_type_by_name(env.clone(), name.clone()) {
             Some(decl) => {
                 if is_generic_use.clone() {
@@ -223,22 +211,6 @@ pub fn expand_scrut_type_for_variant_lookup(
         let is_disj = (scrut_node.connective.clone() == Connective::Disj);
         let is_witness = is_witness_type_name(name.clone());
         let is_optional = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
-        if std::env::var("GUNBC_VNF_ENV_PROBE").is_ok() && name.contains("FreeMonoid") {
-            eprintln!(
-                "ESTVL name={} conn={:?} card={:?} children={} inferred={} disj={} opt={}",
-                name,
-                scrut_node.connective,
-                scrut_node.return_cardinality,
-                scrut_node.children.len(),
-                match scrut_node.inferred.clone().as_deref() {
-                    None => "none".to_string(),
-                    Some(InferredNode::Resolved { .. }) => "Resolved".to_string(),
-                    Some(other) => format!("{other:?}").chars().take(30).collect(),
-                },
-                is_disj,
-                is_optional,
-            );
-        }
         if ((is_optional.clone() || is_disj.clone()) || is_witness.clone()) {
             break scrut_node.clone();
         } else {
@@ -540,35 +512,6 @@ pub fn variant_not_found_result(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
-    if std::env::var("GUNBC_VNF_PROBE").is_ok() {
-        eprintln!(
-            "VNF_PROBE module={module_name} variant={variant_name} scrut_name={:?} \
-             scrut_authored={} scrut_conn={:?} scrut_children={} scrut_card={:?} \
-             scrut_span={}:{}-{}",
-            scrut.name,
-            authored_name_at(source_indices.clone(), scrut.clone()),
-            scrut.connective,
-            scrut.children.len(),
-            scrut.return_cardinality,
-            scrut.span.file,
-            scrut.span.start,
-            scrut.span.end,
-        );
-        for c in scrut.children.iter() {
-            eprintln!(
-                "VNF_CHILD name={:?} authored={} ident_span={:?} span={}:{}-{} si_has_file={}",
-                c.name,
-                authored_name_at(source_indices.clone(), c.clone()),
-                c.ident_span
-                    .as_ref()
-                    .map(|sp| format!("{}:{}-{}", sp.file, sp.start, sp.end)),
-                c.span.file,
-                c.span.start,
-                c.span.end,
-                source_indices.contains_key(&c.span.file),
-            );
-        }
-    }
     node_lookup_failed(Rc::new(vec![make_error_node(
         Rc::new(CompilerDiagnostic::VariantNotFound {
             variant: variant_name.clone(),
@@ -731,7 +674,6 @@ pub fn lookup_variant_in_type(
                                                         }
                                                     }
                                                 };
-                                                if std::env::var("GUNBC_VNF_ENV_PROBE").is_ok()
                                                     && direct_match.is_none()
                                                     && scrut_name.contains("FreeMonoid")
                                                 {
@@ -809,33 +751,6 @@ pub fn lookup_field_in_variant(
         ) {
             Some(field_child) => {
                 let resolved = child_type_node(field_child.clone());
-                if std::env::var("GUNBC_PAT_PROBE").is_ok() && field_name == "refusals" {
-                    let dump = |n: &Rc<Node>| {
-                        let kid_inf = n
-                            .children
-                            .first()
-                            .and_then(|c| c.inferred.as_ref())
-                            .map(|i| format!("{:?}", i))
-                            .unwrap_or_default();
-                        format!(
-                            "name={} conn={:?} kids={:?} inf={} kid0_inf={:.200}",
-                            n.name,
-                            n.connective,
-                            n.children
-                                .iter()
-                                .map(|c| c.name.clone())
-                                .collect::<std::vec::Vec<_>>(),
-                            n.inferred.is_some(),
-                            kid_inf,
-                        )
-                    };
-                    eprintln!(
-                        "PAT field={} child[{}] resolved[{}]",
-                        field_name,
-                        dump(&field_child),
-                        dump(&resolved),
-                    );
-                }
                 node_lookup_resolved(resolved.clone())
             }
             None => node_lookup_failed(Rc::new(vec![make_error_node(

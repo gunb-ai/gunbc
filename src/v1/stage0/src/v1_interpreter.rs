@@ -2517,13 +2517,11 @@ fn match_pattern(
                         return Some(bindings);
                     }
                     if *variant_name != ctx.sym(name) {
-                        // Qualified spellings on either side (module.Variant ctor value,
-                        // module.Variant pattern) carry the containment path in the name;
-                        // variant identity is the bare arm name — compare last segments.
-                        let vn = ctx.resolve(*variant_name);
-                        let val_last = vn.rsplit('.').next().unwrap_or(&vn);
+                        // Qualified PATTERN spellings (module.Variant) carry the containment
+                        // path; variant identity is the bare arm name, normalized at value
+                        // construction — so only the pattern side needs the last segment.
                         let pat_last = name.rsplit('.').next().unwrap_or(name);
-                        if val_last != pat_last {
+                        if *variant_name != ctx.sym(pat_last) {
                             return None;
                         }
                     }

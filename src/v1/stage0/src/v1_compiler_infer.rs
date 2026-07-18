@@ -1647,38 +1647,6 @@ pub fn direct_call_arg_mismatch_diags(
                                     module_name.clone(),
                                     source_indices.clone(),
                                 ) {
-                                    if std::env::var("GUNBC_ARG_PROBE").is_ok() {
-                                        eprintln!(
-                                            "ARG_PROBE module={module_name} param={param_name} \
-                                             formal_name={} formal_conn={:?} formal_inf={} \
-                                             actual_name={} actual_conn={:?} actual_inf={} \
-                                             brand={} kernel={}",
-                                            authored_name_at(
-                                                source_indices.clone(),
-                                                formal.clone()
-                                            ),
-                                            formal.connective,
-                                            formal.inferred.is_some(),
-                                            authored_name_at(
-                                                source_indices.clone(),
-                                                actual.clone()
-                                            ),
-                                            actual.connective,
-                                            actual.inferred.is_some(),
-                                            nominal_call_arg_brand_mismatch(
-                                                formal.clone(),
-                                                actual.clone(),
-                                                type_env.clone(),
-                                                source_indices.clone()
-                                            ),
-                                            kernel_value_declared_type_mismatch(
-                                                formal.clone(),
-                                                actual.clone(),
-                                                type_env.clone(),
-                                                source_indices.clone()
-                                            ),
-                                        );
-                                    }
                                     Rc::new(vec![type_mismatch_error(
                                         node_type_shape(formal.clone(), source_indices.clone()),
                                         node_type_shape(actual.clone(), source_indices.clone()),
@@ -3424,42 +3392,6 @@ pub fn infer_expr(
                                             })
                                         }
                                         None => {
-                                            if std::env::var("GUNBC_FIELD_PROBE").is_ok() {
-                                                let bn = authored_name_at(
-                                                    scope.type_env.source_indices.clone(),
-                                                    base_rt.clone(),
-                                                );
-                                                let lk = lookup_type_by_name(
-                                                    scope.type_env.clone(),
-                                                    bn.clone(),
-                                                );
-                                                let raw_name = base_rt.name.clone();
-                                                let deferred = is_deferred_field_access_base(
-                                                    base_rt.clone(),
-                                                    scope.type_env.clone(),
-                                                );
-                                                eprintln!(
-                                                    "FIELD_PROBE module={} field={field_name} \
-                                                     base_rt_name={bn} raw_name={raw_name:?} \
-                                                     base_rt_conn={:?} deferred={deferred} \
-                                                     lookup_hit={} lookup_conn={:?} \
-                                                     lookup_children={} resolved_name={} \
-                                                     resolved_conn={:?} resolved_children={}",
-                                                    scope.module_name,
-                                                    base_rt.connective,
-                                                    lk.is_some(),
-                                                    lk.as_ref().map(|t| t.connective.clone()),
-                                                    lk.as_ref()
-                                                        .map(|t| t.children.len())
-                                                        .unwrap_or(0),
-                                                    authored_name_at(
-                                                        scope.type_env.source_indices.clone(),
-                                                        resolved_base.clone()
-                                                    ),
-                                                    resolved_base.connective,
-                                                    resolved_base.children.len(),
-                                                );
-                                            }
                                             let error_message = v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
@@ -3633,7 +3565,6 @@ pub fn infer_expr(
                             }
                             __result
                         });
-                        if std::env::var("GUNBC_SIGPATH_PROBE").is_ok()
                             && func_name.contains("membership_effects")
                         {
                             eprintln!(
@@ -3740,7 +3671,6 @@ pub fn infer_expr(
                 };
                 let arg_infer_results = arg_call.results.clone();
                 let call_subst = arg_call.subst.clone();
-                if std::env::var("GUNBC_SIGPATH_PROBE").is_ok()
                     && func_name.contains("membership_effects")
                 {
                     eprintln!(
@@ -3783,7 +3713,6 @@ pub fn infer_expr(
                             ),
                             None => error_type(),
                         };
-                        if std::env::var("GUNBC_SIGPATH_PROBE").is_ok()
                             && func_name.contains("membership_effects")
                         {
                             if let Some(s) = sig.clone() {
@@ -13599,87 +13528,6 @@ pub fn build_symbol_index_census_raw(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
-    if std::env::var("GUNBC_CENSUS_PROBE").is_ok() {
-        let mut prefixes: std::collections::BTreeMap<String, usize> =
-            std::collections::BTreeMap::new();
-        for m in modules.iter() {
-            let p = authored_name_at(source_indices.clone(), m.module.clone());
-            let root = p.split('.').next().unwrap_or("").to_string();
-            *prefixes.entry(root).or_default() += 1;
-            if p.starts_with("v2.") {
-                eprintln!("CENSUS_PROBE module present: {p}");
-            }
-        }
-        eprintln!("CENSUS_PROBE modules={} roots={prefixes:?}", modules.len());
-        let built = {
-            let corpus_variant_counts =
-                corpus_disj_variant_name_counts(modules.clone(), source_indices.clone());
-            let corpus_item_counts =
-                corpus_item_name_counts(modules.clone(), source_indices.clone());
-            modules.clone().iter().cloned().fold(
-                empty_symbol_index(),
-                |index: Rc<SymbolIndex>, mod_: Rc<ResolvedModule>| {
-                    let module_path = authored_name_at(source_indices.clone(), mod_.module.clone());
-                    let items = module_items(mod_.module.clone());
-                    let with_items = items.clone().iter().cloned().fold(
-                        index,
-                        |acc: Rc<SymbolIndex>, item: Rc<Node>| {
-                            symbol_index_insert_item(
-                                acc,
-                                module_path.clone(),
-                                item.clone(),
-                                source_indices.clone(),
-                            )
-                        },
-                    );
-                    symbol_index_insert_unique_disj_variant_aliases(
-                        with_items.clone(),
-                        module_path.clone(),
-                        items.clone(),
-                        source_indices.clone(),
-                        corpus_variant_counts.clone(),
-                        corpus_item_counts.clone(),
-                    )
-                },
-            )
-        };
-        let probe_names_raw = std::env::var("GUNBC_CENSUS_PROBE").unwrap_or_default();
-        let probe_names: std::vec::Vec<String> =
-            if probe_names_raw == "1" || probe_names_raw.is_empty() {
-                ["PullRequest", "Job", "Medium", "Monoid", "Frame"]
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect()
-            } else {
-                probe_names_raw.split(',').map(|s| s.to_string()).collect()
-            };
-        for probe_name in probe_names {
-            let gb = v1_rt::map_get(&built.global_bare, probe_name.clone());
-            let entry_count = built
-                .entries
-                .keys()
-                .filter(|k| k.ends_with(&format!(".{probe_name}")))
-                .count();
-            let gb_desc = match gb.as_deref() {
-                Some(GlobalBareLookupState::GlobalBareUniqueBinding { module_path, .. }) => {
-                    format!("unique@{module_path}")
-                }
-                Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates }) => {
-                    format!(
-                        "ambiguous:{:?}",
-                        candidates
-                            .iter()
-                            .map(|c| c.module_path.clone())
-                            .collect::<std::vec::Vec<_>>()
-                    )
-                }
-                None => "ABSENT".to_string(),
-            };
-            eprintln!(
-                "CENSUS_PROBE name={probe_name} gb={gb_desc} qualified_entries={entry_count}"
-            );
-        }
-    }
     let corpus_variant_counts =
         corpus_disj_variant_name_counts(modules.clone(), source_indices.clone());
     let corpus_item_counts = corpus_item_name_counts(modules.clone(), source_indices.clone());
