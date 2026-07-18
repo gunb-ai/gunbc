@@ -12,6 +12,21 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+fn systemctl_daemon_reload_argv() -> List<String> {
+  ["systemctl", "daemon-reload"]
+}
+
+fn systemctl_enable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "enable", unit as String]
+}
+
+fn systemctl_restart_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "restart", unit as String]
+}
+
+fn systemctl_disable_now_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "disable", "--now", unit as String]
+}
 
 type UnitFileState
   = UnitEnabled
@@ -37,6 +52,34 @@ service systemd.Systemctl {
     exit {
       0 => Unit
       nonzero => String "systemctl enable failed"
+    }
+  }
+
+  operation Restart {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "restart", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl restart failed"
+    }
+  }
+
+  operation DisableNow {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "disable", "--now", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl disable --now failed"
     }
   }
 

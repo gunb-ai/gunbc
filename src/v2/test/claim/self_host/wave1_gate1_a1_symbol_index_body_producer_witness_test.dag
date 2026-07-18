@@ -24,7 +24,7 @@ fn wave1_gate1_a1_domain_construction_frontier_holds() -> Bool {
 }
 
 fn wave1_gate1_a1_forward_behavior_row_count_holds() -> Bool {
-  body_lowering_forward_behavior_row_count() == 4
+  body_lowering_forward_behavior_row_count() == 6
 }
 
 fn wave1_gate1_a1_forward_fold_surface_identities_agree_holds() -> Bool {

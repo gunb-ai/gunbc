@@ -1,6 +1,11 @@
 module gunbc.ci_layer_roots
 
 import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+import gunbc.cli_invoke {
+  source_roots_shell_flags,
+  SourceRootBare,
+  SourceRootRooted
+}
 
 data witness_layer_roots: List<String> = ["dag", "src/v2"]
 
@@ -49,6 +54,7 @@ data witness_exclusion_substrings: List<String> = [
   "self_host_source_authority_behavioral_witness_test.dag",
   "self_host_00_compile_behavioral_witness_test.dag",
   "self_host_04_infer_behavioral_witness_test.dag",
+  "self_host_03_normalize_behavioral_witness_test.dag",
   "dag_collect_fingerprint_witness_test.dag",
   "dag_compile_clean_perturb_receipts_test.dag",
   "test/claim/diagnostics_test.dag",
@@ -179,23 +185,12 @@ fn whole_tree_resolve_exclusion_substrings() -> List<String> {
   concat(witness_exclusion_substrings, whole_tree_strict_resolve_exclusion_substrings)
 }
 
-fn witness_layer_source_flag_for_root(root: String, shell_path_prefix: String) -> String {
-  match shell_path_prefix {
-    "" => concat(" --source-root ", root)
-    p => concat(" --source-root ", concat(p, concat(root, "\"")))
-  }
-}
-
-fn witness_layer_source_flags_with_shell_path_prefix(roots: List<String>, shell_path_prefix: String) -> String {
-  fold(roots, init: "", f: (acc, r) => concat(acc, witness_layer_source_flag_for_root(root: r, shell_path_prefix: shell_path_prefix)))
-}
-
 fn witness_layer_source_flags(roots: List<String>) -> String {
-  witness_layer_source_flags_with_shell_path_prefix(roots, shell_path_prefix: "")
+  source_roots_shell_flags(roots: roots, style: SourceRootBare)
 }
 
 fn witness_layer_source_flags_rooted(roots: List<String>) -> String {
-  witness_layer_source_flags_with_shell_path_prefix(roots, shell_path_prefix: "\"$ROOT/")
+  source_roots_shell_flags(roots: roots, style: SourceRootRooted { root_var: "$ROOT" })
 }
 
 fn witness_layer_scan_flags() -> String {

@@ -58,13 +58,6 @@ data git_core_mock_case_diff_name_status: PublishedMockCase = PublishedMockCase 
   case_id: 0
 }
 
-data git_core_mock_case_diff_name_status_merge: PublishedMockCase = PublishedMockCase {
-  operation_key: "git.Core.DiffNameStatusMerge",
-  service: "git.Core",
-  operation: "DiffNameStatusMerge",
-  case_id: 0
-}
-
 data git_core_mock_case_rev_list: PublishedMockCase = PublishedMockCase {
   operation_key: "git.Core.RevList",
   service: "git.Core",
@@ -86,6 +79,34 @@ data git_core_mock_case_show: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
+data git_core_mock_case_show_tree: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.ShowTree",
+  service: "git.Core",
+  operation: "ShowTree",
+  case_id: 0
+}
+
+data git_core_mock_case_fetch_no_tags: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.FetchNoTags",
+  service: "git.Core",
+  operation: "FetchNoTags",
+  case_id: 0
+}
+
+data git_core_mock_case_fetch_prune: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.FetchPrune",
+  service: "git.Core",
+  operation: "FetchPrune",
+  case_id: 0
+}
+
+data git_core_mock_case_head_commit_short: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.HeadCommitShort",
+  service: "git.Core",
+  operation: "HeadCommitShort",
+  case_id: 0
+}
+
 data git_core_mock_case_toplevel: PublishedMockCase = PublishedMockCase {
   operation_key: "git.Core.Toplevel",
   service: "git.Core",
@@ -103,8 +124,11 @@ data git_published_mock_corpus: List<PublishedMockCase> = [
   git_core_mock_case_diff_name_only,
   git_core_mock_case_diff_name_only_merge,
   git_core_mock_case_diff_name_status,
-  git_core_mock_case_diff_name_status_merge,
   git_core_mock_case_rev_list,
   git_core_mock_case_rev_list_before,
-  git_core_mock_case_show
+  git_core_mock_case_show,
+  git_core_mock_case_show_tree,
+  git_core_mock_case_fetch_no_tags,
+  git_core_mock_case_fetch_prune,
+  git_core_mock_case_head_commit_short
 ]

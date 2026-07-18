@@ -10,7 +10,7 @@ type Verb = Read | Write
 
 data verb_set_note: String = "Q1 (PROVISIONAL, pending operator ruling): the verb set is closed at Read/Write. Execute/Create arrive as later rows only when a displaced cost names one. Verb is the reach COARSENING of EffectShape, never a fork of it (DESIGN 3): a keyless write and a keyed write are both Write. verb_of_effect_shape below grounds the coarsening on the ONE EffectShape authority, making the 'grants reference a single EffectShape' prerequisite concrete. dissolve-on = operator confirms or amends the verb set."
 
-fn verb_of_effect_shape(shape: EffectShape) -> Verb {
+fn verb_of_effect_shape(shape: EffectShape<KeySource>) -> Verb {
   match shape {
     ReadEffect => Read
     UpsertEffect { key_source: key_source } => Write

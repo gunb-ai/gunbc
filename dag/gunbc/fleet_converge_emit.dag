@@ -53,6 +53,7 @@ import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { Accepted, Rejected, None }
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import extdeps.git { git_fetch_prune_shell }
 
 data fleet_converge_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -126,7 +127,7 @@ fn fresh_standup_bootstrap_intent() -> Pipeline {
         }
       },
       fresh_standup_discard_fail_run(
-        command: "(cd \"$checkout\" && git fetch --prune origin)"
+        command: concat("(cd \"$checkout\" && ", concat(git_fetch_prune_shell(remote: "origin"), ")"))
       ),
       fresh_standup_discard_fail_run(
         command: "(cd \"$checkout\" && git checkout --detach \"$ctrl_pin\")"

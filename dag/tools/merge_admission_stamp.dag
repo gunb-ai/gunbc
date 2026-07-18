@@ -1,7 +1,7 @@
 module tools.merge_admission_stamp
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, GitRef }
 import extdeps.git
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -10,10 +10,13 @@ import gunbc.merge_admission_produce {
   merge_admission_merge_base_ref,
   stamp_floor_receipt_with_conclusion,
   render_receipt_wire,
-  ci_repo_root_shell,
   shell_stdout_line,
   floor_exit_to_check_conclusion,
   floor_disposition_to_check_conclusion,
+  observe_merge_target_tree_hash,
+  merge_target_tree_hash_refusal_reason,
+  MergeTargetTreeHashOk,
+  MergeTargetTreeHashRefused,
 }
 import extdeps.github.checks { CheckConclusion }
 
@@ -49,18 +52,6 @@ fn pr_number_from_event() -> Int? {
   parse_int(s: shell_stdout_line(raw: line))
 }
 
-fn merge_target_tree_hash() -> String {
-  let result = shell.Exec.Run(
-    script: concat("git show -s --format=%T ", merge_admission_merge_base_ref)
-  )
-  shell_stdout_line(raw: result.stdout)
-}
-
-fn repo_root() -> String {
-  let result = shell.Exec.Run(script: concat("cd ", concat(ci_repo_root_shell(), " && pwd")))
-  shell_stdout_line(raw: result.stdout)
-}
-
 fn floor_exit_code_from_env() -> Int {
   match env_var(name: "CI_FLOOR_EXIT") {
     Present { value: raw } =>
@@ -85,9 +76,16 @@ func main() -> ProcessExit {
   if !head.success {
     return exit_failure(reason: "merge_admission_stamp: git rev-parse HEAD failed")
   }
-  let base_tree = merge_target_tree_hash()
-  if base_tree == "" {
-    return exit_failure(reason: "merge_admission_stamp: merge-target tree hash unavailable")
+  let base_tree = match observe_merge_target_tree_hash(ref: merge_admission_merge_base_ref as GitRef) {
+    MergeTargetTreeHashRefused { ref: ref, cause: cause } =>
+      return exit_failure(
+        reason: merge_target_tree_hash_refusal_reason(
+          prefix: "merge_admission_stamp",
+          ref: ref,
+          cause: cause
+        )
+      )
+    MergeTargetTreeHashOk { hash: hash } => hash
   }
   let receipt = stamp_floor_receipt_with_conclusion(
     pr_number: pr_number_from_event(),
@@ -95,7 +93,7 @@ func main() -> ProcessExit {
     base_tree_hash: base_tree,
     conclusion: conclusion_from_env(),
   )
-  let root = repo_root()
+  let root = git.Core.Toplevel().path as String
   let path = merge_admission_receipt_path(root: root)
   let dir = concat(root, "/.gunbc")
   let mkdir = shell.Exec.Run(script: concat("mkdir -p \"", concat(dir, "\"")))

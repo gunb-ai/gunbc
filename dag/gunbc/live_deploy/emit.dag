@@ -31,6 +31,14 @@ import gunbc.membership_reconcile {
   membership_reconcile, membership_effects,
 }
 import gunbc.node_http_server_emit { roadmap_dashboard_node_http_server_source }
+import gunbc.live_deploy.operations {
+  dpkg_status_command,
+  apt_install_command,
+  systemctl_daemon_reload_command,
+  systemctl_enable_command,
+  systemctl_restart_command,
+  systemctl_disable_now_command,
+}
 import v2.std.orchestration {
   Pipeline, PipelineStep,
   Do, If, Run,
@@ -60,18 +68,18 @@ fn deploy_raw(command: String) -> PipelineStep {
   }
 }
 
-fn ensure_apt_package_step(pkg: String, install_command: String) -> PipelineStep {
+fn ensure_apt_package_step(pkg: NonEmptyStr, privileged: Bool) -> PipelineStep {
   If {
     cond: Not { inner: ExitZero {
       run: Run {
-        command: concat("dpkg -s ", pkg),
+        command: dpkg_status_command(package: pkg),
         env: [],
         redirect: Present { value: DiscardAll },
         capture: Absent
       }
     } },
     then_: Pipeline {
-      steps: [deploy_raw(command: install_command)],
+      steps: [deploy_raw(command: apt_install_command(package: pkg, privileged: privileged))],
       on_failure: FailFast
     },
     else_: Absent
@@ -196,9 +204,9 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Li
     SystemdUnit => [
       apply_systemd_unit_write_step(spec: spec),
       deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-roadmap.service\" ", gunbc_roadmap_systemd_unit_path)),
-      deploy_raw(command: "sudo -n systemctl daemon-reload"),
-      deploy_raw(command: concat("sudo -n systemctl enable ", spec.service.unit_name)),
-      deploy_raw(command: concat("sudo -n systemctl restart ", spec.service.unit_name)),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: systemctl_enable_command(unit: spec.service.unit_name, privileged: true)),
+      deploy_raw(command: systemctl_restart_command(unit: spec.service.unit_name, privileged: true)),
     ]
     TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),
@@ -212,9 +220,9 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       deploy_raw(command: "sudo -n tailscale serve reset || true"),
     ]
     SystemdUnit => [
-      deploy_raw(command: concat("sudo -n systemctl disable --now ", spec.service.unit_name, " 2>/dev/null || true")),
+      deploy_raw(command: concat(systemctl_disable_now_command(unit: spec.service.unit_name, privileged: true), " 2>/dev/null || true")),
       deploy_raw(command: concat("sudo -n rm -f ", gunbc_roadmap_systemd_unit_path)),
-      deploy_raw(command: "sudo -n systemctl daemon-reload"),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
     ]
     ServerScript => [
       deploy_raw(command: concat("sudo -n rm -f ", gunbc_roadmap_server_path)),
@@ -235,10 +243,7 @@ fn emit_deploy_member_effect(effect: MemberEffect<DeploymentStep>, spec: Deploym
     EffectUpsert { member: step } =>
       match step {
         Dependency { step: dep } => [
-          ensure_apt_package_step(
-            pkg: dep.package,
-            install_command: concat("sudo -n apt-get install -y ", dep.package)
-          ),
+          ensure_apt_package_step(pkg: dep.package, privileged: true),
         ]
         Artifact { step: art } => emit_artifact_upsert(art: art, spec: spec)
       }
@@ -334,10 +339,7 @@ fn live_deploy_systemd_unit_for(spec: DeploymentSpec) -> String {
 fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
   Pipeline {
     steps: [
-      ensure_apt_package_step(
-        pkg: dep.package,
-        install_command: concat("apt-get install -y ", dep.package)
-      )
+      ensure_apt_package_step(pkg: dep.package, privileged: false)
     ],
     on_failure: FailFast
   }
