@@ -10,6 +10,8 @@ import std.markdown {
 
 
 
+
+
 fn wiring_liveness_preflight_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** design + direction · **DESIGN.md + carriers are authority** (§6). Linked from `ROADMAP.md` §4 *Testgen as the bug-class oracle*. Sibling of [testgen-oracle.md](testgen-oracle.md) (the bug-class→mechanism map): this is the **wiring** class worked out in full, and the first real consumer of the affected-set frontier."),

@@ -12,10 +12,12 @@ pub use crate::std_algebra::{
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
+use crate::v1_compiler_infer_env::lookup_binding_by_name;
 pub use crate::v1_compiler_infer_env::{
     authored_name, is_recursive_type, lookup_type, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
 pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
@@ -28,11 +30,9 @@ pub use crate::v1_compiler_infer_types::{
 };
 use crate::v1_rt;
 use crate::v1_rt::Witness;
-use crate::v1_compiler_infer_method::infer_builtin_call_type;
-use crate::v1_compiler_infer_env::lookup_binding_by_name;
-use crate::v1_std_core::error_type;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::error_type;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::FieldAccessStyle::OptionalUnwrap;

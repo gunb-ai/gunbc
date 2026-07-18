@@ -2849,7 +2849,11 @@ pub fn infer_expr(
                             }
                         }
                     }
-                    None => match lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), name.clone()) {
+                    None => match lookup_func_sig(
+                        scope.func_env.clone(),
+                        scope.type_env.clone(),
+                        name.clone(),
+                    ) {
                         Some(fsig) => {
                             if ((fsig.params.clone().len() as i64) == 0) {
                                 ok_infer(make_named_expr_node(
@@ -3172,7 +3176,11 @@ pub fn infer_expr(
                     expr_call_func_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
                 let span = texpr.span.clone();
                 let call_args = texpr.children.clone();
-                let sig = lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), func_name.clone());
+                let sig = lookup_func_sig(
+                    scope.func_env.clone(),
+                    scope.type_env.clone(),
+                    func_name.clone(),
+                );
                 let sig_params = match sig.clone() {
                     Some(s) => s.params.clone(),
                     None => Rc::new(vec![]),
@@ -7453,15 +7461,18 @@ pub fn classify_let_value(val: Rc<Node>, ctx: Rc<DescentContext>) -> Option<Rc<S
         ExprData::ExprCall { .. } => {
             let callee =
                 expr_call_func_at(val.clone(), ctx.type_env.clone().source_indices.clone());
-            let from_provenance = match lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), callee.clone()) {
-                Some(sig) => match sig.output_provenance.clone().first().cloned() {
-                    Some(param_map) => {
-                        classify_call_via_provenance(val.clone(), param_map.clone(), ctx.clone())
-                    }
+            let from_provenance =
+                match lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), callee.clone()) {
+                    Some(sig) => match sig.output_provenance.clone().first().cloned() {
+                        Some(param_map) => classify_call_via_provenance(
+                            val.clone(),
+                            param_map.clone(),
+                            ctx.clone(),
+                        ),
+                        None => None,
+                    },
                     None => None,
-                },
-                None => None,
-            };
+                };
             match from_provenance.clone() {
                 Some(_) => from_provenance.clone(),
                 None => {
@@ -8057,20 +8068,23 @@ pub fn classify_argument(
                                     arg_expr.clone(),
                                     ctx.type_env.clone().source_indices.clone(),
                                 );
-                                let from_provenance =
-                                    match lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), callee.clone()) {
-                                        Some(sig) => {
-                                            match sig.output_provenance.clone().first().cloned() {
-                                                Some(param_map) => classify_call_via_provenance(
-                                                    arg_expr.clone(),
-                                                    param_map.clone(),
-                                                    ctx.clone(),
-                                                ),
-                                                None => None,
-                                            }
+                                let from_provenance = match lookup_func_sig(
+                                    ctx.func_env.clone(),
+                                    ctx.type_env.clone(),
+                                    callee.clone(),
+                                ) {
+                                    Some(sig) => {
+                                        match sig.output_provenance.clone().first().cloned() {
+                                            Some(param_map) => classify_call_via_provenance(
+                                                arg_expr.clone(),
+                                                param_map.clone(),
+                                                ctx.clone(),
+                                            ),
+                                            None => None,
                                         }
-                                        None => None,
-                                    };
+                                    }
+                                    None => None,
+                                };
                                 match from_provenance.clone() {
                                     Some(prov_rel) => prov_rel.clone(),
                                     None => {
@@ -8826,7 +8840,11 @@ pub fn annotate_descent(body: Rc<Node>, ctx: Rc<DescentContext>) -> Rc<Node> {
                             scrut.clone(),
                             ctx.type_env.clone().source_indices.clone(),
                         );
-                        match lookup_func_sig(ctx.func_env.clone(), ctx.type_env.clone(), callee.clone()) {
+                        match lookup_func_sig(
+                            ctx.func_env.clone(),
+                            ctx.type_env.clone(),
+                            callee.clone(),
+                        ) {
                             Some(sig) => {
                                 if ((Rc::new(v1_rt::map_keys(&sig.variant_provenance.clone())).len()
                                     as i64)
