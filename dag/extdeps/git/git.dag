@@ -297,9 +297,13 @@ fn shape_git_current_branch_argv() -> List<String> {
   ["git", "rev-parse", "--abbrev-ref", "HEAD"]
 }
 
+fn shape_git_branch_show_current_argv() -> List<String> {
+  ["git", "branch", "--show-current"]
+}
+
 fn git_observe_meta_shell_fragment() -> String {
   concat(
-    "git branch=$(", concat(git_shell_join_argv(argv: shape_git_current_branch_argv()), " 2>/dev/null || echo unknown)"),
+    "git branch=$(", concat(git_shell_join_argv(argv: shape_git_branch_show_current_argv()), " 2>/dev/null || echo unknown)"),
     concat(" commit=$(", concat(git_shell_join_argv(argv: shape_git_head_commit_short_argv()), " 2>/dev/null || echo unknown)"))
   )
 }
