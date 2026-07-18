@@ -2346,6 +2346,35 @@ fn grammar_relation_forward_row_select_skip_catalog_edge(name: Symbol) -> Bool {
   name == ^grammar_relation_rules_formal_productions
 }
 
+fn grammar_relation_row_forward_select(
+  rules: Node,
+  row_matches: fn(Node) -> Bool
+) -> GrammarRelationForwardRowSelection {
+  match rules.kind {
+    TypeNode { connective: Conj } =>
+      fold(
+        rules.children,
+        init: GrammarRelationForwardRowNone,
+        f: fn(acc, e) {
+          match e.label {
+            Named { name: n } =>
+              if grammar_relation_forward_row_select_skip_catalog_edge(name: n) {
+                acc
+              } else {
+                grammar_relation_forward_row_select_merge(
+                  acc: acc,
+                  row: e.target,
+                  matches: row_matches(e.target)
+                )
+              }
+            Positional => acc
+          }
+        }
+      )
+    _ => GrammarRelationForwardRowNone
+  }
+}
+
 fn grammar_relation_forward_row_selection_outcome_row(
   rules: Node,
   selection: GrammarRelationForwardRowSelection,
@@ -2420,22 +2449,6 @@ fn grammar_relation_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> 
   )
 }
 
-fn grammar_relation_forward_row_token_spine_select_step(
-  acc: GrammarRelationForwardRowSelection,
-  frontier: List<Symbol>,
-  row: Node
-) -> GrammarRelationForwardRowSelection {
-  match grammar_relation_row_token_spine_classes(row: row) {
-    Rejected { diagnostics: _ } => acc
-    Accepted { value: spine, diagnostics: _ } =>
-      grammar_relation_forward_row_select_merge(
-        acc: acc,
-        row: row,
-        matches: zip_eq(a: frontier, b: spine, eq: fn(x, y) { x == y })
-      )
-  }
-}
-
 fn grammar_relation_row_forward_token_spine_selection(
   frontier: List<Symbol>,
   rules: Node
@@ -2444,22 +2457,13 @@ fn grammar_relation_row_forward_token_spine_selection(
     TypeNode { connective: Conj } =>
       grammar_relation_forward_row_selection_outcome_emitted(
         rules: rules,
-        selection: fold(
-          rules.children,
-          init: GrammarRelationForwardRowNone,
-          f: fn(acc, e) {
-            match e.label {
-              Named { name: n } =>
-                if grammar_relation_forward_row_select_skip_catalog_edge(name: n) {
-                  acc
-                } else {
-                  grammar_relation_forward_row_token_spine_select_step(
-                    acc: acc,
-                    frontier: frontier,
-                    row: e.target
-                  )
-                }
-              Positional => acc
+        selection: grammar_relation_row_forward_select(
+          rules: rules,
+          row_matches: fn(row) {
+            match grammar_relation_row_token_spine_classes(row: row) {
+              Rejected { diagnostics: _ } => false
+              Accepted { value: spine, diagnostics: _ } =>
+                zip_eq(a: frontier, b: spine, eq: fn(x, y) { x == y })
             }
           }
         )
@@ -2510,21 +2514,6 @@ fn grammar_relation_row_surface_identity_matches(row: Node, surface_identity: Sy
   }
 }
 
-fn grammar_relation_forward_row_surface_identity_select_step(
-  acc: GrammarRelationForwardRowSelection,
-  surface_identity: Symbol,
-  row: Node
-) -> GrammarRelationForwardRowSelection {
-  grammar_relation_forward_row_select_merge(
-    acc: acc,
-    row: row,
-    matches: grammar_relation_row_surface_identity_matches(
-      row: row,
-      surface_identity: surface_identity
-    )
-  )
-}
-
 fn grammar_relation_row_forward_production_selection_not_found_diagnostic(
   surface_identity: Symbol
 ) -> Diagnostic {
@@ -2549,23 +2538,13 @@ fn grammar_relation_row_forward_production_selection(
     TypeNode { connective: Conj } =>
       grammar_relation_forward_row_selection_outcome_row(
         rules: rules,
-        selection: fold(
-          rules.children,
-          init: GrammarRelationForwardRowNone,
-          f: fn(acc, edge) {
-            match edge.label {
-              Named { name: n } =>
-                if grammar_relation_forward_row_select_skip_catalog_edge(name: n) {
-                  acc
-                } else {
-                  grammar_relation_forward_row_surface_identity_select_step(
-                    acc: acc,
-                    surface_identity: surface_identity,
-                    row: edge.target
-                  )
-                }
-              Positional => acc
-            }
+        selection: grammar_relation_row_forward_select(
+          rules: rules,
+          row_matches: fn(row) {
+            grammar_relation_row_surface_identity_matches(
+              row: row,
+              surface_identity: surface_identity
+            )
           }
         ),
         none_reason: ^grammar_relation_row_forward_production_not_found,

@@ -70,7 +70,7 @@ test fn source_root_anchor_dissolve_trigger_names_site_and_lane() -> Bool {
   ) &&
     string_contains(
       s: cli_run_source_root_anchor_dissolve_trigger,
-      pattern: "medium_structure_containment"
+      pattern: "modeled-before-implemented"
     ) &&
     string_contains(
       s: cli_run_source_root_anchor_dissolve_trigger,

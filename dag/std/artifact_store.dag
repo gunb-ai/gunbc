@@ -1,0 +1,122 @@
+module std.artifact_store
+
+import std.types { ContentHash, NonEmptyStr, List, Int, Bool, String }
+import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import std.measure { ByteSize, byte_size, measure_count }
+import std.materialization_ladder { CacheProvider, EvictionClass, ScopeExit, SpacePacked }
+
+data artifact_store_module_note: String = "Witness-realization plan P2 (pure-spec half): the content-addressed artifact store - the corpus's first CacheProvider whose eviction field is READ (memory-control audit F5: eviction was write-only; here it gates construction and drives packing). The store is modeled as a pure fold: get bumps recency, put packs to budget by least-recent eviction with every eviction COUNTED in the returned receipt (a failure arm must refuse or count, never widen - DESIGN section 5). Keying is ContentHash BY SHAPE: no mtime, no existence input exists to consult, so ExistenceKeyed is unwritable here (the #6352 wall by construction). The host transport (real artifact directory + build wiring) is P2's second half; this spec is its single authority. Dissolve-on for the budget parameter: EvictionClass's budget field currently carries cited upstream policy PROSE in extdeps rows (two concepts in one field - our enforceable budget vs their described mechanism); when that splits into typed variants, store_over_provider derives the budget from the row instead of taking it beside the row."
+
+type ArtifactKey {
+  closure_digest: ContentHash
+  emitter_identity: NonEmptyStr
+  target_language: NonEmptyStr
+  toolchain: NonEmptyStr
+}
+
+fn artifact_key_hash(key: ArtifactKey) -> ContentHash {
+  content_hash_tagged(
+    tag: "artifact_store.key",
+    payload: content_hash_combine(
+      left: key.closure_digest,
+      right: content_hash_combine(
+        left: content_hash_atom(value: key.emitter_identity),
+        right: content_hash_combine(
+          left: content_hash_atom(value: key.target_language),
+          right: content_hash_atom(value: key.toolchain)
+        )
+      )
+    )
+  )
+}
+
+type ArtifactRow {
+  key: ContentHash
+  artifact_bytes: ByteSize
+  last_use_ordinal: Int
+}
+
+type ArtifactStore {
+  budget: ByteSize
+  next_ordinal: Int
+  rows: List<ArtifactRow>
+}
+
+type StoreConstruction
+  = StoreReady { store: ArtifactStore }
+  | StoreRefusedEviction { provider_id: String, declared: EvictionClass }
+
+fn store_over_provider(provider: CacheProvider, budget: ByteSize) -> StoreConstruction {
+  match provider.eviction {
+    SpacePacked { budget: _ } =>
+      StoreReady { store: ArtifactStore { budget: budget, next_ordinal: 1, rows: [] } }
+    ScopeExit =>
+      StoreRefusedEviction { provider_id: provider.id, declared: provider.eviction }
+  }
+}
+
+type StoreLookup
+  = StoreHit { store: ArtifactStore, row: ArtifactRow }
+  | StoreMiss { store: ArtifactStore }
+
+fn store_bytes_used(store: ArtifactStore) -> Int {
+  fold(store.rows, init: 0, f: (acc, r) => acc + measure_count(m: r.artifact_bytes))
+}
+
+fn store_get(store: ArtifactStore, key: ContentHash) -> StoreLookup {
+  match store.rows |> filter(r => r.key == key) |> first {
+    Present { value: row } =>
+      let bumped = ArtifactRow { key: row.key, artifact_bytes: row.artifact_bytes, last_use_ordinal: store.next_ordinal }
+      StoreHit {
+        store: ArtifactStore {
+          budget: store.budget,
+          next_ordinal: store.next_ordinal + 1,
+          rows: concat(store.rows |> filter(r => (r.key == key) == false), [bumped])
+        },
+        row: bumped
+      }
+    Absent => StoreMiss { store: store }
+  }
+}
+
+type StorePutReceipt {
+  store: ArtifactStore
+  evicted: List<ContentHash>
+}
+
+fn least_recent_row(rows: List<ArtifactRow>) -> ArtifactRow? {
+  match rows |> first {
+    Present { value: seed } =>
+      Present { value: fold(rows, init: seed, f: (best, r) => if r.last_use_ordinal < best.last_use_ordinal { r } else { best }) }
+    Absent => none
+  }
+}
+
+fn evict_until_within_budget(store: ArtifactStore, evicted: List<ContentHash>) -> StorePutReceipt {
+  if store_bytes_used(store: store) <= measure_count(m: store.budget) {
+    StorePutReceipt { store: store, evicted: evicted }
+  } else {
+    match least_recent_row(rows: store.rows) {
+      Present { value: victim } =>
+        evict_until_within_budget(
+          store: ArtifactStore {
+            budget: store.budget,
+            next_ordinal: store.next_ordinal,
+            rows: store.rows |> filter(r => (r.key == victim.key) == false)
+          },
+          evicted: concat(evicted, [victim.key])
+        )
+      Absent => StorePutReceipt { store: store, evicted: evicted }
+    }
+  }
+}
+
+fn store_put(store: ArtifactStore, key: ContentHash, artifact_bytes: ByteSize) -> StorePutReceipt {
+  let fresh = ArtifactRow { key: key, artifact_bytes: artifact_bytes, last_use_ordinal: store.next_ordinal }
+  let grown = ArtifactStore {
+    budget: store.budget,
+    next_ordinal: store.next_ordinal + 1,
+    rows: concat(store.rows |> filter(r => (r.key == key) == false), [fresh])
+  }
+  evict_until_within_budget(store: grown, evicted: [])
+}

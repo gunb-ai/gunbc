@@ -1248,6 +1248,13 @@ pub struct InterpContext {
     parse_table_memo: std::cell::RefCell<ParseTableMemo>,
     eval_recompute_trace: std::cell::RefCell<EvalRecomputeTrace>,
     eval_call_memo: std::cell::RefCell<EvalCallMemo>,
+    // Effect-dispatch odometer: incremented on every service-operation dispatch.
+    // The eval-call memo compares it across a named call and refuses to memoize
+    // any call during which it advanced — a WorldRead/effect is never served
+    // stale from cache (the uses-empty purity gate is vacuous corpus-wide: no
+    // corpus func declares a `uses` clause, so every effectful wrapper was
+    // memo-eligible; found via the artifact-store List-after-Delete staleness).
+    effect_dispatch_count: std::cell::Cell<u64>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
     mutation_counters: std::cell::RefCell<MutationCounters>,
     symbols: RefCell<SymbolInterner>,
@@ -1409,6 +1416,7 @@ impl InterpContext {
             parse_table_memo: std::cell::RefCell::new(ParseTableMemo::default()),
             eval_recompute_trace: std::cell::RefCell::new(EvalRecomputeTrace::default()),
             eval_call_memo: std::cell::RefCell::new(EvalCallMemo::default()),
+            effect_dispatch_count: std::cell::Cell::new(0),
             eval_recompute_hash_memo: std::cell::RefCell::new(EvalRecomputeHashMemo::default()),
             mutation_counters: std::cell::RefCell::new(MutationCounters::default()),
             symbols: RefCell::new(SymbolInterner::default()),
@@ -3019,8 +3027,9 @@ fn eval_pure_named_call(
             return Ok(v);
         }
     }
+    let effects_before = ctx.effect_dispatch_count.get();
     let result = call_function(ctx, fn_node, args, env);
-    if memo_on {
+    if memo_on && ctx.effect_dispatch_count.get() == effects_before {
         if let Ok(v) = &result {
             eval_call_memo_put(ctx, fn_node, key.clone(), args, v.clone());
         }
@@ -4992,6 +5001,8 @@ fn eval_service_call(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
+    ctx.effect_dispatch_count
+        .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     let key = format!("{}.{}", service_name, op_name);
     let (service_node, op_node) =
         ctx.service_ops
@@ -5746,7 +5757,10 @@ fn map_shell_outputs(
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
+        let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
         let value = match from_key.as_deref() {
+            Some("stdout") if is_optional_field && result.exit_code != 0 => Value::Null,
+            Some("stderr") if is_optional_field && result.exit_code != 0 => Value::Null,
             Some("stdout") => Value::Str(result.stdout.clone()),
             Some("stderr") => Value::Str(result.stderr.clone()),
             Some("exit_success") => Value::Bool(result.exit_code == 0),
@@ -5828,6 +5842,78 @@ fn dispatch_file(
         return Err(InterpError::TypeError {
             msg: "file transport resolved to an empty path".to_string(),
         });
+    }
+
+    // Optional explicit verb on the transport row (`transport file { path: ..., verb: "delete" }`).
+    // Delete/List are structurally indistinguishable from Read (path-only inputs), so the
+    // transport — the realization — declares its own action; absent verb keeps the original
+    // content-param convention (write iff a `content` param exists, else read).
+    let verb = find_property(transport.properties.clone(), "verb".to_string(), si.clone())
+        .map(|verb_node| eval_expr(&verb_node, param_env, ctx).map(|v| format!("{}", v)))
+        .transpose()?;
+
+    if let Some(verb) = verb.as_deref() {
+        match verb {
+            "delete" => {
+                trace_emit(
+                    OutputChannel::ShellTrace,
+                    &format!("[file] delete {}", path),
+                );
+                return match std::fs::remove_file(&path) {
+                    Ok(()) => Ok(FileResult {
+                        success: true,
+                        byte_count: 0,
+                        path,
+                        error: String::new(),
+                        content: String::new(),
+                    }),
+                    Err(e) => Ok(FileResult {
+                        success: false,
+                        byte_count: 0,
+                        path,
+                        error: format!("{}", e),
+                        content: String::new(),
+                    }),
+                };
+            }
+            "list" => {
+                trace_emit(
+                    OutputChannel::Instrumentation,
+                    &format!("[file] list {}", path),
+                );
+                return match std::fs::read_dir(&path) {
+                    Ok(entries) => {
+                        let mut names: Vec<String> = entries
+                            .filter_map(|e| e.ok())
+                            .filter_map(|e| e.file_name().into_string().ok())
+                            .collect();
+                        names.sort();
+                        let content = names.join("\n");
+                        Ok(FileResult {
+                            success: true,
+                            byte_count: content.len() as i64,
+                            path,
+                            error: String::new(),
+                            content,
+                        })
+                    }
+                    Err(e) => Ok(FileResult {
+                        success: false,
+                        byte_count: 0,
+                        path,
+                        error: format!("{}", e),
+                        content: String::new(),
+                    }),
+                };
+            }
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "file transport verb '{other}' is not a known action (delete, list)"
+                    ),
+                })
+            }
+        }
     }
 
     let has_content = op_node
@@ -7430,6 +7516,34 @@ fn eval_builtin_inner(
             }),
         },
 
+        // ObservePeakResidentAtSubject realization seam (witness-realization plan P1):
+        // process peak resident set (VmHWM) in bytes. Fail-closed when the host
+        // cannot report it — a fabricated 0 would be a Measured lie (DESIGN §5).
+        "observed_peak_resident_bytes" => match positional.as_slice() {
+            [] => {
+                let bytes = std::fs::read_to_string("/proc/self/status")
+                    .ok()
+                    .and_then(|status| {
+                        status
+                            .lines()
+                            .find(|l| l.starts_with("VmHWM"))
+                            .and_then(|line| line.split_whitespace().nth(1))
+                            .and_then(|kb| kb.parse::<i64>().ok())
+                    })
+                    .map(|kb| kb.saturating_mul(1024));
+                match bytes {
+                    Some(b) => Ok(Some(Value::Int(b))),
+                    None => Err(InterpError::TypeError {
+                        msg: "observed_peak_resident_bytes: VmHWM unavailable on this host (refusing to fabricate a Measured space fact)"
+                            .to_string(),
+                    }),
+                }
+            }
+            _ => Err(InterpError::TypeError {
+                msg: "observed_peak_resident_bytes takes no arguments".to_string(),
+            }),
+        },
+
         "hash_combine" => match positional.as_slice() {
             [Value::Str(a), Value::Str(b)] if positional.len() == 2 => {
                 if !v1_rt::is_hash_digest(a) || !v1_rt::is_hash_digest(b) {
@@ -7583,44 +7697,6 @@ fn eval_builtin_inner(
                     type_name: ctx.sym("ModuleDeclarationFact"),
                     fields: Rc::new(sorted_fields(vec![
                         (ctx.sym("module"), Value::Str(f.module)),
-                        (ctx.sym("path"), Value::Str(f.path)),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
-        "medium_structure_literal_parts_facts" => {
-            let roots = expect_str_list_flex(
-                positional.first().copied(),
-                "medium_structure_literal_parts_facts",
-            )?;
-            let targets = expect_str_list_flex(
-                positional.get(1).copied(),
-                "medium_structure_literal_parts_facts",
-            )?;
-            let facts =
-                crate::module_path_index::medium_structure_census::medium_structure_literal_parts_facts(
-                    &roots, &targets,
-                );
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                let mut part_values: Vec<Value> = Vec::new();
-                for p in f.parts {
-                    part_values.push(Value::Record {
-                        type_name: ctx.sym("RawLiteralPart"),
-                        fields: Rc::new(sorted_fields(vec![
-                            (ctx.sym("is_hole"), Value::Bool(p.is_hole)),
-                            (ctx.sym("text"), Value::Str(p.text)),
-                        ])),
-                    });
-                }
-                items.push(Value::Record {
-                    type_name: ctx.sym("RawLiteralPartsFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("constructor"), Value::Str(f.constructor)),
-                        (ctx.sym("field"), Value::Str(f.field)),
-                        (ctx.sym("parts"), list_value(part_values)),
                         (ctx.sym("path"), Value::Str(f.path)),
                     ])),
                 });
