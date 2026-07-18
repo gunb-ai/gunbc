@@ -89,7 +89,8 @@ import v1.compiler.infer_env {
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
   SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-  qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last
+  qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
+  env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -117,7 +118,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
@@ -6205,7 +6206,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
   )
 }
 
-fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let corpus_variant_counts = corpus_disj_variant_name_counts(modules: modules, source_indices: source_indices)
   fold(modules, init: empty_symbol_index(), f: (index, mod) =>
     let module_path = authored_name_at(source_indices: source_indices, node: mod.module)
