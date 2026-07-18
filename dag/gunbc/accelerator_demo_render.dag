@@ -102,7 +102,7 @@ fn render_plan_view(view: AcceleratorDemoPlanView) -> String {
       concat(
         " fused_ops=",
         concat(
-          v1.compiler.emit_core_support.to_string(view.fused_op_count),
+          to_string(view.fused_op_count),
           concat(
             " placement=",
             concat(
@@ -135,7 +135,7 @@ fn render_outcome_line(view: AcceleratorDemoOutcomeView) -> String {
 fn render_plan_digest_block(view: AcceleratorDemoPlanView) -> String {
   let entries = [
     std.render.kv_pair(key: "Target", sep: ": ", value: view.target),
-    std.render.kv_pair(key: "Fused ops", sep: ": ", value: v1.compiler.emit_core_support.to_string(view.fused_op_count)),
+    std.render.kv_pair(key: "Fused ops", sep: ": ", value: to_string(view.fused_op_count)),
     std.render.kv_pair(key: "Placement", sep: ": ", value: view.placement_label),
     std.render.kv_pair(key: "Medium", sep: ": ", value: view.target_medium),
     std.render.kv_pair(key: "Contract", sep: ": ", value: view.contract_label),
@@ -197,7 +197,7 @@ fn render_lifted_subgraph(program: AcceleratorDemoProgram) -> String {
   concat(
     "fused elementwise kernel: Mul -> Add -> Relu (op_count=",
     concat(
-      v1.compiler.emit_core_support.to_string(gunbc.accelerator_demo_program.elementwise_op_count(program: program)),
+      to_string(gunbc.accelerator_demo_program.elementwise_op_count(program: program)),
       ")"
     )
   )
