@@ -12,25 +12,25 @@ fn is_lossless(f: DecodeFidelity) -> Bool {
   }
 }
 
-fn text_medium_lossless() -> Medium<String> {
+fn text_medium_lossless() -> extdeps.communication.medium.Medium<String> {
   extdeps.communication.medium.Medium {
     carried: "fn add(x: Int, y: Int) -> Int { x + y }",
     fidelity: Lossless
   }
 }
 
-fn probe_medium_lossless() -> Medium<ProbeVerdict> {
+fn probe_medium_lossless() -> extdeps.communication.medium.Medium<ProbeVerdict> {
   extdeps.communication.medium.Medium { carried: Dominates, fidelity: Lossless }
 }
 
-fn prose_medium() -> Medium<String> {
+fn prose_medium() -> extdeps.communication.medium.Medium<String> {
   extdeps.communication.medium.Medium {
     carried: "roughly linear time, details omitted",
     fidelity: Lossy
   }
 }
 
-fn mis_tagged_prose_medium() -> Medium<String> {
+fn mis_tagged_prose_medium() -> extdeps.communication.medium.Medium<String> {
   extdeps.communication.medium.Medium {
     carried: "roughly linear time, details omitted",
     fidelity: Lossless
