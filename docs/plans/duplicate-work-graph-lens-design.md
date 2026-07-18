@@ -81,6 +81,16 @@ Identity says "same work." The **source** of the multiplicity says how to fix it
 
 Reuse (one materialization, N consumers) is the goal state, never flagged — it is what every fix produces (= `materialization: Share`).
 
+**Grain coverage — one identity, N detection surfaces (operator direction, 2026-07-16).** The concept is *not* shell-specific: "same inputs + deterministic process → same content-identity → the second is duplicate work" is the whole law, and the surface it's read on is a *realization axis*, not the concept. Three surfaces, one `ComputationIdentity`:
+
+| grain | surface read | detector today | reaches the double-compile? |
+|---|---|---|---|
+| **within-script** | argv / `ShellWord` tokens | `v2.lens.duplicate_computation` (dissolves into the general form, §7) | no — not a shell command |
+| **within-graph** | `content_hash` over Node subtrees | `v2.std.materialize` (analysis-only MVP, structural identity) | no — not a compiled-graph subtree |
+| **within-run execution-frame** | plurality of demand *inside one process/seed run* | **none yet — the uncovered grain** | this is where it lives |
+
+The **~275s double-resolve is the exemplar of the uncovered grain**: batch-1 (discovery) resolves the corpus, then batch-2 (execution) resolves it again — two `compile_to_resolved` calls inside one `claim_executor` **v1-seed** process. Neither the argv lens (no second command) nor the graph detector (Rust seed, not a Node subtree) can see it. Per the ladder it is unambiguously classed: one process = **shared-state frame ⇒ AuthoredDuplication ⇒ REWIRE, never a cache** (fix the seed to resolve once and share) — distinct from the *cross-run* repeat (isolation boundary ⇒ the content-keyed store obligation). Same `ComputationIdentity`, remedy chosen by frame. Direction: the general detector must reach the execution-frame grain (the demand-plurality read the ladder already specifies for `eval → plan → process` scopes), at which point the argv lens dissolves into it (§7) and the within-graph MVP extends down into it — one detector, the surfaces its realizations.
+
 **Safe-to-collapse** (survives from the draft): purity is the *license* to rewire (pure → behavior-preserving by construction); effects are safe only if idempotent/collapsible — `dag/std/effects.dag` `is_idempotent_effect` (`:31`), pairwise `create_double_init_collapsible` (`:73`). Owed extension: `effect_group_collapsible(shapes)` — an N-ary fold over the pairwise authority (this generalizes `mark_collapsible_share` from create-if-absent to any collapsible peer). **Worth-collapsing:** a cost floor (`src/v2/lens/cost.dag`) — reports *what*, never *whether to fail open* (not an absorbing fallback, §5).
 
 ## 6. Undecidability = missing concept or missing enforcement (empties the bottom)

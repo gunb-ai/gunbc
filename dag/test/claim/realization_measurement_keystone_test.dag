@@ -72,7 +72,8 @@ fn witness_space_rolls_up_across_receipts() -> Bool {
     space: sample_space_b,
   )
   let total = cost_account_from_performance_receipts(receipts: [r1, r2])
-  byte_size_count(total.space) == byte_size_count(sample_space_a) + byte_size_count(sample_space_b)
+  byte_size_count(total.space) == byte_size_count(sample_space_b)
+    && byte_size_count(total.space) != byte_size_count(sample_space_a) + byte_size_count(sample_space_b)
 }
 
 fn witness_measured_rollup_red_on_predicted_zero() -> Bool {

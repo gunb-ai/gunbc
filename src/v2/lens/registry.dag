@@ -18,7 +18,6 @@ type LensIdV0
   | StructuralResolution
   | TableDecisionTree
   | Determinism
-  | BashCompositionRecognizer
   | ComplexityAccumulatorCopy
   | ComplexityLinearityAudit
   | ComplexityLowering
@@ -45,7 +44,6 @@ type LensIdV0
   | LeafModelVerification
   | LiveReadClassification
   | MachineShape
-  | MediumStructureContainment
   | MockTotality
   | MutationAdequacy
   | NonFoldResidue
@@ -130,11 +128,6 @@ data lens_registry_v0_table_decision_tree: LensRegistryEntryV0 = {
 data lens_registry_v0_determinism: LensRegistryEntryV0 = {
   lens_id: Determinism
   module_path: Bound { path: "v2.lens.determinism" }
-}
-
-data lens_registry_v0_bash_composition_recognizer: LensRegistryEntryV0 = {
-  lens_id: BashCompositionRecognizer
-  module_path: Bound { path: "v2.lens.bash_composition_recognizer" }
 }
 
 data lens_registry_v0_complexity_accumulator_copy: LensRegistryEntryV0 = {
@@ -267,11 +260,6 @@ data lens_registry_v0_machine_shape: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.machine_shape" }
 }
 
-data lens_registry_v0_medium_structure_containment: LensRegistryEntryV0 = {
-  lens_id: MediumStructureContainment
-  module_path: Bound { path: "v2.lens.medium_structure_containment" }
-}
-
 data lens_registry_v0_mock_totality: LensRegistryEntryV0 = {
   lens_id: MockTotality
   module_path: Bound { path: "v2.lens.mock_totality" }
@@ -358,7 +346,6 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_structural_resolution,
   lens_registry_v0_table_decision_tree,
   lens_registry_v0_determinism,
-  lens_registry_v0_bash_composition_recognizer,
   lens_registry_v0_complexity_accumulator_copy,
   lens_registry_v0_complexity_linearity_audit,
   lens_registry_v0_complexity_lowering,
@@ -385,7 +372,6 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_leaf_model_verification,
   lens_registry_v0_live_read_classification,
   lens_registry_v0_machine_shape,
-  lens_registry_v0_medium_structure_containment,
   lens_registry_v0_mock_totality,
   lens_registry_v0_mutation_adequacy,
   lens_registry_v0_non_fold_residue,
@@ -443,10 +429,6 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     Determinism => match right {
       Determinism => true
-      _ => false
-    }
-    BashCompositionRecognizer => match right {
-      BashCompositionRecognizer => true
       _ => false
     }
     ComplexityAccumulatorCopy => match right {
@@ -551,10 +533,6 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     MachineShape => match right {
       MachineShape => true
-      _ => false
-    }
-    MediumStructureContainment => match right {
-      MediumStructureContainment => true
       _ => false
     }
     MockTotality => match right {

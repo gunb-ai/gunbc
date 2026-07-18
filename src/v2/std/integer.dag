@@ -1296,3 +1296,42 @@ fn integer_signed_i32_le_bytes_to_int(bytes: List<Byte>) -> Outcome<Int> {
     outcome_rejected(d: integer_signed_i32_le_decode_invalid_diagnostic())
   }
 }
+
+fn integer_nat_decimal_digit_char(digit: Nat) -> String {
+  if digit == 0 {
+    "0"
+  } else if digit == 1 {
+    "1"
+  } else if digit == 2 {
+    "2"
+  } else if digit == 3 {
+    "3"
+  } else if digit == 4 {
+    "4"
+  } else if digit == 5 {
+    "5"
+  } else if digit == 6 {
+    "6"
+  } else if digit == 7 {
+    "7"
+  } else if digit == 8 {
+    "8"
+  } else {
+    "9"
+  }
+}
+
+fn integer_nat_to_decimal_string(value: Nat) -> String {
+  if value == 0 {
+    "0"
+  } else if value < 10 {
+    integer_nat_decimal_digit_char(digit: value)
+  } else {
+    let rest = value / 10
+    let digit = value - (rest * 10)
+    concat(
+      integer_nat_to_decimal_string(value: rest),
+      integer_nat_decimal_digit_char(digit: digit)
+    )
+  }
+}

@@ -1,0 +1,124 @@
+module v2.workflow.orchestration_while_emit_test
+
+import v2.compiler.emit_orchestration { orch_emit_step, orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.workflow.ci_floor_peak_emit {
+  ci_floor_peak_cgroup_locate_pipeline,
+  ci_floor_peak_assign_cgroup_dir_command,
+  ci_floor_peak_while_cond_command
+}
+import v2.std.orchestration {
+  Do,
+  ExitZero,
+  FailFast,
+  Pipeline,
+  PipelineStep,
+  Run,
+  While
+}
+import v2.std.collection { Absent }
+import v2.std.diagnostic { Accepted, None, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data orch_while_golden_note: String = "Goldens are hand-authored bytes independent of grammar row spellings; byte tests compare emit against these literals so row/emitter regressions cannot go green by perturbing both sides at once."
+
+data orch_while_locate_golden: String = "d=\"/sys/fs/cgroup$(awk -F: '$1==\"0\"\{print $3\}' /proc/self/cgroup)\"\nwhile [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done"
+
+data orch_while_body_command: String = "d=$(dirname \"$d\")"
+
+fn orch_while_locate_intent() -> PipelineStep {
+  While {
+    cond: ExitZero {
+      run: Run {
+        command: ci_floor_peak_while_cond_command,
+        env: [],
+        redirect: Absent,
+        capture: Absent
+      }
+    },
+    body: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: orch_while_body_command,
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    }
+  }
+}
+
+fn orch_while_locate_perturbed_intent() -> PipelineStep {
+  While {
+    cond: ExitZero {
+      run: Run {
+        command: concat(ci_floor_peak_while_cond_command, " # perturbed"),
+        env: [],
+        redirect: Absent,
+        capture: Absent
+      }
+    },
+    body: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: orch_while_body_command,
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    }
+  }
+}
+
+test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: ci_floor_peak_cgroup_locate_pipeline(),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_while_locate_golden) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_while_step_matches_golden_holds() -> Bool {
+  match orch_emit_pipeline(
+    p: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: ci_floor_peak_assign_cgroup_dir_command,
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        },
+        orch_while_locate_intent()
+      ],
+      on_failure: FailFast
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_while_locate_golden) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_while_emit_has_teeth_holds() -> Bool {
+  match orch_emit_step(s: orch_while_locate_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != "while [ -n \"$d\" ] && [ \"$d\" != \"/sys/fs/cgroup\" ] && [ ! -f \"$d/memory.peak\" ]; do d=$(dirname \"$d\"); done"
+    Rejected { diagnostics: _ } => false
+  }
+}

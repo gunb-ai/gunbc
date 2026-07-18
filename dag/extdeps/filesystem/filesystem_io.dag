@@ -33,4 +33,24 @@ service Filesystem {
     readonly
     transport file { path: "{path}" }
   }
+
+  operation Delete {
+    input { path: String }
+    output {
+      success: Bool from "write_success"
+      error: String from "error"
+    }
+    transport file { path: "{path}", verb: "delete" }
+  }
+
+  operation List {
+    input { path: String }
+    output {
+      entries: String from "content"
+      success: Bool from "write_success"
+      error: String from "error"
+    }
+    readonly
+    transport file { path: "{path}", verb: "list" }
+  }
 }

@@ -352,11 +352,11 @@ fn module_index_path_key(path: &Path) -> String {
 // (cli_run_source_root_anchor_scaffold row);
 // receipt: docs/plans/cli-run-reconcile-defork.md#interim-workspace-root-scaffold;
 // witness: dag/test/claim/cli_run_workspace_root_hand_rust_witness_test.dag).
-// 🟡 dissolve-on: try_anchor_source_root — declared layer/pool roots come from the
-// v2.lens.medium_structure_containment roster while `dag/compiler` is modeled-before-implemented,
-// so absence is a legitimate state skipped LOUDLY (counted line per root); DISSOLVES WHEN
-// cli_run.rs Chunk F lands (roots walk GENERATED; absence becomes a typed, located, counted
-// diagnostic at the roster layer) OR ROADMAP 5-dissolve-patches retires HAND path handling.
+// 🟡 dissolve-on: try_anchor_source_root — declared layer/pool roots come from HAND-Rust
+// while `dag/compiler` is modeled-before-implemented (§6 model-first), so absence is a
+// legitimate state skipped LOUDLY (counted line per root); DISSOLVES WHEN cli_run.rs Chunk F
+// lands (roots walk GENERATED; absence becomes a typed, located, counted diagnostic at the
+// roster layer) OR ROADMAP 5-dissolve-patches retires HAND path handling.
 // Discriminating receipts: try_anchor_source_root_resolves_declared_present_root /
 // try_anchor_source_root_skips_declared_absent_root.
 /// Resolve a source/pool-root spelling to an absolute directory under
@@ -14737,12 +14737,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // the std eq rows; dissolve with derived equality from inhabitance (dag/std/algebra).
     "src/v2/lens/live_read_classification.dag::live_read_carrier_eq",
     "src/v2/lens/live_read_classification.dag::path_pattern_eq",
-    // 2026-07-15 backfill: #6680 merge landed bash_composition_recognizer.dag::apply_role
-    // with a two-special-variant dispatch (IfFraming / UnmodeledKeyword mutate ScanState;
-    // every other TokenRole through close_run unchanged). The nfr witness is corpus-read;
-    // the landing PR predict-skipped it and the red surfaced on the next cold sweep. Burns
-    // down with the bash composition recognizer fold migration.
-    "src/v2/lens/bash_composition_recognizer.dag::apply_role",
     // 2026-07-12 backfill: sites that landed unrostered while the gate was red during the
     // land-red-with-local-proof era (revoked 2026-07-12). Declared here so the ratchet
     // re-arms; each burns down with its owning file's fold migration.
@@ -17746,25 +17740,6 @@ mod module_path_index_tests {
                 "src/v2/test/claim/manual".to_string(),
             ],
             "live authority scan-dir value drifted"
-        );
-    }
-
-    #[test]
-    fn lens_table_reader_projects_live_medium_structure_exception_roster() {
-        const LENS: &str = "src/v2/lens/medium_structure_containment.dag";
-        let roster = lens_string_list_data(LENS, "medium_structure_exception_roster", false);
-        assert!(
-            roster.iter().any(|p| p == "dag/gunbc/ci_workflow.dag"),
-            "live lens authority roster must include a known exception path; got {roster:?}"
-        );
-    }
-
-    #[test]
-    fn lens_table_reader_allows_empty_when_explicit() {
-        const LENS: &str = "src/v2/lens/medium_structure_containment.dag";
-        assert!(
-            lens_string_list_data(LENS, "empty_medium_marker_list", true).is_empty(),
-            "allow_empty=true must permit intentionally empty lens tables"
         );
     }
 
