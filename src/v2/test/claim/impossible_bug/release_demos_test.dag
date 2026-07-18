@@ -1,29 +1,5 @@
 module v2.test.impossible_bug.release_demos
 
-import v2.std.logic { Bool }
-import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim,
-  TransportTypeDrift,
-  impossible_bug_class_from_diagnostic_reason,
-  test_claim_input,
-  test_claim_expected_outcome
-}
-import v2.test.impossible_bug.transport_type_drift {
-  claim_target_contract_drift_impossible,
-  claim_wire_contract_drift_impossible,
-  falsification_target_contract_drift,
-  falsification_wire_contract_drift
-}
-import v2.test.impossible_bug.idempotency_contract {
-  claim_nonidempotent_in_idempotent_position_caught
-}
-import v2.test.impossible_bug.suboptimal_complexity {
-  claim_overcost_against_structural_bound_violates
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

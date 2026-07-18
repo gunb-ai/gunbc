@@ -11,35 +11,15 @@ import std.layout {
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  DeploymentStep, Artifact, Dependency,
-  DeploymentDependencyStep,
-  DeploymentArtifactStep,
-  ServerScript, SystemdUnit, TailscaleServeMapping,
+  DeploymentEnsuredStep,
+  DeploymentOwnedStep,
   deployment_spec_srv1,
   deployment_plan_listen_port,
-  deployment_owned_steps_retract_order,
-  deployment_step_ownership,
   gunbc_roadmap_server_path,
   gunbc_roadmap_systemd_unit_path,
 }
-import gunbc.ownership { Ownership }
-import gunbc.membership_reconcile {
-  MembershipPlan,
-  MemberEffect, EffectUpsert, EffectTeardown,
-  MemberRefusal,
-  EffectsOrRefusal, EffectsReady, ApplyRefused,
-  membership_reconcile, membership_effects,
-}
 import gunbc.node_http_server_emit { roadmap_dashboard_node_http_server_source }
-import v2.std.orchestration {
-  Pipeline, PipelineStep,
-  Do, If, Run,
-  FailFast, ExitZero, Not, DiscardAll
-}
-import v2.std.collection { Absent, Present }
-import v2.std.diagnostic { Accepted, Rejected, None }
-import v2.compiler.emit_orchestration { orch_emit_pipeline }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import gunbc.roadmap_static_site { roadmap_site_readback_script }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 

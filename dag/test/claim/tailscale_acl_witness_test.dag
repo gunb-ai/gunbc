@@ -1,22 +1,5 @@
 module test.claim.tailscale_acl_witness
 
-import extdeps.tailscale.acl {
-  operator_tailscale_acl_policy,
-  tag_ci,
-  tag_dashboard,
-  dashboard_cutover_mac_ip,
-  dashboard_cutover_mac_dissolution_trigger,
-  tag_ci_quarantine_holds,
-  tag_dashboard_admin_plane_holds,
-  dashboard_cutover_ip_is_transient_in_tag_ci_grant,
-  ssh_members_reach_ci_nonroot_only,
-  ssh_dashboard_reaches_ci_root_and_nonroot,
-  operator_acl_security_spine_holds,
-  tailscale_grants_external_authority_holds,
-}
-import gunbc.tailscale_acl_emit { expected_tailscale_acl_json }
-import extdeps.filesystem.filesystem_io { Filesystem }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,8 +1,7 @@
 module v2.std.integer
 
-import std.algebra { Cons, Empty, FreeMonoid, AbelianGroup, OrderedRing, Ordering, Less, Equal, Greater }
-import std.error_primitives { DivError, Result, DivideByZero, Ok, Err }
-import v2.std.algebra { TailAbsent, TailFound, fold_list, fold_list_node, length }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.algebra { AbelianGroup, TailAbsent, TailFound, fold_list, fold_list_node, Group, length, Magma, Monoid, OrderedRing, Ordering, Ring, Semigroup }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.diagnostic { Correction, Diagnostic, ExternalContractUnknown, Locus, NoCorrectionReason, Outcome, Accepted, None, Rejected, diagnostics_singleton, node_locus, outcome_accepted, outcome_rejected, port_locus, Unavailable }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence, is_empty_conj_root }
@@ -19,6 +18,7 @@ import v2.std.machine {
 }
 import v2.std.nat { Nat }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
+
 type GroupCompletion<M>
 type Int = GroupCompletion<Nat>
 type UInt = Nat
@@ -888,84 +888,25 @@ fn int_compare(a: Int, b: Int) -> Ordering {
 fn int_is_zero(a: Int) -> Bool {
   a == 0
 }
-
-fn int_sub(a: Int, b: Int) -> Int {
-  int_add(a: a, b: int_negate(a: b))
-}
-
-fn int_eq(a: Int, b: Int) -> Bool {
-  match int_compare(a: a, b: b) {
-    Equal => true
-    _ => false
-  }
-}
-
-fn int_ne(a: Int, b: Int) -> Bool {
-  match int_compare(a: a, b: b) {
-    Equal => false
-    _ => true
-  }
-}
-
-fn int_lt(a: Int, b: Int) -> Bool {
-  match int_compare(a: a, b: b) {
-    Less => true
-    _ => false
-  }
-}
-
-fn int_le(a: Int, b: Int) -> Bool {
-  match int_compare(a: a, b: b) {
-    Less => true
-    Equal => true
-    Greater => false
-  }
-}
-
-fn int_gt(a: Int, b: Int) -> Bool {
-  match int_compare(a: a, b: b) {
-    Greater => true
-    _ => false
-  }
-}
-
-fn int_ge(a: Int, b: Int) -> Bool {
-  match int_compare(a: a, b: b) {
-    Greater => true
-    Equal => true
-    Less => false
-  }
-}
-
-fn int_div_result(a: Int, b: Int) -> Result<Int, DivError> {
-  if int_is_zero(a: b) {
-    Err { value: DivideByZero }
-  } else {
-    Ok { value: a / b }
-  }
-}
-
 data int_abelian_group: AbelianGroup<Int> = AbelianGroup {
-  op: int_add,
-  identity: 0,
-  inverse: int_negate
+  group: Group {
+    monoid: Monoid {
+      semigroup: Semigroup { magma: Magma { op: int_add } },
+      identity: 0
+    },
+    inverse: int_negate
+  }
 }
 
 data int_ordered_ring: OrderedRing<Int> = OrderedRing {
-  add: int_add,
-  sub: int_sub,
-  zero: 0,
-  negate: int_negate,
-  mul: int_mul,
-  div: int_div_result,
-  one: 1,
-  compare: int_compare,
-  eq: int_eq,
-  ne: int_ne,
-  lt: int_lt,
-  le: int_le,
-  gt: int_gt,
-  ge: int_ge
+  ring: Ring {
+    add: int_abelian_group,
+    mul: Monoid {
+      semigroup: Semigroup { magma: Magma { op: int_mul } },
+      identity: 1
+    }
+  },
+  compare: int_compare
 }
 fn integer_divide_by_zero_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {

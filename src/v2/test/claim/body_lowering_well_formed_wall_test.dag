@@ -1,20 +1,5 @@
 module v2.test.claim.body_lowering_well_formed_wall
 
-import v2.std.node {
-  Arrow,
-  Atom,
-  ComputationNode,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  Value,
-  node_synthetic,
-  well_formed
-}
-import v2.std.logic { Bool }
 
 data body_lowering_well_formed_wall_note: String = "Discriminating RED control for the body-lowering-is-TOTAL change (clever-hawk-862): body-lowering never hard-rejects — a well-formed body it cannot lower is wrapper-retained (counted), and normalize's well_formed gate (03_normalize.dag well_formed(normalized)) is the SOLE structural wall. This witness proves 'total' is NOT fail-open: a genuinely MALFORMED body-lowering output still gets REJECTED by well_formed. The malformed shape is an Arrow whose arrow_body_edge target is a bare Atom — NOT a valid arrow-body realization (well_formed's arrow_body_target_is_valid_realization admits only a ComputationNode or a record-construct Conj). This is exactly the shape body_lower_body_from_fn_captured must never fabricate (its no-core-substrate arm wrapper-retains instead of forcing an atom operand into the Arrow body). If well_formed were weakened to admit it, the negative witness goes red. Paired with the positive control (a Value-bodied Arrow passes), the pair discriminates the wall, by execution."
 

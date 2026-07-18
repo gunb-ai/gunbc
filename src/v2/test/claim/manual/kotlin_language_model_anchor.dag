@@ -1,12 +1,5 @@
 module v2.test.manual.kotlin_language_model_anchor
-import v2.std.language_model { LanguageModel }
 
-import v2.extdeps.languages.kotlin {
-  kotlin_inhabitant_int_node,
-  kotlin_language_model,
-  kotlin_target_model_node
-}
-import v2.std.node { Node }
 
 type kotlin_anchor_language_model = LanguageModel
 

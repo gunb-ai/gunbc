@@ -1,5 +1,6 @@
 module gunbc.tools.bmc_onboard
 
+
 import extdeps.bmc.http
 import extdeps.filesystem.filesystem_io
 import extdeps.entropy
@@ -27,6 +28,8 @@ import extdeps.languages.json.emit {
   json_kv,
   json_string,
 }
+
+
 
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"

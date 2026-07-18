@@ -8,7 +8,7 @@ import v2.std.collection { Absent, List, Optional, Present, optional_absent, opt
 import v2.std.dependency { DependencyView }
 import v2.std.logic { Bool }
 import v2.std.materialize { hashes_contain }
-import v2.std.node { content_hash }
+import v2.std.node_content_hash { content_hash }
 import v2.workflow.operand_flow { OperandFlow, OperandFlowRefused, OperandFlowRefusalCause, OperandFlowRow }
 
 fn list_add_distinct_hash(xs: List<ContentHash>, v: ContentHash) -> List<ContentHash> {

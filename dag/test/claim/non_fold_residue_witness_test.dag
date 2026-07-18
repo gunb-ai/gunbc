@@ -1,5 +1,4 @@
 module test.claim.non_fold_residue_witness
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

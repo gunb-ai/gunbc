@@ -1,19 +1,5 @@
 module test.claim.srv3_network_identity_subsumption
 
-import std.logic { Bool }
-import std.disposition { Scaffold, Terminal }
-import gunbc.network_identity_subsumption {
-  srv3_pre_install_has_no_os_up_subsumption,
-  srv3_post_install_fixture_subsumes_fleet_slot,
-  bmc_static_reservation_does_not_subsume_os_fleet_slot,
-  network_identity_subsumes_fleet_slot,
-  srv3_os_lan_mac_dissolution_trigger,
-  srv3_os_lan_ipv4_dissolution_trigger,
-  srv3_bmc_static_lease_row,
-  srv3_os_up_dynamic_lease_row,
-}
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

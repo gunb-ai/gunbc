@@ -1,25 +1,5 @@
 module v2.test.manual.typescript_language_model_anchor
-import v2.std.language_model { LanguageModel }
 
-import v2.extdeps.languages.typescript {
-  ts_declared_inhabitants_root,
-  ts_bigint_algebra_inhabitance,
-  ts_bool_algebra_inhabitance,
-  ts_facts_bigint,
-  ts_facts_boolean,
-  ts_facts_number,
-  ts_inhabitant_bigint_node,
-  ts_inhabitant_boolean_node,
-  ts_inhabitant_number_node,
-  ts_fn_add_language_model,
-  ts_model_core_inhabitance_decls,
-  ts_number_algebra_inhabitance,
-  ts_primitive_bundle_from_bool_facts,
-  ts_fn_add_target_model
-}
-import v2.std.collection { List }
-import v2.std.model_core { AlgebraInhabitanceDecl, PrimitiveFactBundle }
-import v2.std.node { Node }
 
 type ts_anchor_language_model = LanguageModel
 

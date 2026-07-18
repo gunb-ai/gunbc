@@ -1,19 +1,5 @@
 module examples.html_markup_smoke
 
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
-import std.markup {
-  MarkupAttr,
-  MarkupNode,
-  ElementNode,
-  TextNode,
-  escape_text,
-}
-import extdeps.languages.html {
-  try_serialize_html_source,
-  HtmlEmitResult,
-  EmitOk,
-  EmitRejected,
-}
 
 data tiny: MarkupNode = ElementNode {
   tag: "p",

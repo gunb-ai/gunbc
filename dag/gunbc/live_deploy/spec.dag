@@ -1,24 +1,5 @@
 module gunbc.live_deploy.spec
 
-import std.types { String, NonEmptyStr, List, Int, Bool }
-import std.os.types { NobleNumbat2404Lts, OsPackageManager }
-import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
-import extdeps.apt {
-  package_tailscale,
-  package_nodejs,
-}
-import gunbc.fleet_intent { srv1_host, ComputeHost }
-import gunbc.fleet_intent_network {
-  srv1_tailscale_endpoint,
-  fleet_intent_network,
-  operator_host_srv1,
-}
-import gunbc.node_http_server_emit {
-  roadmap_dashboard_node_http_static_server_spec,
-}
-import extdeps.http.server { HttpServerListenConfig }
-import product.network_topology { NetworkEndpoint }
-import gunbc.ownership { Ownership, Owned, Ensured }
 
 type OwnedArtifactKind =
     ServerScript

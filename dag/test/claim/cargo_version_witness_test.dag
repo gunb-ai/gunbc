@@ -1,21 +1,5 @@
 module test.claim.cargo_version
 
-import extdeps.cargo {
-  CargoPackage,
-  CargoDependency,
-  RegistryDep,
-  Edition2021,
-  min_cargo_version,
-}
-import extdeps.cargo_version {
-  CargoVersionRequirement,
-  CargoToolVersionFloor,
-  default_stage0_package_version,
-  render_cargo_package_version_field,
-  render_cargo_package_header_prefix,
-  render_cargo_version_requirement_toml,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

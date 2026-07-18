@@ -1,8 +1,5 @@
 module gunbc.auth.optional_impersonation
 
-import std.types { Secret, Int }
-import extdeps.cloud.gcp.gcp { ServiceAccountEmail }
-import extdeps.cloud.gcp.iam
 
 pattern optional_impersonation(
   access_token: Secret,

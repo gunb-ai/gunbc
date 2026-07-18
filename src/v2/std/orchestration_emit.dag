@@ -38,8 +38,8 @@ type OrchestrationEmitMedium {
     String,
     String
   ) -> TargetModel
-  realize_if: fn(String, String) -> Outcome<TargetModel>
-  realize_if_else: fn(String, String, String) -> Outcome<TargetModel>
+  realize_if: fn(String, String) -> TargetModel
+  realize_if_else: fn(String, String, String) -> TargetModel
   realize_procedure: fn(String, String) -> TargetModel
   realize_call: fn(String, String) -> TargetModel
   realize_cmdsubst_assign: fn(String, String) -> TargetModel

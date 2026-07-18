@@ -2,20 +2,21 @@
 module gunbc.design_document
 
 import std.markdown {
-  MarkdownDocument, MarkdownBlock,
-  HeadingBlock, TextInline, H1,
+  MarkdownDocument, MarkdownBlock, MarkdownListItem,
+  HeadingBlock, ParagraphBlock, UnorderedListBlock, ThematicBreak,
+  TextInline, H1, H2,
 }
-import gunbc.plans.md_helpers { h2, p, li, li_blocks, ul, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
+fn rule() -> MarkdownBlock { ThematicBreak }
 
 fn preamble_blocks() -> List<MarkdownBlock> {
   [
     h1(text: "gunbc — Design"),
     p(text: "`README.md` and `CLAUDE.md` symlink here — this is the single source of truth. (v1 ships the `gunbc` CLI and is v2's seed · v3 was removed, migrated into v1 · v2 is active.)"),
     p(text: "This document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it (or an independent peer) — never a restatement of it. The principles below apply recursively, including to this document. It is a living draft rebuilt from first principles (the prior ~30k-line doc corpus was bankrupted 2026-06-16; it remains in git history). Examples are verified against the live tree or a git-history receipt; open threads are collected at the end."),
-    hr(),
+    rule(),
   ]
 }
 
@@ -118,7 +119,7 @@ fn section_7_blocks() -> List<MarkdownBlock> {
     h2(text: "7. Self-hosting (the principles applied to the compiler itself)"),
     p(text: "The compiler is a pure transform and an ordinary substrate fact, analyzable by its own lenses. It is written in itself: the `.dag` graph is the truth and Rust is one realization — a seed that shrinks toward zero. v2 emits its own sources as the **cleanest principled realization**, proven **by execution** — the emitted module compiles and is **behaviorally equivalent** to the seed on a discriminating corpus (green-by-execution + a discriminating RED, §5) — **not** by byte-matching the seed. A byte-identical fixed point is explicitly *not* the goal: it is a quality drag, forcing v2 to reproduce the seed's warts to match bytes and thereby cementing poor decisions (§1 — spending future time to preserve the present seed's accidents). The seed shrinks across a **typed self-host frontier**: each module is either *self-emitted* (green-by-execution) or *seed-retained*, and a seed-retained module is a **declared row with a reason and a migration trigger** — countable, prioritizable — never a silent escape hatch (§5; the `DecodeFidelity`/`Lossless` boundary, §4). Its tests are data. Its ontology dissolves into `std/` — no dual representation at the compiler/user boundary. This is the recursion: every principle above governs the system that implements them, and this document."),
     p(text: "The recursion's payoff is that **language design itself opens up.** It is normally locked — not by lack of will but by cost: a new check means owning a *compiler fork*, and a new language means an *adoption* problem. Both are dissolved here at once: a wall is a **row** (§2, no fork), and because the substrate is medium-agnostic — one grammar read in both directions over many media (§4) — that row applies *on top of an existing language* (no adoption). So language design collapses (compiler-fork × language) → (row + medium): a domain's bug-class can be made extinct in Rust or TypeScript without forking their compilers. It is sound exactly where ingest is `Lossless` and **fail-closed** where it is not (the `DecodeFidelity` boundary, §4) — \"any language, with a typed honesty boundary about where the wall holds,\" not a vibe. This is §1's *reduce convention to necessity* at the meta-level, and the place the purity trap bites hardest: bounded by §5 (\"never\" = decidability) and §6 (priced in displaced cost, not elegance)."),
-    hr(),
+    rule(),
   ]
 }
 

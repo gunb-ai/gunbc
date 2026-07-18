@@ -1,15 +1,5 @@
 module v2.test.round_trip.dag_comment_wall_test
 
-import v2.extdeps.languages.dag {
-  dag_block_comment_fidelity,
-  dag_line_comment_fidelity,
-  DagBlockCommentFailClosed,
-  DagLineCommentFailClosed
-}
-import v2.extdeps.languages.fidelity { FailClosed }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

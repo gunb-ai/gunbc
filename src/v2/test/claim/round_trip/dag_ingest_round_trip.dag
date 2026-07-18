@@ -1,26 +1,5 @@
 module v2.test.round_trip.dag_ingest_round_trip
 
-import v2.std.node { Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.extdeps.languages.dag {
-  dag_language_model,
-  dag_round_trip_atom,
-  dag_round_trip_edge,
-  dag_round_trip_bool_node,
-  dag_round_trip_grammar_ready,
-  dag_round_trip_lex_ready,
-  dag_round_trip_trivia_fidelity_resolved,
-  dag_round_trip_authorities_ready
-}
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  RoundTripClaim,
-  TestClaim,
-  TestClassification,
-  Tier3,
-  Integration,
-  manual_claim_anchor
-}
 
 fn dag_round_trip_input_node() -> Node {
   let lm = dag_language_model()

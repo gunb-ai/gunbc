@@ -1,10 +1,5 @@
 module test.claim.yaml_multiline_block_witness
 
-import extdeps.languages.yaml.types {
-  YamlValue, yaml_string, yaml_mapping, yaml_sequence, kv
-}
-import extdeps.languages.yaml.emit { serialize_yaml }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

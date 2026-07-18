@@ -4,6 +4,8 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone, CodeBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul, cell, row }
 
+
+
 fn host_effect_orchestration_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** design note for sign-off. Co-authored smart-newt-512 (dag-managed-infra) + neat-boar-71 (BMC onboarding). **Neither lane mints the interface until the shape is signed** (operator + bright-stag-194). Until then host effects ride neat-boar's `host_exec()` placeholder seam — *using* it, not minting the interface; every call migrates onto `apply()` in one move once signed."),
