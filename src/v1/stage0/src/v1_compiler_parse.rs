@@ -46,8 +46,8 @@ use crate::v1_std_core::TokenShape::{
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, authored_name_at, empty_intern_table, error_type, expr_call_func_at,
-    expr_var_name_at, field_access_field_at, field_access_spine, field_binding_pattern,
-    field_node_cardinality,
+    expr_var_name_at, field_access_base, field_access_field_at, field_access_spine,
+    field_binding_pattern, field_node_cardinality,
     field_node_default_value, field_node_from_key, field_node_name_at, field_node_type_expr,
     file_transport_node, import_node, intern, is_compiler_error, is_container_type, kernel_span,
     leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node, make_error_node,
@@ -11312,11 +11312,12 @@ pub fn try_postfix(
                     } else if is_uppercase_start(last_seg.clone()) {
                         match field_access_spine(lhs.clone(), ctx.source_indices.clone()) {
                             Some(spine) => {
-                                let r = parse_record_literal(
+                                let r = parse_record_literal_named(
                                     tokens.clone(),
                                     ctx.clone(),
                                     spine.dotted.clone(),
-                                    lhs.span.clone(),
+                                    field_access_chain_span(lhs.clone()),
+                                    kernel_span(spine.dotted.clone()),
                                 );
                                 if has_err(r.err.clone()) {
                                     return Rc::new(PostfixResult {
@@ -13154,11 +13155,39 @@ pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
     }
 }
 
+pub fn field_access_chain_span(texpr: Rc<Node>) -> Rc<SourceSpan> {
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprFieldAccess { summary: _, .. } => {
+            let base_span = field_access_chain_span(field_access_base(texpr.clone()));
+            let chain_end = match texpr.ident_span.clone() {
+                Some(is) => is.end,
+                None => texpr.span.end,
+            };
+            Rc::new(SourceSpan {
+                file: base_span.file.clone(),
+                start: base_span.start,
+                end: chain_end,
+            })
+        }
+        _ => texpr.span.clone(),
+    }
+}
+
 pub fn parse_record_literal(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
     name: String,
     span: Rc<SourceSpan>,
+) -> Rc<ExprResult> {
+    parse_record_literal_named(tokens, ctx, name, span.clone(), span)
+}
+
+pub fn parse_record_literal_named(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+    name: String,
+    span: Rc<SourceSpan>,
+    name_span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
     {
         let dummy_expr = parse_recovery_placeholder();
@@ -13198,7 +13227,7 @@ pub fn parse_record_literal(
                 r.fields.clone(),
                 None,
                 span.clone(),
-                span.clone(),
+                name_span.clone(),
             ),
             tokens: r2.tokens.clone(),
             ctx: r.ctx.clone(),
