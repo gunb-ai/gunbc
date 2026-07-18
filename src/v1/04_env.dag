@@ -49,6 +49,7 @@ type ScopeBinding {
 type SymbolIndex {
   entries: Map<String, Node>
   global_bare: Map<String, GlobalBareLookupState>
+  services: Map<String, Node>
 }
 
 type Scope {
@@ -56,7 +57,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map() }
 }
 
 fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
@@ -99,14 +100,24 @@ fn symbol_index_track_global_bare(
 fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Node) -> SymbolIndex {
   SymbolIndex {
     entries: map_insert(index.entries, qualified_name, resolved),
-    global_bare: index.global_bare
+    global_bare: index.global_bare,
+    services: index.services
   }
 }
 
 fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: TypeBinding) -> SymbolIndex {
   SymbolIndex {
     entries: map_insert(index.entries, concat(module_path, ".", binding.name), binding.resolved),
-    global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding)
+    global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
+    services: index.services
+  }
+}
+
+fn symbol_index_insert_service(index: SymbolIndex, name: String, item: Node) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    services: map_insert(index.services, name, item)
   }
 }
 

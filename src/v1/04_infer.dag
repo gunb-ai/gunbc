@@ -87,7 +87,7 @@ import v1.compiler.infer_env {
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
-  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl
+  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -6001,7 +6001,7 @@ fn symbol_index_insert_item(
   item: Node,
   source_indices: Map<String, NewlineIndex>
 ) -> SymbolIndex {
-  match local_binding_for_item(item: item, source_indices: source_indices) {
+  let with_decl = match local_binding_for_item(item: item, source_indices: source_indices) {
     Absent => index
     Present { value: binding } =>
       symbol_index_insert_decl(
@@ -6010,6 +6010,13 @@ fn symbol_index_insert_item(
         binding: binding
       )
   }
+  if item.transport != none && item.children |> count > 0 {
+    symbol_index_insert_service(
+      index: with_decl,
+      name: authored_name_at(source_indices: source_indices, node: item),
+      item: item
+    )
+  } else { with_decl }
 }
 
 fn disj_variant_name_count_inc(counts: Map<String, Int>, name: String) -> Map<String, Int> {
@@ -6750,12 +6757,26 @@ fn build_module_context(contributions: List<ItemContribution>,
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
+  let census_scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
+    match map_get(env.symbol_index.services, sname) {
+      Present { value: sitem } =>
+        let entries = sitem.children |> map(c =>
+          OpEntry { name: authored_name_at(source_indices: env.source_indices, node: c), outputs: inferred_to_outputs(inferred: c.inferred, span: c.span, source_indices: env.source_indices), params: c.params }
+        )
+        let root = namespace_root_from_properties(properties: sitem.properties, name: sname, source_indices: env.source_indices)
+        InferScopeComponents {
+          svc_registry: map_insert(acc.svc_registry, sname, entries),
+          svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
+        }
+      Absent => acc
+    }
+  )
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
-    svc_registry: local.svc_registry,
-    svc_locals: local.svc_locals
+    svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
+    svc_locals: map_merge(census_scope.svc_locals, local.svc_locals)
   )
   let parent_envs = flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {

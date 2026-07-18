@@ -108,6 +108,7 @@ pub struct ScopeBinding {
 pub struct SymbolIndex {
     pub entries: Rc<HashMap<String, Rc<Node>>>,
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    pub services: Rc<HashMap<String, Rc<Node>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -119,6 +120,7 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
         entries: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
+        services: v1_rt::rc_empty_map::<String, Rc<Node>>(),
     })
 }
 
@@ -210,6 +212,7 @@ pub fn symbol_index_insert(
             resolved.clone(),
         ),
         global_bare: index.global_bare.clone(),
+        services: index.services.clone(),
     })
 }
 
@@ -232,6 +235,19 @@ pub fn symbol_index_insert_decl(
             module_path.clone(),
             binding.clone(),
         ),
+        services: index.services.clone(),
+    })
+}
+
+pub fn symbol_index_insert_service(
+    index: Rc<SymbolIndex>,
+    name: String,
+    item: Rc<Node>,
+) -> Rc<SymbolIndex> {
+    Rc::new(SymbolIndex {
+        entries: index.entries.clone(),
+        global_bare: index.global_bare.clone(),
+        services: v1_rt::rc_map_insert(index.services.clone(), name.clone(), item.clone()),
     })
 }
 

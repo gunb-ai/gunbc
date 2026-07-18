@@ -57,7 +57,7 @@ pub use crate::v1_compiler_infer_env::{
     lookup_binding_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
     merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
     put_inductive_field, put_inductive_field_cross, str_bindings_from_bindings,
-    symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
@@ -12899,9 +12899,18 @@ pub fn symbol_index_insert_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
-    match local_binding_for_item(item.clone(), source_indices.clone()) {
+    let with_decl = match local_binding_for_item(item.clone(), source_indices.clone()) {
         None => index,
         Some(binding) => symbol_index_insert_decl(index, module_path.clone(), binding.clone()),
+    };
+    if item.transport.is_some() && ((item.children.clone().len() as i64) > 0) {
+        symbol_index_insert_service(
+            with_decl,
+            authored_name_at(source_indices.clone(), item.clone()),
+            item.clone(),
+        )
+    } else {
+        with_decl
     }
 }
 
@@ -14893,12 +14902,70 @@ pub fn build_module_context(
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
             merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
+        let census_scope = v1_rt::map_keys(&env.symbol_index.services.clone())
+            .iter()
+            .fold(
+                Rc::new(InferScopeComponents {
+                    svc_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
+                    svc_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                }),
+                |acc: Rc<InferScopeComponents>, sname: &String| match v1_rt::map_get(
+                    &env.symbol_index.services.clone(),
+                    sname.clone(),
+                ) {
+                    Some(sitem) => {
+                        let entries = Rc::new(
+                            sitem
+                                .children
+                                .clone()
+                                .iter()
+                                .map(|c| {
+                                    Rc::new(OpEntry {
+                                        name: authored_name_at(
+                                            env.source_indices.clone(),
+                                            c.clone(),
+                                        ),
+                                        outputs: inferred_to_outputs(
+                                            c.inferred.clone(),
+                                            c.span.clone(),
+                                            env.source_indices.clone(),
+                                        ),
+                                        params: c.params.clone(),
+                                    })
+                                })
+                                .collect::<std::vec::Vec<Rc<OpEntry>>>()
+                                .into(),
+                        );
+                        let root = namespace_root_from_properties(
+                            sitem.properties.clone(),
+                            sname.clone(),
+                            env.source_indices.clone(),
+                        );
+                        Rc::new(InferScopeComponents {
+                            svc_registry: v1_rt::rc_map_insert(
+                                acc.svc_registry.clone(),
+                                sname.clone(),
+                                entries,
+                            ),
+                            svc_locals: v1_rt::rc_map_insert(
+                                acc.svc_locals.clone(),
+                                root.clone(),
+                                nominal_type_binding(root.clone()),
+                            ),
+                        })
+                    }
+                    None => acc,
+                },
+            );
         let merged_scope = merge_scope_from_imports(
             resolved_imports.clone(),
             parent_index.clone(),
             env.clone(),
-            local.svc_registry.clone(),
-            local.svc_locals.clone(),
+            v1_rt::rc_map_merge(
+                census_scope.svc_registry.clone(),
+                local.svc_registry.clone(),
+            ),
+            v1_rt::rc_map_merge(census_scope.svc_locals.clone(), local.svc_locals.clone()),
         );
         let parent_envs = Rc::new({
             let mut __result = Vec::new();
