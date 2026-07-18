@@ -198,23 +198,38 @@ pub fn func_sig_from_global_bare(
                                 type_env.clone(),
                                 excluded.clone(),
                             );
-                            let sig_env =
-                                crate::v1_compiler_infer_env::env_with_type_variable_bindings(
-                                    type_env.clone(),
-                                    Rc::new(v1_rt::map_keys(&excluded.clone())),
+                            let needs_resolution = (qualified_return.connective.clone()
+                                == Connective::NoConnective)
+                                && ((qualified_return.children.clone().len() as i64) > 0)
+                                && (qualified_return.inferred.clone() == None);
+                            if needs_resolution {
+                                let sig_env =
+                                    crate::v1_compiler_infer_env::env_with_type_variable_bindings(
+                                        type_env.clone(),
+                                        Rc::new(v1_rt::map_keys(&excluded.clone())),
+                                    );
+                                let rr = crate::v1_compiler_infer_resolve::resolve_node(
+                                    qualified_return.clone(),
+                                    sig_env.clone(),
+                                    type_env.module_path.clone(),
                                 );
-                            let rr = crate::v1_compiler_infer_resolve::resolve_node(
-                                qualified_return.clone(),
-                                sig_env.clone(),
-                                type_env.module_path.clone(),
-                            );
-                            if ((rr.diagnostics.clone().len() as i64) > 0) {
-                                None
+                                if ((rr.diagnostics.clone().len() as i64) > 0) {
+                                    None
+                                } else {
+                                    Some(Rc::new(ResolvedFuncSig {
+                                        name: name.clone(),
+                                        params: node.params.clone(),
+                                        inferred: rr.resolved.clone(),
+                                        is_async: false,
+                                        output_provenance: Rc::new(vec![]),
+                                        variant_provenance: v1_rt::rc_empty_map(),
+                                    }))
+                                }
                             } else {
                                 Some(Rc::new(ResolvedFuncSig {
                                     name: name.clone(),
                                     params: node.params.clone(),
-                                    inferred: rr.resolved.clone(),
+                                    inferred: qualified_return.clone(),
                                     is_async: false,
                                     output_provenance: Rc::new(vec![]),
                                     variant_provenance: v1_rt::rc_empty_map(),
