@@ -91,13 +91,19 @@ pub fn func_sig_from_global_bare(
         None => match lookup_binding_by_name(type_env.clone(), name.clone()) {
             Some(binding) => {
                 let node = binding.resolved.clone();
-                if ((node.params.clone().len() as i64) > 0) || node.inferred.is_some() {
+                if ((node.params.clone().len() as i64) > 0)
+                    || node.inferred.is_some()
+                    || node.type_annotation.is_some()
+                {
                     Some(Rc::new(ResolvedFuncSig {
                         name: name.clone(),
                         params: node.params.clone(),
                         inferred: match node.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved { node: inferred, .. }) => inferred,
-                            _ => error_type(),
+                            _ => match node.type_annotation.clone() {
+                                Some(ann) => ann.clone(),
+                                None => error_type(),
+                            },
                         },
                         is_async: false,
                         output_provenance: Rc::new(vec![]),
