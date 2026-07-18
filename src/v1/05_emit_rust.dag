@@ -1686,6 +1686,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
+    type_decl_items: base_info.type_decl_items,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -1788,6 +1789,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   let shared = build_shared_types(type_summaries: base_info.type_summaries, recursive_type_set: base_info.recursive_type_set, target: Rust)
   let emit_info = EmitGraphInfo {
     type_summaries: base_info.type_summaries,
+    type_decl_items: base_info.type_decl_items,
     recursive_type_set: base_info.recursive_type_set,
     fielded_variants: base_info.fielded_variants,
     positional_payload_variants: base_info.positional_payload_variants,
@@ -3311,6 +3313,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     }
     let fn_emit_info = EmitGraphInfo {
       type_summaries: emit_info.type_summaries,
+      type_decl_items: emit_info.type_decl_items,
       recursive_type_set: emit_info.recursive_type_set,
       fielded_variants: emit_info.fielded_variants,
       positional_payload_variants: emit_info.positional_payload_variants,
@@ -4104,7 +4107,7 @@ fn emit_tco_param(param: Node, generic_param_names: List<String>, shared_types: 
 fn emit_func_params(params: List<Node>, uses: List<Node>, service_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, read_only_params: Set<String>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let param_strs = params |> map(p => emit_param(param: p, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, read_only_params: read_only_params, variant_to_enum: variant_to_enum, env: env))
   let resource_strs = uses |> map(u =>
-    concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices))
+    concat(emit_ident(name: resource_use_name_at(n: u, source_indices: source_indices), target: Rust), ": &", render_rust_type(n: resource_use_resource(n: u), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info()))
   )
   let service_strs = service_names |> map(sn =>
     concat(service_var_name(service_name: sn), ": &", sanitize_service_name(name: sn))
@@ -4553,7 +4556,7 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
     Present { value: Resolved { node: rt } } =>
       authored_name_at(source_indices: source_indices, node: rt) == "Optional"
         && rt.return_cardinality != CardOptional
-        && rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info()))
+        && rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices, emit_info: emit_info))
     _ => false
   }
 
@@ -5015,7 +5018,7 @@ fn rust_runtime_bridge_name(function_name: String) -> String {
 fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
   match map_type.children |> skip(1) |> first {
     Present { value: value_child } =>
-      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+      let rendered = render_rust_type(n: child_type_node(ch: value_child), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
       if rendered == "" { "" } else { rendered }
     Absent => ""
   }
@@ -5024,7 +5027,7 @@ fn rust_empty_map_value_type_str(map_type: Node, shared_types: Set<String>, corp
 fn rust_empty_map_kv_type_str(map_type: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
   let key_str = match map_type.children |> first {
     Present { value: key_child } =>
-      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
+      render_rust_type(n: child_type_node(ch: key_child), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
     Absent => ""
   }
   let val_str = rust_empty_map_value_type_str(map_type: map_type, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
@@ -5841,6 +5844,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
           Present { value: acc_name } =>
             EmitGraphInfo {
               type_summaries: emit_info.type_summaries,
+              type_decl_items: emit_info.type_decl_items,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
               positional_payload_variants: emit_info.positional_payload_variants,
@@ -5865,6 +5869,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
           Present { value: acc_name } =>
             EmitGraphInfo {
               type_summaries: emit_info.type_summaries,
+              type_decl_items: emit_info.type_decl_items,
               recursive_type_set: emit_info.recursive_type_set,
               fielded_variants: emit_info.fielded_variants,
               positional_payload_variants: emit_info.positional_payload_variants,
@@ -7448,7 +7453,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   } else {
     concat("&self, ", params_str)
   }
-  let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices)
+  let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_inferred = resolved_type(n: op_node)
   let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, corpus_repr: corpus_repr, env: env)
@@ -8270,7 +8275,7 @@ fn emit_capability_method(cap_node: Node, shared_types: Set<String>, corpus_repr
   } else {
     concat("&self, ", params_str)
   }
-  let ret = render_rust_type(n: resolved_type(n: cap_node), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices)
+  let ret = render_rust_type(n: resolved_type(n: cap_node), shared_types: shared_types, corpus_repr: corpus_repr, source_indices: env.source_indices, emit_info: empty_emit_graph_info())
   let items = rust_items()
   concat(items.async_prefix, items.func_keyword, " ", emit_ident(name: authored_name(env: env, node: cap_node), target: Rust), "(", all_params, ") -> Result<", ret, ", Box<dyn std::error::Error>>;")
 }
