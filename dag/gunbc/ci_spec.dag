@@ -9,8 +9,12 @@ import gunbc.ci_gate {
 }
 import gunbc.ci_layer_roots {
   witness_layer_roots,
-  witness_layer_source_flags_rooted,
   witness_discovery_scan_dirs
+}
+import gunbc.cli_invoke {
+  claim_executor_run_plan_shell,
+  claim_executor_verify_artifacts_shell,
+  gunbc_run_shell
 }
 import gunbc.commit_workflow {
   commit_gate_roster,
@@ -290,13 +294,8 @@ fn artifact_shell_path(name: String) -> String {
 }
 
 fn ci_floor_build_verify_script() -> String {
-  let bin = claim_executor_bin_shell()
-  let paths = fold(
-    ci_floor_required_artifact_names,
-    init: "",
-    f: (acc, name) => concat(acc, concat(" ", artifact_shell_path(name: name)))
-  )
-  concat(concat(concat(bin, " --verify-build-artifacts"), paths), "\n")
+  let paths = map(ci_floor_required_artifact_names, name => artifact_shell_path(name: name))
+  claim_executor_verify_artifacts_shell(artifact_paths: paths)
 }
 
 data ci_release_bins_archive_name: String = "release-bins.tgz"
@@ -345,10 +344,6 @@ fn ci_release_build_script() -> String {
   )
 }
 
-fn claim_executor_bin_shell() -> String {
-  "\"$ROOT/target/release/claim_executor\""
-}
-
 fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
 }
@@ -365,15 +360,12 @@ fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
 }
 
 fn ci_plan_artifact_compile_clean_invoke() -> String {
-  concat(
-    concat(
-      concat(
-        concat(claim_executor_bin_shell(), witness_layer_source_flags_rooted(roots: witness_layer_roots)),
-        " --plan-entry src/v2/workflow/ci_floor_plan.dag"
-      ),
-      " --plan-function gunbc_ci_plan_artifact_batches"
-    ),
-    ""
+  claim_executor_run_plan_shell(
+    source_roots: witness_layer_roots,
+    plan_entry: "src/v2/workflow/ci_floor_plan.dag",
+    plan_function: "gunbc_ci_plan_artifact_batches",
+    notice_title: Absent,
+    rooted: true
   )
 }
 
@@ -436,15 +428,12 @@ data regen_floor_plan_function: String = "gunbc_ci_regen_floor_batches"
 
 
 fn scheduler_invoke_with(spec: CiSpec, plan_function: String) -> String {
-  concat(
-    concat(
-      concat(
-        concat(concat(claim_executor_bin_shell(), witness_layer_source_flags_rooted(roots: witness_layer_roots)), concat(" --plan-entry ", floor_plan_entry)),
-        concat(" --plan-function ", plan_function)
-      ),
-      concat(concat(" --notice-title \"", spec.notice_title), "\"")
-    ),
-    ""
+  claim_executor_run_plan_shell(
+    source_roots: witness_layer_roots,
+    plan_entry: floor_plan_entry,
+    plan_function: plan_function,
+    notice_title: Present { value: spec.notice_title },
+    rooted: true
   )
 }
 
@@ -526,15 +515,12 @@ fn gunbc_ci_floor_run(spec: CiSpec) -> String {
 fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),
-    concat(
-      concat(
-        concat(
-          concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags_rooted(roots: witness_layer_roots)),
-          concat(" --entry ", stage.entry)
-        ),
-        concat(" --function ", stage.function)
-      ),
-      "\n"
+    gunbc_run_shell(
+      source_roots: witness_layer_roots,
+      entry: stage.entry,
+      function: stage.function,
+      rooted: true,
+      claim_run: false
     )
   )
 }
