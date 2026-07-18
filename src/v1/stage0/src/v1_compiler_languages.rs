@@ -371,20 +371,18 @@ pub struct ItemKeywords {
 }
 
 pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -> String {
-    {
-        let matching = Rc::new({
-            let mut __result = Vec::new();
-            for f in forms.clone().iter().cloned() {
-                if (f.kind.clone() == kind.clone()) {
-                    __result.push(f);
-                }
+    let matching = Rc::new({
+        let mut __result = Vec::new();
+        for f in forms.clone().iter().cloned() {
+            if (f.kind.clone() == kind.clone()) {
+                __result.push(f);
             }
-            __result
-        });
-        match matching.clone().first().cloned() {
-            Some(f) => f.keyword.clone(),
-            None => "__MISSING_ITEM_KEYWORD__".to_string(),
         }
+        __result
+    });
+    match matching.clone().first().cloned().as_deref().cloned() {
+        Some(f) => f.keyword.clone(),
+        None => "__MISSING_ITEM_KEYWORD__".to_string(),
     }
 }
 
@@ -1256,55 +1254,53 @@ pub fn binop_symbol(
     op: BinOp,
     algebra_field: Option<AlgebraFieldKind>,
 ) -> Option<String> {
-    {
-        let ops = target_operators(target.clone());
-        let op_matching = Rc::new({
+    let ops = target_operators(target.clone());
+    let op_matching = Rc::new({
+        let mut __result = Vec::new();
+        for spec in ops.clone().iter().cloned() {
+            if match spec.binop.clone().as_deref().cloned() {
+                Some(b) => (b.clone() == op.clone()),
+                None => false,
+            } {
+                __result.push(spec);
+            }
+        }
+        __result
+    });
+    let specific = match algebra_field.clone().as_deref().cloned() {
+        Some(af) => Rc::new({
             let mut __result = Vec::new();
-            for spec in ops.clone().iter().cloned() {
-                if match spec.binop.clone() {
-                    Some(b) => (b.clone() == op.clone()),
-                    None => false,
+            for spec in op_matching.clone().iter().cloned() {
+                if match spec.algebra_field.clone().as_deref().cloned() {
+                    Some(sf) => (sf.clone() == af.clone()),
+                    _ => false,
                 } {
                     __result.push(spec);
                 }
             }
             __result
-        });
-        let specific = match algebra_field.clone() {
-            Some(af) => Rc::new({
-                let mut __result = Vec::new();
-                for spec in op_matching.clone().iter().cloned() {
-                    if match spec.algebra_field.clone() {
-                        Some(sf) => (sf.clone() == af.clone()),
-                        _ => false,
-                    } {
-                        __result.push(spec);
-                    }
+        })
+        .first()
+        .cloned(),
+        None => None,
+    };
+    let result = match specific.clone().as_deref().cloned() {
+        Some(_) => specific.clone(),
+        None => Rc::new({
+            let mut __result = Vec::new();
+            for spec in op_matching.clone().iter().cloned() {
+                if (spec.algebra_field.clone() == None) {
+                    __result.push(spec);
                 }
-                __result
-            })
-            .first()
-            .cloned(),
-            None => None,
-        };
-        let result = match specific.clone() {
-            Some(_) => specific.clone(),
-            None => Rc::new({
-                let mut __result = Vec::new();
-                for spec in op_matching.clone().iter().cloned() {
-                    if (spec.algebra_field.clone() == None) {
-                        __result.push(spec);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned(),
-        };
-        match result.clone() {
-            Some(spec) => Some(spec.symbol.clone()),
-            None => None,
-        }
+            }
+            __result
+        })
+        .first()
+        .cloned(),
+    };
+    match result.clone().as_deref().cloned() {
+        Some(spec) => Some(spec.symbol.clone()),
+        None => None,
     }
 }
 
@@ -1375,10 +1371,8 @@ pub fn expression_semantics_for_target(target: RenderTarget) -> Rc<ExpressionSem
 }
 
 pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
-    {
-        let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
-        v1_rt::replace(tmpl.clone(), "{0}".to_string(), inner.clone())
-    }
+    let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
+    v1_rt::replace(tmpl.clone(), "{0}".to_string(), inner.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

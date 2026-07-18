@@ -316,9 +316,15 @@ pub fn guarded_union_str_bindings_into_acc(
         |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(
             &overlay,
             name.clone(),
-        ) {
+        )
+        .as_deref()
+        .cloned()
+        {
             None => state.clone(),
-            Some(incoming) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
+            Some(incoming) => match v1_rt::map_get(&state.bindings.clone(), name.clone())
+                .as_deref()
+                .cloned()
+            {
                 None => Rc::new(GuardedStrBindingsUnion {
                     bindings: v1_rt::rc_map_insert(
                         state.bindings.clone(),
@@ -384,9 +390,14 @@ pub fn guarded_union_str_bindings_into_overlay(
             conflicts: conflicts.clone(),
         }),
         |state: Rc<GuardedStrBindingsUnion>, name: String| match v1_rt::map_get(&acc, name.clone())
+            .as_deref()
+            .cloned()
         {
             None => state.clone(),
-            Some(accumulated) => match v1_rt::map_get(&state.bindings.clone(), name.clone()) {
+            Some(accumulated) => match v1_rt::map_get(&state.bindings.clone(), name.clone())
+                .as_deref()
+                .cloned()
+            {
                 None => Rc::new(GuardedStrBindingsUnion {
                     bindings: v1_rt::rc_map_insert(
                         state.bindings.clone(),
@@ -474,9 +485,12 @@ pub fn union_deps_map_into_acc(
         |m: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
             &overlay,
             name.clone(),
-        ) {
+        )
+        .as_deref()
+        .cloned()
+        {
             None => m.clone(),
-            Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
+            Some(incoming) => match v1_rt::map_get(&m, name.clone()).as_deref().cloned() {
                 None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
                 Some(existing) => {
                     if (existing.clone() == incoming.clone()) {
@@ -499,9 +513,12 @@ pub fn union_deps_map_into_overlay(
         |m: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
             &acc,
             name.clone(),
-        ) {
+        )
+        .as_deref()
+        .cloned()
+        {
             None => m.clone(),
-            Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
+            Some(accumulated) => match v1_rt::map_get(&m, name.clone()).as_deref().cloned() {
                 None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
                 Some(_incoming) => m.clone(),
             },
@@ -526,9 +543,12 @@ pub fn union_bool_set_into_acc(
 ) -> Rc<HashMap<String, bool>> {
     Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
         acc.clone(),
-        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&m, name.clone()) {
+        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&m, name.clone())
+            .as_deref()
+            .cloned()
+        {
             Some(_) => m.clone(),
-            None => match v1_rt::map_get(&overlay, name.clone()) {
+            None => match v1_rt::map_get(&overlay, name.clone()).as_deref().cloned() {
                 Some(v) => v1_rt::rc_map_insert(m.clone(), name.clone(), v.clone()),
                 None => m.clone(),
             },
@@ -542,9 +562,12 @@ pub fn union_bool_set_into_overlay(
 ) -> Rc<HashMap<String, bool>> {
     Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
         overlay.clone(),
-        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&acc, name.clone()) {
+        |m: Rc<HashMap<String, bool>>, name: String| match v1_rt::map_get(&acc, name.clone())
+            .as_deref()
+            .cloned()
+        {
             None => m.clone(),
-            Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
+            Some(accumulated) => match v1_rt::map_get(&m, name.clone()).as_deref().cloned() {
                 None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
                 Some(incoming) => {
                     if (incoming.clone() == accumulated.clone()) {
@@ -578,9 +601,12 @@ pub fn union_variant_locals_into_acc(
         |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
             &overlay,
             name.clone(),
-        ) {
+        )
+        .as_deref()
+        .cloned()
+        {
             None => m.clone(),
-            Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
+            Some(incoming) => match v1_rt::map_get(&m, name.clone()).as_deref().cloned() {
                 None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
                 Some(existing) => {
                     if binding_same_authority(existing.clone(), incoming.clone()) {
@@ -603,9 +629,12 @@ pub fn union_variant_locals_into_overlay(
         |m: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| match v1_rt::map_get(
             &acc,
             name.clone(),
-        ) {
+        )
+        .as_deref()
+        .cloned()
+        {
             None => m.clone(),
-            Some(accumulated) => match v1_rt::map_get(&m, name.clone()) {
+            Some(accumulated) => match v1_rt::map_get(&m, name.clone()).as_deref().cloned() {
                 None => v1_rt::rc_map_insert(m.clone(), name.clone(), accumulated.clone()),
                 Some(_incoming) => m.clone(),
             },
@@ -630,32 +659,27 @@ pub fn merge_type_env_cache_guarded(
     import_path: String,
     conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
 ) -> Rc<GuardedTypeEnvCacheMerge> {
-    {
-        let str_union = guarded_union_str_bindings(
-            base.str_bindings.clone(),
-            overlay.str_bindings.clone(),
-            import_path.clone(),
-            conflicts.clone(),
-        );
-        Rc::new(GuardedTypeEnvCacheMerge {
-            cache: Rc::new(TypeEnvCache {
-                deps_map: union_deps_map_skip_equal(
-                    base.deps_map.clone(),
-                    overlay.deps_map.clone(),
-                ),
-                str_bindings: str_union.bindings.clone(),
-                cycle_set_str: union_bool_set_skip_equal(
-                    base.cycle_set_str.clone(),
-                    overlay.cycle_set_str.clone(),
-                ),
-                variant_locals: union_variant_locals_skip_equal(
-                    base.variant_locals.clone(),
-                    overlay.variant_locals.clone(),
-                ),
-            }),
-            conflicts: str_union.conflicts.clone(),
-        })
-    }
+    let str_union = guarded_union_str_bindings(
+        base.str_bindings.clone(),
+        overlay.str_bindings.clone(),
+        import_path.clone(),
+        conflicts.clone(),
+    );
+    Rc::new(GuardedTypeEnvCacheMerge {
+        cache: Rc::new(TypeEnvCache {
+            deps_map: union_deps_map_skip_equal(base.deps_map.clone(), overlay.deps_map.clone()),
+            str_bindings: str_union.bindings.clone(),
+            cycle_set_str: union_bool_set_skip_equal(
+                base.cycle_set_str.clone(),
+                overlay.cycle_set_str.clone(),
+            ),
+            variant_locals: union_variant_locals_skip_equal(
+                base.variant_locals.clone(),
+                overlay.variant_locals.clone(),
+            ),
+        }),
+        conflicts: str_union.conflicts.clone(),
+    })
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
@@ -675,7 +699,10 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
 
 pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match intern_find(env.intern_table.clone(), name.clone()) {
-        Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
+        Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone())
+            .as_deref()
+            .cloned()
+        {
             Some(binding) => Some(binding.clone()),
             None => None,
         },
@@ -695,12 +722,21 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
+    match v1_rt::map_get(&env.str_bindings.clone(), name.clone())
+        .as_deref()
+        .cloned()
+    {
         Some(binding) => Some(binding.clone()),
-        None => match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
+        None => match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone())
+            .as_deref()
+            .cloned()
+        {
             Some(binding) => Some(binding.clone()),
             None => match intern_find(env.intern_table.clone(), name.clone()) {
-                Some(id) => match v1_rt::map_get(&env.bindings.clone(), id.clone()) {
+                Some(id) => match v1_rt::map_get(&env.bindings.clone(), id.clone())
+                    .as_deref()
+                    .cloned()
+                {
                     Some(binding) => Some(binding.clone()),
                     None => lookup_binding_after_global_bare(env.clone(), name.clone()),
                 },
@@ -759,7 +795,10 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
 }
 
 pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
-    match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
+    match v1_rt::map_get(&env.bindings.clone(), ident.clone())
+        .as_deref()
+        .cloned()
+    {
         Some(binding) => Some(binding.clone()),
         None => {
             let name = intern_str(env.intern_table.clone(), ident.clone());
@@ -769,7 +808,10 @@ pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
-    match v1_rt::map_get(&env.recursive_type_set.clone(), ident.clone()) {
+    match v1_rt::map_get(&env.recursive_type_set.clone(), ident.clone())
+        .as_deref()
+        .cloned()
+    {
         Some(_) => true,
         None => false,
     }
@@ -801,14 +843,14 @@ pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
 }
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
-    match node.ident.clone() {
+    match node.ident.clone().as_deref().cloned() {
         Some(id) => lookup_type(env.clone(), id.clone()),
         None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }
 
 pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
-    match node.ident.clone() {
+    match node.ident.clone().as_deref().cloned() {
         Some(id) => is_recursive_type(env.clone(), id.clone()),
         None => is_recursive_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
@@ -816,7 +858,10 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
 
 pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let local = match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
+        let local = match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone())
+            .as_deref()
+            .cloned()
+        {
             Some(fields) => fields.clone(),
             None => Rc::new(vec![]),
         };
@@ -896,26 +941,27 @@ pub fn put_inductive_field(
     field_name: String,
     shape: RecursionShape,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    let existing = match v1_rt::map_get(&fields, type_name.clone())
+        .as_deref()
+        .cloned()
     {
-        let existing = match v1_rt::map_get(&fields, type_name.clone()) {
-            Some(fs) => fs.clone(),
-            None => Rc::new(vec![]),
-        };
-        v1_rt::rc_map_insert(
-            fields.clone(),
-            type_name.clone(),
-            append_inductive_field_absent(
-                existing.clone(),
-                Rc::new(InductiveField {
-                    type_name: type_name.clone(),
-                    variant_name: variant_name.clone(),
-                    field_name: field_name.clone(),
-                    shape: shape.clone(),
-                    element_type: type_name.clone(),
-                }),
-            ),
-        )
-    }
+        Some(fs) => fs.clone(),
+        None => Rc::new(vec![]),
+    };
+    v1_rt::rc_map_insert(
+        fields.clone(),
+        type_name.clone(),
+        append_inductive_field_absent(
+            existing.clone(),
+            Rc::new(InductiveField {
+                type_name: type_name.clone(),
+                variant_name: variant_name.clone(),
+                field_name: field_name.clone(),
+                shape: shape.clone(),
+                element_type: type_name.clone(),
+            }),
+        ),
+    )
 }
 
 pub fn put_inductive_field_cross(
@@ -926,26 +972,27 @@ pub fn put_inductive_field_cross(
     shape: RecursionShape,
     element_type: String,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    let existing = match v1_rt::map_get(&fields, type_name.clone())
+        .as_deref()
+        .cloned()
     {
-        let existing = match v1_rt::map_get(&fields, type_name.clone()) {
-            Some(fs) => fs.clone(),
-            None => Rc::new(vec![]),
-        };
-        v1_rt::rc_map_insert(
-            fields.clone(),
-            type_name.clone(),
-            append_inductive_field_absent(
-                existing.clone(),
-                Rc::new(InductiveField {
-                    type_name: type_name.clone(),
-                    variant_name: variant_name.clone(),
-                    field_name: field_name.clone(),
-                    shape: shape.clone(),
-                    element_type: element_type.clone(),
-                }),
-            ),
-        )
-    }
+        Some(fs) => fs.clone(),
+        None => Rc::new(vec![]),
+    };
+    v1_rt::rc_map_insert(
+        fields.clone(),
+        type_name.clone(),
+        append_inductive_field_absent(
+            existing.clone(),
+            Rc::new(InductiveField {
+                type_name: type_name.clone(),
+                variant_name: variant_name.clone(),
+                field_name: field_name.clone(),
+                shape: shape.clone(),
+                element_type: element_type.clone(),
+            }),
+        ),
+    )
 }
 
 pub fn merge_inductive_fields_dedupe_note() -> String {
@@ -993,8 +1040,12 @@ pub fn merge_inductive_fields(
     Rc::new(v1_rt::map_keys(&right)).iter().cloned().fold(
         left.clone(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| {
-            match v1_rt::map_get(&right, type_name.clone()) {
-                Some(incoming) => match v1_rt::map_get(&acc, type_name.clone()) {
+            match v1_rt::map_get(&right, type_name.clone())
+                .as_deref()
+                .cloned()
+            {
+                Some(incoming) => match v1_rt::map_get(&acc, type_name.clone()).as_deref().cloned()
+                {
                     Some(existing) => {
                         if (existing.clone() == incoming.clone()) {
                             acc.clone()
@@ -1045,7 +1096,10 @@ pub fn inductive_fields_list_to_map(
     fields.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {
-            let existing = match v1_rt::map_get(&acc, field.type_name.clone()) {
+            let existing = match v1_rt::map_get(&acc, field.type_name.clone())
+                .as_deref()
+                .cloned()
+            {
                 Some(fs) => fs.clone(),
                 None => Rc::new(vec![]),
             };
