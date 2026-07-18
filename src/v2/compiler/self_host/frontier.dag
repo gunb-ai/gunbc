@@ -429,7 +429,7 @@ data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = executi
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
   located_reason: gate_a_flip_probe_unresolved_compiler_error_reason,
-  migration_trigger: ^migrate_when_emit_rc_optional_coherence_lands
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
