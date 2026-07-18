@@ -38,6 +38,7 @@ data realization_edge_path_prefixes: List<String> = [
   "src/v2/workflow/bash_command_fold_serialize",
   "src/v2/workflow/build_step_emit",
   "src/v2/workflow/ci_workflow_run_emit",
+  "src/v2/workflow/ci_release_build_emit",
   "src/v2/workflow/ci_retry_emit",
   "src/v2/workflow/ci_floor_peak_emit",
   "src/v2/workflow/orchestration_",

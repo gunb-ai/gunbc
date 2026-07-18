@@ -9,7 +9,7 @@ import gunbc.ci_spec {
   gunbc_ci_deploy_invoke,
   ci_release_build_line,
 }
-import v2.workflow.ci_workflow_run_emit { ci_release_build_script }
+import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   deploy_access_is_local_apply,

@@ -18,7 +18,7 @@ import gunbc.ci_spec {
   ci_documentation_only_floor_policy_note,
   compile_clean_floor_skip_witness_bin,
 }
-import v2.workflow.ci_workflow_run_emit { gunbc_ci_run_script, ci_release_build_script }
+import v2.workflow.ci_release_build_emit { gunbc_ci_run_script, ci_release_build_script }
 import gunbc.ci_diff_defaults { ci_merge_base_ref }
 import gunbc.ci_materialization {
   ci_floor_resolve_receipt_gate_script,
