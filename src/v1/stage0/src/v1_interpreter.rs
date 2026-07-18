@@ -7800,6 +7800,13 @@ fn eval_builtin_inner(
                 positional.get(5).copied(),
                 "shell_materialize_argv_for_operation",
             )?;
+            let unit = positional
+                .get(6)
+                .and_then(|v| match v {
+                    Value::Str(s) => Some(s.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default();
             let mut param_bindings = HashMap::new();
             param_bindings.insert("package".to_string(), Value::Str(package));
             param_bindings.insert("bin".to_string(), Value::Str(bin));
@@ -7807,6 +7814,9 @@ fn eval_builtin_inner(
                 "args".to_string(),
                 list_value(extra_args.into_iter().map(Value::Str).collect::<Vec<_>>()),
             );
+            if !unit.is_empty() {
+                param_bindings.insert("unit".to_string(), Value::Str(unit));
+            }
             let argv =
                 materialize_shell_argv_for_operation(path, service, operation, param_bindings)
                     .map_err(|e| InterpError::TypeError { msg: e })?;

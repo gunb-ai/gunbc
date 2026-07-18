@@ -1,0 +1,75 @@
+module tools.self_host_03_normalize_behavioral_transport
+
+import tools.self_host_curated_seed_linked_harness {
+  CuratedSeedLinkedShimWrite,
+  cssl_seed_linked_behavioral_receipt
+}
+import v2.std.collection { List }
+import std.logic { Bool }
+
+data sn_doc: String = "Wave 2 parallel flip (03_normalize self-emit): curated seed-linked behavioral receipt via tools.self_host_curated_seed_linked_harness (converged onto shared cssl authority — DESIGN §3 — do not re-fork a per-module copy). Emit ONLY v2.compiler.normalize via gunbc compile --entry; seed-retained dep shims under dag/tools/self_host_03_normalize_shims/ supply the ABI (text-free; dep closure NOT re-emitted via default lib.rs — avoids whole-closure fold_lowering text-carrier trap). Seed oracle: v1_compiler::v2_compiler_normalize in src/v1/stage0. Behavioral bar: cargo-green witness pairs emitted vs seed on normalize_fold_init + normalize (plain + --inject-fault RED on emitted side). BLOCKER (2026-07-16 rustc probe): verbatim emitted v2_compiler_normalize.rs still rustc-refuses — sn_emit_surface_rustc_refusal_note; cargo is the honest gate until #6775 emitter Rc/Optional coherence greens."
+
+data sn_emit_surface_rustc_refusal_note: String = "emit-surface rustc refusal (03_normalize entry, curated seed-link harness): gunbc compile --entry is clean (48 files, 0 diagnostics) and entry has 0 text-carrier refs, but verbatim v2_compiler_normalize.rs does not rustc-compile with seed-linked minimal dep shims — not fold_lowering text-carrier (deps are shimmed, not re-emitted). Located buckets: (1) Outcome::Accepted { diagnostics: None } where None=Diagnostics::None but field type is Rc<Diagnostics>; (2) match parse_production_emitted_identity_optional(...) { Some(..) } on Rc<Option<String>> without deref; (3) normalize_sugar_key_optional tail returns optional_present (Rc<Option<_>> in full emit) vs declared Option<Rc<SugarKey>>. Distinct from #6767 text-carrier prelude; needs emitter Rc-wrap / Optional coherence fix before frontier flip."
+
+data sn_seed_retained_note: String = "Seed oracle: v1_compiler::v2_compiler_normalize in src/v1/stage0 (hand-retained, independent of emitted artifact). Dissolve-on: sn_scaffold_dissolution_trigger."
+
+data sn_source_rel: String = "src/v2/compiler/03_normalize.dag"
+
+data sn_shim_lib_rel: String = "dag/tools/self_host_03_normalize_shims/lib.rs"
+
+data sn_shim_driver_rel: String = "dag/tools/self_host_03_normalize_shims/witness_main.rs"
+
+data sn_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_03_normalize_shims/* + sn behavioral transport wiring — seed-linked dep shim files and witness driver. DISSOLVES WHEN gunbc-emitted entry rustc-compiles under seed-linked harness without hand shims AND modeled self-host behavioral-equivalence harness emits comparison driver + manifest (cssl_v1_compiled_cargo_toml authority)."
+
+data sn_receipt_pass_marker: String = "SELF_HOST_03_NORMALIZE_BEHAVIORAL_RECEIPT: PASS"
+
+data sn_normalize_shim_writes: List<CuratedSeedLinkedShimWrite> = [
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_algebra.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_algebra.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_collection.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_collection.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_grammar.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_grammar.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_diagnostic.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_diagnostic.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_node.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_node.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_std_compilers_sugar.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_std_compilers_sugar.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_compiler_body_lowering_fold.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_compiler_body_lowering_fold.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_compiler_normalized_tree.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_compiler_normalized_tree.rs"
+  },
+  CuratedSeedLinkedShimWrite {
+    dest_rel: "v2_extdeps_languages_dag.rs",
+    source_rel: "dag/tools/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs"
+  }
+]
+
+fn sn_behavioral_receipt_holds() -> Bool {
+  cssl_seed_linked_behavioral_receipt(
+    source_rel: sn_source_rel,
+    shim_lib_rel: sn_shim_lib_rel,
+    shim_writes: sn_normalize_shim_writes,
+    driver_rel: sn_shim_driver_rel,
+    pass_marker: sn_receipt_pass_marker,
+    claim_entry_rel: "",
+    claim_function: ""
+  )
+}

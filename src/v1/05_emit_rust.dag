@@ -1539,6 +1539,13 @@ fn emit_phantom_zst_markers_for_enum(children: List<Node>, env: TypeEnv) -> Stri
   markers
 }
 
+fn phantom_marker_name_shadowed_by_real_type_item(items: List<Node>, source_indices: Map<String, NewlineIndex>, vname: String) -> Bool {
+  items |> any(item =>
+    authored_name_at(source_indices: source_indices, node: item) == vname
+    && (is_type_alias_item(item: item, source_indices: source_indices) || is_type_decl_item(item: item, source_indices: source_indices))
+  )
+}
+
 fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<String> {
   items
     |> filter(item => is_type_def_item(item: item) && item.children |> all(c => c.children |> count == 0))
@@ -1546,7 +1553,9 @@ fn collect_phantom_zst_marker_names(items: List<Node>, env: TypeEnv) -> List<Str
       fold(item.children, init: acc, f: (inner, child) =>
         if child.children |> count == 0 {
           let vname = authored_name(env: env, node: child)
-          if is_phantom_unit_variant_type_arg(env: env, variant_name: vname) && !inner |> any(n => n == vname) {
+          if is_phantom_unit_variant_type_arg(env: env, variant_name: vname)
+            && !inner |> any(n => n == vname)
+            && !phantom_marker_name_shadowed_by_real_type_item(items: items, source_indices: env.source_indices, vname: vname) {
             concat(inner, [vname])
           } else { inner }
         } else { inner }
@@ -2136,7 +2145,7 @@ fn reexport_source_module_name_with_visited(name: String, import_module: String,
 }
 
 fn import_module_enum_scope(import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
-  let physical = enum_names_in_module(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, type_summaries: type_summaries, module_index: module_index)
+  let physical = enum_names_in_module(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
   let reexport_parents = match map_get(export_sets, import_module) {
     Present { value: exported } =>
       sorted_map_keys(exported) |> filter(n =>
@@ -2161,14 +2170,13 @@ fn import_module_enum_scope(import_module: String, registry: Map<String, ItemInf
   unique_strings(items: concat(physical, reexport_parents))
 }
 
-fn enum_names_in_module(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>, module_index: ModuleIndex) -> List<String> {
+fn enum_names_in_module(module_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   match typed_module_by_name(module_name: module_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
     Absent => []
     Present { value: tm } =>
       tm.items
         |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
         |> map(item => authored_name_at(source_indices: source_indices, node: item))
-        |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
   }
 }
 
@@ -2656,7 +2664,7 @@ fn is_emittable_parametric_type_alias_item(item: Node, item_text: String, source
 fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>) -> String {
   if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
     ""
-  } else if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) {
+  } else if import_module_enums |> any(e => e == n) {
     ""
   } else {
     match find_variant_parent_in_module(
@@ -2697,19 +2705,19 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
   if deduped_names |> count == 0 {
     ""
   } else {
+    let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let top_level = deduped_names |> filter(n =>
       if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
         true
       } else if is_known_variant(type_summaries: type_summaries, name: n) {
-        is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
+        import_module_enums |> any(e => e == n)
       } else if imported_name_is_non_emittable_type(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, source_indices: source_indices, module_index: module_index) {
         false
       } else if is_kernel_type(name: n) {
         false
       } else { true }
     )
-    let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let imported_enums = deduped_names |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
+    let imported_enums = deduped_names |> filter(n => import_module_enums |> any(e => e == n))
     let all_parents = deduped_names |> map(n =>
       import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums)
     ) |> filter(p => p != "")
@@ -2718,7 +2726,7 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums) != "" {
         false
       } else if is_known_variant(type_summaries: type_summaries, name: n) {
-        is_enum_in_summaries(type_summaries: type_summaries, type_name: n)
+        import_module_enums |> any(e => e == n)
       } else { true }
     )
     let direct_names = unique_strings(items: non_variant_top)
@@ -2825,9 +2833,11 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
     let variant_lines = parent_list |> map(parent =>
       if is_host_freemonoid_vec_alias(name: parent, corpus_repr: emit_info.corpus_repr) { "" } else {
       let variants = deduped_names |> filter(n =>
-        if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+        if n == "None" || n == "Some" {
           false
-        } else if is_enum_in_summaries(type_summaries: type_summaries, type_name: n) {
+        } else if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+          false
+        } else if import_module_enums |> any(e => e == n) {
           false
         } else {
           match find_variant_parent_in_module(variant_name: n, module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
@@ -2852,8 +2862,8 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
       concat("use crate::", parent_mod, "::", parent, "::{", vars_str, "};")
       }
     )
-    let imported_enums = top_level |> filter(n => is_enum_in_summaries(type_summaries: type_summaries, type_name: n))
-    let wildcard_enum_lines = imported_enums
+    let final_imported_enums = top_level |> filter(n => import_module_enums |> any(e => e == n))
+    let wildcard_enum_lines = final_imported_enums
       |> filter(en => parent_list |> any(p => p == en) == false
         && !is_host_freemonoid_vec_alias(name: en, corpus_repr: emit_info.corpus_repr))
       |> map(en => concat("use crate::", mod_name, "::", en, "::*;"))
@@ -3463,11 +3473,19 @@ fn rust_phantom_marker_inner(unused: List<String>) -> String {
 
 fn rust_phantom_field_name() -> String { "_phantom" }
 
-fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
-  let has_fn_fields = match map_get(emit_info.type_summaries, name) {
+fn type_has_fn_fields(name: String, emit_info: EmitGraphInfo) -> Bool {
+  match map_get(emit_info.type_summaries, name) {
     Present { value: ts } => ts.has_fn_fields
     Absent => false
   }
+}
+
+fn struct_needs_serde(name: String, emit_info: EmitGraphInfo) -> Bool {
+  !type_has_fn_fields(name: name, emit_info: emit_info)
+}
+
+fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+  let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
   let derives = if has_fn_fields {
     "#[derive(Clone)]"
   } else if rust_nominal_ord_derives_for_shape(name: name, children: children, source_indices: env.source_indices) != "" {
@@ -3569,23 +3587,26 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   } else if rt_child.return_cardinality != CardOptional && set_contains(shared_types, authored_name_at(source_indices: env.source_indices, node: rt_child)) && !rust_type_is_rc_wrapped(type_name: generic_ty) {
     wrap_shared_type(target: Rust, inner: generic_ty)
   } else { generic_ty }
-  let rename_attr = match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key") |> first {
-    Present { value: prop } => match field_init_node_value(n: prop).expr_data {
-      ExprLiteral { value: lv } => match lv {
-        LitStr { value: key } => concat("    ", apply_type_template1(template: rust_serde_rename_template_text(), arg0: key), "\n")
+  let needs_serde = struct_needs_serde(name: struct_name, emit_info: emit_info)
+  let rename_attr = if !needs_serde { "" } else {
+    match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key") |> first {
+      Present { value: prop } => match field_init_node_value(n: prop).expr_data {
+        ExprLiteral { value: lv } => match lv {
+          LitStr { value: key } => concat("    ", apply_type_template1(template: rust_serde_rename_template_text(), arg0: key), "\n")
+          _ => ""
+        }
         _ => ""
       }
-      _ => ""
+      Absent => ""
     }
-    Absent => ""
   }
-  emit_rust_field_definition(authored: authored_name(env: env, node: child), final_ty: final_ty, rename_attr: rename_attr, indent: "    ", visibility: rust_visibility_prefix())
+  emit_rust_field_definition(authored: authored_name(env: env, node: child), final_ty: final_ty, rename_attr: rename_attr, indent: "    ", visibility: rust_visibility_prefix(), needs_serde: needs_serde)
 }
 
-fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: String, indent: String, visibility: String) -> String {
+fn emit_rust_field_definition(authored: String, final_ty: String, rename_attr: String, indent: String, visibility: String, needs_serde: Bool) -> String {
   let snake = to_snake(name: authored)
   let emitted = emit_ident(name: authored, target: Rust)
-  let keyword_rename = if emitted != snake && rename_attr == "" {
+  let keyword_rename = if needs_serde && emitted != snake && rename_attr == "" {
     concat(indent, "#[serde(rename = \"", snake, "\")]\n")
   } else { "" }
   concat(keyword_rename, rename_attr, indent, visibility, emitted, ": ", final_ty, ",")
@@ -3889,7 +3910,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
         let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
           concat("Box<", ty, ">")
         } else { ty }
-        emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "")
+        emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "", needs_serde: true)
       )
       let fields_str = field_lines |> join(separator: "\n")
       concat(rename_attr, "    ", child_text, " {\n", fields_str, "\n    },")
@@ -3901,7 +3922,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
       let final_ty = if needs_box_wrapping(n: rt_f, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices) {
         concat("Box<", ty, ">")
       } else { ty }
-      emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "")
+      emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "", needs_serde: true)
     )
     let fields_str = field_lines |> join(separator: "\n")
     concat(rename_attr, "    ", child_text, " {\n", fields_str, "\n    },")
@@ -4443,6 +4464,7 @@ type RcPatternAnalysis {
 type RcMatchAnalysis {
   needs_option_deref: Bool
   needs_deref: Bool
+  needs_rc_option_ref: Bool
 }
 
 fn empty_rc_pattern_analysis() -> RcPatternAnalysis {
@@ -4518,10 +4540,18 @@ fn analyze_rc_match(scrutinee: Node, arms: List<Node>, scrut_type: String, share
   }
   let arms_want_option = arm_analyses |> any(a => a.matches_option_rc_variant)
   let arms_want_deref = arm_analyses |> any(a => a.matches_rc_variant)
+  let scrutinee_is_rc_modeled_optional = match scrutinee.inferred {
+    Present { value: Resolved { node: rt } } =>
+      authored_name_at(source_indices: source_indices, node: rt) == "Optional"
+        && rt.return_cardinality != CardOptional
+        && rust_type_is_rc_wrapped(type_name: render_rust_type(n: rt, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: source_indices))
+    _ => false
+  }
 
   RcMatchAnalysis {
     needs_option_deref: arms_want_option,
-    needs_deref: if scrutinee_is_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref }
+    needs_deref: if scrutinee_is_optional || scrutinee_is_rc_modeled_optional { false } else { scrutinee_is_rc_wrapped || arms_want_deref },
+    needs_rc_option_ref: scrutinee_is_rc_modeled_optional
   }
 }
 
@@ -4771,13 +4801,13 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
 }
 
 fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
-  if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
+  let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
+  if (name == "none" || name == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
 
     let moves_by_value = set_contains(emit_info.movable, name)
     let sharing = language_spec(target: Rust).sharing
-    let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
     let ref_str = match variant_parent {
       Present { value: enum_name } =>
         let body = if name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
@@ -4831,10 +4861,10 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
   match texpr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: texpr, source_indices: si)
-      if n == "none" || n == "None" { emit_keyword(key: "null", target: Rust) }
+      let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
+      if (n == "none" || n == "None") && variant_parent == none { emit_keyword(key: "null", target: Rust) }
       else if n == "true" || n == "false" { emit_keyword(key: n, target: Rust) }
       else {
-        let variant_parent = effective_variant_parent(name: n, binding_kind: binding_kind, resolved_type: texpr.inferred, emit_info: emit_info, source_indices: si)
         match variant_parent {
           Present { value: enum_name } =>
             if n == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) {
@@ -6339,7 +6369,9 @@ fn emit_typed_match(scrutinee: Node, arms: List<Node>, registry: Map<String, Ite
 
   let needs_as_str = all_arms_are_string_lit(arms: arms) && arms |> count > 0
   let needs_string_from = has_string_lit_with_bind(arms: arms)
-  if rc_match.needs_option_deref {
+  if rc_match.needs_rc_option_ref {
+    concat("match ", scrut_str, ".as_ref() {\n", arms_str, "\n}")
+  } else if rc_match.needs_option_deref {
     concat("match ", scrut_str, ".as_deref()", clone_iterator_suffix(), " {\n", arms_str, "\n}")
   } else if rc_match.needs_deref {
     let sharing = language_spec(target: Rust).sharing
@@ -7133,7 +7165,9 @@ fn emit_rust_tco_match(frame: TcoFrame, fn_name: String, params: List<Node>, reg
         emit_typed_tco_match_arm(arm: arm, fn_name: fn_name, params: params, registry: registry, scope: frame.scope, depth: frame.depth, shared_types: shared_types, emit_info: emit_info, scrut_type: tco_scrut_type))
       let arms_str = arm_strs |> join(separator: "\n")
       let tco_needs_as_str = all_arms_are_string_lit(arms: arm_list) && arm_list |> count > 0
-      if rc_match.needs_option_deref {
+      if rc_match.needs_rc_option_ref {
+        concat("match ", scrut_str, ".as_ref() {\n", arms_str, "\n}")
+      } else if rc_match.needs_option_deref {
         concat("match ", scrut_str, ".as_deref()", clone_iterator_suffix(), " {\n", arms_str, "\n}")
       } else if rc_match.needs_deref {
         let sharing = language_spec(target: Rust).sharing

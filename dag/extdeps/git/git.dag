@@ -1,6 +1,6 @@
 module extdeps.git
 
-import std.types { CommitSha, Email, FilePath, GitRef, NonEmptyStr, Timestamp }
+import std.types { CommitSha, ContentHash, Email, FilePath, GitRef, NonEmptyStr, Timestamp }
 import std.measure { Percent, percent }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -226,11 +226,86 @@ type GitDiffRange
   = TwoDot
   | ThreeDot
 
-fn git_diff_unified_range_argv(base: GitRef, head: GitRef, range: GitDiffRange) -> List<String> {
+fn git_diff_range_argv(base: GitRef, head: GitRef, range: GitDiffRange) -> List<String> {
   match range {
     TwoDot => [base as String, head as String]
     ThreeDot => [concat(concat(base as String, "..."), head as String)]
   }
+}
+
+type GitRemoteRefParts {
+  remote: String
+  ref_name: String
+}
+
+fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts {
+  let parts = split(s: ref as String, delimiter: "/")
+  GitRemoteRefParts {
+    remote: parts.first(),
+    ref_name: fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+  }
+}
+
+fn git_shell_join_argv(argv: List<String>) -> String {
+  fold(argv, init: "", f: (acc, token) => if acc == "" { token } else { concat(concat(acc, " "), token) })
+}
+
+fn shape_git_toplevel_argv() -> List<String> {
+  ["git", "rev-parse", "--show-toplevel"]
+}
+
+fn git_toplevel_shell_subexpr_with_fallback() -> String {
+  concat(
+    "$(", concat(concat(git_shell_join_argv(argv: shape_git_toplevel_argv()), " 2>/dev/null || pwd"), ")")
+  )
+}
+
+fn git_toplevel_shell_subexpr() -> String {
+  concat("$(", concat(git_shell_join_argv(argv: shape_git_toplevel_argv()), ")"))
+}
+
+fn shape_git_fetch_no_tags_argv(remote: String, ref_name: String) -> List<String> {
+  ["git", "fetch", "--no-tags", remote, ref_name]
+}
+
+fn git_fetch_no_tags_shell(remote: String, ref_name: String, ignore_failure: Bool) -> String {
+  let cmd = git_shell_join_argv(argv: shape_git_fetch_no_tags_argv(remote: remote, ref_name: ref_name))
+  if ignore_failure {
+    concat(cmd, " 2>/dev/null || true")
+  } else {
+    cmd
+  }
+}
+
+fn shape_git_fetch_prune_argv(remote: String) -> List<String> {
+  ["git", "fetch", "--prune", remote]
+}
+
+fn git_fetch_prune_shell(remote: String) -> String {
+  git_shell_join_argv(argv: shape_git_fetch_prune_argv(remote: remote))
+}
+
+fn shape_git_show_tree_argv(ref: GitRef) -> List<String> {
+  ["git", "show", "-s", "--format=%T", ref as String]
+}
+
+fn shape_git_head_commit_short_argv() -> List<String> {
+  ["git", "rev-parse", "--short", "HEAD"]
+}
+
+fn shape_git_current_branch_argv() -> List<String> {
+  ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+}
+
+fn shape_git_branch_show_current_argv() -> List<String> {
+  ["git", "branch", "--show-current"]
+}
+
+fn git_observe_meta_shell_fragment() -> String {
+  concat(
+    "git branch=$(", concat(git_shell_join_argv(argv: shape_git_branch_show_current_argv()), " 2>/dev/null || echo unknown)"),
+    concat(" commit=$(", concat(git_shell_join_argv(argv: shape_git_head_commit_short_argv()), " 2>/dev/null || echo unknown)"))
+  )
 }
 
 service git.Core {
@@ -341,7 +416,7 @@ service git.Core {
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["git", "diff", "-U0", git_diff_unified_range_argv(base: base, head: head, range: range)] }
+    transport shell { argv: ["git", "diff", "-U0", git_diff_range_argv(base: base, head: head, range: range)] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
@@ -349,27 +424,13 @@ service git.Core {
   }
 
   operation DiffNameStatus {
-    input { base: GitRef, head: GitRef = "HEAD" }
+    input { base: GitRef, head: GitRef = "HEAD", range: GitDiffRange }
     output {
       raw: String from "stdout"
       success: Bool from "exit_success"
     }
     readonly
-    transport shell { argv: ["git", "diff", "--name-status", "-z", "{base}", "{head}"] }
-    exit {
-      0 => Unit
-      128 => String "Invalid ref or not a git repository"
-    }
-  }
-
-  operation DiffNameStatusMerge {
-    input { base: GitRef, head: GitRef = "HEAD" }
-    output {
-      raw: String from "stdout"
-      success: Bool from "exit_success"
-    }
-    readonly
-    transport shell { argv: ["git", "diff", "--name-status", "-z", "{base}...{head}"] }
+    transport shell { argv: ["git", "diff", "--name-status", "-z", git_diff_range_argv(base: base, head: head, range: range)] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
@@ -406,6 +467,63 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "File not found or invalid ref"
+    }
+  }
+
+  operation ShowTree {
+    input { ref: GitRef }
+    output {
+      tree: String from "stdout"
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    readonly
+    transport shell { argv: ["git", "show", "-s", "--format=%T", "{ref}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation FetchNoTags {
+    input { remote: String, ref: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "fetch", "--no-tags", "{remote}", "{ref}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Fetch failed"
+    }
+  }
+
+  operation FetchPrune {
+    input { remote: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "fetch", "--prune", "{remote}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Fetch failed"
+    }
+  }
+
+  operation HeadCommitShort {
+    input {}
+    output {
+      sha: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "--short", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
     }
   }
 }

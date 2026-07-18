@@ -31,6 +31,7 @@ import extdeps.bmc.serial_console {
   sol_console_capture_script,
 }
 import gunbc.srv3_sol_console_intent { srv3_sol_console_capture_intent }
+import extdeps.git { git_observe_meta_shell_fragment }
 import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -48,7 +49,7 @@ data srv3_host_effect_script_scaffold: Disposition = Scaffold {
 
 fn srv3_install_reconcile_observe_meta_script() -> String {
   concat(
-    "printf '%s\\n' \"Srv3InstallObserveReceipt: surface=observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\nprintf '%s\\n' \"Srv3InstallObserveReceipt: surface=git branch=$(git branch --show-current 2>/dev/null || echo unknown) commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)\"\n",
+    "printf '%s\\n' \"Srv3InstallObserveReceipt: surface=observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)\"\nprintf '%s\\n' \"Srv3InstallObserveReceipt: surface=", concat(git_observe_meta_shell_fragment(), "\"\n"),
   )
 }
 
