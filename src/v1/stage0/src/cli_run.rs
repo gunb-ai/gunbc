@@ -9189,7 +9189,21 @@ fn source_data_path_literal_touches(content: &str, touched: &str) -> bool {
 fn source_has_host_effect_sink(content: &str) -> bool {
     EFFECT_REACH_HOST_SINK_MARKERS
         .iter()
-        .any(|marker| content.contains(marker))
+        .any(|marker| content_contains_host_sink_marker(content, marker))
+}
+
+fn content_contains_host_sink_marker(content: &str, marker: &str) -> bool {
+    if marker.contains('.') {
+        return content.contains(marker);
+    }
+    // Bare callee tokens (`Read`, `Run`): match call-site shapes only — naive
+    // `contains("Read")` false-positives on `ReadsLiveTree` disposition imports.
+    content.lines().any(|line| {
+        let line = line.trim();
+        line.contains(&format!(".{marker}("))
+            || line.contains(&format!(" {marker}("))
+            || line.contains(&format!("({marker}("))
+    })
 }
 
 fn import_closure_repo_paths_for_entry(
