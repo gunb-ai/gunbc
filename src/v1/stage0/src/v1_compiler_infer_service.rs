@@ -59,8 +59,6 @@ pub fn is_typed_service_call_receiver(
                 } => match Rc::new(f.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
                     .first()
                     .cloned()
-                    .as_deref()
-                    .cloned()
                 {
                     Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
                     None => false,
@@ -101,15 +99,17 @@ pub fn collect_typed_service_calls(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    let result = collect_typed_service_calls_into(
-        texpr.clone(),
-        Rc::new(UniqueAccum {
-            seen: v1_rt::rc_empty_map::<String, bool>(),
-            result: Rc::new(vec![]),
-        }),
-        source_indices.clone(),
-    );
-    result.result.clone()
+    {
+        let result = collect_typed_service_calls_into(
+            texpr.clone(),
+            Rc::new(UniqueAccum {
+                seen: v1_rt::rc_empty_map::<String, bool>(),
+                result: Rc::new(vec![]),
+            }),
+            source_indices.clone(),
+        );
+        result.result.clone()
+    }
 }
 
 pub fn collect_typed_service_calls_into(
@@ -195,109 +195,63 @@ pub fn collect_called_func_names(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
-    let result = collect_called_func_names_into(
-        texpr.clone(),
-        Rc::new(UniqueAccum {
-            seen: v1_rt::rc_empty_map::<String, bool>(),
-            result: Rc::new(vec![]),
-        }),
-        source_indices.clone(),
-    );
-    result.result.clone()
+    {
+        let result = collect_called_func_names_into(
+            texpr.clone(),
+            Rc::new(UniqueAccum {
+                seen: v1_rt::rc_empty_map::<String, bool>(),
+                result: Rc::new(vec![]),
+            }),
+            source_indices.clone(),
+        );
+        result.result.clone()
+    }
 }
 
 pub fn expand_transitive_services_once(
     modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    modules.clone().iter().cloned().fold(
-        registry.clone(),
-        |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| {
-            m.items.clone().iter().cloned().fold(
-                reg,
-                |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
-                    let item_name =
-                        authored_name_at(m.type_env.clone().source_indices.clone(), item.clone());
-                    match v1_rt::map_get(&reg2, item_name.clone()).as_deref().cloned() {
-                        Some(info) => {
-                            let has_no_body = (item.body.clone() == None);
-                            if has_no_body.clone() {
-                                reg2.clone()
-                            } else {
-                                {
-                                    let called = collect_called_func_names(
-                                        item.body.clone().clone().unwrap(),
-                                        m.type_env.clone().source_indices.clone(),
-                                    );
-                                    let extra = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for callee_name in called.clone().iter().cloned() {
-                                            __result.extend(
-                                                (*match v1_rt::map_get(&reg2, callee_name.clone())
-                                                    .as_deref()
-                                                    .cloned()
-                                                {
-                                                    Some(callee_info) => {
-                                                        callee_info.service_names.clone()
-                                                    }
-                                                    None => Rc::new(vec![]),
-                                                })
-                                                .iter()
-                                                .cloned(),
-                                            );
-                                        }
-                                        __result
-                                    });
-                                    let merged = extra.clone().iter().cloned().fold(
-                                        info.service_names.clone(),
-                                        |svc_list: Rc<Vec<String>>, svc: String| {
-                                            if {
-                                                let mut __found = false;
-                                                for s in svc_list.clone().iter().cloned() {
-                                                    if (s.clone() == svc.clone()) {
-                                                        __found = true;
-                                                        break;
-                                                    }
-                                                }
-                                                __found
-                                            } {
-                                                svc_list.clone()
-                                            } else {
-                                                v1_rt::rc_list_push(svc_list.clone(), svc.clone())
-                                            }
-                                        },
-                                    );
-                                    let same_count = ((merged.clone().len() as i64)
-                                        == (info.service_names.clone().len() as i64));
-                                    if same_count.clone() {
-                                        reg2.clone()
-                                    } else {
-                                        v1_rt::rc_map_insert(
-                                            reg2.clone(),
-                                            item_name.clone(),
-                                            Rc::new(ItemInfo {
-                                                name: info.name.clone(),
-                                                module_name: info.module_name.clone(),
-                                                kind: info.kind.clone(),
-                                                service_names: merged.clone(),
-                                                resource_names: info.resource_names.clone(),
-                                                params: info.params.clone(),
-                                                is_self_recursive: info.is_self_recursive.clone(),
-                                                has_non_tail_self_call: info
-                                                    .has_non_tail_self_call
-                                                    .clone(),
-                                            }),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        None => reg2.clone(),
+    modules.clone().iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
+        let item_name = authored_name_at(m.type_env.clone().source_indices.clone(), item.clone());
+match v1_rt::map_get(&reg2, item_name.clone()) {
+    Some(info) => {
+            let has_no_body = (item.body.clone() == None);
+if has_no_body.clone() {
+                reg2.clone()
+            } else {
+                {
+                    let called = collect_called_func_names(item.body.clone().clone().unwrap(), m.type_env.clone().source_indices.clone());
+let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
+    Some(callee_info) => callee_info.service_names.clone(),
+    None => Rc::new(vec![]),
+}).iter().cloned()); } __result });
+let merged = extra.clone().iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.clone().iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
+                        svc_list.clone()
+                    } else {
+                        v1_rt::rc_list_push(svc_list.clone(), svc.clone())
+                    });
+let same_count = ((merged.clone().len() as i64) == (info.service_names.clone().len() as i64));
+if same_count.clone() {
+                        reg2.clone()
+                    } else {
+                        v1_rt::rc_map_insert(reg2.clone(), item_name.clone(), Rc::new(ItemInfo {
+    name: info.name.clone(),
+    module_name: info.module_name.clone(),
+    kind: info.kind.clone(),
+    service_names: merged.clone(),
+    resource_names: info.resource_names.clone(),
+    params: info.params.clone(),
+    is_self_recursive: info.is_self_recursive.clone(),
+    has_non_tail_self_call: info.has_non_tail_self_call.clone(),
+}))
                     }
-                },
-            )
-        },
-    )
+}
+            }
+},
+    None => reg2.clone(),
+}
+}))
 }
 
 pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
@@ -353,10 +307,7 @@ pub fn check_service_field_access_node(
                 ),
                 field.clone(),
             );
-            match v1_rt::map_get(&service_registry, path.clone())
-                .as_deref()
-                .cloned()
-            {
+            match v1_rt::map_get(&service_registry, path.clone()) {
                 Some(_) => Some(nominal_type_ref(path.clone())),
                 None => None,
             }
@@ -378,10 +329,7 @@ pub fn check_service_method_call_node(
         match v1_rt::map_get(
             &service_registry,
             authored_name_at(source_indices.clone(), receiver_type.clone()),
-        )
-        .as_deref()
-        .cloned()
-        {
+        ) {
             Some(ops) => {
                 let matching = Rc::new({
                     let mut __result = Vec::new();
@@ -392,7 +340,7 @@ pub fn check_service_method_call_node(
                     }
                     __result
                 });
-                match matching.clone().first().cloned().as_deref().cloned() {
+                match matching.clone().first().cloned() {
                     Some(op) => {
                         if ((op.outputs.clone().len() as i64) == 0) {
                             Some(Rc::new(ServiceMethodResult {

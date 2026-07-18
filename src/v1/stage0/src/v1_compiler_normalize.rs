@@ -32,7 +32,7 @@ pub fn check_bare_containers(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let has_structure = ((match n.body.clone().as_deref().cloned() {
+        let has_structure = ((match n.body.clone() {
             Some(_) => true,
             None => false,
         } || ((n.uses.clone().len() as i64) > 0))
@@ -98,13 +98,13 @@ pub fn check_bare_containers(
             }
             __result
         });
-        let type_ann_diags = match n.type_annotation.clone().as_deref().cloned() {
+        let type_ann_diags = match n.type_annotation.clone() {
             Some(ta) => {
                 check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone())
             }
             None => Rc::new(vec![]),
         };
-        let body_diags = match n.body.clone().as_deref().cloned() {
+        let body_diags = match n.body.clone() {
             Some(b) => {
                 check_bare_containers(b.clone(), module_name.clone(), source_indices.clone())
             }
@@ -113,7 +113,7 @@ pub fn check_bare_containers(
         let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
             Rc::new(vec![])
         } else {
-            match n.inferred.clone().as_deref().cloned() {
+            match n.inferred.clone() {
                 Some(inf) => match (*inf.clone()).clone() {
                     InferredNode::Resolved { node: rn, .. } => check_bare_containers(
                         rn.clone(),
@@ -181,41 +181,45 @@ pub fn normalize_module_diagnostics(
     m: Rc<ResolvedModule>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
-    let items = module_items(m.module.clone());
-    Rc::new({
-        let mut __result = Vec::new();
-        for item in items.clone().iter().cloned() {
-            __result.extend(
-                (*check_bare_containers(
-                    item.clone(),
-                    authored_name_at(source_indices.clone(), m.module.clone()),
-                    source_indices.clone(),
-                ))
-                .iter()
-                .cloned(),
-            );
-        }
-        __result
-    })
+    {
+        let items = module_items(m.module.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for item in items.clone().iter().cloned() {
+                __result.extend(
+                    (*check_bare_containers(
+                        item.clone(),
+                        authored_name_at(source_indices.clone(), m.module.clone()),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    }
 }
 
 pub fn normalize_graph(
     graph: Rc<ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NormalizeResult> {
-    let diags = Rc::new({
-        let mut __result = Vec::new();
-        for m in graph.modules.clone().iter().cloned() {
-            __result.extend(
-                (*normalize_module_diagnostics(m.clone(), source_indices.clone()))
-                    .iter()
-                    .cloned(),
-            );
-        }
-        __result
-    });
-    Rc::new(NormalizeResult {
-        graph: graph.clone(),
-        diagnostics: diags.clone(),
-    })
+    {
+        let diags = Rc::new({
+            let mut __result = Vec::new();
+            for m in graph.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*normalize_module_diagnostics(m.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        Rc::new(NormalizeResult {
+            graph: graph.clone(),
+            diagnostics: diags.clone(),
+        })
+    }
 }

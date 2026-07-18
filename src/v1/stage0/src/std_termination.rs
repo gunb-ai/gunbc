@@ -89,9 +89,9 @@ pub fn optional_evidence_meet(
     a: Option<DescentEvidence>,
     b: Option<DescentEvidence>,
 ) -> Option<DescentEvidence> {
-    match a.clone().as_deref().cloned() {
+    match a.clone() {
         None => b,
-        Some(va) => match b.as_deref().cloned() {
+        Some(va) => match b {
             None => a.clone(),
             Some(vb) => Some(descent_evidence_lattice_meet(va.clone(), vb.clone())),
         },
@@ -103,7 +103,7 @@ pub fn map_evidence_merge_at(
     key: String,
     new_val: DescentEvidence,
 ) -> Rc<HashMap<String, DescentEvidence>> {
-    match v1_rt::map_get(&base, key.clone()).as_deref().cloned() {
+    match v1_rt::map_get(&base, key.clone()) {
         Some(existing) => v1_rt::rc_map_insert(
             base.clone(),
             key.clone(),

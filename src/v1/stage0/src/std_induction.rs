@@ -577,7 +577,7 @@ pub enum CostBound {
 }
 
 pub fn sum_bound(terms: Rc<Vec<Rc<CostBound>>>) -> Rc<CostBound> {
-    match terms.clone().first().cloned().as_deref().cloned() {
+    match terms.clone().first().cloned() {
         None => Rc::new(CostBound::ErrorBound),
         Some(_) => Rc::new(CostBound::SumBound {
             terms: terms.clone(),
@@ -867,29 +867,31 @@ pub fn ceil_log_iter(mut base: i64, mut argument: i64, mut k: i64, mut power: i6
 }
 
 pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
-    let a = form.branches.clone();
-    let b = form.divisor.clone();
-    let d = form.work_exponent.clone();
-    let n = form.param.clone();
-    if ((a.clone() < 1) || (b.clone() < 2)) {
-        Rc::new(CostBound::ErrorBound)
-    } else {
-        match bounded_int_pow_exponent(d.clone()) {
-            None => Rc::new(CostBound::ErrorBound),
-            Some(d_ok) => match int_pow_bounded(b.clone(), d_ok.clone()) {
+    {
+        let a = form.branches.clone();
+        let b = form.divisor.clone();
+        let d = form.work_exponent.clone();
+        let n = form.param.clone();
+        if ((a.clone() < 1) || (b.clone() < 2)) {
+            Rc::new(CostBound::ErrorBound)
+        } else {
+            match bounded_int_pow_exponent(d.clone()) {
                 None => Rc::new(CostBound::ErrorBound),
-                Some(b_to_d) => {
-                    if (a.clone() < b_to_d.clone()) {
-                        match d_ok.clone() {
-                            0 => Rc::new(CostBound::ConstantBound),
-                            _ => cost_poly(n.clone(), d_ok.clone()),
-                        }
-                    } else {
-                        if (a.clone() == b_to_d.clone()) {
+                Some(d_ok) => match int_pow_bounded(b.clone(), d_ok.clone()) {
+                    None => Rc::new(CostBound::ErrorBound),
+                    Some(b_to_d) => {
+                        if (a.clone() < b_to_d.clone()) {
                             match d_ok.clone() {
-                                0 => cost_log(n.clone()),
-                                _ => {
-                                    match positive_descent_amount_from_positive_int(d_ok.clone()) {
+                                0 => Rc::new(CostBound::ConstantBound),
+                                _ => cost_poly(n.clone(), d_ok.clone()),
+                            }
+                        } else {
+                            if (a.clone() == b_to_d.clone()) {
+                                match d_ok.clone() {
+                                    0 => cost_log(n.clone()),
+                                    _ => match positive_descent_amount_from_positive_int(
+                                        d_ok.clone(),
+                                    ) {
                                         Some(deg) => Rc::new(CostBound::ProductBound {
                                             factors: Rc::new(vec![
                                                 Rc::new(AtomicCost::PolyCost {
@@ -904,33 +906,33 @@ pub fn master_theorem(form: Rc<RecurrenceForm>) -> Rc<CostBound> {
                                             ]),
                                         }),
                                         None => Rc::new(CostBound::ErrorBound),
-                                    }
+                                    },
                                 }
-                            }
-                        } else {
-                            match proportional_divisor_from_int_at_least_two(b.clone()) {
-                                Some(base_w) => {
-                                    match positive_descent_amount_from_positive_int(a.clone()) {
-                                        Some(arg_w) => Rc::new(CostBound::AtomicBound {
-                                            cost: Rc::new(AtomicCost::PolyCost {
-                                                param: n.clone(),
-                                                exponent: Rc::new(
-                                                    PolynomialExponent::LogBasedExp {
-                                                        base: base_w.clone(),
-                                                        argument: arg_w.clone(),
-                                                    },
-                                                ),
+                            } else {
+                                match proportional_divisor_from_int_at_least_two(b.clone()) {
+                                    Some(base_w) => {
+                                        match positive_descent_amount_from_positive_int(a.clone()) {
+                                            Some(arg_w) => Rc::new(CostBound::AtomicBound {
+                                                cost: Rc::new(AtomicCost::PolyCost {
+                                                    param: n.clone(),
+                                                    exponent: Rc::new(
+                                                        PolynomialExponent::LogBasedExp {
+                                                            base: base_w.clone(),
+                                                            argument: arg_w.clone(),
+                                                        },
+                                                    ),
+                                                }),
                                             }),
-                                        }),
-                                        None => Rc::new(CostBound::ErrorBound),
+                                            None => Rc::new(CostBound::ErrorBound),
+                                        }
                                     }
+                                    None => Rc::new(CostBound::ErrorBound),
                                 }
-                                None => Rc::new(CostBound::ErrorBound),
                             }
                         }
                     }
-                }
-            },
+                },
+            }
         }
     }
 }

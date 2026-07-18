@@ -238,10 +238,7 @@ pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension>
     if (type_name.clone() == "Node".to_string()) {
         Some(IterationDimension::TreeDescent)
     } else {
-        match v1_rt::map_get(&kernel_algebra_profile(), type_name.clone())
-            .as_deref()
-            .cloned()
-        {
+        match v1_rt::map_get(&kernel_algebra_profile(), type_name.clone()) {
             Some(p) => algebra_profile_to_dimension(p.clone()),
             None => None,
         }

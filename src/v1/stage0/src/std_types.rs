@@ -37,10 +37,7 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
 }
 
 pub fn is_kernel_type(name: String) -> bool {
-    match v1_rt::map_get(&kernel_type_set(), name.clone())
-        .as_deref()
-        .cloned()
-    {
+    match v1_rt::map_get(&kernel_type_set(), name.clone()) {
         Some(_) => true,
         None => false,
     }
@@ -75,10 +72,7 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
     if (kind_name.clone() == "Witness".to_string()) {
         Rc::new(vec!["T".to_string()])
     } else {
-        match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone())
-            .as_deref()
-            .cloned()
-        {
+        match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
             Some(p) => algebra_type_param_names(p.clone()),
             None => Rc::new(vec![]),
         }
@@ -86,43 +80,43 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
 }
 
 pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
-    let names = container_param_names_for(kind_name.clone());
-    match Rc::new({
-        let mut __result = Vec::new();
-        for pair in Rc::new({
+    {
+        let names = container_param_names_for(kind_name.clone());
+        match Rc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new(
-                names
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(|(i, v)| (i as i64, v))
-                    .collect::<Vec<_>>(),
-            )
+            for pair in Rc::new({
+                let mut __result = Vec::new();
+                for pair in Rc::new(
+                    names
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .enumerate()
+                        .map(|(i, v)| (i as i64, v))
+                        .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    if (pair.0.clone() == index.clone()) {
+                        __result.push(pair);
+                    }
+                }
+                __result
+            })
             .iter()
             .cloned()
             {
-                if (pair.0.clone() == index.clone()) {
-                    __result.push(pair);
-                }
+                __result.push(pair.1.clone());
             }
             __result
         })
-        .iter()
+        .first()
         .cloned()
         {
-            __result.push(pair.1.clone());
+            Some(name) => Some(name.clone()),
+            None => None,
         }
-        __result
-    })
-    .first()
-    .cloned()
-    .as_deref()
-    .cloned()
-    {
-        Some(name) => Some(name.clone()),
-        None => None,
     }
 }
 
