@@ -477,6 +477,21 @@ pub fn variant_not_found_result(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NodeLookupResult> {
+    if std::env::var("GUNBC_VNF_PROBE").is_ok() {
+        eprintln!(
+            "VNF_PROBE module={module_name} variant={variant_name} scrut_name={:?} \
+             scrut_authored={} scrut_conn={:?} scrut_children={} scrut_card={:?} \
+             scrut_span={}:{}-{}",
+            scrut.name,
+            authored_name_at(source_indices.clone(), scrut.clone()),
+            scrut.connective,
+            scrut.children.len(),
+            scrut.return_cardinality,
+            scrut.span.file,
+            scrut.span.start,
+            scrut.span.end,
+        );
+    }
     node_lookup_failed(Rc::new(vec![make_error_node(
         Rc::new(CompilerDiagnostic::VariantNotFound {
             variant: variant_name.clone(),
