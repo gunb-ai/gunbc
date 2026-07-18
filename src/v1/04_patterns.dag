@@ -17,11 +17,12 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
   if decl_is_disj {
     if (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
       let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
-      let substituted = substitute_type_slots(
+      let substituted = substitute_type_slots_scoped(
         n: decl,
         slot_bindings: subst,
         decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
-        source_indices: env.source_indices
+        source_indices: env.source_indices,
+        bind_type_variables: true
       )
       resolve_node(n: substituted, env: env, module_name: env.module_path).resolved
     } else { decl }
@@ -29,11 +30,12 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
     match decl.inferred {
       Present { value: Resolved { node: target } } =>
         let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
-        let substituted = substitute_type_slots(
+        let substituted = substitute_type_slots_scoped(
           n: target,
           slot_bindings: subst,
           decl_name: name,
-          source_indices: env.source_indices
+          source_indices: env.source_indices,
+        bind_type_variables: true
         )
         expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
       _ => scrut_node
@@ -41,11 +43,12 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
   } else {
     if decl.connective == Conj && (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
       let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
-      substitute_type_slots(
+      substitute_type_slots_scoped(
         n: decl,
         slot_bindings: subst,
         decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
-        source_indices: env.source_indices
+        source_indices: env.source_indices,
+        bind_type_variables: true
       )
     } else {
       scrut_node
@@ -75,11 +78,12 @@ fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
                 target
               } else if target_is_generic_use {
                 let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
-                let substituted = substitute_type_slots(
+                let substituted = substitute_type_slots_scoped(
                   n: target,
                   slot_bindings: subst,
                   decl_name: name,
-                  source_indices: env.source_indices
+                  source_indices: env.source_indices,
+        bind_type_variables: true
                 )
                 expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
               } else { scrut_node }

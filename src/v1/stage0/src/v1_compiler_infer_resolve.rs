@@ -515,12 +515,26 @@ pub fn substitute_type_slots(
     decl_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
+    substitute_type_slots_scoped(n, slot_bindings, decl_name, source_indices, false)
+}
+
+pub fn substitute_type_slots_scoped(
+    n: Rc<Node>,
+    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
+    decl_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bind_type_variables: bool,
+) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let tv_slot = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
-                v1_rt::map_get(&slot_bindings, tv_id)
+        let tv_slot = if bind_type_variables {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+                    v1_rt::map_get(&slot_bindings, tv_id)
+                }
+                _ => None,
             }
-            _ => None,
+        } else {
+            None
         };
         if let Some(concrete) = tv_slot {
             return concrete.clone();
@@ -550,11 +564,12 @@ pub fn substitute_type_slots(
                                     let substituted_args = Rc::new({
                                         let mut __result = Vec::new();
                                         for arg in child.children.clone().iter().cloned() {
-                                            __result.push(substitute_type_slots(
+                                            __result.push(substitute_type_slots_scoped(
                                                 arg.clone(),
                                                 slot_bindings.clone(),
                                                 decl_name.clone(),
                                                 source_indices.clone(),
+                                                bind_type_variables,
                                             ));
                                         }
                                         __result
@@ -583,11 +598,12 @@ pub fn substitute_type_slots(
                                     })
                                 }
                             } else {
-                                substitute_type_slots(
+                                substitute_type_slots_scoped(
                                     child.clone(),
                                     slot_bindings.clone(),
                                     decl_name.clone(),
                                     source_indices.clone(),
+                                    bind_type_variables,
                                 )
                             },
                         );
@@ -597,11 +613,12 @@ pub fn substitute_type_slots(
                 let new_inferred = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
                         Some(Rc::new(InferredNode::Resolved {
-                            node: substitute_type_slots(
+                            node: substitute_type_slots_scoped(
                                 rt.clone(),
                                 slot_bindings.clone(),
                                 decl_name.clone(),
                                 source_indices.clone(),
+                                bind_type_variables,
                             ),
                         }))
                     }

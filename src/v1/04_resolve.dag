@@ -243,10 +243,16 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
 }
 
 fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>) -> Node {
-  let tv_slot = match n.inferred {
-    Present { value: TypeVariable { id: tv_id } } => map_get(slot_bindings, tv_id)
-    _ => none
-  }
+  substitute_type_slots_scoped(n: n, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: false)
+}
+
+fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>, bind_type_variables: Bool) -> Node {
+  let tv_slot = if bind_type_variables {
+    match n.inferred {
+      Present { value: TypeVariable { id: tv_id } } => map_get(slot_bindings, tv_id)
+      _ => none
+    }
+  } else { none }
   if tv_slot != none { return tv_slot.value }
   let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
   if is_slot {
@@ -258,7 +264,7 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
     let new_children = n.children |> map(child =>
       if authored_name_at(source_indices: source_indices, node: child) == decl_name {
         let substituted_args = child.children |> map(arg =>
-          substitute_type_slots(n: arg, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices)
+          substitute_type_slots_scoped(n: arg, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables)
         )
         Node {
           name: child.name, span: child.span, ident_span: child.ident_span, children: substituted_args,
@@ -270,12 +276,12 @@ fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: S
           has_non_tail_self_call: child.has_non_tail_self_call, match_pattern: child.match_pattern, expr_data: child.expr_data
         }
       } else {
-        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices)
+        substitute_type_slots_scoped(n: child, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables)
       }
     )
     let new_inferred = match n.inferred {
       Present { value: Resolved { node: rt } } =>
-        Present { value: Resolved { node: substitute_type_slots(n: rt, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices) } }
+        Present { value: Resolved { node: substitute_type_slots_scoped(n: rt, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables) } }
       _ => n.inferred
     }
     Node {
