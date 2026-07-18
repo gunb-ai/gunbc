@@ -13390,22 +13390,59 @@ pub fn census_fn_sig_env(
     crate::v1_compiler_infer_env::env_with_type_variable_bindings(base, tp_names.clone())
 }
 
-pub fn census_binding_is_borrowable_generic_sig(
+pub fn census_binding_is_borrowable_fn_sig(
     binding: Rc<TypeBinding>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
+    let _ = source_indices;
     let node = binding.resolved.clone();
     (node.connective == crate::v1_std_core::Connective::NoConnective)
         && ((node.children.clone().len() as i64) == 0)
         && node.body.is_none()
         && node.transport.is_none()
         && node.inferred.is_some()
+        && ((node.params.clone().len() as i64) > 0)
+}
+
+pub fn census_binding_is_generic_sig(
+    binding: Rc<TypeBinding>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    census_binding_is_borrowable_fn_sig(binding.clone(), source_indices.clone())
         && ((crate::v1_compiler_infer_resolve::fn_type_param_names(
-            node.clone(),
+            binding.resolved.clone(),
             source_indices.clone(),
         )
         .len() as i64)
             > 0)
+}
+
+pub fn census_qualify_sig_return_binding(
+    binding: Rc<TypeBinding>,
+    module_path: String,
+    census: Rc<SymbolIndex>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypeBinding> {
+    let node = binding.resolved.clone();
+    let env = census_fn_sig_env(
+        census.clone(),
+        module_path.clone(),
+        Rc::new(vec![]),
+        source_indices.clone(),
+    );
+    Rc::new(TypeBinding {
+        name: binding.name.clone(),
+        resolved: crate::v1_compiler_infer_env::node_with_inferred(
+            node.clone(),
+            qualify_borrowed_inferred(
+                node.inferred.clone(),
+                module_path.clone(),
+                env.clone(),
+                v1_rt::rc_empty_map(),
+            ),
+        ),
+        provenance: binding.provenance.clone(),
+    })
 }
 
 pub fn census_upgrade_sig_binding(
@@ -13414,7 +13451,7 @@ pub fn census_upgrade_sig_binding(
     census: Rc<SymbolIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypeBinding> {
-    if census_binding_is_borrowable_generic_sig(binding.clone(), source_indices.clone()) {
+    if census_binding_is_generic_sig(binding.clone(), source_indices.clone()) {
         let node = binding.resolved.clone();
         match node.inferred.clone().as_deref().cloned() {
             Some(crate::v1_std_core::InferredNode::Resolved { node: raw_ret, .. }) => {
@@ -13525,8 +13562,15 @@ pub fn census_upgrade_binding(
     census: Rc<SymbolIndex>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypeBinding> {
-    if census_binding_is_borrowable_generic_sig(binding.clone(), source_indices.clone()) {
+    if census_binding_is_generic_sig(binding.clone(), source_indices.clone()) {
         census_upgrade_sig_binding(
+            binding.clone(),
+            module_path.clone(),
+            census.clone(),
+            source_indices.clone(),
+        )
+    } else if census_binding_is_borrowable_fn_sig(binding.clone(), source_indices.clone()) {
+        census_qualify_sig_return_binding(
             binding.clone(),
             module_path.clone(),
             census.clone(),

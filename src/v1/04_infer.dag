@@ -6230,7 +6230,7 @@ fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: 
   )
 }
 
-data census_borrowed_sig_resolution_note: String = "Borrowed-sig hoist (namespace lane): the census stores raw pre-typecheck fn nodes, so a borrowed generic fn's return leaked bare type-param leaves (T/V/E) and owner-local names into consumers — the local/borrowed asymmetry (locals resolve once per module in resolve_item_types with type params bound as TypeVariables; borrows got the raw node per lookup). Pass 2 resolves each borrowable GENERIC fn signature's return ONCE at census build, in a synthetic env at the OWNER's containment position (module_path = the candidate's declaring module; symbol_index = the completed pass-1 census; type params bound via env_with_type_variable_bindings) — order-independent (resolution reads only the completed raw census, never a partial one), once per decl (never per lookup — the per-lookup variant re-resolved recursive carriers to the depth bound on every call), and staged fail-closed: ANY resolution diagnostic keeps the raw binding, so the consumer-side refusal surface is unchanged (upgraded | raw is a typed frontier, not a widen). Scope: generic fn sigs only (fn_type_param_names non-empty) — the T-leak family; non-generic returns keep the qualify-at-borrow path."
+data census_borrowed_sig_resolution_note: String = "Borrowed-sig hoist (namespace lane): the census stores raw pre-typecheck fn nodes, so a borrowed generic fn's return leaked bare type-param leaves (T/V/E) and owner-local names into consumers — the local/borrowed asymmetry (locals resolve once per module in resolve_item_types with type params bound as TypeVariables; borrows got the raw node per lookup). Pass 2 resolves each borrowable GENERIC fn signature's return ONCE at census build, in a synthetic env at the OWNER's containment position (module_path = the candidate's declaring module; symbol_index = the completed pass-1 census; type params bound via env_with_type_variable_bindings) — order-independent (resolution reads only the completed raw census, never a partial one), once per decl (never per lookup — the per-lookup variant re-resolved recursive carriers to the depth bound on every call), and staged fail-closed: ANY resolution diagnostic keeps the raw binding, so the consumer-side refusal surface is unchanged (upgraded | raw is a typed frontier, not a widen). Scope: fn sigs with value params (params non-empty; type params may be zero — a NON-generic fn's return can still USE a generic type, e.g. Outcome<Medium<String>>, and needs the same owner-position expansion for variant-payload substitution); 0-arg fns and aliases share a census shape (body stripped) and stay raw pending a discriminator."
 
 fn census_fn_sig_env(census: SymbolIndex, module_path: String, tp_names: List<String>, source_indices: Map<String, NewlineIndex>) -> TypeEnv {
   let base = TypeEnv {
@@ -6250,18 +6250,33 @@ fn census_fn_sig_env(census: SymbolIndex, module_path: String, tp_names: List<St
   env_with_type_variable_bindings(env: base, tp_names: tp_names)
 }
 
-fn census_binding_is_borrowable_generic_sig(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn census_binding_is_borrowable_fn_sig(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Bool {
   let node = binding.resolved
   node.connective == NoConnective
     && (node.children |> count) == 0
     && node.body == none
     && node.transport == none
     && node.inferred != none
-    && (fn_type_param_names(item: node, source_indices: source_indices) |> count) > 0
+    && (node.params |> count) > 0
+}
+
+fn census_binding_is_generic_sig(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Bool {
+  census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices)
+    && (fn_type_param_names(item: binding.resolved, source_indices: source_indices) |> count) > 0
+}
+
+fn census_qualify_sig_return_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
+  let node = binding.resolved
+  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  TypeBinding {
+    name: binding.name,
+    resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: empty_map())),
+    provenance: binding.provenance
+  }
 }
 
 fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  if census_binding_is_borrowable_generic_sig(binding: binding, source_indices: source_indices) {
+  if census_binding_is_generic_sig(binding: binding, source_indices: source_indices) {
     let node = binding.resolved
     match node.inferred {
       Present { value: Resolved { node: raw_ret } } =>
@@ -6302,8 +6317,10 @@ fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, c
 }
 
 fn census_upgrade_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  if census_binding_is_borrowable_generic_sig(binding: binding, source_indices: source_indices) {
+  if census_binding_is_generic_sig(binding: binding, source_indices: source_indices) {
     census_upgrade_sig_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
+  } else if census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices) {
+    census_qualify_sig_return_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
   } else if binding.resolved.connective != NoConnective {
     census_upgrade_type_decl_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
   } else { binding }
