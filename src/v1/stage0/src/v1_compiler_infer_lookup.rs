@@ -112,6 +112,19 @@ pub fn func_sig_from_global_bare(
     }
 }
 
+pub fn global_bare_callable_node(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
+    match lookup_binding_by_name(type_env.clone(), name.clone()) {
+        Some(binding) => {
+            if binding.resolved.body.is_some() {
+                Some(binding.resolved.clone())
+            } else {
+                None
+            }
+        }
+        None => None,
+    }
+}
+
 pub fn lookup_func_sig(
     func_env: Rc<ResolvedFuncEnv>,
     type_env: Rc<TypeEnv>,

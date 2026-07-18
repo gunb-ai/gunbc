@@ -60,6 +60,15 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
   }
 }
 
+fn global_bare_callable_node(type_env: TypeEnv, name: String) -> Node? {
+  match lookup_binding_by_name(env: type_env, name: name) {
+    Present { value: binding } =>
+      if binding.resolved.body != none { Present { value: binding.resolved } }
+      else { none }
+    Absent => none
+  }
+}
+
 fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {

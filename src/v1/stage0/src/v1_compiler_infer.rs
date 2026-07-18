@@ -71,10 +71,10 @@ pub use crate::v1_compiler_infer_items::{
 };
 pub use crate::v1_compiler_infer_lookup::KnownMethodResolution;
 pub use crate::v1_compiler_infer_lookup::{
-    field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
-    lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
-    product_field_result_type, resolve_known_method_node, resolve_method_receiver_type,
-    resolve_scrutinee_type_node, set_element_type_in_env,
+    field_summary_for_type, global_bare_callable_node, lookup_coproduct_common_field_node,
+    lookup_field_type_node, lookup_func_sig, lookup_in_scope, map_key_type_in_env,
+    map_value_type_in_env, product_field_result_type, resolve_known_method_node,
+    resolve_method_receiver_type, resolve_scrutinee_type_node, set_element_type_in_env,
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -3832,14 +3832,23 @@ match bare_s.clone() {
                                                             scope.type_env.clone(),
                                                             func_name.clone(),
                                                         );
+                                                        let global_bare_callable = match type_match.clone() {
+                                                            Some(_) => None,
+                                                            None => global_bare_callable_node(scope.type_env.clone(), func_name.clone()),
+                                                        };
                                                         let resolved_type = match type_match.clone()
                                                         {
                                                             Some(tn) => tn.clone(),
-                                                            None => error_type(),
+                                                            None => match global_bare_callable.clone() {
+                                                                Some(gnode) => callable_inferred(gnode.clone()),
+                                                                None => error_type(),
+                                                            },
                                                         };
                                                         let call_diags = match type_match.clone() {
                                                             Some(_) => Rc::new(vec![]),
-                                                            None => Rc::new(vec![inference_error(
+                                                            None => match global_bare_callable.clone() {
+                                                                Some(_) => Rc::new(vec![]),
+                                                                None => Rc::new(vec![inference_error(
                                                                 v1_rt::concat(
                                                                     v1_rt::concat(
                                                                         "function '".to_string(),
@@ -3851,6 +3860,7 @@ match bare_s.clone() {
                                                                 span.clone(),
                                                                 scope.module_name.clone(),
                                                             )]),
+                                                            },
                                                         };
                                                         Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {

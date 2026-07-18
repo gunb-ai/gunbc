@@ -1932,17 +1932,27 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Present { value: ctor_result } => ctor_result
             Absent =>
               let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
+              let global_bare_callable = match type_match {
+                Present { value: _ } => none
+                Absent => global_bare_callable_node(type_env: scope.type_env, name: func_name)
+              }
               let resolved_type = match type_match {
                 Present { value: tn } => tn
-                Absent => error_type
+                Absent => match global_bare_callable {
+                  Present { value: gnode } => callable_inferred(n: gnode)
+                  Absent => error_type
+                }
               }
               let call_diags = match type_match {
                 Present { value: _ } => []
-                Absent => [inference_error(
-                  message: concat("function '", func_name, "' not found in scope"),
-                  span: span,
-                  module_name: scope.module_name
-                )]
+                Absent => match global_bare_callable {
+                  Present { value: _ } => []
+                  Absent => [inference_error(
+                    message: concat("function '", func_name, "' not found in scope"),
+                    span: span,
+                    module_name: scope.module_name
+                  )]
+                }
               }
               InferResult {
                 typed: make_named_expr_node(
