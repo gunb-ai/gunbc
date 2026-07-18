@@ -34,6 +34,14 @@ import v2.std.witness_admission {
 
 data witness_admission_plan_doc_provenance: String = "bind: docs/plans/module-identity-storage-binding-design.md"
 
+fn schedule_row_matches(
+  w: ScheduleWitnessEntry,
+  entry: String,
+  function: String
+) -> Bool {
+  (w.entry == entry) && (w.function == function)
+}
+
 fn schedule_contains_entry(
   xs: List<ScheduleWitnessEntry>,
   entry: String,
@@ -41,12 +49,7 @@ fn schedule_contains_entry(
 ) -> Bool {
   any(
     xs: xs,
-    predicate: fn(w) {
-      schedule_witness_entry_eq(
-        a: w,
-        b: ScheduleWitnessEntry { entry: entry, function: function, kind: w.kind }
-      )
-    }
+    predicate: fn(w) { schedule_row_matches(w: w, entry: entry, function: function) }
   )
 }
 

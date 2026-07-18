@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
@@ -13,7 +13,7 @@ import gunbc.ci_gate {
   SourceRootIngestGate, RegenVerifyGate,
   SelfHostReadsRealBytesGate, SelfHostStalenessGate
 }
-import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
+import v2.std.algebra { concat, filter, length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List, Optional, Absent, Present }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
@@ -597,6 +597,29 @@ fn falsifier_self_host_wet_batch_enrolled() -> Bool {
   length(xs: falsifier_self_host_wet_entries()) > 0
 }
 
+data falsifier_known_red_probe_batch_note: String = "Nightly falsifier batch 3 (Phase 0(b) admission invariant): the declared Hermetic probe lane for known-red quarantined witnesses (gunbc.ci_layer_roots known_red_probe_entries — see known_red_probe_note). Runs SelectionApplied after the wet self-host batch; EXPECT RED on main so greening is a counted un-quarantine event, never a hand discovery. Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
+
+fn falsifier_known_red_probe_batch_enrolled() -> Bool {
+  length(xs: known_red_probe_entries) > 0
+}
+
+fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: known_red_probe_entries,
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
+    )
+  }
+}
+
 fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
@@ -615,14 +638,18 @@ fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
 }
 
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
-  if falsifier_self_host_wet_batch_enrolled() {
-  [
-    [gunbc_falsifier_predict_only_batch()],
-    [gunbc_falsifier_self_host_wet_batch()]
-  ]
+  let predict = [gunbc_falsifier_predict_only_batch()]
+  let wet = if falsifier_self_host_wet_batch_enrolled() {
+    [[gunbc_falsifier_self_host_wet_batch()]]
   } else {
-    [[gunbc_falsifier_predict_only_batch()]]
+    []
   }
+  let probe = if falsifier_known_red_probe_batch_enrolled() {
+    [[gunbc_falsifier_known_red_probe_batch()]]
+  } else {
+    []
+  }
+  concat(concat(predict, wet), probe)
 }
 
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
