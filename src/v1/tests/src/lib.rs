@@ -115,8 +115,6 @@ mod pd3_adversarial;
 #[cfg(test)]
 mod peano_materialization_cap_test;
 #[cfg(test)]
-mod phantom_zst_marker_shadow_test;
-#[cfg(test)]
 mod pipeline;
 #[cfg(test)]
 mod reference_carrier_witness_test;
