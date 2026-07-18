@@ -3,6 +3,7 @@ module test.claim.host_build_cache_provision_design
 import std.logic { Bool }
 import extdeps.cache.sccache { sccache_local_id }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host_effect { ProvisionBuildCache }
 import gunbc.host_build_cache_provision {
   provision_build_cache_default_effect,
   provision_build_cache_routes_through_host_effect_apply,
@@ -25,7 +26,10 @@ fn design_witness_routes_through_host_effect_apply() -> Bool {
 }
 
 fn design_witness_default_effect_pins_sccache_catalog() -> Bool {
-  provision_build_cache_default_effect().catalog_id == sccache_local_id
+  match provision_build_cache_default_effect() {
+    ProvisionBuildCache { catalog_id: id } => id == sccache_local_id
+    _ => false
+  }
 }
 
 fn design_witness_absent_daemon_fail_closed() -> Bool {

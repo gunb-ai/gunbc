@@ -14,14 +14,17 @@ data build_cache_systemd_user_unit_body: String = "[Unit]\nDescription=sccache c
 
 fn build_cache_observe_stats_body() -> String {
   concat(
-    "stats_out=\"$(sccache --show-stats 2>&1)\" || stats_rc=$?\n",
+    "stats_rc=0\n",
     concat(
-      "if [ \"${stats_rc:-0}\" -eq 0 ]; then\n",
+      "stats_out=\"$(sccache --show-stats 2>&1)\" || stats_rc=$?\n",
       concat(
-        "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=ok\"\n",
+        "if [ \"$stats_rc\" -eq 0 ]; then\n",
         concat(
-          "  printf '%s\\n' \"$stats_out\"\n",
-          "  exit 0\n",
+          "  printf '%s\\n' \"BuildCacheProvisionReceipt: observe=ok\"\n",
+          concat(
+            "  printf '%s\\n' \"$stats_out\"\n",
+            "  exit 0\n",
+          )
         )
       )
     )
@@ -126,14 +129,17 @@ fn build_cache_provision_script_body() -> String {
           concat(
             build_cache_ensure_daemon_body(),
             concat(
-              "stats_out=\"$(sccache --show-stats 2>&1)\" || stats_rc=$?\n",
+              "stats_rc=0\n",
               concat(
-                "if [ \"${stats_rc:-0}\" -eq 0 ]; then\n",
+                "stats_out=\"$(sccache --show-stats 2>&1)\" || stats_rc=$?\n",
                 concat(
-                  "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"\n",
+                  "if [ \"$stats_rc\" -eq 0 ]; then\n",
                   concat(
-                    "  printf '%s\\n' \"$stats_out\"\n",
-                    "  exit 0\n",
+                    "  printf '%s\\n' \"BuildCacheProvisionReceipt: read_back=ok\"\n",
+                    concat(
+                      "  printf '%s\\n' \"$stats_out\"\n",
+                      "  exit 0\n",
+                    )
                   )
                 )
               )

@@ -967,17 +967,31 @@ fn realize_os_install_actuator_toolchain_ensure(
   }
 }
 
+fn realize_provision_build_cache_body(
+  transport: HostEffectTransport,
+  effect_intent: HostEffectIntent,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let observed = run_shell_transport(
+    script: build_cache_provision_shell_script(),
+    transport: transport,
+  )
+  srv3_toolchain_ensure_reconcile(observed: observed, intent: effect_intent)
+}
+
 fn realize_provision_build_cache(
   effect_intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match effect_intent.transport {
-    LocalShell | SshShell { ssh_host: _ } => {
-      let observed = run_shell_transport(
-        script: build_cache_provision_shell_script(),
+    LocalShell =>
+      realize_provision_build_cache_body(
         transport: effect_intent.transport,
+        effect_intent: effect_intent,
       )
-      srv3_toolchain_ensure_reconcile(observed: observed, intent: effect_intent)
-    }
+    SshShell { ssh_host: _ } =>
+      realize_provision_build_cache_body(
+        transport: effect_intent.transport,
+        effect_intent: effect_intent,
+      )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
         reason: "host_effect_apply: ProvisionBuildCache cannot use EmitArtifactThenThinRun transport; typed mismatch.",
@@ -1350,6 +1364,7 @@ fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvi
             TypedReconcileOnHost { node: _, kind: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             Srv3DiagnosticObserveOnHost { node: _, bmc: _, port: _, iso_path: _, intent_content_hash: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             OsInstallActuatorToolchainOnHost { node: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            ProvisionBuildCacheOnHost { node: _, catalog_id: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             NbdProxySessionOnHost { node: _, intent: _, lease_key: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
             ReceiptEmitOnHost { node: _, lines: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))

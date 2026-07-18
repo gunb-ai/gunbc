@@ -9,6 +9,7 @@ import std.resources { Network }
 import extdeps.cache.sccache { sccache_local_id, sccache_fatal_error_log_fragment }
 import extdeps.cache.cache { cache_catalog }
 import gunbc.host_effect {
+  HostEffect,
   ProvisionBuildCache,
   HostOs,
   host_effect_identity_evidence,
@@ -149,11 +150,11 @@ fn provision_build_cache_verdict(
   }
 }
 
-fn provision_build_cache_effect_for_catalog(catalog_id: CacheInterfaceId) -> ProvisionBuildCache {
+fn provision_build_cache_effect_for_catalog(catalog_id: CacheInterfaceId) -> HostEffect {
   ProvisionBuildCache { catalog_id: catalog_id }
 }
 
-fn provision_build_cache_default_effect() -> ProvisionBuildCache {
+fn provision_build_cache_default_effect() -> HostEffect {
   provision_build_cache_effect_for_catalog(catalog_id: sccache_local_id)
 }
 
