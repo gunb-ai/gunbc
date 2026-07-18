@@ -2792,7 +2792,9 @@ pub fn field_access_spine(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<FieldAccessSpine>> {
     match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprVar { binding_kind: _, .. } => {
+        ExprData::ExprVar {
+            binding_kind: _, ..
+        } => {
             let name = expr_var_name_at(texpr.clone(), source_indices.clone());
             Some(Rc::new(FieldAccessSpine {
                 root: name.clone(),
@@ -3082,7 +3084,9 @@ pub fn infer_expr(
                 );
                 let span = texpr.span.clone();
                 let base_expr = field_access_base(texpr.clone());
-                if let Some(proj) = qualified_value_projection(texpr.clone(), scope.clone(), span.clone()) {
+                if let Some(proj) =
+                    qualified_value_projection(texpr.clone(), scope.clone(), span.clone())
+                {
                     return proj;
                 }
                 let base_result = infer_expr(base_expr.clone(), scope.clone(), None);
