@@ -12997,7 +12997,7 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
                                             ),
                                             Rc::new(TypeBinding {
                                                 name: vname.clone(),
-                                                resolved: child.clone(),
+                                                resolved: item.clone(),
                                                 provenance: Rc::new(
                                                     SubValueRelation::SubValueUnknown,
                                                 ),
@@ -14528,6 +14528,79 @@ pub fn build_local_variants(
         })
 }
 
+pub fn merge_global_bare_variant_locals(
+    state: Rc<VariantFoldState>,
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> Rc<VariantFoldState> {
+    global_bare
+        .clone()
+        .iter()
+        .fold(state, |acc, (name, lookup)| match lookup.as_ref() {
+            GlobalBareUniqueBinding { binding } => {
+                let owner = binding.resolved.clone();
+                if owner.connective == Connective::Disj
+                    && has_child_named(owner.clone(), name.clone(), source_indices.clone())
+                {
+                    if acc.locals.contains_key(name) {
+                        acc
+                    } else {
+                        insert_variant_owner_checked(
+                            acc,
+                            name.clone(),
+                            owner,
+                            source_indices.clone(),
+                            module_name.clone(),
+                        )
+                    }
+                } else {
+                    acc
+                }
+            }
+            GlobalBareAmbiguousBinding => acc,
+        })
+}
+
+pub fn build_global_bare_census(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
+    build_symbol_index_census(modules, source_indices)
+        .global_bare
+        .clone()
+}
+
+pub fn build_global_bare_variant_locals(
+    global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    global_bare.clone().iter().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        |acc, (name, lookup)| match lookup.as_ref() {
+            GlobalBareUniqueBinding { binding } => {
+                let owner = binding.resolved.clone();
+                if owner.connective == Connective::Disj
+                    && has_child_named(owner.clone(), name.clone(), source_indices.clone())
+                {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        name.clone(),
+                        Rc::new(TypeBinding {
+                            name: name.clone(),
+                            resolved: owner,
+                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        }),
+                    )
+                } else {
+                    acc
+                }
+            }
+            GlobalBareAmbiguousBinding => acc,
+        },
+    )
+}
+
 pub fn reexport_chain_authority() -> String {
     thread_local! {
         static CACHED: String = {
@@ -14806,13 +14879,18 @@ pub fn build_module_context(
                 collision_errors: Rc::new(vec![]),
             }),
         );
-        let variant_fold = build_imported_variants(
-            resolved_imports.clone(),
-            parent_index.clone(),
-            variant_surfaces.clone(),
+        let variant_fold = merge_global_bare_variant_locals(
+            build_imported_variants(
+                resolved_imports.clone(),
+                parent_index.clone(),
+                variant_surfaces.clone(),
+                env.source_indices.clone(),
+                module_name.clone(),
+                local_variant_fold.clone(),
+            ),
+            env.symbol_index.global_bare.clone(),
             env.source_indices.clone(),
             module_name.clone(),
-            local_variant_fold.clone(),
         );
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals =
