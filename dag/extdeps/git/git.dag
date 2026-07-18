@@ -489,6 +489,7 @@ service git.Core {
     output {
       tree: ContentHash from "stdout"
       success: Bool from "exit_success"
+      stderr: String from "stderr"
     }
     readonly
     transport shell { argv: ["git", "show", "-s", "--format=%T", "{ref}"] }

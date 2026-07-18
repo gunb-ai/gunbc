@@ -4,6 +4,7 @@ import std.types { ContentHash, CommitSha, String, Int, List, Bool, GitRef }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_diff_defaults { ci_merge_base_ref }
+import extdeps.git
 import extdeps.git {
   git_remote_ref_parts,
   git_fetch_no_tags_shell,
@@ -36,6 +37,46 @@ fn merge_admission_receipt_path(root: String) -> String {
 
 fn shell_stdout_line(raw: String) -> String {
   trim(raw)
+}
+
+type MergeTargetTreeHashObservation
+  = MergeTargetTreeHashOk { hash: ContentHash }
+  | MergeTargetTreeHashRefused { ref: String, cause: String }
+
+fn merge_target_tree_hash_show_tree_refusal_cause(stderr: String) -> String {
+  let detail = shell_stdout_line(raw: stderr)
+  if detail == "" {
+    "Invalid ref or not a git repository"
+  } else {
+    detail
+  }
+}
+
+fn observe_merge_target_tree_hash(ref: GitRef) -> MergeTargetTreeHashObservation {
+  let result = git.Core.ShowTree(ref: ref)
+  if !result.success {
+    MergeTargetTreeHashRefused {
+      ref: ref as String,
+      cause: merge_target_tree_hash_show_tree_refusal_cause(stderr: result.stderr),
+    }
+  } else {
+    let hash = shell_stdout_line(raw: result.tree as String)
+    if hash == "" {
+      MergeTargetTreeHashRefused {
+        ref: ref as String,
+        cause: "git.Core.ShowTree exited 0 but stdout tree hash was empty",
+      }
+    } else {
+      MergeTargetTreeHashOk { hash: hash }
+    }
+  }
+}
+
+fn merge_target_tree_hash_refusal_reason(prefix: String, ref: String, cause: String) -> String {
+  concat(
+    concat(prefix, ": git.Core.ShowTree refused for ref "),
+    concat(ref, concat(": ", cause))
+  )
 }
 
 fn render_receipt_wire_with_pr_line(receipt: MergeAdmissionReceipt, pr_line: String) -> String {
