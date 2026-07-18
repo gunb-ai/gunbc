@@ -1,0 +1,12 @@
+module gunbc._scratch_env_probe
+
+import std.types { String, NonEmptyStr }
+import extdeps.shell
+
+fn scratch_probe_unset_env() -> String {
+  let env = shell.Env.Get(name: "GUNBC_SCRATCH_DEFINITELY_UNSET_VAR_XYZ" as NonEmptyStr)
+  match env.value {
+    Present { value: raw } => concat("PRESENT:", raw)
+    Absent => "ABSENT"
+  }
+}
