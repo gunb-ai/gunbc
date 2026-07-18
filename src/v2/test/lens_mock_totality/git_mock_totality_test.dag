@@ -52,6 +52,14 @@ fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock>
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_rev_list_before })
   } else if case.operation_key == "git.Core.Show" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_show })
+  } else if case.operation_key == "git.Core.ShowTree" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_show_tree })
+  } else if case.operation_key == "git.Core.FetchNoTags" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_fetch_no_tags })
+  } else if case.operation_key == "git.Core.FetchPrune" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_fetch_prune })
+  } else if case.operation_key == "git.Core.HeadCommitShort" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_head_commit_short })
   } else {
     mock_unhandled_rejection()
   }

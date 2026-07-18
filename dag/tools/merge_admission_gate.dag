@@ -1,8 +1,9 @@
 module tools.merge_admission_gate
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { ContentHash }
+import std.types { ContentHash, GitRef }
 import extdeps.shell
+import extdeps.git
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission {
   current_gate_roster_hash,
@@ -17,21 +18,22 @@ import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
   merge_admission_merge_base_ref,
   parse_receipt_wire,
-  ci_repo_root_shell,
   shell_stdout_line,
 }
 import gunbc.ci_failure_class { merge_admission_blocks_merge }
 
 fn merge_target_tree_hash() -> ContentHash {
-  let result = shell.Exec.Run(
-    script: concat("git show -s --format=%T ", merge_admission_merge_base_ref)
-  )
-  shell_stdout_line(raw: result.stdout)
+  let result = git.Core.ShowTree(ref: merge_admission_merge_base_ref as GitRef)
+  if result.success {
+    shell_stdout_line(raw: result.tree as String)
+  } else {
+    ""
+  }
 }
 
 fn repo_root() -> String {
-  let result = shell.Exec.Run(script: concat("cd ", concat(ci_repo_root_shell(), " && pwd")))
-  shell_stdout_line(raw: result.stdout)
+  let result = git.Core.Toplevel()
+  result.path as String
 }
 
 fn verdict_reason(v: MergeAdmissionVerdict) -> String {

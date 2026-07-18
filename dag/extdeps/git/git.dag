@@ -1,6 +1,6 @@
 module extdeps.git
 
-import std.types { CommitSha, Email, FilePath, GitRef, NonEmptyStr, Timestamp }
+import std.types { CommitSha, ContentHash, Email, FilePath, GitRef, NonEmptyStr, Timestamp }
 import std.measure { Percent, percent }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -233,6 +233,77 @@ fn git_diff_unified_range_argv(base: GitRef, head: GitRef, range: GitDiffRange) 
   }
 }
 
+type GitRemoteRefParts {
+  remote: String
+  ref_name: String
+}
+
+fn git_remote_ref_parts(ref: GitRef) -> GitRemoteRefParts {
+  let parts = split(s: ref as String, delimiter: "/")
+  GitRemoteRefParts {
+    remote: parts.first(),
+    ref_name: fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+  }
+}
+
+fn git_shell_join_argv(argv: List<String>) -> String {
+  fold(argv, init: "", f: (acc, token) => if acc == "" { token } else { concat(concat(acc, " "), token) })
+}
+
+fn shape_git_toplevel_argv() -> List<String> {
+  ["git", "rev-parse", "--show-toplevel"]
+}
+
+fn git_toplevel_shell_subexpr_with_fallback() -> String {
+  concat(
+    "$(", concat(concat(git_shell_join_argv(argv: shape_git_toplevel_argv()), " 2>/dev/null || pwd"), ")")
+  )
+}
+
+fn git_toplevel_shell_subexpr() -> String {
+  concat("$(", concat(git_shell_join_argv(argv: shape_git_toplevel_argv()), ")"))
+}
+
+fn shape_git_fetch_no_tags_argv(remote: String, ref_name: String) -> List<String> {
+  ["git", "fetch", "--no-tags", remote, ref_name]
+}
+
+fn git_fetch_no_tags_shell(remote: String, ref_name: String, ignore_failure: Bool) -> String {
+  let cmd = git_shell_join_argv(argv: shape_git_fetch_no_tags_argv(remote: remote, ref_name: ref_name))
+  if ignore_failure {
+    concat(cmd, " 2>/dev/null || true")
+  } else {
+    cmd
+  }
+}
+
+fn shape_git_fetch_prune_argv(remote: String) -> List<String> {
+  ["git", "fetch", "--prune", remote]
+}
+
+fn git_fetch_prune_shell(remote: String) -> String {
+  git_shell_join_argv(argv: shape_git_fetch_prune_argv(remote: remote))
+}
+
+fn shape_git_show_tree_argv(ref: GitRef) -> List<String> {
+  ["git", "show", "-s", "--format=%T", ref as String]
+}
+
+fn shape_git_head_commit_short_argv() -> List<String> {
+  ["git", "rev-parse", "--short", "HEAD"]
+}
+
+fn shape_git_current_branch_argv() -> List<String> {
+  ["git", "rev-parse", "--abbrev-ref", "HEAD"]
+}
+
+fn git_observe_meta_shell_fragment() -> String {
+  concat(
+    "git branch=$(", concat(git_shell_join_argv(argv: shape_git_current_branch_argv()), " 2>/dev/null || echo unknown)"),
+    concat(" commit=$(", concat(git_shell_join_argv(argv: shape_git_head_commit_short_argv()), " 2>/dev/null || echo unknown)"))
+  )
+}
+
 service git.Core {
   operation CurrentBranch {
     input {}
@@ -406,6 +477,62 @@ service git.Core {
     exit {
       0 => Unit
       128 => String "File not found or invalid ref"
+    }
+  }
+
+  operation ShowTree {
+    input { ref: GitRef }
+    output {
+      tree: ContentHash from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: shape_git_show_tree_argv(ref: ref) }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation FetchNoTags {
+    input { remote: String, ref: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: shape_git_fetch_no_tags_argv(remote: remote, ref_name: ref) }
+    exit {
+      0 => Unit
+      nonzero => String "Fetch failed"
+    }
+  }
+
+  operation FetchPrune {
+    input { remote: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: shape_git_fetch_prune_argv(remote: remote) }
+    exit {
+      0 => Unit
+      nonzero => String "Fetch failed"
+    }
+  }
+
+  operation HeadCommitShort {
+    input {}
+    output {
+      sha: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: shape_git_head_commit_short_argv() }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
     }
   }
 }

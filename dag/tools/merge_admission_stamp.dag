@@ -1,7 +1,7 @@
 module tools.merge_admission_stamp
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, GitRef }
 import extdeps.git
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -10,7 +10,6 @@ import gunbc.merge_admission_produce {
   merge_admission_merge_base_ref,
   stamp_floor_receipt_with_conclusion,
   render_receipt_wire,
-  ci_repo_root_shell,
   shell_stdout_line,
   floor_exit_to_check_conclusion,
   floor_disposition_to_check_conclusion,
@@ -50,15 +49,17 @@ fn pr_number_from_event() -> Int? {
 }
 
 fn merge_target_tree_hash() -> String {
-  let result = shell.Exec.Run(
-    script: concat("git show -s --format=%T ", merge_admission_merge_base_ref)
-  )
-  shell_stdout_line(raw: result.stdout)
+  let result = git.Core.ShowTree(ref: merge_admission_merge_base_ref as GitRef)
+  if result.success {
+    shell_stdout_line(raw: result.tree as String)
+  } else {
+    ""
+  }
 }
 
 fn repo_root() -> String {
-  let result = shell.Exec.Run(script: concat("cd ", concat(ci_repo_root_shell(), " && pwd")))
-  shell_stdout_line(raw: result.stdout)
+  let result = git.Core.Toplevel()
+  result.path as String
 }
 
 fn floor_exit_code_from_env() -> Int {

@@ -4,6 +4,12 @@ import std.types { ContentHash, CommitSha, String, Int, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_diff_defaults { ci_merge_base_ref }
+import extdeps.git {
+  git_remote_ref_parts,
+  git_fetch_no_tags_shell,
+  git_toplevel_shell_subexpr_with_fallback,
+}
+import std.types { GitRef }
 import extdeps.github.checks {
   CheckConclusion,
   check_conclusion_wire_label,
@@ -97,7 +103,7 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
 }
 
 fn ci_repo_root_shell() -> String {
-  "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  git_toplevel_shell_subexpr_with_fallback()
 }
 
 fn gunbc_run_bin_shell() -> String {
@@ -194,13 +200,8 @@ fn ci_documentation_only_gate_skip_prefix(gate_name: String, skip_reason: String
 }
 
 fn git_fetch_script_for_gate() -> String {
-  let parts = split(s: merge_admission_merge_base_ref, delimiter: "/")
-  let remote = parts.first()
-  let ref_name = fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
-  concat(
-    concat(concat("git fetch --no-tags ", remote), " "),
-    ref_name
-  )
+  let parts = git_remote_ref_parts(ref: merge_admission_merge_base_ref as GitRef)
+  git_fetch_no_tags_shell(remote: parts.remote, ref_name: parts.ref_name, ignore_failure: false)
 }
 
 data merge_admission_floor_disposition_documentation_only_skipped: String = "documentation_only_skipped"
