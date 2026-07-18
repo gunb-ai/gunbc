@@ -1,7 +1,6 @@
 module v2.workflow.bash_command_fold_serialize
 
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.bash {
   bash_stmt_andor_emitted,
   bash_stmt_andor_target_model,
@@ -64,23 +63,10 @@ import v2.std.node {
 import v2.std.node_query { node_positional_child_targets }
 import v2.std.witness { Holds, Violates, Witness }
 
-data bash_command_fold_serialize_layer_note: String = "Emit realization for bash_command_fold grammar rows lives in workflow (imports v2.compiler.emit). Grammar productions and target-model witnesses stay in v2.extdeps.languages.bash_command_fold per layer DAG (extdeps must not import compiler)."
-fn bash_fold_serialize_facts_lookup(key: Node) -> Witness<InferredFacts> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^bash_fold_serialize_facts_unexpected_consultation,
-      at: node_locus(node: key),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
-}
+data bash_command_fold_serialize_layer_note: String = "Emit realization for bash_command_fold grammar rows lives in workflow (serialize_target ∘ translate over pre-built TargetModel rows). Grammar productions and target-model witnesses stay in v2.extdeps.languages.bash_command_fold per layer DAG (extdeps must not import compiler)."
 
 fn bash_fold_serialize_emit_from_node(emitted: Node, target: TargetModel) -> Outcome<String> {
-  let tree = InferredTree {
-    root: emitted,
-    facts: Map { lookup: bash_fold_serialize_facts_lookup }
-  }
-  match emit(tree: tree, target: target) {
+  match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
       match d {
         None => Accepted { value: source.carried, diagnostics: None }

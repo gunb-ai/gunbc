@@ -36,6 +36,8 @@ fn materialize_git_mock(case: PublishedMockCase) -> Outcome<MaterializedGitMock>
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_ls_files })
   } else if case.operation_key == "git.Core.Diff" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_diff })
+  } else if case.operation_key == "git.Core.DiffUnified0" {
+    outcome_accepted(value: MaterializedGitMock { tag: ^materialized_diff_unified0 })
   } else if case.operation_key == "git.Core.DiffNameOnly" {
     outcome_accepted(value: MaterializedGitMock { tag: ^materialized_diff_name_only })
   } else if case.operation_key == "git.Core.DiffNameOnlyMerge" {

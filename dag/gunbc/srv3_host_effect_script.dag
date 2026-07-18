@@ -4,6 +4,7 @@ import gunbc.host_effect {
   HostEffect,
   Srv3InstallDiagnosticObserve,
   OsInstallActuatorToolchainEnsure,
+  ProvisionBuildCache,
   Srv3InstallReconcileObserve,
   DurableApprovalGrantRecord,
   DurableApprovalGrantRead,
@@ -126,6 +127,7 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
     Srv3ReceiptEmit { lines: _ } => Absent
     Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => Absent
     OsInstallActuatorToolchainEnsure {} => Absent
+    ProvisionBuildCache { catalog_id: _ } => Absent
     ShellCommand { script: _ } => Absent
     RedfishAction { action: _ } => Absent
     ConvergePlan { policy: _ } => Absent

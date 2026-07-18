@@ -5757,7 +5757,10 @@ fn map_shell_outputs(
     for child in children.iter() {
         let field_name = authored_name_at(ctx.si(), child.clone());
         let from_key = extract_from_key(child, ctx);
+        let is_optional_field = child.return_cardinality == Cardinality::CardOptional;
         let value = match from_key.as_deref() {
+            Some("stdout") if is_optional_field && result.exit_code != 0 => Value::Null,
+            Some("stderr") if is_optional_field && result.exit_code != 0 => Value::Null,
             Some("stdout") => Value::Str(result.stdout.clone()),
             Some("stderr") => Value::Str(result.stderr.clone()),
             Some("exit_success") => Value::Bool(result.exit_code == 0),
@@ -7694,44 +7697,6 @@ fn eval_builtin_inner(
                     type_name: ctx.sym("ModuleDeclarationFact"),
                     fields: Rc::new(sorted_fields(vec![
                         (ctx.sym("module"), Value::Str(f.module)),
-                        (ctx.sym("path"), Value::Str(f.path)),
-                    ])),
-                });
-            }
-            Ok(Some(list_value(items)))
-        }
-
-        "medium_structure_literal_parts_facts" => {
-            let roots = expect_str_list_flex(
-                positional.first().copied(),
-                "medium_structure_literal_parts_facts",
-            )?;
-            let targets = expect_str_list_flex(
-                positional.get(1).copied(),
-                "medium_structure_literal_parts_facts",
-            )?;
-            let facts =
-                crate::module_path_index::medium_structure_census::medium_structure_literal_parts_facts(
-                    &roots, &targets,
-                );
-            let mut items: Vec<Value> = Vec::new();
-            for f in facts {
-                let mut part_values: Vec<Value> = Vec::new();
-                for p in f.parts {
-                    part_values.push(Value::Record {
-                        type_name: ctx.sym("RawLiteralPart"),
-                        fields: Rc::new(sorted_fields(vec![
-                            (ctx.sym("is_hole"), Value::Bool(p.is_hole)),
-                            (ctx.sym("text"), Value::Str(p.text)),
-                        ])),
-                    });
-                }
-                items.push(Value::Record {
-                    type_name: ctx.sym("RawLiteralPartsFact"),
-                    fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("constructor"), Value::Str(f.constructor)),
-                        (ctx.sym("field"), Value::Str(f.field)),
-                        (ctx.sym("parts"), list_value(part_values)),
                         (ctx.sym("path"), Value::Str(f.path)),
                     ])),
                 });
