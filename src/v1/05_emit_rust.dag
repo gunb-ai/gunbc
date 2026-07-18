@@ -2145,7 +2145,7 @@ fn reexport_source_module_name_with_visited(name: String, import_module: String,
 }
 
 fn import_module_enum_scope(import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
-  let physical = enum_names_in_module(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, type_summaries: type_summaries, module_index: module_index)
+  let physical = enum_names_in_module(module_name: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
   let reexport_parents = match map_get(export_sets, import_module) {
     Present { value: exported } =>
       sorted_map_keys(exported) |> filter(n =>
