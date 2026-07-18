@@ -209,7 +209,7 @@ fn effect_io_pure_store_lookup(
   locator: EffectIoResourceLocator
 ) -> Outcome<RuntimeValue> {
   if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
-    match map_get(m: store.entries, key: locator.identity) {
+    match v2.std.collection.map_get(m: store.entries, key: locator.identity) {
       Accepted { value: opt, diagnostics: None } =>
         match opt {
           Present { value: payload } =>

@@ -68,7 +68,7 @@ fn admit_export_symbol(
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: b, origins: os } =>
 
-      match map_get(os, sym) {
+      match v2.std.collection.map_get(os, sym) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
             AdmissionRejected {

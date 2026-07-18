@@ -21,7 +21,7 @@ fn generic_substitution_bind_once(
   name: String,
   concrete: Node,
 ) -> Outcome<GenericSubstitution> {
-  match map_get(subst, name) {
+  match v2.std.collection.map_get(subst, name) {
     Accepted { value: Absent, diagnostics: _ } =>
       outcome_accepted(value: map_insert(subst, name, concrete))
     Accepted { value: Present { value: bound }, diagnostics: _ } =>

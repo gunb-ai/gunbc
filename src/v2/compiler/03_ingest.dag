@@ -1,6 +1,6 @@
 module v2.compiler.ingest
 fn parse_atom_frontier_class(atom_identity: Symbol, binding_to_class: Map<Symbol, Symbol>) -> Symbol {
-  match map_get(binding_to_class, atom_identity) {
+  match v2.std.collection.map_get(binding_to_class, atom_identity) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: token_class } => token_class

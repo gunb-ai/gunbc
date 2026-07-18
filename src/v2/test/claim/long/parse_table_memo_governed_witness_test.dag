@@ -86,7 +86,7 @@ fn witness_door_order_independent_for_recompute_table() -> Bool {
 }
 
 fn parse_table_entries_contain_key(table: ParseTable, key: ParsePositionKey) -> Bool {
-  match map_get(m: table.entries, key: key) {
+  match v2.std.collection.map_get(m: table.entries, key: key) {
     Accepted { value: Present { value: _ } } => true
     Accepted { value: Absent } => false
     Rejected { diagnostics: _ } => false

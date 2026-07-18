@@ -44,7 +44,7 @@ fn insert_per_language_fact_bundle_entry(
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match map_get(m: registry.by_key, key: key) {
+  match v2.std.collection.map_get(m: registry.by_key, key: key) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: _ } =>
         outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
@@ -78,7 +78,7 @@ fn per_language_fact_bundle_insert_subject_axis(
   target: TargetModel,
   fact_axis: ModelCorePrimitiveFactAxis
 ) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
-  match map_get(
+  match v2.std.collection.map_get(
     m: registry.by_key,
     key: per_language_fact_bundle_subject_axis_key(
       subject_carrier: subject_carrier,
