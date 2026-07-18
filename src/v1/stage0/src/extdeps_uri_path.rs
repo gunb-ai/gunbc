@@ -173,76 +173,79 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
 }
 
 pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
-    let path_only = match Rc::new(
-        raw.clone()
-            .split(&"?".to_string())
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-    )
-    .first()
-    .cloned()
     {
-        Some(p) => p.clone(),
-        None => raw.clone(),
-    };
-    let segments = Rc::new({
-        let mut __result = Vec::new();
-        for s in Rc::new(
-            path_only
-                .clone()
-                .split(&"/".to_string())
+        let path_only = match Rc::new(
+            raw.clone()
+                .split(&"?".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
-        .iter()
+        .first()
         .cloned()
         {
-            if (s.clone() != "".to_string()) {
-                __result.push(s);
+            Some(p) => p.clone(),
+            None => raw.clone(),
+        };
+        let segments = Rc::new({
+            let mut __result = Vec::new();
+            for s in Rc::new(
+                path_only
+                    .clone()
+                    .split(&"/".to_string())
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                if (s.clone() != "".to_string()) {
+                    __result.push(s);
+                }
             }
-        }
-        __result
-    });
-    match segments.clone().first().cloned() {
-        None => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
-            template: Rc::new(PathTemplate {
-                tokens: Rc::new(vec![]),
+            __result
+        });
+        match segments.clone().first().cloned() {
+            None => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                template: Rc::new(PathTemplate {
+                    tokens: Rc::new(vec![]),
+                }),
             }),
-        }),
-        Some(first_seg) => match (*parse_segment_tokens(first_seg.clone())).clone() {
-            PathSegmentTokensResult::MalformedPathSegment {
-                segment: s,
-                reason: r,
-                ..
-            } => Rc::new(PathTemplateParseResult::MalformedPathTemplate {
-                raw: raw.clone(),
-                segment: s.clone(),
-                reason: r.clone(),
-            }),
-            PathSegmentTokensResult::ParsedSegmentTokens {
-                tokens: first_tokens,
-                ..
-            } => {
-                let parsed = Rc::new(
-                    segments
-                        .clone()
-                        .iter()
-                        .cloned()
-                        .skip(1 as usize)
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                .fold(
-                    Rc::new(PathTemplateParseResult::ParsedPathTemplate {
-                        template: Rc::new(PathTemplate {
-                            tokens: first_tokens.clone(),
+            Some(first_seg) => match (*parse_segment_tokens(first_seg.clone())).clone() {
+                PathSegmentTokensResult::MalformedPathSegment {
+                    segment: s,
+                    reason: r,
+                    ..
+                } => Rc::new(PathTemplateParseResult::MalformedPathTemplate {
+                    raw: raw.clone(),
+                    segment: s.clone(),
+                    reason: r.clone(),
+                }),
+                PathSegmentTokensResult::ParsedSegmentTokens {
+                    tokens: first_tokens,
+                    ..
+                } => {
+                    let parsed = Rc::new(
+                        segments
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    )
+                    .iter()
+                    .cloned()
+                    .fold(
+                        Rc::new(PathTemplateParseResult::ParsedPathTemplate {
+                            template: Rc::new(PathTemplate {
+                                tokens: first_tokens.clone(),
+                            }),
                         }),
-                    }),
-                    |acc: Rc<PathTemplateParseResult>, seg: String| match (*acc.clone()).clone() {
-                        PathTemplateParseResult::MalformedPathTemplate { .. } => acc.clone(),
-                        PathTemplateParseResult::ParsedPathTemplate { template: path, .. } => {
-                            match (*parse_segment_tokens(seg.clone())).clone() {
+                        |acc: Rc<PathTemplateParseResult>, seg: String| match (*acc.clone()).clone()
+                        {
+                            PathTemplateParseResult::MalformedPathTemplate { .. } => acc.clone(),
+                            PathTemplateParseResult::ParsedPathTemplate {
+                                template: path, ..
+                            } => match (*parse_segment_tokens(seg.clone())).clone() {
                                 PathSegmentTokensResult::MalformedPathSegment {
                                     segment: s,
                                     reason: r,
@@ -263,12 +266,12 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                                         ),
                                     }),
                                 }),
-                            }
-                        }
-                    },
-                );
-                parsed
-            }
-        },
+                            },
+                        },
+                    );
+                    parsed
+                }
+            },
+        }
     }
 }

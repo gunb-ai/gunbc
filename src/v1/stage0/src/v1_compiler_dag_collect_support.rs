@@ -43,33 +43,35 @@ pub fn dag_collect_pack_slots(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<DagCollectAcc> {
-    let ordered_slots = Rc::new({
-        let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&slots)).iter().cloned().collect();
-        __sorted.sort_by(|a: &Rc<DagCollectSlot>, b: &Rc<DagCollectSlot>| {
-            let __ka = (|s: Rc<DagCollectSlot>| s.seq.clone())(a.clone());
-            let __kb = (|s: Rc<DagCollectSlot>| s.seq.clone())(b.clone());
-            __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+    {
+        let ordered_slots = Rc::new({
+            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&slots)).iter().cloned().collect();
+            __sorted.sort_by(|a: &Rc<DagCollectSlot>, b: &Rc<DagCollectSlot>| {
+                let __ka = (|s: Rc<DagCollectSlot>| s.seq.clone())(a.clone());
+                let __kb = (|s: Rc<DagCollectSlot>| s.seq.clone())(b.clone());
+                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            __sorted
         });
-        __sorted
-    });
-    let order = Rc::new({
-        let mut __result = Vec::new();
-        for s in ordered_slots.clone().iter().cloned() {
-            __result.push(s.node.clone());
-        }
-        __result
-    });
-    let seen = ordered_slots.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, s: Rc<DagCollectSlot>| {
-            v1_rt::rc_map_insert(acc, s.key.clone(), s.fp.clone())
-        },
-    );
-    Rc::new(DagCollectAcc {
-        seen: seen.clone(),
-        order: order.clone(),
-        collision_errors: collision_errors.clone(),
-    })
+        let order = Rc::new({
+            let mut __result = Vec::new();
+            for s in ordered_slots.clone().iter().cloned() {
+                __result.push(s.node.clone());
+            }
+            __result
+        });
+        let seen = ordered_slots.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, s: Rc<DagCollectSlot>| {
+                v1_rt::rc_map_insert(acc, s.key.clone(), s.fp.clone())
+            },
+        );
+        Rc::new(DagCollectAcc {
+            seen: seen.clone(),
+            order: order.clone(),
+            collision_errors: collision_errors.clone(),
+        })
+    }
 }
 
 pub fn json_quote(s: String) -> String {
@@ -80,7 +82,7 @@ pub fn json_quote(s: String) -> String {
 }
 
 pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
-    match value.clone() {
+    match value.clone().as_deref().cloned() {
         None => "none".to_string(),
         Some(InferredNode::Resolved { node: _, .. }) => "Resolved".to_string(),
         Some(InferredNode::TypeVariable { id: id, .. }) => {
@@ -226,23 +228,26 @@ pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
 }
 
 pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
-    let synthetic = ((span.start.clone() == 0) && (span.end.clone() == 0));
-    let detail = if synthetic.clone() {
-        " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)".to_string()
-    } else {
-        "".to_string()
-    };
-    make_error_node(
-        Rc::new(CompilerDiagnostic::InternalError {
-            message: v1_rt::concat(
-                v1_rt::concat(
-                    "dag artifact: distinct nodes share identity key ".to_string(),
-                    json_quote(key.clone()),
+    {
+        let synthetic = ((span.start.clone() == 0) && (span.end.clone() == 0));
+        let detail = if synthetic.clone() {
+            " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
+                .to_string()
+        } else {
+            "".to_string()
+        };
+        make_error_node(
+            Rc::new(CompilerDiagnostic::InternalError {
+                message: v1_rt::concat(
+                    v1_rt::concat(
+                        "dag artifact: distinct nodes share identity key ".to_string(),
+                        json_quote(key.clone()),
+                    ),
+                    detail.clone(),
                 ),
-                detail.clone(),
-            ),
-            span: span.clone(),
-        }),
-        "".to_string(),
-    )
+                span: span.clone(),
+            }),
+            "".to_string(),
+        )
+    }
 }
