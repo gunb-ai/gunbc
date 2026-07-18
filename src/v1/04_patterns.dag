@@ -29,7 +29,17 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
       _ => scrut_node
     }
   } else {
-    scrut_node
+    if decl.connective == Conj && (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
+      let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+      substitute_type_slots(
+        n: decl,
+        slot_bindings: subst,
+        decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
+        source_indices: env.source_indices
+      )
+    } else {
+      scrut_node
+    }
   }
 }
 
@@ -229,7 +239,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
 
           let record_destructure = field_binding_count > 0
             && scrut_node.connective == Conj
-            && scrut_name == variant_name
+            && qualified_last_segment(name: scrut_name) == variant_name
           let fallback = if record_destructure {
             node_lookup_resolved(node: scrut_node)
           } else if optional_coproduct_subject && variant_name == "Present" {

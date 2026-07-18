@@ -101,6 +101,17 @@ pub fn expand_scrut_from_decl(
                     }
                     _ => scrut_node.clone(),
                 }
+            } else if decl.connective.clone() == Connective::Conj
+                && (decl.params.clone().len() as i64) > 0
+                && (scrut_node.children.clone().len() as i64) > 0
+            {
+                let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
+                substitute_type_slots(
+                    decl.clone(),
+                    subst.clone(),
+                    authored_name_at(env.source_indices.clone(), decl.clone()),
+                    env.source_indices.clone(),
+                )
             } else {
                 scrut_node.clone()
             }
@@ -597,8 +608,9 @@ pub fn lookup_variant_in_type(
                                                     (((field_binding_count.clone() > 0)
                                                         && (scrut_node.connective.clone()
                                                             == Connective::Conj))
-                                                        && (scrut_name.clone()
-                                                            == variant_name.clone()));
+                                                        && (qualified_last_segment(
+                                                            scrut_name.clone(),
+                                                        ) == variant_name.clone()));
                                                 let fallback = if record_destructure.clone() {
                                                     node_lookup_resolved(scrut_node.clone())
                                                 } else {
