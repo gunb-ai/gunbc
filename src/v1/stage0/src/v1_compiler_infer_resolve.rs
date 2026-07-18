@@ -289,8 +289,7 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                     && (!is_transparent_primitive_alias_rhs(
                         structural.clone(),
                         source_indices.clone(),
-                    )
-                    || crate::v1_std_core::is_kernel_type(
+                    ) || crate::v1_std_core::is_kernel_type(
                         crate::v1_compiler_infer_env::qualified_last_segment(brand.clone()),
                     )))
                 {

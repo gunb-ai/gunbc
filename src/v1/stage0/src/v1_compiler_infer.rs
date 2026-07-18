@@ -1376,7 +1376,6 @@ pub fn kernel_value_declared_type_mismatch(
     type_env: Rc<TypeEnv>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-
     if (((formal.connective.clone() == Connective::Arrow)
         || (actual.connective.clone() == Connective::Arrow))
         || ((actual.children.clone().len() as i64) > 0))
@@ -1502,7 +1501,6 @@ pub fn direct_call_arg_type_mismatch(
     module_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-
     if (type_node_is_callable(formal.clone()) || type_node_is_callable(actual.clone())) {
         false
     } else {
