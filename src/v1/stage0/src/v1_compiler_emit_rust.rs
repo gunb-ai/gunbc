@@ -3253,6 +3253,24 @@ pub fn emit_phantom_zst_markers_for_enum(children: Rc<Vec<Rc<Node>>>, env: Rc<Ty
     }
 }
 
+pub fn phantom_marker_name_shadowed_by_real_type_item(
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    vname: String,
+) -> bool {
+    let mut __found = false;
+    for item in items.clone().iter().cloned() {
+        if (authored_name_at(source_indices.clone(), item.clone()) == vname.clone())
+            && (is_type_alias_item(item.clone(), source_indices.clone())
+                || is_type_decl_item(item.clone(), source_indices.clone()))
+        {
+            __found = true;
+            break;
+        }
+    }
+    __found
+}
+
 pub fn collect_phantom_zst_marker_names(
     items: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
@@ -3294,7 +3312,12 @@ pub fn collect_phantom_zst_marker_names(
                                     }
                                 }
                                 __found
-                            })
+                            }
+                            && !phantom_marker_name_shadowed_by_real_type_item(
+                                items.clone(),
+                                env.source_indices.clone(),
+                                vname.clone(),
+                            ))
                         {
                             v1_rt::concat(inner.clone(), Rc::new(vec![vname.clone()]))
                         } else {
