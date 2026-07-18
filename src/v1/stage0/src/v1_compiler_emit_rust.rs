@@ -10196,6 +10196,7 @@ pub fn emit_fn_def(
                         params_str.clone(),
                         ret_str.clone(),
                         body.clone(),
+                        inferred.clone(),
                         registry.clone(),
                         body_scope.clone(),
                         depth.clone(),
@@ -10209,12 +10210,141 @@ pub fn emit_fn_def(
     }
 }
 
+pub fn emit_fn_value_body(
+    body: Rc<Node>,
+    expected_return: Rc<Node>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let si = scope.type_env.clone().source_indices.clone();
+        match (*body.expr_data.clone()).clone() {
+            ExprData::ExprLet => {
+                let n = let_binding_name_at(body.clone(), si.clone());
+                let v = let_value(body.clone());
+                let inner = let_body(body.clone());
+                let val_str = emit_typed_expr(
+                    v.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                    1024,
+                );
+                let let_line = emit_let_binding(n.clone(), val_str.clone(), RenderTarget::Rust);
+                let next_scope = extend_scope(
+                    scope.clone(),
+                    n.clone(),
+                    resolved_type(v.clone()),
+                    Rc::new(SubValueRelation::SubValueUnknown),
+                );
+                match inner.clone() {
+                    Some(bd) => v1_rt::concat(
+                        v1_rt::concat(let_line.clone(), "\n".to_string()),
+                        emit_fn_value_body(
+                            bd.clone(),
+                            expected_return.clone(),
+                            registry.clone(),
+                            next_scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                        ),
+                    ),
+                    None => let_line.clone(),
+                }
+            }
+            ExprData::ExprBlock => {
+                let ss = body.children.clone();
+                if ((ss.clone().len() as i64) == 0) {
+                    "()".to_string()
+                } else {
+                    {
+                        let init_state = emit_rust_init_block_stmts(
+                            ss.clone(),
+                            Rc::new(vec![]),
+                            scope.clone(),
+                            registry.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                        );
+                        let last_stmt = ss.clone().last().cloned();
+                        let last_str = match last_stmt.clone() {
+                            Some(s) => match (*s.expr_data.clone()).clone() {
+                                ExprData::ExprReturn => emit_option_rc_coerced_expr(
+                                    return_value(s.clone()),
+                                    expected_return.clone(),
+                                    registry.clone(),
+                                    init_state.scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                ),
+                                _ => emit_option_rc_coerced_expr(
+                                    s.clone(),
+                                    expected_return.clone(),
+                                    registry.clone(),
+                                    init_state.scope.clone(),
+                                    depth.clone(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                ),
+                            },
+                            None => "()".to_string(),
+                        };
+                        if ((init_state.text.clone().len() as i64) == 0) {
+                            last_str
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    init_state.text.clone().join(&"\n".to_string()),
+                                    "\n".to_string(),
+                                ),
+                                last_str,
+                            )
+                        }
+                    }
+                }
+            }
+            ExprData::ExprMatch => {
+                let s = match_scrutinee(body.clone());
+                let arm_list = match_arm_nodes(body.clone());
+                emit_typed_match(
+                    s.clone(),
+                    arm_list.clone(),
+                    expected_return.clone(),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                )
+            }
+            _ => emit_option_rc_coerced_expr(
+                body.clone(),
+                expected_return.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+            ),
+        }
+    })
+}
+
 pub fn emit_fn_def_non_tco(
     name: String,
     type_params_str: String,
     params_str: String,
     ret_str: String,
     body: Rc<Node>,
+    inferred: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -10224,14 +10354,14 @@ pub fn emit_fn_def_non_tco(
 ) -> String {
     if needs_stacker.clone() {
         {
-            let body_str = emit_typed_expr(
+            let body_str = emit_fn_value_body(
                 body.clone(),
+                inferred.clone(),
                 registry.clone(),
                 scope.clone(),
                 (depth.clone() + 2),
                 shared_types.clone(),
                 emit_info.clone(),
-                1024,
             );
             let kw = rust_items().func_keyword.clone();
             v1_rt::concat(
@@ -10291,14 +10421,14 @@ pub fn emit_fn_def_non_tco(
         }
     } else {
         {
-            let body_str = emit_typed_expr(
+            let body_str = emit_fn_value_body(
                 body.clone(),
+                inferred.clone(),
                 registry.clone(),
                 scope.clone(),
                 (depth.clone() + 1),
                 shared_types.clone(),
                 emit_info.clone(),
-                1024,
             );
             let kw = rust_items().func_keyword.clone();
             v1_rt::concat(
@@ -11793,17 +11923,25 @@ pub fn analyze_rc_pattern(
                                 );
                                 Rc::new(RcPatternAnalysis {
                                     matches_rc_variant: false,
-                                    matches_option_rc_variant: ((n.clone()
-                                        == "Present".to_string())
-                                        && inner.matches_rc_variant.clone()),
+                                    matches_option_rc_variant: true,
                                     needs_rc_pattern: inner.needs_rc_pattern.clone(),
                                     ref_bound_fields: Rc::new(vec![]),
                                 })
                             }
-                            None => empty_rc_pattern_analysis(),
+                            None => Rc::new(RcPatternAnalysis {
+                                matches_rc_variant: false,
+                                matches_option_rc_variant: true,
+                                needs_rc_pattern: false,
+                                ref_bound_fields: Rc::new(vec![]),
+                            }),
                         }
                     } else {
-                        empty_rc_pattern_analysis()
+                        Rc::new(RcPatternAnalysis {
+                            matches_rc_variant: false,
+                            matches_option_rc_variant: true,
+                            needs_rc_pattern: false,
+                            ref_bound_fields: Rc::new(vec![]),
+                        })
                     }
                 } else {
                     {
@@ -11940,10 +12078,8 @@ pub fn analyze_rc_match(
             _ => false,
         };
         RcMatchAnalysis {
-            needs_rc_option_ref: ((arms_want_option.clone() && scrutinee_is_optional.clone())
-                && scrutinee_is_call.clone()),
-            needs_option_deref: (arms_want_option.clone()
-                && !(scrutinee_is_optional.clone() && scrutinee_is_call.clone())),
+            needs_rc_option_ref: (arms_want_option.clone() && scrutinee_is_call.clone()),
+            needs_option_deref: (arms_want_option.clone() && !scrutinee_is_call.clone()),
             needs_deref: if scrutinee_is_optional.clone() {
                 false
             } else {
@@ -12736,6 +12872,262 @@ pub fn variant_ref_self_wraps(
         || v1_rt::set_contains(&shared_types, enum_name.clone()))
 }
 
+pub fn declared_return_is_option_rc(
+    declared: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    corpus_repr: RustCorpusRepr,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match declared.return_cardinality.clone() {
+        Cardinality::CardOptional => {
+            let inner = with_required_cardinality(declared.clone());
+            let inner_name = authored_name_at(source_indices.clone(), inner.clone());
+            (v1_rt::set_contains(&shared_types, inner_name.clone())
+                || rust_type_is_rc_wrapped(render_rust_type(
+                    inner.clone(),
+                    shared_types.clone(),
+                    corpus_repr.clone(),
+                    source_indices.clone(),
+                )))
+        }
+        _ => false,
+    }
+}
+
+pub fn is_optional_carrier_call(
+    expr: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*expr.expr_data.clone()).clone() {
+        ExprData::ExprCall { .. } => {
+            let callee = expr_call_func_at(expr.clone(), source_indices.clone());
+            ((callee.clone() == "optional_present".to_string())
+                || (callee.clone() == "optional_absent".to_string()))
+        }
+        _ => false,
+    }
+}
+
+pub fn wrap_optional_carrier_for_option_rc(expr_str: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat("(*".to_string(), expr_str.clone()),
+        ").clone()".to_string(),
+    )
+}
+
+pub fn coerce_rc_optional_carrier_to_option_rc(
+    expr_str: String,
+    expr: Rc<Node>,
+    expected: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    corpus_repr: RustCorpusRepr,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    if declared_return_is_option_rc(
+        expected.clone(),
+        shared_types.clone(),
+        corpus_repr.clone(),
+        source_indices.clone(),
+    ) {
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => {
+                if is_optional_carrier_call(expr.clone(), source_indices.clone()) {
+                    wrap_optional_carrier_for_option_rc(expr_str.clone())
+                } else {
+                    expr_str.clone()
+                }
+            }
+            _ => expr_str.clone(),
+        }
+    } else {
+        expr_str.clone()
+    }
+}
+
+pub fn emit_option_rc_coerced_expr(
+    expr: Rc<Node>,
+    expected: Rc<Node>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let si = scope.type_env.clone().source_indices.clone();
+        if !declared_return_is_option_rc(
+            expected.clone(),
+            shared_types.clone(),
+            emit_info.corpus_repr.clone(),
+            si.clone(),
+        ) {
+            emit_typed_expr(
+                expr.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                1024,
+            )
+        } else {
+            match (*expr.expr_data.clone()).clone() {
+                ExprData::ExprCall { .. } => {
+                    let raw = emit_typed_expr(
+                        expr.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    );
+                    if is_optional_carrier_call(expr.clone(), si.clone()) {
+                        wrap_optional_carrier_for_option_rc(raw.clone())
+                    } else {
+                        raw.clone()
+                    }
+                }
+                ExprData::ExprBlock => {
+                    let ss = expr.children.clone();
+                    if ((ss.clone().len() as i64) == 0) {
+                        emit_typed_expr(
+                            expr.clone(),
+                            registry.clone(),
+                            scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                            1024,
+                        )
+                    } else {
+                        match ss.clone().last().cloned() {
+                            Some(tail) => {
+                                if is_optional_carrier_call(tail.clone(), si.clone()) {
+                                    {
+                                        let n = (ss.clone().len() as i64);
+                                        let prefix = Rc::new({
+                                            let mut __result = Vec::new();
+                                            for pair in Rc::new({
+                                                let mut __result = Vec::new();
+                                                for pair in Rc::new(
+                                                    ss.clone()
+                                                        .iter()
+                                                        .cloned()
+                                                        .enumerate()
+                                                        .map(|(i, v)| (i as i64, v))
+                                                        .collect::<Vec<_>>(),
+                                                )
+                                                .iter()
+                                                .cloned()
+                                                {
+                                                    if (pair.0.clone() < (n.clone() - 1)) {
+                                                        __result.push(pair);
+                                                    }
+                                                }
+                                                __result
+                                            })
+                                            .iter()
+                                            .cloned()
+                                            {
+                                                __result.push(pair.1.clone());
+                                            }
+                                            __result
+                                        });
+                                        let init_state = emit_rust_init_block_stmts(
+                                            prefix.clone(),
+                                            Rc::new(vec![]),
+                                            scope.clone(),
+                                            registry.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            emit_info.clone(),
+                                        );
+                                        let tail_str = emit_typed_expr(
+                                            tail.clone(),
+                                            registry.clone(),
+                                            init_state.scope.clone(),
+                                            depth.clone(),
+                                            shared_types.clone(),
+                                            emit_info.clone(),
+                                            1024,
+                                        );
+                                        let coerced =
+                                            wrap_optional_carrier_for_option_rc(tail_str.clone());
+                                        if ((init_state.text.clone().len() as i64) == 0) {
+                                            coerced
+                                        } else {
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    init_state.text.clone().join(&"\n".to_string()),
+                                                    "\n".to_string(),
+                                                ),
+                                                coerced,
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    emit_typed_expr(
+                                        expr.clone(),
+                                        registry.clone(),
+                                        scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
+                                        emit_info.clone(),
+                                        1024,
+                                    )
+                                }
+                            }
+                            None => emit_typed_expr(
+                                expr.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                1024,
+                            ),
+                        }
+                    }
+                }
+                ExprData::ExprMatch => {
+                    let s = match_scrutinee(expr.clone());
+                    let arm_list = match_arm_nodes(expr.clone());
+                    emit_typed_match(
+                        s.clone(),
+                        arm_list.clone(),
+                        expected.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                    )
+                }
+                _ => {
+                    let raw = emit_typed_expr(
+                        expr.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
+                    );
+                    coerce_rc_optional_carrier_to_option_rc(
+                        raw.clone(),
+                        expr.clone(),
+                        expected.clone(),
+                        shared_types.clone(),
+                        emit_info.corpus_repr.clone(),
+                        si.clone(),
+                    )
+                }
+            }
+        }
+    }
+}
+
 pub fn emit_var_ref(
     name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
@@ -12745,109 +13137,114 @@ pub fn emit_var_ref(
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    if ((name.clone() == "none".to_string()) || (name.clone() == "None".to_string())) {
-        emit_keyword("null".to_string(), RenderTarget::Rust)
-    } else {
-        if ((name.clone() == "true".to_string()) || (name.clone() == "false".to_string())) {
-            emit_keyword(name.clone(), RenderTarget::Rust)
+    {
+        let variant_parent = effective_variant_parent(
+            name.clone(),
+            binding_kind.clone(),
+            resolved_type.clone(),
+            emit_info.clone(),
+            source_indices.clone(),
+        );
+        if (((name.clone() == "none".to_string()) || (name.clone() == "None".to_string()))
+            && (variant_parent.clone() == None))
+        {
+            emit_keyword("null".to_string(), RenderTarget::Rust)
         } else {
-            {
-                let moves_by_value = v1_rt::set_contains(&emit_info.movable.clone(), name.clone());
-                let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-                let variant_parent = effective_variant_parent(
-                    name.clone(),
-                    binding_kind.clone(),
-                    resolved_type.clone(),
-                    emit_info.clone(),
-                    source_indices.clone(),
-                );
-                let ref_str = match variant_parent.clone() {
-                    Some(enum_name) => {
-                        let body = if (((name.clone() == "Empty".to_string())
-                            && (enum_name.clone() == "FreeMonoid".to_string()))
-                            && corpus_repr_is_host(emit_info.corpus_repr.clone()))
-                        {
-                            "vec![]".to_string()
-                        } else {
-                            if (is_optional_variant_name(name.clone())
-                                && (enum_name.clone() == "Optional".to_string()))
+            if ((name.clone() == "true".to_string()) || (name.clone() == "false".to_string())) {
+                emit_keyword(name.clone(), RenderTarget::Rust)
+            } else {
+                {
+                    let moves_by_value =
+                        v1_rt::set_contains(&emit_info.movable.clone(), name.clone());
+                    let sharing = language_spec(RenderTarget::Rust).sharing.clone();
+                    let ref_str = match variant_parent.clone() {
+                        Some(enum_name) => {
+                            let body = if (((name.clone() == "Empty".to_string())
+                                && (enum_name.clone() == "FreeMonoid".to_string()))
+                                && corpus_repr_is_host(emit_info.corpus_repr.clone()))
                             {
-                                if (name.clone() == "Present".to_string()) {
-                                    "Some".to_string()
-                                } else {
-                                    "None".to_string()
-                                }
+                                "vec![]".to_string()
                             } else {
-                                v1_rt::concat(
-                                    v1_rt::concat(enum_name.clone(), "::".to_string()),
-                                    name.clone(),
-                                )
-                            }
-                        };
-                        if variant_ref_self_wraps(
-                            name.clone(),
-                            enum_name.clone(),
-                            shared_types.clone(),
-                            emit_info.corpus_repr.clone(),
-                        ) {
-                            v1_rt::concat(
-                                v1_rt::concat("Rc::new(".to_string(), body.clone()),
-                                ")".to_string(),
-                            )
-                        } else {
-                            body.clone()
-                        }
-                    }
-                    None => match v1_rt::map_get(&registry, name.clone()) {
-                        Some(info) => {
-                            let is_data = (info.kind.clone() == ItemKind::DataItem);
-                            if is_data.clone() {
-                                v1_rt::concat(to_snake(name.clone()), "()".to_string())
-                            } else {
+                                if (is_optional_variant_name(name.clone())
+                                    && (enum_name.clone() == "Optional".to_string()))
                                 {
-                                    let is_function_value =
-                                        match binding_kind.clone().as_deref().cloned() {
-                                            Some(VarBindingKind::FunctionValueBinding) => true,
-                                            _ => false,
-                                        };
-                                    let ident = emit_ident(name.clone(), RenderTarget::Rust);
-                                    let ident_str = if is_function_value.clone() {
-                                        ident.clone()
+                                    if (name.clone() == "Present".to_string()) {
+                                        "Some".to_string()
                                     } else {
-                                        if moves_by_value.clone() {
-                                            ident.clone()
-                                        } else {
-                                            match resolved_type.clone() {
-                                                Some(_) => apply_type_template1(
-                                                    sharing.clone_value.clone(),
-                                                    ident.clone(),
-                                                ),
-                                                _ => ident.clone(),
-                                            }
-                                        }
-                                    };
-                                    ident_str.clone()
-                                }
-                            }
-                        }
-                        None => {
-                            let ident = emit_ident(name.clone(), RenderTarget::Rust);
-                            let ident_str = if moves_by_value.clone() {
-                                ident.clone()
-                            } else {
-                                match resolved_type.clone() {
-                                    Some(_) => apply_type_template1(
-                                        sharing.clone_value.clone(),
-                                        ident.clone(),
-                                    ),
-                                    _ => ident.clone(),
+                                        "None".to_string()
+                                    }
+                                } else {
+                                    v1_rt::concat(
+                                        v1_rt::concat(enum_name.clone(), "::".to_string()),
+                                        name.clone(),
+                                    )
                                 }
                             };
-                            ident_str.clone()
+                            if variant_ref_self_wraps(
+                                name.clone(),
+                                enum_name.clone(),
+                                shared_types.clone(),
+                                emit_info.corpus_repr.clone(),
+                            ) {
+                                v1_rt::concat(
+                                    v1_rt::concat("Rc::new(".to_string(), body.clone()),
+                                    ")".to_string(),
+                                )
+                            } else {
+                                body.clone()
+                            }
                         }
-                    },
-                };
-                ref_str
+                        None => match v1_rt::map_get(&registry, name.clone()) {
+                            Some(info) => {
+                                let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                if is_data.clone() {
+                                    v1_rt::concat(to_snake(name.clone()), "()".to_string())
+                                } else {
+                                    {
+                                        let is_function_value =
+                                            match binding_kind.clone().as_deref().cloned() {
+                                                Some(VarBindingKind::FunctionValueBinding) => true,
+                                                _ => false,
+                                            };
+                                        let ident = emit_ident(name.clone(), RenderTarget::Rust);
+                                        let ident_str = if is_function_value.clone() {
+                                            ident.clone()
+                                        } else {
+                                            if moves_by_value.clone() {
+                                                ident.clone()
+                                            } else {
+                                                match resolved_type.clone() {
+                                                    Some(_) => apply_type_template1(
+                                                        sharing.clone_value.clone(),
+                                                        ident.clone(),
+                                                    ),
+                                                    _ => ident.clone(),
+                                                }
+                                            }
+                                        };
+                                        ident_str.clone()
+                                    }
+                                }
+                            }
+                            None => {
+                                let ident = emit_ident(name.clone(), RenderTarget::Rust);
+                                let ident_str = if moves_by_value.clone() {
+                                    ident.clone()
+                                } else {
+                                    match resolved_type.clone() {
+                                        Some(_) => apply_type_template1(
+                                            sharing.clone_value.clone(),
+                                            ident.clone(),
+                                        ),
+                                        _ => ident.clone(),
+                                    }
+                                };
+                                ident_str.clone()
+                            }
+                        },
+                    };
+                    ref_str
+                }
             }
         }
     }
@@ -12869,73 +13266,69 @@ pub fn emit_typed_expr_base(
                 ..
             } => {
                 let n = expr_var_name_at(texpr.clone(), si.clone());
-                if ((n.clone() == "none".to_string()) || (n.clone() == "None".to_string())) {
+                let variant_parent = effective_variant_parent(
+                    n.clone(),
+                    binding_kind.clone(),
+                    texpr.inferred.clone(),
+                    emit_info.clone(),
+                    si.clone(),
+                );
+                if (((n.clone() == "none".to_string()) || (n.clone() == "None".to_string()))
+                    && (variant_parent.clone() == None))
+                {
                     emit_keyword("null".to_string(), RenderTarget::Rust)
                 } else {
                     if ((n.clone() == "true".to_string()) || (n.clone() == "false".to_string())) {
                         emit_keyword(n.clone(), RenderTarget::Rust)
                     } else {
-                        {
-                            let variant_parent = effective_variant_parent(
-                                n.clone(),
-                                binding_kind.clone(),
-                                texpr.inferred.clone(),
-                                emit_info.clone(),
-                                si.clone(),
-                            );
-                            match variant_parent.clone() {
-                                Some(enum_name) => {
-                                    if (((n.clone() == "Empty".to_string())
-                                        && (enum_name.clone() == "FreeMonoid".to_string()))
-                                        && corpus_repr_is_host(emit_info.corpus_repr.clone()))
+                        match variant_parent.clone() {
+                            Some(enum_name) => {
+                                if (((n.clone() == "Empty".to_string())
+                                    && (enum_name.clone() == "FreeMonoid".to_string()))
+                                    && corpus_repr_is_host(emit_info.corpus_repr.clone()))
+                                {
+                                    "Rc::new(vec![])".to_string()
+                                } else {
                                     {
-                                        "Rc::new(vec![])".to_string()
-                                    } else {
+                                        let qualified = if (is_optional_variant_name(n.clone())
+                                            && (enum_name.clone() == "Optional".to_string()))
                                         {
-                                            let qualified = if (is_optional_variant_name(n.clone())
-                                                && (enum_name.clone() == "Optional".to_string()))
-                                            {
-                                                if (n.clone() == "Present".to_string()) {
-                                                    "Some".to_string()
-                                                } else {
-                                                    "None".to_string()
-                                                }
+                                            if (n.clone() == "Present".to_string()) {
+                                                "Some".to_string()
                                             } else {
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        enum_name.clone(),
-                                                        "::".to_string(),
-                                                    ),
-                                                    n.clone(),
-                                                )
-                                            };
-                                            if v1_rt::set_contains(&shared_types, enum_name.clone())
-                                            {
-                                                v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        "Rc::new(".to_string(),
-                                                        qualified.clone(),
-                                                    ),
-                                                    ")".to_string(),
-                                                )
-                                            } else {
-                                                qualified.clone()
+                                                "None".to_string()
                                             }
+                                        } else {
+                                            v1_rt::concat(
+                                                v1_rt::concat(enum_name.clone(), "::".to_string()),
+                                                n.clone(),
+                                            )
+                                        };
+                                        if v1_rt::set_contains(&shared_types, enum_name.clone()) {
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "Rc::new(".to_string(),
+                                                    qualified.clone(),
+                                                ),
+                                                ")".to_string(),
+                                            )
+                                        } else {
+                                            qualified.clone()
                                         }
                                     }
                                 }
-                                None => match v1_rt::map_get(&registry, n.clone()) {
-                                    Some(info) => {
-                                        let is_data = (info.kind.clone() == ItemKind::DataItem);
-                                        if is_data.clone() {
-                                            v1_rt::concat(to_snake(n.clone()), "()".to_string())
-                                        } else {
-                                            emit_ident(n.clone(), RenderTarget::Rust)
-                                        }
-                                    }
-                                    None => emit_ident(n.clone(), RenderTarget::Rust),
-                                },
                             }
+                            None => match v1_rt::map_get(&registry, n.clone()) {
+                                Some(info) => {
+                                    let is_data = (info.kind.clone() == ItemKind::DataItem);
+                                    if is_data.clone() {
+                                        v1_rt::concat(to_snake(n.clone()), "()".to_string())
+                                    } else {
+                                        emit_ident(n.clone(), RenderTarget::Rust)
+                                    }
+                                }
+                                None => emit_ident(n.clone(), RenderTarget::Rust),
+                            },
                         }
                     }
                 }
@@ -13651,6 +14044,7 @@ pub fn emit_rust_expr_match(
             emit_typed_match(
                 s.clone(),
                 arm_list.clone(),
+                resolved_type(expr.clone()),
                 registry.clone(),
                 scope.clone(),
                 depth.clone(),
@@ -17691,6 +18085,7 @@ pub fn emit_native_freemonoid_match(
 pub fn emit_typed_match(
     scrutinee: Rc<Node>,
     arms: Rc<Vec<Rc<Node>>>,
+    expected_type: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -17759,6 +18154,7 @@ pub fn emit_typed_match(
             for arm in arms.clone().iter().cloned() {
                 __result.push(emit_typed_match_arm(
                     arm.clone(),
+                    expected_type.clone(),
                     registry.clone(),
                     scope.clone(),
                     depth.clone(),
@@ -17851,6 +18247,7 @@ pub fn emit_typed_match(
                                     for arm in arms.clone().iter().cloned() {
                                         __result.push(emit_typed_match_arm(
                                             arm.clone(),
+                                            expected_type.clone(),
                                             registry.clone(),
                                             scope.clone(),
                                             depth.clone(),
@@ -17896,6 +18293,7 @@ pub fn emit_typed_match(
 
 pub fn emit_typed_match_arm(
     arm: Rc<Node>,
+    expected_type: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -18014,25 +18412,25 @@ pub fn emit_typed_match_arm(
                         si.clone(),
                     )
                 } else {
-                    emit_typed_expr(
+                    emit_option_rc_coerced_expr(
                         arm_b.clone(),
+                        expected_type.clone(),
                         registry.clone(),
                         scope.clone(),
                         depth.clone(),
                         shared_types.clone(),
                         emit_info.clone(),
-                        1024,
                     )
                 }
             }
-            _ => emit_typed_expr(
+            _ => emit_option_rc_coerced_expr(
                 arm_b.clone(),
+                expected_type.clone(),
                 registry.clone(),
                 scope.clone(),
                 depth.clone(),
                 shared_types.clone(),
                 emit_info.clone(),
-                1024,
             ),
         };
         if rc_analysis.needs_rc_pattern.clone() {
