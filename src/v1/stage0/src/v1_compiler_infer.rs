@@ -12940,11 +12940,40 @@ pub fn disj_variant_name_counts(
     )
 }
 
+pub fn corpus_disj_variant_name_counts(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, i64>> {
+    modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, i64>(),
+        |counts: Rc<HashMap<String, i64>>, mod_: Rc<ResolvedModule>| {
+            module_items(mod_.module.clone())
+                .iter()
+                .cloned()
+                .fold(counts, |c: Rc<HashMap<String, i64>>, item: Rc<Node>| {
+                    match item.connective.clone() {
+                        Connective::Disj => item.children.clone().iter().cloned().fold(
+                            c,
+                            |c2: Rc<HashMap<String, i64>>, child: Rc<Node>| {
+                                disj_variant_name_count_inc(
+                                    c2,
+                                    authored_name_at(source_indices.clone(), child.clone()),
+                                )
+                            },
+                        ),
+                        _ => c,
+                    }
+                })
+        },
+    )
+}
+
 pub fn symbol_index_insert_unique_disj_variant_aliases(
     index: Rc<SymbolIndex>,
     module_path: String,
     items: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    corpus_variant_counts: Rc<HashMap<String, i64>>,
 ) -> Rc<SymbolIndex> {
     {
         let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
@@ -12960,14 +12989,29 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
                         |a2: Rc<SymbolIndex>, child: Rc<Node>| {
                             let vname = authored_name_at(source_indices.clone(), child.clone());
                             match v1_rt::map_get(&counts, vname.clone()) {
-                                Some(1) => symbol_index_insert(
-                                    a2.clone(),
-                                    v1_rt::concat(
-                                        v1_rt::concat(module_path.clone(), ".".to_string()),
-                                        vname.clone(),
+                                Some(1) => match v1_rt::map_get(&corpus_variant_counts, vname.clone())
+                                {
+                                    Some(1) => symbol_index_insert_decl(
+                                        a2.clone(),
+                                        v1_rt::concat(
+                                            v1_rt::concat(module_path.clone(), ".".to_string()),
+                                            vname.clone(),
+                                        ),
+                                        Rc::new(TypeBinding {
+                                            name: vname.clone(),
+                                            resolved: child.clone(),
+                                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                        }),
                                     ),
-                                    child.clone(),
-                                ),
+                                    _ => symbol_index_insert(
+                                        a2.clone(),
+                                        v1_rt::concat(
+                                            v1_rt::concat(module_path.clone(), ".".to_string()),
+                                            vname.clone(),
+                                        ),
+                                        child.clone(),
+                                    ),
+                                },
                                 _ => a2.clone(),
                             }
                         },
@@ -12982,6 +13026,8 @@ pub fn build_symbol_index_census(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
+    let corpus_variant_counts =
+        corpus_disj_variant_name_counts(modules.clone(), source_indices.clone());
     modules.clone().iter().cloned().fold(
         empty_symbol_index(),
         |index: Rc<SymbolIndex>, mod_: Rc<ResolvedModule>| {
@@ -13003,6 +13049,7 @@ pub fn build_symbol_index_census(
                 module_path.clone(),
                 items.clone(),
                 source_indices.clone(),
+                corpus_variant_counts.clone(),
             )
         },
     )
