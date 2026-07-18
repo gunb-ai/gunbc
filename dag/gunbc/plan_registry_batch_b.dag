@@ -9,8 +9,6 @@ import gunbc.plans.model_realization_fork { model_realization_fork_plan }
 import gunbc.plans.ci_merge_freshness { ci_merge_freshness_plan }
 import gunbc.plans.seed_debt_bundle_item_2 { seed_debt_bundle_item_2_plan }
 
-
-
 data batch_b_plans: List<Plan> = [
   algebraic_rewrite_optimization_plan,
   dag_v2_defork_audit_plan,

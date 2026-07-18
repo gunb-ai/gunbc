@@ -1,6 +1,5 @@
 module gunbc.gitignore_emit
 
-
 import gunbc.gitignore_model {
   Producer, IgnoreGroup, IgnoreArtifact,
   CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
@@ -38,8 +37,6 @@ import std.layout {
   render
 }
 import std.render { config_comment_prefix }
-
-
 
 fn artifact_pattern(a: IgnoreArtifact) -> String {
   match a {

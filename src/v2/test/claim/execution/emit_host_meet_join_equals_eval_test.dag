@@ -1,5 +1,89 @@
 module v2.test.execution.emit_host_meet_join_equals_eval
 
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_test_claim_emit_vs_eval
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval_test_claim_subject
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_meet_arrow_with_body_fixture,
+  dag_meet_arrow_with_body_swapped_arms_fixture,
+  dag_meet_eval_subgraph_fixture,
+  dag_join_arrow_with_body_fixture,
+  dag_join_arrow_with_body_swapped_arms_fixture,
+  dag_join_eval_subgraph_fixture
+}
+import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
+import v2.extdeps.languages.rust_test {
+  rust_logic_meet_target_model_staging,
+  rust_logic_join_target_model_staging
+}
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection { Absent, List, Map, Present, list_at_optional }
+import v2.std.compilers.target_model {
+  TargetModel,
+  match_arm_body
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  Symbol,
+  TypeNode
+}
+import v2.std.node_query {
+  find_named_child
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  MatchInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verdict { BuildFailed, Deferred, Pass, RunFailed, SemanticMismatch, Verdict }
+import v2.std.verification {
+  EqualsClaim,
+  Integration,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier3,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -215,15 +299,19 @@ fn meet_join_eval_run(
 fn meet_join_eval_verdict_is_pass(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
     Pass => true
-    Fail { actual: _, falsification: _ } => false
+    SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
 
-fn meet_join_eval_verdict_is_fail(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
+fn meet_join_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
   match run.verdict {
-    Fail { actual: _, falsification: _ } => true
+    SemanticMismatch { actual: _, falsification: _ } => true
     Pass => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
@@ -239,7 +327,7 @@ test fn emit_host_meet_equals_eval_holds() -> Bool {
 }
 
 test fn emit_host_meet_wrong_fixture_refuses_holds() -> Bool {
-  meet_join_eval_verdict_is_fail(
+  meet_join_eval_verdict_is_semantic_mismatch(
     run: meet_join_eval_run(
       root: dag_meet_arrow_with_body_swapped_arms_fixture,
       target: rust_logic_meet_target_model_staging(),
@@ -259,7 +347,7 @@ test fn emit_host_join_equals_eval_holds() -> Bool {
 }
 
 test fn emit_host_join_wrong_fixture_refuses_holds() -> Bool {
-  meet_join_eval_verdict_is_fail(
+  meet_join_eval_verdict_is_semantic_mismatch(
     run: meet_join_eval_run(
       root: dag_join_arrow_with_body_swapped_arms_fixture,
       target: rust_logic_join_target_model_staging(),

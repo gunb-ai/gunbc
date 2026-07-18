@@ -1,7 +1,36 @@
 module v2.test.long.compiler_frontier_per_module_probe
 
+import v2.compiler.self_host.frontier {
+  compiler_frontier_module_count_expected,
+  compiler_frontier_roster,
+  compiler_frontier_roster_all_classified_holds,
+  compiler_frontier_roster_located_reason_not_class_projection_holds,
+  compiler_frontier_row_for_path_matches_probe,
+  compiler_frontier_roster_matches_survey_holds
+}
+import v2.compiler.self_host.frontier_probe_survey {
+  CommonRoot,
+  HeterogeneousGaps,
+  frontier_gap_clustering_from_receipts,
+  frontier_probe_survey_has_unclassified,
+  frontier_wave2_emit_surface_module_count,
+  frontier_wave2_name_resolution_module_count,
+  frontier_wave2_self_emit_ready_module_count
+}
+import v2.compiler.self_host.frontier_probe_types {
+  EmitSurfaceGap,
+  NameResolutionGap,
+  SelfEmitReady
+}
+import v2.test.workflow.host_frontier_probe_survey_manifest {
+  host_frontier_probe_survey,
+  host_frontier_probe_survey_module_count
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data compiler_frontier_per_module_probe_note: String = "Fixture-FREE per-module emit-frontier probe over all 27 compiler modules via frontier_probe_survey bin (real ingest, no injected derisk fixtures). Validates roster blocker classes against execution-measured receipts; answers common-root (blocker-class clustering) vs heterogeneous located-reason gaps. Local recipe: frontier_probe_survey --source-root src/v2 --emit-survey-manifest target/frontier-probe-survey/host_frontier_probe_survey_manifest.dag then claim_batch --source-root src/v2 --source-root dag --source-root target/frontier-probe-survey --entry src/v2/test/claim/long/compiler_frontier_per_module_probe_test.dag --function compiler_frontier_per_module_probe_survey_holds"
 

@@ -21,7 +21,6 @@ import v2.workflow.scheduler { scheduler_execution_dependencies }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-
 type RunnerOrderingResult = RunnerOrderingOnly {}
 
 data runner_ordering_only: RunnerOrderingResult = RunnerOrderingOnly {}

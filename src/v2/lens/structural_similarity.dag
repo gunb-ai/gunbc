@@ -1,16 +1,14 @@
 module v2.lens.structural_similarity
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
-
-fn forest_collapses_to_generic(g: ChainGeneralization) -> Bool {
-  fillings_all_leaves(per_element: g.per_element)
-}
+import v2.std.node { Node }
+import std.algebra { FreeMonoid }
+import v2.lens.common.chain_generalization { chain_collapses }
+import v2.std.logic { Bool }
 
 fn type_decls_anti_unify(decls: FreeMonoid<Node>) -> Bool {
-  if length(xs: decls) < 2 {
-    false
-  } else {
-    forest_collapses_to_generic(g: anti_unify_chain(steps: decls))
-  }
+  chain_collapses(steps: decls, min_len: 2, require_hole: false)
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

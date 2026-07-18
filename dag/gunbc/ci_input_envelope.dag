@@ -1,5 +1,10 @@
 module gunbc.ci_input_envelope
 
+import std.measure { Measure, Count, One }
+import std.types { List }
+import std.nat { Nat }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type InputSizeAxis
   = WitnessCount

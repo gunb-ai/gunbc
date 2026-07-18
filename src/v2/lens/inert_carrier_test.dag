@@ -1,5 +1,16 @@
 module v2.test.lens_inert_carrier.inert_carrier_test
 
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.lens.inert_carrier {
+  inert_carrier_clean_holds,
+  inert_carrier_live_declared_count,
+  count_not_in_roster,
+  count_stale_roster,
+  empty_inert_carrier_names
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

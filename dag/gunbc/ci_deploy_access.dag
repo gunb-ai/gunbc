@@ -27,7 +27,6 @@ import gunbc.ci_deploy_target_host {
   deploy_target_host_check_observed,
 }
 
-
 type PrivilegedCommand {
   path: NonEmptyStr
   check: NonEmptyStr

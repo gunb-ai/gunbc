@@ -1,5 +1,6 @@
 module std.abi
 
+import std.types { Bool, NonEmptyStr }
 
 type ArchitecturalRegister
 

@@ -4,8 +4,6 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock }
 import gunbc.plans.md_helpers { h2, p, li, ul, todo, tasks }
 
-
-
 fn p1_where_clause_lowering_body() -> List<MarkdownBlock> {
   [
     p(text: "**Status:** scoping (P1 from docs/plans/cardinality-refinement.md). **DESIGN.md + carriers are authority** (§6). Verified against the live tree 2026-06-22; line numbers are receipts, re-check before acting."),

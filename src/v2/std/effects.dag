@@ -1,4 +1,7 @@
 module v2.std.effects
+
+import v2.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, SyntheticOccurrence }
+
 type IdempotentShape
   = ReadEffect
   | UpsertEffect { key_source: KeySource }

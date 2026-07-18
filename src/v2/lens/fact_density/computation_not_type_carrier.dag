@@ -1,5 +1,17 @@
 module v2.test.lens_fact_density.computation_not_type_carrier
 
+import v2.lens.fact_density { NotATypeCarrier, carrier_spec_fact }
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Conj, Node, Transform, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
 
 data computation_not_type_carrier_input: Node = Node {
   kind: ComputationNode { behavior: Transform },

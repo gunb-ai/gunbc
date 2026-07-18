@@ -73,7 +73,6 @@ import v2.std.orchestration_emit {
 }
 import v2.std.text { String }
 
-
 fn bash_orchestration_emit_registry_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },

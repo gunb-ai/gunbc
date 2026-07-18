@@ -1,7 +1,7 @@
 module v2.compiler.infer
 
-
 import v2.std.algebra { length, list_snoc_item }
+
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree

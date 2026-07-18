@@ -1,6 +1,5 @@
 module v2.lens.module_graph
 
-
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -10,8 +9,6 @@ import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.text { String }
-
-
 
 type ModuleDeclarationFact {
   module: String
