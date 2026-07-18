@@ -62,7 +62,7 @@ fn witness_ci_spec_carries_deploy_stages() -> Bool {
 }
 
 fn witness_deploy_run_script_invokes_gunbc_wet() -> Bool {
-  let script = gunbc_ci_deploy_run_script(stage: gunbc_ci_deploy_srv1_stage)
+  let script = gunbc_ci_deploy_invoke(stage: gunbc_ci_deploy_srv1_stage)
   string_contains(s: script, pattern: live_deploy_apply_entry)
     && string_contains(s: script, pattern: live_deploy_apply_srv1_wet_function)
     && string_contains(s: script, pattern: "\"$ROOT/target/release/gunbc\" run")

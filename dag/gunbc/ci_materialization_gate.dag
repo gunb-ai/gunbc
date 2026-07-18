@@ -6,7 +6,7 @@ data ci_materialization_gate_note: String = "The live binding: the ladder run ov
 fn ci_fresh_effect_scripts() -> List<String> {
   concat(
     [step_run_script(s: ci_floor_peak_pre_step()), step_run_script(s: ci_floor_peak_post_step())],
-    map(gunbc_ci_deploy_stages, s => gunbc_ci_deploy_run_script(stage: s))
+    map(gunbc_ci_deploy_stages, s => gunbc_ci_deploy_invoke(stage: s))
   )
 }
 
