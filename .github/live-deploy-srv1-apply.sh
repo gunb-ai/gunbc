@@ -4,8 +4,8 @@ set -euo pipefail
 # the minimal grant set (apt-get, install, systemctl, tailscale) — no root shell.
 _gunbc_stage="$(mktemp -d)"
 trap 'rm -rf "$_gunbc_stage"' EXIT
-if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install -y tailscale; fi
-if ! dpkg -s nodejs >/dev/null 2>&1; then sudo -n apt-get install -y nodejs; fi
+if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install --yes tailscale; fi
+if ! dpkg -s nodejs >/dev/null 2>&1; then sudo -n apt-get install --yes nodejs; fi
 sudo -n install -d -m 0755 /opt/gunbc
 cat > "$_gunbc_stage/server.js" <<'GUNBC_SERVER_EOF'
 // @ts-nocheck
