@@ -346,9 +346,11 @@ fn run() -> Result<(), String> {
     time_phase(&mut phases, "copy_hand_maintained_support", || {
         copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))
     })?;
-    time_phase(&mut phases, "ensure_hand_maintained_pub_mods_in_lib_rs", || {
-        ensure_hand_maintained_pub_mods_in_lib_rs(&fresh_dir.join("src"))
-    })?;
+    time_phase(
+        &mut phases,
+        "ensure_hand_maintained_pub_mods_in_lib_rs",
+        || ensure_hand_maintained_pub_mods_in_lib_rs(&fresh_dir.join("src")),
+    )?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
     })?;
@@ -666,8 +668,8 @@ fn write_emitted_crate(dir: &Path, files: &HashMap<String, String>) -> Result<()
 /// frontier-derived registry so seed-linked behavioral witnesses can import them.
 fn ensure_hand_maintained_pub_mods_in_lib_rs(src_dir: &Path) -> Result<(), String> {
     let lib_path = src_dir.join("lib.rs");
-    let text = fs::read_to_string(&lib_path)
-        .map_err(|e| format!("read {}: {e}", lib_path.display()))?;
+    let text =
+        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
 
     let existing: BTreeSet<String> = text
         .lines()
