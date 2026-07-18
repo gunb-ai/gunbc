@@ -323,6 +323,34 @@ service git.Core {
     }
   }
 
+  operation DiffUnified0 {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output {
+      diff: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "-U0", "{base}", "{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffUnified0Merge {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output {
+      diff: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "-U0", "{base}...{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
   operation DiffNameStatus {
     input { base: GitRef, head: GitRef = "HEAD" }
     output {

@@ -6,55 +6,19 @@ import gunbc.ci_spec {
   DiffTwoDot,
   gunbc_ci_spec
 }
-import gunbc.ci_fleet { gunbc_ci_host }
-import gunbc.host_effect {
-  ShellCommand,
-  NodeControlPlane,
-  HostOs,
-  host_effect_read_evidence,
-  LocalShell,
-  HostEffectIntent,
-  HostEffectEvidence,
-  ShellEffectApplied,
-  ConvergePlanApplied
-}
-import gunbc.host_effect_realize { host_effect_apply }
-import std.realization_reconcile {
-  Reconciliation,
-  Converged,
-  NotConverged
-}
-import std.types { String }
+import std.types { String, NonEmptyStr }
 import std.logic { Bool }
-import v2.extdeps.languages.bash_build {
-  bash_build_assign_lit,
-  bash_build_assign_var,
-  bash_build_command_with_words,
-  bash_build_exit,
-  bash_build_if,
-  bash_build_negation,
-  bash_build_or_else,
-  bash_build_stmt_list_from_nodes,
-  bash_build_subshell,
-  bash_build_test_bracket,
-  bash_build_word_concat_parts,
-  bash_build_word_lit,
-  bash_build_word_var
-}
-import v2.workflow.bash_command_fold_serialize { bash_fold_serialize_program }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Node }
+import extdeps.git
 import extdeps.git {
   GitDiffNameStatusComplete,
   GitDiffNameStatusTruncated,
   git_diff_name_status_parse,
   git_diff_status_entries_touched_paths,
   git_diff_status_entries_departed_paths,
-  git_diff_status_entries_any_unknown
+  git_diff_status_entries_any_unknown,
+  git_diff_name_status_field_separator
 }
-
-data floor_unified_diff_emit_refused_reason: String = "floor_diff_observe: git-diff unified script emission rejected by bash_command_fold_serialize.bash_fold_serialize_program"
-data floor_name_status_diff_emit_refused_reason: String = "floor_diff_observe: git-diff name-status script emission rejected by bash_command_fold_serialize.bash_fold_serialize_program"
+import extdeps.shell
 
 type FloorUnifiedDiffResult
   = UnifiedDiffOk { text: String }
@@ -64,187 +28,39 @@ type FloorNameStatusDiffResult
   = NameStatusDiffOk { changed_paths: List<String>, departed_paths: List<String> }
   | NameStatusDiffFail { reason: String }
 
-fn floor_ci_host_os() -> NodeControlPlane {
-  HostOs { node: gunbc_ci_host }
-}
-
-fn floor_serialize_program(stmts: List<Node>, set_e: Bool) -> Outcome<String> {
-  bash_fold_serialize_program(stmts: stmts, set_e: set_e)
-}
-
-fn floor_test_z(name: String) -> Node {
-  bash_build_test_bracket(
-    words: [
-      bash_build_word_lit(text: "-z"),
-      bash_build_word_var(name: name)
-    ]
-  )
-}
-
-fn floor_test_n(name: String) -> Node {
-  bash_build_test_bracket(
-    words: [
-      bash_build_word_lit(text: "-n"),
-      bash_build_word_var(name: name)
-    ]
-  )
-}
-
-fn floor_test_string_eq(name: String, value: String) -> Node {
-  bash_build_test_bracket(
-    words: [
-      bash_build_word_concat_parts(parts: [
-        bash_build_word_lit(text: "\""),
-        bash_build_word_var(name: name),
-        bash_build_word_lit(text: "\"")
-      ]),
-      bash_build_word_lit(text: "="),
-      bash_build_word_lit(text: concat("\"", concat(value, "\"")))
-    ]
-  )
-}
-
-fn floor_assign_from_env_or_default(env: String, default: String, target: String) -> List<Node> {
-  [
-    bash_build_if(
-      cond: floor_test_z(name: env),
-      body: bash_build_stmt_list_from_nodes(stmts: [
-        bash_build_assign_lit(name: target, text: default)
-      ])
-    ),
-    bash_build_if(
-      cond: floor_test_n(name: env),
-      body: bash_build_stmt_list_from_nodes(stmts: [
-        bash_build_assign_var(name: target, var_name: env)
-      ])
-    )
-  ]
-}
-
-fn floor_unified_diff_injection_stmts() -> List<Node> {
-  [
-    bash_build_if(
-      cond: floor_test_n(name: "GUNBC_CI_DIFF_UNIFIED"),
-      body: bash_build_stmt_list_from_nodes(stmts: [
-        bash_build_command_with_words(words: [
-          bash_build_word_lit(text: "printf"),
-          bash_build_word_lit(text: "%s"),
-          bash_build_word_var(name: "GUNBC_CI_DIFF_UNIFIED")
-        ]),
-        bash_build_exit(code: "0")
-      ])
-    )
-  ]
-}
-
-fn floor_git_diff_two_dot_stmt() -> Node {
-  bash_build_command_with_words(words: [
-    bash_build_word_lit(text: "git"),
-    bash_build_word_lit(text: "diff"),
-    bash_build_word_lit(text: "-U0"),
-    bash_build_word_var(name: "BASE"),
-    bash_build_word_var(name: "HEAD")
-  ])
-}
-
-fn floor_git_diff_merge_base_stmt() -> Node {
-  bash_build_command_with_words(words: [
-    bash_build_word_lit(text: "git"),
-    bash_build_word_lit(text: "diff"),
-    bash_build_word_lit(text: "-U0"),
-    bash_build_word_concat_parts(parts: [
-      bash_build_word_var(name: "BASE"),
-      bash_build_word_lit(text: "..."),
-      bash_build_word_var(name: "HEAD")
-    ])
-  ])
-}
-
-fn floor_merge_base_uses_two_dot_range() -> Node {
-  bash_build_or_else(
-    left: floor_test_string_eq(name: "GUNBC_CI_DIFF_MERGE_BASE", value: "0"),
-    right: floor_test_string_eq(name: "GUNBC_CI_DIFF_MERGE_BASE", value: "false")
-  )
-}
-
-fn floor_git_diff_merge_base_mode_stmts() -> List<Node> {
-  [
-    bash_build_if(
-      cond: floor_merge_base_uses_two_dot_range(),
-      body: bash_build_stmt_list_from_nodes(stmts: [floor_git_diff_two_dot_stmt()])
-    ),
-    bash_build_if(
-      cond: bash_build_negation(
-        inner: bash_build_subshell(
-          body: bash_build_stmt_list_from_nodes(stmts: [floor_merge_base_uses_two_dot_range()])
-        )
-      ),
-      body: bash_build_stmt_list_from_nodes(stmts: [floor_git_diff_merge_base_stmt()])
-    )
-  ]
-}
-
-fn floor_git_diff_tail_stmts(policy: DiffPolicy) -> List<Node> {
-  match policy.mode {
-    DiffMergeBase => floor_git_diff_merge_base_mode_stmts()
-    DiffTwoDot => [floor_git_diff_two_dot_stmt()]
+fn floor_env_override_or(env_name: NonEmptyStr, default: String) -> String {
+  let env = shell.Env.Get(name: env_name)
+  match env.value {
+    Present { value: raw } => raw
+    Absent => default
   }
 }
 
-fn floor_git_diff_unified_stmts(policy: DiffPolicy) -> List<Node> {
-  concat(
-    floor_unified_diff_injection_stmts(),
-    concat(
-      floor_assign_from_env_or_default(
-        env: "GUNBC_CI_DIFF_BASE",
-        default: policy.base,
-        target: "BASE"
-      ),
-      concat(
-        floor_assign_from_env_or_default(
-          env: "GUNBC_CI_DIFF_HEAD",
-          default: policy.head,
-          target: "HEAD"
-        ),
-        floor_git_diff_tail_stmts(policy: policy)
-      )
-    )
-  )
+fn floor_resolved_base(policy: DiffPolicy) -> String {
+  floor_env_override_or(env_name: "GUNBC_CI_DIFF_BASE" as NonEmptyStr, default: policy.base)
+}
+
+fn floor_resolved_head(policy: DiffPolicy) -> String {
+  floor_env_override_or(env_name: "GUNBC_CI_DIFF_HEAD" as NonEmptyStr, default: policy.head)
 }
 
 fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult {
-  match floor_serialize_program(stmts: floor_git_diff_unified_stmts(policy: policy), set_e: true) {
-    Accepted { value: script, diagnostics: _ } =>
-      floor_unified_diff_from_reconciliation(
-        r: host_effect_apply(
-          target: floor_ci_host_os(),
-          effect: ShellCommand { script: script },
-          evidence: host_effect_read_evidence,
-          transport: LocalShell
-        )
-      )
-    Rejected { diagnostics: _ } =>
-      UnifiedDiffFail { reason: floor_unified_diff_emit_refused_reason }
-  }
-}
-
-fn floor_unified_diff_from_reconciliation(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>
-) -> FloorUnifiedDiffResult {
-  match r {
-    Converged { evidence: e, applied: _ } =>
-      match e {
-        ShellEffectApplied { stdout: text, exit_code: code } =>
-          if code == 0 {
-            UnifiedDiffOk { text: text }
-          } else {
-            UnifiedDiffFail { reason: "git diff -U0 exited nonzero: invalid ref or not a git repository" }
-          }
-        ConvergePlanApplied { stdout: _, exit_code: _ } =>
-          UnifiedDiffFail { reason: "floor_diff_observe: ConvergePlanApplied evidence is not a shell git-diff observation; typed mismatch" }
+  let unified_injection = shell.Env.Get(name: "GUNBC_CI_DIFF_UNIFIED" as NonEmptyStr)
+  match unified_injection.value {
+    Present { value: injected } => UnifiedDiffOk { text: injected }
+    Absent => {
+      let base = floor_resolved_base(policy: policy)
+      let head = floor_resolved_head(policy: policy)
+      let result = match policy.mode {
+        DiffMergeBase => git.Core.DiffUnified0Merge(base: base, head: head)
+        DiffTwoDot => git.Core.DiffUnified0(base: base, head: head)
       }
-    NotConverged { reason: why, applied: _ } =>
-      UnifiedDiffFail { reason: why }
+      if result.success {
+        UnifiedDiffOk { text: result.diff }
+      } else {
+        UnifiedDiffFail { reason: "git diff -U0 exited nonzero: invalid ref or not a git repository" }
+      }
+    }
   }
 }
 
@@ -252,164 +68,47 @@ fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
   floor_observe_git_diff_unified(policy: gunbc_ci_spec.diff_policy)
 }
 
-data floor_name_status_injection_encoding_note: String = "INJECTION TRANSPORT ENCODING (proven by execution, 2026-07-10): the name-status wire format is NUL-separated (git diff --name-status -z; git.dag splits on from_code_point(0)), but the injection transport — a POSIX environment variable — is a C string and can NEVER carry a NUL byte (Rust set_var refuses it; a shell variable would truncate it). So the injected value at rest is the SAME record structure with each NUL written as the octal escape \\000, and this arm decodes it at the boundary with printf %b (POSIX: \\0ddd emits the byte), yielding the identical byte stream the real-git arm produces. One wire format, one parser; only the at-rest encoding differs, and it is decoded before any consumer sees it. Constraint on injectors (this channel is probe-only): paths containing backslashes would need their backslashes doubled for %b — fixture repo paths contain none. The unified-diff arm stays %s: unified text is NUL-free."
-
-fn floor_name_status_diff_injection_stmts() -> List<Node> {
-  [
-    bash_build_if(
-      cond: floor_test_n(name: "GUNBC_CI_DIFF_NAME_STATUS"),
-      body: bash_build_stmt_list_from_nodes(stmts: [
-        bash_build_command_with_words(words: [
-          bash_build_word_lit(text: "printf"),
-          bash_build_word_lit(text: "%b"),
-          bash_build_word_var(name: "GUNBC_CI_DIFF_NAME_STATUS")
-        ]),
-        bash_build_exit(code: "0")
-      ])
-    )
-  ]
-}
-
-fn floor_git_diff_name_status_two_dot_stmt() -> Node {
-  bash_build_command_with_words(words: [
-    bash_build_word_lit(text: "git"),
-    bash_build_word_lit(text: "diff"),
-    bash_build_word_lit(text: "--name-status"),
-    bash_build_word_lit(text: "-z"),
-    bash_build_word_var(name: "BASE"),
-    bash_build_word_var(name: "HEAD")
-  ])
-}
-
-fn floor_git_diff_name_status_merge_base_stmt() -> Node {
-  bash_build_command_with_words(words: [
-    bash_build_word_lit(text: "git"),
-    bash_build_word_lit(text: "diff"),
-    bash_build_word_lit(text: "--name-status"),
-    bash_build_word_lit(text: "-z"),
-    bash_build_word_concat_parts(parts: [
-      bash_build_word_var(name: "BASE"),
-      bash_build_word_lit(text: "..."),
-      bash_build_word_var(name: "HEAD")
-    ])
-  ])
-}
-
-fn floor_git_diff_name_status_merge_base_mode_stmts() -> List<Node> {
-  [
-    bash_build_if(
-      cond: floor_merge_base_uses_two_dot_range(),
-      body: bash_build_stmt_list_from_nodes(stmts: [floor_git_diff_name_status_two_dot_stmt()])
-    ),
-    bash_build_if(
-      cond: bash_build_negation(
-        inner: bash_build_subshell(
-          body: bash_build_stmt_list_from_nodes(stmts: [floor_merge_base_uses_two_dot_range()])
-        )
-      ),
-      body: bash_build_stmt_list_from_nodes(stmts: [floor_git_diff_name_status_merge_base_stmt()])
-    )
-  ]
-}
-
-fn floor_git_diff_name_status_tail_stmts(policy: DiffPolicy) -> List<Node> {
-  match policy.mode {
-    DiffMergeBase => floor_git_diff_name_status_merge_base_mode_stmts()
-    DiffTwoDot => [floor_git_diff_name_status_two_dot_stmt()]
-  }
-}
-
-fn floor_git_diff_name_status_stmts(policy: DiffPolicy) -> List<Node> {
-  concat(
-    floor_name_status_diff_injection_stmts(),
-    concat(
-      floor_assign_from_env_or_default(
-        env: "GUNBC_CI_DIFF_BASE",
-        default: policy.base,
-        target: "BASE"
-      ),
-      concat(
-        floor_assign_from_env_or_default(
-          env: "GUNBC_CI_DIFF_HEAD",
-          default: policy.head,
-          target: "HEAD"
-        ),
-        floor_git_diff_name_status_tail_stmts(policy: policy)
-      )
-    )
-  )
-}
-
-fn floor_name_status_diff_from_reconciliation(
-  r: Reconciliation<HostEffectIntent, HostEffectEvidence>
-) -> FloorNameStatusDiffResult {
-  match r {
-    Converged { evidence: e, applied: _ } =>
-      match e {
-        ShellEffectApplied { stdout: text, exit_code: code } =>
-          if code != 0 {
-            NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
-          } else {
-            match git_diff_name_status_parse(raw: text) {
-              GitDiffNameStatusTruncated { pending: _, entries: _ } =>
-                NameStatusDiffFail { reason: "git diff --name-status -z observation ended mid-record (truncated stream)" }
-              GitDiffNameStatusComplete { entries: entries } =>
-                if git_diff_status_entries_any_unknown(entries: entries) {
-                  NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
-                } else {
-                  NameStatusDiffOk {
-                    changed_paths: git_diff_status_entries_touched_paths(entries: entries),
-                    departed_paths: git_diff_status_entries_departed_paths(entries: entries)
-                  }
-                }
-            }
-          }
-        ConvergePlanApplied { stdout: _, exit_code: _ } =>
-          NameStatusDiffFail { reason: "floor_diff_observe: ConvergePlanApplied evidence is not a shell git-diff observation; typed mismatch" }
+fn floor_name_status_from_raw(raw: String) -> FloorNameStatusDiffResult {
+  match git_diff_name_status_parse(raw: raw) {
+    GitDiffNameStatusTruncated { pending: _, entries: _ } =>
+      NameStatusDiffFail { reason: "git diff --name-status -z observation ended mid-record (truncated stream)" }
+    GitDiffNameStatusComplete { entries: entries } =>
+      if git_diff_status_entries_any_unknown(entries: entries) {
+        NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
+      } else {
+        NameStatusDiffOk {
+          changed_paths: git_diff_status_entries_touched_paths(entries: entries),
+          departed_paths: git_diff_status_entries_departed_paths(entries: entries)
+        }
       }
-    NotConverged { reason: why, applied: _ } =>
-      NameStatusDiffFail { reason: why }
   }
+}
+
+fn floor_decode_injected_name_status(injected: String) -> String {
+  join(split(s: injected, delimiter: "\\000"), git_diff_name_status_field_separator)
 }
 
 fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiffResult {
-  match floor_serialize_program(stmts: floor_git_diff_name_status_stmts(policy: policy), set_e: true) {
-    Accepted { value: script, diagnostics: _ } =>
-      floor_name_status_diff_from_reconciliation(
-        r: host_effect_apply(
-          target: floor_ci_host_os(),
-          effect: ShellCommand { script: script },
-          evidence: host_effect_read_evidence,
-          transport: LocalShell
-        )
-      )
-    Rejected { diagnostics: _ } =>
-      NameStatusDiffFail { reason: floor_name_status_diff_emit_refused_reason }
+  let name_status_injection = shell.Env.Get(name: "GUNBC_CI_DIFF_NAME_STATUS" as NonEmptyStr)
+  match name_status_injection.value {
+    Present { value: injected } =>
+      floor_name_status_from_raw(raw: floor_decode_injected_name_status(injected: injected))
+    Absent => {
+      let base = floor_resolved_base(policy: policy)
+      let head = floor_resolved_head(policy: policy)
+      let result = match policy.mode {
+        DiffMergeBase => git.Core.DiffNameStatusMerge(base: base, head: head)
+        DiffTwoDot => git.Core.DiffNameStatus(base: base, head: head)
+      }
+      if !result.success {
+        NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
+      } else {
+        floor_name_status_from_raw(raw: result.raw)
+      }
+    }
   }
 }
 
 fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
   floor_observe_git_diff_name_status(policy: gunbc_ci_spec.diff_policy)
-}
-
-fn floor_diff_script_serializes_git_diff_unified() -> Bool {
-  match floor_serialize_program(stmts: floor_git_diff_unified_stmts(policy: gunbc_ci_spec.diff_policy), set_e: true) {
-    Accepted { value: script, diagnostics: _ } =>
-      string_contains(s: script, pattern: "'git'")
-        && string_contains(s: script, pattern: "'diff'")
-        && string_contains(s: script, pattern: "GUNBC_CI_DIFF_UNIFIED")
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn floor_diff_script_serializes_git_diff_name_status() -> Bool {
-  match floor_serialize_program(stmts: floor_git_diff_name_status_stmts(policy: gunbc_ci_spec.diff_policy), set_e: true) {
-    Accepted { value: script, diagnostics: _ } =>
-      string_contains(s: script, pattern: "'git'")
-        && string_contains(s: script, pattern: "'diff'")
-        && string_contains(s: script, pattern: "'--name-status'")
-        && string_contains(s: script, pattern: "'-z'")
-        && string_contains(s: script, pattern: "GUNBC_CI_DIFF_NAME_STATUS")
-    Rejected { diagnostics: _ } => false
-  }
 }

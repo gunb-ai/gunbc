@@ -30,6 +30,20 @@ data git_core_mock_case_diff: PublishedMockCase = PublishedMockCase {
   case_id: 0
 }
 
+data git_core_mock_case_diff_unified0: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.DiffUnified0",
+  service: "git.Core",
+  operation: "DiffUnified0",
+  case_id: 0
+}
+
+data git_core_mock_case_diff_unified0_merge: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.DiffUnified0Merge",
+  service: "git.Core",
+  operation: "DiffUnified0Merge",
+  case_id: 0
+}
+
 data git_core_mock_case_diff_name_only: PublishedMockCase = PublishedMockCase {
   operation_key: "git.Core.DiffNameOnly",
   service: "git.Core",
@@ -92,6 +106,8 @@ data git_published_mock_corpus: List<PublishedMockCase> = [
   git_core_mock_case_remote_branches,
   git_core_mock_case_ls_files,
   git_core_mock_case_diff,
+  git_core_mock_case_diff_unified0,
+  git_core_mock_case_diff_unified0_merge,
   git_core_mock_case_diff_name_only,
   git_core_mock_case_diff_name_only_merge,
   git_core_mock_case_diff_name_status,
