@@ -7751,6 +7751,11 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
     format!("{entry}::{function}")
 }
 
+// 🟡 dissolve-on: witness_admission_explicit_consumer_manifest — replace this hand-rolled
+// entry/function literal scan with the `.dag`-authoritative manifest from
+// v2.workflow.witness_admission (or a Node-tree builtin over the roster
+// ScheduleWitnessEntry rows). False-positive matches widen the orphan gate (excuse orphans),
+// never refuse — interim seed debt, same class as string_list_data_from_ci_layer_roots_source.
 fn witness_admission_entry_function_keys_from_source(content: &str) -> Vec<String> {
     let mut keys = Vec::new();
     let mut push_pair = |entry: &str, function: &str| {
