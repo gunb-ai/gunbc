@@ -30,8 +30,8 @@ data demo_target_label: String = "accelerator-demo-relu-mul-add-v1"
 
 data relu_mul_add_fused_op_count: Int = 3
 
-data demo_accelerator_device: AcceleratorFacts = AcceleratorFacts {
-  vendor: nvidia
+data demo_accelerator_device: extdeps.gpu.types.AcceleratorFacts = extdeps.gpu.types.AcceleratorFacts {
+  vendor: extdeps.vendor.nvidia.nvidia
   model: "A100"
 }
 
@@ -65,7 +65,7 @@ fn build_realization_plan(schedule: std.realization_schedule.Schedule) -> Realiz
   }
 }
 
-fn accelerator_refusal_from_lowering(reason: LoweringRefusalReason) -> AcceleratorRefusalReason {
+fn accelerator_refusal_from_lowering(reason: extdeps.communication.numerical_fidelity.LoweringRefusalReason) -> AcceleratorRefusalReason {
   match reason {
     FmaContractionRefusedByContract => FmaContractionViolatesContract
     UnsupportedNumericalDomain => AcceleratorUnsupportedNumericalDomain
@@ -89,7 +89,7 @@ fn recognize_with_contract(
   contract: NumericalContract,
   insist_on_fma_fused_kernel: Bool
 ) -> AcceleratorRecognitionOutcome {
-  match lowering_fidelity_verdict_for_contract(contract: contract) {
+  match extdeps.communication.numerical_fidelity.lowering_fidelity_verdict_for_contract(contract: contract) {
     LoweringRefused { reason: reason } =>
       Refused { reason: accelerator_refusal_from_lowering(reason: reason) }
     LoweringAccepted { fidelity: fidelity } =>
@@ -122,14 +122,14 @@ fn recognize_elementwise_fold(class: ElementwiseFoldClass) -> AcceleratorRecogni
 
 fn recognize_float_relu_mul_add_no_contraction() -> AcceleratorRecognitionOutcome {
   recognize_with_contract(
-    contract: float_contract(rounding: ToNearestEven, fma: FmaContractionRefused),
+    contract: float_contract(rounding: std.approximate_field.ToNearestEven, fma: FmaContractionRefused),
     insist_on_fma_fused_kernel: false
   )
 }
 
 fn recognize_float_fma_fused_kernel_when_contraction_refused() -> AcceleratorRecognitionOutcome {
   recognize_with_contract(
-    contract: float_contract(rounding: ToNearestEven, fma: FmaContractionRefused),
+    contract: float_contract(rounding: std.approximate_field.ToNearestEven, fma: FmaContractionRefused),
     insist_on_fma_fused_kernel: true
   )
 }
@@ -177,7 +177,7 @@ fn witness_integer_demo_plan_has_local_accelerator_placement() -> Bool {
 
 fn witness_demo_device_identity_grounds_on_accelerator_facts() -> Bool {
   demo_accelerator_device.model == "A100"
-    && demo_accelerator_device.vendor == nvidia
+    && demo_accelerator_device.vendor == extdeps.vendor.nvidia.nvidia
 }
 
 fn witness_effectful_subgraph_refused() -> Bool {
@@ -236,7 +236,7 @@ fn witness_simd_target_medium_is_inspectable() -> Bool {
 }
 
 fn witness_lowering_fma_refusal_maps_to_accelerator_refusal() -> Bool {
-  match accelerator_refusal_from_lowering(reason: FmaContractionRefusedByContract) {
+  match accelerator_refusal_from_lowering(reason: extdeps.communication.numerical_fidelity.FmaContractionRefusedByContract) {
     FmaContractionViolatesContract => true
     NotElementwisePure => false
     CarriesEffects => false
@@ -245,7 +245,7 @@ fn witness_lowering_fma_refusal_maps_to_accelerator_refusal() -> Bool {
 }
 
 fn witness_lowering_unsupported_domain_maps_to_accelerator_refusal() -> Bool {
-  match accelerator_refusal_from_lowering(reason: UnsupportedNumericalDomain) {
+  match accelerator_refusal_from_lowering(reason: extdeps.communication.numerical_fidelity.UnsupportedNumericalDomain) {
     AcceleratorUnsupportedNumericalDomain => true
     NotElementwisePure => false
     CarriesEffects => false

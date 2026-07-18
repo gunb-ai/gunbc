@@ -244,11 +244,11 @@ fn float_fma_discriminating_c() -> List<Float> {
 }
 
 fn float_contract_refused() -> NumericalContract {
-  std.numerical_contract.float_contract(rounding: ToNearestEven, fma: FmaContractionRefused)
+  std.numerical_contract.float_contract(rounding: std.approximate_field.ToNearestEven, fma: FmaContractionRefused)
 }
 
 fn float_contract_permitted() -> NumericalContract {
-  std.numerical_contract.float_contract(rounding: ToNearestEven, fma: FmaContractionPermitted)
+  std.numerical_contract.float_contract(rounding: std.approximate_field.ToNearestEven, fma: FmaContractionPermitted)
 }
 
 fn float_list_eq(left: List<Float>, right: List<Float>) -> Bool {

@@ -302,7 +302,7 @@ fn witness_triptych_effectful_program_projects_located_refusal() -> Bool {
 fn witness_triptych_float_permitted_projects_lossy_plan() -> Bool {
   let view = project_triptych_view(
     program: relu_mul_add_pure_program,
-    contract: std.numerical_contract.float_contract(rounding: ToNearestEven, fma: FmaContractionPermitted)
+    contract: std.numerical_contract.float_contract(rounding: std.approximate_field.ToNearestEven, fma: FmaContractionPermitted)
   )
   match view.right {
     TriptychPlan { plan: plan } =>
