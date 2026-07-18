@@ -3258,17 +3258,19 @@ pub fn phantom_marker_name_shadowed_by_real_type_item(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     vname: String,
 ) -> bool {
-    let mut __found = false;
-    for item in items.clone().iter().cloned() {
-        if (authored_name_at(source_indices.clone(), item.clone()) == vname.clone())
-            && (is_type_alias_item(item.clone(), source_indices.clone())
-                || is_type_decl_item(item.clone(), source_indices.clone()))
-        {
-            __found = true;
-            break;
+    {
+        let mut __found = false;
+        for item in items.clone().iter().cloned() {
+            if ((authored_name_at(source_indices.clone(), item.clone()) == vname.clone())
+                && (is_type_alias_item(item.clone(), source_indices.clone())
+                    || is_type_decl_item(item.clone(), source_indices.clone())))
+            {
+                __found = true;
+                break;
+            }
         }
+        __found
     }
-    __found
 }
 
 pub fn collect_phantom_zst_marker_names(
@@ -3302,7 +3304,7 @@ pub fn collect_phantom_zst_marker_names(
                 if ((child.children.clone().len() as i64) == 0) {
                     {
                         let vname = authored_name(env.clone(), child.clone());
-                        if (is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
+                        if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
                             && !{
                                 let mut __found = false;
                                 for n in inner.clone().iter().cloned() {
@@ -3312,7 +3314,7 @@ pub fn collect_phantom_zst_marker_names(
                                     }
                                 }
                                 __found
-                            }
+                            })
                             && !phantom_marker_name_shadowed_by_real_type_item(
                                 items.clone(),
                                 env.source_indices.clone(),
