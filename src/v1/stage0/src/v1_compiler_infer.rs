@@ -3603,6 +3603,17 @@ pub fn infer_expr(
                             }
                             __result
                         });
+                        if std::env::var("GUNBC_SIGPATH_PROBE").is_ok()
+                            && func_name.contains("membership_effects")
+                        {
+                            eprintln!(
+                                "SIGPATH func={} module={} sig_params={} generic_names={:?}",
+                                func_name,
+                                scope.module_name,
+                                sig_params.len(),
+                                generic_names,
+                            );
+                        }
                         let final_state = Rc::new(
                             call_args
                                 .clone()
@@ -3699,6 +3710,16 @@ pub fn infer_expr(
                 };
                 let arg_infer_results = arg_call.results.clone();
                 let call_subst = arg_call.subst.clone();
+                if std::env::var("GUNBC_SIGPATH_PROBE").is_ok()
+                    && func_name.contains("membership_effects")
+                {
+                    eprintln!(
+                        "SIGPATH2 func={} sig_present={} subst_keys={:?}",
+                        func_name,
+                        sig.is_some(),
+                        call_subst.keys().collect::<std::vec::Vec<_>>(),
+                    );
+                }
                 let typed_args = Rc::new({
                     let mut __result = Vec::new();
                     for air in arg_infer_results.clone().iter().cloned() {
