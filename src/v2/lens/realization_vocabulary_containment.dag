@@ -165,9 +165,9 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
 
 data empty_realization_vocab_path_list: List<String> = []
 
-fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
+fn realization_vocab_leak_candidate_paths_from_facts(facts: List<LayerImportFact>) -> List<String> {
   fold_list(
-    xs: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: []),
+    xs: facts,
     empty: empty_realization_vocab_path_list,
     cons: fn(acc, fact) {
       if module_is_target_ast_vocab(module: fact.import_module)
@@ -177,6 +177,12 @@ fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List
         acc
       }
     }
+  )
+}
+
+fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
+  realization_vocab_leak_candidate_paths_from_facts(
+    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
   )
 }
 
