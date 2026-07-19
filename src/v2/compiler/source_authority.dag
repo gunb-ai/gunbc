@@ -100,6 +100,14 @@ data source_root_coverage_arms_note: String = "THREE arms, not two, because the 
 
 A fourth arm, SourceRootManifestAbsent, is the COMMITTED STUB's state: no host manifest has been supplied at this source root yet. It is not Complete (that would be a vacuous truth over zero rows, exactly the shape a witness can ride green while proving nothing), it is not RowsMissing (nothing was read, so 0 against 0 is not a shortfall), and it is not Elided (no cap rejected anything). Its remedy is different too: run the emitting gate, or order the overlay root after the stub. The stub previously said coverage_complete: false, which was fail-closed but mute about which of these four it meant."
 
+data source_root_coverage_is_complete_note: String = "A DELIBERATE one-question projection, not a dissolution back to the Bool this coproduct replaced (review 39781 raised exactly this, and the distinction is worth stating precisely).
+
+What it answers: 'is coverage complete?' — nothing else. It discards WHICH deficit occurred, and that discard is correct at its call sites, which are all ASSERTIONS: a witness asserting complete coverage needs a boolean, and inlining the same four-arm match at each of them would be four copies of one decision (DESIGN section 2). The predicate is the DRY form of a fact the coproduct still owns.
+
+What it is NOT: the old coverage_complete field. That was the receipt's ONLY representation of coverage, so a consumer had no way to learn the cause — the information did not exist anywhere. Now the cause is carried on the receipt, and any consumer that needs it matches SourceRootCoverage directly and gets read_count, cap, or produced_row_count. Nothing is lost; one caller-chosen question is answered.
+
+It carries no Disposition because it is not a scaffold: there is no future state in which this becomes wrong, so there is no honest dissolution trigger to declare, and inventing one would be a scaffold marker that can never fire (DESIGN section 6 — every scaffold lands with a named trigger, which equally means a non-scaffold must not fake one). The rule it must keep: this predicate may never become the only way to read coverage. If a consumer ever needs the reason and reaches for a Bool instead, that consumer is wrong, not this projection."
+
 fn source_root_coverage_is_complete(coverage: SourceRootCoverage) -> Bool {
   match coverage {
     SourceRootCoverageComplete => true
