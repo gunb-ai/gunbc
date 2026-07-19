@@ -19,12 +19,21 @@ import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves
 import gunbc.ci_fleet { ComputeOffer }
 import gunbc.fleet_intent { compute_host_ram_bytes_total, compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_threads }
+<<<<<<< Updated upstream
 import extdeps.jobserver {
   JobserverConfig,
   JobserverCitation,
   JobserverCited,
   JobserverAbsent,
   jobserver_config,
+=======
+import extdeps.ctrl.jobserver {
+  CtrlJobserverConfig,
+  CtrlJobserverCitation,
+  CtrlJobserverCited,
+  CtrlJobserverAbsent,
+  ctrl_jobserver_config,
+>>>>>>> Stashed changes
   derive_jobserver_tokens,
 }
 import gunbc.fleet_container {

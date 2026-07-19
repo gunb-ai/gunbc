@@ -11,7 +11,10 @@ import gunbc.fleet_intent {
   srv1_host,
   srv2_host,
   srv3_host,
+<<<<<<< Updated upstream
   fleet_host_memory_nominal_vs_usable_note,
+=======
+>>>>>>> Stashed changes
 }
 import gunbc.fleet_intent { IsolationBoundary, PerJobFilesystem }
 import extdeps.cpu.ampere { altra_q6430_catalog }
@@ -19,8 +22,11 @@ import extdeps.cpu.types { CpuFacts, CpuDeploymentFacts }
 import extdeps.memory.types { MemoryKind, Dram }
 import product.placement_supply { HostIdentity }
 import std.currency { CurrencyCode }
+<<<<<<< Updated upstream
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, NamedField }
+=======
+>>>>>>> Stashed changes
 import std.measure { byte_size, hertz, MoneyAmountMicro, money_amount_micro_count }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List, LogicalTime }
@@ -155,4 +161,3 @@ data gunbc_ci_fleet_offer: ComputeOffer = ComputeOffer {
   available_window: AvailabilityWindow { open: "always-open", close: none },
   cost_quote: none,
 }
-

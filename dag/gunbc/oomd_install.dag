@@ -60,7 +60,10 @@ import extdeps.os.systemctl {
   UnitTransient,
   UnitBad,
 }
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
 
 data gunbc_oomd_sessions_slice: NonEmptyStr = "sessions.slice"
 
