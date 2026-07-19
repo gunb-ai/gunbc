@@ -1,8 +1,0 @@
-module v2.lens.tmp_inert_probe
-
-import v2.lens.inert_carrier { inert_carrier_roster, inert_carrier_names_live, list_contains_str }
-
-fn probe_stale_names() -> List<String> {
-  let live = inert_carrier_names_live()
-  filter(inert_carrier_roster, fn(name) { !list_contains_str(xs: live, target: name) })
-}
