@@ -33,7 +33,7 @@ fn appropriation_of(b: ByteSize) -> Appropriation<Memory, One> {
   Appropriation { ceiling: b }
 }
 
-fn overhead_claim() -> BudgetClaim {
+fn ci_host_overhead_claim() -> BudgetClaim {
   BudgetClaim {
     item: LineItem { purpose: "host_fixed_overhead", amount: host_overhead_bytes() },
     priority: Guaranteed
@@ -44,7 +44,7 @@ fn host_budget_tree_at(name: String, offer: ComputeOffer, session_slice: ByteSiz
   BudgetNode {
     name: name,
     appropriation: appropriation_of(b: host_ram_of(offer: offer)),
-    claims: [overhead_claim()],
+    claims: [ci_host_overhead_claim()],
     children: [
       BudgetNode {
         name: "gha_runner_pool",
@@ -66,7 +66,7 @@ fn host_budget_tree(name: String, offer: ComputeOffer) -> BudgetNode {
   host_budget_tree_at(name: name, offer: offer, session_slice: session_pool_bytes_live(offer: offer))
 }
 
-fn session_pool_bytes(offer: ComputeOffer) -> ByteSize {
+fn ci_session_pool_bytes(offer: ComputeOffer) -> ByteSize {
   session_pool_bytes_live(offer: offer)
 }
 
@@ -93,7 +93,7 @@ fn srv1_gha_runner_pool_budget() -> ByteSize {
 }
 
 fn srv1_dashboard_session_pool_budget() -> ByteSize {
-  session_pool_bytes(offer: srv1_offer)
+  ci_session_pool_bytes(offer: srv1_offer)
 }
 
 fn srv1_host_ram() -> ByteSize {
