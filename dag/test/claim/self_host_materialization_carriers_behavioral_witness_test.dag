@@ -1,0 +1,9 @@
+module test.claim.self_host_materialization_carriers_behavioral_witness
+
+import tools.self_host_materialization_carriers_behavioral_transport { mc_behavioral_receipt_holds }
+
+data self_host_materialization_carriers_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Gate-A flip wave (materialization_carriers): compares gunbc-emitted vs seed v2_compiler_materialization_note; --inject-fault perturbs emitted comparison (not driver flag). Enrolled on nightly falsifier when frontier row is SelfEmitted."
+
+test fn self_host_materialization_carriers_behavioral_receipt_holds() -> Bool {
+  mc_behavioral_receipt_holds()
+}
