@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
+use crate::module_path_index::{module_path_from_parsed_content, parse_module_binding};
 use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
@@ -943,7 +944,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
             let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
                 panic!("build_module_path_index: failed to read {:?}: {}", path, e)
             });
-            if let Some(module_path) = extract_module_path(&content) {
+            if let Some(module_path) = module_path_from_parsed_content(&path, &content) {
                 let rel = module_index_path_key(&path);
                 if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
                     continue;
