@@ -261,8 +261,9 @@ test fn emit_on_demand_classical_not_closure_keys_differ_for_distinct_trees_hold
     Accepted { value: tree_primary, diagnostics: _ } =>
       match classical_not_family_alt_tree() {
         Accepted { value: tree_alt, diagnostics: _ } =>
-          classical_not_family_native_key_for(tree: tree_primary)
-            != classical_not_family_native_key_for(tree: tree_alt)
+          let key_primary = classical_not_family_native_key_for(tree: tree_primary)
+          let key_alt = classical_not_family_native_key_for(tree: tree_alt)
+          key_primary != key_alt
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

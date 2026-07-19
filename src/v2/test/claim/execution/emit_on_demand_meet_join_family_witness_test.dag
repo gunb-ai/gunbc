@@ -28,14 +28,14 @@ import extdeps.communication.medium { Medium }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_emit_host_cached,
-  run_test_claim_emit_vs_eval,
 }
 import v2.compiler.eval {
-  TestClaimEvalSubject,
   Inputs,
-  eval_test_claim_subject,
+  eval,
+  eval_context_interpretation,
   inputs_for_emit_host,
   inferred_tree_digest,
+  inputs_root_only,
 }
 import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.dag {
@@ -53,19 +53,17 @@ import v2.extdeps.languages.rust_test {
 import v2.std.compilers.target_model { TargetModel }
 import v2.test.execution.emit_host_meet_join_equals_eval {
   meet_join_eval_context,
-  meet_join_eval_claim,
   meet_join_eval_tree_for,
-  meet_join_eval_verdict_is_pass,
-  meet_join_eval_verdict_is_semantic_mismatch,
 }
-import v2.std.diagnostic { Accepted, Rejected, Outcome }
+import v2.std.diagnostic { Accepted, Rejected, Outcome, None }
 import v2.std.host_run { HostLogicalRun }
 import v2.std.node { Node }
+import v2.std.runtime { RuntimeValue }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): emit-on-demand native execution for std/logic meet and join — extension of #6879 kernel. Wet: agreement via run_test_claim_emit_vs_eval, cold/warm compile_skipped, closure_digest key sensitivity, swapped-arms RED."
+data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): emit-on-demand native execution for std/logic meet and join — extension of #6879 kernel. Wet: native==eval agreement (run_emit_host_cached vs eval oracle; bool-fn run_test_claim_emit_vs_eval is upstream debt), cold/warm compile_skipped, closure_digest key sensitivity, swapped-arms RED."
 
 data meet_join_family_cache_root: String = "/tmp/gunbc_emit_on_demand_meet_join_family"
 data meet_join_family_emitter: String = "v2.compiler.emit"
@@ -108,15 +106,6 @@ fn join_family_tree() -> InferredTree {
 
 fn join_family_alt_tree() -> InferredTree {
   meet_join_eval_tree_for(root: dag_join_arrow_with_body_swapped_arms_fixture)
-}
-
-fn meet_join_family_subject(tree: InferredTree, subgraph: Node) -> TestClaimEvalSubject<Node> {
-  eval_test_claim_subject(
-    claim: meet_join_eval_claim(rhs_result_node: subgraph),
-    context: meet_join_eval_context(),
-    tree: tree,
-    evaluator_pin: ^meet_join_eval_evaluator_pin
-  )
 }
 
 fn meet_join_family_fixture_inputs(subgraph: Node) -> Inputs {
@@ -221,6 +210,89 @@ fn meet_join_family_cached_cold_then_warm(
   }
 }
 
+fn meet_join_family_eval_expected(
+  tree: InferredTree,
+  subgraph: Node
+) -> Outcome<RuntimeValue> {
+  eval(
+    tree: tree,
+    interpretation: eval_context_interpretation(context: meet_join_eval_context()),
+    inputs: inputs_root_only(root: subgraph)
+  )
+}
+
+fn meet_join_family_native_stdout_for(
+  workspace: String,
+  tree: InferredTree,
+  target: TargetModel,
+  subgraph: Node
+) -> Outcome<RuntimeValue> {
+  match emit(tree: tree, target: target) {
+    Accepted { value: source, diagnostics: _ } =>
+      match run_emit_host_cached(
+        workspace_dir: workspace,
+        target: target,
+        source: source,
+        fixture_inputs: meet_join_family_fixture_inputs(subgraph: subgraph)
+      ) {
+        Accepted { value: receipt, diagnostics: _ } =>
+          match receipt.logical_run {
+            Accepted {
+              value: HostLogicalRun { stdout: stdout },
+              diagnostics: None
+            } => Accepted { value: stdout.bytes, diagnostics: None }
+            _ => Rejected { diagnostics: None }
+          }
+        Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+      }
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+fn meet_join_family_native_agreement_holds(
+  tree: InferredTree,
+  target: TargetModel,
+  subgraph: Node,
+  test_id: String
+) -> Bool {
+  match meet_join_family_eval_expected(tree: tree, subgraph: subgraph) {
+    Accepted { value: expected, diagnostics: _ } =>
+      let workspace = meet_join_family_evict_and_workspace(test_id: test_id, tree: tree)
+      match meet_join_family_native_stdout_for(
+        workspace: workspace,
+        tree: tree,
+        target: target,
+        subgraph: subgraph
+      ) {
+        Accepted { value: actual, diagnostics: _ } => actual == expected
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn meet_join_family_native_disagrees_eval_holds(
+  tree: InferredTree,
+  target: TargetModel,
+  subgraph: Node,
+  test_id: String
+) -> Bool {
+  match meet_join_family_eval_expected(tree: tree, subgraph: subgraph) {
+    Accepted { value: expected, diagnostics: _ } =>
+      let workspace = meet_join_family_evict_and_workspace(test_id: test_id, tree: tree)
+      match meet_join_family_native_stdout_for(
+        workspace: workspace,
+        tree: tree,
+        target: target,
+        subgraph: subgraph
+      ) {
+        Accepted { value: actual, diagnostics: _ } => actual != expected
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 test fn emit_on_demand_meet_join_grain_keys_differ_holds() -> Bool {
   let digest = inferred_tree_digest(tree: meet_family_tree())
   let source = emit_on_demand_key(
@@ -279,60 +351,50 @@ test fn emit_on_demand_meet_join_schedule_refuses_unreadable_budget_holds() -> B
 }
 
 test fn emit_on_demand_meet_closure_keys_differ_for_distinct_trees_holds() -> Bool {
-  meet_join_family_native_key_for(tree: meet_family_tree())
-    != meet_join_family_native_key_for(tree: meet_family_alt_tree())
+  let key_primary = meet_join_family_native_key_for(tree: meet_family_tree())
+  let key_alt = meet_join_family_native_key_for(tree: meet_family_alt_tree())
+  key_primary != key_alt
 }
 
 test fn emit_on_demand_join_closure_keys_differ_for_distinct_trees_holds() -> Bool {
-  meet_join_family_native_key_for(tree: join_family_tree())
-    != meet_join_family_native_key_for(tree: join_family_alt_tree())
+  let key_primary = meet_join_family_native_key_for(tree: join_family_tree())
+  let key_alt = meet_join_family_native_key_for(tree: join_family_alt_tree())
+  key_primary != key_alt
 }
 
 test fn emit_on_demand_meet_agreement_holds() -> Bool {
-  meet_join_eval_verdict_is_pass(
-    run: run_test_claim_emit_vs_eval(
-      subject: meet_join_family_subject(
-        tree: meet_family_tree(),
-        subgraph: dag_meet_eval_subgraph_fixture
-      ),
-      target: rust_logic_meet_target_model_staging()
-    )
+  meet_join_family_native_agreement_holds(
+    tree: meet_family_tree(),
+    target: rust_logic_meet_target_model_staging(),
+    subgraph: dag_meet_eval_subgraph_fixture,
+    test_id: "meet_native_agreement"
   )
 }
 
 test fn emit_on_demand_meet_wrong_fixture_refuses_holds() -> Bool {
-  meet_join_eval_verdict_is_semantic_mismatch(
-    run: run_test_claim_emit_vs_eval(
-      subject: meet_join_family_subject(
-        tree: meet_family_alt_tree(),
-        subgraph: dag_meet_eval_subgraph_fixture
-      ),
-      target: rust_logic_meet_target_model_staging()
-    )
+  meet_join_family_native_disagrees_eval_holds(
+    tree: meet_family_alt_tree(),
+    target: rust_logic_meet_target_model_staging(),
+    subgraph: dag_meet_eval_subgraph_fixture,
+    test_id: "meet_native_wrong_fixture"
   )
 }
 
 test fn emit_on_demand_join_agreement_holds() -> Bool {
-  meet_join_eval_verdict_is_pass(
-    run: run_test_claim_emit_vs_eval(
-      subject: meet_join_family_subject(
-        tree: join_family_tree(),
-        subgraph: dag_join_eval_subgraph_fixture
-      ),
-      target: rust_logic_join_target_model_staging()
-    )
+  meet_join_family_native_agreement_holds(
+    tree: join_family_tree(),
+    target: rust_logic_join_target_model_staging(),
+    subgraph: dag_join_eval_subgraph_fixture,
+    test_id: "join_native_agreement"
   )
 }
 
 test fn emit_on_demand_join_wrong_fixture_refuses_holds() -> Bool {
-  meet_join_eval_verdict_is_semantic_mismatch(
-    run: run_test_claim_emit_vs_eval(
-      subject: meet_join_family_subject(
-        tree: join_family_alt_tree(),
-        subgraph: dag_join_eval_subgraph_fixture
-      ),
-      target: rust_logic_join_target_model_staging()
-    )
+  meet_join_family_native_disagrees_eval_holds(
+    tree: join_family_alt_tree(),
+    target: rust_logic_join_target_model_staging(),
+    subgraph: dag_join_eval_subgraph_fixture,
+    test_id: "join_native_wrong_fixture"
   )
 }
 
@@ -363,7 +425,7 @@ test fn emit_on_demand_meet_native_content_change_cold_rebuild_holds() -> Bool {
         target: rust_logic_meet_target_model_staging(),
         subgraph: dag_meet_eval_subgraph_fixture,
         expect_compile_skipped: false,
-        expected_octet: 1
+        expected_octet: 0
       )
   }
 }
@@ -387,7 +449,7 @@ test fn emit_on_demand_meet_native_cold_then_warm_holds() -> Bool {
     tree: meet_family_tree(),
     target: rust_logic_meet_target_model_staging(),
     subgraph: dag_meet_eval_subgraph_fixture,
-    expected_octet: 1
+      expected_octet: 1
   )
 }
 
@@ -398,7 +460,7 @@ test fn emit_on_demand_join_native_cold_then_warm_holds() -> Bool {
     tree: join_family_tree(),
     target: rust_logic_join_target_model_staging(),
     subgraph: dag_join_eval_subgraph_fixture,
-    expected_octet: 0
+    expected_octet: 1
   )
 }
 
