@@ -25,9 +25,8 @@ import v2.compiler.self_host.frontier_probe_types {
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
 import v2.compiler.source_authority {
-  ModuleStorageBinding,
   ModuleStorageIndex,
-  module_storage_binding_path
+  module_storage_module_for_path
 }
 import v2.std.diagnostic {
   Accepted,
@@ -894,13 +893,6 @@ fn frontier_binding_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-fn frontier_binding_outcome_accepted<T>(outcome: Outcome<T>) -> Bool {
-  match outcome {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 data frontier_emitter_hand_row_debt_note: String = "TYPED, COUNTED DEBT — the emit path still reads the hand rows, and this is the one place that says so out loud.
 
 WHY IT SURVIVES: dag/gunbc/stage0_crate_layout_emit.dag generates stage0_crate_layout_generated.dag, and it is reached through generated_artifact_emit.dag's dispatch — ONE match over ~18 artifact variants, every one a zero-arg generator returning String. Supplying a ModuleStorageIndex there would force 17 unrelated generators to accept a host artifact they cannot use — the same coupling refused when the layout conjunct left compiler_frontier_census_holds (frontier_census_layout_relocation_note). Refusing it in one direction and accepting it in the other would be incoherent.
@@ -950,33 +942,6 @@ fn compiler_frontier_self_emitted_stage0_mod_basenames() -> List<String> {
   )
 }
 
-fn frontier_binding_index_lookup(
-  index: ModuleStorageIndex,
-  target: String
-) -> Optional<QualifiedName> {
-  fold_list(
-    xs: index,
-    empty: optional_absent(),
-    cons: fn(found, binding) {
-      match found {
-        Present { value: v } => optional_present(value: v)
-        Absent => {
-          match module_storage_binding_path(binding: binding) {
-            Present { value: p } => {
-              if p == target {
-                optional_present(value: binding.module)
-              } else {
-                optional_absent()
-              }
-            }
-            Absent => optional_absent()
-          }
-        }
-      }
-    }
-  )
-}
-
 fn compiler_frontier_qualified_module_for_path(
   index: ModuleStorageIndex,
   target: String
@@ -984,7 +949,7 @@ fn compiler_frontier_qualified_module_for_path(
   if length(xs: index) == 0 {
     outcome_rejected(d: frontier_binding_diagnostic(reason: ^frontier_binding_index_unavailable))
   } else {
-    match frontier_binding_index_lookup(index: index, target: target) {
+    match module_storage_module_for_path(index: index, file_path: target) {
       Present { value: v } => outcome_accepted(value: v)
       Absent => outcome_rejected(d: frontier_binding_diagnostic(reason: ^frontier_binding_path_unbound))
     }
@@ -1007,9 +972,10 @@ fn compiler_frontier_qualified_module_bindings_unique_holds(index: ModuleStorage
     empty: true,
     cons: fn(ok, row) {
       ok
-        && frontier_binding_outcome_accepted(
-             outcome: compiler_frontier_qualified_module_for_path(index: index, target: row.module_path)
-           )
+        && (match compiler_frontier_qualified_module_for_path(index: index, target: row.module_path) {
+             Accepted { value: _, diagnostics: _ } => true
+             Rejected { diagnostics: _ } => false
+           })
         && (count_rows_with_module_path(xs: compiler_frontier_roster, target: row.module_path) == 1)
     }
   )
