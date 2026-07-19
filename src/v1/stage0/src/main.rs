@@ -127,6 +127,59 @@ fn extract_import_paths(content: &str) -> Vec<String> {
     imports
 }
 
+/// Extract the module-path prefixes of qualified references (`container.member`
+/// spellings) from a .dag file: for every dotted identifier chain, the longest
+/// leading prefix that names an indexed module is a dependency. This is the
+/// reference-derived reading of the dependency graph
+/// (namespace-resolution-design.md Rule-1 end-state — imports are one surface of
+/// the same fact and are being deleted); without it, import-stripped files'
+/// dotted references to modules outside the surviving import closure resolve
+/// against a closure that never loaded them (`undefined variable 'v2'`).
+/// Value chains (`request.subject.uid`) filter out naturally: their prefixes are
+/// not indexed module paths. Over-inclusion (a dotted module spelling inside a
+/// string literal) only widens the compile set, never mis-resolves.
+fn extract_reference_module_paths(
+    content: &str,
+    index: &HashMap<String, std::path::PathBuf>,
+) -> Vec<String> {
+    let bytes = content.as_bytes();
+    let is_ident_start = |b: u8| b.is_ascii_alphabetic() || b == b'_';
+    let is_ident = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let chain_start_ok = is_ident_start(bytes[i])
+            && (i == 0 || (!is_ident(bytes[i - 1]) && bytes[i - 1] != b'.'));
+        if !chain_start_ok {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let mut seg_ends: Vec<usize> = Vec::new();
+        loop {
+            while i < bytes.len() && is_ident(bytes[i]) {
+                i += 1;
+            }
+            seg_ends.push(i);
+            if i + 1 < bytes.len() && bytes[i] == b'.' && is_ident_start(bytes[i + 1]) {
+                i += 1; // consume the dot, continue the chain
+            } else {
+                break;
+            }
+        }
+        if seg_ends.len() >= 2 {
+            for end in seg_ends.iter().rev() {
+                let cand = &content[start..*end];
+                if index.contains_key(cand) {
+                    out.push(cand.to_string());
+                    break;
+                }
+            }
+        }
+    }
+    out
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DependencyPoolIndex {
     Strict,
@@ -231,8 +284,12 @@ fn resolve_transitively_with_seen(
     let mut queue: Vec<(String, String)> = entry_sources;
 
     while let Some((_path, content)) = queue.pop() {
-        let imports = extract_import_paths(&content);
-        for module_path in imports {
+        // Dependencies = import declarations ∪ qualified-reference module prefixes
+        // (one dependency fact, two surfaces; the import surface is being deleted —
+        // namespace-resolution-design.md Rule-1).
+        let mut deps = extract_import_paths(&content);
+        deps.extend(extract_reference_module_paths(&content, index));
+        for module_path in deps {
             if seen.contains_key(&module_path) {
                 continue;
             }
@@ -253,6 +310,17 @@ fn resolve_transitively_with_seen(
             }
             // If not found in index, the compiler's resolve stage will report the error.
         }
+    }
+
+    // Coverage honesty: indexed modules outside the import+reference closure are not
+    // compiled by this invocation. Pre-strip, the import closure covered effectively
+    // the whole pool; a large number here means the gate's universe silently shrank.
+    let uncovered = index.keys().filter(|k| !seen.contains_key(*k)).count();
+    if uncovered > 0 {
+        eprintln!(
+            "[closure] {} indexed modules outside the import+reference closure (not compiled this invocation)",
+            uncovered
+        );
     }
 
     let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();

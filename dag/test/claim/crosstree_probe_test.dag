@@ -1,0 +1,23 @@
+module test.claim.crosstree_probe
+
+
+data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
+fn probe_dag_tree() -> std.access.AccessDecision {
+  std.access.Permit
+}
+
+fn probe_v2_tree() -> v2.std.lens_verdict.LensVerdict {
+  v2.std.lens_verdict.Holds
+}
+
+test fn crosstree_dag_ref_resolves() -> Bool {
+  match probe_dag_tree() { Permit => true  Deny { reason: _ } => false }
+}
+
+test fn crosstree_v2_ref_resolves() -> Bool {
+  match probe_v2_tree() {
+    Holds => true
+    _ => false
+  }
+}
