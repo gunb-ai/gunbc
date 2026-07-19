@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::cli_run::{
     collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,
 };
-use crate::module_path_index::medium_structure_census::parse_dag_file;
+use crate::module_path_index::parsed_dag_file::parse_dag_file;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
     fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value,
