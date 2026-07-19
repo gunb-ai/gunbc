@@ -6226,9 +6226,15 @@ fn disj_variant_name_counts(items: List<Node>, source_indices: Map<String, Newli
   )
 }
 
-fn corpus_disj_variant_name_counts(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
-  fold(modules, init: empty_map(), f: (counts, mod) =>
-    fold(module_items(n: mod.module), init: counts, f: (c, item) =>
+data census_node_base_note: String = "The census reads only the module NODE, so the node list is its true input: one census over two front ends (resolved closures and parse-grade pool fills). ResolvedModule entry points delegate through census_module_nodes."
+
+fn census_module_nodes(modules: List<ResolvedModule>) -> List<Node> {
+  modules |> map(rm => rm.module)
+}
+
+fn corpus_disj_variant_name_counts_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
+  fold(module_nodes, init: empty_map(), f: (counts, module_node) =>
+    fold(module_items(n: module_node), init: counts, f: (c, item) =>
       match item.connective {
         Disj =>
           fold(item.children, init: c, f: (c2, child) =>
@@ -6240,12 +6246,20 @@ fn corpus_disj_variant_name_counts(modules: List<ResolvedModule>, source_indices
   )
 }
 
-fn corpus_item_name_counts(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
-  fold(modules, init: empty_map(), f: (counts, mod) =>
-    fold(module_items(n: mod.module), init: counts, f: (c, item) =>
+fn corpus_disj_variant_name_counts(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
+  corpus_disj_variant_name_counts_nodes(module_nodes: census_module_nodes(modules: modules), source_indices: source_indices)
+}
+
+fn corpus_item_name_counts_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
+  fold(module_nodes, init: empty_map(), f: (counts, module_node) =>
+    fold(module_items(n: module_node), init: counts, f: (c, item) =>
       disj_variant_name_count_inc(counts: c, name: authored_name_at(source_indices: source_indices, node: item))
     )
   )
+}
+
+fn corpus_item_name_counts(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
+  corpus_item_name_counts_nodes(module_nodes: census_module_nodes(modules: modules), source_indices: source_indices)
 }
 
 fn symbol_index_insert_unique_disj_variant_aliases(
@@ -6298,12 +6312,12 @@ fn symbol_index_insert_unique_disj_variant_aliases(
   )
 }
 
-fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let corpus_variant_counts = corpus_disj_variant_name_counts(modules: modules, source_indices: source_indices)
-  let corpus_item_counts = corpus_item_name_counts(modules: modules, source_indices: source_indices)
-  fold(modules, init: empty_symbol_index(), f: (index, mod) =>
-    let module_path = authored_name_at(source_indices: source_indices, node: mod.module)
-    let items = module_items(n: mod.module)
+fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+  let corpus_variant_counts = corpus_disj_variant_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
+  let corpus_item_counts = corpus_item_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
+  fold(module_nodes, init: empty_symbol_index(), f: (index, module_node) =>
+    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
+    let items = module_items(n: module_node)
     let with_items = fold(items, init: index, f: (acc, item) =>
       symbol_index_insert_item(
         index: acc,
@@ -6321,6 +6335,10 @@ fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: 
       corpus_item_counts: corpus_item_counts
     )
   )
+}
+
+fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+  build_symbol_index_census_raw_nodes(module_nodes: census_module_nodes(modules: modules), source_indices: source_indices)
 }
 
 data census_borrowed_sig_resolution_note: String = "Borrowed-sig hoist (namespace lane): the census stores raw pre-typecheck fn nodes, so a borrowed generic fn's return leaked bare type-param leaves (T/V/E) and owner-local names into consumers — the local/borrowed asymmetry (locals resolve once per module in resolve_item_types with type params bound as TypeVariables; borrows got the raw node per lookup). Pass 2 resolves each borrowable GENERIC fn signature's return ONCE at census build, in a synthetic env at the OWNER's containment position (module_path = the candidate's declaring module; symbol_index = the completed pass-1 census; type params bound via env_with_type_variable_bindings) — order-independent (resolution reads only the completed raw census, never a partial one), once per decl (never per lookup — the per-lookup variant re-resolved recursive carriers to the depth bound on every call), and staged fail-closed: ANY resolution diagnostic keeps the raw binding, so the consumer-side refusal surface is unchanged (upgraded | raw is a typed frontier, not a widen). Scope: fn sigs with value params (params non-empty; type params may be zero — a NON-generic fn's return can still USE a generic type, e.g. Outcome<Medium<String>>, and needs the same owner-position expansion for variant-payload substitution); 0-arg fns and aliases share a census shape (body stripped) and stay raw pending a discriminator."
@@ -6539,6 +6557,84 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
   let raw = build_symbol_index_census_raw(modules: modules, source_indices: source_indices)
   census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
+}
+
+data census_layering_note: String = "Layered census (namespace-resolution-design.md 7.5: fill = whole tree; policy gates lookup, never fill). The closure census is byte-identical to the no-fill build — bare visibility, variant-alias corpus gating, and services stay closure-scoped, so a pool homonym cannot shift what a compiled module's bare names mean (measured on the whole-tree gate: a single whole-pool census vanished bare GET/Persistent/JsonValue across 28 witness rows via the corpus-count gate and unique-to-ambiguous flips). Census-only fill modules are PARSE-GRADE (tokenize + parse, never resolve: fill imports point into the compile closure or another tree view, and resolving fill against a fill-only pool fabricated 797 unresolved-import diagnostics about the view, not the modules) and enter a QUALIFIED-ONLY entries underlay — no bare reach INTO fill is needed because cross-tree references are qualified, the migration direction. The cli_run reconcile additionally underlays each typechecked module's OWN tree-closure bare census (root modules plus import-reached pool modules — gate parity by construction: e.g. dag witnesses' bare LiveTreeDisposition is declared only in v2.std.live_tree but import-reached from the dag tree)."
+
+fn build_symbol_index_census_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+  let raw = build_symbol_index_census_raw_nodes(module_nodes: module_nodes, source_indices: source_indices)
+  census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
+}
+
+fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> SymbolIndex {
+  let bare_keys = sorted_map_keys(tree.global_bare)
+  let global2 = fold(bare_keys, init: closure.global_bare, f: (acc, k) =>
+    match map_get(acc, k) {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(tree.global_bare, k) {
+          Present { value: state } => map_insert(acc, k, state)
+          Absent => acc
+        }
+    }
+  )
+  let service_keys = sorted_map_keys(tree.services)
+  let services2 = fold(service_keys, init: closure.services, f: (acc, k) =>
+    match map_get(acc, k) {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(tree.services, k) {
+          Present { value: entry } => map_insert(acc, k, entry)
+          Absent => acc
+        }
+    }
+  )
+  SymbolIndex { entries: closure.entries, global_bare: global2, services: services2 }
+}
+
+fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+  let raw = fold(modules, init: empty_symbol_index(), f: (index, module_node) =>
+    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
+    let items = module_items(n: module_node)
+    let with_items = fold(items, init: index, f: (acc, item) =>
+      match local_binding_for_item(item: item, source_indices: source_indices) {
+        Absent => acc
+        Present { value: binding } =>
+          symbol_index_insert(index: acc, qualified_name: concat(concat(module_path, "."), binding.name), resolved: binding.resolved)
+      }
+    )
+    let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
+    fold(items, init: with_items, f: (acc, item) =>
+      match item.connective {
+        Disj =>
+          fold(item.children, init: acc, f: (a2, child) =>
+            let vname = authored_name_at(source_indices: source_indices, node: child)
+            match map_get(counts, vname) {
+              Present { value: 1 } =>
+                symbol_index_insert(index: a2, qualified_name: concat(concat(module_path, "."), vname), resolved: item)
+              _ => a2
+            }
+          )
+        _ => acc
+      }
+    )
+  )
+  census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
+}
+
+fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> SymbolIndex {
+  let fill_keys = sorted_map_keys(fill.entries)
+  let entries2 = fold(fill_keys, init: closure.entries, f: (acc, k) =>
+    match map_get(acc, k) {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(fill.entries, k) {
+          Present { value: node } => map_insert(acc, k, node)
+          Absent => acc
+        }
+    }
+  )
+  SymbolIndex { entries: entries2, global_bare: closure.global_bare, services: closure.services }
 }
 
 data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields; ledger arm = the fork row is still recorded)."
@@ -7604,11 +7700,18 @@ type RealizeState {
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
+  typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
+}
+
+fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> TypedGraph {
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
   )
-  let symbol_index = build_symbol_index_census(modules: graph.modules, source_indices: source_indices)
+  let symbol_index = symbol_index_with_qualified_fill(
+    closure: build_symbol_index_census(modules: graph.modules, source_indices: census_si),
+    fill: build_symbol_index_qualified_fill(modules: census_fill_modules, source_indices: census_si)
+  )
   let state = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
     variant_surfaces: empty_map(),
@@ -7920,7 +8023,11 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
 }
 
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ResolvedGraph {
-  let typed = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
+  reconcile_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
+}
+
+fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> ResolvedGraph {
+  let typed = typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: census_fill_modules, census_si: census_si)
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)

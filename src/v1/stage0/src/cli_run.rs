@@ -3722,9 +3722,167 @@ pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = build_module_index(source_roots);
-    let facts = build_module_graph_facts_live(source_roots);
-    load_sources_for_entry_with_index(&index, &facts, entry_path)
+    let index = build_multi_entry_index(source_roots);
+    load_sources_for_entry_with_pool(&index, entry_path)
+}
+
+/// Every single identifier in `content` that is not part of a dotted chain —
+/// the candidate universe for bare-name dependency derivation. Deliberately an
+/// over-approximation (locals, params, and keywords are included): a candidate
+/// only pulls a module when the tree census resolves it, so a false candidate
+/// costs a map miss, never a wrong closure. String literals are skipped for the
+/// same reason as the dotted scan.
+fn bare_identifier_candidates(content: &str) -> BTreeSet<String> {
+    let bytes = content.as_bytes();
+    let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    let mut out = BTreeSet::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'"' {
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'"' {
+                if bytes[i] == b'\\' && i + 1 < bytes.len() {
+                    i += 1;
+                }
+                i += 1;
+            }
+            i += 1;
+            continue;
+        }
+        if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
+        {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < bytes.len() && is_ident(bytes[i]) {
+            i += 1;
+        }
+        // Part of a dotted chain → the dotted scan owns it.
+        if i < bytes.len() && bytes[i] == b'.' {
+            continue;
+        }
+        out.insert(content[start..i].to_string());
+    }
+    out
+}
+
+/// Extend the closure with the modules the tree census resolves each source's
+/// BARE references to (namespace Rule-1 direction: deps derived from names, not
+/// import statements — the import-stripped corpus has no import edges to follow,
+/// which surfaced as `no such function` at witness runtime: typecheck resolved a
+/// name through the census while the interpreter never loaded its body). A bare
+/// name resolves exactly as the typecheck lookup will: census-unique → that
+/// module; ambiguous → the nearest-ancestor candidate from the referencing
+/// module's containment position; still ambiguous → load nothing (the typecheck
+/// refusal stays the loud authority, the loader never guesses a side).
+fn extend_with_bare_reference_closure(
+    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index: &MultiEntryIndex,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    use crate::v1_compiler_infer_env::GlobalBareLookupState;
+    let path_lookup = path_to_source_lookup(&index.source_files);
+    let mut known_paths: std::collections::HashSet<String> = sources
+        .iter()
+        .flat_map(|s| [s.path.clone(), workspace_relative_repo_path(&s.path)])
+        .collect();
+    let mut scan_queue: Vec<Rc<v1_compiler_compile::SourceFile>> = sources.clone();
+    while let Some(sf) = scan_queue.pop() {
+        let file_rel = workspace_relative_repo_path(&sf.path);
+        let Some(root) = source_tree_root_of(&index.source_roots, &file_rel) else {
+            continue;
+        };
+        let census = tree_bare_census_for_root(index, &root)?;
+        let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
+        for name in bare_identifier_candidates(&sf.content) {
+            let target_module = match v1_rt::map_get(&census.global_bare, name.clone()) {
+                Some(state) => match state.as_ref() {
+                    GlobalBareLookupState::GlobalBareUniqueBinding { module_path, .. } => {
+                        Some(module_path.clone())
+                    }
+                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                        crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
+                            referencing_module.clone(),
+                            candidates.clone(),
+                        )
+                        .map(|c| c.module_path.clone())
+                    }
+                },
+                None => v1_rt::map_get(&census.services, name.clone())
+                    .map(|entry| entry.module_path.clone()),
+            };
+            let Some(module_path) = target_module else {
+                continue;
+            };
+            let Some(dep) = index.source_files.get(&module_path) else {
+                continue;
+            };
+            let dep_rel = workspace_relative_repo_path(&dep.path);
+            if known_paths.contains(&dep_rel) || known_paths.contains(&dep.path) {
+                continue;
+            }
+            if !index.module_graph_facts.declares_repo_path(&dep_rel) {
+                return Err(format!(
+                    "bare_reference_closure: referenced module '{module_path}' at \
+                     '{dep_rel}' has no provenance in the module-graph facts pool \
+                     (fail-closed)"
+                ));
+            }
+            for path in
+                import_closure_live_paths_with_facts(&dep_rel, &index.module_graph_facts)
+            {
+                let rel = workspace_relative_repo_path(&path);
+                if known_paths.contains(&rel) {
+                    continue;
+                }
+                let Some(dep_sf) = path_lookup.get(&rel).cloned() else {
+                    return Err(format!(
+                        "bare_reference_closure: closure path '{rel}' (via bare name \
+                         '{name}' → module '{module_path}') has no provenance in \
+                         module index (fail-closed)"
+                    ));
+                };
+                known_paths.insert(rel);
+                known_paths.insert(dep_sf.path.clone());
+                sources.push(dep_sf.clone());
+                scan_queue.push(dep_sf);
+            }
+        }
+    }
+    Ok(sources)
+}
+
+/// The full name-derived closure for one entry: import edges + dotted-reference
+/// modules + BARE-reference modules (via the tree census), iterated to a joint
+/// fixpoint — a bare-pulled module can carry new dotted references and vice
+/// versa. This is the loader the witness paths use; the raw-pair
+/// `load_sources_for_entry_with_index` stays the dotted-only base for callers
+/// without a pool index.
+fn load_sources_for_entry_with_pool(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let mut sources = load_sources_for_entry_with_index(
+        &index.source_files,
+        &index.module_graph_facts,
+        entry_path,
+    )?;
+    loop {
+        let before = sources.len();
+        sources = extend_with_bare_reference_closure(sources, index)?;
+        sources = extend_with_reference_closure(
+            sources,
+            &index.source_files,
+            &index.module_graph_facts,
+        )?;
+        sources.sort_by(|a, b| a.path.cmp(&b.path));
+        sources.dedup_by(|a, b| a.path == b.path);
+        if sources.len() == before {
+            break;
+        }
+    }
+    Ok(sources)
 }
 
 fn load_sources_for_entry_with_index(
@@ -6862,7 +7020,15 @@ fn resolved_initializer_decl_ref(
     let si = Rc::new(source_indices.clone());
     if let ExprData::ExprRecordLit { parent_enum } = &*body.expr_data {
         if let Some(parent_name) = parent_enum.as_deref() {
-            let variant_name = authored_name_at(si.clone(), body.clone());
+            // A qualified constructor spelling (v2.std.verification.BoolWitnessClaim)
+            // names the same arm as its bare last segment — the module prefix already
+            // resolved the parent coproduct (the #6869 payload-variant class). The arm
+            // check and the stored decl name both use the bare arm name; a genuinely
+            // wrong variant still refuses.
+            let variant_name = crate::v1_std_core::qualified_last_segment(authored_name_at(
+                si.clone(),
+                body.clone(),
+            ));
             if variant_name.is_empty() {
                 return Err(
                     "coproduct variant initializer missing constructor identity".to_string()
