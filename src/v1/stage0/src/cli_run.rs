@@ -3864,6 +3864,21 @@ fn extend_with_bare_reference_closure(
             let Some(dep) = index.source_files.get(&module_path) else {
                 continue;
             };
+            // A test-claim module is an execution ROOT, never a dependency: its
+            // helpers are file-local by convention, its health belongs to its own
+            // witness run, and several are deliberately off-auto-path (e.g.
+            // ownership_movable_test imports src/v1 — unresolvable in this pool,
+            // per its own note). A bare homonym resolving into one (`edge`,
+            // 2-param helper) must not couple this entry to it — skip, and let
+            // the typecheck/runtime refusal stay the loud signal if the name was
+            // a genuine reference.
+            if dep
+                .content
+                .lines()
+                .any(|l| l.trim_start().starts_with("test fn "))
+            {
+                continue;
+            }
             let dep_rel = workspace_relative_repo_path(&dep.path);
             if known_paths.contains(&dep_rel) || known_paths.contains(&dep.path) {
                 continue;
@@ -3875,9 +3890,7 @@ fn extend_with_bare_reference_closure(
                      (fail-closed)"
                 ));
             }
-            for path in
-                import_closure_live_paths_with_facts(&dep_rel, &index.module_graph_facts)
-            {
+            for path in import_closure_live_paths_with_facts(&dep_rel, &index.module_graph_facts) {
                 let rel = workspace_relative_repo_path(&path);
                 if known_paths.contains(&rel) {
                     continue;
@@ -3917,11 +3930,8 @@ fn load_sources_for_entry_with_pool(
     loop {
         let before = sources.len();
         sources = extend_with_bare_reference_closure(sources, index)?;
-        sources = extend_with_reference_closure(
-            sources,
-            &index.source_files,
-            &index.module_graph_facts,
-        )?;
+        sources =
+            extend_with_reference_closure(sources, &index.source_files, &index.module_graph_facts)?;
         sources.sort_by(|a, b| a.path.cmp(&b.path));
         sources.dedup_by(|a, b| a.path == b.path);
         if sources.len() == before {
@@ -4661,10 +4671,7 @@ fn resolve_entry_with_parse_cache(
     resolve_stage_slot_reset();
     set_phase(FloorPhase::Resolve, entry_file);
     let load_started = std::time::Instant::now();
-    let sources = load_sources_for_entry_with_pool(
-        index,
-        entry_file,
-    )?;
+    let sources = load_sources_for_entry_with_pool(index, entry_file)?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
     resolved_graph_from_sources_with_index(index, sources, typecheck_gate, entry_file)
 }
@@ -6210,8 +6217,7 @@ pub fn whole_tree_resolved_ctx(
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
-    let sources =
-        load_sources_for_entry_with_pool(index, entry)?;
+    let sources = load_sources_for_entry_with_pool(index, entry)?;
     Ok(subject_digest_for_closure(&sources))
 }
 
