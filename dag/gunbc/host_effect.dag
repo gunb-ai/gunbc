@@ -1,27 +1,18 @@
 module gunbc.host_effect
 
 import std.types { String, Int, NonEmptyStr, List, ContentHash }
-<<<<<<< Updated upstream
 import std.cache_identity { CacheInterfaceId }
-=======
->>>>>>> Stashed changes
 import std.access { AccessDecision }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.bmc.types { RedfishSystemAction }
 import extdeps.dns.domain_name { DnsLabel }
-<<<<<<< Updated upstream
 import extdeps.bmc.webui.nbd_proxy_serve { NbdProxyServeTransportIntent }
-=======
->>>>>>> Stashed changes
 import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import std.effects {
   EffectShape,
-<<<<<<< Updated upstream
   KeySource,
-=======
->>>>>>> Stashed changes
   ReadEffect,
   AppendEffect,
   IdempotencyEvidence,
