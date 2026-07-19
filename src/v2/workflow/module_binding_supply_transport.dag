@@ -27,6 +27,14 @@ data mbs_oracle_scan_dir: String = "src/v2/test/fixture/program_assembly"
 data mbs_overlay_template: String = "/target/module-binding-supply-XXXXXX"
 data mbs_entry: String = "src/v2/test/claim/long/module_binding_host_consistency_test.dag"
 
+data mbs_layout_entry: String = "src/v2/test/claim/self_host/crate_layout_witness_test.dag"
+
+data mbs_layout_claims_note: String = "The crate-layout witnesses run HERE, in the same overlay, because task 3 made them projections off the derived binding index instead of readers of a 27-row hand table. They need the real index, and the real index exists only inside this overlay — so this transport is their executing consumer.
+
+They were removed from compiler_frontier_census_holds in the same change (frontier_census_layout_relocation_note): the census is a pure zero-arity fast-lane gate that cannot obtain a host index, and the layer DAG forbids a compiler module importing v2.test.* to reach one. Enrolling them here is the other half of that removal, not a follow-on — a removal without this enrollment would leave a window where nothing checks crate layout at all.
+
+projection_refuses_on_absent_index is included deliberately even though it passes in either lane: it asserts the fail-closed arm on a LOCALLY constructed Empty index, so running it beside the populated-index witnesses proves both arms of the same projection in one place — the refusal is not merely an artifact of the fast lane having no data."
+
 fn mbs_claim_source_roots(overlay_dir: String) -> List<String> {
   concat(witness_layer_roots, [overlay_dir])
 }
@@ -58,7 +66,10 @@ func run_module_binding_supply_gate_ready(root: String) -> Bool {
           claims: [
             ClaimRun { entry: mbs_entry, function: "module_binding_host_manifest_is_populated" },
             ClaimRun { entry: mbs_entry, function: "module_binding_host_resolves_a_known_compiler_module" },
-            ClaimRun { entry: mbs_entry, function: "module_binding_host_agrees_with_parse_oracle" }
+            ClaimRun { entry: mbs_entry, function: "module_binding_host_agrees_with_parse_oracle" },
+            ClaimRun { entry: mbs_layout_entry, function: "projection_refuses_on_absent_index" },
+            ClaimRun { entry: mbs_layout_entry, function: "transition_parity_host_index_agrees_with_hand_rows" },
+            ClaimRun { entry: mbs_layout_entry, function: "crate_layout_witnesses" }
           ]
         )
       } else {

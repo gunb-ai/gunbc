@@ -7,27 +7,43 @@ import gunbc.stage0_crate_layout_generated {
   generated_stage0_filenames
 }
 import v2.compiler.self_host.frontier {
+  CompilerModuleFrontierRow,
+  FrontierQualifiedModuleBinding,
   SelfEmitted,
   SeedRetained,
   compiler_frontier_crate_layout_holds,
+  compiler_frontier_qualified_module_dotted_for_path,
+  compiler_frontier_qualified_module_bindings,
   compiler_frontier_row_parse_engine_hooks,
   compiler_frontier_row_discovery_enumeration,
   compiler_frontier_row_use_site_verdict,
   compiler_frontier_self_emitted_baseline,
   compiler_frontier_self_emitted_count,
-  compiler_frontier_self_emitted_stage0_mod_basenames,
+  compiler_frontier_self_emitted_stage0_mod_basenames_from_index,
   emit_hand_maintained_pub_mod_block,
   frontier_row_stage0_mod_basename,
   hand_maintained_pub_mod_basenames,
   hand_maintained_stage0_dirs,
   hand_maintained_stage0_filenames
 }
+import v2.compiler.source_authority { ModuleStorageIndex }
+import v2.test.workflow.host_module_binding_manifest { host_module_bindings }
+import v2.std.diagnostic { Accepted, Rejected }
+import std.algebra { Empty }
 import v2.std.algebra { any, fold_list, length }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data witness_red_control_note: String = "Discriminating RED (both directions): (1) OMIT — drop v2_compiler_parse_engine_hooks or v2_compiler_use_site_verdict from generated_pub_mod_basenames while frontier row stays SelfEmitted → witness_generated_includes_every_self_emitted_basename_holds false; (2) INCLUDE — append phantom_module to generated_pub_mod_basenames absent from frontier hand_maintained_pub_mod_basenames → witness_generated_has_no_phantom_registration_holds false. Byte drift RED: generated_artifact_drift_gate perturb suffix on dag/gunbc/stage0_crate_layout_generated.dag."
+
+data witness_wet_cadence_note: String = "These witnesses are WET as of task 3: they read host_module_bindings, which the committed stub declares Empty and the module_binding_supply_transport overlays with the real whole-tree index at run time. Run by name in the fast lane they REFUSE (index unavailable), and that refusal is correct rather than a regression — it is the projection reporting that it has no authority to answer from, instead of the previous behaviour of answering from a hand table that could silently disagree with the tree.
+
+The layout conjunct was removed from compiler_frontier_census_holds in the same change for this reason (see frontier_census_layout_relocation_note); this file is where it now lives."
+
+fn layout_index() -> ModuleStorageIndex {
+  host_module_bindings
+}
 
 fn string_list_contains(xs: List<String>, needle: String) -> Bool {
   any(xs, x => x == needle)
@@ -39,35 +55,34 @@ fn lists_have_same_members(a: List<String>, b: List<String>) -> Bool {
     && fold_list(xs: b, empty: true, cons: fn(ok, item) { ok && string_list_contains(xs: a, needle: item) })
 }
 
+fn row_basename_is_registered(row: CompilerModuleFrontierRow) -> Bool {
+  match frontier_row_stage0_mod_basename(index: layout_index(), row: row) {
+    Accepted { value: b, diagnostics: _ } =>
+      string_list_contains(
+        xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index()),
+        needle: b
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn witness_parse_engine_hooks_derived_from_frontier_holds() -> Bool {
   match compiler_frontier_row_parse_engine_hooks.disposition {
-    SelfEmitted =>
-      string_list_contains(
-        xs: compiler_frontier_self_emitted_stage0_mod_basenames(),
-        needle: frontier_row_stage0_mod_basename(row: compiler_frontier_row_parse_engine_hooks)
-      )
+    SelfEmitted => row_basename_is_registered(row: compiler_frontier_row_parse_engine_hooks)
     SeedRetained { reason: _, migration_trigger: _ } => false
   }
 }
 
 fn witness_use_site_verdict_derived_from_frontier_holds() -> Bool {
   match compiler_frontier_row_use_site_verdict.disposition {
-    SelfEmitted =>
-      string_list_contains(
-        xs: compiler_frontier_self_emitted_stage0_mod_basenames(),
-        needle: frontier_row_stage0_mod_basename(row: compiler_frontier_row_use_site_verdict)
-      )
+    SelfEmitted => row_basename_is_registered(row: compiler_frontier_row_use_site_verdict)
     SeedRetained { reason: _, migration_trigger: _ } => false
   }
 }
 
 fn witness_discovery_enumeration_derived_from_frontier_holds() -> Bool {
   match compiler_frontier_row_discovery_enumeration.disposition {
-    SelfEmitted =>
-      string_list_contains(
-        xs: compiler_frontier_self_emitted_stage0_mod_basenames(),
-        needle: frontier_row_stage0_mod_basename(row: compiler_frontier_row_discovery_enumeration)
-      )
+    SelfEmitted => row_basename_is_registered(row: compiler_frontier_row_discovery_enumeration)
     SeedRetained { reason: _, migration_trigger: _ } => false
   }
 }
@@ -77,11 +92,17 @@ fn witness_generated_pub_mod_block_matches_frontier_holds() -> Bool {
 }
 
 fn witness_generated_basenames_match_frontier_holds() -> Bool {
-  lists_have_same_members(a: generated_pub_mod_basenames, b: hand_maintained_pub_mod_basenames())
+  lists_have_same_members(
+    a: generated_pub_mod_basenames,
+    b: hand_maintained_pub_mod_basenames()
+  )
 }
 
 fn witness_generated_filenames_match_frontier_holds() -> Bool {
-  lists_have_same_members(a: generated_stage0_filenames, b: hand_maintained_stage0_filenames())
+  lists_have_same_members(
+    a: generated_stage0_filenames,
+    b: hand_maintained_stage0_filenames()
+  )
 }
 
 fn witness_generated_dirs_match_frontier_holds() -> Bool {
@@ -90,7 +111,7 @@ fn witness_generated_dirs_match_frontier_holds() -> Bool {
 
 fn witness_generated_includes_every_self_emitted_basename_holds() -> Bool {
   fold_list(
-    xs: compiler_frontier_self_emitted_stage0_mod_basenames(),
+    xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index()),
     empty: true,
     cons: fn(ok, basename) {
       ok && string_list_contains(xs: generated_pub_mod_basenames, needle: basename)
@@ -124,12 +145,12 @@ fn witness_hand_maintained_filenames_include_self_emitted_holds() -> Bool {
 }
 
 fn witness_self_emitted_count_matches_derived_basenames_holds() -> Bool {
-  length(xs: compiler_frontier_self_emitted_stage0_mod_basenames()) == compiler_frontier_self_emitted_count()
+  length(xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index())) == compiler_frontier_self_emitted_count()
 }
 
 fn witness_no_orphan_self_emitted_basename_holds() -> Bool {
   fold_list(
-    xs: compiler_frontier_self_emitted_stage0_mod_basenames(),
+    xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index()),
     empty: true,
     cons: fn(ok, basename) {
       ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(), needle: basename)
@@ -137,8 +158,48 @@ fn witness_no_orphan_self_emitted_basename_holds() -> Bool {
   )
 }
 
+data standing_parity_witness_note: String = "STANDING WITNESS — not a one-time switchover receipt (promoted, parent ruling 2026-07-19), and the reason for the promotion is the whole point.
+
+Two representations of the path⇄module fact are live at once: the derived index serves the witness path here, and the 27 hand rows still feed the crate-layout EMITTER, which cannot be handed a host index without polluting an unrelated 18-variant dispatch (frontier_emitter_hand_row_debt_note). §3 forbids that duality in general. THIS WITNESS IS WHAT MAKES IT HONEST: it asserts, on every wet run, that the derived index and the hand rows answer identically for every path the rows name — so a drift between the two authorities REDS instead of silently diverging.
+
+As a one-time receipt it would have proven agreement at a single moment and said nothing afterwards, leaving exactly the silent fork it was meant to prevent. As a standing check it is the §3 protection for as long as the duality lives.
+
+It catches two failures with one comparison: a PROJECTION BUG (derivation disagrees with a known-good table) and HAND-ROW DRIFT (the table went stale and the derivation is right). Both surface as the same red, told apart by inspecting which side is wrong.
+
+dissolve-on: host-driven generation of the crate-layout artifact with the index supplied at the boundary — at which point this witness, FrontierQualifiedModuleBinding, the 27-row block, and the _hand_rows fn family are deleted TOGETHER."
+
+fn parity_row_agrees(row: FrontierQualifiedModuleBinding) -> Bool {
+  match compiler_frontier_qualified_module_dotted_for_path(index: layout_index(), target: row.module_path) {
+    Accepted { value: dotted, diagnostics: _ } => dotted == row.qualified_module
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn transition_parity_host_index_agrees_with_hand_rows() -> Bool {
+  (length(xs: compiler_frontier_qualified_module_bindings) > 0)
+    && fold_list(
+         xs: compiler_frontier_qualified_module_bindings,
+         empty: true,
+         cons: fn(ok, row) { ok && parity_row_agrees(row: row) }
+       )
+}
+
+data index_absent_red_control_note: String = "The RED control for the projection's fail-closed arm, proven by EXECUTION rather than asserted. An Empty index must REFUSE — not return an empty string, and not fabricate a basename from one. This is the control that would have caught the old \"\"-sentinel behaviour: under the previous lookup an Empty carrier produced \"\" for every path, rust_qualified_module_mod_basename turned that into a basename, and a gate could report on names nobody declared.
+
+It asserts refusal on a LOCALLY CONSTRUCTED Empty index rather than on host_module_bindings, deliberately: the host carrier is Empty in the fast lane and populated on the wet cadence, so asserting against it would pass for the wrong reason in one lane and fail in the other. A literal Empty is the same input in both."
+
+test fn projection_refuses_on_absent_index() -> Bool {
+  match compiler_frontier_qualified_module_dotted_for_path(
+    index: Empty,
+    target: "src/v2/compiler/00_compile.dag"
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
 test fn crate_layout_witnesses() -> Bool {
-  compiler_frontier_crate_layout_holds()
+  compiler_frontier_crate_layout_holds(index: layout_index())
     && witness_parse_engine_hooks_derived_from_frontier_holds()
     && witness_use_site_verdict_derived_from_frontier_holds()
     && witness_discovery_enumeration_derived_from_frontier_holds()
