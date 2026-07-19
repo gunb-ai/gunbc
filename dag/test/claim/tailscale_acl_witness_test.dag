@@ -1,55 +1,55 @@
 module test.claim.tailscale_acl_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data tailscale_acl_reference_fixture_path: String = "dag/test/fixture/tailscale_acl_reference.json"
 
 fn witness_operator_policy_row_counts() -> Bool {
-  let policy = extdeps.tailscale.acl.operator_tailscale_acl_policy
-  (v2.std.algebra.length(policy.grants) == 4)
-    && (v2.std.algebra.length(policy.ssh) == 3)
-    && (v2.std.algebra.length(policy.node_attrs) == 1)
-    && (v2.std.algebra.length(policy.tag_owners) == 2)
+  let policy = operator_tailscale_acl_policy
+  (length(policy.grants) == 4)
+    && (length(policy.ssh) == 3)
+    && (length(policy.node_attrs) == 1)
+    && (length(policy.tag_owners) == 2)
 }
 
 fn witness_tag_ci_quarantine_spine() -> Bool {
-  extdeps.tailscale.acl.tag_ci_quarantine_holds(policy: extdeps.tailscale.acl.operator_tailscale_acl_policy)
+  tag_ci_quarantine_holds(policy: operator_tailscale_acl_policy)
 }
 
 fn witness_tag_dashboard_admin_exception() -> Bool {
-  extdeps.tailscale.acl.tag_dashboard_admin_plane_holds(policy: extdeps.tailscale.acl.operator_tailscale_acl_policy)
+  tag_dashboard_admin_plane_holds(policy: operator_tailscale_acl_policy)
 }
 
 fn witness_dashboard_cutover_ip_transient() -> Bool {
-  extdeps.tailscale.acl.dashboard_cutover_ip_is_transient_in_tag_ci_grant(policy: extdeps.tailscale.acl.operator_tailscale_acl_policy)
-    && match extdeps.tailscale.acl.dashboard_cutover_mac_dissolution_trigger {
-      std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+  dashboard_cutover_ip_is_transient_in_tag_ci_grant(policy: operator_tailscale_acl_policy)
+    && match dashboard_cutover_mac_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
       Terminal { reason: _ } => false
     }
 }
 
 fn witness_ssh_principal_spine() -> Bool {
-  extdeps.tailscale.acl.ssh_members_reach_ci_nonroot_only(policy: extdeps.tailscale.acl.operator_tailscale_acl_policy)
-    && extdeps.tailscale.acl.ssh_dashboard_reaches_ci_root_and_nonroot(policy: extdeps.tailscale.acl.operator_tailscale_acl_policy)
+  ssh_members_reach_ci_nonroot_only(policy: operator_tailscale_acl_policy)
+    && ssh_dashboard_reaches_ci_root_and_nonroot(policy: operator_tailscale_acl_policy)
 }
 
 fn witness_security_spine() -> Bool {
-  extdeps.tailscale.acl.operator_acl_security_spine_holds(policy: extdeps.tailscale.acl.operator_tailscale_acl_policy)
+  operator_acl_security_spine_holds(policy: operator_tailscale_acl_policy)
 }
 
 fn witness_emit_matches_reference_fixture() -> Bool {
-  let read = v2.extdeps.file_system.Filesystem.Read(path: tailscale_acl_reference_fixture_path)
-  read.success && (gunbc.tailscale_acl_emit.expected_tailscale_acl_json() == read.content)
+  let read = Filesystem.Read(path: tailscale_acl_reference_fixture_path)
+  read.success && (expected_tailscale_acl_json() == read.content)
 }
 
 fn witness_dashboard_tag_not_ci_in_acl_model() -> Bool {
-  extdeps.tailscale.acl.tag_dashboard != extdeps.tailscale.acl.tag_ci
-    && !string_contains(s: extdeps.tailscale.acl.tag_dashboard, pattern: "tag:ci")
+  tag_dashboard != tag_ci
+    && !string_contains(s: tag_dashboard, pattern: "tag:ci")
 }
 
 test fn tailscale_acl_witnesses() -> Bool {
-  extdeps.tailscale.acl.tailscale_grants_external_authority_holds()
+  tailscale_grants_external_authority_holds()
     && witness_operator_policy_row_counts()
     && witness_tag_ci_quarantine_spine()
     && witness_tag_dashboard_admin_exception()

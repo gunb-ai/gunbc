@@ -1,34 +1,34 @@
 module test.claim.live_deploy.emit
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_spec_targets_srv1() -> Bool {
-  gunbc.live_deploy.spec.deployment_plan_host_identity(spec: gunbc.live_deploy.spec.deployment_spec_srv1()) == "srv1"
+  deployment_plan_host_identity(spec: deployment_spec_srv1()) == "srv1"
 }
 
 fn witness_spec_uses_apt_package_manager() -> Bool {
-  match gunbc.live_deploy.spec.deployment_spec_srv1().target.os_package_manager {
+  match deployment_spec_srv1().target.os_package_manager {
     Apt => true
     _ => false
   }
 }
 
 fn witness_spec_listen_port_is_8080() -> Bool {
-  gunbc.live_deploy.spec.deployment_plan_listen_port(spec: gunbc.live_deploy.spec.deployment_spec_srv1()) == 8080
+  deployment_plan_listen_port(spec: deployment_spec_srv1()) == 8080
 }
 
 fn witness_owned_vs_ensured_typed() -> Bool {
-  let spec = gunbc.live_deploy.spec.deployment_spec_srv1()
+  let spec = deployment_spec_srv1()
   let has_owned = fold(spec.steps, init: false, f: (acc, s) =>
     match s {
       Artifact { step: _ } => true
-      gunbc.live_deploy.spec.Dependency { step: _ } => acc
+      Dependency { step: _ } => acc
     }
   )
   let has_ensured = fold(spec.steps, init: false, f: (acc, s) =>
     match s {
-      gunbc.live_deploy.spec.Dependency { step: _ } => true
+      Dependency { step: _ } => true
       Artifact { step: _ } => acc
     }
   )
@@ -36,29 +36,29 @@ fn witness_owned_vs_ensured_typed() -> Bool {
 }
 
 fn witness_retract_owned_only() -> Bool {
-  count(gunbc.live_deploy.spec.deployment_owned_steps_retract_order()) == 3
+  count(deployment_owned_steps_retract_order()) == 3
 }
 
 fn witness_tailnet_domain_propagates_optional() -> Bool {
-  match gunbc.live_deploy.spec.deployment_spec_srv1().target.tailnet_domain {
+  match deployment_spec_srv1().target.tailnet_domain {
     Present { value: d } => d == "tailecbe08.ts.net"
     Absent => false
   }
 }
 
 fn witness_tailnet_url_absent_not_fabricated() -> Bool {
-  match gunbc.live_deploy.spec.deployment_tailnet_url(spec: gunbc.live_deploy.spec.deployment_spec_srv1()) {
+  match deployment_tailnet_url(spec: deployment_spec_srv1()) {
     Present { value: url } => string_contains(s: url, pattern: "https://srv1.tailecbe08.ts.net")
     Absent => false
   }
 }
 
 fn witness_dependency_ensure_is_idempotent() -> Bool {
-  let tailscale = gunbc.live_deploy.emit.deployment_ensure_dependency_script(
-    dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TailscalePackage, package: extdeps.apt.package_tailscale }
+  let tailscale = deployment_ensure_dependency_script(
+    dep: DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale }
   )
-  let nodejs = gunbc.live_deploy.emit.deployment_ensure_dependency_script(
-    dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: gunbc.live_deploy.spec.NodeJsPackage, package: extdeps.apt.package_nodejs }
+  let nodejs = deployment_ensure_dependency_script(
+    dep: DeploymentDependencyStep { kind: NodeJsPackage, package: package_nodejs }
   )
   string_contains(s: tailscale, pattern: "dpkg -s tailscale")
     && string_contains(s: tailscale, pattern: "apt-get install --yes tailscale")
@@ -67,7 +67,7 @@ fn witness_dependency_ensure_is_idempotent() -> Bool {
 }
 
 fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
-  let sh = gunbc.live_deploy.emit.expected_live_deploy_apply_script()
+  let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "sudo bash")
     && string_contains(s: sh, pattern: "sudo -n install -m 0644 \"$_gunbc_stage/server.js\" /opt/gunbc/server.js")
     && string_contains(s: sh, pattern: "[Service]")
@@ -79,7 +79,7 @@ fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
 }
 
 fn witness_retract_script_owned_only() -> Bool {
-  let sh = gunbc.live_deploy.emit.expected_live_deploy_retract_script()
+  let sh = expected_live_deploy_retract_script()
   !string_contains(s: sh, pattern: "sudo bash")
     && string_contains(s: sh, pattern: "sudo -n tailscale serve reset")
     && string_contains(s: sh, pattern: "sudo -n systemctl disable --now gunbc-roadmap.service")
@@ -91,18 +91,18 @@ fn witness_retract_script_owned_only() -> Bool {
 }
 
 fn witness_apply_script_contains_node_server() -> Bool {
-  string_contains(s: gunbc.live_deploy.emit.expected_live_deploy_apply_script(), pattern: "require('http').createServer")
+  string_contains(s: expected_live_deploy_apply_script(), pattern: "require('http').createServer")
 }
 
 fn witness_apply_script_serves_roadmap_page() -> Bool {
-  let sh = gunbc.live_deploy.emit.expected_live_deploy_apply_script()
+  let sh = expected_live_deploy_apply_script()
   string_contains(s: sh, pattern: "gunbc — roadmap")
     && string_contains(s: sh, pattern: "roadmap-section")
     && !string_contains(s: sh, pattern: ">Browse<")
 }
 
 fn witness_apply_script_excludes_readback_curls() -> Bool {
-  let sh = gunbc.live_deploy.emit.expected_live_deploy_apply_script()
+  let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "roadmap-site-readback")
     && !string_contains(s: sh, pattern: "roadmap-site-receipt")
     && !string_contains(s: sh, pattern: "dispatch json parse failed")
@@ -111,9 +111,9 @@ fn witness_apply_script_excludes_readback_curls() -> Bool {
 }
 
 fn witness_retract_owned_process_removes_static_site_server() -> Bool {
-  let sh = gunbc.live_deploy.emit.expected_live_deploy_retract_script()
-  string_contains(s: sh, pattern: gunbc.live_deploy.spec.gunbc_roadmap_server_path)
-    && string_contains(s: sh, pattern: gunbc.live_deploy.spec.gunbc_roadmap_unit_name)
+  let sh = expected_live_deploy_retract_script()
+  string_contains(s: sh, pattern: gunbc_roadmap_server_path)
+    && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
     && string_contains(s: sh, pattern: "tailscale serve reset")
     && string_contains(s: sh, pattern: "systemctl disable --now")
     && string_contains(s: sh, pattern: "fold=retract verdict=converged")
@@ -121,20 +121,20 @@ fn witness_retract_owned_process_removes_static_site_server() -> Bool {
 }
 
 fn witness_static_site_routes_in_dashboard_route_table() -> Bool {
-  let site = gunbc.roadmap_static_site.roadmap_site_text_static_routes()
-  let table = gunbc.node_http_server_emit.roadmap_dashboard_served_static_route_table().routes
+  let site = roadmap_site_text_static_routes()
+  let table = roadmap_dashboard_served_static_route_table().routes
   count(site) == 3
     && count(table) == count(site) + 2
     && all(site, site_route =>
-      v2.std.algebra.any(table, table_route =>
-        gunbc.roadmap_static_site.served_static_route_literal_path(route: site_route) == gunbc.roadmap_static_site.served_static_route_literal_path(route: table_route)
+      any(table, table_route =>
+        served_static_route_literal_path(route: site_route) == served_static_route_literal_path(route: table_route)
           && site_route.body == table_route.body
       )
     )
 }
 
 fn witness_static_site_paths_only_in_retracted_server() -> Bool {
-  let src = gunbc.node_http_server_emit.roadmap_dashboard_node_http_server_source()
+  let src = roadmap_dashboard_node_http_server_source()
   string_contains(s: src, pattern: "createServer")
     && string_contains(s: src, pattern: "/^\\/ROADMAP\\.md$/")
     && string_contains(s: src, pattern: "/^\\/target\\/roadmap-dispatch\\.json$/")
@@ -142,16 +142,16 @@ fn witness_static_site_paths_only_in_retracted_server() -> Bool {
 }
 
 fn witness_systemd_unit_emitted() -> Bool {
-  let unit = gunbc.live_deploy.emit.live_deploy_systemd_unit_for(spec: gunbc.live_deploy.spec.deployment_spec_srv1())
+  let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1())
   string_contains(s: unit, pattern: "ExecStart=/usr/bin/node /opt/gunbc/server.js")
     && string_contains(s: unit, pattern: "Environment=PORT=8080")
 }
 
 fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis() -> Bool {
-  match gunbc.live_deploy.emit.live_deploy_remote_mutation_service_op_realization_dissolution_trigger {
-    std.disposition.Scaffold {
-      dissolves_to: std.disposition.RealizationDispatch,
-      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
+  match live_deploy_remote_mutation_service_op_realization_dissolution_trigger {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
     } =>
       m == "gunbc.live_deploy.emit"
         && n == "live_deploy_emit_shell_dissolution_trigger"
@@ -160,17 +160,17 @@ fn witness_remote_mutation_service_op_realization_binds_emit_shell_phase_b_axis(
 }
 
 fn witness_emit_shell_dissolution_trigger_is_scaffold() -> Bool {
-  match gunbc.live_deploy.emit.live_deploy_emit_shell_dissolution_trigger {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+  match live_deploy_emit_shell_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
   }
 }
 
 fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
-  match gunbc.live_deploy.emit.live_deploy_intent_dependency_graph_emit_dissolution_trigger {
-    std.disposition.Scaffold {
-      dissolves_to: std.disposition.RealizationDispatch,
-      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: n, field: std.decl_ref.WholeDeclaration },
+  match live_deploy_intent_dependency_graph_emit_dissolution_trigger {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: n, field: WholeDeclaration },
     } =>
       m == "v2.compiler.emit_orchestration" && n == "orch_emit_pipeline"
     Terminal { reason: _ } => false
@@ -178,16 +178,16 @@ fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Bool {
 }
 
 fn witness_apply_script_matches_committed_golden() -> Bool {
-  let r = v2.extdeps.file_system.Filesystem.Read(path: artifact_path(a: LiveDeployApplyScriptArtifact))
-  let expected = gunbc.live_deploy.emit.expected_live_deploy_apply_script()
+  let r = Filesystem.Read(path: artifact_path(a: LiveDeployApplyScriptArtifact))
+  let expected = expected_live_deploy_apply_script()
   r.success
     && r.content == expected
     && !(concat(r.content, "x") == expected)
 }
 
 fn witness_retract_script_matches_committed_golden() -> Bool {
-  let r = v2.extdeps.file_system.Filesystem.Read(path: artifact_path(a: LiveDeployRetractScriptArtifact))
-  let expected = gunbc.live_deploy.emit.expected_live_deploy_retract_script()
+  let r = Filesystem.Read(path: artifact_path(a: LiveDeployRetractScriptArtifact))
+  let expected = expected_live_deploy_retract_script()
   r.success
     && r.content == expected
     && !(concat(r.content, "x") == expected)
@@ -196,16 +196,16 @@ fn witness_retract_script_matches_committed_golden() -> Bool {
 data emit_poison_backstop_witness_note: String = "GOLDEN-INDEPENDENT backstop (calm-ferret pass-2 flag 2): the emit-level poison markers (teardown-dependency-unreachable, wholesale-refused) are the defense-in-depth backstop to the PRIMARY typed refusal (the EffectsOrRefusal SUM, proven golden-independent by w_effects_refuses_wholesale_on_any_refusal in the spine test). But the poison backstops are golden-DEPENDENT — a regen while a refusal was buggily active could commit a poisoned golden and the drift gate would then pass. These two witnesses call the refusal producers directly and assert the marker is present, golden-INDEPENDENT, so a golden-absorption can never hide that the arm still refuses loudly."
 
 fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
-  let steps = gunbc.live_deploy.emit.emit_deploy_teardown_dependency_refusal(dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: gunbc.live_deploy.spec.NodeJsPackage, package: extdeps.apt.package_nodejs })
+  let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: NodeJsPackage, package: package_nodejs })
   count(steps) == 1
-    && v2.std.algebra.any(steps, s => match s {
-         v2.std.orchestration.Do { run: r } => string_contains(s: r.command, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
+    && any(steps, s => match s {
+         Do { run: r } => string_contains(s: r.command, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
          _ => false
        })
 }
 
 fn witness_wholesale_refused_poison_carries_marker() -> Bool {
-  let poison = gunbc.live_deploy.emit.live_deploy_wholesale_refused_poison(refusals: [], fold_label: "APPLY")
+  let poison = live_deploy_wholesale_refused_poison(refusals: [], fold_label: "APPLY")
   string_contains(s: poison, pattern: "__GUNBC_DEPLOY_REFUSED__")
     && string_contains(s: poison, pattern: "APPLY refused-member-count=0")
 }

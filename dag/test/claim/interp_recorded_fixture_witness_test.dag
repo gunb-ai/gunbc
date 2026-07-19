@@ -1,8 +1,8 @@
 module test.claim.interp_recorded_fixture_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn interp_recorded_fixture_keystone_holds() -> Bool {
-  tools.interp_recorded_fixture_witness_transport.run_interp_recorded_fixture_witness()
+  run_interp_recorded_fixture_witness()
 }

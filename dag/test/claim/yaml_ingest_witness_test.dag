@@ -1,31 +1,31 @@
 module test.claim.yaml_ingest_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn round_trips(v: YamlValue) -> Bool {
-  let original = extdeps.languages.yaml.emit.serialize_yaml(v: v)
-  match extdeps.languages.yaml.ingest.ingest_yaml_source(src: original) {
-    extdeps.languages.yaml.ingest.IngestedYaml { value: reparsed } => extdeps.languages.yaml.emit.serialize_yaml(v: reparsed) == original
-    extdeps.languages.yaml.ingest.YamlIngestRejected { reason: _ } => false
+  let original = serialize_yaml(v: v)
+  match ingest_yaml_source(src: original) {
+    IngestedYaml { value: reparsed } => serialize_yaml(v: reparsed) == original
+    YamlIngestRejected { reason: _ } => false
   }
 }
 
 fn witness_scalar_mapping_round_trips() -> Bool {
-  round_trips(v: extdeps.languages.yaml.types.yaml_mapping(entries: [
-    extdeps.languages.yaml.types.kv(key: "name", value: extdeps.languages.yaml.types.yaml_string(s: "ci")),
-    extdeps.languages.yaml.types.kv(key: "fetch-depth", value: extdeps.languages.yaml.types.yaml_int(n: 0)),
-    extdeps.languages.yaml.types.kv(key: "quoted", value: extdeps.languages.yaml.types.yaml_bool(b: true))
+  round_trips(v: yaml_mapping(entries: [
+    kv(key: "name", value: yaml_string(s: "ci")),
+    kv(key: "fetch-depth", value: yaml_int(n: 0)),
+    kv(key: "quoted", value: yaml_bool(b: true))
   ]))
 }
 
 fn witness_nested_sequence_of_mappings_round_trips() -> Bool {
-  round_trips(v: extdeps.languages.yaml.types.yaml_mapping(entries: [
-    extdeps.languages.yaml.types.kv(key: "jobs", value: extdeps.languages.yaml.types.yaml_sequence(elements: [
-      extdeps.languages.yaml.types.yaml_mapping(entries: [
-        extdeps.languages.yaml.types.kv(key: "uses", value: extdeps.languages.yaml.types.yaml_string(s: "actions/checkout@v4")),
-        extdeps.languages.yaml.types.kv(key: "with", value: extdeps.languages.yaml.types.yaml_mapping(entries: [
-          extdeps.languages.yaml.types.kv(key: "fetch-depth", value: extdeps.languages.yaml.types.yaml_int(n: 1))
+  round_trips(v: yaml_mapping(entries: [
+    kv(key: "jobs", value: yaml_sequence(elements: [
+      yaml_mapping(entries: [
+        kv(key: "uses", value: yaml_string(s: "actions/checkout@v4")),
+        kv(key: "with", value: yaml_mapping(entries: [
+          kv(key: "fetch-depth", value: yaml_int(n: 1))
         ]))
       ])
     ]))
@@ -33,34 +33,34 @@ fn witness_nested_sequence_of_mappings_round_trips() -> Bool {
 }
 
 fn witness_block_literal_round_trips() -> Bool {
-  round_trips(v: extdeps.languages.yaml.types.yaml_mapping(entries: [
-    extdeps.languages.yaml.types.kv(key: "run", value: extdeps.languages.yaml.types.yaml_string(s: "line one\nline two"))
+  round_trips(v: yaml_mapping(entries: [
+    kv(key: "run", value: yaml_string(s: "line one\nline two"))
   ]))
 }
 
 fn witness_empty_string_scalar_round_trips() -> Bool {
-  round_trips(v: extdeps.languages.yaml.types.yaml_mapping(entries: [extdeps.languages.yaml.types.kv(key: "rustflags", value: extdeps.languages.yaml.types.yaml_string(s: ""))]))
+  round_trips(v: yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))]))
 }
 
 fn witness_real_ci_yml_parses() -> Bool {
-  extdeps.languages.yaml.ingest.yaml_source_parses(src: gunbc.ci_yaml_emit.expected_ci_yml())
+  yaml_source_parses(src: expected_ci_yml())
 }
 
 fn witness_empty_document_rejected() -> Bool {
-  extdeps.languages.yaml.ingest.yaml_source_parses(src: "") == false
+  yaml_source_parses(src: "") == false
 }
 
 fn witness_malformed_scalar_line_rejected() -> Bool {
-  extdeps.languages.yaml.ingest.yaml_source_parses(src: "just a bare word\n") == false
+  yaml_source_parses(src: "just a bare word\n") == false
 }
 
 fn witness_bad_nested_indent_rejected() -> Bool {
-  extdeps.languages.yaml.ingest.yaml_source_parses(src: "a:\n   b: 1\n") == false
+  yaml_source_parses(src: "a:\n   b: 1\n") == false
 }
 
 fn witness_rejection_discriminates_from_valid() -> Bool {
-  extdeps.languages.yaml.ingest.yaml_source_parses(src: "a: 1\n") &&
-    !extdeps.languages.yaml.ingest.yaml_source_parses(src: "just a bare word\n")
+  yaml_source_parses(src: "a: 1\n") &&
+    !yaml_source_parses(src: "just a bare word\n")
 }
 
 test fn yaml_ingest_keystone_holds() -> Bool {

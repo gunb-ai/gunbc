@@ -1,8 +1,8 @@
 module test.claim.floor_skip_discovery_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn floor_skip_discovery_keystone_holds() -> Bool {
-  tools.floor_skip_discovery_witness_transport.run_floor_skip_discovery_witness()
+  run_floor_skip_discovery_witness()
 }

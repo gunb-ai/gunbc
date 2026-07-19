@@ -1,26 +1,26 @@
 module test.claim.realize_kernel
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_store_id: CacheInterfaceId = "realize-kernel-witness-store"
-data subject_digest_a: std.types.ContentHash = "realize-kernel-witness-subject-a"
-data content_v1: std.types.ContentHash = "realize-kernel-witness-content-v1"
-data content_v2: std.types.ContentHash = "realize-kernel-witness-content-v2"
+data subject_digest_a: ContentHash = "realize-kernel-witness-subject-a"
+data content_v1: ContentHash = "realize-kernel-witness-content-v1"
+data content_v2: ContentHash = "realize-kernel-witness-content-v2"
 data receipt_digest_v: ExecutionReceiptDigest = "realize-kernel-witness-receipt-digest"
 
-fn mk_receipt(content: std.types.ContentHash) -> std.cache_interface.CachedArtifactReceipt<std.types.ContentHash> {
-  std.cache_interface.CachedArtifactReceipt {
-    artifact: std.cache_interface.ArtifactIdentity {
+fn mk_receipt(content: ContentHash) -> CachedArtifactReceipt<ContentHash> {
+  CachedArtifactReceipt {
+    artifact: ArtifactIdentity {
       subject_digest: subject_digest_a,
-      artifact_kind: std.cache_identity.resolved_graph_artifact_kind,
+      artifact_kind: resolved_graph_artifact_kind,
     },
-    backend_key: std.cache_interface.BackendCacheKey {
+    backend_key: BackendCacheKey {
       store: witness_store_id,
-      key: std.cache_interface.CasContentDigest { digest: subject_digest_a },
+      key: CasContentDigest { digest: subject_digest_a },
     },
-    producer: std.cache_interface.InternalExecution {
-      receipt: std.cache_interface.ExecutionReceiptRef { receipt_digest: receipt_digest_v },
+    producer: InternalExecution {
+      receipt: ExecutionReceiptRef { receipt_digest: receipt_digest_v },
     },
     content_digest: content,
   }
@@ -28,37 +28,37 @@ fn mk_receipt(content: std.types.ContentHash) -> std.cache_interface.CachedArtif
 
 fn witness_verified_hit_reuses() -> Bool {
   let r = mk_receipt(content: content_v1)
-  match std.cache_interface.realize_route(lookup: Hit { receipt: r }) {
-    std.cache_interface.Reuse { receipt: _ } => true
-    std.cache_interface.Recompute { reason: _ } => false
+  match realize_route(lookup: Hit { receipt: r }) {
+    Reuse { receipt: _ } => true
+    Recompute { reason: _ } => false
   }
 }
 
 fn witness_miss_recomputes() -> Bool {
-  match std.cache_interface.realize_route(lookup: Miss) {
-    std.cache_interface.Recompute { reason: std.cache_interface.SubjectAbsent } => true
+  match realize_route(lookup: Miss) {
+    Recompute { reason: SubjectAbsent } => true
     _ => false
   }
 }
 
 fn witness_refused_hit_never_reused() -> Bool {
-  match std.cache_interface.realize_route(lookup: std.cache_interface.RejectedHit { reason: std.cache_interface.ContentDigestMismatch }) {
-    std.cache_interface.Recompute { reason: _ } => true
-    std.cache_interface.Reuse { receipt: _ } => false
+  match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
+    Recompute { reason: _ } => true
+    Reuse { receipt: _ } => false
   }
 }
 
 fn witness_refused_hit_surfaces_reason() -> Bool {
-  match std.cache_interface.realize_route(lookup: std.cache_interface.RejectedHit { reason: std.cache_interface.ContentDigestMismatch }) {
-    std.cache_interface.Recompute { reason: std.cache_interface.HitRefused { reason: std.cache_interface.ContentDigestMismatch } } => true
+  match realize_route(lookup: RejectedHit { reason: ContentDigestMismatch }) {
+    Recompute { reason: HitRefused { reason: ContentDigestMismatch } } => true
     _ => false
   }
 }
 
 fn witness_fresh_subject_written() -> Bool {
   let fresh = mk_receipt(content: content_v1)
-  match std.cache_interface.classify_write(existing: Miss, offered_content: content_v1, fresh_receipt: fresh) {
-    std.cache_interface.Written { receipt: _ } => true
+  match classify_write(existing: Miss, offered_content: content_v1, fresh_receipt: fresh) {
+    Written { receipt: _ } => true
     _ => false
   }
 }
@@ -66,8 +66,8 @@ fn witness_fresh_subject_written() -> Bool {
 fn witness_idempotent_same_content() -> Bool {
   let existing = mk_receipt(content: content_v1)
   let fresh = mk_receipt(content: content_v1)
-  match std.cache_interface.classify_write(existing: Hit { receipt: existing }, offered_content: content_v1, fresh_receipt: fresh) {
-    std.cache_interface.WriteSkippedIdempotent { receipt: _ } => true
+  match classify_write(existing: Hit { receipt: existing }, offered_content: content_v1, fresh_receipt: fresh) {
+    WriteSkippedIdempotent { receipt: _ } => true
     _ => false
   }
 }
@@ -75,20 +75,20 @@ fn witness_idempotent_same_content() -> Bool {
 fn witness_purity_conflict_rejects_overwrite() -> Bool {
   let existing = mk_receipt(content: content_v1)
   let fresh = mk_receipt(content: content_v2)
-  match std.cache_interface.classify_write(existing: Hit { receipt: existing }, offered_content: content_v2, fresh_receipt: fresh) {
-    std.cache_interface.WriteRejected { reason: std.cache_interface.WriteOnceConflict } => true
+  match classify_write(existing: Hit { receipt: existing }, offered_content: content_v2, fresh_receipt: fresh) {
+    WriteRejected { reason: WriteOnceConflict } => true
     _ => false
   }
 }
 
 fn witness_write_over_rejected_hit_composes_reason() -> Bool {
   let fresh = mk_receipt(content: content_v1)
-  match std.cache_interface.classify_write(
-    existing: std.cache_interface.RejectedHit { reason: std.cache_interface.ContentDigestMismatch },
+  match classify_write(
+    existing: RejectedHit { reason: ContentDigestMismatch },
     offered_content: content_v1,
     fresh_receipt: fresh,
   ) {
-    std.cache_interface.WriteRejected { reason: std.cache_interface.BackendWriteRejected { backend_reason: std.cache_interface.ContentDigestMismatch } } => true
+    WriteRejected { reason: BackendWriteRejected { backend_reason: ContentDigestMismatch } } => true
     _ => false
   }
 }

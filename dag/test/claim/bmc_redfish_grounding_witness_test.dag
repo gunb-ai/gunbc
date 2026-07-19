@@ -1,34 +1,34 @@
 module test.claim.bmc_redfish_grounding
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data example_srv2_redfish_system: RedfishSystemInventory = extdeps.bmc.redfish.redfish_system_inventory(
+data example_srv2_redfish_system: RedfishSystemInventory = redfish_system_inventory(
   model: "ALTRAD8UD-1L2T",
   manufacturer: Present { value: "ASRockRack" },
   processor_model: "Ampere(R) Altra(R) Processor",
   processor_count: 1,
-  processor_core_count: std.measure.hardware_thread_count(128),
-  total_memory_gib: std.measure.gibibyte(128),
+  processor_core_count: hardware_thread_count(128),
+  total_memory_gib: gibibyte(128),
   power_state: On,
-  logical_processor_count: Present { value: std.measure.hardware_thread_count(128) }
+  logical_processor_count: Present { value: hardware_thread_count(128) }
 )
 
-data example_srv2_sensor_power: extdeps.bmc.types.RedfishChassisSensorCollection = extdeps.bmc.types.RedfishChassisSensorCollection {
-  chassis_id: extdeps.boards.asrock_rack.asrock_altrad8ud_redfish_chassis_id,
+data example_srv2_sensor_power: RedfishChassisSensorCollection = RedfishChassisSensorCollection {
+  chassis_id: asrock_altrad8ud_redfish_chassis_id,
   sensors: [
     PowerSensor {
       name: "power_PWR_Core_VRD",
-      watts: Present { value: std.measure.watt(count: 95) },
+      watts: Present { value: watt(count: 95) },
     },
     PowerSensor {
       name: "power_PWR_SOC_VRD",
-      watts: Present { value: std.measure.watt(count: 17) },
+      watts: Present { value: watt(count: 17) },
     },
   ],
 }
 
-data example_srv2_telemetry: extdeps.bmc.types.BmcTelemetrySnapshot = extdeps.bmc.types.BmcTelemetrySnapshot {
+data example_srv2_telemetry: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
   system: example_srv2_redfish_system,
   power: none,
   thermal: none,
@@ -36,23 +36,23 @@ data example_srv2_telemetry: extdeps.bmc.types.BmcTelemetrySnapshot = extdeps.bm
 }
 
 test fn bmc_redfish_grounding_holds() -> Bool {
-  let obs = extdeps.bmc.bmc_ground_snapshot(snapshot: example_srv2_telemetry)
-  std.measure.hardware_thread_count_value(
-    extdeps.bmc.redfish.bmc_ground_host_observations(snapshot: example_srv2_telemetry).processor_core_count
+  let obs = bmc_ground_snapshot(snapshot: example_srv2_telemetry)
+  hardware_thread_count_value(
+    bmc_ground_host_observations(snapshot: example_srv2_telemetry).processor_core_count
   ) == 128
     && example_srv2_redfish_system.processor.processor_count == 1
     && example_srv2_redfish_system.manufacturer == Present { value: "ASRockRack" }
     && obs.processor_model == "Ampere(R) Altra(R) Processor"
-    && std.measure.byte_size_count(obs.total_memory_bytes) == std.measure.byte_size_count(std.measure.gibibyte_to_byte_size(g: std.measure.gibibyte(128)))
+    && byte_size_count(obs.total_memory_bytes) == byte_size_count(gibibyte_to_byte_size(g: gibibyte(128)))
     && match obs.power_consumed_watts {
-      Present { value: w } => std.measure.watt_count(w) == 112
+      Present { value: w } => watt_count(w) == 112
       Absent => false
     }
 }
 
-data example_srv_power_unread: extdeps.bmc.types.RedfishPowerSubsystem = extdeps.bmc.types.RedfishPowerSubsystem {
+data example_srv_power_unread: RedfishPowerSubsystem = RedfishPowerSubsystem {
   controls: [
-    extdeps.bmc.types.RedfishPowerControl {
+    RedfishPowerControl {
       member_id: "0",
       name: Present { value: "total_power" },
       power_consumed_watts: none,
@@ -61,7 +61,7 @@ data example_srv_power_unread: extdeps.bmc.types.RedfishPowerSubsystem = extdeps
   ],
 }
 
-data example_srv_telemetry_power_unread: extdeps.bmc.types.BmcTelemetrySnapshot = extdeps.bmc.types.BmcTelemetrySnapshot {
+data example_srv_telemetry_power_unread: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
   system: example_srv2_redfish_system,
   power: Present { value: example_srv_power_unread },
   thermal: none,
@@ -69,22 +69,22 @@ data example_srv_telemetry_power_unread: extdeps.bmc.types.BmcTelemetrySnapshot 
 }
 
 test fn bmc_redfish_grounding_power_unread_is_absent() -> Bool {
-  match extdeps.bmc.redfish.bmc_ground_host_observations(snapshot: example_srv_telemetry_power_unread).power_consumed_watts {
+  match bmc_ground_host_observations(snapshot: example_srv_telemetry_power_unread).power_consumed_watts {
     Absent => true
     Present { value: _ } => false
   }
 }
 
 test fn memory_scale_factor_bytes_rejects_si_scale() -> Bool {
-  match std.measure.memory_scale_factor_bytes(s: std.measure.Mega) {
+  match memory_scale_factor_bytes(s: Mega) {
     Absent => true
     Present { value: _ } => false
   }
 }
 
 test fn gibibyte_scale_factor_bytes_matches_memory_table() -> Bool {
-  match std.measure.memory_scale_factor_bytes(s: std.measure.Gibi) {
-    Present { value: n } => n == std.measure.gibibyte_scale_factor_bytes()
+  match memory_scale_factor_bytes(s: Gibi) {
+    Present { value: n } => n == gibibyte_scale_factor_bytes()
     Absent => false
   }
 }

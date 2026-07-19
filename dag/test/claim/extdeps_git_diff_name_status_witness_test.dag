@@ -1,10 +1,10 @@
 module test.claim.extdeps_git_diff_name_status_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn append_name_status_token(acc: String, token: String) -> String {
-  if acc == "" { token } else { concat(acc, concat(extdeps.git.git_diff_name_status_field_separator, token)) }
+  if acc == "" { token } else { concat(acc, concat(git_diff_name_status_field_separator, token)) }
 }
 
 fn join_name_status_tokens(tokens: List<String>) -> String {
@@ -15,17 +15,17 @@ fn list_contains_string(xs: List<String>, needle: String) -> Bool {
   fold(xs, init: false, f: (acc, x) => acc || (x == needle))
 }
 
-fn well_formed_entries(raw: String) -> List<extdeps.git.GitDiffStatusEntry> {
-  match extdeps.git.git_diff_name_status_parse(raw: raw) {
-    extdeps.git.GitDiffNameStatusComplete { entries: entries } => entries
-    extdeps.git.GitDiffNameStatusTruncated { pending: _, entries: entries } => entries
+fn well_formed_entries(raw: String) -> List<GitDiffStatusEntry> {
+  match git_diff_name_status_parse(raw: raw) {
+    GitDiffNameStatusComplete { entries: entries } => entries
+    GitDiffNameStatusTruncated { pending: _, entries: entries } => entries
   }
 }
 
 fn is_truncated(raw: String) -> Bool {
-  match extdeps.git.git_diff_name_status_parse(raw: raw) {
-    extdeps.git.GitDiffNameStatusComplete { entries: _ } => false
-    extdeps.git.GitDiffNameStatusTruncated { pending: _, entries: _ } => true
+  match git_diff_name_status_parse(raw: raw) {
+    GitDiffNameStatusComplete { entries: _ } => false
+    GitDiffNameStatusTruncated { pending: _, entries: _ } => true
   }
 }
 
@@ -75,7 +75,7 @@ fn w_renamed_entry_carries_similarity_and_old_path() -> Bool {
       Absent => false
     }
     && match entries.first().status {
-      extdeps.git.DiffRenamedStatus { similarity: sim } => std.measure.percent_count(p: sim) == 100
+      DiffRenamedStatus { similarity: sim } => percent_count(p: sim) == 100
       _ => false
     }
 }
@@ -90,7 +90,7 @@ fn w_copied_entry_carries_similarity_and_old_path() -> Bool {
       Absent => false
     }
     && match entries.first().status {
-      extdeps.git.DiffCopiedStatus { similarity: sim } => std.measure.percent_count(p: sim) == 87
+      DiffCopiedStatus { similarity: sim } => percent_count(p: sim) == 87
       _ => false
     }
 }
@@ -119,32 +119,32 @@ fn w_unrecognized_status_letter_is_typed_not_absorbed() -> Bool {
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
     && match entries.first().status {
-      extdeps.git.DiffUnknownGitStatus { raw: token } => token == "X"
+      DiffUnknownGitStatus { raw: token } => token == "X"
       _ => false
     }
-    && extdeps.git.git_diff_status_entries_any_unknown(entries: entries)
+    && git_diff_status_entries_any_unknown(entries: entries)
 }
 
 fn w_malformed_rename_score_is_typed_unknown_not_absorbed() -> Bool {
   let raw = join_name_status_tokens(["Rxx", "old.txt", "new.txt"])
   let entries = well_formed_entries(raw: raw)
   match entries.first().status {
-    extdeps.git.DiffUnknownGitStatus { raw: token } => token == "Rxx"
+    DiffUnknownGitStatus { raw: token } => token == "Rxx"
     _ => false
   }
-    && extdeps.git.git_diff_status_entries_any_unknown(entries: entries)
+    && git_diff_status_entries_any_unknown(entries: entries)
 }
 
 fn w_malformed_rename_score_corruption_stays_fail_closed_downstream() -> Bool {
   let raw = join_name_status_tokens(["Rxx", "old.txt", "new.txt", "M", "trailing.txt"])
   let entries = well_formed_entries(raw: raw)
-  extdeps.git.git_diff_status_entries_any_unknown(entries: entries)
+  git_diff_status_entries_any_unknown(entries: entries)
 }
 
 fn w_recognized_entries_are_never_flagged_unknown() -> Bool {
   let raw = join_name_status_tokens(["M", "a.txt", "A", "b.txt"])
   let entries = well_formed_entries(raw: raw)
-  !extdeps.git.git_diff_status_entries_any_unknown(entries: entries)
+  !git_diff_status_entries_any_unknown(entries: entries)
 }
 
 fn w_lone_trailing_status_token_is_typed_truncated_not_empty() -> Bool {
@@ -164,16 +164,16 @@ fn w_complete_stream_is_never_flagged_truncated() -> Bool {
 
 fn w_truncated_outcome_is_a_distinct_variant_from_complete() -> Bool {
   let raw = join_name_status_tokens(["M"])
-  match extdeps.git.git_diff_name_status_parse(raw: raw) {
-    extdeps.git.GitDiffNameStatusTruncated { pending: _, entries: _ } => true
-    extdeps.git.GitDiffNameStatusComplete { entries: _ } => false
+  match git_diff_name_status_parse(raw: raw) {
+    GitDiffNameStatusTruncated { pending: _, entries: _ } => true
+    GitDiffNameStatusComplete { entries: _ } => false
   }
 }
 
 fn w_touched_paths_derives_both_sides_of_a_rename() -> Bool {
   let raw = join_name_status_tokens(["M", "a.txt", "R100", "old_d.txt", "new_d.txt"])
   let entries = well_formed_entries(raw: raw)
-  let touched = extdeps.git.git_diff_status_entries_touched_paths(entries: entries)
+  let touched = git_diff_status_entries_touched_paths(entries: entries)
   touched.length() == 3
     && list_contains_string(xs: touched, needle: "a.txt")
     && list_contains_string(xs: touched, needle: "old_d.txt")
@@ -188,7 +188,7 @@ fn w_departed_paths_names_deletions_and_rename_sources_only() -> Bool {
     "C87", "source.txt", "copy.txt"
   ])
   let entries = well_formed_entries(raw: raw)
-  let departed = extdeps.git.git_diff_status_entries_departed_paths(entries: entries)
+  let departed = git_diff_status_entries_departed_paths(entries: entries)
   departed.length() == 2
     && list_contains_string(xs: departed, needle: "gone.txt")
     && list_contains_string(xs: departed, needle: "old_d.txt")

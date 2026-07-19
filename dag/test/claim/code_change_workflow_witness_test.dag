@@ -1,29 +1,29 @@
 module test.claim.code_change_workflow_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_repo: NonEmptyStr = "gunb-ai/gunbc"
 data witness_pr_url: NonEmptyStr = "https://github.com/gunb-ai/gunbc/pull/1"
 data witness_head_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
-data witness_merged_at: std.types.Timestamp = "2026-06-18T01:00:00Z"
+data witness_merged_at: Timestamp = "2026-06-18T01:00:00Z"
 data witness_node: ProcessNodeId = "session-calm-swift-738"
 data witness_change_ref: NonEmptyStr = "change-1"
 
-fn witness_github_pr(draft: Bool, state: extdeps.github.pulls.PullRequestState, merged_at: std.types.Timestamp?) -> extdeps.github.pulls.PullRequest {
+fn witness_github_pr(draft: Bool, state: PullRequestState, merged_at: Timestamp?) -> extdeps.github.pulls.PullRequest {
   extdeps.github.pulls.PullRequest {
     number: 1,
     title: "witness",
     body: none,
     state: state,
     html_url: witness_pr_url,
-    user: extdeps.github.github.GitHubUser { login: "bot", id: 1, type: extdeps.access.zanzibar.User },
-    head: extdeps.github.pulls.PullRequestRef {
+    user: GitHubUser { login: "bot", id: 1, type: User },
+    head: PullRequestRef {
       ref: "feature",
       sha: witness_head_sha,
       label: "gunb-ai:feature",
     },
-    base: extdeps.github.pulls.PullRequestRef {
+    base: PullRequestRef {
       ref: "main",
       sha: "def456789012345678901234567890abcdef12",
       label: "gunb-ai:main",
@@ -35,23 +35,23 @@ fn witness_github_pr(draft: Bool, state: extdeps.github.pulls.PullRequestState, 
   }
 }
 
-fn witness_github_ctx(draft: Bool, state: extdeps.github.pulls.PullRequestState, merged_at: std.types.Timestamp?) -> gunbc.code_change_workflow.CodeChangeGithubPrContext {
-  gunbc.code_change_workflow.CodeChangeGithubPrContext {
+fn witness_github_ctx(draft: Bool, state: PullRequestState, merged_at: Timestamp?) -> CodeChangeGithubPrContext {
+  CodeChangeGithubPrContext {
     pr: witness_github_pr(draft: draft, state: state, merged_at: merged_at),
   }
 }
 
-fn witness_binding() -> gunbc.code_change_workflow.CodeChangeBinding {
-  gunbc.code_change_workflow.CodeChangeBinding {
+fn witness_binding() -> CodeChangeBinding {
+  CodeChangeBinding {
     node_id: witness_node,
     change_ref: witness_change_ref,
   }
 }
 
-fn witness_active_facts(active: gunbc.code_change_workflow.CodeChangeActiveStage) -> gunbc.code_change_workflow.CodeChangeFacts {
-  gunbc.code_change_workflow.CodeChangeFacts {
+fn witness_active_facts(active: CodeChangeActiveStage) -> CodeChangeFacts {
+  CodeChangeFacts {
     binding: witness_binding(),
-    stage: gunbc.code_change_workflow.CodeChangeActive { stage: active },
+    stage: CodeChangeActive { stage: active },
     head_sha: Present { value: witness_head_sha },
     marked_ready_at: none,
     merge_ready_at: none,
@@ -60,10 +60,10 @@ fn witness_active_facts(active: gunbc.code_change_workflow.CodeChangeActiveStage
   }
 }
 
-fn witness_terminal_facts(terminal: gunbc.code_change_workflow.CodeChangeTerminalStage) -> gunbc.code_change_workflow.CodeChangeFacts {
-  gunbc.code_change_workflow.CodeChangeFacts {
+fn witness_terminal_facts(terminal: CodeChangeTerminalStage) -> CodeChangeFacts {
+  CodeChangeFacts {
     binding: witness_binding(),
-    stage: gunbc.code_change_workflow.CodeChangeTerminal { stage: terminal },
+    stage: CodeChangeTerminal { stage: terminal },
     head_sha: Present { value: witness_head_sha },
     marked_ready_at: none,
     merge_ready_at: none,
@@ -72,8 +72,8 @@ fn witness_terminal_facts(terminal: gunbc.code_change_workflow.CodeChangeTermina
   }
 }
 
-fn witness_tally_green() -> gunbc.review_verdict.MergeReadinessTally {
-  gunbc.review_verdict.MergeReadinessTally {
+fn witness_tally_green() -> MergeReadinessTally {
+  MergeReadinessTally {
     repo: witness_repo,
     pr_number: 1,
     head_sha: witness_head_sha,
@@ -86,87 +86,87 @@ fn witness_tally_green() -> gunbc.review_verdict.MergeReadinessTally {
 }
 
 fn witness_terminal_stages_refuse() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_terminal_facts(terminal: gunbc.code_change_workflow.ChangeMerged),
-      event: gunbc.code_change_workflow.MarkReadyForReview,
-      github_pr: Present { value: witness_github_ctx(draft: false, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_terminal_facts(terminal: ChangeMerged),
+      event: MarkReadyForReview,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
       digest: none,
       tally: none,
       policy_permitted: none,
     }
   ) {
-    gunbc.code_change_workflow.TransitionRefused { refusal: gunbc.code_change_workflow.CodeChangeAlreadyTerminal { stage: _ } } => true
+    TransitionRefused { refusal: CodeChangeAlreadyTerminal { stage: _ } } => true
     _ => false
   }
 }
 
 fn witness_draft_blocks_mark_ready() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_active_facts(active: gunbc.code_change_workflow.ChangeOpen),
-      event: gunbc.code_change_workflow.MarkReadyForReview,
-      github_pr: Present { value: witness_github_ctx(draft: true, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeOpen),
+      event: MarkReadyForReview,
+      github_pr: Present { value: witness_github_ctx(draft: true, state: Open, merged_at: none) },
       digest: none,
       tally: none,
       policy_permitted: none,
     }
   ) {
-    gunbc.code_change_workflow.TransitionRefused { refusal: gunbc.code_change_workflow.ChangeDraftBlocksReview } => true
+    TransitionRefused { refusal: ChangeDraftBlocksReview } => true
     _ => false
   }
 }
 
 fn witness_merge_ready_requires_policy() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_active_facts(active: gunbc.code_change_workflow.ChangeUnderReview),
-      event: gunbc.code_change_workflow.RecordMergeReady,
-      github_pr: Present { value: witness_github_ctx(draft: false, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
-      digest: Present { value: gunbc.pr_digests.Ready },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
       tally: Present { value: witness_tally_green() },
       policy_permitted: none,
     }
   ) {
-    gunbc.code_change_workflow.TransitionRefused { refusal: gunbc.code_change_workflow.CodeChangePolicyNotPermitted } => true
+    TransitionRefused { refusal: CodeChangePolicyNotPermitted } => true
     _ => false
   }
 }
 
 fn witness_missing_tally_blocks_merge_ready() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_active_facts(active: gunbc.code_change_workflow.ChangeUnderReview),
-      event: gunbc.code_change_workflow.RecordMergeReady,
-      github_pr: Present { value: witness_github_ctx(draft: false, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
-      digest: Present { value: gunbc.pr_digests.Ready },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
       tally: none,
       policy_permitted: Present { value: true },
     }
   ) {
-    gunbc.code_change_workflow.TransitionRefused { refusal: gunbc.code_change_workflow.CodeChangeMissingReviewTally } => true
+    TransitionRefused { refusal: CodeChangeMissingReviewTally } => true
     _ => false
   }
 }
 
 fn witness_missing_digest_blocks_merge_ready() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_active_facts(active: gunbc.code_change_workflow.ChangeUnderReview),
-      event: gunbc.code_change_workflow.RecordMergeReady,
-      github_pr: Present { value: witness_github_ctx(draft: false, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
       digest: none,
       tally: Present { value: witness_tally_green() },
       policy_permitted: Present { value: true },
     }
   ) {
-    gunbc.code_change_workflow.TransitionRefused { refusal: gunbc.code_change_workflow.CodeChangeMissingDigestVerdict } => true
+    TransitionRefused { refusal: CodeChangeMissingDigestVerdict } => true
     _ => false
   }
 }
 
-fn witness_tally_stale_head() -> gunbc.review_verdict.MergeReadinessTally {
-  gunbc.review_verdict.MergeReadinessTally {
+fn witness_tally_stale_head() -> MergeReadinessTally {
+  MergeReadinessTally {
     repo: witness_repo,
     pr_number: 1,
     head_sha: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
@@ -179,23 +179,23 @@ fn witness_tally_stale_head() -> gunbc.review_verdict.MergeReadinessTally {
 }
 
 fn witness_stale_tally_head_sha_blocks() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_active_facts(active: gunbc.code_change_workflow.ChangeUnderReview),
-      event: gunbc.code_change_workflow.RecordMergeReady,
-      github_pr: Present { value: witness_github_ctx(draft: false, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
-      digest: Present { value: gunbc.pr_digests.Ready },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
       tally: Present { value: witness_tally_stale_head() },
       policy_permitted: Present { value: true },
     }
   ) {
-    gunbc.code_change_workflow.TransitionRefused { refusal: gunbc.code_change_workflow.CodeChangeHeadShaMismatch { expected: _, actual: _ } } => true
+    TransitionRefused { refusal: CodeChangeHeadShaMismatch { expected: _, actual: _ } } => true
     _ => false
   }
 }
 
-fn witness_tally_request_changes() -> gunbc.review_verdict.MergeReadinessTally {
-  gunbc.review_verdict.MergeReadinessTally {
+fn witness_tally_request_changes() -> MergeReadinessTally {
+  MergeReadinessTally {
     repo: witness_repo,
     pr_number: 1,
     head_sha: witness_head_sha,
@@ -207,8 +207,8 @@ fn witness_tally_request_changes() -> gunbc.review_verdict.MergeReadinessTally {
   }
 }
 
-fn witness_tally_blocking_findings() -> gunbc.review_verdict.MergeReadinessTally {
-  gunbc.review_verdict.MergeReadinessTally {
+fn witness_tally_blocking_findings() -> MergeReadinessTally {
+  MergeReadinessTally {
     repo: witness_repo,
     pr_number: 1,
     head_sha: witness_head_sha,
@@ -220,8 +220,8 @@ fn witness_tally_blocking_findings() -> gunbc.review_verdict.MergeReadinessTally
   }
 }
 
-fn witness_tally_not_mergeable_clean() -> gunbc.review_verdict.MergeReadinessTally {
-  gunbc.review_verdict.MergeReadinessTally {
+fn witness_tally_not_mergeable_clean() -> MergeReadinessTally {
+  MergeReadinessTally {
     repo: witness_repo,
     pr_number: 1,
     head_sha: witness_head_sha,
@@ -234,103 +234,103 @@ fn witness_tally_not_mergeable_clean() -> gunbc.review_verdict.MergeReadinessTal
 }
 
 fn witness_tally_request_changes_blocks() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_active_facts(active: gunbc.code_change_workflow.ChangeUnderReview),
-      event: gunbc.code_change_workflow.RecordMergeReady,
-      github_pr: Present { value: witness_github_ctx(draft: false, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
-      digest: Present { value: gunbc.pr_digests.Ready },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
       tally: Present { value: witness_tally_request_changes() },
       policy_permitted: Present { value: true },
     }
   ) {
-    gunbc.code_change_workflow.TransitionRefused { refusal: gunbc.code_change_workflow.CodeChangeTallyRequestChanges { count: 1 } } => true
+    TransitionRefused { refusal: CodeChangeTallyRequestChanges { count: 1 } } => true
     _ => false
   }
 }
 
 fn witness_tally_blocking_findings_blocks() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_active_facts(active: gunbc.code_change_workflow.ChangeUnderReview),
-      event: gunbc.code_change_workflow.RecordMergeReady,
-      github_pr: Present { value: witness_github_ctx(draft: false, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
-      digest: Present { value: gunbc.pr_digests.Ready },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
       tally: Present { value: witness_tally_blocking_findings() },
       policy_permitted: Present { value: true },
     }
   ) {
-    gunbc.code_change_workflow.TransitionRefused { refusal: gunbc.code_change_workflow.CodeChangeTallyBlockingFindings { count: 1 } } => true
+    TransitionRefused { refusal: CodeChangeTallyBlockingFindings { count: 1 } } => true
     _ => false
   }
 }
 
 fn witness_tally_not_mergeable_clean_blocks() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_active_facts(active: gunbc.code_change_workflow.ChangeUnderReview),
-      event: gunbc.code_change_workflow.RecordMergeReady,
-      github_pr: Present { value: witness_github_ctx(draft: false, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
-      digest: Present { value: gunbc.pr_digests.Ready },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
       tally: Present { value: witness_tally_not_mergeable_clean() },
       policy_permitted: Present { value: true },
     }
   ) {
-    gunbc.code_change_workflow.TransitionRefused { refusal: gunbc.code_change_workflow.CodeChangeNotMergeableClean } => true
+    TransitionRefused { refusal: CodeChangeNotMergeableClean } => true
     _ => false
   }
 }
 
 fn witness_merge_ready_green_with_policy() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_active_facts(active: gunbc.code_change_workflow.ChangeUnderReview),
-      event: gunbc.code_change_workflow.RecordMergeReady,
-      github_pr: Present { value: witness_github_ctx(draft: false, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
-      digest: Present { value: gunbc.pr_digests.Ready },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: Ready },
       tally: Present { value: witness_tally_green() },
       policy_permitted: Present { value: true },
     }
   ) {
-    gunbc.code_change_workflow.CanTransition { to: gunbc.code_change_workflow.CodeChangeActive { stage: gunbc.code_change_workflow.ChangeMergeReady } } => true
+    CanTransition { to: CodeChangeActive { stage: ChangeMergeReady } } => true
     _ => false
   }
 }
 
 fn witness_digest_not_ready_blocks() -> Bool {
-  match gunbc.code_change_workflow.decide_code_change_transition(
-    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
-      facts: witness_active_facts(active: gunbc.code_change_workflow.ChangeUnderReview),
-      event: gunbc.code_change_workflow.RecordMergeReady,
-      github_pr: Present { value: witness_github_ctx(draft: false, state: v2.test.fixture.task_manager_demo.Open, merged_at: none) },
-      digest: Present { value: gunbc.pr_digests.NotReady { first_reason: "draft", more_reasons: [] } },
+  match decide_code_change_transition(
+    request: CodeChangeTransitionRequest {
+      facts: witness_active_facts(active: ChangeUnderReview),
+      event: RecordMergeReady,
+      github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
+      digest: Present { value: NotReady { first_reason: "draft", more_reasons: [] } },
       tally: Present { value: witness_tally_green() },
       policy_permitted: Present { value: true },
     }
   ) {
-    gunbc.code_change_workflow.TransitionRefused { refusal: gunbc.code_change_workflow.CodeChangeDigestNotReady { first_reason: "draft" } } => true
+    TransitionRefused { refusal: CodeChangeDigestNotReady { first_reason: "draft" } } => true
     _ => false
   }
 }
 
 fn witness_merged_anchor_from_github() -> Bool {
-  match gunbc.code_change_workflow.classify_github_pr_terminal_anchor(
+  match classify_github_pr_terminal_anchor(
     pr: witness_github_pr(
       draft: false,
-      state: v2.test.fixture.task_manager_demo.Open,
+      state: Open,
       merged_at: Present { value: witness_merged_at },
     )
   ) {
-    Present { value: gunbc.code_change_workflow.CodeChangeTerminal { stage: gunbc.code_change_workflow.ChangeMerged } } => true
+    Present { value: CodeChangeTerminal { stage: ChangeMerged } } => true
     _ => false
   }
 }
 
 fn witness_closed_anchor_from_github() -> Bool {
-  match gunbc.code_change_workflow.classify_github_pr_terminal_anchor(
-    pr: witness_github_pr(draft: false, state: extdeps.github.actions.Closed, merged_at: none)
+  match classify_github_pr_terminal_anchor(
+    pr: witness_github_pr(draft: false, state: Closed, merged_at: none)
   ) {
-    Present { value: gunbc.code_change_workflow.CodeChangeTerminal { stage: gunbc.code_change_workflow.ChangeClosed } } => true
+    Present { value: CodeChangeTerminal { stage: ChangeClosed } } => true
     _ => false
   }
 }

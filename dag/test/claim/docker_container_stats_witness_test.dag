@@ -1,49 +1,49 @@
 module test.claim.docker_container_stats_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data sample_cpu_usage: extdeps.docker.container_stats.CpuUsage = extdeps.docker.container_stats.CpuUsage {
-  total_usage: std.measure.nanosecond(1234567890)
-  percpu_usage: [std.measure.nanosecond(1000000), std.measure.nanosecond(234567890)]
-  usage_in_kernelmode: std.measure.nanosecond(100000000)
-  usage_in_usermode: std.measure.nanosecond(1134567890)
+data sample_cpu_usage: CpuUsage = CpuUsage {
+  total_usage: nanosecond(1234567890)
+  percpu_usage: [nanosecond(1000000), nanosecond(234567890)]
+  usage_in_kernelmode: nanosecond(100000000)
+  usage_in_usermode: nanosecond(1134567890)
 }
 
 data sample_memory_stats: extdeps.docker.container_stats.MemoryStats = extdeps.docker.container_stats.MemoryStats {
-  usage: std.measure.byte_size(536870912)
-  max_usage: std.measure.byte_size(1073741824)
-  limit: std.measure.byte_size(2147483648)
+  usage: byte_size(536870912)
+  max_usage: byte_size(1073741824)
+  limit: byte_size(2147483648)
   failcnt: none
 }
 
-data sample_cpu_stats: extdeps.docker.container_stats.CpuStats = extdeps.docker.container_stats.CpuStats {
+data sample_cpu_stats: CpuStats = CpuStats {
   cpu_usage: sample_cpu_usage
-  system_cpu_usage: std.measure.nanosecond(9876543210)
+  system_cpu_usage: nanosecond(9876543210)
   online_cpus: 4
   cpu_percent: none
 }
 
-data sample_pids_stats: extdeps.docker.container_stats.PidStats = extdeps.docker.container_stats.PidStats {
+data sample_pids_stats: PidStats = PidStats {
   current: 25
 }
 
-data sample_network_stats: extdeps.docker.container_stats.NetworkStats = extdeps.docker.container_stats.NetworkStats {
-  rx_bytes: std.measure.byte_size(1024000)
+data sample_network_stats: NetworkStats = NetworkStats {
+  rx_bytes: byte_size(1024000)
   rx_packets: 256
   rx_errors: 0
   rx_dropped: 0
-  tx_bytes: std.measure.byte_size(512000)
+  tx_bytes: byte_size(512000)
   tx_packets: 128
   tx_errors: 0
   tx_dropped: 0
 }
 
-data sample_networks: extdeps.docker.container_stats.Networks = extdeps.docker.container_stats.Networks {
+data sample_networks: Networks = Networks {
   interfaces: [extdeps.docker.container_stats.NetworkInterface { name: "eth0", stats: sample_network_stats }]
 }
 
-data sample_container_stats: extdeps.docker.container_stats.ContainerStats = extdeps.docker.container_stats.ContainerStats {
+data sample_container_stats: ContainerStats = ContainerStats {
   read: "2026-06-23T15:30:00Z"
   pids_stats: Present { value: sample_pids_stats }
   blkio_stats: none
@@ -52,13 +52,13 @@ data sample_container_stats: extdeps.docker.container_stats.ContainerStats = ext
   networks: Present { value: sample_networks }
 }
 
-data sample_host_config: extdeps.docker.container_inspect.HostConfig = extdeps.docker.container_inspect.HostConfig {
+data sample_host_config: HostConfig = HostConfig {
   cpu_shares: none
-  memory: Present { value: std.measure.byte_size(2147483648) }
+  memory: Present { value: byte_size(2147483648) }
   memory_reservation: none
   memory_swap: none
-  cpu_period: Present { value: std.measure.microsecond(100000) }
-  cpu_quota: Present { value: std.measure.microsecond(400000) }
+  cpu_period: Present { value: microsecond(100000) }
+  cpu_quota: Present { value: microsecond(400000) }
   cpuset_cpus: none
   cpuset_mems: none
   blkio_weight: none
@@ -76,7 +76,7 @@ data sample_host_config: extdeps.docker.container_inspect.HostConfig = extdeps.d
   device_requests: none
 }
 
-data sample_container_config: extdeps.docker.container_inspect.ContainerConfig = extdeps.docker.container_inspect.ContainerConfig {
+data sample_container_config: ContainerConfig = ContainerConfig {
   hostname: "mycontainer"
   domainname: none
   user: "root"
@@ -98,7 +98,7 @@ data sample_container_config: extdeps.docker.container_inspect.ContainerConfig =
   network_disabled: false
 }
 
-data sample_container_state: extdeps.docker.container_inspect.ContainerStateDetail = extdeps.docker.container_inspect.ContainerStateDetail {
+data sample_container_state: ContainerStateDetail = ContainerStateDetail {
   status: Running
   running: true
   paused: false
@@ -112,7 +112,7 @@ data sample_container_state: extdeps.docker.container_inspect.ContainerStateDeta
   finished_at: none
 }
 
-data sample_network_settings: extdeps.docker.container_inspect.NetworkSettings = extdeps.docker.container_inspect.NetworkSettings {
+data sample_network_settings: NetworkSettings = NetworkSettings {
   bridge: "docker0"
   gateway: "172.17.0.1"
   ip_address: "172.17.0.2"
@@ -121,7 +121,7 @@ data sample_network_settings: extdeps.docker.container_inspect.NetworkSettings =
   networks: none
 }
 
-data sample_container_inspect: extdeps.docker.container_inspect.ContainerInspect = extdeps.docker.container_inspect.ContainerInspect {
+data sample_container_inspect: ContainerInspect = ContainerInspect {
   id: "abc123def456"
   created: "2026-06-23T15:25:00Z"
   path: none
@@ -140,43 +140,43 @@ data sample_container_inspect: extdeps.docker.container_inspect.ContainerInspect
 }
 
 test fn container_stats_memory_usage_returns_correct_bytes() -> Bool {
-  let usage = extdeps.docker.container_stats.container_stats_memory_usage(sample_container_stats)
-  usage == std.measure.byte_size(536870912)
+  let usage = container_stats_memory_usage(sample_container_stats)
+  usage == byte_size(536870912)
 }
 
 test fn container_stats_cpu_usage_total_returns_correct_nanoseconds() -> Bool {
-  let total = extdeps.docker.container_stats.container_stats_cpu_usage_total(sample_container_stats)
-  total == std.measure.nanosecond(1234567890)
+  let total = container_stats_cpu_usage_total(sample_container_stats)
+  total == nanosecond(1234567890)
 }
 
 test fn container_stats_online_cpus_returns_correct_count() -> Bool {
-  let cpus = extdeps.docker.container_stats.container_stats_online_cpus(sample_container_stats)
+  let cpus = container_stats_online_cpus(sample_container_stats)
   cpus == 4
 }
 
 test fn container_inspect_memory_limit_extracts_from_host_config() -> Bool {
-  match extdeps.docker.container_inspect.container_inspect_memory_limit(sample_container_inspect) {
-    Present { value: limit } => limit == std.measure.byte_size(2147483648)
+  match container_inspect_memory_limit(sample_container_inspect) {
+    Present { value: limit } => limit == byte_size(2147483648)
     Absent => false
   }
 }
 
 test fn container_inspect_cpu_quota_extracts_from_host_config() -> Bool {
-  match extdeps.docker.container_inspect.container_inspect_cpu_quota(sample_container_inspect) {
-    Present { value: quota } => quota == std.measure.microsecond(400000)
+  match container_inspect_cpu_quota(sample_container_inspect) {
+    Present { value: quota } => quota == microsecond(400000)
     Absent => false
   }
 }
 
 test fn container_inspect_cpu_period_extracts_from_host_config() -> Bool {
-  match extdeps.docker.container_inspect.container_inspect_cpu_period(sample_container_inspect) {
-    Present { value: period } => period == std.measure.microsecond(100000)
+  match container_inspect_cpu_period(sample_container_inspect) {
+    Present { value: period } => period == microsecond(100000)
     Absent => false
   }
 }
 
 test fn container_inspect_memory_limit_returns_absent_when_no_host_config() -> Bool {
-  let inspect_no_hc = extdeps.docker.container_inspect.ContainerInspect {
+  let inspect_no_hc = ContainerInspect {
     id: "test"
     created: "2026-06-23T00:00:00Z"
     path: none
@@ -193,7 +193,7 @@ test fn container_inspect_memory_limit_returns_absent_when_no_host_config() -> B
     network_settings: none
     host_config: none
   }
-  match extdeps.docker.container_inspect.container_inspect_memory_limit(inspect_no_hc) {
+  match container_inspect_memory_limit(inspect_no_hc) {
     Present { value: _ } => false
     Absent => true
   }
@@ -208,67 +208,67 @@ test fn sample_inspect_has_running_state() -> Bool {
 }
 
 test fn parse_container_state_running() -> Bool {
-  match extdeps.docker.container_inspect.parse_container_state("running") {
+  match parse_container_state("running") {
     Present { value: Running } => true
     _ => false
   }
 }
 
 test fn parse_container_state_exited() -> Bool {
-  match extdeps.docker.container_inspect.parse_container_state("exited") {
+  match parse_container_state("exited") {
     Present { value: Exited } => true
     _ => false
   }
 }
 
 test fn parse_container_state_paused() -> Bool {
-  match extdeps.docker.container_inspect.parse_container_state("paused") {
+  match parse_container_state("paused") {
     Present { value: Paused } => true
     _ => false
   }
 }
 
 test fn parse_container_state_dead() -> Bool {
-  match extdeps.docker.container_inspect.parse_container_state("dead") {
-    Present { value: extdeps.docker.container_inspect.Dead } => true
+  match parse_container_state("dead") {
+    Present { value: Dead } => true
     _ => false
   }
 }
 
 test fn parse_container_state_restarting() -> Bool {
-  match extdeps.docker.container_inspect.parse_container_state("restarting") {
-    Present { value: extdeps.docker.container_inspect.Restarting } => true
+  match parse_container_state("restarting") {
+    Present { value: Restarting } => true
     _ => false
   }
 }
 
 test fn parse_container_state_invalid_returns_none() -> Bool {
-  match extdeps.docker.container_inspect.parse_container_state("invalid") {
+  match parse_container_state("invalid") {
     Absent => true
     _ => false
   }
 }
 
 test fn parse_container_state_case_sensitive() -> Bool {
-  match extdeps.docker.container_inspect.parse_container_state("RUNNING") {
+  match parse_container_state("RUNNING") {
     Absent => true
     _ => false
   }
 }
 
 test fn container_state_wire_label_running() -> Bool {
-  extdeps.docker.container_inspect.container_state_wire_label(Running) == "running"
+  container_state_wire_label(Running) == "running"
 }
 
 test fn container_state_wire_label_exited() -> Bool {
-  extdeps.docker.container_inspect.container_state_wire_label(Exited) == "exited"
+  container_state_wire_label(Exited) == "exited"
 }
 
 test fn container_state_roundtrip_preserves_value() -> Bool {
-  let roundtrip_running = (extdeps.docker.container_inspect.parse_container_state(extdeps.docker.container_inspect.container_state_wire_label(Running))) == Present { value: extdeps.docker.container_inspect.Running }
-  let roundtrip_paused = (extdeps.docker.container_inspect.parse_container_state(extdeps.docker.container_inspect.container_state_wire_label(Paused))) == Present { value: extdeps.docker.container_inspect.Paused }
-  let roundtrip_exited = (extdeps.docker.container_inspect.parse_container_state(extdeps.docker.container_inspect.container_state_wire_label(Exited))) == Present { value: Exited }
-  let roundtrip_dead = (extdeps.docker.container_inspect.parse_container_state(extdeps.docker.container_inspect.container_state_wire_label(extdeps.docker.container_inspect.Dead))) == Present { value: extdeps.docker.container_inspect.Dead }
-  let roundtrip_restarting = (extdeps.docker.container_inspect.parse_container_state(extdeps.docker.container_inspect.container_state_wire_label(extdeps.docker.container_inspect.Restarting))) == Present { value: extdeps.docker.container_inspect.Restarting }
+  let roundtrip_running = (parse_container_state(container_state_wire_label(Running))) == Present { value: extdeps.docker.container_inspect.Running }
+  let roundtrip_paused = (parse_container_state(container_state_wire_label(Paused))) == Present { value: extdeps.docker.container_inspect.Paused }
+  let roundtrip_exited = (parse_container_state(container_state_wire_label(Exited))) == Present { value: Exited }
+  let roundtrip_dead = (parse_container_state(container_state_wire_label(Dead))) == Present { value: Dead }
+  let roundtrip_restarting = (parse_container_state(container_state_wire_label(Restarting))) == Present { value: Restarting }
   roundtrip_running && roundtrip_paused && roundtrip_exited && roundtrip_dead && roundtrip_restarting
 }

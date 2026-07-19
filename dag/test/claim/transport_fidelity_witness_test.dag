@@ -1,9 +1,9 @@
 module test.claim.transport_fidelity
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn test_class_is_hermetic(c: std.fidelity.TestClass) -> Bool {
+fn test_class_is_hermetic(c: TestClass) -> Bool {
   match c {
     Hermetic => true
     Unit => false
@@ -11,7 +11,7 @@ fn test_class_is_hermetic(c: std.fidelity.TestClass) -> Bool {
   }
 }
 
-fn test_class_is_integration(c: std.fidelity.TestClass) -> Bool {
+fn test_class_is_integration(c: TestClass) -> Bool {
   match c {
     Integration => true
     Unit => false
@@ -19,7 +19,7 @@ fn test_class_is_integration(c: std.fidelity.TestClass) -> Bool {
   }
 }
 
-fn test_class_is_unit(c: std.fidelity.TestClass) -> Bool {
+fn test_class_is_unit(c: TestClass) -> Bool {
   match c {
     Unit => true
     Hermetic => false
@@ -28,29 +28,29 @@ fn test_class_is_unit(c: std.fidelity.TestClass) -> Bool {
 }
 
 fn local_set_is_hermetic() -> Bool {
-  let d = extdeps.transports.fidelity.classify_transports(transports: [ShellLocal, FileBoundary, LocalDirect])
-  test_class_is_hermetic(c: d.test_class) && d.hermetic && std.fermi.fermi_eq(lhs: d.depth, rhs: S)
+  let d = classify_transports(transports: [ShellLocal, FileBoundary, LocalDirect])
+  test_class_is_hermetic(c: d.test_class) && d.hermetic && fermi_eq(lhs: d.depth, rhs: S)
 }
 
 fn network_set_is_integration() -> Bool {
-  let d = extdeps.transports.fidelity.classify_transports(transports: [ShellLocal, RestNetwork])
-  test_class_is_integration(c: d.test_class) && !d.hermetic && std.fermi.fermi_eq(lhs: d.depth, rhs: L)
+  let d = classify_transports(transports: [ShellLocal, RestNetwork])
+  test_class_is_integration(c: d.test_class) && !d.hermetic && fermi_eq(lhs: d.depth, rhs: L)
 }
 
 fn empty_set_is_unit() -> Bool {
-  let d = extdeps.transports.fidelity.classify_transports(transports: [])
-  test_class_is_unit(c: d.test_class) && d.hermetic && std.fermi.fermi_eq(lhs: d.depth, rhs: Xs)
+  let d = classify_transports(transports: [])
+  test_class_is_unit(c: d.test_class) && d.hermetic && fermi_eq(lhs: d.depth, rhs: Xs)
 }
 
 fn dispatch_reads_cited_rows() -> Bool {
-  std.fermi.fermi_eq(lhs: extdeps.transports.fidelity.transport_depth(tc: ShellLocal), rhs: S)
-    && extdeps.transports.fidelity.transport_hermetic(tc: ShellLocal)
-    && std.fermi.fermi_eq(lhs: extdeps.transports.fidelity.transport_depth(tc: RestNetwork), rhs: L)
-    && !extdeps.transports.fidelity.transport_hermetic(tc: RestNetwork)
+  fermi_eq(lhs: transport_depth(tc: ShellLocal), rhs: S)
+    && transport_hermetic(tc: ShellLocal)
+    && fermi_eq(lhs: transport_depth(tc: RestNetwork), rhs: L)
+    && !transport_hermetic(tc: RestNetwork)
 }
 
 fn red_rest_network_advertises_hermetic() -> Bool {
-  extdeps.transports.fidelity.transport_hermetic(tc: RestNetwork)
+  transport_hermetic(tc: RestNetwork)
 }
 
 test fn transport_fidelity_holds() -> Bool {

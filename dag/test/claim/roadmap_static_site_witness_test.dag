@@ -1,44 +1,44 @@
 module test.claim.roadmap_static_site_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn site_artifact_digest(body: String) -> std.types.ContentHash {
-  std.content_hash.content_hash_atom(value: body as std.types.NonEmptyStr)
+fn site_artifact_digest(body: String) -> ContentHash {
+  content_hash_atom(value: body as NonEmptyStr)
 }
 
 fn witness_site_artifact_model_populated() -> Bool {
-  let alloc = gunbc.roadmap_static_site.roadmap_site_static_allocation()
+  let alloc = roadmap_site_static_allocation()
   count(alloc.artifacts) == 2
     && alloc.service.stateless
-    && alloc.service.health_path == gunbc.roadmap_static_site.roadmap_site_health_path
+    && alloc.service.health_path == roadmap_site_health_path
     && alloc.route.dns_manual
 }
 
 fn witness_roadmap_artifact_matches_authority() -> Bool {
-  let a = gunbc.roadmap_static_site.roadmap_site_roadmap_md_artifact()
+  let a = roadmap_site_roadmap_md_artifact()
   match a.kind {
-    RoadmapMarkdown => a.body == gunbc.roadmap_authority.expected_roadmap_md()
+    RoadmapMarkdown => a.body == expected_roadmap_md()
     _ => false
   }
 }
 
 fn witness_dispatch_artifact_matches_file_content() -> Bool {
-  let a = gunbc.roadmap_static_site.roadmap_site_dispatch_json_artifact()
+  let a = roadmap_site_dispatch_json_artifact()
   match a.kind {
-    RoadmapDispatchJson => a.body == gunbc.roadmap_spawner.roadmap_dispatch_file_content()
+    RoadmapDispatchJson => a.body == roadmap_dispatch_file_content()
     _ => false
   }
 }
 
 fn witness_artifact_digests_are_content_hashes() -> Bool {
-  all(gunbc.roadmap_static_site.roadmap_site_text_artifacts(), a =>
+  all(roadmap_site_text_artifacts(), a =>
     a.digest == site_artifact_digest(body: a.body)
   )
 }
 
 fn witness_healthz_body_json_well_formed() -> Bool {
-  witness_healthz_body_json_well_formed_for(body: gunbc.roadmap_static_site.roadmap_site_healthz_body())
+  witness_healthz_body_json_well_formed_for(body: roadmap_site_healthz_body())
 }
 
 fn witness_healthz_body_json_well_formed_for(body: String) -> Bool {
@@ -48,30 +48,30 @@ fn witness_healthz_body_json_well_formed_for(body: String) -> Bool {
 }
 
 fn witness_healthz_perturbed_body_fails_well_formed() -> Bool {
-  !witness_healthz_body_json_well_formed_for(body: concat(gunbc.roadmap_static_site.roadmap_site_healthz_body(), "}"))
+  !witness_healthz_body_json_well_formed_for(body: concat(roadmap_site_healthz_body(), "}"))
 }
 
 fn witness_healthz_body_extra_brace_perturb_red() -> Bool {
-  ends_with(s: concat(gunbc.roadmap_static_site.roadmap_site_healthz_body(), "}"), suffix: "}}}")
+  ends_with(s: concat(roadmap_site_healthz_body(), "}"), suffix: "}}}")
 }
 
 fn witness_healthz_route_json_ok() -> Bool {
-  let body = gunbc.roadmap_static_site.roadmap_site_healthz_body()
+  let body = roadmap_site_healthz_body()
   witness_healthz_body_json_well_formed()
     && witness_healthz_perturbed_body_fails_well_formed()
     && witness_healthz_body_extra_brace_perturb_red()
     && string_contains(s: body, pattern: "\"status\": \"ok\"")
-    && string_contains(s: body, pattern: gunbc.roadmap_static_site.roadmap_site_roadmap_url_path)
-    && string_contains(s: body, pattern: gunbc.roadmap_static_site.roadmap_site_dispatch_url_path)
-    && gunbc.roadmap_static_site.roadmap_site_healthz_route().content_type == extdeps.http.server.ApplicationJsonUtf8
+    && string_contains(s: body, pattern: roadmap_site_roadmap_url_path)
+    && string_contains(s: body, pattern: roadmap_site_dispatch_url_path)
+    && roadmap_site_healthz_route().content_type == ApplicationJsonUtf8
 }
 
 fn witness_static_site_routes_covered_by_dashboard_table() -> Bool {
-  let site = gunbc.roadmap_static_site.roadmap_site_text_static_routes()
-  let table = gunbc.node_http_server_emit.roadmap_dashboard_served_static_route_table().routes
+  let site = roadmap_site_text_static_routes()
+  let table = roadmap_dashboard_served_static_route_table().routes
   all(site, site_route =>
-    v2.std.algebra.any(table, table_route =>
-      gunbc.roadmap_static_site.served_static_route_literal_path(route: site_route) == gunbc.roadmap_static_site.served_static_route_literal_path(route: table_route)
+    any(table, table_route =>
+      served_static_route_literal_path(route: site_route) == served_static_route_literal_path(route: table_route)
         && site_route.body == table_route.body
         && site_route.content_type == table_route.content_type
     )
@@ -79,43 +79,43 @@ fn witness_static_site_routes_covered_by_dashboard_table() -> Bool {
 }
 
 fn witness_static_site_route_authority_paths_locked() -> Bool {
-  let paths = gunbc.roadmap_static_site.roadmap_site_static_route_authority_paths()
+  let paths = roadmap_site_static_route_authority_paths()
   count(paths) == 3
     && paths == [
-      gunbc.roadmap_static_site.roadmap_site_roadmap_url_path as String,
-      gunbc.roadmap_static_site.roadmap_site_dispatch_url_path as String,
-      gunbc.roadmap_static_site.roadmap_site_health_path as String,
+      roadmap_site_roadmap_url_path as String,
+      roadmap_site_dispatch_url_path as String,
+      roadmap_site_health_path as String,
     ]
 }
 
 fn witness_text_routes_include_health_and_artifacts() -> Bool {
-  count(gunbc.roadmap_static_site.roadmap_site_text_static_routes()) == 3
+  count(roadmap_site_text_static_routes()) == 3
 }
 
 fn witness_dashboard_route_table_includes_static_site() -> Bool {
-  count(gunbc.node_http_server_emit.roadmap_dashboard_served_static_route_table().routes) == 5
+  count(roadmap_dashboard_served_static_route_table().routes) == 5
 }
 
 fn witness_emitted_server_has_static_paths() -> Bool {
-  let src = gunbc.node_http_server_emit.roadmap_dashboard_node_http_server_source()
+  let src = roadmap_dashboard_node_http_server_source()
   string_contains(s: src, pattern: "/^\\/ROADMAP\\.md$/")
     && string_contains(s: src, pattern: "/^\\/target\\/roadmap-dispatch\\.json$/")
     && string_contains(s: src, pattern: "/^\\/healthz$/")
 }
 
 fn witness_readback_shell_marked_scaffold() -> Bool {
-  match gunbc.roadmap_static_site.roadmap_site_readback_script_scaffold {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+  match roadmap_site_readback_script_scaffold {
+    Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
   }
 }
 
 fn witness_readback_script_checks_health_and_digests() -> Bool {
-  let sh = gunbc.roadmap_static_site.roadmap_site_readback_script(port: 8080)
+  let sh = roadmap_site_readback_script(port: 8080)
   string_contains(s: sh, pattern: "/healthz")
     && string_contains(s: sh, pattern: "healthz json parse failed")
-    && string_contains(s: sh, pattern: gunbc.roadmap_static_site.roadmap_site_roadmap_url_path)
-    && string_contains(s: sh, pattern: gunbc.roadmap_static_site.roadmap_site_dispatch_url_path)
+    && string_contains(s: sh, pattern: roadmap_site_roadmap_url_path)
+    && string_contains(s: sh, pattern: roadmap_site_dispatch_url_path)
     && string_contains(s: sh, pattern: "digest mismatch")
     && string_contains(s: sh, pattern: "dispatch json parse failed")
     && string_contains(s: sh, pattern: "roadmap-site-receipt")
@@ -123,11 +123,11 @@ fn witness_readback_script_checks_health_and_digests() -> Bool {
 }
 
 fn witness_roadmap_route_is_plain_text() -> Bool {
-  let routes = gunbc.roadmap_static_site.roadmap_site_text_static_routes()
-  let roadmap = gunbc.roadmap_static_site.roadmap_site_roadmap_md_artifact()
-  v2.std.algebra.any(routes, r =>
+  let routes = roadmap_site_text_static_routes()
+  let roadmap = roadmap_site_roadmap_md_artifact()
+  any(routes, r =>
     r.body == roadmap.body
-      && r.content_type == extdeps.http.server.TextPlainUtf8
+      && r.content_type == TextPlainUtf8
   )
 }
 

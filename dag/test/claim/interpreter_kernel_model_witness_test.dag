@@ -1,53 +1,53 @@
 module test.claim.interpreter_kernel_model_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn w_pure_eval_authority_modules() -> Bool {
-  gunbc.interpreter_kernel_model.is_pure_eval_authority_module(path: "src/v2/compiler/05_eval.dag") &&
-  gunbc.interpreter_kernel_model.is_pure_eval_authority_module(path: "src/v2/compiler/emit_host.dag") &&
-  gunbc.interpreter_kernel_model.is_pure_eval_authority_module(path: "src/v2/extdeps/runtimes/v2_evaluator.dag") &&
-  gunbc.interpreter_kernel_model.is_pure_eval_authority_module(path: "src/v2/std/host_transport.dag") &&
-  gunbc.interpreter_kernel_model.is_pure_eval_authority_module(path: "src/v2/std/host_run.dag") &&
-  !gunbc.interpreter_kernel_model.is_pure_eval_authority_module(path: "src/v1/stage0/src/v1_interpreter.rs")
+  is_pure_eval_authority_module(path: "src/v2/compiler/05_eval.dag") &&
+  is_pure_eval_authority_module(path: "src/v2/compiler/emit_host.dag") &&
+  is_pure_eval_authority_module(path: "src/v2/extdeps/runtimes/v2_evaluator.dag") &&
+  is_pure_eval_authority_module(path: "src/v2/std/host_transport.dag") &&
+  is_pure_eval_authority_module(path: "src/v2/std/host_run.dag") &&
+  !is_pure_eval_authority_module(path: "src/v1/stage0/src/v1_interpreter.rs")
 }
 
 fn w_pinned_host_physics_roster() -> Bool {
-  gunbc.interpreter_kernel_model.is_pinned_host_physics_stage0_file(basename: "recorded_fixture.rs") &&
-  gunbc.interpreter_kernel_model.is_pinned_host_physics_stage0_file(basename: "resolved_graph_cache.rs") &&
-  !gunbc.interpreter_kernel_model.is_pinned_host_physics_stage0_file(basename: "cache_purity_oracle.rs") &&
-  !gunbc.interpreter_kernel_model.is_pinned_host_physics_stage0_file(basename: "cli_run.rs") &&
-  !gunbc.interpreter_kernel_model.is_pinned_host_physics_stage0_file(basename: "rest_transport_facts.rs") &&
-  !gunbc.interpreter_kernel_model.is_pinned_host_physics_stage0_file(basename: "wire_value_serialize.rs")
+  is_pinned_host_physics_stage0_file(basename: "recorded_fixture.rs") &&
+  is_pinned_host_physics_stage0_file(basename: "resolved_graph_cache.rs") &&
+  !is_pinned_host_physics_stage0_file(basename: "cache_purity_oracle.rs") &&
+  !is_pinned_host_physics_stage0_file(basename: "cli_run.rs") &&
+  !is_pinned_host_physics_stage0_file(basename: "rest_transport_facts.rs") &&
+  !is_pinned_host_physics_stage0_file(basename: "wire_value_serialize.rs")
 }
 
 fn w_hybrid_interpreter_file_boundary() -> Bool {
-  gunbc.interpreter_kernel_model.v1_interpreter_hybrid_seed_file == "v1_interpreter.rs" &&
-  gunbc.interpreter_kernel_model.v1_interpreter_not_classified_as_pinned_host_physics()
+  v1_interpreter_hybrid_seed_file == "v1_interpreter.rs" &&
+  v1_interpreter_not_classified_as_pinned_host_physics()
 }
 
 fn w_kernel_d_phase_pure_eval_emit_wired() -> Bool {
-  gunbc.interpreter_kernel_model.interpreter_kernel_d_phase_is_pure_eval_emit_wired()
+  interpreter_kernel_d_phase_is_pure_eval_emit_wired()
 }
 
 fn w_seam_class_authority_modules() -> Bool {
-  match gunbc.interpreter_kernel_model.seam_class_for_authority_module(path: "src/v2/compiler/05_eval.dag") {
-    Present { value: gunbc.interpreter_kernel_model.PureEvalAuthority } => true
+  match seam_class_for_authority_module(path: "src/v2/compiler/05_eval.dag") {
+    Present { value: PureEvalAuthority } => true
     _ => false
   } &&
-  match gunbc.interpreter_kernel_model.seam_class_for_pinned_basename(basename: "recorded_fixture.rs") {
-    Present { value: gunbc.interpreter_kernel_model.PinnedHostPhysics } => true
+  match seam_class_for_pinned_basename(basename: "recorded_fixture.rs") {
+    Present { value: PinnedHostPhysics } => true
     _ => false
   } &&
-  match gunbc.interpreter_kernel_model.seam_class_for_authority_module(path: "src/v1/stage0/src/v1_interpreter.rs") {
+  match seam_class_for_authority_module(path: "src/v1/stage0/src/v1_interpreter.rs") {
     Absent => true
     Present { value: _ } => false
   }
 }
 
 fn w_hybrid_seed_seam_unclassified() -> Bool {
-  gunbc.interpreter_kernel_model.hybrid_seed_file_is_seam_unclassified() &&
-  match gunbc.interpreter_kernel_model.seam_class_for_pinned_basename(basename: gunbc.interpreter_kernel_model.v1_interpreter_hybrid_seed_file) {
+  hybrid_seed_file_is_seam_unclassified() &&
+  match seam_class_for_pinned_basename(basename: v1_interpreter_hybrid_seed_file) {
     Absent => true
     Present { value: _ } => false
   }

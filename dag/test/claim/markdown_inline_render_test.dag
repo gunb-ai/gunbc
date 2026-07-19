@@ -1,50 +1,50 @@
 module test.claim.markdown_inline_render
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn parse_and_render(text: String) -> List<std.markup.MarkupNode> {
-  std.markdown_markup.markdown_inlines_to_markup_nodes(
-    inlines: extdeps.languages.markdown.parse_inline_markdown_minimal(text: text)
+fn parse_and_render(text: String) -> List<MarkupNode> {
+  markdown_inlines_to_markup_nodes(
+    inlines: parse_inline_markdown_minimal(text: text)
   )
 }
 
 fn witness_bold_renders_to_strong_node() -> Bool {
   parse_and_render(text: "**bold text**") ==
-    [ std.markup.ElementNode { tag: "strong", attrs: [], children: [ std.markup.TextNode { text: "bold text" } ] } ]
+    [ ElementNode { tag: "strong", attrs: [], children: [ TextNode { text: "bold text" } ] } ]
 }
 
 fn witness_code_renders_to_code_node() -> Bool {
   parse_and_render(text: "`inline code`") ==
-    [ std.markup.ElementNode { tag: "code", attrs: [], children: [ std.markup.TextNode { text: "inline code" } ] } ]
+    [ ElementNode { tag: "code", attrs: [], children: [ TextNode { text: "inline code" } ] } ]
 }
 
 fn witness_link_renders_to_anchor_node() -> Bool {
   parse_and_render(text: "[label](/docs/plan.md)") ==
-    [ std.markup.ElementNode {
+    [ ElementNode {
         tag: "a",
-        attrs: [ std.markup.MarkupAttr { name: "href", value: "/docs/plan.md" } ],
-        children: [ std.markup.TextNode { text: "label" } ],
+        attrs: [ MarkupAttr { name: "href", value: "/docs/plan.md" } ],
+        children: [ TextNode { text: "label" } ],
       }
     ]
 }
 
 fn witness_em_renders_to_em_node() -> Bool {
   parse_and_render(text: "*emphasis*") ==
-    [ std.markup.ElementNode { tag: "em", attrs: [], children: [ std.markup.TextNode { text: "emphasis" } ] } ]
+    [ ElementNode { tag: "em", attrs: [], children: [ TextNode { text: "emphasis" } ] } ]
 }
 
 fn witness_mixed_inline_renders_to_nodes() -> Bool {
   parse_and_render(text: "**bold** and `code`") ==
     [
-      std.markup.ElementNode { tag: "strong", attrs: [], children: [ std.markup.TextNode { text: "bold" } ] },
-      std.markup.TextNode { text: " and " },
-      std.markup.ElementNode { tag: "code", attrs: [], children: [ std.markup.TextNode { text: "code" } ] },
+      ElementNode { tag: "strong", attrs: [], children: [ TextNode { text: "bold" } ] },
+      TextNode { text: " and " },
+      ElementNode { tag: "code", attrs: [], children: [ TextNode { text: "code" } ] },
     ]
 }
 
 fn witness_plain_text_stays_text_node() -> Bool {
-  parse_and_render(text: "plain text no markup") == [ std.markup.TextNode { text: "plain text no markup" } ]
+  parse_and_render(text: "plain text no markup") == [ TextNode { text: "plain text no markup" } ]
 }
 
 fn witness_markup_bold_differs_from_plain() -> Bool {
@@ -52,12 +52,12 @@ fn witness_markup_bold_differs_from_plain() -> Bool {
 }
 
 fn witness_image_inline_renders_to_img_node() -> Bool {
-  std.markdown_markup.markdown_inline_to_markup_nodes(inline: std.markdown.ImageInline { alt: "description", url: "/img.png" }) ==
-    [ std.markup.ElementNode {
+  markdown_inline_to_markup_nodes(inline: ImageInline { alt: "description", url: "/img.png" }) ==
+    [ ElementNode {
         tag: "img",
         attrs: [
-          std.markup.MarkupAttr { name: "src", value: "/img.png" },
-          std.markup.MarkupAttr { name: "alt", value: "description" },
+          MarkupAttr { name: "src", value: "/img.png" },
+          MarkupAttr { name: "alt", value: "description" },
         ],
         children: [],
       }

@@ -1,26 +1,26 @@
 module test.claim.os_proc_meminfo_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn proc_meminfo_witnesses() -> Bool {
-  let info = extdeps.os.proc_meminfo.ProcMeminfo {
-    mem_total: std.measure.Kibibyte { count: 8012272 },
-    mem_free: std.measure.Kibibyte { count: 4048136 },
-    mem_available: std.measure.Kibibyte { count: 6144000 },
-    buffers: std.measure.Kibibyte { count: 256000 },
-    cached: std.measure.Kibibyte { count: 2048136 },
-    swap_total: std.measure.Kibibyte { count: 2097152 },
-    swap_free: std.measure.Kibibyte { count: 2097152 },
+  let info = ProcMeminfo {
+    mem_total: Kibibyte { count: 8012272 },
+    mem_free: Kibibyte { count: 4048136 },
+    mem_available: Kibibyte { count: 6144000 },
+    buffers: Kibibyte { count: 256000 },
+    cached: Kibibyte { count: 2048136 },
+    swap_total: Kibibyte { count: 2097152 },
+    swap_free: Kibibyte { count: 2097152 },
     all_metrics: [],
   }
 
-  let metric = extdeps.os.proc_meminfo.MemoryMetric {
-    key: "MemTotal" as std.types.NonEmptyStr,
-    value: std.measure.Kibibyte { count: 8012272 },
+  let metric = MemoryMetric {
+    key: "MemTotal" as NonEmptyStr,
+    value: Kibibyte { count: 8012272 },
   }
 
-  std.measure.measure_count(m: info.mem_total) > 0
-    && std.measure.measure_count(m: info.mem_available) <= std.measure.measure_count(m: info.mem_total)
-    && std.measure.measure_count(m: metric.value) > 0
+  measure_count(m: info.mem_total) > 0
+    && measure_count(m: info.mem_available) <= measure_count(m: info.mem_total)
+    && measure_count(m: metric.value) > 0
 }

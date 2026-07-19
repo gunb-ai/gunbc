@@ -1,31 +1,31 @@
 module test.claim.srv3_os_install_actuate_workflow
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_boot_once_cd_default_approval_is_pending() -> Bool {
-  match gunbc.srv3_os_install_actuate_workflow.srv3_boot_once_cd_default_approval {
+  match srv3_boot_once_cd_default_approval {
     PendingApproval { escalation: e } =>
-      e.escalation_id == gunbc.srv3_os_install_actuate_workflow.srv3_boot_once_cd_escalation.escalation_id
+      e.escalation_id == srv3_boot_once_cd_escalation.escalation_id
         && e.destructive == true
     _ => false
   }
 }
 
 test fn srv3_boot_once_cd_operator_granted_approval_is_runnable() -> Bool {
-  match gunbc.srv3_os_install_actuate_workflow.srv3_boot_once_cd_operator_granted_approval {
+  match srv3_boot_once_cd_operator_granted_approval {
     ApprovalGranted { escalation_id: id, granted_by: _ } =>
-      id == gunbc.srv3_os_install_actuate_workflow.srv3_boot_once_cd_escalation.escalation_id
-        && gunbc.srv3_os_install_actuate_workflow.srv3_boot_once_cd_is_runnable_with_approval(approval: gunbc.srv3_os_install_actuate_workflow.srv3_boot_once_cd_operator_granted_approval)
+      id == srv3_boot_once_cd_escalation.escalation_id
+        && srv3_boot_once_cd_is_runnable_with_approval(approval: srv3_boot_once_cd_operator_granted_approval)
     _ => false
   }
 }
 
 test fn srv3_boot_once_cd_default_approval_blocks_execution() -> Bool {
-  gunbc.srv3_os_install_actuate_workflow.srv3_boot_once_cd_is_runnable_with_approval(approval: gunbc.srv3_os_install_actuate_workflow.srv3_boot_once_cd_default_approval) == false
+  srv3_boot_once_cd_is_runnable_with_approval(approval: srv3_boot_once_cd_default_approval) == false
 }
 
 test fn srv3_os_install_actuate_workflow_orders_approval_before_boot() -> Bool {
-  gunbc.srv3_os_install_actuate_workflow.srv3_os_install_actuate_workflow_includes_operator_approval_before_boot()
-    && gunbc.srv3_os_install_actuate_workflow.srv3_os_install_actuate_workflow_credential_intent_is_declared()
+  srv3_os_install_actuate_workflow_includes_operator_approval_before_boot()
+    && srv3_os_install_actuate_workflow_credential_intent_is_declared()
 }

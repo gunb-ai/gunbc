@@ -1,36 +1,36 @@
 module test.claim.filesystem_entry_kind_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn is_other(k: std.filesystem.types.EntryKind) -> Bool {
+fn is_other(k: EntryKind) -> Bool {
   match k { Other => true  _ => false }
 }
-fn is_regular(k: std.filesystem.types.EntryKind) -> Bool {
+fn is_regular(k: EntryKind) -> Bool {
   match k { RegularFile => true  _ => false }
 }
-fn is_symlink(k: std.filesystem.types.EntryKind) -> Bool {
+fn is_symlink(k: EntryKind) -> Bool {
   match k { Symlink => true  _ => false }
 }
 
 fn w_posix_socket_is_other() -> Bool {
-  is_other(k: extdeps.filesystem.posix.posix_entry_kind(t: extdeps.filesystem.posix.S_IFSOCK))
+  is_other(k: posix_entry_kind(t: S_IFSOCK))
 }
 fn w_posix_regular_is_regular() -> Bool {
-  is_regular(k: extdeps.filesystem.posix.posix_entry_kind(t: extdeps.filesystem.posix.S_IFREG))
+  is_regular(k: posix_entry_kind(t: S_IFREG))
 }
 fn w_posix_symlink_is_symlink() -> Bool {
-  is_symlink(k: extdeps.filesystem.posix.posix_entry_kind(t: extdeps.filesystem.posix.S_IFLNK))
+  is_symlink(k: posix_entry_kind(t: S_IFLNK))
 }
 
 fn w_ntfs_junction_is_other() -> Bool {
-  is_other(k: extdeps.filesystem.ntfs.ntfs_entry_kind(t: extdeps.filesystem.ntfs.MountPointReparse))
+  is_other(k: ntfs_entry_kind(t: MountPointReparse))
 }
 fn w_ntfs_symlink_is_symlink() -> Bool {
-  is_symlink(k: extdeps.filesystem.ntfs.ntfs_entry_kind(t: extdeps.filesystem.ntfs.SymlinkReparse))
+  is_symlink(k: ntfs_entry_kind(t: SymlinkReparse))
 }
 fn w_ntfs_normal_is_regular() -> Bool {
-  is_regular(k: extdeps.filesystem.ntfs.ntfs_entry_kind(t: extdeps.filesystem.ntfs.NormalFile))
+  is_regular(k: ntfs_entry_kind(t: NormalFile))
 }
 
 test fn filesystem_entry_kind_witnesses() -> Bool {

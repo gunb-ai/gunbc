@@ -1,19 +1,19 @@
 module test.claim.merge_admission_producer_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data scenario_base: ContentHash = "merge-admission-producer-base"
 data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"
 
-data green_receipt: MergeAdmissionReceipt = gunbc.merge_admission_produce.stamp_floor_receipt(
+data green_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base,
   floor_exit_code: 0,
 )
 
-data red_receipt: MergeAdmissionReceipt = gunbc.merge_admission_produce.stamp_floor_receipt(
+data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base,
@@ -22,13 +22,13 @@ data red_receipt: MergeAdmissionReceipt = gunbc.merge_admission_produce.stamp_fl
 
 test fn floor_stamp_exports_ci_floor_exit_on_gunbc_line() -> Bool {
   string_contains(
-    s: gunbc.merge_admission_produce.ci_floor_stamp_merge_admission_script(),
+    s: ci_floor_stamp_merge_admission_script(),
     pattern: "CI_FLOOR_EXIT=$FLOOR_EXIT \"$ROOT/target/release/gunbc\" run"
   )
 }
 
 test fn floor_stamp_propagates_stamp_failure_after_green_floor() -> Bool {
-  let script = gunbc.merge_admission_produce.ci_floor_stamp_merge_admission_script()
+  let script = ci_floor_stamp_merge_admission_script()
   string_contains(s: script, pattern: "STAMP_EXIT=$?")
     && string_contains(s: script, pattern: "exit \"$STAMP_EXIT\"")
     && string_contains(s: script, pattern: "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi")
@@ -36,29 +36,29 @@ test fn floor_stamp_propagates_stamp_failure_after_green_floor() -> Bool {
 
 test fn stamp_missing_floor_exit_policy_is_fail_closed() -> Bool {
   string_contains(
-    s: tools.merge_admission_stamp.merge_admission_stamp_missing_floor_exit_is_failure,
+    s: merge_admission_stamp_missing_floor_exit_is_failure,
     pattern: "fail-closed"
   )
 }
 
 test fn floor_exit_zero_maps_to_success() -> Bool {
-  gunbc.merge_admission_produce.floor_exit_to_check_conclusion(exit_code: 0) == extdeps.github.checks.Success
+  floor_exit_to_check_conclusion(exit_code: 0) == extdeps.github.checks.Success
 }
 
 test fn floor_exit_nonzero_maps_to_failure() -> Bool {
-  gunbc.merge_admission_produce.floor_exit_to_check_conclusion(exit_code: 1) == extdeps.github.checks.Failure
+  floor_exit_to_check_conclusion(exit_code: 1) == extdeps.github.checks.Failure
 }
 
 test fn merge_admission_stamp_invoke_uses_v1_tool_source_root() -> Bool {
-  let invoke = gunbc.merge_admission_produce.merge_admission_stamp_invoke()
+  let invoke = merge_admission_stamp_invoke()
   string_contains(s: invoke, pattern: "--source-root dag")
     && string_contains(s: invoke, pattern: "dag/tools/merge_admission_stamp.dag")
     && !string_contains(s: invoke, pattern: "--source-root src/v2")
 }
 
 test fn documentation_only_disposition_maps_to_skipped() -> Bool {
-  match gunbc.merge_admission_produce.floor_disposition_to_check_conclusion(
-    disposition: gunbc.merge_admission_produce.merge_admission_floor_disposition_documentation_only_skipped
+  match floor_disposition_to_check_conclusion(
+    disposition: merge_admission_floor_disposition_documentation_only_skipped
   ) {
     Present { value: conclusion } => conclusion == extdeps.github.checks.Skipped
     Absent => false
@@ -67,25 +67,25 @@ test fn documentation_only_disposition_maps_to_skipped() -> Bool {
 
 test fn documentation_only_skip_policy_is_on_carrier() -> Bool {
   string_contains(
-    s: gunbc.merge_admission_produce.merge_admission_stamp_documentation_only_skip_policy,
+    s: merge_admission_stamp_documentation_only_skip_policy,
     pattern: "Skipped (not Success)"
   )
 }
 
 test fn mint_binds_current_gate_roster_hash() -> Bool {
-  green_receipt.gate_roster_hash == gunbc.merge_admission.current_gate_roster_hash
+  green_receipt.gate_roster_hash == current_gate_roster_hash
 }
 
 test fn shell_stdout_line_strips_trailing_newline() -> Bool {
-  gunbc.merge_admission_produce.shell_stdout_line(raw: "abc123\n") == "abc123"
+  shell_stdout_line(raw: "abc123\n") == "abc123"
 }
 
 test fn wire_roundtrip_preserves_admission_fields() -> Bool {
-  let wire = gunbc.merge_admission_produce.render_receipt_wire(receipt: green_receipt)
-  match gunbc.merge_admission_produce.parse_receipt_wire(text: wire) {
+  let wire = render_receipt_wire(receipt: green_receipt)
+  match parse_receipt_wire(text: wire) {
     Present { value: parsed } =>
       (parsed.base_tree_hash == scenario_base)
-        && (parsed.gate_roster_hash == gunbc.merge_admission.current_gate_roster_hash)
+        && (parsed.gate_roster_hash == current_gate_roster_hash)
         && (parsed.conclusion == extdeps.github.checks.Success)
         && (parsed.head_sha == scenario_head)
         && match parsed.pr_number {
@@ -100,11 +100,11 @@ test fn wire_missing_head_sha_returns_absent() -> Bool {
   let wire = concat(
     concat(
       concat(scenario_base, "\n"),
-      concat(gunbc.merge_admission.current_gate_roster_hash, "\n")
+      concat(current_gate_roster_hash, "\n")
     ),
-    extdeps.github.checks.check_conclusion_wire_label(c: Success)
+    check_conclusion_wire_label(c: Success)
   )
-  match gunbc.merge_admission_produce.parse_receipt_wire(text: wire) {
+  match parse_receipt_wire(text: wire) {
     Present { value: _ } => false
     Absent => true
   }
@@ -113,12 +113,12 @@ test fn wire_missing_head_sha_returns_absent() -> Bool {
 test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
   let wire = concat(
     concat(
-      concat(concat(scenario_base, "\n"), concat(gunbc.merge_admission.current_gate_roster_hash, "\n")),
-      concat(extdeps.github.checks.check_conclusion_wire_label(c: Success), "\n")
+      concat(concat(scenario_base, "\n"), concat(current_gate_roster_hash, "\n")),
+      concat(check_conclusion_wire_label(c: Success), "\n")
     ),
     scenario_head
   )
-  match gunbc.merge_admission_produce.parse_receipt_wire(text: wire) {
+  match parse_receipt_wire(text: wire) {
     Present { value: parsed } =>
       match parsed.pr_number {
         Absent => parsed.conclusion == extdeps.github.checks.Success
@@ -129,14 +129,14 @@ test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
 }
 
 test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
-  let receipt = gunbc.merge_admission_produce.stamp_floor_receipt(
+  let receipt = stamp_floor_receipt(
     pr_number: none,
     head_sha: scenario_head,
     base_tree_hash: scenario_base,
     floor_exit_code: 0,
   )
-  let wire = gunbc.merge_admission_produce.render_receipt_wire(receipt: receipt)
-  match gunbc.merge_admission_produce.parse_receipt_wire(text: wire) {
+  let wire = render_receipt_wire(receipt: receipt)
+  match parse_receipt_wire(text: wire) {
     Present { value: parsed } =>
       match parsed.pr_number {
         Absent =>
@@ -151,7 +151,7 @@ test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
 
 test fn stamp_non_pr_event_omits_fabricated_pr_number() -> Bool {
   string_contains(
-    s: tools.merge_admission_stamp.merge_admission_stamp_non_pr_omits_pr_number,
+    s: merge_admission_stamp_non_pr_omits_pr_number,
     pattern: "not fabricated 0"
   )
 }
@@ -166,11 +166,11 @@ test fn receipt_schema_and_path_are_stable() -> Bool {
 }
 
 test fn mint_matches_explicit_constructor() -> Bool {
-  let explicit = gunbc.merge_admission.mint_merge_admission_receipt(
+  let explicit = mint_merge_admission_receipt(
     pr_number: Present { value: 5933 },
     head_sha: scenario_head,
     base_tree_hash: scenario_base,
-    gate_roster_hash: gunbc.merge_admission.current_gate_roster_hash,
+    gate_roster_hash: current_gate_roster_hash,
     conclusion: Success,
   )
   (explicit.base_tree_hash == green_receipt.base_tree_hash)

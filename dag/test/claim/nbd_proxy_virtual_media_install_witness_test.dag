@@ -1,54 +1,54 @@
 module test.claim.nbd_proxy_virtual_media_install
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
-  match gunbc.os_install_mechanism.srv3_install_mechanism {
-    NbdProxyVirtualMediaInstall => srv3_install_boot_target == extdeps.bmc.types.BootTargetCd
-    PxeHttpInstall => srv3_install_boot_target == extdeps.bmc.types.BootTargetPxe
+  match srv3_install_mechanism {
+    NbdProxyVirtualMediaInstall => srv3_install_boot_target == BootTargetCd
+    PxeHttpInstall => srv3_install_boot_target == BootTargetPxe
     _ => false
   }
-    && gunbc.os_install_mechanism.install_boot_target_for(mechanism: gunbc.os_install_mechanism.NbdProxyVirtualMediaInstall) == extdeps.bmc.types.BootTargetCd
-    && gunbc.os_install_mechanism.install_boot_target_for(mechanism: gunbc.os_install_mechanism.PxeHttpInstall) == extdeps.bmc.types.BootTargetPxe
+    && install_boot_target_for(mechanism: NbdProxyVirtualMediaInstall) == BootTargetCd
+    && install_boot_target_for(mechanism: PxeHttpInstall) == BootTargetPxe
 }
 
 test fn srv3_nbd_proxy_actuator_plan_is_solve_driven() -> Bool {
-  match gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan.mechanism {
+  match srv3_os_install_actuator_plan.mechanism {
     NbdProxyVirtualMediaInstall => true
     PxeHttpInstall => false
     _ => false
   }
-    && gunbc.nbd_proxy_virtual_media_install.os_install_actuator_step_count(plan: gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan) == 3
+    && os_install_actuator_step_count(plan: srv3_os_install_actuator_plan) == 3
 }
 
 test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
-  let steps = gunbc.nbd_proxy_virtual_media_install.os_install_actuator_steps(
-    mechanism: gunbc.os_install_mechanism.NbdProxyVirtualMediaInstall,
-    export: gunbc.nbd_proxy_virtual_media_install.srv3_nbd_proxy_export_placeholder
+  let steps = os_install_actuator_steps(
+    mechanism: NbdProxyVirtualMediaInstall,
+    export: srv3_nbd_proxy_export_placeholder
   )
-  std.types.list_length(items: steps) == 3
+  list_length(items: steps) == 3
     && match steps.first() {
-      gunbc.nbd_proxy_virtual_media_install.ActuatorNbdProxyServe { endpoint: e, slot: 0, index: 0, export: _ } =>
-        e == extdeps.bmc.webui.nbd_proxy.VmSlotIndexEndpoint
+      ActuatorNbdProxyServe { endpoint: e, slot: 0, index: 0, export: _ } =>
+        e == VmSlotIndexEndpoint
       _ => false
     }
     && match steps.skip(n: 1).first() {
-      gunbc.nbd_proxy_virtual_media_install.ActuatorBootOnce { target: extdeps.bmc.types.BootTargetCd, enabled: _ } => true
+      ActuatorBootOnce { target: BootTargetCd, enabled: _ } => true
       _ => false
     }
     && match steps.skip(n: 2).first() {
-      gunbc.nbd_proxy_virtual_media_install.ActuatorForceRestart { reset_type: _ } => true
+      ActuatorForceRestart { reset_type: _ } => true
       _ => false
     }
 }
 
 test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
-  let steps = gunbc.nbd_proxy_virtual_media_install.os_install_actuator_steps(
-    mechanism: gunbc.os_install_mechanism.PxeHttpInstall,
-    export: gunbc.nbd_proxy_virtual_media_install.srv3_nbd_proxy_export_placeholder
+  let steps = os_install_actuator_steps(
+    mechanism: PxeHttpInstall,
+    export: srv3_nbd_proxy_export_placeholder
   )
-  std.types.list_length(items: steps) == 3
+  list_length(items: steps) == 3
     && match steps.first() {
       ActuatorPxeNetworkBootStaging => true
       _ => false
@@ -56,31 +56,31 @@ test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
 }
 
 test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
-  let steps = gunbc.nbd_proxy_virtual_media_install.os_install_actuator_steps(
-    mechanism: gunbc.os_install_mechanism.NbdProxyVirtualMediaInstall,
-    export: gunbc.nbd_proxy_virtual_media_install.srv3_nbd_proxy_export_placeholder
+  let steps = os_install_actuator_steps(
+    mechanism: NbdProxyVirtualMediaInstall,
+    export: srv3_nbd_proxy_export_placeholder
   )
-  match gunbc.nbd_proxy_virtual_media_install.actuator_step_to_host_effect_intent(step: steps.first()) {
+  match actuator_step_to_host_effect_intent(step: steps.first()) {
     Present { value: intent } =>
       match intent.target {
-        HostOs { node: h } => h == gunbc.os_install_actuator_selection.srv3_os_install_actuator_host
+        HostOs { node: h } => h == srv3_os_install_actuator_host
         _ => false
       }
         && match intent.effect {
-          gunbc.host_effect.Srv3NbdProxyServe { intent: _, lease_key: _ } => true
+          Srv3NbdProxyServe { intent: _, lease_key: _ } => true
           _ => false
         }
     Absent => false
   }
-    && match extdeps.bmc.webui.nbd_proxy_serve.nbd_proxy_serve_systemd_realization_dissolution_trigger {
-      std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    && match nbd_proxy_serve_systemd_realization_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
       Terminal { reason: _ } => false
     }
 }
 
 test fn nbd_proxy_placeholder_scaffolds_carry_dissolve_on_markers() -> Bool {
-  match gunbc.nbd_proxy_virtual_media_install.srv3_nbd_proxy_export_dissolution_trigger {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+  match srv3_nbd_proxy_export_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
   }
 }
