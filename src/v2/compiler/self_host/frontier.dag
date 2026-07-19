@@ -791,12 +791,30 @@ fn band_a_emit_readiness_roster_row_trigger_matches(
   }
 }
 
+fn band_a_emit_readiness_module_is_self_emitted(module_path: String) -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: false,
+    cons: fn(matched, row) {
+      if row.module_path == module_path {
+        match row.disposition {
+          SelfEmitted => true
+          SeedRetained { reason: _, migration_trigger: _ } => false
+        }
+      } else {
+        matched
+      }
+    }
+  )
+}
+
 fn band_a_emit_readiness_other_gate_matches_frontier_row(row: BandAEmitReadinessRow) -> Bool {
   match row.gate {
     FlippableNow => true
     BodyProducerGated => false
     OtherGate { migration_trigger: trigger } =>
-      band_a_emit_readiness_roster_row_trigger_matches(
+      band_a_emit_readiness_module_is_self_emitted(module_path: row.module_path)
+        || band_a_emit_readiness_roster_row_trigger_matches(
         module_path: row.module_path,
         trigger: trigger,
         row: compiler_frontier_row_use_site_verdict
