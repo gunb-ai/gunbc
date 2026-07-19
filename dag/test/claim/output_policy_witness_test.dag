@@ -24,9 +24,9 @@ fn verbosity_is_normal(v: Verbosity) -> Bool {
 }
 
 fn w_diagnostic_never_hidden() -> Bool {
-  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Quiet), suppressed: false, condensed: false, full: true) &&
-  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Normal), suppressed: false, condensed: false, full: true) &&
-  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Verbose), suppressed: false, condensed: false, full: true)
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Quiet), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Normal), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Verbose), suppressed: false, condensed: false, full: true)
 }
 
 fn w_instrumentation_is_debug_only() -> Bool {
