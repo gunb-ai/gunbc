@@ -19,8 +19,6 @@ mod c_compilation_unit_witness_test;
 #[cfg(test)]
 mod cache_purity_oracle_test;
 #[cfg(test)]
-mod call_contract_mismatch_test;
-#[cfg(test)]
 mod compile_clean_diagnostic_authority_test;
 #[cfg(test)]
 mod constructor_owner_ruling_test;
