@@ -560,8 +560,16 @@ data module_storage_supply_op_note: String = "THE MODELED OP (docs/plans/module-
 
 data module_storage_supply_cost_note: String = "Why a host handler rather than deriving in-graph: module_storage_bindings_from_ingest re-parses every module, measured at ~6.5s of eval per module. That is fine at ORACLE scale (a handful of modules, off the gate path) and impossible at consumer scale — the frontier needs ~35 modules and compile-clean scope thousands. The host already knows (module, path) from its own parse, so re-deriving it in-graph is duplicated work (§2) as well as slow. The in-graph derivation is therefore retained as the ORACLE that pins this transport to the model, never as the consumer path."
 
+data module_storage_supply_unbound_body_note: String = "The body REFUSES rather than recursing. This declaration is an interface whose realization is a host handler; until host-effect emission binds it, an in-graph caller must be told so, loudly and at once.
+
+It was previously written as an unconditional self-call — fn f(x) { f(x: x) } — which is the shape a host-bound stub takes when the host is expected to intercept before the body ever runs. That is true for the inert_lens stubs, which ARE registered in the interpreter dispatch tables (v1_interpreter.rs), so their bodies are unreachable. It is NOT true here: this op has no dispatch registration, so the body is genuinely reachable and a caller would spin instead of stopping. A hang is the weakest possible failure arm — it is not even a stop, it just never answers, and DESIGN section 5 wants a located refusal (a bounded 'forever' is not an 'unknown' error). Flagged non-blocking by reviews 39741 and 39773; fixed here because the seam was open anyway.
+
+No in-graph caller exists today, so this changes no behavior — it changes what happens the first time one does."
+
 fn module_storage_bindings_for_source_roots(source_roots: FreeMonoid<String>) -> Outcome<ModuleStorageIndex> {
-  module_storage_bindings_for_source_roots(source_roots: source_roots)
+  outcome_rejected(
+    d: source_authority_diagnostic(reason: ^module_storage_supply_host_dispatch_required)
+  )
 }
 
 data module_storage_bindings_for_source_roots_host_disposition: Disposition = Scaffold {
