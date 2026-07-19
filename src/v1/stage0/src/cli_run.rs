@@ -5178,9 +5178,13 @@ fn source_tree_root_of(roots: &[String], file: &str) -> Option<String> {
 }
 
 /// The SAME-TREE bare census for one source root: the full census (bare +
-/// qualified + services) over exactly the pool modules under that root — what a
-/// whole-tree compile of the root would hold in its closure census. Built lazily,
-/// cached per root.
+/// qualified + services) over the root's WHOLE-TREE COMPILE CLOSURE — every pool
+/// module under the root plus the pool modules import-reached from them. This is
+/// gate parity by construction: it is exactly the module set the root's whole-tree
+/// gate compile holds in its closure census, so a bare name a module resolves
+/// under the gate resolves identically here (e.g. a dag witness's bare
+/// `LiveTreeDisposition`, declared only in `v2.std.live_tree` but import-reached
+/// from the dag tree). Built lazily, cached per root.
 fn tree_bare_census_for_root(
     index: &MultiEntryIndex,
     root: &str,
@@ -5191,10 +5195,28 @@ fn tree_bare_census_for_root(
     let pool = pool_parse(index)?;
     let trimmed = root.trim_end_matches('/');
     let prefix = format!("{trimmed}/");
+    let mut reached: HashSet<String> = HashSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    for (file, _) in pool.nodes_by_file.iter() {
+        if file == trimmed || file.starts_with(&prefix) {
+            reached.insert(file.clone());
+            queue.push_back(file.clone());
+        }
+    }
+    while let Some(importer) = queue.pop_front() {
+        let Some(targets) = index.module_graph_facts.adjacency.get(&importer) else {
+            continue;
+        };
+        for path in targets {
+            if reached.insert(path.clone()) {
+                queue.push_back(path.clone());
+            }
+        }
+    }
     let nodes: im_rc::Vector<Rc<Node>> = pool
         .nodes_by_file
         .iter()
-        .filter(|(file, _)| file == trimmed || file.starts_with(&prefix))
+        .filter(|(file, _)| reached.contains(file))
         .map(|(_, node)| node.clone())
         .collect();
     let census = v1_compiler_infer::build_symbol_index_census_nodes(
