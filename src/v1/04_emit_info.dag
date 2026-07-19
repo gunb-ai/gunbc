@@ -12,12 +12,11 @@ import v1.std.core {
   CardOptional,
   param_node_name_at
 }
-
+import v1.compiler.infer_env { TypeEnv, empty_symbol_index, empty_type_env }
 import v1.compiler.infer_types {
   normalize_access_type_node,
   child_type_node, emit_map_has, node_type_equals
 }
-
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
@@ -56,6 +55,9 @@ type EmitGraphInfo {
   read_only_params: Set<String>
 
   corpus_repr: RustCorpusRepr
+
+  fn_generic_param_names: List<String>
+  fn_type_env: TypeEnv
 }
 
 type EmitInfoBuildState {
@@ -80,7 +82,29 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
 
-    corpus_repr: FaithfulFreeMonoid
+    corpus_repr: FaithfulFreeMonoid,
+    fn_generic_param_names: [],
+    fn_type_env: empty_type_env()
+  }
+}
+
+fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names: List<String>, env: TypeEnv) -> EmitGraphInfo {
+  EmitGraphInfo {
+    type_summaries: emit_info.type_summaries,
+    type_decl_items: emit_info.type_decl_items,
+    recursive_type_set: emit_info.recursive_type_set,
+    fielded_variants: emit_info.fielded_variants,
+    positional_payload_variants: emit_info.positional_payload_variants,
+    shared_types: emit_info.shared_types,
+    ownership_index: emit_info.ownership_index,
+    movable: emit_info.movable,
+    variant_to_enum: emit_info.variant_to_enum,
+    owned_bindings: emit_info.owned_bindings,
+    read_only_params_index: emit_info.read_only_params_index,
+    read_only_params: emit_info.read_only_params,
+    corpus_repr: emit_info.corpus_repr,
+    fn_generic_param_names: generic_param_names,
+    fn_type_env: env
   }
 }
 

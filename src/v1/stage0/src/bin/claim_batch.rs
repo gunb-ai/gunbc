@@ -538,6 +538,12 @@ fn run() -> Result<ExitCode, ExitCode> {
             eprintln!("claim_batch: roster produced no rows (empty corpus → fail closed)");
             return Err(ExitCode::from(2));
         }
+        // P4 advisory-first: predict the memory-packed width per witness from its
+        // derived space bound, logged for offline comparison against the run's peak
+        // RSS. Gated (opt-in); no scheduling change.
+        if std::env::var("GUNBC_REALIZE_ADVISORY").is_ok() {
+            v1_compiler::cli_run::emit_realize_advisory_for_rows(&source_roots, &rows);
+        }
         rows.sort_by(|a, b| {
             a.entry
                 .cmp(&b.entry)

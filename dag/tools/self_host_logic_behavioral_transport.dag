@@ -7,7 +7,7 @@ import extdeps.cargo_build
 import extdeps.git
 import extdeps.gunbc
 import std.logic { Bool }
-import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 
 
@@ -43,7 +43,7 @@ fn slb_behavioral_receipt_holds() -> Bool {
   let logic_written = Filesystem.Write(path: concat(scratch_src.path, "/std/logic.dag"), content: logic_read.content)
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
   let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
   let emit = gunbc.WitnessBin.Run(
     workdir: root.path,

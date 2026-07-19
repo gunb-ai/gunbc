@@ -2,6 +2,7 @@ module v2.test.lens_affected_set.provenance_producer
 
 import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.source_authority {
+  source_root_coverage_is_complete,
     DagSourceReadWitness,
   SourceRootIngest,
   node_artifact_provenance_from_source_root,
@@ -189,7 +190,7 @@ fn provenance_producer_coverage_receipt_holds() -> Bool {
         ingest: provenance_producer_single_read_ingest,
         produced: provenance
       )
-      receipt.coverage_complete
+      source_root_coverage_is_complete(coverage: receipt.coverage)
         && (receipt.ingest_read_count == 1)
         && (receipt.produced_row_count == 1)
     Rejected { diagnostics: _ } => false

@@ -1,0 +1,31 @@
+# UNRESOLVED_CompilerError embedded-marker grep (emitted crate after cssl_assemble)
+# Integration head 7ca489d2df; CSSL_STD_SEED_LINK=1 assembly path.
+#
+# INTERPRETATION:
+# - rustc-blocking site (all 6 modules): std_realization_measurement.rs — compile_error!("UNRESOLVED_CompilerError")
+#   in schedule_batch_critical_path fold (Measure<Time, _, Nat> second type param unresolved at emit).
+# - non-blocking string literal (dep closure carries materialization_carriers note): v2_compiler_materialization_carriers.rs:68
+#
+=== src/v2/compiler/00_compile.dag ===
+  RUSTC-BLOCKING: src/std_realization_measurement.rs:165: compile_error!("UNRESOLVED_CompilerError") in batch_times fold / schedule_batch_critical_path
+  string-only:    src/v2_compiler_materialization_carriers.rs:68 (materialization_carriers_tail_probe_note literal)
+=== src/v2/compiler/materialization_carriers.dag ===
+  RUSTC-BLOCKING: src/std_realization_measurement.rs:165
+  string-only:    src/v2_compiler_materialization_carriers.rs:68
+=== src/v2/compiler/program_assembly.dag ===
+  RUSTC-BLOCKING: src/std_realization_measurement.rs:165
+  string-only:    src/v2_compiler_materialization_carriers.rs:68
+=== src/v2/compiler/source_authority.dag ===
+  RUSTC-BLOCKING: src/std_realization_measurement.rs:165
+  string-only:    src/v2_compiler_materialization_carriers.rs:68
+=== src/v2/compiler/02_parse.dag ===
+  RUSTC-BLOCKING: src/std_realization_measurement.rs:165
+  string-only:    src/v2_compiler_materialization_carriers.rs:68
+=== src/v2/compiler/03_ingest.dag ===
+  RUSTC-BLOCKING: src/std_realization_measurement.rs:165
+  string-only:    src/v2_compiler_materialization_carriers.rs:68
+
+# Source authority (neat-swift-795 handoff, 2026-07-19): dag/std/realization_measurement.dag —
+# schedule_critical_path_time fold lambda: generic scale param S lost when rendering the NESTED
+# List<List<Measure<Time,S,Nat>>> element type (emitter-gap; minimal pair vs time_measure_list_par).
+# Shim-arg control MOOT: embedded compile_error! in emitted artifact; no shim can fix.

@@ -865,22 +865,52 @@ mod regen_input_closure_tests {
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
     "src/v2/test/claim/workflow/host_source_root_ingest_manifest.dag";
 
-fn is_source_root_ingest_manifest_stub_rel(rel_forward: &str) -> bool {
-    rel_forward.replace('\\', "/") == SOURCE_ROOT_INGEST_MANIFEST_STUB_REL
-}
+/// Empty module-binding-manifest placeholder, superseded the same way (module-identity
+/// supply carrier). Separate carrier from the ingest manifest: module <-> path +
+/// provenance, no source text.
+const MODULE_BINDING_MANIFEST_STUB_REL: &str =
+    "src/v2/test/claim/workflow/host_module_binding_manifest.dag";
 
-fn source_root_ingest_manifest_overlay_in_later_roots(
+/// Committed manifest stubs and the generated filenames that supersede them.
+///
+/// One table rather than a predicate pair per manifest: the stub/overlay rule is a single
+/// fact, and forking it per carrier would mean the next manifest silently misses whichever
+/// half its author forgot to extend (DESIGN.md §2/§3).
+const MANIFEST_STUB_OVERLAYS: &[(&str, &[&str])] = &[
+    (
+        SOURCE_ROOT_INGEST_MANIFEST_STUB_REL,
+        &[
+            "v2-source-root-ingest-manifest.dag",
+            "host_source_root_ingest_manifest.dag",
+        ],
+    ),
+    (
+        MODULE_BINDING_MANIFEST_STUB_REL,
+        &["host_module_binding_manifest.dag"],
+    ),
+];
+
+/// True when `rel_forward` is a committed manifest stub AND a strictly later source root
+/// carries its generated counterpart, so the stub must be excluded from the module index
+/// and the generated file becomes the sole declarer of that module. Without this the two
+/// files collide and trip `module_path_collision_panic_message`.
+fn manifest_stub_superseded_by_overlay(
+    rel_forward: &str,
     source_roots: &[String],
     after_root_idx: usize,
 ) -> bool {
+    let normalized = rel_forward.replace('\\', "/");
+    let Some((_, overlay_names)) = MANIFEST_STUB_OVERLAYS
+        .iter()
+        .find(|(stub_rel, _)| normalized == *stub_rel)
+    else {
+        return false;
+    };
     source_roots.iter().skip(after_root_idx + 1).any(|root| {
         let root_path = Path::new(root);
-        root_path
-            .join("v2-source-root-ingest-manifest.dag")
-            .is_file()
-            || root_path
-                .join("host_source_root_ingest_manifest.dag")
-                .is_file()
+        overlay_names
+            .iter()
+            .any(|name| root_path.join(name).is_file())
     })
 }
 
@@ -907,9 +937,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
             });
             if let Some(module_path) = extract_module_path(&content) {
                 let rel = module_index_path_key(&path);
-                if is_source_root_ingest_manifest_stub_rel(&rel)
-                    && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
-                {
+                if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
                     continue;
                 }
                 if let Some(existing) = index.get(&module_path) {
@@ -1355,9 +1383,7 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = module_index_path_key(&path);
                 let rel_forward = rel_path.clone();
-                if is_source_root_ingest_manifest_stub_rel(&rel_forward)
-                    && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
-                {
+                if manifest_stub_superseded_by_overlay(&rel_forward, source_roots, root_idx) {
                     continue;
                 }
                 if let Some(existing) = index.get(&module_path) {
@@ -10821,6 +10847,141 @@ fn entry_touches_rerun_frontier(
     Ok(!saw_claim)
 }
 
+/// P4 advisory-first (witness-realization plan): marshal an `Option<i64>` into the
+/// `.dag` `Int?` (Optional) `Value` the modeled `realize_advisory` expects.
+fn realize_advisory_optional_int(
+    ctx: &v1_interpreter::InterpContext,
+    v: Option<i64>,
+) -> v1_interpreter::Value {
+    use std::rc::Rc;
+    use v1_interpreter::Value;
+    match v {
+        Some(n) => Value::Variant {
+            type_name: ctx.sym("Optional"),
+            variant_name: ctx.sym("Present"),
+            fields: Rc::new(vec![(ctx.sym("value"), Value::Int(n))]),
+        },
+        None => Value::Variant {
+            type_name: ctx.sym("Optional"),
+            variant_name: ctx.sym("Absent"),
+            fields: Rc::new(vec![]),
+        },
+    }
+}
+
+/// P4 advisory-first: for each discovery witness, DERIVE its space bound
+/// (`ComplexityReport.function_space_bytes` at an empty size-env — a closed
+/// witness has no free size-vars) and log the memory-packed width `std.realize_pack`
+/// would schedule, alongside the live `MemoryGovernor` admission. This changes NO
+/// scheduling — it proves the derived bounds are sound on the real corpus before
+/// the governor is demoted (§5). The packing LAW stays modeled: `realize_advisory`
+/// is interpreted through the bridge, never reimplemented in Rust (§2). Gated by
+/// `GUNBC_REALIZE_ADVISORY`.
+pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[DiscoveryRow]) {
+    use v1_interpreter::Value;
+    // The witness graphs don't import std.realize_pack, so interpret the law in its
+    // own ctx, built once.
+    let realize_ctx = match resolve_entry_graph(source_roots, "dag/std/realize_pack.dag") {
+        Ok((g, idx)) => make_eval_context(&g, idx, v1_interpreter::ExecutionMode::Hermetic),
+        Err(e) => {
+            eprintln!("[realize-advisory] disabled: cannot load std.realize_pack: {e}");
+            return;
+        }
+    };
+    // Host budget: the SAME single authority the MemoryGovernor schedules against
+    // (env -> cgroup memory.high -> memory.max -> meminfo). Unreadable -> the modeled
+    // law refuses (BudgetRefused), never a fabricated width.
+    let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
+    let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
+    let independence: i64 = std::thread::available_parallelism()
+        .map(|n| n.get() as i64)
+        .unwrap_or(1);
+    // Group by entry so each entry resolves + analyzes once.
+    let mut by_entry: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for r in rows {
+        by_entry
+            .entry(r.entry.clone())
+            .or_default()
+            .push(r.function.clone());
+    }
+    let (mut derivable, mut unknown) = (0usize, 0usize);
+    for (entry, functions) in &by_entry {
+        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let report =
+            v1_compiler_compile::run_complexity_analysis(graph.clone(), source_indices.clone());
+        for function in functions {
+            let derived: Option<i64> = report.function_space_bytes.get(function).copied();
+            if derived.is_some() {
+                derivable += 1;
+            } else {
+                unknown += 1;
+            }
+            let args = vec![
+                (
+                    Some("derived_bytes".to_string()),
+                    realize_advisory_optional_int(&realize_ctx, derived),
+                ),
+                (
+                    Some("budget_bytes".to_string()),
+                    realize_advisory_optional_int(&realize_ctx, budget_bytes),
+                ),
+                (
+                    Some("independence_width".to_string()),
+                    Value::Int(independence),
+                ),
+            ];
+            match v1_interpreter::run_in_context_with_args(
+                &realize_ctx,
+                "realize_advisory",
+                &args,
+                false,
+            ) {
+                Ok(Value::Record { fields, .. }) => {
+                    let width = match realize_ctx.field(&fields, "width") {
+                        Some(Value::Int(w)) => *w,
+                        _ => -1,
+                    };
+                    let verdict = match realize_ctx.field(&fields, "verdict") {
+                        Some(Value::Str(s)) => s.clone(),
+                        _ => String::new(),
+                    };
+                    let db = derived
+                        .map(|d| d.to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let bb = budget_bytes
+                        .map(|b| b.to_string())
+                        .unwrap_or_else(|| "unreadable".to_string());
+                    eprintln!(
+                        "[realize-advisory] entry={entry} fn={function} derived_bytes={db} \
+                         budget={bb} independence={independence} predicted_width={width} verdict={verdict}"
+                    );
+                }
+                Ok(_) => eprintln!(
+                    "[realize-advisory] entry={entry} fn={function} — bridge returned non-record"
+                ),
+                Err(e) => {
+                    eprintln!("[realize-advisory] entry={entry} fn={function} — bridge error: {e}")
+                }
+            }
+        }
+    }
+    eprintln!(
+        "[realize-advisory] summary: {} function(s), {} with a derived bound, \
+         {} unknown (maturation reserve); budget={} source={}",
+        derivable + unknown,
+        derivable,
+        unknown,
+        budget_bytes
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".to_string()),
+        budget_source,
+    );
+}
+
 pub fn run_discovery_corpus_with_options(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -10862,6 +11023,11 @@ pub fn run_discovery_corpus_with_options(
     });
     if rows.is_empty() {
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
+    }
+    // P4 advisory-first: predict the memory-packed width per witness from its derived
+    // space bound, logged beside the governor — no scheduling change. Gated (opt-in).
+    if std::env::var("GUNBC_REALIZE_ADVISORY").is_ok() {
+        emit_realize_advisory_for_rows(source_roots, &rows);
     }
     let deferred_rows = if options.explicit_roster_only || scan_dirs.is_empty() {
         Vec::new()
@@ -14567,6 +14733,135 @@ fn emit_source_root_ref_import(records: &[SourceRootReadRecord]) -> String {
     )
 }
 
+/// Emit the module-binding manifest: the host handler for the `.dag`-modeled op
+/// `v2.compiler.source_authority.module_storage_bindings_for_source_roots`.
+///
+/// This is a TRANSPORT of that modeled op, not a rival authority. It carries zero
+/// independent policy: it serializes what `build_module_path_index` already derived,
+/// which is the one host producer the module-identity design says must be repointed —
+/// so supplying the rows and repointing the producer are the same motion.
+///
+/// Rows are `DeclarationScanned`, never `ParsedFromSource`: `build_module_path_index`
+/// derives the mapping via `extract_module_path`, a substring scan with no spans and no
+/// parse. Emitting them as parsed would fabricate provenance (DESIGN.md §5).
+///
+/// Unlike the source-root ingest manifest this carries NO source text — the binding needs
+/// module <-> path only. That is what lets it scale past `MANIFEST_INLINE_LIST_MAX`, which
+/// exists to stop the ingest manifest from inlining the corpus.
+///
+/// Dissolve-on: host-effect emission (witness-realization lane), at which point this
+/// handler is emitted from the `.dag` model instead of hand-written here.
+pub fn emit_module_storage_binding_manifest(
+    path: &Path,
+    source_roots: &[String],
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("failed to create manifest parent {:?}: {}", parent, e))?;
+    }
+
+    // Per-root so each row records its own SourceRootRef, reusing build_module_path_index
+    // rather than introducing a second walker (which would be the fork this repoint removes).
+    let mut rows: Vec<(String, String, String)> = Vec::new();
+    for root in source_roots {
+        let root_variant = source_root_ref_variant_for_root(root)?;
+        let index = build_module_path_index(std::slice::from_ref(root));
+        let mut entries: Vec<(String, String)> = index.into_iter().collect();
+        // build_module_path_index returns a HashMap; sort so the emitted manifest is
+        // deterministic (byte-identical across runs on unchanged inputs).
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        for (module_path, rel) in entries {
+            rows.push((module_path, rel, root_variant.clone()));
+        }
+    }
+
+    let mut out = String::new();
+    out.push_str("module v2.test.workflow.host_module_binding_manifest\n\n\n");
+    out.push_str("import v2.compiler.source_authority {\n");
+    out.push_str("  ModuleStorageIndex,\n");
+    out.push_str("  module_storage_scanned_binding\n");
+    out.push_str("}\n");
+    out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import std.algebra { Cons, Empty }\n");
+    out.push_str("import v2.std.integer { Int }\n");
+    out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
+    out.push_str(&emit_module_binding_source_root_import(&rows));
+    out.push('\n');
+    out.push_str(&format!(
+        "data host_module_binding_count: Int = {}\n\n\n",
+        rows.len()
+    ));
+    out.push_str("data host_module_bindings: ModuleStorageIndex = ");
+    out.push_str(&emit_module_binding_monoid(&rows)?);
+    out.push('\n');
+
+    std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
+}
+
+/// Import exactly the `SourceRootRef` constructors the rows reference (mirrors
+/// `emit_source_root_ref_import`; an unreferenced constructor import is an unlisted-import
+/// error, and a referenced-but-unimported one fails to resolve).
+fn emit_module_binding_source_root_import(rows: &[(String, String, String)]) -> String {
+    let mut names: Vec<&str> = rows.iter().map(|(_, _, v)| v.as_str()).collect();
+    names.sort_unstable();
+    names.dedup();
+    if names.is_empty() {
+        return String::new();
+    }
+    format!(
+        "import v2.std.cross_tree.import_model {{ {} }}\n",
+        names.join(", ")
+    )
+}
+
+/// Render a dotted module path as a `QualifiedName`, via the std construction authority
+/// `qualified_name_from_string_segments`.
+///
+/// Deliberately NOT `^segment` symbol literals: module segments may collide with `.dag`
+/// keywords (`v2.test.claim.compiler.pipeline.corpus` emits `^pipeline`, which is a parse
+/// error), and the `^(...)` form is discriminant sugar with different semantics, not an
+/// escape hatch. Going through the std helper takes segments as STRINGS, so keywords are
+/// inert, and it reuses the one construction authority instead of hand-rolling a second
+/// spelling of the same value (DESIGN.md §3).
+fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, String> {
+    let segments: Vec<&str> = module_path.split('.').filter(|s| !s.is_empty()).collect();
+    if segments.is_empty() {
+        return Err(
+            "module-binding manifest: empty module path (cannot render QualifiedName)".to_string(),
+        );
+    }
+    let rendered: Vec<String> = segments
+        .iter()
+        .map(|s| dag_manifest_scalar_escape(s).map(|e| format!("\"{e}\"")))
+        .collect::<Result<_, _>>()?;
+    Ok(format!(
+        "qualified_name_from_string_segments(segments: [{}])",
+        rendered.join(", ")
+    ))
+}
+
+fn emit_module_binding_row(row: &(String, String, String)) -> Result<String, String> {
+    let (module_path, rel, root_variant) = row;
+    let qn = emit_module_binding_qualified_name(module_path)?;
+    let artifact_id = source_root_ingest_artifact_id_for_path(rel);
+    Ok(format!(
+        "module_storage_scanned_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  source_root: {root_variant}\n)",
+        dag_manifest_scalar_escape(rel)?
+    ))
+}
+
+fn emit_module_binding_monoid(rows: &[(String, String, String)]) -> Result<String, String> {
+    let mut nodes: Vec<String> = rows
+        .iter()
+        .map(emit_module_binding_row)
+        .collect::<Result<_, _>>()?;
+    let mut out = String::from("Empty");
+    while let Some(head) = nodes.pop() {
+        out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
+    }
+    Ok(out)
+}
+
 pub fn emit_source_root_ingest_manifest(
     path: &Path,
     records: &[SourceRootReadRecord],
@@ -14590,6 +14885,8 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  DagSourceReadWitness,\n");
     out.push_str("  SourceRootIngest,\n");
+    out.push_str("  SourceRootCoverageComplete,\n");
+    out.push_str("  SourceRootManifestElided,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
@@ -14619,9 +14916,28 @@ pub fn emit_source_root_ingest_manifest(
         dag_manifest_scalar_escape(&content_hash)?
     ));
     out.push_str("data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {\n");
+    // The receipt must describe the carrier that actually landed, not the discovery that
+    // preceded it. Past MANIFEST_INLINE_LIST_MAX the row list is elided to `Empty`, so
+    // hardcoding `coverage_complete: true` with the full read_count asserted complete
+    // coverage over an EMPTY carrier — and made it unfalsifiable by construction
+    // (DESIGN.md §5: fabricated plausible output; a receipt that can never be false
+    // reports nothing).
+    //
+    // The elision is now a TYPED, COUNTED refusal rather than a bool: `SourceRootManifestElided`
+    // names the read count AND the cap that rejected it, so a consumer sees the size of the
+    // deficit ("91 reads met a cap of 64") instead of an undifferentiated `false`. A silent
+    // `Empty` carrier under a `true` receipt was an absorbing fallback — ⊤-as-ignorance
+    // presented as ⊤-as-answer.
+    let produced_row_count = inline_records.len();
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
-    out.push_str(&format!("  produced_row_count: {read_count},\n"));
-    out.push_str("  coverage_complete: true\n");
+    out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
+    if produced_row_count == read_count {
+        out.push_str("  coverage: SourceRootCoverageComplete\n");
+    } else {
+        out.push_str(&format!(
+            "  coverage: SourceRootManifestElided {{ read_count: {read_count}, cap: {MANIFEST_INLINE_LIST_MAX} }}\n"
+        ));
+    }
     out.push_str("}\n\n\n");
     out.push_str("data host_source_root_ingest: SourceRootIngest = ");
     if inline_records.is_empty() {
@@ -14640,7 +14956,62 @@ pub fn emit_source_root_ingest_manifest(
 
 #[cfg(test)]
 mod source_root_ingest_manifest_tests {
-    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord};
+    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord, MANIFEST_INLINE_LIST_MAX};
+
+    fn sr_record(i: usize) -> SourceRootReadRecord {
+        SourceRootReadRecord {
+            file_path: format!("src/v2/std/cov_fixture_{i}.dag"),
+            module_path: format!("v2.std.cov_fixture_{i}"),
+            source: format!("module v2.std.cov_fixture_{i}"),
+            source_root: "src/v2".to_string(),
+        }
+    }
+
+    /// Past the inline cap the row list is elided, so the receipt must say so.
+    /// Before this fix `coverage_complete: true` was hardcoded and the full read_count
+    /// emitted as produced_row_count, asserting complete coverage over an empty carrier.
+    #[test]
+    fn receipt_reports_incomplete_coverage_when_rows_are_elided() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_cov_receipt_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host_source_root_ingest_manifest.dag");
+
+        let over: Vec<SourceRootReadRecord> =
+            (0..MANIFEST_INLINE_LIST_MAX + 1).map(sr_record).collect();
+        emit_source_root_ingest_manifest(&path, &over, None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("coverage: SourceRootManifestElided"),
+            "elided manifest must report incomplete coverage, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("produced_row_count: 0"),
+            "elided manifest must report the rows it actually carries (0), got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains(&format!(
+                "ingest_read_count: {}",
+                MANIFEST_INLINE_LIST_MAX + 1
+            )),
+            "discovered read count must still be reported, got:\n{emitted}"
+        );
+
+        // Control: within the cap, coverage really is complete.
+        let under: Vec<SourceRootReadRecord> = (0..3).map(sr_record).collect();
+        emit_source_root_ingest_manifest(&path, &under, None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("coverage: SourceRootCoverageComplete")
+                && emitted.contains("produced_row_count: 3"),
+            "inline manifest must report complete coverage over 3 rows, got:\n{emitted}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn manifest_imports_grounded_source_root_constructors() {

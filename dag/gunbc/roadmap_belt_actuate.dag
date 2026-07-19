@@ -1,0 +1,295 @@
+module gunbc.roadmap_belt_actuate
+
+import std.types { String, Int, Bool, List, NonEmptyStr, FilePath }
+import gunbc.roadmap_model { RoadmapNode }
+import gunbc.roadmap_spawner { SpawnFrontier }
+import gunbc.roadmap_belt {
+  BeltRunState, Running, Paused,
+  BeltCapacity,
+  BeltReconcile,
+  belt_reconcile,
+  DispatchMember, DesiredMember, ObservedMember,
+}
+import gunbc.roadmap_dispatch_actuator {
+  HostExecArgv,
+  DispatchLiveSession,
+  DispatchSpawnCommands,
+  dispatch_spawn_commands,
+  dispatch_tmux_session_name,
+  tmux_ls_argv,
+  tmux_kill_session_argv,
+  dispatch_live_sessions,
+}
+import extdeps.gunbc
+import extdeps.shell
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data belt_actuate_exec_authority_note: String = "Slice 2b actuation: the belt DECISION (gunbc.roadmap_belt.belt_reconcile) is CLOSED against the host by three proven single-authorities — the actuator's HostExecArgv argv model (gunbc.roadmap_dispatch_actuator, the one place the git/tmux/claude argv is shaped), gunbc.WitnessBin.Run (the typed-argv exec intrinsic, no shell string — the SAME exec authority gunbc.host_effect_realize's own realizers build on via srv3_transport_witness_bin_success), and shell.Which.Check (program -> bin_path). The belt is a PEER realizer over WitnessBin.Run, not a fork: host_effect_apply's HostEffect coproduct carries only specific srv3/bmc/hostname effects, with no general typed-argv variant, so the belt routes its generic invocations through the shared lower exec authority. This is fail-closed throughout (which-miss -> ExecRefused, nonzero exit -> ExecFailed, worktree failure short-circuits the tmux spawn), never a fabricated success. Claude-only for now (operator 2026-07-18: 'just do claude to get something working; nicer later as compute fabric')."
+
+data belt_actuate_placement_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_dispatch_actuator",
+    decl_name: "classify_dispatch_lease_upsert",
+    field: WholeDeclaration
+  }
+}
+
+data belt_actuate_fingerprint_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_dispatch_actuator",
+    decl_name: "dispatch_tmux_process_fingerprint_observation_dissolution_trigger",
+    field: WholeDeclaration
+  }
+}
+
+data belt_actuate_workdir: FilePath = "/opt/gunbc/gunbc" as FilePath
+
+type BeltExecOutcome
+  = ExecOk { stdout: String }
+  | ExecFailed { program: String, exit_code: Int, stderr: String }
+  | ExecRefused { program: String, reason: String }
+
+data belt_program_available_note: String = "program-on-PATH probe via shell.Which.Check exit_success (Bool), NOT its .path field: the Which .path realization is a bare-stdout string wet (the Optional-over-Value::Null realization fork — DESIGN open thread), so the belt keys on the exit Bool and lets WitnessBin.Run's `env -C \{workdir\} \{bin_path\} args` resolve the bare program name via PATH (env execvp searches PATH). This keeps 'program missing' (refuse) distinct from 'program present, exited nonzero' (fail) without touching the Optional straddle."
+
+fn belt_program_available(program: String) -> Bool {
+  shell.Which.Check(command: program as NonEmptyStr).exists
+}
+
+fn belt_exec(cmd: HostExecArgv, workdir: String) -> BeltExecOutcome {
+  if belt_program_available(program: cmd.program) {
+    let result = gunbc.WitnessBin.Run(
+      workdir: workdir as FilePath,
+      bin_path: cmd.program as FilePath,
+      args: cmd.args,
+    )
+    if result.success {
+      ExecOk { stdout: result.stdout }
+    } else {
+      ExecFailed { program: cmd.program, exit_code: result.exit_code, stderr: result.stderr }
+    }
+  } else {
+    ExecRefused {
+      program: cmd.program,
+      reason: "belt_exec: program not found on PATH (which exit nonzero); fail-closed, no fabricated success",
+    }
+  }
+}
+
+data belt_exec_all_fail_closed_note: String = "Fail-closed sequencing: fold runs each argv in order; once a step is non-ok (ExecFailed/ExecRefused) the accumulator SHORT-CIRCUITS — belt_exec is NOT called for the remaining steps and the first failure is returned. Spawn's worktree-add -> tmux-new-session ordering rides this: a failed git worktree add never spawns the tmux session (no orphan session on a missing worktree). Discriminating control: remove the ExecOk-guarded short-circuit and [false, echo] would run echo and go green when it must stay failed."
+
+fn belt_exec_all(cmds: List<HostExecArgv>, workdir: String) -> BeltExecOutcome {
+  fold(cmds, init: ExecOk { stdout: "" }, f: fn(acc, cmd) {
+    match acc {
+      ExecOk { stdout: _ } => belt_exec(cmd: cmd, workdir: workdir)
+      ExecFailed { program: _, exit_code: _, stderr: _ } => acc
+      ExecRefused { program: _, reason: _ } => acc
+    }
+  })
+}
+
+type BeltSpawnOutcome
+  = Spawned { node_id: String, session_name: String }
+  | SpawnFailed { node_id: String, step: String, detail: String }
+
+fn belt_actuate_spawn(node: RoadmapNode, session_uuid: String, workdir: String) -> BeltSpawnOutcome {
+  let cmds = dispatch_spawn_commands(node: node, session_uuid: session_uuid)
+  match belt_exec_all(cmds: [cmds.worktree_add, cmds.tmux_spawn], workdir: workdir) {
+    ExecOk { stdout: _ } =>
+      Spawned {
+        node_id: node.node as String,
+        session_name: dispatch_tmux_session_name(node_id: node.node),
+      }
+    ExecFailed { program: p, exit_code: _, stderr: e } =>
+      SpawnFailed { node_id: node.node as String, step: p, detail: e }
+    ExecRefused { program: p, reason: r } =>
+      SpawnFailed { node_id: node.node as String, step: p, detail: r }
+  }
+}
+
+type BeltTeardownOutcome
+  = ReapedSession { session_name: String }
+  | TeardownFailed { session_name: String, detail: String }
+
+fn belt_actuate_teardown(session_name: String, workdir: String) -> BeltTeardownOutcome {
+  match belt_exec(cmd: tmux_kill_session_argv(session_name: session_name), workdir: workdir) {
+    ExecOk { stdout: _ } => ReapedSession { session_name: session_name }
+    ExecFailed { program: _, exit_code: _, stderr: e } =>
+      TeardownFailed { session_name: session_name, detail: e }
+    ExecRefused { program: _, reason: r } =>
+      TeardownFailed { session_name: session_name, detail: r }
+  }
+}
+
+data belt_actuate_member_shape_note: String = "The reconcile guarantees spawns are DesiredMembers (carry the RoadmapNode for the brief) and teardowns are ObservedMembers (carry the live session). The cross arms are unreachable by construction; if ever reached they REFUSE (typed SpawnFailed/TeardownFailed), never a fabricated action — DESIGN §5 (no spawn without a node model, no teardown without an observed session)."
+
+fn belt_spawn_session_uuid(node_id: String) -> String {
+  concat("belt-", node_id)
+}
+
+fn belt_actuate_spawn_member(m: DispatchMember, workdir: String) -> BeltSpawnOutcome {
+  match m {
+    DesiredMember { node_id: nid, node: node } =>
+      belt_actuate_spawn(
+        node: node,
+        session_uuid: belt_spawn_session_uuid(node_id: nid),
+        workdir: workdir,
+      )
+    ObservedMember { node_id: nid, session: _ } =>
+      SpawnFailed {
+        node_id: nid,
+        step: "member-shape",
+        detail: "belt spawn expected DesiredMember (carries node for brief); got ObservedMember — fail-closed, no spawn without a node model",
+      }
+  }
+}
+
+fn belt_actuate_teardown_member(m: DispatchMember, workdir: String) -> BeltTeardownOutcome {
+  match m {
+    ObservedMember { node_id: _, session: session } =>
+      belt_actuate_teardown(session_name: session.session_name, workdir: workdir)
+    DesiredMember { node_id: nid, node: _ } =>
+      TeardownFailed {
+        session_name: nid,
+        detail: "belt teardown expected ObservedMember (carries live session); got DesiredMember — fail-closed, no teardown without an observed session",
+      }
+  }
+}
+
+type BeltObserve
+  = Observed { live: List<DispatchLiveSession> }
+  | ObserveRefused { reason: String }
+
+data belt_observe_note: String = "tmux-present is the FIRST precondition: tmux not on PATH -> ObserveRefused (the belt cannot know what is live). Once tmux is present the observe half must NOT widen an exec failure into a zero-session answer (the §5 absorbing-fallback / ⊤-as-answer-vs-⊤-as-ignorance conflation). So the decision (belt_observe_from_result) gates on exit success: `tmux ls` exit 0 -> parse stdout into the true session set. On FAILURE only tmux's two DOCUMENTED empty signals count as a genuine zero observation — stderr containing 'no server running' or 'no sessions' (grounded in the extdeps tmux.Session.List exit contract `1 => Unit \"No sessions\"`, dag/extdeps/tmux/tmux.dag) -> Observed []. EVERY OTHER failure (socket/permission/transient error, empty-stderr non-zero exit) is an UNKNOWABLE session set -> ObserveRefused (typed, located, carries stderr), never a blind spawn/reap. First-tick bootstrap still works: no server yields the documented 'no server running' signal -> Observed [] -> spawns proceed. The decision is a pure fn so every arm is witnessed (belt_observe_from_result witnesses); belt_observe only threads the live WitnessBin.Run result fields into it."
+
+fn tmux_ls_stderr_reports_empty(stderr: String) -> Bool {
+  string_contains(s: stderr, pattern: "no server running")
+    || string_contains(s: stderr, pattern: "no sessions")
+}
+
+fn belt_observe_from_result(
+  success: Bool,
+  stdout: String,
+  stderr: String,
+) -> BeltObserve {
+  if success {
+    Observed { live: dispatch_live_sessions(tmux_ls_output: stdout) }
+  } else {
+    if tmux_ls_stderr_reports_empty(stderr: stderr) {
+      Observed { live: [] }
+    } else {
+      ObserveRefused {
+        reason: concat(
+          "belt_observe: tmux ls exited nonzero with no documented no-server/no-sessions signal — the live session set is unknowable; fail-closed, no blind spawn/reap. stderr: ",
+          stderr,
+        ),
+      }
+    }
+  }
+}
+
+fn belt_observe(workdir: String) -> BeltObserve {
+  let ls = tmux_ls_argv()
+  if belt_program_available(program: ls.program) {
+    let result = gunbc.WitnessBin.Run(
+      workdir: workdir as FilePath,
+      bin_path: ls.program as FilePath,
+      args: ls.args,
+    )
+    belt_observe_from_result(
+      success: result.success,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    )
+  } else {
+    ObserveRefused {
+      reason: "belt_observe: tmux not found on PATH; cannot observe belt session set; fail-closed (no blind spawn/reap on an unknowable observed set)",
+    }
+  }
+}
+
+type BeltTickResult {
+  observe_refused: Bool,
+  observe_refusal_reason: String,
+  reconcile: BeltReconcile,
+  spawn_outcomes: List<BeltSpawnOutcome>,
+  teardown_outcomes: List<BeltTeardownOutcome>,
+}
+
+fn belt_tick_empty_reconcile(state: BeltRunState) -> BeltReconcile {
+  BeltReconcile {
+    run_state: state,
+    occupied: 0,
+    free: 0,
+    spawns: [],
+    deferred: 0,
+    teardowns: [],
+    refusals: [],
+  }
+}
+
+data belt_tick_note: String = "The re-runnable belt driver: observe the live session set -> decide via belt_reconcile (the sole belt decision; belt_step is its degenerate spawn-only precursor) -> actuate each planned spawn/teardown through the fail-closed exec seam. Idempotent by construction: a spawned session is observed present on the next tick, keying to its ready node as Unchanged -> noop, so re-ticking never double-spawns (the observed set closes the loop the pure decision cannot). ObserveRefused short-circuits the whole tick with a typed reason and zero actions — no spawn/reap on an unknowable observed set."
+
+fn belt_tick(
+  state: BeltRunState,
+  frontier: SpawnFrontier,
+  cap: BeltCapacity,
+  workdir: String,
+) -> BeltTickResult {
+  match belt_observe(workdir: workdir) {
+    ObserveRefused { reason: r } =>
+      BeltTickResult {
+        observe_refused: true,
+        observe_refusal_reason: r,
+        reconcile: belt_tick_empty_reconcile(state: state),
+        spawn_outcomes: [],
+        teardown_outcomes: [],
+      }
+    Observed { live: live } => {
+      let r = belt_reconcile(state: state, frontier: frontier, live: live, cap: cap)
+      BeltTickResult {
+        observe_refused: false,
+        observe_refusal_reason: "",
+        reconcile: r,
+        spawn_outcomes: r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: workdir)),
+        teardown_outcomes: r.teardowns |> map(m => belt_actuate_teardown_member(m: m, workdir: workdir)),
+      }
+    }
+  }
+}
+
+fn belt_tick_default_workdir(
+  state: BeltRunState,
+  frontier: SpawnFrontier,
+  cap: BeltCapacity,
+) -> BeltTickResult {
+  belt_tick(state: state, frontier: frontier, cap: cap, workdir: belt_actuate_workdir as String)
+}
+
+fn belt_spawn_ok(o: BeltSpawnOutcome) -> Bool {
+  match o {
+    Spawned { node_id: _, session_name: _ } => true
+    SpawnFailed { node_id: _, step: _, detail: _ } => false
+  }
+}
+
+fn belt_teardown_ok(o: BeltTeardownOutcome) -> Bool {
+  match o {
+    ReapedSession { session_name: _ } => true
+    TeardownFailed { session_name: _, detail: _ } => false
+  }
+}
+
+fn belt_tick_spawn_ok_count(t: BeltTickResult) -> Int {
+  count(t.spawn_outcomes |> filter(o => belt_spawn_ok(o: o)))
+}
+
+fn belt_tick_spawn_failed_count(t: BeltTickResult) -> Int {
+  count(t.spawn_outcomes |> filter(o => !belt_spawn_ok(o: o)))
+}
+
+fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
+  count(t.teardown_outcomes |> filter(o => belt_teardown_ok(o: o)))
+}

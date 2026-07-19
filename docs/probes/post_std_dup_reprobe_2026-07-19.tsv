@@ -1,0 +1,19 @@
+# BASELINE CAVEAT: branch_head ed68594a20 PREDATES proud-deer #6883 (assembly emit-retain follow-up).
+# Rows with ResolvedTree / InferredTree / InferredFacts first_error are EXPECTED-CLEARED by #6883 —
+# not live blockers at this baseline; next re-probe after #6883 capture is the clean layer census.
+# FreeMonoid rows (01_tokenize, fold_lowering, self_host) are the expected live layer beneath.
+# emit_produced Optional std_dup: routed to proud-deer (sanitize class generalization beyond Witness).
+module	branch_head	cssl_std_seed_link	shim_lib_rel	emit	cargo	first_error	mapped_gate	verdict	probe_notes
+src/v2/compiler/01_tokenize.dag	ed68594a20	1		22 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — expected next layer post-#6883
+src/v2/compiler/04_infer.dag	ed68594a20	1		49 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_resolve::ResolvedTree`	namespace_resolution	CONFIRMED-namespace	EXPECTED-CLEARED by #6883 (emit-retain)
+src/v2/compiler/program_partition.dag	ed68594a20	1		64 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace	EXPECTED-CLEARED by #6883 (emit-retain)
+src/v2/compiler/05_emit.dag	ed68594a20	1		58 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace	EXPECTED-CLEARED by #6883 (emit-retain)
+src/v2/compiler/05_emit_orchestration.dag	ed68594a20	1		66 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace	EXPECTED-CLEARED by #6883 (emit-retain)
+src/v2/compiler/05_eval.dag	ed68594a20	1		56 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved imports `crate::v2_compiler_infer::InferredFacts`, `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace	EXPECTED-CLEARED by #6883 (emit-retain)
+src/v2/compiler/06_translate.dag	ed68594a20	1		57 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace	EXPECTED-CLEARED by #6883 (emit-retain)
+src/v2/compiler/emit_host.dag	ed68594a20	1		67 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved imports `crate::v2_compiler_infer::InferredFacts`, `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace	EXPECTED-CLEARED by #6883 (emit-retain)
+src/v2/compiler/emit_module.dag	ed68594a20	1		59 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace	EXPECTED-CLEARED by #6883 (emit-retain)
+src/v2/compiler/emit_produced.dag	ed68594a20	1		68 files emitted, 0 diagnostics	refuse	error[E0252]: the name `Optional` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT	ROUTED proud-deer — Optional sanitize generalization (not live census blocker)
+src/v2/compiler/emit_semantic_decl.dag	ed68594a20	1		59 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace	EXPECTED-CLEARED by #6883 (emit-retain)
+src/v2/compiler/fold_lowering.dag	ed68594a20	1		41 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — expected next layer post-#6883
+src/v2/compiler/self_host.dag	ed68594a20	1		34 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — expected next layer post-#6883
