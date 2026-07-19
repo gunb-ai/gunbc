@@ -1010,6 +1010,12 @@ const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_SUBSTRINGS_DATA_NAME: &str = "witness_exclusion_substrings";
+const WITNESS_ADMISSION_OFFLINE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
+    "witness_admission_offline_exclusion_substrings";
+const WITNESS_ADMISSION_FIXTURE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
+    "witness_admission_fixture_exclusion_substrings";
+const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
+    "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
     "whole_tree_strict_resolve_exclusion_substrings";
 
@@ -7328,6 +7334,13 @@ pub struct DeferredDiscoveryRow {
     pub reads_live_tree: bool,
 }
 
+/// Phase 0(b) admission invariant refusal — an excluded witness row with zero executing consumers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnexecutedDeferredWitness {
+    pub entry: String,
+    pub function: String,
+}
+
 #[derive(Debug)]
 pub struct DiscoverySummary {
     pub total: usize,
@@ -7704,6 +7717,200 @@ pub fn collect_deferred_discovery_rows(
             .then_with(|| a.function.cmp(&b.function))
     });
     Ok(out)
+}
+
+fn witness_admission_offline_exclusion_substrings() -> Vec<String> {
+    static PATTERNS: OnceLock<Vec<String>> = OnceLock::new();
+    PATTERNS
+        .get_or_init(|| {
+            string_list_data_from_ci_layer_roots_source(
+                ci_layer_roots_authority_content(),
+                WITNESS_ADMISSION_OFFLINE_EXCLUSION_SUBSTRINGS_DATA_NAME,
+            )
+        })
+        .clone()
+}
+
+fn witness_admission_fixture_exclusion_substrings() -> Vec<String> {
+    static PATTERNS: OnceLock<Vec<String>> = OnceLock::new();
+    PATTERNS
+        .get_or_init(|| {
+            string_list_data_from_ci_layer_roots_source(
+                ci_layer_roots_authority_content(),
+                WITNESS_ADMISSION_FIXTURE_EXCLUSION_SUBSTRINGS_DATA_NAME,
+            )
+        })
+        .clone()
+}
+
+fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
+    subs.iter().any(|sub| path.contains(sub.as_str()))
+}
+
+fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
+    format!("{entry}::{function}")
+}
+
+// 🟡 dissolve-on: witness_admission_explicit_consumer_manifest — replace this hand-rolled
+// per-form scan with the `.dag`-authoritative manifest from v2.workflow.witness_admission
+// (the module-binding supply-carrier pattern: host consumes emitted manifest rows; tracked in
+// the Phase 1 (b) lane). Until then the scan is fail-closed in BOTH directions (§5): every
+// occurrence of a recognized row head either parses to a key, is a verified definition or
+// non-literal pass-through site, or PANICS with its location — a mis-parse stops the line and
+// never silently excuses an orphan; and a consumer expressed in an unrecognized form yields
+// NO key, so its deferred row surfaces as a loud orphan rather than being absorbed.
+fn witness_admission_entry_function_keys_from_source(
+    source_label: &str,
+    content: &str,
+) -> Vec<String> {
+    const WINDOW: usize = 400;
+    let mut keys: Vec<String> = Vec::new();
+    fn push_pair(keys: &mut Vec<String>, entry: &str, function: &str) {
+        let key = witness_admission_manifest_key(entry, function);
+        if !keys.iter().any(|k| k == &key) {
+            keys.push(key);
+        }
+    }
+    let heads: [(&str, &str); 4] = [
+        ("bin_wet(", "entry: String"),
+        ("probe_red(", "entry: String"),
+        ("self_host_wet_entry(", "entry: String"),
+        ("SelfHostWetReceiptBinding {", ""),
+    ];
+    for (head, def_sig) in heads {
+        let mut search_from = 0;
+        while let Some(rel) = content[search_from..].find(head) {
+            let occ = search_from + rel;
+            search_from = occ + head.len();
+            let after = &content[search_from..];
+            let window = &after[..after.len().min(WINDOW)];
+            let trimmed = window.trim_start();
+            if !def_sig.is_empty() && trimmed.starts_with(def_sig) {
+                continue;
+            }
+            if def_sig.is_empty() && content[..occ].ends_with("type ") {
+                continue;
+            }
+            let Some(entry_rel) = window.find("entry: \"") else {
+                if window.contains("entry: ") {
+                    continue;
+                }
+                panic!(
+                    "witness admission: {source_label}: `{head}` at byte {occ} has no \
+                     recognizable `entry:` argument in range — refusing; a mis-parse must \
+                     stop the line, never excuse an orphan"
+                );
+            };
+            let entry_start = entry_rel + "entry: \"".len();
+            let Some((entry, after_entry)) = window[entry_start..].split_once('"') else {
+                panic!(
+                    "witness admission: {source_label}: unterminated entry literal after \
+                     `{head}` at byte {occ} — refusing"
+                );
+            };
+            let marker = after_entry.find("f: \"").map(|p| (p, "f: \"")).or_else(|| {
+                after_entry
+                    .find("function: \"")
+                    .map(|p| (p, "function: \""))
+            });
+            let Some((fn_pos, fn_marker)) = marker else {
+                panic!(
+                    "witness admission: {source_label}: `{head}` row for entry {entry:?} at \
+                     byte {occ} has no `f:`/`function:` literal in range — refusing"
+                );
+            };
+            let fn_start = fn_pos + fn_marker.len();
+            let Some((function, _)) = after_entry[fn_start..].split_once('"') else {
+                panic!(
+                    "witness admission: {source_label}: unterminated function literal after \
+                     `{head}` row for entry {entry:?} at byte {occ} — refusing"
+                );
+            };
+            push_pair(&mut keys, entry, function);
+        }
+    }
+    keys.sort();
+    keys
+}
+
+fn witness_admission_explicit_consumer_keys() -> Vec<String> {
+    static KEYS: OnceLock<Vec<String>> = OnceLock::new();
+    KEYS.get_or_init(|| {
+        let mut keys = witness_admission_entry_function_keys_from_source(
+            "dag/gunbc/ci_layer_roots.dag",
+            ci_layer_roots_authority_content(),
+        );
+        let wet =
+            std::fs::read_to_string(workspace_root().join(WET_RECEIPT_ENROLLMENT_AUTHORITY_REL))
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "witness admission: failed to read {}: {e}",
+                        WET_RECEIPT_ENROLLMENT_AUTHORITY_REL
+                    )
+                });
+        for key in witness_admission_entry_function_keys_from_source(
+            WET_RECEIPT_ENROLLMENT_AUTHORITY_REL,
+            &wet,
+        ) {
+            if !keys.iter().any(|k| k == &key) {
+                keys.push(key);
+            }
+        }
+        keys.sort();
+        keys
+    })
+    .clone()
+}
+
+/// Phase 0(b): every deferred witness row must name an executing consumer (explicit roster,
+/// offline local recipe, or fixture explicit roster). Returns orphans — enrolled, zero consumers.
+pub fn collect_unexecuted_deferred_witnesses(
+    deferred_rows: &[DeferredDiscoveryRow],
+) -> Vec<UnexecutedDeferredWitness> {
+    let explicit = witness_admission_explicit_consumer_keys();
+    let offline = witness_admission_offline_exclusion_substrings();
+    let fixture = witness_admission_fixture_exclusion_substrings();
+    let mut orphans = Vec::new();
+    for row in deferred_rows {
+        let key = witness_admission_manifest_key(&row.entry, &row.function);
+        if explicit.iter().any(|k| k == &key) {
+            continue;
+        }
+        if path_matches_any_substring(&row.entry, &offline)
+            || path_matches_any_substring(&row.entry, &fixture)
+        {
+            continue;
+        }
+        orphans.push(UnexecutedDeferredWitness {
+            entry: row.entry.clone(),
+            function: row.function.clone(),
+        });
+    }
+    orphans
+}
+
+fn refuse_unexecuted_deferred_witnesses(
+    orphans: &[UnexecutedDeferredWitness],
+) -> Result<(), String> {
+    if orphans.is_empty() {
+        return Ok(());
+    }
+    let mut lines: Vec<String> = orphans
+        .iter()
+        .take(8)
+        .map(|o| format!("{} ({})", o.function, o.entry))
+        .collect();
+    if orphans.len() > 8 {
+        lines.push(format!("… and {} more orphan row(s)", orphans.len() - 8));
+    }
+    Err(format!(
+        "WITNESS ADMISSION REFUSAL cause=UnexecutedDeferredWitness count={} — enrolled \
+         witness row(s) excluded from discovery name zero executing consumers (Phase 0(b) \
+         admission invariant); each excluded row must be on falsifier_self_host_wet, \
+         bin_witness_wet, known_red_probe, offline, or fixture explicit roster: {}",
+        orphans.len(),
+        lines.join("; ")
+    ))
 }
 
 fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
@@ -9927,6 +10134,8 @@ pub fn run_discovery_corpus_with_options(
     } else {
         collect_deferred_discovery_rows(source_roots, &options.exclude_substrings)?
     };
+    let admission_orphans = collect_unexecuted_deferred_witnesses(&deferred_rows);
+    refuse_unexecuted_deferred_witnesses(&admission_orphans)?;
     eprintln_deferred_discovery_rows(&deferred_rows);
     set_phase(FloorPhase::Discovery, "discovery-roster");
     let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
@@ -12580,6 +12789,45 @@ mod node_frontier_plumbing_controls {
             "exclude reason must name the long-lane substring: got {}",
             s1.exclude_reason
         );
+    }
+
+    // Phase 0(b) admission invariant: every deferred witness row names an executing consumer.
+    #[test]
+    fn witness_admission_deferred_rows_have_consumers() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let excludes = super::witness_exclusion_substrings();
+        let deferred =
+            super::collect_deferred_discovery_rows(&roots, &excludes).expect("deferred scan");
+        let orphans = super::collect_unexecuted_deferred_witnesses(&deferred);
+        super::refuse_unexecuted_deferred_witnesses(&orphans)
+            .unwrap_or_else(|e| panic!("live deferred corpus must admit every row: {e}"));
+        let normalize = deferred
+            .iter()
+            .find(|r| r.function == "self_host_03_normalize_behavioral_receipt_holds")
+            .expect("03_normalize behavioral receipt must be deferred from discovery");
+        assert!(
+            normalize
+                .entry
+                .contains("self_host_03_normalize_behavioral_witness_test"),
+            "03_normalize receipt entry: got {}",
+            normalize.entry
+        );
+    }
+
+    #[test]
+    fn witness_admission_orphan_synthetic_row_refuses() {
+        let orphan = super::DeferredDiscoveryRow {
+            entry: "dag/test/claim/synthetic_orphan_admission_witness_test.dag".to_string(),
+            function: "synthetic_orphan_no_consumer_holds".to_string(),
+            exclude_reason: "synthetic_orphan_admission_witness_test.dag".to_string(),
+            reads_live_tree: false,
+        };
+        let orphans = super::collect_unexecuted_deferred_witnesses(&[orphan]);
+        assert_eq!(orphans.len(), 1);
+        let err = super::refuse_unexecuted_deferred_witnesses(&orphans).expect_err("orphan");
+        assert!(err.contains("UnexecutedDeferredWitness"));
     }
 
     // Phase 0 receipt (module-identity-storage-binding): the 03_normalize behavioral
