@@ -1,0 +1,8 @@
+module test.claim.zz_yaml_probe
+
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import gunbc.ci_workflow { ci_workflow }
+
+fn probe_tree() -> extdeps.languages.yaml.types.YamlValue {
+  project_workflow_to_yaml(workflow: ci_workflow)
+}
