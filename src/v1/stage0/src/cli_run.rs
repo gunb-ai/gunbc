@@ -57,8 +57,8 @@ fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypeche
     }
 }
 
-fn log_discovery_advisory_typecheck(
-    d: &Rc<ErrorNode>,
+fn log_discovery_advisory_typecheck_batch(
+    diagnostics: &[Rc<ErrorNode>],
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
     gate: ResolveTypecheckGate,
 ) {
@@ -70,13 +70,42 @@ fn log_discovery_advisory_typecheck(
     // interpreter-blocking, so this is a no-op for them; it wires UnlistedImportUse
     // (advisory + non-blocking, the diagnostic-collect signal) into the reporting path
     // instead of leaving it emitted-but-unobservable (§5 spec-without-execution).
-    if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
+    //
+    // UnlistedImportUse renders as ONE counted line per closure, not per-row: the
+    // namespace wave dissolves the import-name-list invariant this scaffold checks,
+    // so per-row output floods every CI resolve with thousands of repeated lines
+    // (each group re-typechecks the same modules). The count keeps the ledger
+    // observable; GUNBC_ADVISORY_ROWS=1 restores per-row output for diagnosis.
+    let render_rows = std::env::var("GUNBC_ADVISORY_ROWS").is_ok_and(|v| v == "1");
+    let mut unlisted_rows: u64 = 0;
+    let mut unlisted_files: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for d in diagnostics {
+        if !is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
+            continue;
+        }
+        let is_unlisted = matches!(
+            d.diagnostic.as_ref(),
+            CompilerDiagnostic::UnlistedImportUse { .. }
+        );
+        if is_unlisted && !render_rows {
+            let span = diagnostic_to_span(d.diagnostic.clone());
+            unlisted_rows += 1;
+            unlisted_files.insert(span.file.clone());
+            continue;
+        }
         let span = diagnostic_to_span(d.diagnostic.clone());
         let loc = format_error_loc(&span.file, span.start, source_indices);
         eprintln!(
             "advisory(typecheck): {}: error: {}",
             loc,
             diagnostic_to_message(d.diagnostic.clone())
+        );
+    }
+    if unlisted_rows > 0 {
+        eprintln!(
+            "advisory(typecheck): {} unlisted-import-use row(s) across {} file(s) in this closure (namespace burndown ledger; GUNBC_ADVISORY_ROWS=1 for per-row output)",
+            unlisted_rows,
+            unlisted_files.len()
         );
     }
 }
@@ -5081,9 +5110,7 @@ fn resolved_graph_from_sources_with_index(
         s.reconcile_assembly += reconcile_total.saturating_sub(s.typecheck_compute + s.parent_envs);
     });
 
-    for d in typed.diagnostics.iter() {
-        log_discovery_advisory_typecheck(d, &source_indices, typecheck_gate);
-    }
+    log_discovery_advisory_typecheck_batch(&typed.diagnostics, &source_indices, typecheck_gate);
     let has_type_errors = typed
         .diagnostics
         .iter()
@@ -5984,10 +6011,16 @@ fn resolved_graph_from_sources(
             .iter()
             .map(|idx| (idx.file.clone(), idx.clone()))
             .collect();
+        let advisory_rows: Vec<Rc<ErrorNode>> = result
+            .diagnostics
+            .iter()
+            .filter(|d| !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate))
+            .cloned()
+            .collect();
+        log_discovery_advisory_typecheck_batch(&advisory_rows, &si, typecheck_gate);
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
             if !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate) {
-                log_discovery_advisory_typecheck(d, &si, typecheck_gate);
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());
