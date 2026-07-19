@@ -106,6 +106,24 @@ fn write_compiler_seed_reexport(dest: &Path, seed_mod: &str) -> Result<(), Assem
     Ok(())
 }
 
+/// Membership in the gunbc-emitted closure: module listed in emitted `src/lib.rs`
+/// and backed by an emitted `src/{module}.rs`. The assembly loop only visits
+/// such modules; `seed lib.rs` `pub mod` presence is an external-oracle fact and
+/// must not trigger seed-replace for closure members (seed stubs may lack
+/// gunbc-emitted type surface — e.g. `ResolvedTree` in `v2_compiler_resolve`).
+fn is_emitted_closure_member(emitted_lib_rs: &Path, module: &str, dest: &Path) -> bool {
+    dest.is_file()
+        && parse_closure_mods(emitted_lib_rs)
+            .map(|mods| mods.iter().any(|m| m == module))
+            .unwrap_or(false)
+}
+
+fn is_compiler_family_module(module: &str) -> bool {
+    module.starts_with("v2_compiler_")
+        || module.starts_with("extdeps_")
+        || module.starts_with("v1_compiler_")
+}
+
 /// SCAFFOLD — see `cssl_emit_artifact_sanitize_scaffold_debt` in
 /// `dag/tools/self_host_curated_seed_linked_harness.dag`. String-scrub on emitted
 /// `v2_std_witness.rs` only; dissolve-on #6775 emitter defects. The `v2_std_integer.rs`
@@ -196,14 +214,13 @@ pub fn assemble_seed_linked_closure(
             });
         }
 
-        if module.starts_with("v2_compiler_")
-            || module.starts_with("extdeps_")
-            || module.starts_with("v1_compiler_")
-        {
-            if seed_has_pub_mod(&seed_lib_rs, &module)? {
+        if is_compiler_family_module(&module) {
+            if is_emitted_closure_member(&emitted_lib_rs, &module, &dest) {
+                // Structural: closure manifest membership → emit-retain (gunbc surface).
+                sanitize_emitter_artifact_in_place(&dest)?;
+            } else if seed_has_pub_mod(&seed_lib_rs, &module)? {
                 write_compiler_seed_reexport(&dest, &module)?;
             } else {
-                // Former RefusedDep arm → emit-retain; cargo is the refusal surface.
                 sanitize_emitter_artifact_in_place(&dest)?;
             }
             continue;
@@ -322,6 +339,111 @@ mod tests {
         assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/std_error_primitives.rs")).expect("read");
         assert!(kept.contains("emitted std_error_primitives"));
+    }
+
+    #[test]
+    fn closure_compiler_mod_emit_retained_when_seed_also_has_pub_mod() {
+        let root = temp_fixture_root();
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(
+            out.join("src/lib.rs"),
+            "pub mod v2_compiler_resolve;\npub mod v2_compiler_infer;\n",
+        )
+        .expect("lib");
+        fs::write(
+            src.join("v2_compiler_resolve.rs"),
+            "pub struct ResolvedTree;\n",
+        )
+        .expect("resolve");
+        fs::write(src.join("v2_compiler_infer.rs"), "// entry\n").expect("infer");
+        let seed_src = root.join("seed/src");
+        fs::create_dir_all(&seed_src).expect("seed dir");
+        fs::write(
+            seed_src.join("lib.rs"),
+            "pub mod v2_compiler_resolve;\npub mod v2_compiler_infer;\n",
+        )
+        .expect("seed lib");
+        fs::write(seed_src.join("v2_compiler_resolve.rs"), "// seed stub\n").expect("seed");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/04_infer.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.infer\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
+        assert!(
+            kept.contains("pub struct ResolvedTree"),
+            "closure member must stay emit-retained, not seed-shimmed"
+        );
+        assert!(!kept.contains("pub use v1_compiler::"));
+    }
+
+    #[test]
+    fn deliberate_red_control_broken_closure_dep_surfaces_at_cargo() {
+        let root = temp_fixture_root();
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(
+            out.join("src/lib.rs"),
+            "pub mod v2_compiler_tokenize;\npub mod v2_compiler_resolve;\n",
+        )
+        .expect("lib");
+        fs::write(src.join("v2_compiler_tokenize.rs"), "// entry\n").expect("entry");
+        fs::write(
+            src.join("v2_compiler_resolve.rs"),
+            "pub fn broken_syntax(] {}\n",
+        )
+        .expect("broken dep");
+        let seed_src = root.join("seed/src");
+        fs::create_dir_all(&seed_src).expect("seed dir");
+        fs::write(
+            seed_src.join("lib.rs"),
+            "pub mod v2_compiler_resolve;\npub mod v2_compiler_tokenize;\n",
+        )
+        .expect("seed lib");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/01_tokenize.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
+        assert!(
+            kept.contains("broken_syntax"),
+            "emit-retain must not mask broken dep bytes"
+        );
+        fs::write(
+            out.join("Cargo.toml"),
+            "[package]\nname = \"red_control\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n",
+        )
+        .expect("cargo");
+        let status = std::process::Command::new("cargo")
+            .args(["build", "--lib"])
+            .current_dir(&out)
+            .env("RUSTC_WRAPPER", "")
+            .status()
+            .expect("cargo");
+        assert!(
+            !status.success(),
+            "deliberate-red: broken closure dep must refuse cargo"
+        );
     }
 
     #[test]
