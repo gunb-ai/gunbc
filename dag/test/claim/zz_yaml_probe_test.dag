@@ -1,8 +1,8 @@
 module test.claim.zz_yaml_probe
 
-import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
-import gunbc.ci_workflow { ci_workflow }
+import v2.compiler.emit_orchestration { orch_emit_join2 }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 
-fn probe_tree() -> extdeps.languages.yaml.types.YamlValue {
-  project_workflow_to_yaml(workflow: ci_workflow)
+fn probe_join2() -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
+  orch_emit_join2(left: "echo a", right: "echo b", medium: bash_orchestration_emit_medium())
 }
