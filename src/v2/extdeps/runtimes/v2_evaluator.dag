@@ -87,7 +87,6 @@ import v2.std.runtime {
   runtime_value_resolved_type
 }
 import v2.std.witness { Violates, Witness }
-
 type V4EvaluatorRuntime {
   runtime_identity: Symbol
   core: ModelCore

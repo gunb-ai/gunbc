@@ -1,10 +1,7 @@
 module std.change
 
-
 import std.types { List, Bool }
 import std.algebra { Monoid }
-
-
 type KeyedRow<K, V> {
   row_key: K
   value: V

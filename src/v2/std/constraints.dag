@@ -1,6 +1,5 @@
 module v2.std.constraints
 
-
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,

@@ -1,5 +1,29 @@
 module v2.workflow.ci_floor_peak_emit_test
 
+import v2.workflow.ci_floor_peak_emit {
+  ci_cgroup_peak_locate_shell,
+  ci_floor_peak_pre_script,
+  ci_floor_peak_post_script,
+  ci_floor_peak_pre_pipeline,
+  ci_floor_peak_post_pipeline,
+  ci_floor_peak_pre_reset_ok_command,
+  ci_floor_peak_echo_reset_redirect_command
+}
+import v2.compiler.emit_orchestration { orch_emit_pipeline }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.orchestration {
+  Do,
+  ExitZero,
+  FailFast,
+  If,
+  Pipeline,
+  PipelineStep,
+  Run
+}
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, None, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ci_floor_peak_emit_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of the orch_* grammar row spellings in src/v2/extdeps/languages/bash.dag: byte tests compare the emitter (and the production seam) against these literals so a row/segment/emitter regression cannot go green by perturbing both sides at once (#6467 ci_cargo_eagain_retry_core_golden pattern). The committed .github/workflows/ci.yml drift gate is the corpus-level twin of the production seam."

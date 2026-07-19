@@ -8,8 +8,6 @@ import extdeps.accounting.budget {
   AdmissionState, admit_all
 }
 
-
-
 type BudgetPriority = Guaranteed | Burstable | BestEffort
 
 type BudgetClaim {

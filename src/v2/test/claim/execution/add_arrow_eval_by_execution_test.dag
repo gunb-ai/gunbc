@@ -1,5 +1,113 @@
 module v2.test.execution.add_arrow_eval_by_execution
 
+import v2.compiler.ingested_fixture_arrows {
+  ingested_add_module_source
+}
+import v2.compiler.parse { parse_module }
+import v2.test.complexity_gate.table_fixture_add_subject_producer {
+  table_fixture_add_arrow_with_body
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval,
+  eval_context_v4_evaluator,
+  inputs_root_only,
+  run_test_claim,
+  test_claim_run_verdict,
+  test_claim_typed_input_node
+}
+import v2.extdeps.runtimes.v2_evaluator {
+  v2_eval_allocate_literal,
+  v2_evaluator_interpretation
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.normalize { normalize }
+import v2.compiler.resolve { resolve }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_int_literal_node_from_lexeme,
+  dag_language_model
+}
+import v2.std.collection { Absent, List, Map, Optional, Present, list_at_optional, map_insert }
+import v2.std.compilers.lexing { Token, TokenStream }
+import v2.std.grammar { ParseTree }
+import v2.std.cardinality {
+  RankingDimension,
+  TerminationProof,
+  termination_proof_witness_for_node
+}
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.compilers.lexing { Token }
+import v2.std.integer {
+  Int,
+  integer_int_to_signed_i32_le_bytes,
+  integer_signed_i32_le_bytes_to_int
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Branch,
+  ComputationNode,
+  Conj,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  Continue,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  LoopInterpreter,
+  MatchInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter,
+  runtime_reject_match_arm
+}
+import v2.std.witness { Holds, Witness }
+import v2.std.verdict { Pass }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  UnifiedTestClaim,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -155,13 +263,23 @@ fn add_arrow_eval_context() -> EvalContext {
   eval_context_v4_evaluator()
 }
 
+fn add_arrow_eval_parse_tokens(tokens: TokenStream) -> Outcome<ParseTree> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: parse_module(tokens: tokens, grammar: lm.grammar),
+    f: fn(artifact) {
+      outcome_accepted(value: artifact.tree)
+    }
+  )
+}
+
 fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
   let lm = dag_language_model()
   bind_outcome(
-    o: tokenize(text: dag_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
+    o: tokenize(text: ingested_add_module_source, file: ^add_arrow_eval_source_file, rules: lm.lex),
     f: fn(tokens) {
       bind_outcome(
-        o: source_bridged_add_parse_tokens(tokens: token_stream_remaining(stream: tokens)),
+        o: add_arrow_eval_parse_tokens(tokens: tokens),
         f: fn(parsed) {
           bind_outcome(
             o: normalize(parse_tree: parsed),
@@ -180,14 +298,9 @@ fn add_arrow_source_ingested_add_infers() -> Outcome<InferredTree> {
   )
 }
 
-fn add_arrow_eval_tokenize_source() -> Outcome<List<Token>> {
+fn add_arrow_eval_tokenize_source() -> Outcome<TokenStream> {
   let lm = dag_language_model()
-  bind_outcome(
-    o: tokenize(text: dag_source_text, file: ^add_arrow_eval_source_file, rules: lm.lex),
-    f: fn(tokens) {
-      outcome_accepted(value: token_stream_all(stream: tokens))
-    }
-  )
+  tokenize(text: ingested_add_module_source, file: ^add_arrow_eval_source_file, rules: lm.lex)
 }
 
 fn add_arrow_eval_tokenize_holds() -> Bool {
@@ -200,7 +313,7 @@ fn add_arrow_eval_tokenize_holds() -> Bool {
 fn add_arrow_eval_parse_holds() -> Bool {
   match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match source_bridged_add_parse_tokens(tokens: tokens) {
+      match add_arrow_eval_parse_tokens(tokens: tokens) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -211,7 +324,7 @@ fn add_arrow_eval_parse_holds() -> Bool {
 fn add_arrow_eval_normalize_holds() -> Bool {
   match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match source_bridged_add_parse_tokens(tokens: tokens) {
+      match add_arrow_eval_parse_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
             Accepted { value: _, diagnostics: _ } => true
@@ -227,7 +340,7 @@ fn add_arrow_eval_resolve_holds() -> Bool {
   let lm = dag_language_model()
   match add_arrow_eval_tokenize_source() {
     Accepted { value: tokens, diagnostics: _ } =>
-      match source_bridged_add_parse_tokens(tokens: tokens) {
+      match add_arrow_eval_parse_tokens(tokens: tokens) {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
             Accepted { value: normalized, diagnostics: _ } =>
@@ -514,7 +627,7 @@ fn add_arrow_eval_source_pipeline_admits_add_holds() -> Bool {
 }
 
 fn add_arrow_eval_canonical_tree_infers_holds() -> Bool {
-  match produce_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_eval_inferred_run_tree(
         callee: arrow,
@@ -534,7 +647,7 @@ fn add_arrow_eval_runtime_value_is_n(value: RuntimeValue, n: Int) -> Bool {
 }
 
 fn add_arrow_eval_direct_runtime_holds() -> Bool {
-  match source_bridged_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_eval_add_call_optional(callee: arrow, left_lex: "2", right_lex: "3") {
         Present { value: call_node } =>
@@ -563,7 +676,7 @@ fn add_arrow_eval_direct_runtime_holds() -> Bool {
 }
 
 fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
-  match source_bridged_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
@@ -578,7 +691,7 @@ fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
 }
 
 fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
-  match produce_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
@@ -593,7 +706,7 @@ fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
 }
 
 fn add_arrow_eval_generality_executes_holds() -> Bool {
-  match source_bridged_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
@@ -623,7 +736,7 @@ fn add_arrow_eval_swapped_operands_claim_passes() -> Bool {
 }
 
 fn add_arrow_eval_wrong_value_red_holds() -> Bool {
-  match produce_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       add_arrow_eval_run_passes(
         run: add_arrow_eval_run(
@@ -660,7 +773,7 @@ fn add_arrow_excess_body_red_holds() -> Bool {
 }
 
 fn add_arrow_excess_actual_executes_to_five() -> Bool {
-  match produce_add_arrow_with_body() {
+  match table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
       match add_arrow_excess_actual_call_optional(callee: arrow) {
         Present { value: call_node } =>

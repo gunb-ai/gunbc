@@ -20,7 +20,6 @@ import v2.workflow.scheduler {
   scheduler_step_plan_from_dependencies
 }
 
-
 type ExecutorJob {
   node: Node
 }

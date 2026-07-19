@@ -3,6 +3,4 @@ module std.string_type
 import std.algebra { FreeMonoid }
 import std.types { Char }
 
-
-
 type String = FreeMonoid<Char>

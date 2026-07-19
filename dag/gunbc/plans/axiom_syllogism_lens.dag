@@ -4,8 +4,6 @@ import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
 import std.markdown { MarkdownBlock, TableBlock, BlockquoteBlock, AlignNone, ThematicBreak }
 import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row }
 
-
-
 fn axiom_syllogism_lens_body() -> List<MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "**SCOPE-ONLY design.** This doc partitions syllogism-enforcement into the [expressibility-frontier](expressibility-frontier.md)'s three regions (① wall · ② lens-residue · ③ undecidable-review) and designs how A1–A3 plus the §1–§7 consequence chain are modeled in `.dag`, with **DESIGN.md itself as the first target** (the §7 recursion). It builds nothing — it exists for the operator nod before any carrier or witness lands. DESIGN refs: §1 (axioms A1–A3; displaced cost), §3 (single authority — turned on the argument), §4 (acyclic substrate — *the acyclicity test turned on the argument itself*), §5 (fail-closed; the \"never\" trap; construction over validation), §6 (lens as residue), §7 (recursion — this document as the first target). Closes DESIGN open thread #1.")] },

@@ -1,5 +1,38 @@
 module v2.test.manual.diagnostic_assert_eval
 
+import v2.compiler.eval {
+  TestClaimEvalSubject,
+  aggregate_verdicts,
+  eval_diagnostic,
+  run_test_claim_assert
+}
+import v2.std.verdict { Verdict, Pass, Deferred, SemanticMismatch, BuildFailed, RunFailed }
+import v2.std.node { Node }
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  node_locus,
+  NonEmptyDiagnostics,
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  Unavailable,
+  diagnostics_singleton,
+  outcome_node_eq
+}
+import v2.std.collection { List }
+import v2.std.node { Node, Symbol }
+import v2.std.verification {
+  DiagnosticClaim,
+  TestClaim,
+  ManualAnchorAbsent,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.test.manual.connective_anchors { stub_empty_conj }
 fn diag_assert_node() -> Node {
   stub_empty_conj
 }
@@ -65,7 +98,9 @@ data witness_diagnostic_assert_match_pass: Bool = match run_test_claim_assert(
   at: diag_assert_node()
 ) {
   Pass => true
-  Fail { actual: _, falsification: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -75,7 +110,9 @@ data witness_diagnostic_assert_mismatch_fail: Bool = match run_test_claim_assert
   at: diag_assert_node()
 ) {
   Pass => false
-  Fail { actual: _, falsification: _ } => true
+  SemanticMismatch { actual: _, falsification: _ } => true
+    BuildFailed { actual: _, diagnostic: _ } => true
+    RunFailed { actual: _, diagnostic: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -89,13 +126,17 @@ data witness_diagnostic_assert_accepted_fail: Bool = match run_test_claim_assert
   at: diag_assert_node()
 ) {
   Pass => false
-  Fail { actual: _, falsification: _ } => true
+  SemanticMismatch { actual: _, falsification: _ } => true
+    BuildFailed { actual: _, diagnostic: _ } => true
+    RunFailed { actual: _, diagnostic: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
 
 data witness_aggregate_empty_fail: Bool = match aggregate_verdicts(rs: empty_node_verdicts(), at: diag_assert_node()) {
   Pass => false
-  Fail { actual: _, falsification: _ } => true
+  SemanticMismatch { actual: _, falsification: _ } => true
+    BuildFailed { actual: _, diagnostic: _ } => true
+    RunFailed { actual: _, diagnostic: _ } => true
   Deferred { actual: _, diagnostic: _ } => false
 }
 
@@ -108,6 +149,8 @@ fn deferred_verdict() -> Verdict<TestClaimEvalSubject<Node>, Node> {
 
 data witness_aggregate_deferred_blocks_pass: Bool = match aggregate_verdicts(rs: [Pass, deferred_verdict()], at: diag_assert_node()) {
   Pass => false
-  Fail { actual: _, falsification: _ } => false
+  SemanticMismatch { actual: _, falsification: _ } => false
+    BuildFailed { actual: _, diagnostic: _ } => false
+    RunFailed { actual: _, diagnostic: _ } => false
   Deferred { actual: _, diagnostic: _ } => true
 }
