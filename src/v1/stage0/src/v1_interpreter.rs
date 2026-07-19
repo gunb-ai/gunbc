@@ -692,12 +692,24 @@ pub enum InterpError {
         limit_bytes: usize,
         argv0: String,
     },
+    /// Application-site contract mismatch: the caller's argument list does not match the
+    /// callee's declared parameter list. Typed and located (callee + the offending label)
+    /// so the line stops at the application site instead of surfacing later as a
+    /// `NoSuchVariable` for an unbound parameter — or, worse, not surfacing at all when
+    /// the mismatched names happen to overlap. DESIGN §5: a failure arm refuses, never widens.
+    CallContractMismatch {
+        callee: String,
+        detail: String,
+    },
 }
 
 impl fmt::Display for InterpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             InterpError::NoSuchFunction { name } => write!(f, "no such function: {}", name),
+            InterpError::CallContractMismatch { callee, detail } => {
+                write!(f, "call contract mismatch calling '{}': {}", callee, detail)
+            }
             InterpError::NoMainFunction => write!(f, "no main function found"),
             InterpError::NoSuchVariable { name } => write!(f, "undefined variable: {}", name),
             InterpError::NoSuchField { type_name, field } => {
@@ -1696,10 +1708,36 @@ fn call_function_inner(
         let mut positional_idx = 0;
         for (opt_name, val) in args {
             if let Some(name) = opt_name {
+                // A caller label that names no declared parameter is a contract mismatch, not
+                // an extra binding: inserting it would shadow nothing the body reads while the
+                // real parameter stays unbound. Refuse here (typed, located) rather than let the
+                // body fail later as `NoSuchVariable` — or silently compute when the stray label
+                // happens to collide with another in-scope name.
+                if !all_param_names.iter().any(|p| p == name) {
+                    return Err(InterpError::CallContractMismatch {
+                        callee: fn_node.name.clone(),
+                        detail: format!(
+                            "no parameter named '{}' (declared: [{}])",
+                            name,
+                            all_param_names.join(", ")
+                        ),
+                    });
+                }
                 bindings.insert(ctx.sym(name), val.clone());
             } else if positional_idx < param_names.len() {
                 bindings.insert(ctx.sym(&param_names[positional_idx]), val.clone());
                 positional_idx += 1;
+            } else {
+                // The pre-existing `else if` guard dropped surplus positional arguments on the
+                // floor. Silently discarding an evaluated argument is the §5 absorbing arm.
+                return Err(InterpError::CallContractMismatch {
+                    callee: fn_node.name.clone(),
+                    detail: format!(
+                        "too many positional arguments: {} supplied, {} positional parameter(s) declared",
+                        args.len(),
+                        param_names.len()
+                    ),
+                });
             }
         }
     }
