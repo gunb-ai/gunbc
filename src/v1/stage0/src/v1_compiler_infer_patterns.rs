@@ -7,11 +7,9 @@ pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitBool;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_env::{
-    lookup_type, lookup_type_by_name, qualified_last_segment, symbol_index_lookup,
-};
+pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name, symbol_index_lookup};
 pub use crate::v1_compiler_infer_resolve::{
-    is_user_generic_use_site, resolve_generic_use_decl, resolve_node, substitute_type_slots_scoped,
+    is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
@@ -86,19 +84,21 @@ pub fn expand_scrut_from_decl(
             && (decl.connective.clone() == Connective::NoConnective))
             && ((decl.children.clone().len() as i64) == 0));
         if decl_is_disj.clone() {
-            if (decl.params.clone().len() as i64) > 0
-                && (scrut_node.children.clone().len() as i64) > 0
+            if (((decl.params.clone().len() as i64) > 0)
+                && ((scrut_node.children.clone().len() as i64) > 0))
             {
-                let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                substitute_type_slots_scoped(
-                    decl.clone(),
-                    subst.clone(),
-                    authored_name_at(env.source_indices.clone(), decl.clone()),
-                    env.source_indices.clone(),
-                    true,
-                )
+                {
+                    let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
+                    substitute_type_slots_scoped(
+                        decl.clone(),
+                        subst.clone(),
+                        authored_name_at(env.source_indices.clone(), decl.clone()),
+                        env.source_indices.clone(),
+                        true,
+                    )
+                }
             } else {
-                decl
+                decl.clone()
             }
         } else {
             if has_inferred_alias.clone() {
@@ -116,20 +116,24 @@ pub fn expand_scrut_from_decl(
                     }
                     _ => scrut_node.clone(),
                 }
-            } else if decl.connective.clone() == Connective::Conj
-                && (decl.params.clone().len() as i64) > 0
-                && (scrut_node.children.clone().len() as i64) > 0
-            {
-                let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
-                substitute_type_slots_scoped(
-                    decl.clone(),
-                    subst.clone(),
-                    authored_name_at(env.source_indices.clone(), decl.clone()),
-                    env.source_indices.clone(),
-                    true,
-                )
             } else {
-                scrut_node.clone()
+                if (((decl.connective.clone() == Connective::Conj)
+                    && ((decl.params.clone().len() as i64) > 0))
+                    && ((scrut_node.children.clone().len() as i64) > 0))
+                {
+                    {
+                        let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
+                        substitute_type_slots_scoped(
+                            decl.clone(),
+                            subst.clone(),
+                            authored_name_at(env.source_indices.clone(), decl.clone()),
+                            env.source_indices.clone(),
+                            true,
+                        )
+                    }
+                } else {
+                    scrut_node.clone()
+                }
             }
         }
     }
@@ -163,29 +167,33 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                                     Some(InferredNode::Resolved { node: target, .. }) => {
                                         let target_is_disj =
                                             (target.connective.clone() == Connective::Disj);
-                                        let target_is_generic_use = (target.connective.clone()
+                                        let target_is_generic_use = ((target.connective.clone()
                                             == Connective::NoConnective)
-                                            && ((target.children.clone().len() as i64) > 0);
+                                            && ((target.children.clone().len() as i64) > 0));
                                         if target_is_disj.clone() {
                                             target.clone()
-                                        } else if target_is_generic_use {
-                                            let subst = generic_use_slot_bindings(
-                                                scrut_node.clone(),
-                                                env.clone(),
-                                            );
-                                            let substituted = substitute_type_slots_scoped(
-                                                target.clone(),
-                                                subst.clone(),
-                                                name.clone(),
-                                                env.source_indices.clone(),
-                                                true,
-                                            );
-                                            expand_scrut_type_for_variant_lookup(
-                                                substituted.clone(),
-                                                env.clone(),
-                                            )
                                         } else {
-                                            scrut_node.clone()
+                                            if target_is_generic_use.clone() {
+                                                {
+                                                    let subst = generic_use_slot_bindings(
+                                                        scrut_node.clone(),
+                                                        env.clone(),
+                                                    );
+                                                    let substituted = substitute_type_slots_scoped(
+                                                        target.clone(),
+                                                        subst.clone(),
+                                                        name.clone(),
+                                                        env.source_indices.clone(),
+                                                        true,
+                                                    );
+                                                    expand_scrut_type_for_variant_lookup(
+                                                        substituted.clone(),
+                                                        env.clone(),
+                                                    )
+                                                }
+                                            } else {
+                                                scrut_node.clone()
+                                            }
                                         }
                                     }
                                     _ => scrut_node.clone(),
@@ -548,7 +556,7 @@ pub fn lookup_variant_in_type(
             if v1_rt::contains(variant_name.clone(), ".".to_string()) {
                 match symbol_index_lookup(env.symbol_index.clone(), variant_name.clone()) {
                     Some(resolved) => {
-                        if resolved.connective.clone() == Connective::Disj {
+                        if (resolved.connective.clone() == Connective::Disj) {
                             match find_child_named(
                                 resolved.clone(),
                                 qualified_last_segment(variant_name.clone()),
@@ -852,7 +860,7 @@ pub fn check_match_exhaustiveness(
                                                 )
                                             }
                                         }
-                                        LiteralValue::LitNull { .. } => v1_rt::rc_map_insert(
+                                        LiteralValue::LitNull => v1_rt::rc_map_insert(
                                             acc.clone(),
                                             "Absent".to_string(),
                                             true,

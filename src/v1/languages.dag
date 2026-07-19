@@ -1,5 +1,11 @@
 module v1.compiler.languages
 
+import v1.compiler.artifact { RenderTarget }
+
+import extdeps.languages.dag.syntax { dag_operators }
+
+import std.syntax { AlgebraFieldKind, BinOp, ItemForm, ItemFormKind, OperatorSpec }
+
 import extdeps.languages.dag.emit {
   dag_async_prefix, dag_enum_keyword, dag_error_expr_template, dag_error_type_template, dag_func_keyword, dag_import_from_keyword,
   dag_import_keyword, dag_lambda_template, dag_list_literal_empty, dag_list_literal_template, dag_module_keyword, dag_null_coalesce_template,

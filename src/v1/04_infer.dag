@@ -72,7 +72,8 @@ import v1.compiler.infer_types {
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
   resolved_type, child_type_node, is_type_expr_annotation,
-  emit_map_has
+  emit_map_has,
+  callable_return_type
 }
 import v1.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -91,7 +92,8 @@ import v1.compiler.infer_env {
   SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
-  ServiceCensusEntry, qualify_decl_reference_positions
+  ServiceCensusEntry, qualify_decl_reference_positions,
+  lookup_binding_by_name
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -156,7 +158,8 @@ import v1.compiler.infer_patterns {
   lookup_variant_in_type, lookup_field_in_variant,
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
-  check_match_exhaustiveness
+  check_match_exhaustiveness,
+  expand_scrut_type_for_variant_lookup
 }
 import v1.compiler.infer_lookup {
   KnownMethodResolution,
@@ -164,7 +167,8 @@ import v1.compiler.infer_lookup {
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig
+  lookup_in_scope, lookup_func_sig,
+  global_bare_callable_node
 }
 import v1.compiler.infer_access {
   AccessCheckResultNode,

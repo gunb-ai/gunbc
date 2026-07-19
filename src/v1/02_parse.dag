@@ -46,7 +46,8 @@ import v1.std.core {
   error_type, is_compiler_error,
   node_name_span, no_span,
   NewlineIndex, authored_name_at, kernel_span,
-  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens
+  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
+  field_access_base
 }
 
 import std.syntax {
