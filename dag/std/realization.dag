@@ -2,6 +2,7 @@ module std.realization
 
 import std.types { Bool, String, List }
 import std.effects {
+  KeySource,
   EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
   key_source_eq, create_double_init_collapsible
 }

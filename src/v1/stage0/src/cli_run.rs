@@ -666,6 +666,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn effect_reach_inference_bridge_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER,
+            "cli_run_effect_reach_inference_bridge"
+        );
+    }
+
+    #[test]
     fn truncate_histogram_label_respects_utf8_boundaries() {
         let max = 80;
         let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
@@ -1002,6 +1010,12 @@ const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 const WITNESS_EXCLUSION_SUBSTRINGS_DATA_NAME: &str = "witness_exclusion_substrings";
+const WITNESS_ADMISSION_OFFLINE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
+    "witness_admission_offline_exclusion_substrings";
+const WITNESS_ADMISSION_FIXTURE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
+    "witness_admission_fixture_exclusion_substrings";
+const WET_RECEIPT_ENROLLMENT_AUTHORITY_REL: &str =
+    "src/v2/compiler/self_host/wet_receipt_enrollment.dag";
 const WHOLE_TREE_STRICT_RESOLVE_EXCLUSION_SUBSTRINGS_DATA_NAME: &str =
     "whole_tree_strict_resolve_exclusion_substrings";
 
@@ -3384,6 +3398,9 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_paths) {
         return Ok(false);
     }
+    if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
+        return Ok(false);
+    }
     Ok(true)
 }
 
@@ -3459,6 +3476,10 @@ fn resolve_discovery_entry_for_corpus_row(
             };
             let entry_runtime_dependency_touched =
                 runtime_data_dependency_touched_via_carrier_closure(
+                    entry_path,
+                    &index.module_graph_facts,
+                    touched_entry_paths,
+                ) || effect_reach_touched_via_path_literals(
                     entry_path,
                     &index.module_graph_facts,
                     touched_entry_paths,
@@ -7313,6 +7334,13 @@ pub struct DeferredDiscoveryRow {
     pub reads_live_tree: bool,
 }
 
+/// Phase 0(b) admission invariant refusal — an excluded witness row with zero executing consumers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnexecutedDeferredWitness {
+    pub entry: String,
+    pub function: String,
+}
+
 #[derive(Debug)]
 pub struct DiscoverySummary {
     pub total: usize,
@@ -7648,6 +7676,7 @@ pub fn collect_deferred_discovery_rows(
     if exclude_substrings.is_empty() {
         return Ok(Vec::new());
     }
+    let facts = build_module_graph_facts_live(source_roots);
     let mut out: Vec<DeferredDiscoveryRow> = Vec::new();
     let mut seen: std::collections::BTreeSet<(String, String)> = std::collections::BTreeSet::new();
     for root in source_roots {
@@ -7669,7 +7698,7 @@ pub fn collect_deferred_discovery_rows(
             };
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("read deferred discovery entry {rel}: {e}"))?;
-            let reads_live_tree = parse_entry_live_tree_disposition(&rel, &content)?;
+            let reads_live_tree = reads_live_tree_effective(&rel, &content, &facts)?;
             for (function, _) in scan_test_decl_lines(&content) {
                 if seen.insert((rel.clone(), function.clone())) {
                     out.push(DeferredDiscoveryRow {
@@ -7688,6 +7717,200 @@ pub fn collect_deferred_discovery_rows(
             .then_with(|| a.function.cmp(&b.function))
     });
     Ok(out)
+}
+
+fn witness_admission_offline_exclusion_substrings() -> Vec<String> {
+    static PATTERNS: OnceLock<Vec<String>> = OnceLock::new();
+    PATTERNS
+        .get_or_init(|| {
+            string_list_data_from_ci_layer_roots_source(
+                ci_layer_roots_authority_content(),
+                WITNESS_ADMISSION_OFFLINE_EXCLUSION_SUBSTRINGS_DATA_NAME,
+            )
+        })
+        .clone()
+}
+
+fn witness_admission_fixture_exclusion_substrings() -> Vec<String> {
+    static PATTERNS: OnceLock<Vec<String>> = OnceLock::new();
+    PATTERNS
+        .get_or_init(|| {
+            string_list_data_from_ci_layer_roots_source(
+                ci_layer_roots_authority_content(),
+                WITNESS_ADMISSION_FIXTURE_EXCLUSION_SUBSTRINGS_DATA_NAME,
+            )
+        })
+        .clone()
+}
+
+fn path_matches_any_substring(path: &str, subs: &[String]) -> bool {
+    subs.iter().any(|sub| path.contains(sub.as_str()))
+}
+
+fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
+    format!("{entry}::{function}")
+}
+
+// 🟡 dissolve-on: witness_admission_explicit_consumer_manifest — replace this hand-rolled
+// per-form scan with the `.dag`-authoritative manifest from v2.workflow.witness_admission
+// (the module-binding supply-carrier pattern: host consumes emitted manifest rows; tracked in
+// the Phase 1 (b) lane). Until then the scan is fail-closed in BOTH directions (§5): every
+// occurrence of a recognized row head either parses to a key, is a verified definition or
+// non-literal pass-through site, or PANICS with its location — a mis-parse stops the line and
+// never silently excuses an orphan; and a consumer expressed in an unrecognized form yields
+// NO key, so its deferred row surfaces as a loud orphan rather than being absorbed.
+fn witness_admission_entry_function_keys_from_source(
+    source_label: &str,
+    content: &str,
+) -> Vec<String> {
+    const WINDOW: usize = 400;
+    let mut keys: Vec<String> = Vec::new();
+    fn push_pair(keys: &mut Vec<String>, entry: &str, function: &str) {
+        let key = witness_admission_manifest_key(entry, function);
+        if !keys.iter().any(|k| k == &key) {
+            keys.push(key);
+        }
+    }
+    let heads: [(&str, &str); 4] = [
+        ("bin_wet(", "entry: String"),
+        ("probe_red(", "entry: String"),
+        ("self_host_wet_entry(", "entry: String"),
+        ("SelfHostWetReceiptBinding {", ""),
+    ];
+    for (head, def_sig) in heads {
+        let mut search_from = 0;
+        while let Some(rel) = content[search_from..].find(head) {
+            let occ = search_from + rel;
+            search_from = occ + head.len();
+            let after = &content[search_from..];
+            let window = &after[..after.len().min(WINDOW)];
+            let trimmed = window.trim_start();
+            if !def_sig.is_empty() && trimmed.starts_with(def_sig) {
+                continue;
+            }
+            if def_sig.is_empty() && content[..occ].ends_with("type ") {
+                continue;
+            }
+            let Some(entry_rel) = window.find("entry: \"") else {
+                if window.contains("entry: ") {
+                    continue;
+                }
+                panic!(
+                    "witness admission: {source_label}: `{head}` at byte {occ} has no \
+                     recognizable `entry:` argument in range — refusing; a mis-parse must \
+                     stop the line, never excuse an orphan"
+                );
+            };
+            let entry_start = entry_rel + "entry: \"".len();
+            let Some((entry, after_entry)) = window[entry_start..].split_once('"') else {
+                panic!(
+                    "witness admission: {source_label}: unterminated entry literal after \
+                     `{head}` at byte {occ} — refusing"
+                );
+            };
+            let marker = after_entry.find("f: \"").map(|p| (p, "f: \"")).or_else(|| {
+                after_entry
+                    .find("function: \"")
+                    .map(|p| (p, "function: \""))
+            });
+            let Some((fn_pos, fn_marker)) = marker else {
+                panic!(
+                    "witness admission: {source_label}: `{head}` row for entry {entry:?} at \
+                     byte {occ} has no `f:`/`function:` literal in range — refusing"
+                );
+            };
+            let fn_start = fn_pos + fn_marker.len();
+            let Some((function, _)) = after_entry[fn_start..].split_once('"') else {
+                panic!(
+                    "witness admission: {source_label}: unterminated function literal after \
+                     `{head}` row for entry {entry:?} at byte {occ} — refusing"
+                );
+            };
+            push_pair(&mut keys, entry, function);
+        }
+    }
+    keys.sort();
+    keys
+}
+
+fn witness_admission_explicit_consumer_keys() -> Vec<String> {
+    static KEYS: OnceLock<Vec<String>> = OnceLock::new();
+    KEYS.get_or_init(|| {
+        let mut keys = witness_admission_entry_function_keys_from_source(
+            "dag/gunbc/ci_layer_roots.dag",
+            ci_layer_roots_authority_content(),
+        );
+        let wet =
+            std::fs::read_to_string(workspace_root().join(WET_RECEIPT_ENROLLMENT_AUTHORITY_REL))
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "witness admission: failed to read {}: {e}",
+                        WET_RECEIPT_ENROLLMENT_AUTHORITY_REL
+                    )
+                });
+        for key in witness_admission_entry_function_keys_from_source(
+            WET_RECEIPT_ENROLLMENT_AUTHORITY_REL,
+            &wet,
+        ) {
+            if !keys.iter().any(|k| k == &key) {
+                keys.push(key);
+            }
+        }
+        keys.sort();
+        keys
+    })
+    .clone()
+}
+
+/// Phase 0(b): every deferred witness row must name an executing consumer (explicit roster,
+/// offline local recipe, or fixture explicit roster). Returns orphans — enrolled, zero consumers.
+pub fn collect_unexecuted_deferred_witnesses(
+    deferred_rows: &[DeferredDiscoveryRow],
+) -> Vec<UnexecutedDeferredWitness> {
+    let explicit = witness_admission_explicit_consumer_keys();
+    let offline = witness_admission_offline_exclusion_substrings();
+    let fixture = witness_admission_fixture_exclusion_substrings();
+    let mut orphans = Vec::new();
+    for row in deferred_rows {
+        let key = witness_admission_manifest_key(&row.entry, &row.function);
+        if explicit.iter().any(|k| k == &key) {
+            continue;
+        }
+        if path_matches_any_substring(&row.entry, &offline)
+            || path_matches_any_substring(&row.entry, &fixture)
+        {
+            continue;
+        }
+        orphans.push(UnexecutedDeferredWitness {
+            entry: row.entry.clone(),
+            function: row.function.clone(),
+        });
+    }
+    orphans
+}
+
+fn refuse_unexecuted_deferred_witnesses(
+    orphans: &[UnexecutedDeferredWitness],
+) -> Result<(), String> {
+    if orphans.is_empty() {
+        return Ok(());
+    }
+    let mut lines: Vec<String> = orphans
+        .iter()
+        .take(8)
+        .map(|o| format!("{} ({})", o.function, o.entry))
+        .collect();
+    if orphans.len() > 8 {
+        lines.push(format!("… and {} more orphan row(s)", orphans.len() - 8));
+    }
+    Err(format!(
+        "WITNESS ADMISSION REFUSAL cause=UnexecutedDeferredWitness count={} — enrolled \
+         witness row(s) excluded from discovery name zero executing consumers (Phase 0(b) \
+         admission invariant); each excluded row must be on falsifier_self_host_wet, \
+         bin_witness_wet, known_red_probe, offline, or fixture explicit roster: {}",
+        orphans.len(),
+        lines.join("; ")
+    ))
 }
 
 fn eprintln_deferred_discovery_rows(rows: &[DeferredDiscoveryRow]) {
@@ -8095,11 +8318,13 @@ fn discover_floor_corpus_rows_inner(
         discovery_scope_dirs,
     )?;
     let FloorLensHygieneGraph {
-        rows,
+        mut rows,
         path_imports,
         module_to_path,
         lens_with_justification,
     } = graph;
+    let facts = build_module_graph_facts_live(source_roots);
+    apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
     let inert = inert_lens_modules(&rows, &path_imports, &module_to_path);
     if !inert.is_empty() {
         return Err(format!(
@@ -9138,8 +9363,252 @@ fn read_entry_live_tree_disposition(entry: &str) -> Result<bool, String> {
     parse_entry_live_tree_disposition(entry, &content)
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_effect_reach_inference_bridge`):
+// Lane: module-identity-storage-binding Phase 0 — host-fed derived `ReadsLiveTree` and
+// path-literal touch evidence routing floor discovery admission until typed `SourceRef`
+// at host boundaries makes bare-string file dependencies unwritable.
+// Unblock: discovery admission consumes `v2.lens.effect_reach` classification directly
+// (same dissolution as the `.dag` lens `WallAfterGrounding{ dissolves_to: SingleAuthority }`).
+// DELETE WHEN dissolved: `reads_live_tree_effective`, `apply_effect_reach_derived_reads_live_tree`,
+// `effect_reach_touched_via_path_literals`, `effect_reach_derived_reads_live_tree_for_entry`,
+// and `EFFECT_REACH_HOST_SINK_MARKERS` (~150 LOC).
+// Receipt: `rg cli_run_effect_reach_inference_bridge src/v1/stage0/src/cli_run.rs` == 1 until
+// deletion; drift gate `effect_reach_host_sink_markers_v0_is_synced_with_dag_authority`.
+pub(crate) const CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER: &str =
+    "cli_run_effect_reach_inference_bridge";
+
+/// Receipted Rust mirror of `v2.std.effect_reach` `effect_reach_host_sink_callee_symbols_v0`
+/// (`src/v2/std/effect_reach.dag`) — host-sink callee symbols for the derived census.
+/// Under-approximating this list lets `reads_live_tree` stay false and discovery skip when
+/// the `.dag` lens would classify host-reading (§5 fail-open on the skip axis); the drift gate
+/// below evaluates the `.dag` authority through a real interpreter context.
+///
+/// INTERIM hand-Rust scaffold (`CLI_RUN_EFFECT_REACH_INFERENCE_BRIDGE_SCAFFOLD_MARKER` / §7):
+/// dissolves when typed `SourceRef` at host boundaries deletes this bridge.
+const EFFECT_REACH_HOST_SINK_MARKERS: &[&str] = &[
+    "Read",
+    "Filesystem.Read",
+    "WitnessBin.Run",
+    "gunbc.WitnessBin.Run",
+    "Run",
+    "shell.Exec.Run",
+    "Exec.Run",
+];
+
+fn source_has_path_like_string_data(content: &str) -> bool {
+    content.lines().any(source_line_has_path_like_string_data)
+}
+
+fn source_line_has_path_like_string_data(line: &str) -> bool {
+    let trimmed = line.trim();
+    if !trimmed.starts_with("data ") {
+        return false;
+    }
+    let value = trimmed
+        .split_once("String = \"")
+        .or_else(|| trimmed.split_once("String=\""))
+        .and_then(|(_, rest)| rest.strip_suffix('"'));
+    let Some(value) = value else {
+        return false;
+    };
+    // Pure storage path only — prose/doc values that mention a path must not classify.
+    !value.contains(' ')
+        && (value.starts_with("src/") || value.starts_with("dag/"))
+        && value.contains(".dag")
+}
+
+fn source_data_path_literal_touches(content: &str, touched: &str) -> bool {
+    if touched.is_empty() {
+        return false;
+    }
+    content
+        .lines()
+        .any(|line| source_line_has_path_like_string_data(line) && line.contains(touched))
+}
+
+fn source_has_host_effect_sink(content: &str) -> bool {
+    EFFECT_REACH_HOST_SINK_MARKERS
+        .iter()
+        .any(|marker| content_contains_host_sink_marker(content, marker))
+}
+
+fn content_contains_host_sink_marker(content: &str, marker: &str) -> bool {
+    if marker.contains('.') {
+        return content.contains(marker);
+    }
+    // Bare callee tokens (`Read`, `Run`): match call-site shapes only — naive
+    // `contains("Read")` false-positives on `ReadsLiveTree` disposition imports.
+    content.lines().any(|line| {
+        let line = line.trim();
+        line.contains(&format!(".{marker}("))
+            || line.contains(&format!(" {marker}("))
+            || line.contains(&format!("({marker}("))
+    })
+}
+
+fn import_closure_repo_paths_for_entry(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+) -> HashSet<String> {
+    import_closure_live_paths_with_facts(entry_path, facts)
+        .into_iter()
+        .map(|p| workspace_relative_repo_path(&p))
+        .collect()
+}
+
+fn effect_reach_derived_reads_live_tree_for_closure_paths(closure_paths: &HashSet<String>) -> bool {
+    let mut has_path_data = false;
+    let mut has_sink = false;
+    for rel in closure_paths {
+        let path = if std::path::Path::new(rel).is_absolute() {
+            rel.clone()
+        } else {
+            workspace_root().join(rel).to_string_lossy().into_owned()
+        };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if source_has_path_like_string_data(&content) {
+            has_path_data = true;
+        }
+        if source_has_host_effect_sink(&content) {
+            has_sink = true;
+        }
+        if has_path_data && has_sink {
+            return true;
+        }
+    }
+    false
+}
+
+pub(crate) fn effect_reach_derived_reads_live_tree_for_entry(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+) -> bool {
+    let closure_paths = import_closure_repo_paths_for_entry(entry_path, facts);
+    effect_reach_derived_reads_live_tree_for_closure_paths(&closure_paths)
+}
+
+fn reads_live_tree_effective(
+    entry_path: &str,
+    content: &str,
+    facts: &ModuleGraphFactsLive,
+) -> Result<bool, String> {
+    let declared = parse_entry_live_tree_disposition(entry_path, content)?;
+    if declared {
+        return Ok(true);
+    }
+    Ok(effect_reach_derived_reads_live_tree_for_entry(
+        entry_path, facts,
+    ))
+}
+
+fn effect_reach_touched_via_path_literals(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    touched_paths: &[String],
+) -> bool {
+    if touched_paths.is_empty() {
+        return false;
+    }
+    let closure_paths = import_closure_repo_paths_for_entry(entry_path, facts);
+    for rel in closure_paths {
+        let path = if std::path::Path::new(&rel).is_absolute() {
+            rel.clone()
+        } else {
+            workspace_root().join(&rel).to_string_lossy().into_owned()
+        };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if touched_paths
+            .iter()
+            .any(|touched| source_data_path_literal_touches(&content, touched.as_str()))
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
     rows.iter().filter(|r| r.reads_live_tree).count()
+}
+
+fn apply_effect_reach_derived_reads_live_tree(
+    rows: &mut [DiscoveryRow],
+    facts: &ModuleGraphFactsLive,
+) {
+    for row in rows.iter_mut() {
+        if !row.reads_live_tree && effect_reach_derived_reads_live_tree_for_entry(&row.entry, facts)
+        {
+            row.reads_live_tree = true;
+        }
+    }
+}
+
+#[cfg(test)]
+mod effect_reach_host_sink_markers_drift_gate_tests {
+    use super::{
+        build_multi_entry_index, make_eval_context, resolve_entry_with_index_for_discovery_corpus,
+        workspace_root, EFFECT_REACH_HOST_SINK_MARKERS,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::collections::HashSet;
+
+    const EFFECT_REACH_STD_ENTRY: &str = "src/v2/std/effect_reach.dag";
+
+    fn dag_host_sink_callee_symbols() -> HashSet<String> {
+        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
+        let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
+        let (graph, indices) =
+            resolve_entry_with_index_for_discovery_corpus(&index, EFFECT_REACH_STD_ENTRY)
+                .unwrap_or_else(|e| panic!("resolve {EFFECT_REACH_STD_ENTRY}: {e}"));
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+        let val = v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::eval_data_item_value(&ctx, "effect_reach_host_sink_callee_symbols_v0")
+        })
+        .unwrap_or_else(|e| panic!("eval effect_reach_host_sink_callee_symbols_v0: {e}"))
+        .unwrap_or_else(|| {
+            panic!("effect_reach_host_sink_callee_symbols_v0 not found as a data item")
+        });
+        let Value::List(items) = val else {
+            panic!("effect_reach_host_sink_callee_symbols_v0 is not a List: {val:?}");
+        };
+        items
+            .iter()
+            .map(|item| match item {
+                Value::Str(s) => s.clone(),
+                other => panic!(
+                    "effect_reach_host_sink_callee_symbols_v0 entry is not a String: {other:?}"
+                ),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn effect_reach_host_sink_markers_v0_is_synced_with_dag_authority() {
+        let dag_symbols = dag_host_sink_callee_symbols();
+        let rust_symbols: HashSet<String> = EFFECT_REACH_HOST_SINK_MARKERS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let missing_from_rust: Vec<&String> = dag_symbols.difference(&rust_symbols).collect();
+        assert!(
+            missing_from_rust.is_empty(),
+            "`.dag` authority `effect_reach_host_sink_callee_symbols_v0` declares sink symbol(s) \
+             {missing_from_rust:?} not mirrored in Rust `EFFECT_REACH_HOST_SINK_MARKERS` \
+             (src/v1/stage0/src/cli_run.rs) — axis skips fail-open when the Rust bridge \
+             under-approximates the authority"
+        );
+        let extra_in_rust: Vec<&String> = rust_symbols.difference(&dag_symbols).collect();
+        assert!(
+            extra_in_rust.is_empty(),
+            "Rust `EFFECT_REACH_HOST_SINK_MARKERS` declares sink symbol(s) {extra_in_rust:?} \
+             absent from `.dag` authority `effect_reach_host_sink_callee_symbols_v0` — keep the \
+             single roster in sync (§3)"
+        );
+    }
 }
 
 /// Precompute-grain count for axis (iv): the number of distinct entries among `rows` whose
@@ -9216,6 +9685,11 @@ fn entry_qualifies_for_skip_without_resolve(
         return Ok(false);
     }
     if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_entry_paths) {
+        return Ok(false);
+    }
+    // Additive touch evidence only (Phase 0 effect-reach): a path-literal match may
+    // convert would-skip → run; absence never enables skip beyond today's rules.
+    if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
@@ -9660,6 +10134,8 @@ pub fn run_discovery_corpus_with_options(
     } else {
         collect_deferred_discovery_rows(source_roots, &options.exclude_substrings)?
     };
+    let admission_orphans = collect_unexecuted_deferred_witnesses(&deferred_rows);
+    refuse_unexecuted_deferred_witnesses(&admission_orphans)?;
     eprintln_deferred_discovery_rows(&deferred_rows);
     set_phase(FloorPhase::Discovery, "discovery-roster");
     let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
@@ -10913,10 +11389,19 @@ new file mode 100644
                 .expect("floor runner resolves");
         let runner_ctx =
             super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
-        let entry = "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag";
+        let live_entry =
+            "src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag";
         assert!(
-            super::read_entry_live_tree_disposition(entry).expect("clean_tree readable"),
+            super::read_entry_live_tree_disposition(live_entry)
+                .expect("long live-corpus witness readable"),
             "the live-scan witness entry must declare (or default to) ReadsLiveTree"
+        );
+        let substrate_entry =
+            "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag";
+        assert!(
+            !super::read_entry_live_tree_disposition(substrate_entry)
+                .expect("clean_tree fast-lane note entry readable"),
+            "the fast-lane note entry must declare SubstrateInputsOnly after long-lane offloading"
         );
         let changed_paths = vec!["src/v2/lens/affected_set.dag".to_string()];
         let skip = super::call_floor_row_would_skip(
@@ -12303,6 +12788,196 @@ mod node_frontier_plumbing_controls {
             s1.exclude_reason.contains("test/claim/long/"),
             "exclude reason must name the long-lane substring: got {}",
             s1.exclude_reason
+        );
+    }
+
+    // Phase 0(b) admission invariant: every deferred witness row names an executing consumer.
+    #[test]
+    fn witness_admission_deferred_rows_have_consumers() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let excludes = super::witness_exclusion_substrings();
+        let deferred =
+            super::collect_deferred_discovery_rows(&roots, &excludes).expect("deferred scan");
+        let orphans = super::collect_unexecuted_deferred_witnesses(&deferred);
+        super::refuse_unexecuted_deferred_witnesses(&orphans)
+            .unwrap_or_else(|e| panic!("live deferred corpus must admit every row: {e}"));
+        let normalize = deferred
+            .iter()
+            .find(|r| r.function == "self_host_03_normalize_behavioral_receipt_holds")
+            .expect("03_normalize behavioral receipt must be deferred from discovery");
+        assert!(
+            normalize
+                .entry
+                .contains("self_host_03_normalize_behavioral_witness_test"),
+            "03_normalize receipt entry: got {}",
+            normalize.entry
+        );
+    }
+
+    #[test]
+    fn witness_admission_orphan_synthetic_row_refuses() {
+        let orphan = super::DeferredDiscoveryRow {
+            entry: "dag/test/claim/synthetic_orphan_admission_witness_test.dag".to_string(),
+            function: "synthetic_orphan_no_consumer_holds".to_string(),
+            exclude_reason: "synthetic_orphan_admission_witness_test.dag".to_string(),
+            reads_live_tree: false,
+        };
+        let orphans = super::collect_unexecuted_deferred_witnesses(&[orphan]);
+        assert_eq!(orphans.len(), 1);
+        let err = super::refuse_unexecuted_deferred_witnesses(&orphans).expect_err("orphan");
+        assert!(err.contains("UnexecutedDeferredWitness"));
+    }
+
+    // Phase 0 receipt (module-identity-storage-binding): the 03_normalize behavioral
+    // witness declares a hermetic import closure but carries string-carried path deps via
+    // tools.self_host_03_normalize_behavioral_transport — derived host-reading must fire.
+    #[test]
+    fn effect_reach_derived_reads_live_tree_for_03_normalize_witness() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let facts = super::build_module_graph_facts_live(&roots);
+        let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
+        assert!(
+            super::effect_reach_derived_reads_live_tree_for_entry(entry, &facts),
+            "03_normalize behavioral witness must classify as derived host-reading"
+        );
+    }
+
+    #[test]
+    fn effect_reach_touched_via_normalize_path_for_03_normalize_witness() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let facts = super::build_module_graph_facts_live(&roots);
+        let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
+        let touched = vec!["src/v2/compiler/03_normalize.dag".to_string()];
+        assert!(
+            super::effect_reach_touched_via_path_literals(entry, &facts, &touched),
+            "emitter/normalize-path touch must select the 03_normalize behavioral witness"
+        );
+        let unrelated = vec!["src/v2/std/logic.dag".to_string()];
+        assert!(
+            !super::effect_reach_touched_via_path_literals(entry, &facts, &unrelated),
+            "unrelated path must not select the 03_normalize behavioral witness"
+        );
+    }
+
+    // Phase 0 monotone-toward-RUN (bridge a): derived census may only UPGRADE toward
+    // ReadsLiveTree — a declared/disposition row must never downgrade because the census
+    // returns empty for its closure.
+    #[test]
+    fn effect_reach_derived_reads_live_tree_never_downgrades_declared_row() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let facts = super::build_module_graph_facts_live(&roots);
+        let entry = "src/v2/test/claim/long/s1_closure_receipt_test.dag";
+        let content = std::fs::read_to_string(ws.join(entry)).expect("s1_closure readable");
+        assert!(
+            super::parse_entry_live_tree_disposition(entry, &content).expect("parse disposition"),
+            "precondition: s1_closure declares ReadsLiveTree"
+        );
+        assert!(
+            !super::effect_reach_derived_reads_live_tree_for_entry(entry, &facts),
+            "precondition: empty census for s1_closure closure (no path-literal→sink flows)"
+        );
+        let mut rows = vec![super::DiscoveryRow {
+            label: "live".to_string(),
+            entry: entry.to_string(),
+            function: "s1_closure_parses_holds".to_string(),
+            reads_live_tree: true,
+        }];
+        super::apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
+        assert!(
+            rows[0].reads_live_tree,
+            "declared ReadsLiveTree must survive apply_effect_reach even when census is empty"
+        );
+    }
+
+    // Phase 0 monotone-toward-RUN (bridge b): effect_reach_touched is additive touch
+    // evidence — it may block skip on literal match but absence must not enable skip
+    // beyond today's rules for a hermetic entry.
+    #[test]
+    fn effect_reach_touched_additive_only_hermetic_baseline_unchanged() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = abs(&ws, FIXTURE);
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        assert!(
+            !super::effect_reach_touched_via_path_literals(
+                &fixture_abs,
+                &index.module_graph_facts,
+                &touched_paths,
+            ),
+            "hermetic fixture must not match outside-diff path literals"
+        );
+        assert!(
+            super::entry_qualifies_for_skip_without_resolve(
+                &fixture_abs,
+                false,
+                &index.module_graph_facts,
+                &declared,
+                &touched_paths,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "absence of literal match must not change skip eligibility for hermetic entry"
+        );
+    }
+
+    #[test]
+    fn effect_reach_touched_additive_blocks_skip_on_literal_match() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
+        let entry_abs = abs(&ws, entry);
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched = vec!["src/v2/compiler/03_normalize.dag".to_string()];
+        assert!(
+            !super::entry_qualifies_for_skip_without_resolve(
+                &entry_abs,
+                false,
+                &index.module_graph_facts,
+                &declared,
+                &touched,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "literal-path touch must convert would-skip into run (additive only)"
+        );
+    }
+
+    // Touch bridge must match data-init path literals only — struct/path fields in
+    // unrelated entries must not widen selection (floor_skip_discovery_witness receipt).
+    #[test]
+    fn effect_reach_touched_ignores_non_data_path_mentions() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let facts = super::build_module_graph_facts_live(&roots);
+        let runner = "src/v2/workflow/affected_set_floor_runner_test.dag";
+        let fixture_path = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+        assert!(
+            !super::effect_reach_touched_via_path_literals(
+                runner,
+                &facts,
+                &[fixture_path.to_string()],
+            ),
+            "struct/path fixture mentions must not count as effect-reach touch evidence"
         );
     }
 
