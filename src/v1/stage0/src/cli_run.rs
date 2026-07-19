@@ -3536,12 +3536,8 @@ fn resolve_discovery_entry_for_corpus_row(
     module_graph_declared_paths: &HashSet<String>,
     closure_modules: &mut HashSet<String>,
 ) -> Result<DiscoveryEntryResolve, String> {
-    let sources = load_sources_for_entry_with_index(
-        &index.source_files,
-        &index.module_graph_facts,
-        entry_path,
-    )
-    .map_err(|msg| format!("load sources failed for {entry_path}: {msg}"))?;
+    let sources = load_sources_for_entry_with_pool(index, entry_path)
+        .map_err(|msg| format!("load sources failed for {entry_path}: {msg}"))?;
     let closure_subject = subject_digest_for_closure(&sources);
     let resolve_started = std::time::Instant::now();
     set_phase(FloorPhase::Resolve, entry_path);
@@ -3726,17 +3722,27 @@ pub fn load_sources_for_entry(
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
-/// Every single identifier in `content` that is not part of a dotted chain —
-/// the candidate universe for bare-name dependency derivation. Deliberately an
-/// over-approximation (locals, params, and keywords are included): a candidate
-/// only pulls a module when the tree census resolves it, so a false candidate
-/// costs a map miss, never a wrong closure. String literals are skipped for the
-/// same reason as the dotted scan.
-fn bare_identifier_candidates(content: &str) -> BTreeSet<String> {
+/// Bare (non-dotted) identifiers in `content`, split by whether any occurrence
+/// sits in CALL POSITION (immediately followed by `(`). The split is the pull
+/// discriminator: the census strips fn bodies, so a 0-arg fn and a type alias
+/// share a census shape ("pending a discriminator", census note) — but a 0-arg
+/// fn is referenced `name()` while a type name never is. Deliberately an
+/// over-approximation on the name axis (locals and keywords are included): a
+/// false candidate costs a census map miss, never a wrong closure. String
+/// literals are skipped for the same reason as the dotted scan.
+struct BareCandidates {
+    names: BTreeSet<String>,
+    call_position: BTreeSet<String>,
+}
+
+fn bare_identifier_candidates(content: &str) -> BareCandidates {
     let bytes = content.as_bytes();
     let is_ident_start = |c: u8| c.is_ascii_alphabetic() || c == b'_';
     let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
-    let mut out = BTreeSet::new();
+    let mut out = BareCandidates {
+        names: BTreeSet::new(),
+        call_position: BTreeSet::new(),
+    };
     let mut i = 0usize;
     while i < bytes.len() {
         if bytes[i] == b'"' {
@@ -3763,7 +3769,11 @@ fn bare_identifier_candidates(content: &str) -> BTreeSet<String> {
         if i < bytes.len() && bytes[i] == b'.' {
             continue;
         }
-        out.insert(content[start..i].to_string());
+        let name = content[start..i].to_string();
+        if i < bytes.len() && bytes[i] == b'(' {
+            out.call_position.insert(name.clone());
+        }
+        out.names.insert(name);
     }
     out
 }
@@ -3795,22 +3805,58 @@ fn extend_with_bare_reference_closure(
         };
         let census = tree_bare_census_for_root(index, &root)?;
         let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
-        for name in bare_identifier_candidates(&sf.content) {
+        let candidates = bare_identifier_candidates(&sf.content);
+        for name in candidates.names.iter().cloned() {
+            // Only CALLABLE-shaped references pull a module: the runtime gap this
+            // closure exists for is the interpreter's fn/service registry
+            // (`no such function`); types and variants are census-served at
+            // typecheck and carried by value tags at runtime. A reference is
+            // callable-shaped when it occurs in call position (`name(` — the
+            // only way a 0-arg fn is used, and a shape a type name never has) or
+            // when its census binding carries value params (a named fn passed as
+            // an argument). Pulling for anything else only widens the closure —
+            // and a widened closure couples this witness to the health of
+            // modules it never executes (measured: an over-pulled v2 test
+            // module red under the entry's tree view killed an unrelated dag
+            // witness).
+            let in_call_position = candidates.call_position.contains(&name);
+            let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
+                in_call_position || !binding.resolved.params.is_empty()
+            };
             let target_module = match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
-                    GlobalBareLookupState::GlobalBareUniqueBinding { module_path, .. } => {
-                        Some(module_path.clone())
+                    GlobalBareLookupState::GlobalBareUniqueBinding {
+                        module_path,
+                        binding,
+                    } => {
+                        if pullable(binding) {
+                            Some(module_path.clone())
+                        } else {
+                            None
+                        }
                     }
                     GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
                         crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
                             referencing_module.clone(),
                             candidates.clone(),
                         )
-                        .map(|c| c.module_path.clone())
+                        .and_then(|c| {
+                            if pullable(&c.binding) {
+                                Some(c.module_path.clone())
+                            } else {
+                                None
+                            }
+                        })
                     }
                 },
-                None => v1_rt::map_get(&census.services, name.clone())
-                    .map(|entry| entry.module_path.clone()),
+                None => {
+                    if in_call_position {
+                        v1_rt::map_get(&census.services, name.clone())
+                            .map(|entry| entry.module_path.clone())
+                    } else {
+                        None
+                    }
+                }
             };
             let Some(module_path) = target_module else {
                 continue;
@@ -4615,9 +4661,8 @@ fn resolve_entry_with_parse_cache(
     resolve_stage_slot_reset();
     set_phase(FloorPhase::Resolve, entry_file);
     let load_started = std::time::Instant::now();
-    let sources = load_sources_for_entry_with_index(
-        &index.source_files,
-        &index.module_graph_facts,
+    let sources = load_sources_for_entry_with_pool(
+        index,
         entry_file,
     )?;
     resolve_stage_slot_add(|s| s.load += load_started.elapsed().as_nanos());
@@ -6166,7 +6211,7 @@ pub fn whole_tree_resolved_ctx(
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
     let sources =
-        load_sources_for_entry_with_index(&index.source_files, &index.module_graph_facts, entry)?;
+        load_sources_for_entry_with_pool(index, entry)?;
     Ok(subject_digest_for_closure(&sources))
 }
 
