@@ -6,9 +6,11 @@ import std.materialization_ladder { Frame }
 
 data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. MODEL ONLY, no behavior change: nothing dispatches through admit_effect yet (P-B wires the first enforcement seam). Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS DEFERRED (see derived_projections_deferred_note). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
 
-type Verb = Read | Write
+type Verb = Read | Write | Execute
 
-data verb_set_note: String = "Q1 (PROVISIONAL, pending operator ruling): the verb set is closed at Read/Write. Execute/Create arrive as later rows only when a displaced cost names one. Verb is the reach COARSENING of EffectShape, never a fork of it (DESIGN 3): a keyless write and a keyed write are both Write. verb_of_effect_shape below grounds the coarsening on the ONE EffectShape authority, making the 'grants reference a single EffectShape' prerequisite concrete. dissolve-on = operator confirms or amends the verb set."
+data verb_set_note: String = "Q1 (PARTIAL, operator steer 2026-07-19): the verb set is closed at Read/Write/Execute. Execute is grounded with displaced cost from deploy-preflight privileged-command execution (sudo -n <binary> probes, whoami; shell-intent family 5). Create remains deferred until a displaced cost names it. For REST IO, Verb is the reach COARSENING of EffectShape, never a fork of it (DESIGN 3): a keyless write and a keyed write are both Write (verb_of_effect_shape below). Execute is a SEPARATE reach axis for process invocation at a filesystem position -- REST EffectShape has no execute variant, so Execute is NOT coarsened from EffectShape. dissolve-on = operator confirms or amends the verb set."
+
+data execute_verb_note: String = "Execute models process/binary invocation reach: the target is a NamespacePosition in FilesystemPathTree naming the executable (e.g. usr/bin/apt-get). Deploy-preflight's sudo -n <path> <check> probes and whoami are Execute effects scoped under granted binary roots. WHO may execute (POSIX subject/access) is a separate axis (std.access, extdeps.access.posix); grant Execute is WHAT may be invoked in a frame. dissolve-on = deploy-preflight envelope row consumes this verb via admit_effect (shell-intent Wave A follow-on)."
 
 fn verb_of_effect_shape(shape: EffectShape<KeySource>) -> Verb {
   match shape {
@@ -84,8 +86,16 @@ type Envelope {
 
 fn verb_eq(a: Verb, b: Verb) -> Bool {
   match a {
-    Read => match b { Read => true, Write => false }
-    Write => match b { Write => true, Read => false }
+    Read => match b { Read => true, Write => false, Execute => false }
+    Write => match b { Write => true, Read => false, Execute => false }
+    Execute => match b { Execute => true, Read => false, Write => false }
+  }
+}
+
+fn filesystem_execute_position(path: List<String>) -> NamespacePosition {
+  NamespacePosition {
+    tree: FilesystemPathTree,
+    path: path
   }
 }
 
