@@ -57,8 +57,8 @@ pub use crate::v1_compiler_infer::{
 use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
-    find_variant_parent, is_enum_in_summaries, is_known_variant, lookup_emit_type_summary,
-    variant_belongs_to_enum, variant_summary_key,
+    empty_emit_graph_info, find_variant_parent, is_enum_in_summaries, is_known_variant,
+    lookup_emit_type_decl, lookup_emit_type_summary, variant_belongs_to_enum, variant_summary_key,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, RustCorpusRepr, TypeRepr, TypeSummary,
@@ -161,6 +161,7 @@ pub fn render_rust_type(
     shared_types: Rc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -206,6 +207,7 @@ pub fn render_rust_type(
                             shared_types.clone(),
                             corpus_repr.clone(),
                             source_indices.clone(),
+                            emit_info.clone(),
                         )
                     }
                 }
@@ -214,6 +216,7 @@ pub fn render_rust_type(
                     shared_types.clone(),
                     corpus_repr.clone(),
                     source_indices.clone(),
+                    emit_info.clone(),
                 ),
             },
         }
@@ -225,6 +228,7 @@ pub fn render_rust_type_without_applied_binding(
     shared_types: Rc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -271,6 +275,7 @@ pub fn render_rust_type_without_applied_binding(
                             if !rust_btree_set_element_ord_eligible(
                                 elem_node.clone(),
                                 source_indices.clone(),
+                                emit_info.clone(),
                             ) {
                                 {
                                     let elem_name =
@@ -1517,6 +1522,7 @@ pub fn render_rust_alias_rhs_type(
                                     shared_types.clone(),
                                     corpus_repr.clone(),
                                     source_indices.clone(),
+                                    empty_emit_graph_info(),
                                 );
                             }
                         }
@@ -1707,6 +1713,7 @@ pub fn render_rust_alias_rhs_type(
                         shared_types.clone(),
                         corpus_repr.clone(),
                         source_indices.clone(),
+                        empty_emit_graph_info(),
                     )
                 }
             }
@@ -1884,31 +1891,47 @@ pub fn rust_nominal_ord_derives_for_shape(
     }
 }
 
-pub fn rust_nominal_ord_type_name_eligible(type_name: String) -> bool {
-    ((((type_name.clone() == "Symbol".to_string()) || (type_name.clone() == "DiffId".to_string()))
-        || (type_name.clone() == "FormalNonterminal".to_string()))
-        || (type_name.clone() == "FormalTerminal".to_string()))
+pub fn rust_nominal_ord_type_decl_ord_eligible(
+    decl: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (rust_nominal_identity_carrier_shape_eligible(decl.clone(), source_indices.clone())
+        || rust_symbol_wrapped_ord_carrier_shape_eligible(
+            decl.children.clone(),
+            source_indices.clone(),
+        ))
 }
 
 pub fn rust_nominal_ord_type_ref_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     {
         let type_name = authored_name_at(source_indices.clone(), elem_node.clone());
         (((((elem_node.children.clone().len() as i64) == 0)
             && ((elem_node.params.clone().len() as i64) == 0))
             && (elem_node.connective.clone() == Connective::NoConnective))
-            && rust_nominal_ord_type_name_eligible(type_name.clone()))
+            && match lookup_emit_type_decl(emit_info.clone(), type_name.clone()) {
+                Some(decl) => {
+                    rust_nominal_ord_type_decl_ord_eligible(decl.clone(), source_indices.clone())
+                }
+                None => false,
+            })
     }
 }
 
 pub fn rust_nominal_ord_type_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     ((rust_nominal_identity_carrier_shape_eligible(elem_node.clone(), source_indices.clone())
-        || rust_nominal_ord_type_ref_eligible(elem_node.clone(), source_indices.clone()))
+        || rust_nominal_ord_type_ref_eligible(
+            elem_node.clone(),
+            source_indices.clone(),
+            emit_info.clone(),
+        ))
         || rust_symbol_wrapped_ord_carrier_shape_eligible(
             elem_node.children.clone(),
             source_indices.clone(),
@@ -3654,6 +3677,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         );
         let emit_info = Rc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
+            type_decl_items: base_info.type_decl_items.clone(),
             recursive_type_set: base_info.recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
             positional_payload_variants: base_info.positional_payload_variants.clone(),
@@ -3920,6 +3944,7 @@ pub fn emit_module(
         );
         let emit_info = Rc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
+            type_decl_items: base_info.type_decl_items.clone(),
             recursive_type_set: base_info.recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
             positional_payload_variants: base_info.positional_payload_variants.clone(),
@@ -7974,6 +7999,7 @@ pub fn emit_typed_item(
                             };
                             let fn_emit_info = Rc::new(EmitGraphInfo {
                                 type_summaries: emit_info.type_summaries.clone(),
+                                type_decl_items: emit_info.type_decl_items.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
                                 fielded_variants: emit_info.fielded_variants.clone(),
                                 positional_payload_variants: emit_info
@@ -8722,6 +8748,7 @@ pub fn render_rust_type_with_applied_binding(
                         shared_types.clone(),
                         corpus_repr.clone(),
                         source_indices.clone(),
+                        empty_emit_graph_info(),
                     )
                 }
             }
@@ -8730,6 +8757,7 @@ pub fn render_rust_type_with_applied_binding(
                 shared_types.clone(),
                 corpus_repr.clone(),
                 source_indices.clone(),
+                empty_emit_graph_info(),
             ),
         }
     }
@@ -8791,6 +8819,7 @@ pub fn render_rust_field_type_with_applied_binding(
                             shared_types.clone(),
                             corpus_repr.clone(),
                             source_indices.clone(),
+                            empty_emit_graph_info(),
                         )
                     } else {
                         render_rust_type_with_applied_binding(
@@ -8918,6 +8947,7 @@ pub fn emit_struct_field_from_child(
                                                 shared_types.clone(),
                                                 emit_info.corpus_repr.clone(),
                                                 env.source_indices.clone(),
+                                                emit_info.clone(),
                                             )
                                         }
                                     }
@@ -8926,6 +8956,7 @@ pub fn emit_struct_field_from_child(
                                         shared_types.clone(),
                                         emit_info.corpus_repr.clone(),
                                         env.source_indices.clone(),
+                                        emit_info.clone(),
                                     ),
                                 }
                             }
@@ -8935,6 +8966,7 @@ pub fn emit_struct_field_from_child(
                                 shared_types.clone(),
                                 emit_info.corpus_repr.clone(),
                                 env.source_indices.clone(),
+                                emit_info.clone(),
                             )
                         }
                     }
@@ -9796,6 +9828,7 @@ pub fn render_variant_payload_type(
                         shared_types.clone(),
                         corpus_repr.clone(),
                         source_indices.clone(),
+                        empty_emit_graph_info(),
                     ));
                 }
                 __result
@@ -9818,6 +9851,7 @@ pub fn render_variant_payload_type(
             shared_types.clone(),
             corpus_repr.clone(),
             source_indices.clone(),
+            empty_emit_graph_info(),
         )
     }
 }
@@ -9896,6 +9930,7 @@ pub fn emit_variant_from_child(
                                         shared_types.clone(),
                                         emit_info.corpus_repr.clone(),
                                         env.source_indices.clone(),
+                                        emit_info.clone(),
                                     )
                                 };
                                 let ty = if (find_property(
@@ -10790,6 +10825,7 @@ pub fn emit_func_params(
                         shared_types.clone(),
                         corpus_repr.clone(),
                         source_indices.clone(),
+                        empty_emit_graph_info(),
                     ),
                 ));
             }
@@ -10827,6 +10863,7 @@ pub fn emit_func_inferred(
                 shared_types.clone(),
                 corpus_repr.clone(),
                 source_indices.clone(),
+                empty_emit_graph_info(),
             ),
         ),
         ", Box<dyn std::error::Error>>".to_string(),
@@ -12028,6 +12065,7 @@ pub fn analyze_rc_match(
                         shared_types.clone(),
                         emit_info.corpus_repr.clone(),
                         source_indices.clone(),
+                        emit_info.clone(),
                     )))
             }
             _ => false,
@@ -13381,6 +13419,7 @@ pub fn rust_empty_map_value_type_str(
                 shared_types.clone(),
                 corpus_repr.clone(),
                 source_indices.clone(),
+                empty_emit_graph_info(),
             );
             if (rendered.clone() == "".to_string()) {
                 "".to_string()
@@ -13405,6 +13444,7 @@ pub fn rust_empty_map_kv_type_str(
                 shared_types.clone(),
                 corpus_repr.clone(),
                 source_indices.clone(),
+                empty_emit_graph_info(),
             ),
             None => "".to_string(),
         };
@@ -13439,6 +13479,7 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
 pub fn rust_btree_set_element_ord_eligible(
     elem_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     {
         let elem_name = authored_name_at(source_indices.clone(), elem_node.clone());
@@ -13448,7 +13489,11 @@ pub fn rust_btree_set_element_ord_eligible(
             || (elem_name.clone() == "Unit".to_string()))
             || (elem_name.clone() == "Secret".to_string()))
             || (elem_name.clone() == "Bytes".to_string()))
-            || rust_nominal_ord_type_eligible(elem_node.clone(), source_indices.clone()))
+            || rust_nominal_ord_type_eligible(
+                elem_node.clone(),
+                source_indices.clone(),
+                emit_info.clone(),
+            ))
     }
 }
 
@@ -13456,6 +13501,7 @@ pub fn rust_empty_set_element_type_str(
     set_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match set_type.children.clone().first().cloned() {
         Some(elem_child) => {
@@ -13473,7 +13519,11 @@ pub fn rust_empty_set_element_type_str(
             if (elem_is_type_var.clone() || elem_is_error.clone()) {
                 "".to_string()
             } else {
-                if !rust_btree_set_element_ord_eligible(elem_node.clone(), source_indices.clone()) {
+                if !rust_btree_set_element_ord_eligible(
+                    elem_node.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                ) {
                     "".to_string()
                 } else {
                     render_node_type(
@@ -13493,6 +13543,7 @@ pub fn emit_rust_empty_set_expr(
     set_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match set_type.children.clone().first().cloned() {
         Some(elem_child) => {
@@ -13505,7 +13556,11 @@ pub fn emit_rust_empty_set_expr(
             if elem_is_type_var.clone() {
                 "v1_rt::rc_empty_set::<_>()".to_string()
             } else {
-                if !rust_btree_set_element_ord_eligible(elem_node.clone(), source_indices.clone()) {
+                if !rust_btree_set_element_ord_eligible(
+                    elem_node.clone(),
+                    source_indices.clone(),
+                    emit_info.clone(),
+                ) {
                     {
                         let elem_name = authored_name_at(source_indices.clone(), elem_node.clone());
                         emit_rust_compile_error_expr(v1_rt::concat(
@@ -13519,6 +13574,7 @@ pub fn emit_rust_empty_set_expr(
                             set_type.clone(),
                             shared_types.clone(),
                             source_indices.clone(),
+                            emit_info.clone(),
                         );
                         if (elem_str.clone() != "".to_string()) {
                             v1_rt::concat(
@@ -14586,6 +14642,7 @@ pub fn emit_typed_call_expr(
                             ret_type.clone(),
                             shared_types.clone(),
                             scope.type_env.clone().source_indices.clone(),
+                            emit_info.clone(),
                         )
                     }
                     _ => "v1_rt::rc_empty_set::<_>()".to_string(),
@@ -15458,6 +15515,7 @@ pub fn collection_element_type(
                                 shared_types.clone(),
                                 corpus_repr.clone(),
                                 source_indices.clone(),
+                                empty_emit_graph_info(),
                             )
                         }
                     }
@@ -15557,6 +15615,7 @@ pub fn lambda_param_type_strs(
                                     shared_types.clone(),
                                     corpus_repr.clone(),
                                     source_indices.clone(),
+                                    empty_emit_graph_info(),
                                 ))
                             }
                         }
@@ -15944,6 +16003,7 @@ pub fn emit_rust_fold_method_call(
                     match ps.clone().first().cloned() {
                         Some(acc_name) => Rc::new(EmitGraphInfo {
                             type_summaries: emit_info.type_summaries.clone(),
+                            type_decl_items: emit_info.type_decl_items.clone(),
                             recursive_type_set: emit_info.recursive_type_set.clone(),
                             fielded_variants: emit_info.fielded_variants.clone(),
                             positional_payload_variants: emit_info
@@ -15977,6 +16037,7 @@ pub fn emit_rust_fold_method_call(
                         match ps.clone().first().cloned() {
                             Some(acc_name) => Rc::new(EmitGraphInfo {
                                 type_summaries: emit_info.type_summaries.clone(),
+                                type_decl_items: emit_info.type_decl_items.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
                                 fielded_variants: emit_info.fielded_variants.clone(),
                                 positional_payload_variants: emit_info
@@ -16008,6 +16069,7 @@ pub fn emit_rust_fold_method_call(
             shared_types.clone(),
             emit_info.corpus_repr.clone(),
             scope.type_env.clone().source_indices.clone(),
+            emit_info.clone(),
         );
         let acc_type_is_type_var = if (acc_type_node.inferred.clone() != None) {
             is_type_variable(acc_type_node.inferred.clone().clone().unwrap())
@@ -16105,6 +16167,7 @@ pub fn emit_rust_fold_method_call(
                                     acc_type_node.clone(),
                                     shared_types.clone(),
                                     scope.type_env.clone().source_indices.clone(),
+                                    emit_info.clone(),
                                 )
                             } else {
                                 if (init_func.clone() == "empty_set".to_string()) {
@@ -16238,6 +16301,7 @@ pub fn emit_rust_sort_by_method_call(
                         shared_types.clone(),
                         emit_info.corpus_repr.clone(),
                         scope.type_env.clone().source_indices.clone(),
+                        emit_info.clone(),
                     )
                 } else {
                     "_".to_string()
@@ -21597,6 +21661,7 @@ pub fn emit_operation_method(
             shared_types.clone(),
             corpus_repr.clone(),
             env.source_indices.clone(),
+            empty_emit_graph_info(),
         );
         let eff_transport = effective_operation_transport(op_node.clone(), transport.clone());
         let op_inferred = resolved_type(op_node.clone());
@@ -21754,7 +21819,7 @@ let prelude = match wire_opt.clone() {
     Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
     _ => tn.clone(),
 };
-v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let __rest_wire: ".to_string(), render_rust_type(wire_ty.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone())), " = serde_json::from_str(r#\"".to_string()), mock_json.clone()), "\"#)?;\n".to_string())
+v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let __rest_wire: ".to_string(), render_rust_type(wire_ty.clone(), shared_types.clone(), corpus_repr.clone(), source_indices.clone(), empty_emit_graph_info())), " = serde_json::from_str(r#\"".to_string()), mock_json.clone()), "\"#)?;\n".to_string())
 }
                                     },
     None => v1_rt::concat(v1_rt::concat("let json_body: serde_json::Value = serde_json::from_str(r#\"".to_string(), mock_json.clone()), "\"#)?;\n".to_string()),
@@ -22918,6 +22983,7 @@ pub fn emit_from_key_extraction(
                                             shared_types.clone(),
                                             corpus_repr.clone(),
                                             source_indices.clone(),
+                                            empty_emit_graph_info(),
                                         ),
                                     ),
                                     " = response.json().await?;\n".to_string(),
@@ -23856,6 +23922,7 @@ pub fn emit_capability_method(
             shared_types.clone(),
             corpus_repr.clone(),
             env.source_indices.clone(),
+            empty_emit_graph_info(),
         );
         let items = rust_items();
         v1_rt::concat(
@@ -24157,6 +24224,7 @@ pub fn emit_data_def_body(
             shared_types.clone(),
             emit_info.corpus_repr.clone(),
             scope.type_env.clone().source_indices.clone(),
+            emit_info.clone(),
         );
         let type_name = authored_name_at(
             scope.type_env.clone().source_indices.clone(),
