@@ -26,7 +26,6 @@ data witness_exclusion_substrings: List<String> = [
   "host_source_root_ingest_manifest.dag",
   "program_assembly/real_ingest_test.dag",
   "self_host/compiler_closure_emit_from_ingest_test.dag",
-  "self_host/crate_layout_witness_test.dag",
   "unified_test_claim_substrate_equivalence.dag",
   "ci_exclusion_proof_test.dag",
   "test/claim/execution/",
@@ -106,7 +105,6 @@ data witness_admission_offline_exclusion_substrings: List<String> = [
   "host_source_root_ingest_manifest.dag",
   "program_assembly/real_ingest_test.dag",
   "self_host/compiler_closure_emit_from_ingest_test.dag",
-  "self_host/crate_layout_witness_test.dag",
   "unified_test_claim_substrate_equivalence.dag"
 ]
 
@@ -115,16 +113,6 @@ data witness_admission_fixture_exclusion_substrings: List<String> = [
 ]
 
 data witness_admission_offline_note: String = "Phase 0(b) admission invariant (module-identity-storage-binding): operator-ruled OFFLINE exclusion substrings whose witness rows carry OfflineLocalRecipe consumers — documented local recipes in the paired exclusion notes (wet_integration_offline_note, enforcement_coverage_exclusion_note, accumulator_copy_roster_gate_exclusion_note, identity_captured_navigation_roster_gate_exclusion_note, lever_a_local_receipt_witness_exclusion_note, long_lane_exclusion_note). Dissolves when each row graduates to a scheduled CI consumer or deletes."
-
-data crate_layout_transport_exclusion_note: String = "self_host/crate_layout_witness_test.dag is excluded from hermetic discovery and consumed by v2.workflow.module_binding_supply_transport (run_module_binding_supply_gate, reached from source_root_ingest_gate) — the same posture as its siblings program_assembly/real_ingest_test.dag and self_host/compiler_closure_emit_from_ingest_test.dag, which are transport-run for the same reason.
-
-WHY: as of task 3 these witnesses project off the derived ModuleStorageIndex, and the live index exists only inside that transport's overlay. Run hermetically they read host_module_bindings = Empty and REFUSE — correct behaviour, wrong lane.
-
-DO NOT give this file bin_witness_wet_entries rows. That was tried and it is the wrong roster: a bin_wet row makes the fn an EXPLICIT discovery entry, which BYPASSES the exclusion above and runs it hermetically in batch 3, where it refuses and reds. The tell in that failure is diagnostic — projection_refuses_on_absent_index PASSED while the other two failed, which is precisely Empty-index behaviour rather than a broken projection.
-
-Local recipe: gunbc run --source-root src/v2 --source-root dag --entry src/v2/workflow/module_binding_supply_transport.dag --function run_module_binding_supply_gate --claim-run
-
-Dissolve-on: the crate-layout artifact moves to host-driven generation with the index supplied at the boundary — then the hand rows, the parity witness, and this exclusion delete together."
 
 data witness_admission_fixture_note: String = "Phase 0(b): floor_skip control fixtures excluded at dir grain — consumers are explicit rosters in floor_skip_discovery_witness, not the discovery corpus. Dissolves when fixture-home policy changes."
 
