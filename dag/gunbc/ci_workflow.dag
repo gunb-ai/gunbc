@@ -8,7 +8,6 @@ import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_floor_run,
   gunbc_ci_regen_spec, gunbc_ci_regen_floor_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_invoke,
-  ci_release_build_script,
   ci_release_bins_pack_script, ci_release_bins_unpack_verify_script,
   ci_release_bins_archive_name,
 }
@@ -34,6 +33,7 @@ import v2.workflow.ci_workflow_run_emit {
   ci_pin_rustup_default_script,
   ci_selection_control_script
 }
+import v2.workflow.ci_release_build_emit { ci_release_build_script }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Duration }
