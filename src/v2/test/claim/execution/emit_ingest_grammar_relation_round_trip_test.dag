@@ -39,9 +39,9 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn grammar_relation_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
