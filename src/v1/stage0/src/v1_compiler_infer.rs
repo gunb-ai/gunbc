@@ -13464,22 +13464,24 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
                         acc.clone(),
                         |a2: Rc<SymbolIndex>, child: Rc<Node>| {
                             let vname = authored_name_at(source_indices.clone(), child.clone());
-                            // Kernel names are never census-aliased (same
-                            // authority as the import overlay): on a small
-                            // closure a lone enum declaring `Absent` (v2
-                            // NamedEdgeTargetLookup = Found|Ambiguous|Absent)
-                            // hits corpus count == 1 and would hijack the
-                            // kernel Optional variant — every `init: Absent`
-                            // fold in the closure then types as that enum.
-                            if overlay_skips_kernel_name(vname.clone()) {
-                                return a2.clone();
-                            }
                             match v1_rt::map_get(&counts, vname.clone()) {
                                 Some(1) => {
                                     match v1_rt::map_get(&corpus_variant_counts, vname.clone()) {
                                         Some(1) => {
+                                            // Kernel names never enter the BARE
+                                            // alias branch (same authority as the
+                                            // import overlay): on a small closure
+                                            // a lone enum declaring `Absent` (v2
+                                            // NamedEdgeTargetLookup) hits corpus
+                                            // count == 1 and would hijack the
+                                            // kernel Optional variant — every
+                                            // `init: Absent` fold then types as
+                                            // that enum. The QUALIFIED alias
+                                            // (module.Vname entry) stays: it adds
+                                            // no bare visibility.
                                             if v1_rt::map_get(&corpus_item_counts, vname.clone())
                                                 != None
+                                                || overlay_skips_kernel_name(vname.clone())
                                             {
                                                 symbol_index_insert(
                                                     a2.clone(),

@@ -6295,14 +6295,11 @@ fn symbol_index_insert_unique_disj_variant_aliases(
       Disj =>
         fold(item.children, init: acc, f: (a2, child) =>
           let vname = authored_name_at(source_indices: source_indices, node: child)
-          if overlay_skips_kernel_name(name: vname) {
-            a2
-          } else {
           match map_get(counts, vname) {
             Present { value: 1 } =>
               match map_get(corpus_variant_counts, vname) {
                 Present { value: 1 } =>
-                  if map_get(corpus_item_counts, vname) != none {
+                  if map_get(corpus_item_counts, vname) != none || overlay_skips_kernel_name(name: vname) {
                     symbol_index_insert(
                       index: a2,
                       qualified_name: concat(module_path, ".", vname),
@@ -6327,7 +6324,6 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                   )
               }
             _ => a2
-          }
           }
         )
       _ => acc
