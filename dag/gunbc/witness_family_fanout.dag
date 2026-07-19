@@ -1,0 +1,54 @@
+module gunbc.witness_family_fanout
+
+import std.types { String, Int, List }
+import v2.std.node { Symbol }
+
+data witness_family_fanout_doc: String = "Witness-family fan-out partition (v1_deletion_plan witness_family_fanout). Lane 4 (wise-fox-351): meet_join + variant_construct + classical_not_ingested emit-on-demand native witnesses on the #6879 kernel. Dissolve-on: every enrolled lane ACCEPT witness green + ci_floor_cutover routes native."
+
+type WitnessFamilyKind
+  = EmitHostExecutionFamily
+  | ClaimFamily
+
+type WitnessFamilyLane {
+  lane_id: Symbol,
+  lane_number: Int,
+  kind: WitnessFamilyKind,
+  title: String,
+  scope_note: String,
+  witness_entry: String,
+  witness_function: String,
+  lane_state: String
+}
+
+data witness_family_fanout_lanes: List<WitnessFamilyLane> = [
+  WitnessFamilyLane {
+    lane_id: ^witness_family_lane_meet_join,
+    lane_number: 4,
+    kind: EmitHostExecutionFamily,
+    title: "meet_join — std/logic meet and join emit-on-demand native witnesses",
+    scope_note: "emit_on_demand_meet_join_family_witness_test: native cold/warm octet receipts (NOT equals_eval agreement — pre-red debt in emit_host_meet_join_equals_eval_test.dag), swapped-arms RED, closure_digest key sensitivity. Template: emit_on_demand_kernel_witness_test.dag.",
+    witness_entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness_test.dag",
+    witness_function: "emit_on_demand_meet_join_family_witnesses",
+    lane_state: "LANDED (wise-fox-351)"
+  },
+  WitnessFamilyLane {
+    lane_id: ^witness_family_lane_variant_construct,
+    lane_number: 4,
+    kind: EmitHostExecutionFamily,
+    title: "variant_construct — variant-construct-then-match emit-on-demand native witnesses",
+    scope_note: "emit_on_demand_variant_construct_family_witness_test: native cold/warm octet receipts (NOT equals_eval agreement — pre-red debt in emit_host_variant_construct_equals_eval_test.dag), wrong-value RED, closure_digest key sensitivity.",
+    witness_entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
+    witness_function: "emit_on_demand_variant_construct_family_witnesses",
+    lane_state: "LANDED (wise-fox-351)"
+  },
+  WitnessFamilyLane {
+    lane_id: ^witness_family_lane_classical_not_ingested,
+    lane_number: 4,
+    kind: EmitHostExecutionFamily,
+    title: "classical_not_ingested — ingested classical_not emit-on-demand native witnesses",
+    scope_note: "emit_on_demand_classical_not_ingested_family_witness_test: interpreted==native equals_eval via run_test_claim_emit_vs_eval, native cold/warm, swapped-source RED, closure_digest key sensitivity.",
+    witness_entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
+    witness_function: "emit_on_demand_classical_not_ingested_family_witnesses",
+    lane_state: "LANDED (wise-fox-351)"
+  }
+]

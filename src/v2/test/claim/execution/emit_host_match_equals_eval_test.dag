@@ -4,6 +4,7 @@ import v2.test.complexity_gate.table_fixture_match_subject_producer {
   table_fixture_match_arrow_with_body,
   table_fixture_match_arrow_with_body_swapped_arms
 }
+import v2.compiler.emit { emit }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_test_claim_emit_vs_eval
@@ -12,8 +13,10 @@ import v2.compiler.eval {
   EvalContext,
   TestClaimEvalSubject,
   TestClaimRun,
+  eval,
   eval_context_with_semantics,
-  eval_test_claim_subject
+  eval_test_claim_subject,
+  inputs_root_only
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.dag {
@@ -346,6 +349,32 @@ test fn emit_host_match_wrong_fixture_refuses_holds() -> Bool {
   match emit_match_eval_swapped_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_match_eval_verdict_is_semantic_mismatch(run: emit_match_eval_run(tree: tree))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_match_eval_only_accepts() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match eval(
+        tree: tree,
+        interpretation: emit_match_eval_interpretation(),
+        inputs: inputs_root_only(root: emit_match_eval_subgraph_node)
+      ) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_host_match_emit_only_accepts() -> Bool {
+  match emit_match_eval_producer_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match emit(tree: tree, target: rust_match_target_model_staging()) {
+        Accepted { value: _, diagnostics: _ } => true
+        Rejected { diagnostics: _ } => false
+      }
     Rejected { diagnostics: _ } => false
   }
 }
