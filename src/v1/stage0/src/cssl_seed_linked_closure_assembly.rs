@@ -106,11 +106,6 @@ fn write_compiler_seed_reexport(dest: &Path, seed_mod: &str) -> Result<(), Assem
     Ok(())
 }
 
-fn copy_std_bridge(dest: &Path, bridge_src: &Path) -> Result<(), AssemblyError> {
-    fs::copy(bridge_src, dest)?;
-    Ok(())
-}
-
 /// SCAFFOLD — see `cssl_emit_artifact_sanitize_scaffold_debt` in
 /// `dag/tools/self_host_curated_seed_linked_harness.dag`. String-scrub on emitted
 /// `v2_std_witness.rs` only; dissolve-on #6775 emitter defects. The `v2_std_integer.rs`
@@ -140,7 +135,10 @@ fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> 
 }
 
 fn sanitize_witness_import_conflict(content: &str) -> String {
-    if !content.lines().any(|l| l.trim() == "pub enum Witness") {
+    let defines_witness = content
+        .lines()
+        .any(|l| l.trim().starts_with("pub enum Witness"));
+    if !defines_witness {
         return content.to_string();
     }
     content
@@ -159,7 +157,7 @@ pub fn assemble_seed_linked_closure(
     out_dir: &Path,
     entry_dag: &Path,
     repo_root: &Path,
-    std_bridge_dir: &Path,
+    _std_bridge_dir: &Path,
 ) -> Result<(), AssemblyError> {
     let seed_lib_rs = repo_root.join("src/v1/stage0/src/lib.rs");
     let src_dir = out_dir.join("src");
@@ -212,13 +210,10 @@ pub fn assemble_seed_linked_closure(
         }
 
         if module.starts_with("v2_std_") {
-            let bridge_src = std_bridge_dir.join(format!("{module}.rs"));
-            if bridge_src.is_file() {
-                copy_std_bridge(&dest, &bridge_src)?;
-            } else {
-                // Former RefusedDep arm → emit-retain + optional sanitize scaffold.
-                sanitize_emitter_artifact_in_place(&dest)?;
-            }
+            // Emit-retain: gunbc-emitted v2 std is closure authority. Hand bridges
+            // (dag/tools/self_host_std_bridge_shims) are minimal ABI stubs that break
+            // dependents (e.g. v2_std_logic re-exports from v2_std_algebra).
+            sanitize_emitter_artifact_in_place(&dest)?;
             continue;
         }
 
@@ -327,6 +322,28 @@ mod tests {
         assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
         let kept = fs::read_to_string(out.join("src/std_error_primitives.rs")).expect("read");
         assert!(kept.contains("emitted std_error_primitives"));
+    }
+
+    #[test]
+    fn witness_generic_enum_sanitize_strips_v1_rt_import() {
+        let root = temp_fixture_root();
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src).expect("src");
+        let witness_src = concat!(
+            "use crate::v1_rt::Witness;\n",
+            "use crate::v1_rt::Witness::{Holds, Violates};\n",
+            "pub enum Witness<C> {\n",
+            "    Holds { value: C },\n",
+            "    Violates { diagnostic: String },\n",
+            "}\n"
+        );
+        let path = src.join("v2_std_witness.rs");
+        fs::write(&path, witness_src).expect("write witness");
+        sanitize_emitter_artifact_in_place(&path).expect("sanitize");
+        let kept = fs::read_to_string(&path).expect("read");
+        assert!(!kept.contains("use crate::v1_rt::Witness"));
+        assert!(kept.contains("pub enum Witness<C>"));
     }
 
     #[test]
