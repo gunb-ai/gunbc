@@ -1713,7 +1713,19 @@ fn call_function_inner(
                 // real parameter stays unbound. Refuse here (typed, located) rather than let the
                 // body fail later as `NoSuchVariable` — or silently compute when the stray label
                 // happens to collide with another in-scope name.
-                if !all_param_names.iter().any(|p| p == name) {
+                // The corpus marks a deliberately-unused parameter with a leading underscore
+                // (`_ctx`, `_spelling`) or an anonymous `_`, and call sites label it WITHOUT the
+                // underscore (`bash_fold_stmt_kind_tag_emit_transform(spelling: ..)` against
+                // `(_spelling: String)`; the fold-step `(acc, _: Edge, child)` labelled `e:`).
+                // That is the established idiom, and it is not a contract mismatch: the body
+                // cannot read the parameter, so nothing is silently dropped. Accept `x` against
+                // a declared `x`, `_x`, or `_`.
+                let matches_param = |p: &String| {
+                    p == name
+                        || p == "_"
+                        || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
+                };
+                if !all_param_names.iter().any(matches_param) {
                     return Err(InterpError::CallContractMismatch {
                         callee: fn_node.name.clone(),
                         detail: format!(
