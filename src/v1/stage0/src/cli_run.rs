@@ -9585,7 +9585,7 @@ pub(crate) const CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER: &str =
     "cli_run_declared_source_ref_selection_bridge";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DeclaredSourceRefAxis {
+pub(crate) enum DeclaredSourceRefAxis {
     Absent,
     Unresolved,
     Touched,
@@ -9630,10 +9630,7 @@ fn parse_named_source_ref_paths(content: &str) -> HashMap<String, String> {
         if !rhs.starts_with("SourceRef") && !rhs.contains("source_ref_for_storage_path") {
             continue;
         }
-        let rhs = rhs
-            .split_once('=')
-            .map(|(_, v)| v.trim())
-            .unwrap_or(rhs);
+        let rhs = rhs.split_once('=').map(|(_, v)| v.trim()).unwrap_or(rhs);
         if let Some(path) = parse_source_ref_storage_path_from_rhs(rhs) {
             out.insert(name.to_string(), path);
         }
@@ -9707,12 +9704,14 @@ fn parse_declared_source_ref_paths_from_content(
             paths.push(path.clone());
         }
     }
-    if paths.is_empty() { None } else { Some(paths) }
+    if paths.is_empty() {
+        None
+    } else {
+        Some(paths)
+    }
 }
 
-fn collect_declared_source_ref_paths_for_closure(
-    closure_paths: &HashSet<String>,
-) -> Vec<String> {
+fn collect_declared_source_ref_paths_for_closure(closure_paths: &HashSet<String>) -> Vec<String> {
     let mut paths = Vec::new();
     for rel in closure_paths {
         let path = if std::path::Path::new(rel).is_absolute() {
@@ -9724,8 +9723,7 @@ fn collect_declared_source_ref_paths_for_closure(
             continue;
         };
         let named = parse_named_source_ref_paths(&content);
-        if let Some(mut declared) = parse_declared_source_ref_paths_from_content(&content, &named)
-        {
+        if let Some(mut declared) = parse_declared_source_ref_paths_from_content(&content, &named) {
             paths.append(&mut declared);
         }
     }
@@ -9769,7 +9767,7 @@ fn declared_source_refs_axis_for_paths(
     DeclaredSourceRefAxis::Untouched
 }
 
-fn declared_source_refs_axis_for_entry(
+pub(crate) fn declared_source_refs_axis_for_entry(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
     source_roots: &[String],
