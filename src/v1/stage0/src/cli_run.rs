@@ -934,10 +934,16 @@ fn module_path_collision_panic_message(
 }
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
-    collect_module_binding_manifest_rows(source_roots)
+    collect_parsed_module_path_rows(source_roots)
         .into_iter()
         .map(|row| (row.module_path, row.rel_path))
         .collect()
+}
+
+struct ParsedModulePathRow {
+    module_path: String,
+    rel_path: String,
+    ident_span: Rc<SourceSpan>,
 }
 
 struct ModuleBindingManifestRow {
@@ -947,10 +953,55 @@ struct ModuleBindingManifestRow {
     ident_span: Rc<SourceSpan>,
 }
 
+fn collect_parsed_module_path_rows(source_roots: &[String]) -> Vec<ParsedModulePathRow> {
+    let mut rows: Vec<ParsedModulePathRow> = Vec::new();
+    for (root_idx, root) in source_roots.iter().enumerate() {
+        let anchored_root = anchor_source_root(root);
+        let root_path = Path::new(&anchored_root);
+        let mut dag_files = Vec::new();
+        collect_dag_files(root_path, &mut dag_files);
+        for path in dag_files {
+            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!(
+                    "collect_parsed_module_path_rows: failed to read {:?}: {}",
+                    path, e
+                )
+            });
+            let Some(binding) = parse_module_binding(&path, &content) else {
+                continue;
+            };
+            let rel = module_index_path_key(&path);
+            if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
+                continue;
+            }
+            if let Some(existing) = rows.iter().find(|r| r.module_path == binding.module_path) {
+                if existing.rel_path != rel && !same_canonical_file(&existing.rel_path, &rel) {
+                    panic!(
+                        "{}",
+                        module_path_collision_panic_message(
+                            &binding.module_path,
+                            &existing.rel_path,
+                            &rel
+                        )
+                    );
+                }
+                continue;
+            }
+            rows.push(ParsedModulePathRow {
+                module_path: binding.module_path,
+                rel_path: rel,
+                ident_span: binding.ident_span,
+            });
+        }
+    }
+    rows
+}
+
 fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
     let mut rows: Vec<ModuleBindingManifestRow> = Vec::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
-        let root_variant = source_root_ref_variant_for_root(root)
+        let rel_root = repo_relative_dag_path(root);
+        let root_variant = source_root_ref_variant_for_root(&rel_root)
             .unwrap_or_else(|e| panic!("collect_module_binding_manifest_rows: {e}"));
         let anchored_root = anchor_source_root(root);
         let root_path = Path::new(&anchored_root);
