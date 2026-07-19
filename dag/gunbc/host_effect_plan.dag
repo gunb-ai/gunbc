@@ -3,6 +3,7 @@ module gunbc.host_effect_plan
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do, FailFast, Continue }
 import v2.std.algebra {
   FreeMonoid,
+  freemonoid_empty,
   list_head, list_tail,
   HeadFound, HeadAbsent,
   TailFound, TailAbsent,
@@ -32,7 +33,7 @@ type HostEffectPlanContext {
   transport: HostEffectTransport
 }
 
-data host_effect_plan_unsupported_step_reason: String = "host_effect_plan_apply: control-flow step refuses on the typed host_effect_apply spine until predicate interpretation lands; only Do{effect} leaves are supported (Wave A2 keystone — host-effect-orchestration.md std.effect_plan band)"
+data host_effect_plan_unsupported_step_reason: String = "host_effect_plan_apply: control-flow step refuses on the typed host_effect_apply spine until predicate interpretation lands; only Do-effect leaves are supported (Wave A2 keystone, host-effect-orchestration.md std.effect_plan band)"
 
 fn host_effect_plan_placeholder_effect() -> HostEffect {
   ShellCommand { script: "" }
@@ -97,7 +98,7 @@ fn host_effect_plan_apply_rest(
           head_result: host_effect_plan_apply_step(step: next, ctx: ctx),
           rest: match list_tail(xs: rest) {
             TailFound { tail: t } => t
-            TailAbsent => []
+            TailAbsent => freemonoid_empty()
           },
           ctx: ctx,
         )
@@ -126,7 +127,7 @@ fn host_effect_plan_apply(
         head_result: host_effect_plan_apply_step(step: first, ctx: ctx),
         rest: match list_tail(xs: plan.steps) {
           TailFound { tail: t } => t
-          TailAbsent => []
+          TailAbsent => freemonoid_empty()
         },
         ctx: ctx,
       )

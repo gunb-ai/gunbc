@@ -2,7 +2,7 @@ module v2.std.effect_plan
 
 import v2.std.text { String }
 import std.nat { Nat }
-import std.algebra { FreeMonoid }
+import v2.std.algebra { FreeMonoid }
 import v2.std.collection { List, Optional }
 import v2.std.diagnostic { EmitDirective }
 import v2.std.node { Symbol }
@@ -40,4 +40,4 @@ type EffectPlan<E> {
   on_failure: FailurePolicy
 }
 
-data effect_plan_do_effect_target_band_note: String = "std.effect_plan leaves = Do{effect} — never a command string. v2.std.orchestration.PipelineStep.Do{run:Run} is the bash-emit scaffold; runtime-present sites compose EffectPlan<HostEffect> and interpret via gunbc.host_effect_plan.host_effect_plan_apply → host_effect_apply (host-effect-orchestration.md §1b)."
+data effect_plan_do_effect_target_band_note: String = "std.effect_plan leaves are Do-effect leaves, never a command string. v2.std.orchestration PipelineStep Do-run is the bash-emit scaffold; runtime-present sites compose EffectPlan over HostEffect and interpret via gunbc.host_effect_plan.host_effect_plan_apply routing to host_effect_apply (host-effect-orchestration.md section 1b)."

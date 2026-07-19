@@ -33,21 +33,21 @@ fn witness_plan_ctx() -> HostEffectPlanContext {
 }
 
 fn witness_single_do_true_plan() -> HostEffectPlan {
-  EffectPlan<HostEffect> {
+  EffectPlan {
     steps: [Do { effect: ShellCommand { script: "true" } }],
     on_failure: FailFast,
   }
 }
 
 fn witness_single_do_false_plan() -> HostEffectPlan {
-  EffectPlan<HostEffect> {
+  EffectPlan {
     steps: [Do { effect: ShellCommand { script: "exit 1" } }],
     on_failure: FailFast,
   }
 }
 
 fn witness_sequential_do_plan() -> HostEffectPlan {
-  EffectPlan<HostEffect> {
+  EffectPlan {
     steps: [
       Do { effect: ShellCommand { script: "true" } },
       Do { effect: ShellCommand { script: "true" } },
@@ -57,13 +57,13 @@ fn witness_sequential_do_plan() -> HostEffectPlan {
 }
 
 fn witness_if_control_flow_plan() -> HostEffectPlan {
-  EffectPlan<HostEffect> {
+  EffectPlan {
     steps: [
       If {
         cond: ExitZero {
           run: Run { command: "true", env: [], redirect: Absent, capture: Absent }
         },
-        then_: EffectPlan<HostEffect> { steps: [], on_failure: FailFast },
+        then_: EffectPlan { steps: [], on_failure: FailFast },
         else_: Absent,
       },
     ],
