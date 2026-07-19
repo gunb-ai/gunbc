@@ -4,6 +4,11 @@ import tools.self_host_curated_seed_linked_harness {
   CuratedSeedLinkedShimWrite,
   cssl_seed_linked_behavioral_receipt
 }
+import v2.compiler.source_authority {
+  SourceRef,
+  source_ref_for_storage_path,
+  source_ref_path
+}
 import v2.std.collection { List }
 import std.logic { Bool }
 
@@ -13,11 +18,28 @@ data sn_emit_surface_rustc_refusal_note: String = "RESOLVED (Gate-A flip wave 20
 
 data sn_seed_retained_note: String = "Seed oracle: v1_compiler::v2_compiler_normalize in src/v1/stage0 (hand-retained, independent of emitted artifact). Dissolve-on: sn_scaffold_dissolution_trigger."
 
-data sn_source_rel: String = "src/v2/compiler/03_normalize.dag"
+data sn_source_ref: SourceRef = source_ref_for_storage_path(path: "src/v2/compiler/03_normalize.dag")
 
-data sn_shim_lib_rel: String = "dag/tools/self_host_03_normalize_shims/lib.rs"
+data sn_shim_lib_ref: SourceRef = source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/lib.rs")
 
-data sn_shim_driver_rel: String = "dag/tools/self_host_03_normalize_shims/witness_main.rs"
+data sn_shim_driver_ref: SourceRef = source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/witness_main.rs")
+
+data sn_declared_source_refs_completeness_note: String = "Hand-verified completeness (docs/plans/declared-source-ref-selection-design.md §5.1 flagship): every storage path this transport reads is listed in declared_source_refs — emitter .dag, shim lib, witness driver, and each curated shim write source. Widening opt-in past this row waits on effect_reach census join admission."
+
+data declared_source_refs: List<SourceRef> = [
+  sn_source_ref,
+  sn_shim_lib_ref,
+  sn_shim_driver_ref,
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_algebra.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_collection.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_grammar.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_diagnostic.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_node.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_std_compilers_sugar.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_compiler_body_lowering_fold.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_compiler_normalized_tree.rs"),
+  source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/v2_extdeps_languages_dag.rs")
+]
 
 data sn_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_03_normalize_shims/* + sn behavioral transport wiring — seed-linked dep shim files and witness driver. DISSOLVES WHEN gunbc-emitted entry rustc-compiles under seed-linked harness without hand shims AND modeled self-host behavioral-equivalence harness emits comparison driver + manifest (cssl_v1_compiled_cargo_toml authority)."
 
@@ -64,10 +86,10 @@ data sn_normalize_shim_writes: List<CuratedSeedLinkedShimWrite> = [
 
 fn sn_behavioral_receipt_holds() -> Bool {
   cssl_seed_linked_behavioral_receipt(
-    source_rel: sn_source_rel,
-    shim_lib_rel: sn_shim_lib_rel,
+    source_rel: source_ref_path(ref: sn_source_ref),
+    shim_lib_rel: source_ref_path(ref: sn_shim_lib_ref),
     shim_writes: sn_normalize_shim_writes,
-    driver_rel: sn_shim_driver_rel,
+    driver_rel: source_ref_path(ref: sn_shim_driver_ref),
     pass_marker: sn_receipt_pass_marker,
     claim_entry_rel: "",
     claim_function: ""

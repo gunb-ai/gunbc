@@ -146,6 +146,28 @@ type SourceRef {
   content_hash: ContentHash
 }
 
+data source_ref_selection_unpinned_note: String = "Selection-grain placeholder hash for declared SourceRef rows (docs/plans/declared-source-ref-selection-design.md §7): content-hash-as-selection-key belongs to the resolve-cost lane, not this task. Rows carry the field for shape compatibility with the eventual pinned authority; selection today keys on storage path resolved through ModuleStorageIndex only."
+
+fn source_ref_path(ref: SourceRef) -> String {
+  ref.path
+}
+
+fn source_root_for_storage_path(path: String) -> SourceRootRef {
+  if starts_with(s: path, prefix: "src/") {
+    V2Tree
+  } else {
+    DagTree
+  }
+}
+
+fn source_ref_for_storage_path(path: String) -> SourceRef {
+  SourceRef {
+    path: path,
+    source_root: source_root_for_storage_path(path: path),
+    content_hash: "selection-unpinned" as ContentHash
+  }
+}
+
 data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact: the 27 hand FrontierQualifiedModuleBinding rows and the host-side build_module_path_index both project from here, else two authorities remain (§3). Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
 
 type ModuleStorageProvenance
