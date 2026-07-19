@@ -67,15 +67,6 @@ pub fn parse_module_binding(
     }))
 }
 
-/// Module path from parsed content — projection used by `build_module_path_index`.
-pub fn module_path_from_parsed_content(path: &Path, content: &str) -> Option<String> {
-    match parse_module_binding(path, content) {
-        Ok(Some(binding)) => Some(binding.module_path),
-        Ok(None) => None,
-        Err(msg) => panic!("module_path_from_parsed_content: {msg}"),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

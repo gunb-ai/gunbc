@@ -935,7 +935,7 @@ fn module_path_collision_panic_message(
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
     let mut index: HashMap<String, String> = HashMap::new();
-    for_each_parsed_module_binding(source_roots, |root_idx, path, _content, binding| {
+    for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
         let rel = module_index_path_key(path);
         if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
             return;
@@ -967,7 +967,7 @@ fn insert_module_path(index: &mut HashMap<String, String>, module_path: &str, re
 
 fn for_each_parsed_module_binding(
     source_roots: &[String],
-    mut visit: impl FnMut(usize, &Path, &str, ParsedModuleBinding),
+    mut visit: impl FnMut(usize, &Path, ParsedModuleBinding),
 ) {
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
@@ -986,62 +986,50 @@ fn for_each_parsed_module_binding(
                 Ok(None) => continue,
                 Err(msg) => panic!("for_each_parsed_module_binding: {msg}"),
             };
-            visit(root_idx, &path, &content, binding);
+            visit(root_idx, &path, binding);
         }
     }
 }
 
 fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
+    let root_variants: Vec<String> = source_roots
+        .iter()
+        .map(|root| {
+            let rel_root = repo_relative_dag_path(root);
+            source_root_ref_variant_for_root(&rel_root)
+                .unwrap_or_else(|e| panic!("collect_module_binding_manifest_rows: {e}"))
+        })
+        .collect();
     let mut rows_by_module: std::collections::HashMap<String, ModuleBindingManifestRow> =
         std::collections::HashMap::new();
-    for (root_idx, root) in source_roots.iter().enumerate() {
-        let rel_root = repo_relative_dag_path(root);
-        let root_variant = source_root_ref_variant_for_root(&rel_root)
-            .unwrap_or_else(|e| panic!("collect_module_binding_manifest_rows: {e}"));
-        let anchored_root = anchor_source_root(root);
-        let root_path = Path::new(&anchored_root);
-        let mut dag_files = Vec::new();
-        collect_dag_files(root_path, &mut dag_files);
-        for path in dag_files {
-            let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-                panic!(
-                    "collect_module_binding_manifest_rows: failed to read {:?}: {}",
-                    path, e
-                )
-            });
-            let binding = match parse_module_binding(&path, &content) {
-                Ok(Some(binding)) => binding,
-                Ok(None) => continue,
-                Err(msg) => panic!("collect_module_binding_manifest_rows: {msg}"),
-            };
-            let rel = module_index_path_key(&path);
-            if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
-                continue;
-            }
-            if let Some(existing) = rows_by_module.get(&binding.module_path) {
-                if existing.rel_path != rel && !same_canonical_file(&existing.rel_path, &rel) {
-                    panic!(
-                        "{}",
-                        module_path_collision_panic_message(
-                            &binding.module_path,
-                            &existing.rel_path,
-                            &rel
-                        )
-                    );
-                }
-                continue;
-            }
-            rows_by_module.insert(
-                binding.module_path.clone(),
-                ModuleBindingManifestRow {
-                    module_path: binding.module_path,
-                    rel_path: rel,
-                    root_variant: root_variant.clone(),
-                    ident_span: binding.ident_span,
-                },
-            );
+    for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
+        let rel = module_index_path_key(path);
+        if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
+            return;
         }
-    }
+        if let Some(existing) = rows_by_module.get(&binding.module_path) {
+            if existing.rel_path != rel && !same_canonical_file(&existing.rel_path, &rel) {
+                panic!(
+                    "{}",
+                    module_path_collision_panic_message(
+                        &binding.module_path,
+                        &existing.rel_path,
+                        &rel
+                    )
+                );
+            }
+            return;
+        }
+        rows_by_module.insert(
+            binding.module_path.clone(),
+            ModuleBindingManifestRow {
+                module_path: binding.module_path,
+                rel_path: rel,
+                root_variant: root_variants[root_idx].clone(),
+                ident_span: binding.ident_span,
+            },
+        );
+    });
     let mut rows: Vec<ModuleBindingManifestRow> =
         rows_by_module.into_iter().map(|(_, row)| row).collect();
     rows.sort_by(|a, b| a.module_path.cmp(&b.module_path));
