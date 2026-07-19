@@ -935,7 +935,7 @@ fn module_path_collision_panic_message(
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
     let mut index: HashMap<String, String> = HashMap::new();
-    for_each_parsed_module_binding(source_roots, |root_idx, path, content, binding| {
+    for_each_parsed_module_binding(source_roots, |root_idx, path, _content, binding| {
         let rel = module_index_path_key(path);
         if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
             return;
@@ -943,12 +943,6 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
         insert_module_path(&mut index, &binding.module_path, rel);
     });
     index
-}
-
-struct ParsedModulePathRow {
-    module_path: String,
-    rel_path: String,
-    ident_span: Rc<SourceSpan>,
 }
 
 struct ModuleBindingManifestRow {
@@ -995,39 +989,6 @@ fn for_each_parsed_module_binding(
             visit(root_idx, &path, &content, binding);
         }
     }
-}
-
-fn collect_parsed_module_path_rows(source_roots: &[String]) -> Vec<ParsedModulePathRow> {
-    let mut spans: std::collections::HashMap<String, (String, Rc<SourceSpan>)> =
-        std::collections::HashMap::new();
-    for_each_parsed_module_binding(source_roots, |root_idx, path, _content, binding| {
-        let rel = module_index_path_key(path);
-        if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
-            return;
-        }
-        if let Some(existing) = spans.get(&binding.module_path) {
-            if existing.0 != rel && !same_canonical_file(&existing.0, &rel) {
-                panic!(
-                    "{}",
-                    module_path_collision_panic_message(&binding.module_path, &existing.0, &rel)
-                );
-            }
-            return;
-        }
-        spans.insert(binding.module_path, (rel, binding.ident_span));
-    });
-    let mut rows: Vec<ParsedModulePathRow> = spans
-        .into_iter()
-        .map(
-            |(module_path, (rel_path, ident_span))| ParsedModulePathRow {
-                module_path,
-                rel_path,
-                ident_span,
-            },
-        )
-        .collect();
-    rows.sort_by(|a, b| a.module_path.cmp(&b.module_path));
-    rows
 }
 
 fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
@@ -14437,7 +14398,8 @@ fn emit_source_root_ref_import(records: &[SourceRootReadRecord]) -> String {
 /// `v2.compiler.source_authority.module_storage_bindings_for_source_roots`.
 ///
 /// This is a TRANSPORT of that modeled op, not a rival authority. It carries zero
-/// independent policy: it serializes what `build_module_path_index` already derived,
+/// independent policy: it serializes the same parse-derived rows as `build_module_path_index`
+/// via `collect_module_binding_manifest_rows` (shared `for_each_parsed_module_binding` walk),
 /// which is the one host producer the module-identity design says must be repointed —
 /// so supplying the rows and repointing the producer are the same motion.
 ///
