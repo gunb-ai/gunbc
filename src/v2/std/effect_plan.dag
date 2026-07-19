@@ -9,8 +9,6 @@ import v2.std.node { Symbol }
 import v2.std.orchestration {
   Predicate,
   FailurePolicy,
-  FailFast,
-  Continue,
   EscalationLevel,
   ValueSource,
   Expr,

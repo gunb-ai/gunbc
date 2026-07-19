@@ -1,6 +1,6 @@
 module gunbc.host_effect_plan
 
-import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do, FailFast, Continue }
+import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
 import v2.std.algebra {
   FreeMonoid,
   freemonoid_empty,

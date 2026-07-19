@@ -2,7 +2,7 @@ module test.claim.host_effect_plan_witness
 
 import std.logic { Bool }
 import gunbc.host_effect {
-  HostEffect, ShellCommand,
+  ShellCommand,
   NodeControlPlane, HostOs,
   host_effect_identity_evidence,
   LocalShell,
@@ -11,8 +11,8 @@ import gunbc.host_effect_plan {
   HostEffectPlan, HostEffectPlanContext,
   host_effect_plan_apply,
 }
-import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do, FailFast, If }
-import v2.std.orchestration { ExitZero, Run }
+import v2.std.effect_plan { EffectPlan, Do, If }
+import v2.std.orchestration { FailFast, ExitZero, Run }
 import v2.std.collection { Absent }
 import std.realization_reconcile { reconciliation_converged }
 import gunbc.fleet_intent { srv1_host }
