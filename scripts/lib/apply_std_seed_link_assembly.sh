@@ -75,9 +75,8 @@ apply_std_seed_link_assembly() {
         _sanitize_emitter_artifact_in_place "$src_dir/$mod.rs"
         ;;
       v2_compiler_*|extdeps_*|v1_compiler_*)
-        if _seed_mod_exists "$mod"; then
-          _write_seed_reexport_shim "$src_dir/$mod.rs" "$mod"
-        fi
+        # Closure manifest membership → emit-retain; seed pub mod is not a replace trigger.
+        _sanitize_emitter_artifact_in_place "$src_dir/$mod.rs"
         ;;
       v2_std_*|v1_rt|v2_extdeps_*)
         _sanitize_emitter_artifact_in_place "$src_dir/$mod.rs"

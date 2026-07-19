@@ -49,7 +49,8 @@ fn terminal_gate_receipt(status: HostVerdictSurfaceExecutionStatus) -> PerTarget
         diagnostics: None
       },
       stderr_bytes: terminal_gate_empty_bytes(),
-      build_log: BuildLog { lines: [] }
+      build_log: BuildLog { lines: [] },
+      compile_skipped: false
     },
     execution_status: status,
     verdict_tally: verdict_tally_empty
