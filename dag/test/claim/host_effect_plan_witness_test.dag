@@ -1,0 +1,107 @@
+module test.claim.host_effect_plan_witness
+
+import std.logic { Bool }
+import gunbc.host_effect {
+  HostEffect, ShellCommand,
+  NodeControlPlane, HostOs,
+  host_effect_identity_evidence,
+  LocalShell,
+}
+import gunbc.host_effect_plan {
+  HostEffectPlan, HostEffectPlanContext,
+  host_effect_plan_apply,
+}
+import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do, FailFast, If }
+import v2.std.orchestration { ExitZero, Run }
+import v2.std.collection { Absent }
+import std.realization_reconcile { reconciliation_converged }
+import gunbc.fleet_intent { srv1_host }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_host_os_target() -> NodeControlPlane {
+  HostOs { node: srv1_host }
+}
+
+fn witness_plan_ctx() -> HostEffectPlanContext {
+  HostEffectPlanContext {
+    target: witness_host_os_target(),
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+  }
+}
+
+fn witness_single_do_true_plan() -> HostEffectPlan {
+  EffectPlan<HostEffect> {
+    steps: [Do { effect: ShellCommand { script: "true" } }],
+    on_failure: FailFast,
+  }
+}
+
+fn witness_single_do_false_plan() -> HostEffectPlan {
+  EffectPlan<HostEffect> {
+    steps: [Do { effect: ShellCommand { script: "exit 1" } }],
+    on_failure: FailFast,
+  }
+}
+
+fn witness_sequential_do_plan() -> HostEffectPlan {
+  EffectPlan<HostEffect> {
+    steps: [
+      Do { effect: ShellCommand { script: "true" } },
+      Do { effect: ShellCommand { script: "true" } },
+    ],
+    on_failure: FailFast,
+  }
+}
+
+fn witness_if_control_flow_plan() -> HostEffectPlan {
+  EffectPlan<HostEffect> {
+    steps: [
+      If {
+        cond: ExitZero {
+          run: Run { command: "true", env: [], redirect: Absent, capture: Absent }
+        },
+        then_: EffectPlan<HostEffect> { steps: [], on_failure: FailFast },
+        else_: Absent,
+      },
+    ],
+    on_failure: FailFast,
+  }
+}
+
+fn witness_do_effect_leaf_converges() -> Bool {
+  reconciliation_converged(r: host_effect_plan_apply(
+    plan: witness_single_do_true_plan(),
+    ctx: witness_plan_ctx(),
+  ))
+}
+
+fn witness_do_effect_leaf_failure_fails_closed() -> Bool {
+  !reconciliation_converged(r: host_effect_plan_apply(
+    plan: witness_single_do_false_plan(),
+    ctx: witness_plan_ctx(),
+  ))
+}
+
+fn witness_sequential_do_effects_converge() -> Bool {
+  reconciliation_converged(r: host_effect_plan_apply(
+    plan: witness_sequential_do_plan(),
+    ctx: witness_plan_ctx(),
+  ))
+}
+
+fn witness_control_flow_step_refuses_fail_closed() -> Bool {
+  !reconciliation_converged(r: host_effect_plan_apply(
+    plan: witness_if_control_flow_plan(),
+    ctx: witness_plan_ctx(),
+  ))
+}
+
+test fn host_effect_plan_witness_holds() -> Bool {
+  witness_do_effect_leaf_converges()
+    && witness_do_effect_leaf_failure_fails_closed()
+    && witness_sequential_do_effects_converge()
+    && witness_control_flow_step_refuses_fail_closed()
+}
