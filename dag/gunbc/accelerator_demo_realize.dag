@@ -59,7 +59,7 @@ fn eval_program_via_kernel(
 ) -> List<Int> {
   match program {
     PureElementwiseMap { ops: _ } =>
-      extdeps.languages.simd.kernel.contiguous_loop_elementwise_kernel(
+      contiguous_loop_elementwise_kernel(
         op_codes: gunbc.accelerator_demo_program.program_op_codes(program: program),
         a: a,
         b: b,
@@ -282,7 +282,7 @@ fn eval_float_program_via_kernel(
 ) -> List<Float> {
   match program {
     PureElementwiseMap { ops: _ } =>
-      extdeps.languages.simd.kernel.contiguous_loop_elementwise_float_kernel(
+      contiguous_loop_elementwise_float_kernel(
         op_codes: gunbc.accelerator_demo_program.program_op_codes(program: program),
         fma_contraction_policy: fma_contraction_policy,
         a: a,

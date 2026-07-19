@@ -1,0 +1,22 @@
+module gunbc.tmp_oracle_probe
+
+fn probe_oracle() -> List<Int> {
+  gunbc.accelerator_demo_eval.eval_accelerator_program(
+    program: gunbc.accelerator_demo_program.relu_mul_add_pure_program,
+    a: [2, -1, 0, 5],
+    b: [3, 4, 9, -2],
+    c: [1, 2, 0, 3]
+  )
+}
+
+fn probe_recognizable() -> Bool {
+  gunbc.accelerator_demo_program.pure_elementwise_ops_shape_recognizable(
+    ops: gunbc.accelerator_demo_program.relu_mul_add_ops
+  )
+}
+
+fn probe_codes() -> List<Int> {
+  gunbc.accelerator_demo_program.elementwise_op_codes(
+    ops: gunbc.accelerator_demo_program.relu_mul_add_ops
+  )
+}
