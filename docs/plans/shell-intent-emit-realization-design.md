@@ -15,7 +15,7 @@ This is not a new principle. It is §3 (single authority; a transport is one Rea
 - **The intent IS the `.dag` graph — not a `Pipeline`.** §4 already says a program is a dependency graph over `Node` + `Edge`. "Get the git diff and feed it to X" is an operation node (typed I/O) with a dependency edge to its consumer. That graph *is* the intent. `src/v2/std/orchestration.dag` `Pipeline` is one *convenience framework* for writing linear-orchestration-shaped graphs — fine to keep as a writing aid, never the authority, never required. Do not elevate it to THE representation.
 - **Emit and realization are two distinct downstream layers** (do not conflate — "realization" is the precise §2 concept):
   - **Emit** (§4): render the intent graph to a target's surface syntax, `emit(intent, Bash)` — one grammar read backward, a pure transform with the target as a *parameter*.
-  - **Realization** (§2): pure-spec → host-effect, content-addressed, N transport handlers (`LocalShell`, `SshShell`, …). It *consumes* emit's output to produce an effect on a host. It is not emit.
+  - **Realization** (§2): pure-spec → host-effect, content-addressed, N transport handlers (`LocalShell`, `SshShell`, …). It realizes a typed effect on a host, and it is not emit. Per the routing decision below, *most* (runtime-present) sites realize **directly, with no emit in the loop**; only the foreign-executor/bootstrap path has realization *consume `emit`'s output* (the rendered bash). Emit is one input to realization on that path, not a universal precursor.
 
 ## The layering
 
