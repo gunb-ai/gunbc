@@ -3,6 +3,7 @@
 //! dissolve-on: v2 std self-emits + gunbc emits seed-linked extern imports.
 
 use sha2::Digest;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -106,24 +107,34 @@ fn write_compiler_seed_reexport(dest: &Path, seed_mod: &str) -> Result<(), Assem
     Ok(())
 }
 
+/// Membership in the gunbc-emitted closure: module listed in emitted `src/lib.rs`
+/// and backed by an emitted `src/{module}.rs`. The assembly loop only visits
+/// such modules; `seed lib.rs` `pub mod` presence is an external-oracle fact and
+/// must not trigger seed-replace for closure members (seed stubs may lack
+/// gunbc-emitted type surface — e.g. `ResolvedTree` in `v2_compiler_resolve`).
+fn is_emitted_closure_member(emitted_lib_rs: &Path, module: &str, dest: &Path) -> bool {
+    dest.is_file()
+        && parse_closure_mods(emitted_lib_rs)
+            .map(|mods| mods.iter().any(|m| m == module))
+            .unwrap_or(false)
+}
+
+fn is_compiler_family_module(module: &str) -> bool {
+    module.starts_with("v2_compiler_")
+        || module.starts_with("extdeps_")
+        || module.starts_with("v1_compiler_")
+}
+
 /// SCAFFOLD — see `cssl_emit_artifact_sanitize_scaffold_debt` in
-/// `dag/tools/self_host_curated_seed_linked_harness.dag`. String-scrub on emitted
-/// `v2_std_witness.rs` only; dissolve-on #6775 emitter defects. The `v2_std_integer.rs`
-/// arm (blind Int128..UInt8 line-range strip, no duplicate detection) was removed
-/// 2026-07-18: real-entry reproduction against the production `cssl_seed_linked_behavioral_receipt`
-/// path (04_infer.dag, full closure, primary-precedence pool) found the emit source
-/// already writes exactly one copy of each struct — the strip was silently deleting the
-/// only legitimate copy, not a duplicate. Its dissolve-on trigger was already satisfied.
+/// `dag/tools/self_host_curated_seed_linked_harness.dag`. Two structural passes on
+/// every emit-retained artifact (dissolve-on #6775 emitter coherence):
+/// (1) strip `use crate::v1_rt::NAME` when the file locally defines `pub enum/struct/type NAME`
+///     (generic-arg-aware: `Witness<C>` and `Optional<T>` share the same rule);
+/// (2) dedupe symbols across sequential `pub use path::{...}` lines (emitter may
+///     re-export the same name via transitive paths — e.g. Optional via grammar + collection).
 fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> {
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or_default();
-    if name != "v2_std_witness.rs" {
-        return Ok(());
-    }
     let content = fs::read_to_string(path)?;
-    let sanitized = sanitize_witness_import_conflict(&content);
+    let sanitized = sanitize_emit_artifact_content(&content);
     if sanitized != content {
         eprintln!(
             "CSSL_ASSEMBLE: sanitize scaffold applied to {}",
@@ -134,21 +145,89 @@ fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> 
     Ok(())
 }
 
-fn sanitize_witness_import_conflict(content: &str) -> String {
-    let defines_witness = content
-        .lines()
-        .any(|l| l.trim().starts_with("pub enum Witness"));
-    if !defines_witness {
+fn local_pub_item_names(content: &str) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for line in content.lines() {
+        let t = line.trim();
+        for prefix in ["pub enum ", "pub struct ", "pub type "] {
+            if let Some(rest) = t.strip_prefix(prefix) {
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    names.insert(name);
+                }
+                break;
+            }
+        }
+    }
+    names
+}
+
+fn strip_v1_rt_imports_for_local_defs(content: &str, local_names: &HashSet<String>) -> String {
+    if local_names.is_empty() {
         return content.to_string();
     }
     content
         .lines()
         .filter(|l| {
             let t = l.trim();
-            t != "use crate::v1_rt::Witness;" && !t.starts_with("use crate::v1_rt::Witness::")
+            !local_names.iter().any(|name| {
+                t == format!("use crate::v1_rt::{name};")
+                    || t.starts_with(&format!("use crate::v1_rt::{name}::"))
+            })
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn dedupe_pub_use_symbols(content: &str) -> String {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("pub use ") {
+            if let Some(brace_start) = rest.find('{') {
+                if let Some(brace_end) = rest.rfind('}') {
+                    if brace_end > brace_start {
+                        let path_prefix = &rest[..brace_start];
+                        let symbols_str = &rest[brace_start + 1..brace_end];
+                        let suffix = &rest[brace_end + 1..];
+                        let symbols: Vec<&str> = symbols_str
+                            .split(',')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                        let mut kept = Vec::new();
+                        for sym in symbols {
+                            if seen.insert(sym.to_string()) {
+                                kept.push(sym);
+                            }
+                        }
+                        if kept.is_empty() {
+                            continue;
+                        }
+                        out.push(format!(
+                            "{indent}pub use {}{{{}}}{suffix}",
+                            path_prefix,
+                            kept.join(", "),
+                        ));
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push(line.to_string());
+    }
+    out.join("\n")
+}
+
+fn sanitize_emit_artifact_content(content: &str) -> String {
+    let local = local_pub_item_names(content);
+    let stripped = strip_v1_rt_imports_for_local_defs(content, &local);
+    dedupe_pub_use_symbols(&stripped)
 }
 
 /// Assembly arms: entry untouched · compiler seed re-export · shared std-bridge · dag/std
@@ -196,14 +275,13 @@ pub fn assemble_seed_linked_closure(
             });
         }
 
-        if module.starts_with("v2_compiler_")
-            || module.starts_with("extdeps_")
-            || module.starts_with("v1_compiler_")
-        {
-            if seed_has_pub_mod(&seed_lib_rs, &module)? {
+        if is_compiler_family_module(&module) {
+            if is_emitted_closure_member(&emitted_lib_rs, &module, &dest) {
+                // Structural: closure manifest membership → emit-retain (gunbc surface).
+                sanitize_emitter_artifact_in_place(&dest)?;
+            } else if seed_has_pub_mod(&seed_lib_rs, &module)? {
                 write_compiler_seed_reexport(&dest, &module)?;
             } else {
-                // Former RefusedDep arm → emit-retain; cargo is the refusal surface.
                 sanitize_emitter_artifact_in_place(&dest)?;
             }
             continue;
@@ -325,11 +403,112 @@ mod tests {
     }
 
     #[test]
-    fn witness_generic_enum_sanitize_strips_v1_rt_import() {
+    fn closure_compiler_mod_emit_retained_when_seed_also_has_pub_mod() {
         let root = temp_fixture_root();
         let out = root.join("out");
         let src = out.join("src");
         fs::create_dir_all(&src).expect("src");
+        fs::write(
+            out.join("src/lib.rs"),
+            "pub mod v2_compiler_resolve;\npub mod v2_compiler_infer;\n",
+        )
+        .expect("lib");
+        fs::write(
+            src.join("v2_compiler_resolve.rs"),
+            "pub struct ResolvedTree;\n",
+        )
+        .expect("resolve");
+        fs::write(src.join("v2_compiler_infer.rs"), "// entry\n").expect("infer");
+        let seed_src = root.join("seed/src");
+        fs::create_dir_all(&seed_src).expect("seed dir");
+        fs::write(
+            seed_src.join("lib.rs"),
+            "pub mod v2_compiler_resolve;\npub mod v2_compiler_infer;\n",
+        )
+        .expect("seed lib");
+        fs::write(seed_src.join("v2_compiler_resolve.rs"), "// seed stub\n").expect("seed");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/04_infer.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.infer\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
+        assert!(
+            kept.contains("pub struct ResolvedTree"),
+            "closure member must stay emit-retained, not seed-shimmed"
+        );
+        assert!(!kept.contains("pub use v1_compiler::"));
+    }
+
+    #[test]
+    fn deliberate_red_control_broken_closure_dep_surfaces_at_cargo() {
+        let root = temp_fixture_root();
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src).expect("src");
+        fs::write(
+            out.join("src/lib.rs"),
+            "pub mod v2_compiler_tokenize;\npub mod v2_compiler_resolve;\n",
+        )
+        .expect("lib");
+        fs::write(src.join("v2_compiler_tokenize.rs"), "// entry\n").expect("entry");
+        fs::write(
+            src.join("v2_compiler_resolve.rs"),
+            "pub fn broken_syntax(] {}\n",
+        )
+        .expect("broken dep");
+        let seed_src = root.join("seed/src");
+        fs::create_dir_all(&seed_src).expect("seed dir");
+        fs::write(
+            seed_src.join("lib.rs"),
+            "pub mod v2_compiler_resolve;\npub mod v2_compiler_tokenize;\n",
+        )
+        .expect("seed lib");
+        let repo = root.join("repo");
+        fs::create_dir_all(repo.join("src/v1/stage0/src")).expect("seed path");
+        fs::copy(
+            seed_src.join("lib.rs"),
+            repo.join("src/v1/stage0/src/lib.rs"),
+        )
+        .expect("copy");
+        let dag = repo.join("src/v2/compiler/01_tokenize.dag");
+        fs::create_dir_all(dag.parent().unwrap()).expect("dag dir");
+        fs::write(&dag, "module v2.compiler.tokenize\n").expect("dag");
+        let bridge = repo.join("dag/tools/self_host_std_bridge_shims");
+        fs::create_dir_all(&bridge).expect("bridge");
+        assemble_seed_linked_closure(&out, &dag, &repo, &bridge).expect("assemble");
+        let kept = fs::read_to_string(src.join("v2_compiler_resolve.rs")).expect("read");
+        assert!(
+            kept.contains("broken_syntax"),
+            "emit-retain must not mask broken dep bytes"
+        );
+        fs::write(
+            out.join("Cargo.toml"),
+            "[package]\nname = \"red_control\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n",
+        )
+        .expect("cargo");
+        let status = std::process::Command::new("cargo")
+            .args(["build", "--lib"])
+            .current_dir(&out)
+            .env("RUSTC_WRAPPER", "")
+            .status()
+            .expect("cargo");
+        assert!(
+            !status.success(),
+            "deliberate-red: broken closure dep must refuse cargo"
+        );
+    }
+
+    #[test]
+    fn witness_generic_enum_sanitize_strips_v1_rt_import() {
         let witness_src = concat!(
             "use crate::v1_rt::Witness;\n",
             "use crate::v1_rt::Witness::{Holds, Violates};\n",
@@ -338,12 +517,52 @@ mod tests {
             "    Violates { diagnostic: String },\n",
             "}\n"
         );
+        let kept = sanitize_emit_artifact_content(witness_src);
+        assert!(!kept.contains("use crate::v1_rt::Witness"));
+        assert!(kept.contains("pub enum Witness<C>"));
+    }
+
+    #[test]
+    fn optional_generic_enum_sanitize_strips_v1_rt_import() {
+        let optional_src = concat!(
+            "use crate::v1_rt::Optional;\n",
+            "use crate::v1_rt::Optional::{Absent, Present};\n",
+            "pub enum Optional<T> {\n",
+            "    Absent,\n",
+            "    Present { value: T },\n",
+            "}\n"
+        );
+        let kept = sanitize_emit_artifact_content(optional_src);
+        assert!(!kept.contains("use crate::v1_rt::Optional"));
+        assert!(kept.contains("pub enum Optional<T>"));
+    }
+
+    #[test]
+    fn pub_use_symbol_dedup_clears_transitive_reexport_collision() {
+        let src = concat!(
+            "pub use crate::v2_std_grammar::{grammar_formal_terminal, Optional};\n",
+            "pub use crate::v2_std_collection::{List, Map, Set, Optional};\n"
+        );
+        let kept = sanitize_emit_artifact_content(src);
+        assert_eq!(kept.matches("Optional").count(), 1);
+        assert!(!kept.contains("Set, Optional"));
+    }
+
+    #[test]
+    fn witness_file_sanitize_via_in_place_path() {
+        let root = temp_fixture_root();
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src).expect("src");
+        let witness_src = concat!(
+            "use crate::v1_rt::Witness;\n",
+            "pub enum Witness<C> { Holds { value: C }, Violates { diagnostic: String }, }\n"
+        );
         let path = src.join("v2_std_witness.rs");
         fs::write(&path, witness_src).expect("write witness");
         sanitize_emitter_artifact_in_place(&path).expect("sanitize");
         let kept = fs::read_to_string(&path).expect("read");
         assert!(!kept.contains("use crate::v1_rt::Witness"));
-        assert!(kept.contains("pub enum Witness<C>"));
     }
 
     #[test]

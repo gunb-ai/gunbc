@@ -19,27 +19,23 @@ pub use v1_compiler::${seed_mod}::*;
 EOF
 }
 
-_strip_emitter_integer_inhabitant_dupes() {
+_strip_emitter_v1_rt_imports_for_local_defs() {
   local f="$1"
   [[ -f "$f" ]] || return 0
-  [[ "$(basename "$f")" == "v2_std_integer.rs" ]] || return 0
-  sed -i '/^pub struct Int128;$/,/^pub struct UInt8;$/d' "$f"
-}
-
-_strip_emitter_witness_import_conflict() {
-  local f="$1"
-  [[ -f "$f" ]] || return 0
-  [[ "$(basename "$f")" == "v2_std_witness.rs" ]] || return 0
+  # Rust cssl_assemble is authority; bash mirror is best-effort for Witness/Optional only.
   if grep -qE '^pub enum Witness' "$f"; then
     sed -i '/^use crate::v1_rt::Witness;$/d' "$f"
     sed -i '/^use crate::v1_rt::Witness::/d' "$f"
+  fi
+  if grep -qE '^pub enum Optional' "$f"; then
+    sed -i '/^use crate::v1_rt::Optional;$/d' "$f"
+    sed -i '/^use crate::v1_rt::Optional::/d' "$f"
   fi
 }
 
 _sanitize_emitter_artifact_in_place() {
   local f="$1"
-  _strip_emitter_integer_inhabitant_dupes "$f"
-  _strip_emitter_witness_import_conflict "$f"
+  _strip_emitter_v1_rt_imports_for_local_defs "$f"
 }
 
 dag_entry_rust_module() {
@@ -79,9 +75,8 @@ apply_std_seed_link_assembly() {
         _sanitize_emitter_artifact_in_place "$src_dir/$mod.rs"
         ;;
       v2_compiler_*|extdeps_*|v1_compiler_*)
-        if _seed_mod_exists "$mod"; then
-          _write_seed_reexport_shim "$src_dir/$mod.rs" "$mod"
-        fi
+        # Closure manifest membership → emit-retain; seed pub mod is not a replace trigger.
+        _sanitize_emitter_artifact_in_place "$src_dir/$mod.rs"
         ;;
       v2_std_*|v1_rt|v2_extdeps_*)
         _sanitize_emitter_artifact_in_place "$src_dir/$mod.rs"

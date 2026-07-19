@@ -97,6 +97,7 @@ mod measure_value_arg_unit_collapse_test;
 #[cfg(test)]
 mod module_authority_resolution_test;
 #[cfg(test)]
+mod nested_fold_generic_param_emit_test;
 mod nested_list_alias_emit_test;
 #[cfg(test)]
 mod node_keyed_graph_artifact_codec_test;
