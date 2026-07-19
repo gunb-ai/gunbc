@@ -178,6 +178,7 @@ import v2.std.compilers.target_model {
   target_carrier_model_core_node,
   target_carrier_algebra_inhabitance_decl_node,
   target_carrier_probe_heap_node,
+  target_carrier_use_site_verdict_node,
   target_use_site_ownership_catalog_node,
   target_value_semantics_carriers_node,
   target_reference_layer_tokens_node,
@@ -4174,6 +4175,27 @@ fn rust_sg_rc_use_site_ownership_catalog() -> List<TargetUseSiteOwnershipRealiza
       use_site: OwnershipAtBindingProjection,
       reference_layer: ReferenceLayerRc,
       display_name: ^rust_sg_rc_probe_heap_binding
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_use_site_verdict_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
+      use_site: OwnershipAtFunctionReturn,
+      reference_layer: ReferenceLayerOwned,
+      display_name: ^rust_sg_rc_use_site_verdict_return
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_use_site_verdict_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
+      use_site: OwnershipAtFunctionParameter,
+      reference_layer: ReferenceLayerOwned,
+      display_name: ^rust_sg_rc_use_site_verdict_param
+    },
+    TargetUseSiteOwnershipRealization {
+      source_carrier: target_carrier_use_site_verdict_node(),
+      source_projection: UseSiteOwnershipExactCarrier,
+      use_site: OwnershipAtBindingProjection,
+      reference_layer: ReferenceLayerOwned,
+      display_name: ^rust_sg_rc_use_site_verdict_binding
     }
   ]
 }
@@ -4193,7 +4215,8 @@ fn rust_sg2_binding_spellings() -> Map<Symbol, String> {
   let m10 = map_insert(m9, ^target_carrier_model_core, "ModelCore")
   let m11 = map_insert(m10, ^target_carrier_algebra_inhabitance_decl, "AlgebraInhabitanceDecl")
   let m12 = map_insert(m11, ^target_carrier_probe_heap, "ProbeHeap")
-  let m13 = map_insert(m12, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
+  let m12b = map_insert(m12, ^target_carrier_use_site_verdict, "UseSiteVerdict")
+  let m13 = map_insert(m12b, ^rust_collection_surface_btree_set, "std::collections::BTreeSet")
   let m14 = map_insert(m13, ^rust_collection_surface_hash_set, "std::collections::HashSet")
   let m15 = map_insert(m14, ^rust_collection_surface_vec, "Vec")
   let m16 = map_insert(m15, ^target_collection_set_carrier, "Set")
