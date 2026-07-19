@@ -7752,57 +7752,81 @@ fn witness_admission_manifest_key(entry: &str, function: &str) -> String {
 }
 
 // 🟡 dissolve-on: witness_admission_explicit_consumer_manifest — replace this hand-rolled
-// entry/function literal scan with the `.dag`-authoritative manifest from
-// v2.workflow.witness_admission (or a Node-tree builtin over the roster
-// ScheduleWitnessEntry rows). False-positive matches widen the orphan gate (excuse orphans),
-// never refuse — interim seed debt, same class as string_list_data_from_ci_layer_roots_source.
-fn witness_admission_entry_function_keys_from_source(content: &str) -> Vec<String> {
-    let mut keys = Vec::new();
-    let mut push_pair = |entry: &str, function: &str| {
+// per-form scan with the `.dag`-authoritative manifest from v2.workflow.witness_admission
+// (the module-binding supply-carrier pattern: host consumes emitted manifest rows; tracked in
+// the Phase 1 (b) lane). Until then the scan is fail-closed in BOTH directions (§5): every
+// occurrence of a recognized row head either parses to a key, is a verified definition or
+// non-literal pass-through site, or PANICS with its location — a mis-parse stops the line and
+// never silently excuses an orphan; and a consumer expressed in an unrecognized form yields
+// NO key, so its deferred row surfaces as a loud orphan rather than being absorbed.
+fn witness_admission_entry_function_keys_from_source(
+    source_label: &str,
+    content: &str,
+) -> Vec<String> {
+    const WINDOW: usize = 400;
+    let mut keys: Vec<String> = Vec::new();
+    fn push_pair(keys: &mut Vec<String>, entry: &str, function: &str) {
         let key = witness_admission_manifest_key(entry, function);
         if !keys.iter().any(|k| k == &key) {
             keys.push(key);
         }
-    };
-    let mut scan_call_style = |prefix: &str| {
+    }
+    let heads: [(&str, &str); 4] = [
+        ("bin_wet(", "entry: String"),
+        ("probe_red(", "entry: String"),
+        ("self_host_wet_entry(", "entry: String"),
+        ("SelfHostWetReceiptBinding {", ""),
+    ];
+    for (head, def_sig) in heads {
         let mut search_from = 0;
-        while let Some(rel) = content[search_from..].find(prefix) {
-            let start = search_from + rel + prefix.len();
-            let Some((entry, after_entry)) = content[start..].split_once('"') else {
-                break;
-            };
-            let fn_marker = if let Some(pos) = after_entry.find("f: \"") {
-                ("f: \"", pos)
-            } else if let Some(pos) = after_entry.find("function: \"") {
-                ("function: \"", pos)
-            } else {
-                search_from = start + entry.len() + 1;
+        while let Some(rel) = content[search_from..].find(head) {
+            let occ = search_from + rel;
+            search_from = occ + head.len();
+            let after = &content[search_from..];
+            let window = &after[..after.len().min(WINDOW)];
+            let trimmed = window.trim_start();
+            if !def_sig.is_empty() && trimmed.starts_with(def_sig) {
                 continue;
+            }
+            if def_sig.is_empty() && content[..occ].ends_with("type ") {
+                continue;
+            }
+            let Some(entry_rel) = window.find("entry: \"") else {
+                if window.contains("entry: ") {
+                    continue;
+                }
+                panic!(
+                    "witness admission: {source_label}: `{head}` at byte {occ} has no \
+                     recognizable `entry:` argument in range — refusing; a mis-parse must \
+                     stop the line, never excuse an orphan"
+                );
             };
-            let fn_start = fn_marker.1 + fn_marker.0.len();
-            if let Some((function, _)) = after_entry[fn_start..].split_once('"') {
-                push_pair(entry, function);
-            }
-            search_from = start + entry.len() + 1;
+            let entry_start = entry_rel + "entry: \"".len();
+            let Some((entry, after_entry)) = window[entry_start..].split_once('"') else {
+                panic!(
+                    "witness admission: {source_label}: unterminated entry literal after \
+                     `{head}` at byte {occ} — refusing"
+                );
+            };
+            let marker = after_entry
+                .find("f: \"")
+                .map(|p| (p, "f: \""))
+                .or_else(|| after_entry.find("function: \"").map(|p| (p, "function: \"")));
+            let Some((fn_pos, fn_marker)) = marker else {
+                panic!(
+                    "witness admission: {source_label}: `{head}` row for entry {entry:?} at \
+                     byte {occ} has no `f:`/`function:` literal in range — refusing"
+                );
+            };
+            let fn_start = fn_pos + fn_marker.len();
+            let Some((function, _)) = after_entry[fn_start..].split_once('"') else {
+                panic!(
+                    "witness admission: {source_label}: unterminated function literal after \
+                     `{head}` row for entry {entry:?} at byte {occ} — refusing"
+                );
+            };
+            push_pair(&mut keys, entry, function);
         }
-    };
-    scan_call_style("bin_wet(entry: \"");
-    scan_call_style("probe_red(entry: \"");
-    scan_call_style("self_host_wet_entry(\n    entry: \"");
-    scan_call_style("self_host_wet_entry(entry: \"");
-    let mut search_from = 0;
-    while let Some(rel) = content[search_from..].find("entry: \"") {
-        let start = search_from + rel + "entry: \"".len();
-        let Some((entry, after_entry)) = content[start..].split_once('"') else {
-            break;
-        };
-        if let Some(fn_rel) = after_entry.find("function: \"") {
-            let fn_start = fn_rel + "function: \"".len();
-            if let Some((function, _)) = after_entry[fn_start..].split_once('"') {
-                push_pair(entry, function);
-            }
-        }
-        search_from = start + entry.len() + 1;
     }
     keys.sort();
     keys
