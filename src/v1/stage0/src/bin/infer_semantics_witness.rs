@@ -336,6 +336,7 @@ fn empty_infer_scope() -> Rc<InferScope> {
             parents: Rc::new(vec![]),
         }),
         locals: Rc::new(im_rc::HashMap::new()),
+        body_locals: Rc::new(im_rc::HashMap::new()),
         match_bound_names: Rc::new(im_rc::HashMap::new()),
         module_name: "test".to_string(),
         service_registry: Rc::new(im_rc::HashMap::new()),

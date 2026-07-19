@@ -3759,6 +3759,15 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         dotted_chains: BTreeSet::new(),
     };
     let mut i = 0usize;
+    // Previous identifier token on the same run (whitespace-separated): a name
+    // directly after a BINDER keyword is a binding occurrence, not a reference —
+    // `let repo = ...` must not pull the module that declares a census-unique
+    // `data repo` (measured: it coupled the gunbhub witness to the review-agent
+    // tooling's health). Cleared by any non-ident, non-whitespace byte.
+    let mut prev_token: Option<&str> = None;
+    let binder_keywords = [
+        "let", "data", "fn", "type", "import", "module", "service", "transport",
+    ];
     while i < bytes.len() {
         if bytes[i] == b'"' {
             i += 1;
@@ -3769,10 +3778,14 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
                 i += 1;
             }
             i += 1;
+            prev_token = None;
             continue;
         }
         if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
         {
+            if !bytes[i].is_ascii_whitespace() {
+                prev_token = None;
+            }
             i += 1;
             continue;
         }
@@ -3795,13 +3808,31 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
                 }
             }
             out.dotted_chains.insert(content[start..i].to_string());
+            prev_token = None;
             continue;
         }
-        let name = content[start..i].to_string();
-        if i < bytes.len() && bytes[i] == b'(' {
-            out.call_position.insert(name.clone());
+        let name = &content[start..i];
+        // Binding occurrence (`let repo`, `data repo`) — a name being BOUND is
+        // never a reference to another module's decl.
+        if prev_token.is_some_and(|t| binder_keywords.contains(&t)) {
+            prev_token = Some(name);
+            continue;
         }
-        out.names.insert(name);
+        // Key position (`repo: value` — field init, named arg, param decl):
+        // the name labels a slot; it never references a decl.
+        let mut peek = i;
+        while peek < bytes.len() && (bytes[peek] == b' ' || bytes[peek] == b'\t') {
+            peek += 1;
+        }
+        if peek < bytes.len() && bytes[peek] == b':' {
+            prev_token = Some(name);
+            continue;
+        }
+        if i < bytes.len() && bytes[i] == b'(' {
+            out.call_position.insert(name.to_string());
+        }
+        out.names.insert(name.to_string());
+        prev_token = Some(name);
     }
     out
 }
