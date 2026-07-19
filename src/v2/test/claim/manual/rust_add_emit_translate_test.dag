@@ -277,7 +277,7 @@ data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accep
 test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
+      (source.carried == rust_source_text) && (d == None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -287,7 +287,7 @@ data rust_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_rust_add
 fn rust_add_emit_claim_outcome() -> Outcome<Node> {
   match rust_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      if (source.carried == rust_source_text) && (d == v2.std.diagnostic.None) {
+      if (source.carried == rust_source_text) && (d == None) {
         Accepted { value: rust_add_emitted_root, diagnostics: None }
       } else {
         Rejected {
@@ -309,7 +309,7 @@ fn rust_add_compile_inferred_claim_outcome() -> Outcome<Node> {
     Accepted { value: compile_result, diagnostics: d } =>
       match compile_result {
         TranslateResult { source } =>
-          if (source.carried == rust_source_text) && (d == v2.std.diagnostic.None) {
+          if (source.carried == rust_source_text) && (d == None) {
             Accepted { value: rust_add_emitted_root, diagnostics: None }
           } else {
             Rejected {
