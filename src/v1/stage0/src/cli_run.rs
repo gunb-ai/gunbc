@@ -5015,7 +5015,6 @@ fn collect_qualified_projection_module_paths_from_node(
     }
 }
 
-
 /// Record the source-content hash for `source` (insert-if-absent: the tree is a fixed
 /// snapshot within a process, so first sight is authoritative). This is the source-hash
 /// key term of `typed_module_content_key`; it is recorded exactly where the content is

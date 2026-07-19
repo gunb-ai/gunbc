@@ -13700,21 +13700,15 @@ pub fn census_upgrade_type_decl_binding(
         .cloned()
         .map(|p| generic_param_name_at(p.clone(), source_indices.clone()))
         .collect();
-    let param_set = param_names.iter().cloned().fold(
-        v1_rt::rc_empty_map(),
-        |acc: Rc<HashMap<String, bool>>, nm: String| {
-            v1_rt::rc_map_insert(acc.clone(), nm.clone(), true)
-        },
-    );
     let excluded = param_names.iter().cloned().fold(
         v1_rt::rc_map_insert(v1_rt::rc_empty_map(), binding.name.clone(), true),
         |acc: Rc<HashMap<String, bool>>, nm: String| {
             v1_rt::rc_map_insert(acc.clone(), nm.clone(), true)
         },
     );
-    // tp_names = the decl's own params (was `[]`), and the qualified body is
-    // stamp-walked: both halves restore the local-closure resolver's Tv(param)
-    // shape on the whole-tree census path (see stamp_type_param_occurrences).
+    // tp_names = the decl's own params (was `[]`), matching the generic-fn-sig path
+    // (census_upgrade_sig_binding); the decl body arrives already Tv-stamped from
+    // local_binding_for_item.
     let env = census_fn_sig_env(
         census.clone(),
         module_path.clone(),
@@ -13723,15 +13717,11 @@ pub fn census_upgrade_type_decl_binding(
     );
     Rc::new(TypeBinding {
         name: binding.name.clone(),
-        resolved: stamp_type_param_occurrences(
-            crate::v1_compiler_infer_env::qualify_decl_reference_positions(
-                node.clone(),
-                module_path.clone(),
-                env.clone(),
-                excluded.clone(),
-            ),
-            param_set.clone(),
-            source_indices.clone(),
+        resolved: crate::v1_compiler_infer_env::qualify_decl_reference_positions(
+            node.clone(),
+            module_path.clone(),
+            env.clone(),
+            excluded.clone(),
         ),
         provenance: binding.provenance.clone(),
     })

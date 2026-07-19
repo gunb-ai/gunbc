@@ -1689,8 +1689,9 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       } else {
       let field_type_lookup = lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices)
       match field_type_lookup {
-        Present { value: field_type } =>
+        Present { value: raw_field_type } =>
 
+          let field_type = stamp_field_type_from_decl_params(field_type: raw_field_type, serving_decl: resolved_base, source_indices: scope.type_env.source_indices)
           let field_summary = match field_summary_for_type(base_type: base_rt, env: scope.type_env, field: field_name) {
             Present { value: s } => Present { value: s }
             Absent => field_summary_for_type(base_type: resolved_base, env: scope.type_env, field: field_name)
@@ -6388,6 +6389,23 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
   } else { binding }
 }
 
+fn stamp_field_type_from_decl_params(field_type: Node, serving_decl: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  if (serving_decl.params |> count) == 0 || field_type.inferred != none {
+    field_type
+  } else {
+    let is_bare = (field_type.children |> count) == 0 && field_type.connective == NoConnective && (field_type.params |> count) == 0
+    if is_bare {
+      let nm = type_node_label(n: field_type, source_indices: source_indices)
+      let is_param = fold(
+        serving_decl.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices)),
+        init: false,
+        f: (acc, pn) => acc || pn == nm
+      )
+      if is_param { node_with_inferred(n: field_type, inferred: TypeVariable { id: nm }) } else { field_type }
+    } else { field_type }
+  }
+}
+
 fn stamp_type_param_occurrences(n: Node, param_names: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Node {
   let is_bare = (n.children |> count) == 0 && n.connective == NoConnective && (n.params |> count) == 0
   if is_bare {
@@ -6406,7 +6424,6 @@ fn stamp_type_param_occurrences(n: Node, param_names: Map<String, Bool>, source_
 fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
   let node = binding.resolved
   let param_names = node.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
-  let param_set = fold(param_names, init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
   let excluded = fold(
     param_names,
     init: map_insert(empty_map(), binding.name, true),
@@ -6415,7 +6432,7 @@ fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, c
   let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: param_names, source_indices: source_indices)
   TypeBinding {
     name: binding.name,
-    resolved: stamp_type_param_occurrences(n: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded), param_names: param_set, source_indices: source_indices),
+    resolved: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded),
     provenance: binding.provenance
   }
 }
