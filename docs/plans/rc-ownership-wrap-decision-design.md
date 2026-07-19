@@ -114,11 +114,11 @@ The gate does not alone flip these — Track B body emit and namespace resolutio
 
 ## Implementation sequence (for the follow-on PR)
 
-1. **Land predicate + witnesses** (this session) — `wrap_decision_lookup_in_catalog_node`, `wrap_decision_gate`, `wrap_decision_predicate_test.dag` green.
-2. **Rewire `06_translate`** — replace inline `translate_sg_rc_bundle_apply_disposition` + lookup chains with `wrap_decision_gate` (behavior-preserving refactor; `sg_rc_layering_test` stays green).
-3. **Retire v1 `shared_types` wrap for v2 emit entry** — `gunbc compile --target rust` paths that run translate must not also call `render_rust_shared_type_if_needed`; `shared_types` becomes seed-only until v1 delete.
-4. **Enroll `UseSiteVerdict` carrier** — one row set in `rust.dag` catalog; RED: param site without row rejects (already proven for `ProbeHeap` in `sg_rc_layering_test`).
-5. **Frontier flip** — unblock `parse_engine_hooks`, `discovery_enumeration` per `frontier_band_a_emit_readiness`.
+1. **Land predicate + witnesses** — LANDED (#6776): `wrap_decision_lookup_in_catalog_node`, `wrap_decision_gate`, `wrap_decision_predicate_test.dag` green.
+2. **Rewire `06_translate`** — LANDED (#6775): inline `translate_sg_rc_bundle_apply_disposition` + lookup chains replaced with `wrap_decision_gate` (behavior-preserving refactor; `sg_rc_layering_test` stays green).
+3. **Retire v1 `shared_types` wrap for v2 emit entry** — v2 `emit` → `translate` path does not call `render_rust_shared_type_if_needed`; v1 `gunbc compile --target rust` still uses seed `shared_types` until v1 delete (S3).
+4. **Enroll `UseSiteVerdict` carrier** — LANDED: `target_carrier_use_site_verdict` + owned-at-all-sites rows in `rust.dag` catalog; witnesses in `wrap_decision_predicate_test.dag`.
+5. **Frontier flip** — unblock `parse_engine_hooks`, `discovery_enumeration` per `frontier_band_a_emit_readiness` (still gated on rustc-green behavioral receipts + Track B body emit).
 
 ## Witness / RED controls (`wrap_decision_predicate_test.dag`)
 
