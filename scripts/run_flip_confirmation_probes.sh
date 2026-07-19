@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# SCAFFOLD — dissolve-on: tools.self_host_curated_seed_linked_harness on main post-#6782
+# (+ generic std-seed-link follow-up) retires this hand-shell batch probe orchestrator; until
+# then it sequences curated_cargo_probe_one.sh over the flip-wave 6 + feeder 13 rosters.
+# dissolve-on alt: gunbc bash-emit #5828 / modeled cssl_probe sweep transport in .dag.
+# Authority: delegates per-module verdicts to scripts/curated_cargo_probe_one.sh →
+# dag/tools/self_host_curated_probe_cargo.dag (no parallel probe spine).
 # One-shot flip-wave + 13-tail confirmation probes (neat-swift-795, 2026-07-19).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
