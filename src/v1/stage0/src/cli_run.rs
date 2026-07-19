@@ -3883,6 +3883,14 @@ fn extend_with_bare_reference_closure(
             if known_paths.contains(&dep_rel) || known_paths.contains(&dep.path) {
                 continue;
             }
+            // Diagnostic read-only trace of the pull edge (name → module), for
+            // locating over-pull homonyms; never alters the closure.
+            if std::env::var("GUNBC_BARE_PULL_TRACE").is_ok() {
+                eprintln!(
+                    "[bare-pull] {} -> '{}' -> {} ({})",
+                    file_rel, name, module_path, dep_rel
+                );
+            }
             if !index.module_graph_facts.declares_repo_path(&dep_rel) {
                 return Err(format!(
                     "bare_reference_closure: referenced module '{module_path}' at \
