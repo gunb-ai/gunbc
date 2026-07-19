@@ -18,9 +18,9 @@ use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
-    authored_name_at, empty_intern_table, intern, intern_find, intern_str, kernel_span,
-    merge_intern_tables, module_path_segments, param_node_name_at, param_node_type_expr,
-    source_text_at,
+    authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
+    kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
+    param_node_type_expr, source_text_at,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, ExprData, InferredNode, InternTable, NewlineIndex, Node,
@@ -1303,9 +1303,24 @@ pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
             || binding_declares_name(binding.clone(), name.clone(), env.source_indices.clone()))
         {
             true => Some(binding.resolved.clone()),
-            false => None,
+            false => {
+                variant_arm_type_projection(env.clone(), binding.resolved.clone(), name.clone())
+            }
         },
         None => None,
+    }
+}
+
+pub fn variant_arm_type_projection(
+    env: Rc<TypeEnv>,
+    owner: Rc<Node>,
+    name: String,
+) -> Option<Rc<Node>> {
+    match owner.connective.clone() {
+        Connective::Disj => {
+            find_child_named(owner.clone(), name.clone(), env.source_indices.clone())
+        }
+        _ => None,
     }
 }
 
@@ -1315,7 +1330,26 @@ pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
     match node.ident.clone() {
-        Some(id) => lookup_type(env.clone(), id.clone()),
+        Some(id) => match lookup_type(env.clone(), id.clone()) {
+            Some(resolved) => {
+                let name = authored_name(env.clone(), node.clone());
+                match ((resolved.connective.clone() == Connective::Disj)
+                    && (authored_name_at(env.source_indices.clone(), resolved.clone())
+                        != name.clone()))
+                {
+                    true => match variant_arm_type_projection(
+                        env.clone(),
+                        resolved.clone(),
+                        name.clone(),
+                    ) {
+                        Some(arm) => Some(arm.clone()),
+                        None => Some(resolved.clone()),
+                    },
+                    false => Some(resolved.clone()),
+                }
+            }
+            None => None,
+        },
         None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }
