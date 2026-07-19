@@ -24,9 +24,7 @@ data target_meta_exec_module: String = "extdeps.shell.exec"
 data meta_exec_realization_edge_path_prefixes: List<String> = [
   "dag/tools/",
   "dag/gunbc/host_effect_realize",
-  "dag/test/claim/",
-  "src/v2/test/fixture/",
-  "src/v2/test/claim/"
+  "dag/test/claim/"
 ]
 
 data meta_exec_confinement_exception_roster: List<String> = [
