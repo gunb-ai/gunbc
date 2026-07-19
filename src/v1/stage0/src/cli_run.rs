@@ -3766,7 +3766,14 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
     // tooling's health). Cleared by any non-ident, non-whitespace byte.
     let mut prev_token: Option<&str> = None;
     let binder_keywords = [
-        "let", "data", "fn", "type", "import", "module", "service", "transport",
+        "let",
+        "data",
+        "fn",
+        "type",
+        "import",
+        "module",
+        "service",
+        "transport",
     ];
     while i < bytes.len() {
         if bytes[i] == b'"' {
@@ -3932,42 +3939,43 @@ fn extend_with_bare_reference_closure(
                     || binding.resolved.type_annotation.is_some()
             };
             let target_module = if service_head {
-                v1_rt::map_get(&census.services, name.clone()).map(|entry| entry.module_path.clone())
+                v1_rt::map_get(&census.services, name.clone())
+                    .map(|entry| entry.module_path.clone())
             } else {
                 match v1_rt::map_get(&census.global_bare, name.clone()) {
-                Some(state) => match state.as_ref() {
-                    GlobalBareLookupState::GlobalBareUniqueBinding {
-                        module_path,
-                        binding,
-                    } => {
-                        if pullable(binding) {
-                            Some(module_path.clone())
+                    Some(state) => match state.as_ref() {
+                        GlobalBareLookupState::GlobalBareUniqueBinding {
+                            module_path,
+                            binding,
+                        } => {
+                            if pullable(binding) {
+                                Some(module_path.clone())
+                            } else {
+                                None
+                            }
+                        }
+                        GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                            crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
+                                referencing_module.clone(),
+                                candidates.clone(),
+                            )
+                            .and_then(|c| {
+                                if pullable(&c.binding) {
+                                    Some(c.module_path.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                        }
+                    },
+                    None => {
+                        if in_call_position {
+                            v1_rt::map_get(&census.services, name.clone())
+                                .map(|entry| entry.module_path.clone())
                         } else {
                             None
                         }
                     }
-                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
-                        crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
-                            referencing_module.clone(),
-                            candidates.clone(),
-                        )
-                        .and_then(|c| {
-                            if pullable(&c.binding) {
-                                Some(c.module_path.clone())
-                            } else {
-                                None
-                            }
-                        })
-                    }
-                },
-                None => {
-                    if in_call_position {
-                        v1_rt::map_get(&census.services, name.clone())
-                            .map(|entry| entry.module_path.clone())
-                    } else {
-                        None
-                    }
-                }
                 }
             };
             let Some(module_path) = target_module else {
