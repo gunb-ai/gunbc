@@ -3984,11 +3984,12 @@ pub struct MultiEntryIndex {
         RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
     ownership_diag_cache:
         RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
-    /// Whole-pool SymbolIndex census, built once per process (namespace-resolution-design.md
-    /// §7.5: "fill = whole tree; policy gates lookup, never fill"). The census is
-    /// parse-grade (unresolved stubs + module-local sig resolution), so it is
+    /// Whole-pool QUALIFIED-ONLY census layer (entries keyed by qualified name;
+    /// empty global_bare/services), built once per process and underlaid beneath
+    /// each entry's closure census (namespace-resolution-design.md §7.5: "fill =
+    /// whole tree; policy gates lookup, never fill"). Parse-grade and
     /// entry-independent — one snapshot serves every entry compile in the process.
-    pool_symbol_index: RefCell<Option<Rc<SymbolIndex>>>,
+    pool_qualified_fill: RefCell<Option<Rc<SymbolIndex>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -4044,7 +4045,7 @@ fn new_multi_entry_index_shell(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
-        pool_symbol_index: RefCell::new(None),
+        pool_qualified_fill: RefCell::new(None),
     }
 }
 
@@ -5077,16 +5078,19 @@ fn parse_module_node_from_index_source(
 }
 
 // SCAFFOLD (§7 seed-retained HAND-RUST — namespace lane, fill side)
-// FILL = WHOLE TREE (namespace-resolution-design.md §7.5: "fill is policy-agnostic —
-// fill = whole tree; policy gates lookup, never fill"): the census walks the ENTIRE
-// indexed pool, not the entry closure plus dotted-named providers. The prior
-// closure-scoped fill starved the walk — a bare name could never discover a module no
-// surviving import edge or dotted spelling already named, which made import-stripped
-// files structurally unresolvable (`function 'fold' not found in scope`) — and its
-// per-provider `merge_symbol_indices` silently dropped provider `global_bare` (§5
-// fail-open). One census over the whole pool makes `global_bare` correct by single-pass
-// construction and deletes the merge. The census is parse-grade (unresolved stubs), so
-// it is entry-independent and cached once per process on `MultiEntryIndex`.
+// LAYERED CENSUS (namespace-resolution-design.md §7.5: "fill is policy-agnostic —
+// fill = whole tree; policy gates lookup, never fill"): the entry's closure census
+// is built exactly as if the pool did not exist (bare-name visibility, variant-alias
+// gating, and services stay closure-scoped — a pool homonym must not shift what a
+// compiled module's bare names mean), and the ENTIRE indexed pool underlays it as a
+// QUALIFIED-ONLY entries layer, so dotted references reach any pool module. The
+// qualified fill is parse-grade (tokenize + parse, never resolve — a pool module's
+// imports belong to its own tree view) and entry-independent, so it is cached once
+// per process on `MultiEntryIndex`; the closure census is per-entry. The prior
+// whole-pool single census let fill homonyms vanish closure bare variant aliases
+// (corpus-count gating) and flip unique item bindings to ambiguous — bare names a
+// compiled module resolved on main went undefined (measured on the whole-tree gate:
+// bare GET/Persistent/JsonValue across 28 witness rows).
 // 🟡 dissolve-on: multi-entry SymbolIndex authority modeled in .dag (census over the
 // indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
 fn build_symbol_index_for_reconcile(
@@ -5094,43 +5098,37 @@ fn build_symbol_index_for_reconcile(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<SymbolIndex>, String> {
-    if let Some(cached) = index.pool_symbol_index.borrow().clone() {
-        return Ok(cached);
-    }
-    // Deterministic fill order (global_bare is order-independent by its invariant; a
-    // sorted walk keeps the whole build reproducible anyway — determinism gate).
-    let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
-    pool_paths.sort();
-    let mut combined_si: HashMap<String, Rc<NewlineIndex>> = (*source_indices).clone();
-    let mut module_nodes: Vec<Rc<Node>> = Vec::with_capacity(pool_paths.len() + 1);
-    let mut pool_module_names: HashSet<String> = HashSet::with_capacity(pool_paths.len());
-    for module_path in pool_paths {
-        let source = index
-            .source_files
-            .get(&module_path)
-            .cloned()
-            .expect("pool path came from source_files keys");
-        let (module, nl_index) = parse_module_node_from_index_source(index, source)?;
-        combined_si.insert(nl_index.file.clone(), nl_index);
-        pool_module_names.insert(module_path);
-        module_nodes.push(module);
-    }
-    // An entry compiled from outside the indexed roots is not in the pool; its closure
-    // modules must still enter the one census (no module may be invisible to the
-    // naming authority — fail-closed would refuse, but the module is in hand here).
-    for resolved in graph.modules.iter() {
-        let name = authored_name_at(source_indices.clone(), resolved.module.clone());
-        if !pool_module_names.contains(&name) {
-            module_nodes.push(resolved.module.clone());
+    let fill = match index.pool_qualified_fill.borrow().clone() {
+        Some(cached) => cached,
+        None => {
+            // Deterministic fill order (entries are keyed by pool-unique qualified
+            // names; a sorted walk keeps the build reproducible — determinism gate).
+            let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
+            pool_paths.sort();
+            let mut combined_si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+            let mut module_nodes: Vec<Rc<Node>> = Vec::with_capacity(pool_paths.len());
+            for module_path in pool_paths {
+                let source = index
+                    .source_files
+                    .get(&module_path)
+                    .cloned()
+                    .expect("pool path came from source_files keys");
+                let (module, nl_index) = parse_module_node_from_index_source(index, source)?;
+                combined_si.insert(nl_index.file.clone(), nl_index);
+                module_nodes.push(module);
+            }
+            let fill = v1_compiler_infer::build_symbol_index_qualified_fill(
+                Rc::new(module_nodes.into()),
+                Rc::new(combined_si),
+            );
+            *index.pool_qualified_fill.borrow_mut() = Some(fill.clone());
+            fill
         }
-    }
-    let combined_si = Rc::new(combined_si);
-    let pool_graph =
-        v1_compiler_resolve::resolve_modules(Rc::new(module_nodes.into()), combined_si.clone());
-    let census =
-        v1_compiler_infer::build_symbol_index_census(pool_graph.modules.clone(), combined_si);
-    *index.pool_symbol_index.borrow_mut() = Some(census.clone());
-    Ok(census)
+    };
+    Ok(v1_compiler_infer::symbol_index_with_qualified_fill(
+        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices),
+        fill,
+    ))
 }
 
 fn reconcile_with_typed_cache(

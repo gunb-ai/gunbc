@@ -14028,6 +14028,99 @@ pub fn build_symbol_index_census(
     census_with_resolved_fn_sigs(raw, source_indices.clone())
 }
 
+/// Qualified-only census layer over parse-grade module nodes (namespace fill):
+/// each module's items and module-unique Disj variants enter `entries` under
+/// their QUALIFIED names only; `global_bare` and `services` stay empty. Bare-name
+/// visibility is a property of the compile closure, not the pool ("fill = whole
+/// tree; policy gates lookup, never fill" — namespace-resolution-design.md §7.5):
+/// a fill homonym must not shift what a compiled module's bare names mean (it
+/// would vanish a closure bare variant alias via the corpus-count gate, or flip a
+/// unique item binding to ambiguous), and no bare reach INTO fill is needed —
+/// cross-tree references are qualified, which is the migration direction.
+pub fn build_symbol_index_qualified_fill(
+    modules: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SymbolIndex> {
+    let raw = modules.clone().iter().cloned().fold(
+        empty_symbol_index(),
+        |index: Rc<SymbolIndex>, module_node: Rc<Node>| {
+            let module_path = authored_name_at(source_indices.clone(), module_node.clone());
+            let items = module_items(module_node.clone());
+            let with_items = items.clone().iter().cloned().fold(
+                index,
+                |acc: Rc<SymbolIndex>, item: Rc<Node>| {
+                    match local_binding_for_item(item.clone(), source_indices.clone()) {
+                        None => acc,
+                        Some(binding) => symbol_index_insert(
+                            acc,
+                            v1_rt::concat(
+                                v1_rt::concat(module_path.clone(), ".".to_string()),
+                                binding.name.clone(),
+                            ),
+                            binding.resolved.clone(),
+                        ),
+                    }
+                },
+            );
+            // Module-unique Disj variants: the qualified alias only (the qualified
+            // branch of symbol_index_insert_unique_disj_variant_aliases; the bare
+            // branch is deliberately absent — see the fn doc above).
+            let counts = disj_variant_name_counts(items.clone(), source_indices.clone());
+            items.clone().iter().cloned().fold(
+                with_items,
+                |acc: Rc<SymbolIndex>, item: Rc<Node>| match item.connective.clone() {
+                    Connective::Disj => item.children.clone().iter().cloned().fold(
+                        acc.clone(),
+                        |a2: Rc<SymbolIndex>, child: Rc<Node>| {
+                            let vname = authored_name_at(source_indices.clone(), child.clone());
+                            match v1_rt::map_get(&counts, vname.clone()) {
+                                Some(1) => symbol_index_insert(
+                                    a2.clone(),
+                                    v1_rt::concat(
+                                        v1_rt::concat(module_path.clone(), ".".to_string()),
+                                        vname.clone(),
+                                    ),
+                                    item.clone(),
+                                ),
+                                _ => a2.clone(),
+                            }
+                        },
+                    ),
+                    _ => acc.clone(),
+                },
+            )
+        },
+    );
+    census_with_resolved_fn_sigs(raw, source_indices.clone())
+}
+
+/// Underlay the qualified fill beneath a closure census: a fill key enters only
+/// where the closure census has no entry (module paths are pool-unique, so a
+/// shared key is the same module seen through both layers — the closure's
+/// census-upgraded binding wins). `global_bare` and `services` come from the
+/// closure census alone, by construction of the fill layer.
+pub fn symbol_index_with_qualified_fill(
+    closure: Rc<SymbolIndex>,
+    fill: Rc<SymbolIndex>,
+) -> Rc<SymbolIndex> {
+    let fill_keys = v1_rt::sorted_map_keys(&fill.entries);
+    let entries2 = fill_keys.iter().cloned().fold(
+        closure.entries.clone(),
+        |acc: Rc<HashMap<String, Rc<Node>>>, k: String| match v1_rt::map_get(&acc, k.clone()) {
+            Some(_) => acc,
+            None => match v1_rt::map_get(&fill.entries, k.clone()) {
+                Some(node) => v1_rt::rc_map_insert(acc, k.clone(), node.clone()),
+                None => acc,
+            },
+        },
+    );
+    Rc::new(SymbolIndex {
+        entries: entries2,
+        global_bare: closure.global_bare.clone(),
+        services: closure.services.clone(),
+    })
+}
+
 pub fn direct_import_export_precedence_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -16842,18 +16935,20 @@ pub fn typecheck(
     )
 }
 
-/// `typecheck` with census-only extra modules: the name census (SymbolIndex) is built
-/// over `graph.modules ++ census_extra_modules` using `census_si` (a superset of
-/// `source_indices` carrying the extras' newline indexes), while ONLY `graph.modules`
-/// are typechecked. Fill = whole tree; policy gates lookup, never fill
-/// (namespace-resolution-design.md §7.5) — qualified references to modules outside
-/// the compile closure resolve without pulling those modules into this invocation's
-/// tree view.
+/// `typecheck` with census-only fill modules: the name census (SymbolIndex) is the
+/// closure census over `graph.modules` — byte-identical to the no-fill build — plus
+/// a QUALIFIED-ONLY entries underlay for `census_fill_modules` (parse-grade module
+/// nodes), using `census_si` (a superset of `source_indices` carrying the fill's
+/// newline indexes). ONLY `graph.modules` are typechecked. Fill = whole tree;
+/// policy gates lookup, never fill (namespace-resolution-design.md §7.5) —
+/// qualified references to modules outside the compile closure resolve without
+/// pulling those modules into this invocation's tree view, and without the fill
+/// shifting any bare name a compiled module already resolves.
 pub fn typecheck_with_census_extra(
     graph: Rc<ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
-    census_extra_modules: Rc<Vec<Rc<ResolvedModule>>>,
+    census_fill_modules: Rc<Vec<Rc<Node>>>,
     census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypedGraph> {
     {
@@ -16868,19 +16963,14 @@ pub fn typecheck_with_census_extra(
                 )
             },
         );
-        let census_modules: Rc<Vec<Rc<ResolvedModule>>> = if census_extra_modules.len() == 0 {
-            graph.modules.clone()
-        } else {
-            Rc::new(
-                graph
-                    .modules
-                    .iter()
-                    .cloned()
-                    .chain(census_extra_modules.iter().cloned())
-                    .collect(),
-            )
-        };
-        let symbol_index = build_symbol_index_census(census_modules.clone(), census_si.clone());
+        // Layered census: closure census exactly as with no fill (bare visibility,
+        // variant-alias gating, services all closure-scoped — a fill homonym cannot
+        // shift a compiled module's meaning), plus a qualified-only entries underlay
+        // for census-only fill modules. See build_symbol_index_qualified_fill.
+        let symbol_index = symbol_index_with_qualified_fill(
+            build_symbol_index_census(graph.modules.clone(), census_si.clone()),
+            build_symbol_index_qualified_fill(census_fill_modules.clone(), census_si.clone()),
+        );
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -17686,12 +17776,12 @@ pub fn reconcile(
     )
 }
 
-/// `reconcile` with census-only extra modules — see `typecheck_with_census_extra`.
+/// `reconcile` with census-only fill modules — see `typecheck_with_census_extra`.
 pub fn reconcile_with_census_extra(
     graph: Rc<ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
-    census_extra_modules: Rc<Vec<Rc<ResolvedModule>>>,
+    census_fill_modules: Rc<Vec<Rc<Node>>>,
     census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ResolvedGraph> {
     {
@@ -17699,7 +17789,7 @@ pub fn reconcile_with_census_extra(
             graph.clone(),
             source_indices.clone(),
             intern_table.clone(),
-            census_extra_modules.clone(),
+            census_fill_modules.clone(),
             census_si.clone(),
         );
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());

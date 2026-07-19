@@ -2332,6 +2332,94 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CensusFillParse {
+    pub modules: Rc<Vec<Rc<Node>>>,
+    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+}
+
+/// Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve
+/// (a fill module's imports live in the compile closure or a different tree
+/// view; resolving against a fill-only pool fabricates unresolved-import
+/// diagnostics about the view, not the modules). Diagnostics are parse errors
+/// only — those are load-bearing (a broken-parse module contributes no names to
+/// the census) and must surface, never be skipped (§5).
+pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
+    {
+        let prepared = Rc::new({
+            let mut __result = Vec::new();
+            for s in sources.clone().iter().cloned() {
+                __result.push({
+                    let tokens = tokenize(s.content.clone(), s.path.clone());
+                    let si = build_newline_index(s.path.clone(), s.content.clone());
+                    Rc::new(FrontendPrepared {
+                        tokens: tokens.clone(),
+                        newline_index: si.clone(),
+                    })
+                });
+            }
+            __result
+        });
+        let intern_table = prepared.clone().iter().cloned().fold(
+            empty_intern_table(),
+            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
+        );
+        let parsed = prepared.clone().iter().cloned().fold(
+            Rc::new(FrontendAccum {
+                parse_results: Rc::new(vec![]),
+                newline_indices: Rc::new(vec![]),
+                intern_table: intern_table.clone(),
+            }),
+            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
+                let acc = v1_rt::take_owned(acc);
+                {
+                    let parsed = parse_with_table(
+                        p.tokens.clone(),
+                        v1_rt::rc_map_insert(
+                            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                            p.newline_index.clone().file.clone(),
+                            p.newline_index.clone(),
+                        ),
+                        acc.intern_table,
+                    );
+                    Rc::new(FrontendAccum {
+                        parse_results: v1_rt::rc_list_push(
+                            acc.parse_results,
+                            parsed.result.clone(),
+                        ),
+                        newline_indices: v1_rt::rc_list_push(
+                            acc.newline_indices,
+                            p.newline_index.clone(),
+                        ),
+                        intern_table: parsed.intern_table.clone(),
+                    })
+                }
+            },
+        );
+        let parse_results = parsed.parse_results.clone();
+        let modules = Rc::new({
+            let mut __result = Vec::new();
+            for p in parse_results.clone().iter().cloned() {
+                __result.extend(
+                    (*match p.module.clone() {
+                        Some(m) => Rc::new(vec![m.clone()]),
+                        None => Rc::new(vec![]),
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        Rc::new(CensusFillParse {
+            modules: modules.clone(),
+            newline_indices: parsed.newline_indices.clone(),
+            diagnostics: collect_diagnostics(parse_results.clone()),
+        })
+    }
+}
+
 pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {
     {
         let frontend = front_end_sources(sources.clone());
@@ -2483,40 +2571,25 @@ pub fn compile_to_resolved_with_options(
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
-                // Census-only sources: parsed and module-resolved for the name census
-                // ONLY — never normalized, typechecked, or emitted here. Their parse
-                // diagnostics surface loudly below (a census silently skipping a broken
-                // module would be an absorbing fallback, §5).
-                let (census_extra_modules, census_si, census_extra_diags) =
-                    if options.census_only_sources.len() == 0 {
-                        (
-                            Rc::new(vec![]),
-                            source_indices.clone(),
-                            Rc::new(vec![]) as Rc<Vec<Rc<ErrorNode>>>,
-                        )
-                    } else {
-                        let extra_fe = front_end_sources(options.census_only_sources.clone());
-                        let census_si = extra_fe.newline_indices.clone().iter().cloned().fold(
-                            source_indices.clone(),
-                            |acc: Rc<HashMap<String, Rc<NewlineIndex>>>,
-                             index: Rc<NewlineIndex>| {
-                                v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
-                            },
-                        );
-                        match extra_fe.graph.clone() {
-                            Some(g) => (
-                                g.modules.clone(),
-                                census_si,
-                                extra_fe.diagnostics.clone(),
-                            ),
-                            None => (Rc::new(vec![]), census_si, extra_fe.diagnostics.clone()),
-                        }
-                    };
+                // Census-only sources: PARSED for the name census only — never
+                // resolved, typechecked, or emitted here (their imports point into
+                // the compile closure; resolving them against a fill-only pool would
+                // fabricate unresolved-import diagnostics about the view, not the
+                // modules). Parse failures surface loudly below: a module that fails
+                // to parse contributes no names, and a census silently missing it
+                // would be an absorbing skip (§5).
+                let fill = parse_census_fill_sources(options.census_only_sources.clone());
+                let census_si = fill.newline_indices.clone().iter().cloned().fold(
+                    source_indices.clone(),
+                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
+                        v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
+                    },
+                );
                 let typed = reconcile_with_census_extra(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
-                    census_extra_modules.clone(),
+                    fill.modules.clone(),
                     census_si.clone(),
                 );
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
@@ -2542,7 +2615,7 @@ pub fn compile_to_resolved_with_options(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     frontend.diagnostics.clone(),
-                                    census_extra_diags.clone(),
+                                    fill.diagnostics.clone(),
                                 ),
                                 norm_diags.clone(),
                             ),
