@@ -10087,6 +10087,141 @@ fn entry_touches_rerun_frontier(
     Ok(!saw_claim)
 }
 
+/// P4 advisory-first (witness-realization plan): marshal an `Option<i64>` into the
+/// `.dag` `Int?` (Optional) `Value` the modeled `realize_advisory` expects.
+fn realize_advisory_optional_int(
+    ctx: &v1_interpreter::InterpContext,
+    v: Option<i64>,
+) -> v1_interpreter::Value {
+    use std::rc::Rc;
+    use v1_interpreter::Value;
+    match v {
+        Some(n) => Value::Variant {
+            type_name: ctx.sym("Optional"),
+            variant_name: ctx.sym("Present"),
+            fields: Rc::new(vec![(ctx.sym("value"), Value::Int(n))]),
+        },
+        None => Value::Variant {
+            type_name: ctx.sym("Optional"),
+            variant_name: ctx.sym("Absent"),
+            fields: Rc::new(vec![]),
+        },
+    }
+}
+
+/// P4 advisory-first: for each discovery witness, DERIVE its space bound
+/// (`ComplexityReport.function_space_bytes` at an empty size-env — a closed
+/// witness has no free size-vars) and log the memory-packed width `std.realize_pack`
+/// would schedule, alongside the live `MemoryGovernor` admission. This changes NO
+/// scheduling — it proves the derived bounds are sound on the real corpus before
+/// the governor is demoted (§5). The packing LAW stays modeled: `realize_advisory`
+/// is interpreted through the bridge, never reimplemented in Rust (§2). Gated by
+/// `GUNBC_REALIZE_ADVISORY`.
+pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[DiscoveryRow]) {
+    use v1_interpreter::Value;
+    // The witness graphs don't import std.realize_pack, so interpret the law in its
+    // own ctx, built once.
+    let realize_ctx = match resolve_entry_graph(source_roots, "dag/std/realize_pack.dag") {
+        Ok((g, idx)) => make_eval_context(&g, idx, v1_interpreter::ExecutionMode::Hermetic),
+        Err(e) => {
+            eprintln!("[realize-advisory] disabled: cannot load std.realize_pack: {e}");
+            return;
+        }
+    };
+    // Host budget: the SAME single authority the MemoryGovernor schedules against
+    // (env -> cgroup memory.high -> memory.max -> meminfo). Unreadable -> the modeled
+    // law refuses (BudgetRefused), never a fabricated width.
+    let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
+    let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
+    let independence: i64 = std::thread::available_parallelism()
+        .map(|n| n.get() as i64)
+        .unwrap_or(1);
+    // Group by entry so each entry resolves + analyzes once.
+    let mut by_entry: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for r in rows {
+        by_entry
+            .entry(r.entry.clone())
+            .or_default()
+            .push(r.function.clone());
+    }
+    let (mut derivable, mut unknown) = (0usize, 0usize);
+    for (entry, functions) in &by_entry {
+        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        let report =
+            v1_compiler_compile::run_complexity_analysis(graph.clone(), source_indices.clone());
+        for function in functions {
+            let derived: Option<i64> = report.function_space_bytes.get(function).copied();
+            if derived.is_some() {
+                derivable += 1;
+            } else {
+                unknown += 1;
+            }
+            let args = vec![
+                (
+                    Some("derived_bytes".to_string()),
+                    realize_advisory_optional_int(&realize_ctx, derived),
+                ),
+                (
+                    Some("budget_bytes".to_string()),
+                    realize_advisory_optional_int(&realize_ctx, budget_bytes),
+                ),
+                (
+                    Some("independence_width".to_string()),
+                    Value::Int(independence),
+                ),
+            ];
+            match v1_interpreter::run_in_context_with_args(
+                &realize_ctx,
+                "realize_advisory",
+                &args,
+                false,
+            ) {
+                Ok(Value::Record { fields, .. }) => {
+                    let width = match realize_ctx.field(&fields, "width") {
+                        Some(Value::Int(w)) => *w,
+                        _ => -1,
+                    };
+                    let verdict = match realize_ctx.field(&fields, "verdict") {
+                        Some(Value::Str(s)) => s.clone(),
+                        _ => String::new(),
+                    };
+                    let db = derived
+                        .map(|d| d.to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let bb = budget_bytes
+                        .map(|b| b.to_string())
+                        .unwrap_or_else(|| "unreadable".to_string());
+                    eprintln!(
+                        "[realize-advisory] entry={entry} fn={function} derived_bytes={db} \
+                         budget={bb} independence={independence} predicted_width={width} verdict={verdict}"
+                    );
+                }
+                Ok(_) => eprintln!(
+                    "[realize-advisory] entry={entry} fn={function} — bridge returned non-record"
+                ),
+                Err(e) => {
+                    eprintln!("[realize-advisory] entry={entry} fn={function} — bridge error: {e}")
+                }
+            }
+        }
+    }
+    eprintln!(
+        "[realize-advisory] summary: {} function(s), {} with a derived bound, \
+         {} unknown (maturation reserve); budget={} source={}",
+        derivable + unknown,
+        derivable,
+        unknown,
+        budget_bytes
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unreadable".to_string()),
+        budget_source,
+    );
+}
+
 pub fn run_discovery_corpus_with_options(
     source_roots: &[String],
     scan_dirs: &[String],
@@ -10128,6 +10263,11 @@ pub fn run_discovery_corpus_with_options(
     });
     if rows.is_empty() {
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
+    }
+    // P4 advisory-first: predict the memory-packed width per witness from its derived
+    // space bound, logged beside the governor — no scheduling change. Gated (opt-in).
+    if std::env::var("GUNBC_REALIZE_ADVISORY").is_ok() {
+        emit_realize_advisory_for_rows(source_roots, &rows);
     }
     let deferred_rows = if options.explicit_roster_only || scan_dirs.is_empty() {
         Vec::new()
