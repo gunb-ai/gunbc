@@ -99,11 +99,15 @@ data compiler_frontier_module_count_expected: Int = 27
 
 data compiler_frontier_self_emitted_baseline: Int = 6
 
-data compiler_frontier_binding_transition_oracle_note: String = "TRANSITION ARTIFACT — not a permanent witness, and NOT an authority. These 27 rows were the hand-maintained second authority for the path⇄module fact; the live lookup no longer reads them. They survive in this PR for exactly one purpose: the switchover parity receipt, which asserts the host-supplied index answers identically to what the hand table said for the modules that exist.
+data compiler_frontier_binding_hand_rows_note: String = "THE SECOND AUTHORITY, still live for ONE consumer and gated because of it. These 27 rows no longer serve the witness path — that projects off the derived ModuleStorageIndex — but they still feed the crate-layout EMITTER, which cannot be handed a host index without polluting an unrelated 18-variant dispatch (frontier_emitter_hand_row_debt_note has the full reasoning and the count).
 
-That receipt catches two different failures at once and is worth the temporary duplication: a projection bug (the derivation disagrees with a known-good table) and hand-row transcription drift (the table was already wrong and the derivation is right). Without it, a projection that silently changed answers would land green.
+So two representations of the path⇄module fact are live at once, which §3 forbids in general. What makes this an honest interim rather than a fork is that they are PARITY-GATED: transition_parity_host_index_agrees_with_hand_rows is a STANDING witness on the wet cadence (promoted from one-time transition receipt, parent ruling 2026-07-19) asserting that the derived index and these rows answer identically for every path the rows name. If they ever drift, that witness REDS.
 
-dissolve-on: the parity receipt observed green on the wet cadence. At that point this data block, FrontierQualifiedModuleBinding, and the parity receipt itself are DELETED together — the oracle has no second use, and keeping it 'just in case' would restore the very second authority this task removed (§3). Deleting it is the completion of task 3, not a follow-on nicety."
+That promotion is the point. As a one-time switchover check it would have proven the two agreed at a moment and said nothing afterwards, leaving a silent fork behind it. As a standing check it IS the §3 protection for as long as the duality lives — the mechanism that makes 'both exist' safe rather than merely admitted.
+
+It still catches both original failures — a projection bug (derivation disagrees with a known-good table) and hand-row drift (the table went stale and the derivation is right) — told apart by inspecting which side is wrong.
+
+dissolve-on: host-driven generation of the crate-layout artifact with the index supplied at the boundary. At that point this block, FrontierQualifiedModuleBinding, the _hand_rows fn family, and the parity witness are DELETED together — keeping any of them 'just in case' would restore the fork the parity gate exists to police."
 
 data compiler_frontier_qualified_module_bindings: List<FrontierQualifiedModuleBinding> = [
   FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/00_compile.dag", qualified_module: "v2.compiler.compile" },
@@ -897,6 +901,55 @@ fn frontier_binding_outcome_accepted<T>(outcome: Outcome<T>) -> Bool {
   }
 }
 
+data frontier_emitter_hand_row_debt_note: String = "TYPED, COUNTED DEBT — the emit path still reads the hand rows, and this is the one place that says so out loud.
+
+WHY IT SURVIVES: dag/gunbc/stage0_crate_layout_emit.dag generates stage0_crate_layout_generated.dag, and it is reached through generated_artifact_emit.dag's dispatch — ONE match over ~18 artifact variants, every one a zero-arg generator returning String. Supplying a ModuleStorageIndex there would force 17 unrelated generators to accept a host artifact they cannot use — the same coupling refused when the layout conjunct left compiler_frontier_census_holds (frontier_census_layout_relocation_note). Refusing it in one direction and accepting it in the other would be incoherent.
+
+COUNT: exactly ONE consumer chain — expected_stage0_crate_layout_generated_dag / _rs via hand_maintained_pub_mod_basenames, hand_maintained_stage0_filenames, emit_hand_maintained_pub_mod_block. Any NEW caller of the _hand_rows family is a regression, not a use.
+
+WHY THIS IS AN HONEST INTERIM RATHER THAN THE FORK §3 FORBIDS: the two authorities are not merely both present, they are PARITY-GATED. transition_parity_host_index_agrees_with_hand_rows is a STANDING witness on the wet cadence (promoted from transition artifact, parent ruling 2026-07-19) that REDS the moment the derived index and the hand rows disagree. A marked, parity-gated, trigger-bound duality is an interim; the same duality without the standing witness is a silent fork.
+
+dissolve-on: host-driven generation of the crate-layout artifact with the index supplied at the boundary (only host boundaries project paths, §2/§3) — its own designed lane, not a patch, because it touches the generated-artifact source and the same-PR regen discipline of the drift-gate chain. When it lands, this family, the 27 hand rows, FrontierQualifiedModuleBinding, and the parity witness are deleted TOGETHER."
+
+fn frontier_hand_rows_qualified_module_for_path(target: String) -> String {
+  fold_list(
+    xs: compiler_frontier_qualified_module_bindings,
+    empty: "",
+    cons: fn(found, binding) {
+      if found != "" {
+        found
+      } else if binding.module_path == target {
+        binding.qualified_module
+      } else {
+        ""
+      }
+    }
+  )
+}
+
+fn frontier_hand_rows_row_stage0_mod_basename(row: CompilerModuleFrontierRow) -> String {
+  rust_qualified_module_mod_basename(
+    qualified_module: frontier_hand_rows_qualified_module_for_path(target: row.module_path)
+  )
+}
+
+fn frontier_hand_rows_self_emitted_row_basename(row: CompilerModuleFrontierRow) -> List<String> {
+  match row.disposition {
+    SelfEmitted => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
+    SeedRetained { reason: _, migration_trigger: _ } => []
+  }
+}
+
+fn compiler_frontier_self_emitted_stage0_mod_basenames_hand_rows() -> List<String> {
+  fold(
+    compiler_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, frontier_hand_rows_self_emitted_row_basename(row: row))
+    }
+  )
+}
+
 fn frontier_binding_index_lookup(
   index: ModuleStorageIndex,
   target: String
@@ -1132,22 +1185,24 @@ fn basenames_to_stage0_filenames(basenames: List<String>) -> List<String> {
   basenames |> map(basename_to_stage0_filename)
 }
 
-fn hand_maintained_pub_mod_basenames(index: ModuleStorageIndex) -> List<String> {
+data frontier_hand_maintained_arity_note: String = "These three keep their ORIGINAL zero-arity shape and read the hand rows, deliberately — they are the emit path described in frontier_emitter_hand_row_debt_note, and their caller (generated_artifact_emit.dag's ~18-variant dispatch) has no index to give them. Changing their arity is what broke this lane once: dag/gunbc and dag/test/claim callers compile CLEAN at a stale arity because .dag does not arity-check these cross-module sites, so the breakage surfaces only at run time."
+
+fn hand_maintained_pub_mod_basenames() -> List<String> {
   concat(
     concat(seed_retained_intrinsic_pub_mod_basenames(), seed_retained_scaffold_pub_mod_basenames()),
-    compiler_frontier_self_emitted_stage0_mod_basenames(index: index)
+    compiler_frontier_self_emitted_stage0_mod_basenames_hand_rows()
   )
 }
 
-fn emit_hand_maintained_pub_mod_block(index: ModuleStorageIndex) -> String {
-  format_pub_mod_declarations(basenames: hand_maintained_pub_mod_basenames(index: index))
+fn emit_hand_maintained_pub_mod_block() -> String {
+  format_pub_mod_declarations(basenames: hand_maintained_pub_mod_basenames())
 }
 
-fn hand_maintained_stage0_filenames(index: ModuleStorageIndex) -> List<String> {
+fn hand_maintained_stage0_filenames() -> List<String> {
   concat(
     concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files()),
     basenames_to_stage0_filenames(
-      basenames: compiler_frontier_self_emitted_stage0_mod_basenames(index: index)
+      basenames: compiler_frontier_self_emitted_stage0_mod_basenames_hand_rows()
     )
   )
 }
