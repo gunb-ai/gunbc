@@ -3384,6 +3384,19 @@ pub fn infer_expr(
                                             })
                                         }
                                         None => {
+                                            // TEMP PROBE (salvage diagnosis; removed before merge)
+                                            if std::env::var("GUNBC_MMID_PROBE").is_ok()
+                                                && field_name == "mid"
+                                            {
+                                                eprintln!(
+                                                    "MMID_PROBE field=mid base_rt name={:?} conn={:?} inferred={:?} children={} params={}",
+                                                    base_rt.name,
+                                                    base_rt.connective,
+                                                    base_rt.inferred.as_deref().map(|i| format!("{:?}", i)).unwrap_or("None".into()),
+                                                    base_rt.children.len(),
+                                                    base_rt.params.len(),
+                                                );
+                                            }
                                             let error_message = v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
@@ -13074,11 +13087,45 @@ pub fn local_binding_for_item(
         let has_structure = (item.connective.clone() != Connective::NoConnective);
         if has_structure.clone() {
             {
+                // Stamp the decl body's bare param occurrences with TypeVariable at
+                // census-entry construction — BEFORE any consumer — so the raw census
+                // carries the same Tv(param) shape the local-closure resolver produces.
+                // Placement matters: census_with_resolved_fn_sigs resolves sig returns
+                // against the RAW census, inlining decl bodies into `.inferred` chains;
+                // an upgrade-pass stamp lands too late to reach those chains (measured:
+                // M.mid unchanged under an upgrade-pass-only stamp).
+                let param_names: Vec<String> = item
+                    .params
+                    .iter()
+                    .cloned()
+                    .map(|p| generic_param_name_at(p.clone(), source_indices.clone()))
+                    .collect();
+                let stamped_children = if param_names.is_empty() {
+                    item.children.clone()
+                } else {
+                    let param_set = param_names.iter().cloned().fold(
+                        v1_rt::rc_empty_map(),
+                        |acc: Rc<HashMap<String, bool>>, nm: String| {
+                            v1_rt::rc_map_insert(acc.clone(), nm.clone(), true)
+                        },
+                    );
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for c in item.children.clone().iter().cloned() {
+                            __result.push(stamp_type_param_occurrences(
+                                c.clone(),
+                                param_set.clone(),
+                                source_indices.clone(),
+                            ));
+                        }
+                        __result
+                    })
+                };
                 let type_node = Rc::new(Node {
                     name: item.name.clone(),
                     span: item.span.clone(),
                     ident_span: item.ident_span.clone(),
-                    children: item.children.clone(),
+                    children: stamped_children,
                     connective: item.connective.clone(),
                     params: item.params.clone(),
                     inferred: None,
@@ -13561,6 +13608,50 @@ pub fn census_upgrade_sig_binding(
     }
 }
 
+/// Stamp bare occurrences of a type decl's own params with `TypeVariable` inside the
+/// census-resolved decl body, matching the local-closure resolver's shape
+/// (`inf=Tv(param)`). The whole-tree census path losing these stamps is what turned
+/// main's (latent, deferral-green) generic-payload hole into the loud
+/// `no field 'mid' on type 'M'` compile-clean red (M.mid,
+/// membership_reconcile_witness_test.dag:144): an unstamped bare `M` reaching
+/// field-access typing has no deferral route, so `.mid` errors instead of deferring.
+fn stamp_type_param_occurrences(
+    n: Rc<Node>,
+    param_names: Rc<HashMap<String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    let is_bare = ((n.children.clone().len() as i64) == 0)
+        && (n.connective.clone() == Connective::NoConnective)
+        && ((n.params.clone().len() as i64) == 0);
+    if is_bare {
+        if n.inferred.is_none() {
+            let nm = type_node_label(n.clone(), source_indices.clone());
+            match v1_rt::map_get(&param_names, nm.clone()) {
+                Some(_) => crate::v1_compiler_infer_env::node_with_inferred(
+                    n.clone(),
+                    Some(Rc::new(InferredNode::TypeVariable { id: nm.clone() })),
+                ),
+                None => n.clone(),
+            }
+        } else {
+            n.clone()
+        }
+    } else {
+        let new_children = Rc::new({
+            let mut __result = Vec::new();
+            for c in n.children.clone().iter().cloned() {
+                __result.push(stamp_type_param_occurrences(
+                    c.clone(),
+                    param_names.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        });
+        crate::v1_compiler_infer_env::node_with_children(n.clone(), new_children)
+    }
+}
+
 pub fn census_upgrade_type_decl_binding(
     binding: Rc<TypeBinding>,
     module_path: String,
@@ -13574,18 +13665,21 @@ pub fn census_upgrade_type_decl_binding(
         .cloned()
         .map(|p| generic_param_name_at(p.clone(), source_indices.clone()))
         .collect();
+    let param_set = param_names.iter().cloned().fold(
+        v1_rt::rc_empty_map(),
+        |acc: Rc<HashMap<String, bool>>, nm: String| {
+            v1_rt::rc_map_insert(acc.clone(), nm.clone(), true)
+        },
+    );
     let excluded = param_names.iter().cloned().fold(
         v1_rt::rc_map_insert(v1_rt::rc_empty_map(), binding.name.clone(), true),
         |acc: Rc<HashMap<String, bool>>, nm: String| {
             v1_rt::rc_map_insert(acc.clone(), nm.clone(), true)
         },
     );
-    // tp_names = the decl's own params (was `[]`): param occurrences inside reference
-    // positions come out TypeVariable-stamped, matching the generic-fn-sig path
-    // (census_upgrade_sig_binding) and the local-closure resolver. The whole-tree
-    // census path losing these stamps is what turned main's (latent, deferral-green)
-    // generic-payload hole into the loud `no field 'mid' on type 'M'` compile-clean
-    // red (M.mid, membership_reconcile_witness_test.dag:144).
+    // tp_names = the decl's own params (was `[]`), and the qualified body is
+    // stamp-walked: both halves restore the local-closure resolver's Tv(param)
+    // shape on the whole-tree census path (see stamp_type_param_occurrences).
     let env = census_fn_sig_env(
         census.clone(),
         module_path.clone(),
@@ -13594,11 +13688,15 @@ pub fn census_upgrade_type_decl_binding(
     );
     Rc::new(TypeBinding {
         name: binding.name.clone(),
-        resolved: crate::v1_compiler_infer_env::qualify_decl_reference_positions(
-            node.clone(),
-            module_path.clone(),
-            env.clone(),
-            excluded.clone(),
+        resolved: stamp_type_param_occurrences(
+            crate::v1_compiler_infer_env::qualify_decl_reference_positions(
+                node.clone(),
+                module_path.clone(),
+                env.clone(),
+                excluded.clone(),
+            ),
+            param_set.clone(),
+            source_indices.clone(),
         ),
         provenance: binding.provenance.clone(),
     })
