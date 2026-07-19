@@ -10573,31 +10573,37 @@ fn floor_diff_edits_from_line_ranges(
         } else {
             index
         };
-        let (graph, source_indices) = match resolve_entry_with_index(resolve_index, file_path) {
-            Ok(pair) => pair,
-            Err(e) => return Err(format!("resolve failed for {file_path}: {e}")),
-        };
         let content = match std::fs::read_to_string(file_path) {
             Ok(c) => c,
             Err(e) => return Err(format!("read failed for {file_path}: {e}")),
         };
+        // Attribution is a PARSE-grade fact: it needs each touched file's
+        // declaration line map (names + spans + data/fn kind), never its typecheck.
+        // The former full entry RESOLVE here made every touched file's typecheck
+        // health gate the whole frontier — on a corpus-wide diff, one latent-red
+        // module (a batch-2 debt row no gate compiles) dead-ended batch 2 at one
+        // entry per CI cycle. Parse errors still refuse (typed, located); typecheck
+        // reds surface where they belong — as that entry's own counted discovery row.
+        let source = Rc::new(v1_compiler_compile::SourceFile {
+            path: file_norm.clone(),
+            content: content.clone(),
+        });
+        let (module_node, nl) = match parse_module_node_from_index_source(resolve_index, source) {
+            Ok(pair) => pair,
+            Err(e) => return Err(format!("parse failed for {file_path}: {e}")),
+        };
+        let single_si: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new({
+            let mut m = HashMap::new();
+            m.insert(file_norm.clone(), nl.clone());
+            m
+        });
         let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
         let mut decls: Vec<(i64, String, bool)> = Vec::new();
-        for module in graph.modules.iter() {
-            for item in module.items.iter() {
-                if !span_file_matches(&item.span.file, &file_norm) {
-                    continue;
-                }
-                let Some(nl) = newline_index_for_span(&item.span, &source_indices).cloned() else {
-                    return Err(format!(
-                        "newline index missing for declaration in {file_path}"
-                    ));
-                };
-                let line = byte_to_line_col(nl, item.span.start).line;
-                let name = authored_name_at(source_indices.clone(), item.clone());
-                let is_data = item_kind(item.clone()) == ItemKind::DataItem;
-                decls.push((line, name, is_data));
-            }
+        for item in crate::v1_std_core::module_items(module_node.clone()).iter() {
+            let line = byte_to_line_col(nl.clone(), item.span.start).line;
+            let name = authored_name_at(single_si.clone(), item.clone());
+            let is_data = item_kind(item.clone()) == ItemKind::DataItem;
+            decls.push((line, name, is_data));
         }
         for (name, line) in scan_test_decl_lines(&content) {
             if !decls.iter().any(|(_, n, _)| n == &name) {
