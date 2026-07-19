@@ -8266,6 +8266,37 @@ fn apply_closure(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
+    // Same bounded-execution guard as call_function — closures are the other
+    // call grain, and a recursion cycle through them never passes call_function.
+    let depth = CALL_DEPTH.with(|d| {
+        let v = d.get() + 1;
+        d.set(v);
+        v
+    });
+    if depth > CALL_DEPTH_LIMIT {
+        CALL_DEPTH.with(|d| d.set(d.get() - 1));
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "call depth exceeded {} in closure application — unbounded recursion \
+                 (a bare-name resolution cycle, or a genuinely divergent chain); \
+                 refused, never a host stack overflow",
+                CALL_DEPTH_LIMIT
+            ),
+        });
+    }
+    let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
+        apply_closure_inner(closure, args, env, ctx)
+    });
+    CALL_DEPTH.with(|d| d.set(d.get() - 1));
+    result
+}
+
+fn apply_closure_inner(
+    closure: &Value,
+    args: &[Value],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
     match closure {
         Value::Closure {
             params,
