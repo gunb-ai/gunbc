@@ -78,10 +78,35 @@ type DagSourceReadWitness {
 
 type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
 
+data source_root_coverage_note: String = "The manifest emitter inlines the FULL Lossless source text of every read, so it carries a corpus-protection cap (MANIFEST_INLINE_LIST_MAX). Past that cap it elided the ENTIRE row list to Empty — and said nothing. That is an absorbing fallback (DESIGN section 5): the carrier silently became ⊤-as-ignorance while every consumer read it as ⊤-as-answer, 'this source root has no reads'. A receipt that then hardcoded coverage_complete: true over that Empty carrier made the lie unfalsifiable, and the compiler-closure ingest gate rode it green over ZERO rows.
+
+So the elision is now a TYPED, COUNTED refusal rather than a Bool. SourceRootManifestElided names both numbers that matter — how many reads there were and what cap rejected them — so the deficit's SIZE is visible at every consumer instead of being inferable only by subtracting two counts. A Bool could say 'incomplete'; it could not say 'ninety-one reads met a cap of sixty-four', which is the fact that tells you whether the remedy is a bigger cap or a different carrier.
+
+Measured instance at the time of writing: the src/v2/compiler/00_compile.dag closure is 91 reads against a cap of 64, so its manifest carries Empty. That is the real deficit this typing exposes; the carrier redesign that fixes it (rows referencing source by ref/hash instead of inlining text) is its own designed lane."
+
+type SourceRootCoverage
+  = SourceRootCoverageComplete
+  | SourceRootManifestElided { read_count: Int, cap: Int }
+  | SourceRootRowsMissing { read_count: Int, produced_row_count: Int }
+  | SourceRootManifestAbsent
+
 type SourceRootProvenanceCoverageReceipt {
   ingest_read_count: Int
   produced_row_count: Int
-  coverage_complete: Bool
+  coverage: SourceRootCoverage
+}
+
+data source_root_coverage_arms_note: String = "THREE arms, not two, because the two producers fail for different reasons and their remedies differ. SourceRootManifestElided is the HOST emitter's refusal: a declared cap rejected the whole row list, and the fix is a bigger cap or a carrier that does not inline source text. SourceRootRowsMissing is the IN-GRAPH derivation's refusal: produced rows do not match reads with NO cap involved, which means rows were lost somewhere and the fix is finding that bug. Collapsing them would have forced the in-graph derivation to name a cap it does not have — fabricating a number to satisfy a shape (DESIGN section 5). Distinct causes, distinct arms, each carrying only numbers its own producer actually knows.
+
+A fourth arm, SourceRootManifestAbsent, is the COMMITTED STUB's state: no host manifest has been supplied at this source root yet. It is not Complete (that would be a vacuous truth over zero rows, exactly the shape a witness can ride green while proving nothing), it is not RowsMissing (nothing was read, so 0 against 0 is not a shortfall), and it is not Elided (no cap rejected anything). Its remedy is different too: run the emitting gate, or order the overlay root after the stub. The stub previously said coverage_complete: false, which was fail-closed but mute about which of these four it meant."
+
+fn source_root_coverage_is_complete(coverage: SourceRootCoverage) -> Bool {
+  match coverage {
+    SourceRootCoverageComplete => true
+    SourceRootManifestElided { read_count: _, cap: _ } => false
+    SourceRootRowsMissing { read_count: _, produced_row_count: _ } => false
+    SourceRootManifestAbsent => false
+  }
 }
 
 type SourceIrArtifactProvenance {
@@ -728,7 +753,14 @@ fn source_root_provenance_coverage_receipt(
   SourceRootProvenanceCoverageReceipt {
     ingest_read_count: length(xs: ingest),
     produced_row_count: length(xs: produced),
-    coverage_complete: length(xs: ingest) == length(xs: produced)
+    coverage: if length(xs: ingest) == length(xs: produced) {
+      SourceRootCoverageComplete
+    } else {
+      SourceRootRowsMissing {
+        read_count: length(xs: ingest),
+        produced_row_count: length(xs: produced)
+      }
+    }
   }
 }
 

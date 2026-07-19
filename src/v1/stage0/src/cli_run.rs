@@ -13993,6 +13993,8 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  DagSourceReadWitness,\n");
     out.push_str("  SourceRootIngest,\n");
+    out.push_str("  SourceRootCoverageComplete,\n");
+    out.push_str("  SourceRootManifestElided,\n");
     out.push_str("  SourceRootProvenanceCoverageReceipt\n");
     out.push_str("}\n");
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
@@ -14025,15 +14027,25 @@ pub fn emit_source_root_ingest_manifest(
     // The receipt must describe the carrier that actually landed, not the discovery that
     // preceded it. Past MANIFEST_INLINE_LIST_MAX the row list is elided to `Empty`, so
     // hardcoding `coverage_complete: true` with the full read_count asserted complete
-    // coverage over an EMPTY carrier — and made `coverage_complete` unfalsifiable by
-    // construction (DESIGN.md §5: fabricated plausible output; a receipt that can never be
-    // false reports nothing). `ingest_read_count` stays the discovered count; the other two
-    // now describe what the manifest carries.
+    // coverage over an EMPTY carrier — and made it unfalsifiable by construction
+    // (DESIGN.md §5: fabricated plausible output; a receipt that can never be false
+    // reports nothing).
+    //
+    // The elision is now a TYPED, COUNTED refusal rather than a bool: `SourceRootManifestElided`
+    // names the read count AND the cap that rejected it, so a consumer sees the size of the
+    // deficit ("91 reads met a cap of 64") instead of an undifferentiated `false`. A silent
+    // `Empty` carrier under a `true` receipt was an absorbing fallback — ⊤-as-ignorance
+    // presented as ⊤-as-answer.
     let produced_row_count = inline_records.len();
-    let coverage_complete = produced_row_count == read_count;
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
-    out.push_str(&format!("  coverage_complete: {coverage_complete}\n"));
+    if produced_row_count == read_count {
+        out.push_str("  coverage: SourceRootCoverageComplete\n");
+    } else {
+        out.push_str(&format!(
+            "  coverage: SourceRootManifestElided {{ read_count: {read_count}, cap: {MANIFEST_INLINE_LIST_MAX} }}\n"
+        ));
+    }
     out.push_str("}\n\n\n");
     out.push_str("data host_source_root_ingest: SourceRootIngest = ");
     if inline_records.is_empty() {
@@ -14081,7 +14093,7 @@ mod source_root_ingest_manifest_tests {
         emit_source_root_ingest_manifest(&path, &over, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
-            emitted.contains("coverage_complete: false"),
+            emitted.contains("coverage: SourceRootManifestElided"),
             "elided manifest must report incomplete coverage, got:\n{emitted}"
         );
         assert!(
@@ -14101,7 +14113,7 @@ mod source_root_ingest_manifest_tests {
         emit_source_root_ingest_manifest(&path, &under, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
-            emitted.contains("coverage_complete: true")
+            emitted.contains("coverage: SourceRootCoverageComplete")
                 && emitted.contains("produced_row_count: 3"),
             "inline manifest must report complete coverage over 3 rows, got:\n{emitted}"
         );
