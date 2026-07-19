@@ -42,3 +42,20 @@ test fn shell_exec_run_argv_embed_witnesses() -> Bool {
     && witness_apply_script_requires_bash_receiver()
     && witness_shell_exec_run_uses_bash_receiver()
 }
+
+fn probe_spec_only() -> Bool {
+  let s = deployment_spec_srv1()
+  true
+}
+
+fn probe_plan_only() -> Bool {
+  let p = deployment_apply_plan(spec: deployment_spec_srv1())
+  true
+}
+
+fn probe_effects_only() -> Bool {
+  match membership_effects(plan: deployment_apply_plan(spec: deployment_spec_srv1())) {
+    EffectsReady { effects: _ } => true
+    ApplyRefused { refusals: _ } => false
+  }
+}

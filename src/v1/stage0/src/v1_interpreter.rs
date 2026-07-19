@@ -1620,7 +1620,60 @@ pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResul
     Ok(Some(eval_expr(body, &Env::empty(), ctx)?))
 }
 
+thread_local! {
+    static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Bounded execution (§4): a call chain deeper than this is a typed, located
+/// refusal naming the frontier function — never a host stack overflow, which
+/// aborts the whole process and takes every later witness's measurement with it
+/// (measured: a cycle inside live_deploy script assembly under census-resolved
+/// bare names killed batch-2 at entry 214/619). Genuine deep-but-terminating
+/// recursion lives under `stacker::maybe_grow` guards; 100_000 interpreter
+/// frames is far past any legitimate corpus chain.
+const CALL_DEPTH_LIMIT: u32 = 100_000;
+
 fn call_function(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> InterpResult<Value> {
+    let depth = CALL_DEPTH.with(|d| {
+        let v = d.get() + 1;
+        d.set(v);
+        v
+    });
+    let result = call_function_guarded(ctx, fn_node, args, env, depth);
+    CALL_DEPTH.with(|d| d.set(d.get() - 1));
+    result
+}
+
+fn call_function_guarded(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+    depth: u32,
+) -> InterpResult<Value> {
+    if depth > CALL_DEPTH_LIMIT {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "call depth exceeded {} at fn '{}' — unbounded recursion (a bare-name \
+                 resolution cycle, or a genuinely divergent chain); refused, never a \
+                 host stack overflow",
+                CALL_DEPTH_LIMIT, fn_node.name
+            ),
+        });
+    }
+    // Grow the host stack in slices so DEEP-but-bounded chains below the limit
+    // never abort the process between guard checks.
+    stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
+        call_function_dispatch(ctx, fn_node, args, env)
+    })
+}
+
+fn call_function_dispatch(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     args: &[(Option<String>, Value)],
