@@ -1,0 +1,55 @@
+module gunbc.v1_deletion_plan
+
+import std.types { String, Int, List }
+import v2.std.node { Symbol }
+
+data v1_deletion_plan_doc: String = "Dependency graph for reaching v2-self-hosted with v1 deleted (operator target 2026-07-19: ~2 weeks). A milestone is a node; a PlanDependency edge means the earlier milestone must land before the later can complete (not before it can START — overlap is the point). parallelism names what is forcibly serial vs fan-out-wide: ForciblySerial = one lane, its duration is on the critical path; FanOutWide = width-many lanes concurrently once its prerequisites land; DecisionGate = zero-cost operator ruling that unblocks scope. Estimates are lane-days low..high, honest not promised. This file is the plan authority; the chat/prose rendering is a projection of it (delta-first: edit here)."
+
+type PlanParallelism = ForciblySerial | FanOutWide | DecisionGate
+
+type PlanMilestone {
+  id: Symbol,
+  title: String,
+  parallelism: PlanParallelism,
+  fan_width: Int,
+  days_low: Int,
+  days_high: Int,
+  lane_state: String
+}
+
+type PlanDependency {
+  before: Symbol,
+  after: Symbol
+}
+
+data v1_deletion_milestones: List<PlanMilestone> = [
+  PlanMilestone { id: ^std_dup_assembly_fix, title: "One harness fix: cssl std-seed-link closure assembly collides dag/std with the seed std (E0255) — single root confirmed across all 13 refusing modules", parallelism: ForciblySerial, fan_width: 1, days_low: 1, days_high: 3, lane_state: "running (proud-deer-857)" },
+  PlanMilestone { id: ^probe_flip_fanout, title: "Probe + flip the 13 std_dup-gated modules (3 Gate-A + 10 tail); each probe/flip is an independent lane once the assembly fix lands", parallelism: FanOutWide, fan_width: 13, days_low: 2, days_high: 5, lane_state: "blocked on std_dup_assembly_fix; calm-boar-697 probe machinery ready" },
+  PlanMilestone { id: ^wrap_decision_predicate, title: "ONE structural Rc wrap-decision predicate in the emitter (ownership-fact derived, never a name roster) — the gate on every Rc-heavy deep module", parallelism: ForciblySerial, fan_width: 1, days_low: 3, days_high: 7, lane_state: "running (jolly-swift-614, sign-off wall)" },
+  PlanMilestone { id: ^deep_module_lanes, title: "Self-emit lanes for the Rc-heavy core: 04_infer, 06_translate, the 05_emit family — fan out after the predicate lands (also need std_dup fixed)", parallelism: FanOutWide, fan_width: 4, days_low: 3, days_high: 6, lane_state: "blocked on wrap_decision_predicate + std_dup_assembly_fix" },
+  PlanMilestone { id: ^unresolved_error_diagnosis, title: "Diagnose-then-fix the 6 unresolved_compiler_error modules (00_compile, materialization_carriers, program_assembly, source_authority, 02_parse, 03_ingest) from the census probe output", parallelism: FanOutWide, fan_width: 3, days_low: 2, days_high: 6, lane_state: "UNDISPATCHED — census in hand (#6872), start now" },
+  PlanMilestone { id: ^emitter_fixed_point, title: "The emitted emitter re-emits itself: behavioral fixed point on the v2 side (2-generation equivalence, not byte identity)", parallelism: ForciblySerial, fan_width: 1, days_low: 2, days_high: 4, lane_state: "blocked on deep_module_lanes" },
+  PlanMilestone { id: ^witness_realization_kernel, title: "v2 execution path kernel: emit a witness to native code + run harness + scheduler (the piece that replaces the v1 interpreter for CI) — serial kernel, then families fan out", parallelism: ForciblySerial, fan_width: 1, days_low: 3, days_high: 5, lane_state: "UNDISPATCHED — the true long pole for deletion; start now, gated on nothing" },
+  PlanMilestone { id: ^witness_family_fanout, title: "Per-witness-family realization lanes (claim families, wet receipts, lens gates) once the kernel runs one family end-to-end", parallelism: FanOutWide, fan_width: 5, days_low: 4, days_high: 8, lane_state: "blocked on witness_realization_kernel" },
+  PlanMilestone { id: ^trigger_renegotiation, title: "DECISION: namespace-gated modules (03_resolve, 03_name_resolve) + body-producer tail — renegotiate migration triggers to emit under the current design (accept later re-emit), or exclude from the 2-week scope", parallelism: DecisionGate, fan_width: 1, days_low: 0, days_high: 0, lane_state: "OPERATOR DECISION open" },
+  PlanMilestone { id: ^ci_floor_cutover, title: "CI floor runs on v2-emitted execution; falsifier parity soak against the v1 path (the absorbing-fallback check runs both, counts divergence)", parallelism: ForciblySerial, fan_width: 1, days_low: 2, days_high: 4, lane_state: "blocked on witness_family_fanout + probe_flip_fanout" },
+  PlanMilestone { id: ^v1_quarantine, title: "v1 off the build path: seed crates frozen as bootstrap artifact, nothing in CI or products depends on them — the products-can-build milestone", parallelism: ForciblySerial, fan_width: 1, days_low: 1, days_high: 2, lane_state: "blocked on emitter_fixed_point + ci_floor_cutover + unresolved_error_diagnosis + trigger_renegotiation" },
+  PlanMilestone { id: ^v1_delete, title: "Delete src/v1 + stage0 after the quarantine soak window (operator call on soak length)", parallelism: ForciblySerial, fan_width: 1, days_low: 1, days_high: 1, lane_state: "blocked on v1_quarantine + soak" }
+]
+
+data v1_deletion_dependencies: List<PlanDependency> = [
+  PlanDependency { before: ^std_dup_assembly_fix, after: ^probe_flip_fanout },
+  PlanDependency { before: ^std_dup_assembly_fix, after: ^deep_module_lanes },
+  PlanDependency { before: ^wrap_decision_predicate, after: ^deep_module_lanes },
+  PlanDependency { before: ^deep_module_lanes, after: ^emitter_fixed_point },
+  PlanDependency { before: ^witness_realization_kernel, after: ^witness_family_fanout },
+  PlanDependency { before: ^witness_family_fanout, after: ^ci_floor_cutover },
+  PlanDependency { before: ^probe_flip_fanout, after: ^ci_floor_cutover },
+  PlanDependency { before: ^emitter_fixed_point, after: ^v1_quarantine },
+  PlanDependency { before: ^ci_floor_cutover, after: ^v1_quarantine },
+  PlanDependency { before: ^unresolved_error_diagnosis, after: ^v1_quarantine },
+  PlanDependency { before: ^trigger_renegotiation, after: ^v1_quarantine },
+  PlanDependency { before: ^v1_quarantine, after: ^v1_delete }
+]
+
+data v1_deletion_critical_path_note: String = "Two serial chains dominate the calendar and they RUN IN PARALLEL with each other: (A) wrap_decision_predicate -> deep_module_lanes -> emitter_fixed_point (8..17 lane-days) and (B) witness_realization_kernel -> witness_family_fanout -> ci_floor_cutover (9..17 lane-days). Everything else fans out beside them. v1_quarantine lands when BOTH chains finish: day ~12 optimistic, day ~17 realistic. v1_delete = quarantine + operator soak. The single highest-leverage schedule action as of 2026-07-19: chain B is UNDISPATCHED — every day it does not start moves the deletion date a day. Second: the trigger_renegotiation decision costs zero days and removes the last scope ambiguity."

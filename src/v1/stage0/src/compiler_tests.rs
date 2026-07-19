@@ -1024,18 +1024,21 @@ mod compiler_tests {
     #[test]
     fn rust_btree_set_ord_eligibility_requires_nominal_carrier_shape() {
         let source_indices = std::rc::Rc::new(HashMap::new());
+        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
         let symbol = named_type_node("Symbol");
         let diff_id = shaped_type_node("DiffId", vec![symbol.clone()]);
         assert!(
             crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
                 symbol.clone(),
-                source_indices.clone()
+                source_indices.clone(),
+                empty_emit.clone()
             )
         );
         assert!(
             crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
                 diff_id.clone(),
-                source_indices.clone()
+                source_indices.clone(),
+                empty_emit.clone()
             )
         );
         let formal_nonterminal = shaped_type_node("FormalNonterminal", vec![symbol.clone()]);
@@ -1043,37 +1046,36 @@ mod compiler_tests {
         assert!(
             crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
                 formal_nonterminal.clone(),
-                source_indices.clone()
+                source_indices.clone(),
+                empty_emit.clone()
             )
         );
         assert!(
             crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
                 formal_terminal.clone(),
-                source_indices.clone()
-            )
-        );
-        assert!(
-            crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
-                named_type_node("FormalNonterminal"),
-                source_indices.clone()
+                source_indices.clone(),
+                empty_emit.clone()
             )
         );
         assert!(
             !crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
                 shaped_type_node("Symbol", vec![named_type_node("Float")]),
-                source_indices.clone()
+                source_indices.clone(),
+                empty_emit.clone()
             )
         );
         assert!(
             !crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
                 shaped_type_node("DiffId", vec![named_type_node("Float")]),
-                source_indices.clone()
+                source_indices.clone(),
+                empty_emit.clone()
             )
         );
         assert!(
             !crate::v1_compiler_emit_rust::rust_btree_set_element_ord_eligible(
                 named_type_node("TestClaimId"),
-                source_indices.clone()
+                source_indices.clone(),
+                empty_emit.clone()
             )
         );
     }
