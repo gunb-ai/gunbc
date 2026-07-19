@@ -427,6 +427,20 @@ fn module_storage_binding_from_read_with_model(
 
 data module_storage_binding_refusal_note: String = "§5 — a failure arm REFUSES, never widens. A read whose module name cannot be derived is a located refusal, NOT a dropped binding: the pre-Phase-1 derivation in v2.compiler.program_assembly kept the root and left the index unchanged on Rejected, so a module that failed name extraction became silently invisible to every downstream lookup (an absorbing fallback in drop form — the deficit's frequency zeroed by construction). Duplicate module within the index is likewise a typed refusal here: it is the modeled form of the host panic at src/v1/stage0/src/cli_run.rs module_path_collision_panic_message, so the live 1:1 binding is enforced by the model rather than incidentally by a Rust panic."
 
+data module_storage_binding_path_note: String = "The storage PATH of a binding, projected from its provenance rather than stored beside it — the path is a fact about the storage realization the provenance names, so duplicating it as a field would be a second representation of the same fact (§3).
+
+It is Optional and that is the coproduct doing its job, not a gap: ProducedByBehavior modules have NO file (the body producer creates modules with no storage at all), so Absent here is a real, representable answer — 'this module is not stored in a file' — not a lookup failure. Callers that need a path must therefore decide what an absent one means for them; they cannot be handed a fabricated empty string.
+
+Homed here rather than at the consumer because it projects the binding authority's own type, and a consumer-side copy would be exactly the second derivation this lane exists to remove."
+
+fn module_storage_binding_path(binding: ModuleStorageBinding) -> Optional<String> {
+  match binding.provenance {
+    ParsedFromSource { artifact: a, span_index: _ } => optional_present(value: a.file_path)
+    DeclarationScanned { artifact: a } => optional_present(value: a.file_path)
+    ProducedByBehavior { producer: _ } => optional_absent()
+  }
+}
+
 fn module_storage_binding_module(binding: ModuleStorageBinding) -> QualifiedName {
   binding.module
 }

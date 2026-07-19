@@ -848,41 +848,98 @@ fn compiler_frontier_roster_matches_survey_holds(survey: List<FrontierProbeRecei
   )
 }
 
-fn compiler_frontier_qualified_module_for_path(target: String) -> String {
+data frontier_binding_projection_note: String = "Task 3 of docs/plans/module-identity-storage-binding-design.md: the path→module lookup is a PROJECTION off the derived binding authority (v2.compiler.source_authority ModuleStorageIndex), not a read of a hand table. The 27 hand FrontierQualifiedModuleBinding rows were the second authority §3 forbids; they survive in this PR only as the transition-parity oracle below and are deleted with it.
+
+The index arrives as a PARAMETER rather than an import, and that is forced by the layer DAG: the live rows are host-supplied through v2.test.workflow.host_module_binding_manifest, and no src/v2/compiler module may import v2.test.* (imports point toward std, §3). So the compiler layer owns the pure lookup and the test layer supplies the index.
+
+The distinction that decides whether this is a real dissolution or a relocated ledger is WHAT FLOWS IN, not the arity: passing a pure constant hand index would satisfy the signature and still be a parallel ledger. The live callers pass host_module_bindings."
+
+data frontier_binding_refusal_note: String = "Two DISTINCT located causes, never one. The prior lookup returned \"\" on miss — a sentinel meaning BOTH 'no binding for this path' AND 'the module name is empty' (state-space conflation, a named recurring failure mode). Projected off an unavailable index that sentinel becomes actively dangerous: every lookup returns \"\", and rust_qualified_module_mod_basename would fabricate a basename from the empty string SILENTLY, so a gate reading an EMPTY carrier would report on names it invented (§5 fabricated plausible output — structurally the coverage_complete-over-Empty shape).
+
+^frontier_binding_index_unavailable says the projection could not be computed (⊤-as-ignorance). ^frontier_binding_path_unbound says it was computed and this path genuinely has no module (a real answer). Their remedies differ — supply the index vs fix the roster or the tree — which is exactly why they are not one arm."
+
+fn frontier_binding_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: port_locus(port: ^compiler_frontier_binding_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn frontier_binding_index_lookup(
+  index: ModuleStorageIndex,
+  target: String
+) -> Optional<QualifiedName> {
   fold_list(
-    xs: compiler_frontier_qualified_module_bindings,
-    empty: "",
+    xs: index,
+    empty: optional_absent(),
     cons: fn(found, binding) {
-      if found != "" {
-        found
-      } else if binding.module_path == target {
-        binding.qualified_module
-      } else {
-        ""
+      match found {
+        Present { value: v } => optional_present(value: v)
+        Absent => {
+          match module_storage_binding_path(binding: binding) {
+            Present { value: p } => {
+              if p == target {
+                optional_present(value: binding.module)
+              } else {
+                optional_absent()
+              }
+            }
+            Absent => optional_absent()
+          }
+        }
       }
     }
   )
 }
 
-fn compiler_frontier_qualified_module_bindings_complete_holds() -> Bool {
-  length(xs: compiler_frontier_qualified_module_bindings) == compiler_frontier_module_count_expected
+fn compiler_frontier_qualified_module_for_path(
+  index: ModuleStorageIndex,
+  target: String
+) -> Outcome<QualifiedName> {
+  if length(xs: index) == 0 {
+    outcome_rejected(d: frontier_binding_diagnostic(reason: ^frontier_binding_index_unavailable))
+  } else {
+    match frontier_binding_index_lookup(index: index, target: target) {
+      Present { value: v } => outcome_accepted(value: v)
+      Absent => outcome_rejected(d: frontier_binding_diagnostic(reason: ^frontier_binding_path_unbound))
+    }
+  }
 }
 
-fn compiler_frontier_qualified_module_bindings_unique_holds() -> Bool {
+fn compiler_frontier_qualified_module_dotted_for_path(
+  index: ModuleStorageIndex,
+  target: String
+) -> Outcome<String> {
+  bind_outcome(
+    outcome: compiler_frontier_qualified_module_for_path(index: index, target: target),
+    f: fn(qn) { outcome_accepted(value: qualified_name_to_dotted_string(name: qn)) }
+  )
+}
+
+fn compiler_frontier_qualified_module_bindings_unique_holds(index: ModuleStorageIndex) -> Bool {
   fold_list(
     xs: compiler_frontier_roster,
     empty: true,
     cons: fn(ok, row) {
       ok
-        && (compiler_frontier_qualified_module_for_path(target: row.module_path) != "")
+        && frontier_binding_outcome_accepted(
+             outcome: compiler_frontier_qualified_module_for_path(index: index, target: row.module_path)
+           )
         && (count_rows_with_module_path(xs: compiler_frontier_roster, target: row.module_path) == 1)
     }
   )
 }
 
-fn frontier_row_stage0_mod_basename(row: CompilerModuleFrontierRow) -> String {
-  rust_qualified_module_mod_basename(
-    qualified_module: compiler_frontier_qualified_module_for_path(target: row.module_path)
+fn frontier_row_stage0_mod_basename(
+  index: ModuleStorageIndex,
+  row: CompilerModuleFrontierRow
+) -> Outcome<String> {
+  bind_outcome(
+    outcome: compiler_frontier_qualified_module_dotted_for_path(index: index, target: row.module_path),
+    f: fn(dotted) {
+      outcome_accepted(value: rust_qualified_module_mod_basename(qualified_module: dotted))
+    }
   )
 }
 
