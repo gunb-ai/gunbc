@@ -1,0 +1,11 @@
+module test.claim.zz_freecall_probe
+
+import std.algebra { Monoid }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+test fn probe_free_filter() -> Bool {
+  let xs = [1, 2, 3]
+  let kept = filter(xs, fn(x) { x > 1 })
+  kept.length() == 2
+}
