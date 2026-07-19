@@ -137,6 +137,15 @@ pub fn func_sig_from_global_bare(
     type_env: Rc<TypeEnv>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
+    // Census precedence law (main-parity): the whole-pool census never serves an
+    // algebra method-template name (filter/any/contains/…) as a bare fn sig. Those
+    // names belong to the known-method bridge in the ExprCall arm — a census sig for
+    // the UNLOADED v2.std.algebra typed `filter(xs, f)` as a plain call and the
+    // runtime died NoSuchFunction where main rewrote to the builtin method. Loaded
+    // providers are unaffected: `lookup_resolved_sig` runs before this fallback.
+    if crate::std_algebra::algebra_method_template_names().contains(&name) {
+        return None;
+    }
     match infer_builtin_call_type(name.clone()) {
         Some(_) => None,
         None => {
@@ -201,6 +210,14 @@ pub fn func_sig_from_global_bare(
 }
 
 pub fn global_bare_callable_node(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
+    // Same census precedence law as `func_sig_from_global_bare`: reserved algebra
+    // method-template names never resolve through the census (here: the ExprCall arm
+    // tail, reached when the known-method bridge refused — e.g. a non-collection
+    // receiver). Main refuses those at typecheck; a census hit would defer the same
+    // refusal to a runtime NoSuchFunction against a never-loaded module.
+    if crate::std_algebra::algebra_method_template_names().contains(&name) {
+        return None;
+    }
     match lookup_binding_by_name(type_env.clone(), name.clone()) {
         Some(binding) => {
             if ((binding.resolved.params.clone().len() as i64) > 0)

@@ -3484,20 +3484,12 @@ pub fn infer_expr(
                 // locals: the module context pre-seeds locals with variant and
                 // service census bindings that must NOT eclipse fn sigs (an
                 // imported 0-arg fn would lose its sig to its own census row).
-                // Resolved-env sigs ONLY at this decision point (never the census
-                // fallback): a whole-pool census entry for an UNLOADED module must not
-                // preempt the known-method bridge below — main-parity is bridge before
-                // pool-census (main had no pool census; its closure fns all live in
-                // func_env). A census-served sig here typed `filter(xs, f)` as a plain
-                // call to v2.std.algebra with the module never loaded, and the runtime
-                // died NoSuchFunction where main rewrote to the builtin method. The
-                // census-borrowed callable path stays available in this arm's tail
-                // (global_bare_callable_node), which runs only after the bridge refuses.
                 let sig = if v1_rt::map_get(&scope.body_locals, func_name.clone()).is_some() {
                     None
                 } else {
-                    crate::v1_compiler_infer_lookup::lookup_resolved_sig(
+                    lookup_func_sig(
                         scope.func_env.clone(),
+                        scope.type_env.clone(),
                         func_name.clone(),
                     )
                 };

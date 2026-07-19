@@ -115,7 +115,20 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? 
   }
 }
 
+data census_reserved_method_name_note: String = "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback."
+
+fn algebra_method_template_name(name: String) -> Bool {
+  [
+    OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile,
+    BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile,
+    FreeMonoidCollectionProfile, PartialFunctionProfile
+  ] |> any(p => algebra_templates_for_profile(profile: p) |> any(t => t.name == name))
+}
+
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
+  if algebra_method_template_name(name: name) {
+    return none
+  }
   match infer_builtin_call_type(name: name) {
     Present { value: _ } => none
     Absent =>
@@ -165,6 +178,9 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
 }
 
 fn global_bare_callable_node(type_env: TypeEnv, name: String) -> Node? {
+  if algebra_method_template_name(name: name) {
+    return none
+  }
   match lookup_binding_by_name(env: type_env, name: name) {
     Present { value: binding } =>
       if (binding.resolved.params |> count) > 0 || binding.resolved.inferred != none { Present { value: binding.resolved } }
