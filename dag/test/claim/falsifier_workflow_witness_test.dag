@@ -56,3 +56,15 @@ test fn falsifier_workflow_witness_holds() -> Bool {
     && falsifier_artifact_path_is_workflow_file()
     && falsifier_yaml_projection_evaluates()
 }
+
+test fn zzprobe_f_cron_renders() -> Bool { falsifier_cron_renders_every_four_hours_utc() }
+
+test fn zzprobe_f_cron_discriminates() -> Bool { falsifier_cron_render_discriminates() }
+
+test fn zzprobe_f_concurrency() -> Bool { falsifier_concurrency_queues_not_cancels() }
+
+test fn zzprobe_f_backstop() -> Bool { falsifier_backstop_is_step_sum_plus_prelude() }
+
+test fn zzprobe_f_artifact_path() -> Bool { falsifier_artifact_path_is_workflow_file() }
+
+test fn zzprobe_f_yaml_projection() -> Bool { falsifier_yaml_projection_evaluates() }
