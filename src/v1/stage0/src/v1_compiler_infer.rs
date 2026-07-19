@@ -3299,6 +3299,20 @@ pub fn infer_expr(
                         );
                         match field_type_lookup.clone() {
                             Some(field_type) => {
+                                // A bare occurrence of the serving decl's own type param
+                                // extracted as a field type IS that decl's type variable
+                                // (the decl's own binding structure) — stamp it Tv at
+                                // extraction, matching the local-closure resolver and
+                                // main (measured: `ftype[M inf=Tv(M)]`). The whole-tree
+                                // path serves decl bodies whose param occurrences are
+                                // unstamped; without this, the next field hop on the
+                                // param errors (`no field 'mid' on type 'M'`, M.mid)
+                                // instead of taking the type-variable deferral arm.
+                                let field_type = stamp_field_type_from_decl_params(
+                                    field_type.clone(),
+                                    resolved_base.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                );
                                 let field_summary = match field_summary_for_type(
                                     base_rt.clone(),
                                     scope.type_env.clone(),
@@ -3384,19 +3398,6 @@ pub fn infer_expr(
                                             })
                                         }
                                         None => {
-                                            // TEMP PROBE (salvage diagnosis; removed before merge)
-                                            if std::env::var("GUNBC_MMID_PROBE").is_ok()
-                                                && field_name == "mid"
-                                            {
-                                                eprintln!(
-                                                    "MMID_PROBE field=mid base_rt name={:?} conn={:?} inferred={:?} children={} params={}",
-                                                    base_rt.name,
-                                                    base_rt.connective,
-                                                    base_rt.inferred.as_deref().map(|i| format!("{:?}", i)).unwrap_or("None".into()),
-                                                    base_rt.children.len(),
-                                                    base_rt.params.len(),
-                                                );
-                                            }
                                             let error_message = v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
@@ -13605,6 +13606,40 @@ pub fn census_upgrade_sig_binding(
         }
     } else {
         binding.clone()
+    }
+}
+
+/// Stamp a field type extracted from a param-carrying decl: a bare, unstamped leaf
+/// whose name is one of the serving decl's own type params IS that decl's type
+/// variable, so it gets `TypeVariable{id}` — the shape the local-closure resolver
+/// (and main) serve at the same site. Non-param field types pass through unchanged.
+fn stamp_field_type_from_decl_params(
+    field_type: Rc<Node>,
+    serving_decl: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    if serving_decl.params.is_empty() || field_type.inferred.is_some() {
+        return field_type;
+    }
+    let is_bare = ((field_type.children.clone().len() as i64) == 0)
+        && (field_type.connective.clone() == Connective::NoConnective)
+        && ((field_type.params.clone().len() as i64) == 0);
+    if !is_bare {
+        return field_type;
+    }
+    let nm = type_node_label(field_type.clone(), source_indices.clone());
+    let is_param = serving_decl
+        .params
+        .iter()
+        .cloned()
+        .any(|p| generic_param_name_at(p.clone(), source_indices.clone()) == nm);
+    if is_param {
+        crate::v1_compiler_infer_env::node_with_inferred(
+            field_type.clone(),
+            Some(Rc::new(InferredNode::TypeVariable { id: nm })),
+        )
+    } else {
+        field_type
     }
 }
 
