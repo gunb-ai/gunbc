@@ -11180,10 +11180,19 @@ new file mode 100644
                 .expect("floor runner resolves");
         let runner_ctx =
             super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
-        let entry = "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag";
+        let live_entry =
+            "src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag";
         assert!(
-            super::read_entry_live_tree_disposition(entry).expect("clean_tree readable"),
+            super::read_entry_live_tree_disposition(live_entry)
+                .expect("long live-corpus witness readable"),
             "the live-scan witness entry must declare (or default to) ReadsLiveTree"
+        );
+        let substrate_entry =
+            "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag";
+        assert!(
+            !super::read_entry_live_tree_disposition(substrate_entry)
+                .expect("clean_tree fast-lane note entry readable"),
+            "the fast-lane note entry must declare SubstrateInputsOnly after long-lane offloading"
         );
         let changed_paths = vec!["src/v2/lens/affected_set.dag".to_string()];
         let skip = super::call_floor_row_would_skip(
