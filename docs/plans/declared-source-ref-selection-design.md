@@ -110,6 +110,46 @@ predictions recorded, so a *missing* selection edge — a row that should have b
 and was not — surfaces as a counted divergence within one cadence window rather than as a
 regression someone finds by hand. This is what makes per-row opt-in safe to grow.
 
+### 5.1 Skip-eligibility requires declaration COMPLETENESS, not merely a declaration
+
+§4 keeps the false skip unwritable *for undeclared rows*. It does not by itself protect a
+row that declares **some** of its inputs. Per-row opt-in moves trust onto the proposition
+"this row declared **all** its reads", and a row that declares its `.dag` source while
+omitting others is skip-eligible on a **partial key** — a false skip through the front
+door, arriving by exactly the mechanism §4 was built to prevent.
+
+This is not hypothetical; it is the flagship's own shape. `sn_source_rel` is one of several
+paths that transport reads — `sn_shim_lib_rel`, `sn_shim_driver_rel`, and every
+`CuratedSeedLinkedShimWrite.source_rel` are inputs too. Declaring the `.dag` and stopping is
+therefore the *default* partial declaration for this very file, not an unlikely mistake. A
+receipt skipped because its shim changed and nothing said so is the #6775 class again, with
+a typed ref supplying the false confidence.
+
+So the rule is: **skip-eligibility requires declared refs to cover the row's actual reach.**
+A declaration is a claim of completeness, and an incomplete claim must not buy precision.
+
+**Enforcement is staged, and the staging is the point** — the check that makes this
+construction rather than convention does not exist yet, so opt-in must not outrun it:
+
+1. **Flagship (this task):** completeness is **hand-verified** against the transport's
+   actual reads and recorded as such, with the **falsifier cold cadence** as the live
+   catcher for a missed input during the window. One row, verified by a human, is honest at
+   n=1 and does not pretend to be a mechanism.
+2. **Before opt-in widens past the flagship:** the **`effect_reach` census join** becomes the
+   admission-time check — the census already computes a row's reached path literals, so
+   joining declared refs against reached paths turns "did this row declare everything it
+   reads" into a decidable, fail-closed admission question. A row whose declared set does not
+   cover its reached set is **not skip-eligible** and refuses, typed and counted.
+
+That join is the follow-on lane's **first** deliverable, not a later nicety: it is the wall
+that converts hand-verification into construction. Until it lands, exactly one row (the
+flagship) is opt-in, and the honest reason is that one row is what a human can verify — not
+that the mechanism scales.
+
+This is also why the census lens must stay live (§8). It is not only the backstop for the
+115 undeclared rows; it is the **source of the reach facts** the completeness check will
+join against.
+
 ## 6. Acceptance — two directions, both by execution
 
 Neither direction alone is evidence:
