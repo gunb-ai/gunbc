@@ -132,6 +132,7 @@ pub fn empty_symbol_index() -> Rc<SymbolIndex> {
 
 pub fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
+        module_path: "".to_string(),
         bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
         str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),

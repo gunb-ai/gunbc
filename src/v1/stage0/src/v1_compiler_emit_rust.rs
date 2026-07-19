@@ -8755,6 +8755,7 @@ pub fn render_rust_type_with_applied_binding(
                                         source_indices.clone(),
                                         v1_rt::rc_empty_map::<String, String>(),
                                         Rc::new(TypeEnv {
+                                            module_path: "".to_string(),
                                             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
                                             str_bindings: v1_rt::rc_empty_map::<
                                                 String,
@@ -8792,6 +8793,7 @@ pub fn render_rust_type_with_applied_binding(
                                 source_indices.clone(),
                                 v1_rt::rc_empty_map::<String, String>(),
                                 Rc::new(TypeEnv {
+                                    module_path: "".to_string(),
                                     bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
                                     str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                                     ancestry_str_bindings: v1_rt::rc_empty_map::<
@@ -24690,6 +24692,7 @@ pub fn rust_test_signature_comment(
 ) -> String {
     {
         let stub_env = Rc::new(TypeEnv {
+            module_path: "".to_string(),
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
