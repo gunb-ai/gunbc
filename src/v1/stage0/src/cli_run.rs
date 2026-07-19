@@ -934,6 +934,22 @@ fn module_path_collision_panic_message(
 }
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
+    let key = source_roots
+        .iter()
+        .map(|r| anchor_source_root(r))
+        .collect::<Vec<_>>()
+        .join("\u{1f}");
+    MODULE_PATH_INDEX_CACHE.with(|cache| {
+        if let Some(index) = cache.borrow().get(&key) {
+            return index.clone();
+        }
+        let index = build_module_path_index_uncached(source_roots);
+        cache.borrow_mut().insert(key, index.clone());
+        index
+    })
+}
+
+fn build_module_path_index_uncached(source_roots: &[String]) -> HashMap<String, String> {
     let mut index: HashMap<String, String> = HashMap::new();
     for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
         let rel = module_index_path_key(path);
