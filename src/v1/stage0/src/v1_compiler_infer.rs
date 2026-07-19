@@ -810,7 +810,7 @@ pub fn internal_expr_error_node(message: String, span: Rc<SourceSpan>) -> Rc<Nod
 }
 
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
-    match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
+    let local_binding_parent = match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(binding) => match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
             Some(parent) => {
                 let is_coproduct = (parent.connective.clone() == Connective::Disj);
@@ -834,6 +834,28 @@ pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option
             None => None,
         },
         None => None,
+    };
+    match local_binding_parent.clone() {
+        Some(parent_name) => Some(parent_name.clone()),
+        None => {
+            // Qualified variant spellings (module.Variant) are not keys in the flat
+            // `locals` map above, so the lookup misses and the record-lit head goes
+            // unstamped — the value then builds as a Record carrying the dotted name
+            // instead of a Variant, and no pattern arm can match it. The owning
+            // coproduct for a dotted spelling is resolved by variant_owner_node, the
+            // dotted-aware form of this same question; name it from that node.
+            if v1_rt::contains(name.clone(), ".".to_string()) {
+                match variant_owner_node(scope.clone(), name.clone()) {
+                    Some(owner) => Some(authored_name_at(
+                        scope.type_env.clone().source_indices.clone(),
+                        owner.clone(),
+                    )),
+                    None => None,
+                }
+            } else {
+                None
+            }
+        }
     }
 }
 
