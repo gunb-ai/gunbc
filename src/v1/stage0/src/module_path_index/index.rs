@@ -7,7 +7,7 @@ use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_std_core::{build_newline_index, node_name_span, Node, SourceSpan};
 
 /// One parse-derived module⇄path row for manifest emission (host binding authority).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParsedModuleBinding {
     pub module_path: String,
     pub ident_span: Rc<SourceSpan>,
@@ -16,10 +16,7 @@ pub struct ParsedModuleBinding {
 /// Parse a `.dag` file's module declaration through the v1 bootstrap parser.
 /// Returns `None` when the file has no module, fails to parse, or declares an empty name.
 pub fn parse_module_binding(path: &Path, content: &str) -> Option<ParsedModuleBinding> {
-    let filename = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("?");
+    let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("?");
     let tokens = tokenize(content.to_string(), filename.to_string());
     let source_index = build_newline_index(filename.to_string(), content.to_string());
     let mut indices = HashMap::new();
@@ -58,8 +55,8 @@ mod tests {
     #[test]
     fn parse_module_binding_some_for_module_decl() {
         let path = Path::new("fixture.dag");
-        let binding = parse_module_binding(path, "module v1.test.fixture\n")
-            .expect("module decl must parse");
+        let binding =
+            parse_module_binding(path, "module v1.test.fixture\n").expect("module decl must parse");
         assert_eq!(binding.module_path, "v1.test.fixture");
         assert_eq!(binding.ident_span.start, 7);
     }

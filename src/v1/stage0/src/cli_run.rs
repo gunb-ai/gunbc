@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
-use crate::module_path_index::{module_path_from_parsed_content, parse_module_binding};
+use crate::module_path_index::parse_module_binding;
 use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
@@ -934,34 +934,64 @@ fn module_path_collision_panic_message(
 }
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
-    let mut index: HashMap<String, String> = HashMap::new();
+    collect_module_binding_manifest_rows(source_roots)
+        .into_iter()
+        .map(|row| (row.module_path, row.rel_path))
+        .collect()
+}
+
+struct ModuleBindingManifestRow {
+    module_path: String,
+    rel_path: String,
+    root_variant: String,
+    ident_span: Rc<SourceSpan>,
+}
+
+fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
+    let mut rows: Vec<ModuleBindingManifestRow> = Vec::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
+        let root_variant = source_root_ref_variant_for_root(root)
+            .unwrap_or_else(|e| panic!("collect_module_binding_manifest_rows: {e}"));
         let anchored_root = anchor_source_root(root);
         let root_path = Path::new(&anchored_root);
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
         for path in dag_files {
             let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-                panic!("build_module_path_index: failed to read {:?}: {}", path, e)
+                panic!(
+                    "collect_module_binding_manifest_rows: failed to read {:?}: {}",
+                    path, e
+                )
             });
-            if let Some(module_path) = module_path_from_parsed_content(&path, &content) {
-                let rel = module_index_path_key(&path);
-                if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
-                    continue;
-                }
-                if let Some(existing) = index.get(&module_path) {
-                    if existing != &rel && !same_canonical_file(existing, &rel) {
-                        panic!(
-                            "{}",
-                            module_path_collision_panic_message(&module_path, existing, &rel)
-                        );
-                    }
-                }
-                index.insert(module_path.clone(), rel);
+            let Some(binding) = parse_module_binding(&path, &content) else {
+                continue;
+            };
+            let rel = module_index_path_key(&path);
+            if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
+                continue;
             }
+            if let Some(existing) = rows.iter().find(|r| r.module_path == binding.module_path) {
+                if existing.rel_path != rel && !same_canonical_file(&existing.rel_path, &rel) {
+                    panic!(
+                        "{}",
+                        module_path_collision_panic_message(
+                            &binding.module_path,
+                            &existing.rel_path,
+                            &rel
+                        )
+                    );
+                }
+                continue;
+            }
+            rows.push(ModuleBindingManifestRow {
+                module_path: binding.module_path,
+                rel_path: rel,
+                root_variant: root_variant.clone(),
+                ident_span: binding.ident_span,
+            });
         }
     }
-    index
+    rows
 }
 
 /// Resolve `import` statements transitively for an in-memory (not-on-disk) entry source
@@ -14318,9 +14348,9 @@ fn emit_source_root_ref_import(records: &[SourceRootReadRecord]) -> String {
 /// which is the one host producer the module-identity design says must be repointed —
 /// so supplying the rows and repointing the producer are the same motion.
 ///
-/// Rows are `DeclarationScanned`, never `ParsedFromSource`: `build_module_path_index`
-/// derives the mapping via `extract_module_path`, a substring scan with no spans and no
-/// parse. Emitting them as parsed would fabricate provenance (DESIGN.md §5).
+/// Rows are `ParsedFromSource`: `build_module_path_index` routes through
+/// `v1_compiler_parse::parse` (src/v1/stage0/src/module_path_index), the bootstrap
+/// parse path — not `extract_module_path` substring scan (task 4 repoint).
 ///
 /// Unlike the source-root ingest manifest this carries NO source text — the binding needs
 /// module <-> path only. That is what lets it scale past `MANIFEST_INLINE_LIST_MAX`, which
@@ -14337,30 +14367,21 @@ pub fn emit_module_storage_binding_manifest(
             .map_err(|e| format!("failed to create manifest parent {:?}: {}", parent, e))?;
     }
 
-    // Per-root so each row records its own SourceRootRef, reusing build_module_path_index
-    // rather than introducing a second walker (which would be the fork this repoint removes).
-    let mut rows: Vec<(String, String, String)> = Vec::new();
-    for root in source_roots {
-        let root_variant = source_root_ref_variant_for_root(root)?;
-        let index = build_module_path_index(std::slice::from_ref(root));
-        let mut entries: Vec<(String, String)> = index.into_iter().collect();
-        // build_module_path_index returns a HashMap; sort so the emitted manifest is
-        // deterministic (byte-identical across runs on unchanged inputs).
-        entries.sort_by(|a, b| a.0.cmp(&b.0));
-        for (module_path, rel) in entries {
-            rows.push((module_path, rel, root_variant.clone()));
-        }
-    }
+    let mut rows = collect_module_binding_manifest_rows(source_roots);
+    rows.sort_by(|a, b| a.module_path.cmp(&b.module_path));
 
     let mut out = String::new();
     out.push_str("module v2.test.workflow.host_module_binding_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  ModuleStorageIndex,\n");
-    out.push_str("  module_storage_scanned_binding\n");
+    out.push_str("  module_storage_parsed_binding\n");
     out.push_str("}\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import std.algebra { Cons, Empty }\n");
+    out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
+    out.push_str("import v2.std.node { MintedOccurrence, OccurrenceId }\n");
+    out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
     out.push('\n');
@@ -14378,8 +14399,8 @@ pub fn emit_module_storage_binding_manifest(
 /// Import exactly the `SourceRootRef` constructors the rows reference (mirrors
 /// `emit_source_root_ref_import`; an unreferenced constructor import is an unlisted-import
 /// error, and a referenced-but-unimported one fails to resolve).
-fn emit_module_binding_source_root_import(rows: &[(String, String, String)]) -> String {
-    let mut names: Vec<&str> = rows.iter().map(|(_, _, v)| v.as_str()).collect();
+fn emit_module_binding_source_root_import(rows: &[ModuleBindingManifestRow]) -> String {
+    let mut names: Vec<&str> = rows.iter().map(|r| r.root_variant.as_str()).collect();
     names.sort_unstable();
     names.dedup();
     if names.is_empty() {
@@ -14417,17 +14438,27 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
-fn emit_module_binding_row(row: &(String, String, String)) -> Result<String, String> {
-    let (module_path, rel, root_variant) = row;
-    let qn = emit_module_binding_qualified_name(module_path)?;
-    let artifact_id = source_root_ingest_artifact_id_for_path(rel);
+fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
+    let start = span.start.max(0);
+    let end = span.end.max(start);
+    let occurrence_id = start.max(1);
+    format!(
+        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
+    )
+}
+
+fn emit_module_binding_row(row: &ModuleBindingManifestRow) -> Result<String, String> {
+    let qn = emit_module_binding_qualified_name(&row.module_path)?;
+    let artifact_id = source_root_ingest_artifact_id_for_path(&row.rel_path);
+    let span_index = emit_module_binding_span_index(&row.ident_span, &artifact_id);
     Ok(format!(
-        "module_storage_scanned_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  source_root: {root_variant}\n)",
-        dag_manifest_scalar_escape(rel)?
+        "module_storage_parsed_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  span_index: {span_index},\n  source_root: {}\n)",
+        dag_manifest_scalar_escape(&row.rel_path)?,
+        row.root_variant
     ))
 }
 
-fn emit_module_binding_monoid(rows: &[(String, String, String)]) -> Result<String, String> {
+fn emit_module_binding_monoid(rows: &[ModuleBindingManifestRow]) -> Result<String, String> {
     let mut nodes: Vec<String> = rows
         .iter()
         .map(emit_module_binding_row)
