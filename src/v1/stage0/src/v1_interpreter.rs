@@ -6833,6 +6833,8 @@ fn eval_emit_host_run_transport_builtin(
     run_arg: Option<&Value>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
+    ctx.effect_dispatch_count
+        .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     if ctx.execution_mode.is_hermetic() {
         return Err(InterpError::TypeError {
             msg: "hermetic mode: emit_host_run_transport refuses host process execution \
@@ -6956,6 +6958,296 @@ fn eval_emit_host_run_transport_builtin(
     result
 }
 
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.v1_deletion_plan
+/// ^witness_realization_kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
+/// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
+/// content-addressed emit_host transport persists workspace under cache_root and
+/// skips build when `.native_ready` is present. Workspace reuse is keyed by the
+/// caller's content-derived path (emit_on_demand_key closure_digest); a different
+/// closure MUST land in a different workspace dir — file set is assumed a pure
+/// function of that digest (benign-by-identity on partial writes before
+/// `.native_ready`). Registered in 04_method.dag as
+/// emit_host_run_transport_cached; dissolve-on: witness_realization_kernel emits
+/// this builtin from v2 self-hosted transport rows (same dissolution as
+/// emit_host_run_transport seed handler).
+fn eval_emit_host_run_transport_cached_builtin(
+    cache_root_arg: Option<&Value>,
+    files_arg: Option<&Value>,
+    build_arg: Option<&Value>,
+    run_arg: Option<&Value>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    ctx.effect_dispatch_count
+        .set(ctx.effect_dispatch_count.get().wrapping_add(1));
+    if ctx.execution_mode.is_hermetic() {
+        return Err(InterpError::TypeError {
+            msg: "hermetic mode: emit_host_run_transport_cached refuses host process execution \
+                  (no mock arm; run wet or record a fixture)"
+                .to_string(),
+        });
+    }
+
+    let cache_root = free_monoid_to_string(cache_root_arg.ok_or_else(|| {
+        InterpError::TypeError {
+            msg:
+                "emit_host_run_transport_cached requires (cache_root, files, build, run) arguments"
+                    .to_string(),
+        }
+    })?)
+    .ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport_cached: cache_root must be String".to_string(),
+    })?;
+
+    let files_val = files_arg.ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport_cached requires (cache_root, files, build, run) arguments"
+            .to_string(),
+    })?;
+    let files = free_monoid_to_vec(files_val).ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport_cached: files must be a List of {path, text} records"
+            .to_string(),
+    })?;
+    let mut workspace_files: Vec<(String, String)> = Vec::with_capacity(files.len());
+    for f in &files {
+        match f {
+            Value::Record { fields, .. } => {
+                let path = ctx
+                    .field(fields, "path")
+                    .and_then(free_monoid_to_string)
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "emit_host_run_transport_cached: workspace file missing String path"
+                            .to_string(),
+                    })?;
+                let text = ctx
+                    .field(fields, "text")
+                    .and_then(free_monoid_to_string)
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "emit_host_run_transport_cached: workspace file missing String text"
+                            .to_string(),
+                    })?;
+                workspace_files.push((path, text));
+            }
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: workspace entry must be a record, got {}",
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+
+    let build_val = build_arg.ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport_cached requires (cache_root, files, build, run) arguments"
+            .to_string(),
+    })?;
+    let build_lists = free_monoid_to_vec(build_val).ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport_cached: build must be a List of argv Lists".to_string(),
+    })?;
+    let mut build_argvs: Vec<Vec<String>> = Vec::with_capacity(build_lists.len());
+    for argv_val in &build_lists {
+        let argv_items = free_monoid_to_vec(argv_val).ok_or_else(|| InterpError::TypeError {
+            msg: "emit_host_run_transport_cached: build argv must be a List<String>".to_string(),
+        })?;
+        let mut argv: Vec<String> = Vec::with_capacity(argv_items.len());
+        for item in &argv_items {
+            let s = free_monoid_to_string(item).ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: build argv element must be String, got {}",
+                    item.type_label()
+                ),
+            })?;
+            argv.push(s);
+        }
+        if argv.is_empty() {
+            return Err(InterpError::TypeError {
+                msg: "emit_host_run_transport_cached: empty build argv".to_string(),
+            });
+        }
+        build_argvs.push(argv);
+    }
+
+    let run_arg_items =
+        run_arg
+            .and_then(free_monoid_to_vec)
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "emit_host_run_transport_cached: run must be a List<String>".to_string(),
+            })?;
+    let mut run_argv: Vec<String> = Vec::with_capacity(run_arg_items.len());
+    for item in &run_arg_items {
+        let s = free_monoid_to_string(item).ok_or_else(|| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: run argv element must be String, got {}",
+                item.type_label()
+            ),
+        })?;
+        run_argv.push(s);
+    }
+    if run_argv.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "emit_host_run_transport_cached: empty run argv".to_string(),
+        });
+    }
+
+    let workspace = std::path::PathBuf::from(&cache_root);
+    std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
+        msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    })?;
+
+    emit_host_run_transport_cached_in_workspace(
+        &workspace,
+        &workspace_files,
+        &build_argvs,
+        &run_argv,
+        ctx,
+    )
+}
+
+fn emit_host_run_transport_cached_in_workspace(
+    workspace: &std::path::Path,
+    files: &[(String, String)],
+    build_argvs: &[Vec<String>],
+    run_argv: &[String],
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    use std::path::Component;
+
+    let ready_marker = workspace.join(".native_ready");
+    let compile_skipped = ready_marker.exists();
+
+    let transport_result = |phase: &str,
+                            success: bool,
+                            exit_code: i64,
+                            stdout: &[u8],
+                            stderr: &[u8],
+                            build_log: Vec<Value>,
+                            compile_skipped: bool|
+     -> Value {
+        Value::Record {
+            type_name: ctx.sym("EmitHostTransportResult"),
+            fields: Rc::new(vec![
+                (ctx.sym("phase"), Value::Str(phase.to_string())),
+                (ctx.sym("success"), Value::Bool(success)),
+                (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
+                (
+                    ctx.sym("stdout_octets"),
+                    list_value(
+                        stdout
+                            .iter()
+                            .map(|b| Value::Int(*b as i64))
+                            .collect::<Vec<Value>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("stderr_octets"),
+                    list_value(
+                        stderr
+                            .iter()
+                            .map(|b| Value::Int(*b as i64))
+                            .collect::<Vec<Value>>(),
+                    ),
+                ),
+                (ctx.sym("build_log"), list_value(build_log)),
+            ]),
+        }
+    };
+
+    let target_dir = workspace.join("target");
+    let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
+        std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .current_dir(workspace)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: spawn {:?} failed: {e}",
+                    argv[0]
+                ),
+            })
+    };
+
+    if !compile_skipped {
+        for (rel, text) in files {
+            let p = std::path::Path::new(rel);
+            if p.is_absolute() || p.components().any(|c| matches!(c, Component::ParentDir)) {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: workspace path escapes workspace: {rel}"
+                    ),
+                });
+            }
+            let full = workspace.join(p);
+            if let Some(parent) = full.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: mkdir {} failed: {e}",
+                        parent.display()
+                    ),
+                })?;
+            }
+            std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: write {} failed: {e}",
+                    full.display()
+                ),
+            })?;
+        }
+
+        let mut build_log: Vec<Value> = Vec::new();
+        for argv in build_argvs {
+            let out = run_command(argv)?;
+            let code = out.status.code().map(i64::from).unwrap_or(-1);
+            build_log.push(Value::Str(format!("{} -> exit {code}", argv.join(" "))));
+            if !out.status.success() {
+                build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
+                return Ok(transport_result(
+                    "build",
+                    false,
+                    code,
+                    &out.stdout,
+                    &out.stderr,
+                    build_log,
+                    false,
+                ));
+            }
+        }
+
+        let out = run_command(run_argv)?;
+        let code = out.status.code().map(i64::from).unwrap_or(-1);
+        build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+        if out.status.success() {
+            std::fs::write(&ready_marker, b"1").map_err(|e| InterpError::TypeError {
+                msg: format!("emit_host_run_transport_cached: ready marker write failed: {e}"),
+            })?;
+        }
+        return Ok(transport_result(
+            "run",
+            out.status.success(),
+            code,
+            &out.stdout,
+            &out.stderr,
+            build_log,
+            false,
+        ));
+    }
+
+    let out = run_command(run_argv)?;
+    let code = out.status.code().map(i64::from).unwrap_or(-1);
+    let mut build_log: Vec<Value> = Vec::new();
+    build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+    Ok(transport_result(
+        "run_cached",
+        out.status.success(),
+        code,
+        &out.stdout,
+        &out.stderr,
+        build_log,
+        true,
+    ))
+}
+
 fn emit_host_run_transport_in_workspace(
     workspace: &std::path::Path,
     files: &[(String, String)],
@@ -7006,7 +7298,8 @@ fn emit_host_run_transport_in_workspace(
                             exit_code: i64,
                             stdout: &[u8],
                             stderr: &[u8],
-                            build_log: Vec<Value>|
+                            build_log: Vec<Value>,
+                            compile_skipped: bool|
      -> Value {
         Value::Record {
             type_name: ctx.sym("EmitHostTransportResult"),
@@ -7014,6 +7307,7 @@ fn emit_host_run_transport_in_workspace(
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
                 (ctx.sym("success"), Value::Bool(success)),
                 (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
                     ctx.sym("stdout_octets"),
                     list_value(
@@ -7051,6 +7345,7 @@ fn emit_host_run_transport_in_workspace(
                 &out.stdout,
                 &out.stderr,
                 build_log,
+                false,
             ));
         }
     }
@@ -7065,6 +7360,7 @@ fn emit_host_run_transport_in_workspace(
         &out.stdout,
         &out.stderr,
         build_log,
+        false,
     ))
 }
 
@@ -7567,6 +7863,14 @@ fn eval_builtin_inner(
             positional.first().copied(),
             positional.get(1).copied(),
             positional.get(2).copied(),
+            ctx,
+        )?)),
+
+        "emit_host_run_transport_cached" => Ok(Some(eval_emit_host_run_transport_cached_builtin(
+            positional.first().copied(),
+            positional.get(1).copied(),
+            positional.get(2).copied(),
+            positional.get(3).copied(),
             ctx,
         )?)),
 

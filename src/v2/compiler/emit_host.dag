@@ -138,7 +138,8 @@ fn emit_host_receipt_from_source(
   exit: HostExit,
   stdout_bytes: ByteString,
   stderr_bytes: ByteString,
-  build_log: BuildLog
+  build_log: BuildLog,
+  compile_skipped: Bool
 ) -> EmitHostRunReceipt {
   EmitHostRunReceipt {
     target: target,
@@ -146,7 +147,8 @@ fn emit_host_receipt_from_source(
     exit: exit,
     logical_run: host_logical_run_from_exit(exit: exit, stdout_bytes: stdout_bytes),
     stderr_bytes: stderr_bytes,
-    build_log: build_log
+    build_log: build_log,
+    compile_skipped: compile_skipped
   }
 }
 
@@ -269,6 +271,41 @@ fn run_host_process(
   source: Medium<String>,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
+  run_host_process_with_cache(
+    cache_root: "",
+    row: row,
+    target: target,
+    source: source,
+    fixture_inputs: fixture_inputs,
+    use_cache: false
+  )
+}
+
+fn run_host_process_cached(
+  cache_root: String,
+  row: EmitHostRuntimeRow,
+  target: TargetModel,
+  source: Medium<String>,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  run_host_process_with_cache(
+    cache_root: cache_root,
+    row: row,
+    target: target,
+    source: source,
+    fixture_inputs: fixture_inputs,
+    use_cache: true
+  )
+}
+
+fn run_host_process_with_cache(
+  cache_root: String,
+  row: EmitHostRuntimeRow,
+  target: TargetModel,
+  source: Medium<String>,
+  fixture_inputs: Inputs,
+  use_cache: Bool
+) -> Outcome<EmitHostRunReceipt> {
   let _inputs = fixture_inputs
   let transport = row.transport
   bind_outcome(
@@ -286,7 +323,16 @@ fn run_host_process(
               }
             }
           )
-          let result = emit_host_run_transport(files: files, build: builds, run: run_argv)
+          let result = if use_cache {
+            emit_host_run_transport_cached(
+              cache_root: cache_root,
+              files: files,
+              build: builds,
+              run: run_argv
+            )
+          } else {
+            emit_host_run_transport(files: files, build: builds, run: run_argv)
+          }
           let exit = HostExit {
             outcome: Accepted {
               value: if result.success {
@@ -304,7 +350,8 @@ fn run_host_process(
               exit: exit,
               stdout_bytes: emit_host_octets_byte_string(octets: result.stdout_octets),
               stderr_bytes: emit_host_octets_byte_string(octets: result.stderr_octets),
-              build_log: BuildLog { lines: result.build_log }
+              build_log: BuildLog { lines: result.build_log },
+              compile_skipped: result.compile_skipped
             ),
             diagnostics: None
           }
@@ -323,6 +370,26 @@ fn run_emit_host(
     o: runtime_row_from_target(target: target),
     f: fn(row) {
       run_host_process(
+        row: row,
+        target: target,
+        source: source,
+        fixture_inputs: fixture_inputs
+      )
+    }
+  )
+}
+
+fn run_emit_host_cached(
+  cache_root: String,
+  target: TargetModel,
+  source: Medium<String>,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  bind_outcome(
+    o: runtime_row_from_target(target: target),
+    f: fn(row) {
+      run_host_process_cached(
+        cache_root: cache_root,
         row: row,
         target: target,
         source: source,

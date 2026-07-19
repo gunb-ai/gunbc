@@ -27,9 +27,7 @@ import v2.std.witness_admission {
   FixtureExplicitRoster,
   NoConsumer,
   WitnessAdmissionHolds,
-  UnexecutedDeferredWitness,
-  witness_consumer_cadence_is_live,
-  witness_admission_refusal_is_holds
+  UnexecutedDeferredWitness
 }
 
 data witness_admission_plan_doc_provenance: String = "bind: docs/plans/module-identity-storage-binding-design.md"
@@ -117,16 +115,14 @@ fn witness_admission_refusal_for_row(
   function: String,
   excluded_from_discovery: Bool
 ) -> WitnessAdmissionRefusal {
-  if witness_consumer_cadence_is_live(
-    cadence: witness_consumer_cadence_for_row(
-      entry: entry,
-      function: function,
-      excluded_from_discovery: excluded_from_discovery
-    )
+  match witness_consumer_cadence_for_row(
+    entry: entry,
+    function: function,
+    excluded_from_discovery: excluded_from_discovery
   ) {
-    WitnessAdmissionHolds
-  } else {
-    UnexecutedDeferredWitness { entry: entry, function: function }
+    NoConsumer =>
+      UnexecutedDeferredWitness { entry: entry, function: function }
+    _ => WitnessAdmissionHolds
   }
 }
 
@@ -135,13 +131,14 @@ fn witness_row_excluded_from_discovery(entry: String) -> Bool {
 }
 
 fn witness_admission_holds_for_row(entry: String, function: String) -> Bool {
-  witness_admission_refusal_is_holds(
-    refusal: witness_admission_refusal_for_row(
-      entry: entry,
-      function: function,
-      excluded_from_discovery: witness_row_excluded_from_discovery(entry: entry)
-    )
-  )
+  match witness_admission_refusal_for_row(
+    entry: entry,
+    function: function,
+    excluded_from_discovery: witness_row_excluded_from_discovery(entry: entry)
+  ) {
+    WitnessAdmissionHolds => true
+    UnexecutedDeferredWitness { entry: _, function: _ } => false
+  }
 }
 
 fn witness_admission_manifest_entry_key(entry: String, function: String) -> String {
