@@ -722,7 +722,15 @@ fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
 
 fn variant_arm_type_projection(env: TypeEnv, owner: Node, name: String) -> Node? {
   match owner.connective {
-    Disj => find_child_named(n: owner, name: name, source_indices: env.source_indices)
+    Disj =>
+      match find_child_named(n: owner, name: name, source_indices: env.source_indices) {
+        Present { value: arm } =>
+          match (arm.children |> count) == 0 {
+            true => Present { value: arm }
+            false => Absent
+          }
+        Absent => Absent
+      }
     _ => Absent
   }
 }

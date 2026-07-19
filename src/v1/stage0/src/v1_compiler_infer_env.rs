@@ -1311,7 +1311,13 @@ pub fn variant_arm_type_projection(
 ) -> Option<Rc<Node>> {
     match owner.connective.clone() {
         Connective::Disj => {
-            find_child_named(owner.clone(), name.clone(), env.source_indices.clone())
+            match find_child_named(owner.clone(), name.clone(), env.source_indices.clone()) {
+                Some(arm) => match ((arm.children.clone().len() as i64) == 0) {
+                    true => Some(arm.clone()),
+                    false => None,
+                },
+                None => None,
+            }
         }
         _ => None,
     }
