@@ -7808,10 +7808,11 @@ fn witness_admission_entry_function_keys_from_source(
                      `{head}` at byte {occ} — refusing"
                 );
             };
-            let marker = after_entry
-                .find("f: \"")
-                .map(|p| (p, "f: \""))
-                .or_else(|| after_entry.find("function: \"").map(|p| (p, "function: \"")));
+            let marker = after_entry.find("f: \"").map(|p| (p, "f: \"")).or_else(|| {
+                after_entry
+                    .find("function: \"")
+                    .map(|p| (p, "function: \""))
+            });
             let Some((fn_pos, fn_marker)) = marker else {
                 panic!(
                     "witness admission: {source_label}: `{head}` row for entry {entry:?} at \
@@ -7835,11 +7836,10 @@ fn witness_admission_entry_function_keys_from_source(
 fn witness_admission_explicit_consumer_keys() -> Vec<String> {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
-        let mut keys =
-            witness_admission_entry_function_keys_from_source(
-                "dag/gunbc/ci_layer_roots.dag",
-                ci_layer_roots_authority_content(),
-            );
+        let mut keys = witness_admission_entry_function_keys_from_source(
+            "dag/gunbc/ci_layer_roots.dag",
+            ci_layer_roots_authority_content(),
+        );
         let wet =
             std::fs::read_to_string(workspace_root().join(WET_RECEIPT_ENROLLMENT_AUTHORITY_REL))
                 .unwrap_or_else(|e| {
