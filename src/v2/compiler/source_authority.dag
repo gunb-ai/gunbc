@@ -78,10 +78,43 @@ type DagSourceReadWitness {
 
 type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
 
+data source_root_coverage_note: String = "The manifest emitter inlines the FULL Lossless source text of every read, so it carries a corpus-protection cap (MANIFEST_INLINE_LIST_MAX). Past that cap it elided the ENTIRE row list to Empty — and said nothing. That is an absorbing fallback (DESIGN section 5): the carrier silently became ⊤-as-ignorance while every consumer read it as ⊤-as-answer, 'this source root has no reads'. A receipt that then hardcoded coverage_complete: true over that Empty carrier made the lie unfalsifiable, and the compiler-closure ingest gate rode it green over ZERO rows.
+
+So the elision is now a TYPED, COUNTED refusal rather than a Bool. SourceRootManifestElided names both numbers that matter — how many reads there were and what cap rejected them — so the deficit's SIZE is visible at every consumer instead of being inferable only by subtracting two counts. A Bool could say 'incomplete'; it could not say 'ninety-one reads met a cap of sixty-four', which is the fact that tells you whether the remedy is a bigger cap or a different carrier.
+
+Measured instance at the time of writing: the src/v2/compiler/00_compile.dag closure is 91 reads against a cap of 64, so its manifest carries Empty. That is the real deficit this typing exposes; the carrier redesign that fixes it (rows referencing source by ref/hash instead of inlining text) is its own designed lane."
+
+type SourceRootCoverage
+  = SourceRootCoverageComplete
+  | SourceRootManifestElided { read_count: Int, cap: Int }
+  | SourceRootRowsMissing { read_count: Int, produced_row_count: Int }
+  | SourceRootManifestAbsent
+
 type SourceRootProvenanceCoverageReceipt {
   ingest_read_count: Int
   produced_row_count: Int
-  coverage_complete: Bool
+  coverage: SourceRootCoverage
+}
+
+data source_root_coverage_arms_note: String = "THREE arms, not two, because the two producers fail for different reasons and their remedies differ. SourceRootManifestElided is the HOST emitter's refusal: a declared cap rejected the whole row list, and the fix is a bigger cap or a carrier that does not inline source text. SourceRootRowsMissing is the IN-GRAPH derivation's refusal: produced rows do not match reads with NO cap involved, which means rows were lost somewhere and the fix is finding that bug. Collapsing them would have forced the in-graph derivation to name a cap it does not have — fabricating a number to satisfy a shape (DESIGN section 5). Distinct causes, distinct arms, each carrying only numbers its own producer actually knows.
+
+A fourth arm, SourceRootManifestAbsent, is the COMMITTED STUB's state: no host manifest has been supplied at this source root yet. It is not Complete (that would be a vacuous truth over zero rows, exactly the shape a witness can ride green while proving nothing), it is not RowsMissing (nothing was read, so 0 against 0 is not a shortfall), and it is not Elided (no cap rejected anything). Its remedy is different too: run the emitting gate, or order the overlay root after the stub. The stub previously said coverage_complete: false, which was fail-closed but mute about which of these four it meant."
+
+data source_root_coverage_is_complete_note: String = "A DELIBERATE one-question projection, not a dissolution back to the Bool this coproduct replaced (review 39781 raised exactly this, and the distinction is worth stating precisely).
+
+What it answers: 'is coverage complete?' — nothing else. It discards WHICH deficit occurred, and that discard is correct at its call sites, which are all ASSERTIONS: a witness asserting complete coverage needs a boolean, and inlining the same four-arm match at each of them would be four copies of one decision (DESIGN section 2). The predicate is the DRY form of a fact the coproduct still owns.
+
+What it is NOT: the old coverage_complete field. That was the receipt's ONLY representation of coverage, so a consumer had no way to learn the cause — the information did not exist anywhere. Now the cause is carried on the receipt, and any consumer that needs it matches SourceRootCoverage directly and gets read_count, cap, or produced_row_count. Nothing is lost; one caller-chosen question is answered.
+
+It carries no Disposition because it is not a scaffold: there is no future state in which this becomes wrong, so there is no honest dissolution trigger to declare, and inventing one would be a scaffold marker that can never fire (DESIGN section 6 — every scaffold lands with a named trigger, which equally means a non-scaffold must not fake one). The rule it must keep: this predicate may never become the only way to read coverage. If a consumer ever needs the reason and reaches for a Bool instead, that consumer is wrong, not this projection."
+
+fn source_root_coverage_is_complete(coverage: SourceRootCoverage) -> Bool {
+  match coverage {
+    SourceRootCoverageComplete => true
+    SourceRootManifestElided { read_count: _, cap: _ } => false
+    SourceRootRowsMissing { read_count: _, produced_row_count: _ } => false
+    SourceRootManifestAbsent => false
+  }
 }
 
 type SourceIrArtifactProvenance {
@@ -535,8 +568,16 @@ data module_storage_supply_op_note: String = "THE MODELED OP (docs/plans/module-
 
 data module_storage_supply_cost_note: String = "Why a host handler rather than deriving in-graph: module_storage_bindings_from_ingest re-parses every module, measured at ~6.5s of eval per module. That is fine at ORACLE scale (a handful of modules, off the gate path) and impossible at consumer scale — the frontier needs ~35 modules and compile-clean scope thousands. The host already knows (module, path) from its own parse, so re-deriving it in-graph is duplicated work (§2) as well as slow. The in-graph derivation is therefore retained as the ORACLE that pins this transport to the model, never as the consumer path."
 
+data module_storage_supply_unbound_body_note: String = "The body REFUSES rather than recursing. This declaration is an interface whose realization is a host handler; until host-effect emission binds it, an in-graph caller must be told so, loudly and at once.
+
+It was previously written as an unconditional self-call — fn f(x) { f(x: x) } — which is the shape a host-bound stub takes when the host is expected to intercept before the body ever runs. That is true for the inert_lens stubs, which ARE registered in the interpreter dispatch tables (v1_interpreter.rs), so their bodies are unreachable. It is NOT true here: this op has no dispatch registration, so the body is genuinely reachable and a caller would spin instead of stopping. A hang is the weakest possible failure arm — it is not even a stop, it just never answers, and DESIGN section 5 wants a located refusal (a bounded 'forever' is not an 'unknown' error). Flagged non-blocking by reviews 39741 and 39773; fixed here because the seam was open anyway.
+
+No in-graph caller exists today, so this changes no behavior — it changes what happens the first time one does."
+
 fn module_storage_bindings_for_source_roots(source_roots: FreeMonoid<String>) -> Outcome<ModuleStorageIndex> {
-  module_storage_bindings_for_source_roots(source_roots: source_roots)
+  outcome_rejected(
+    d: source_authority_diagnostic(reason: ^module_storage_supply_host_dispatch_required)
+  )
 }
 
 data module_storage_bindings_for_source_roots_host_disposition: Disposition = Scaffold {
@@ -728,7 +769,14 @@ fn source_root_provenance_coverage_receipt(
   SourceRootProvenanceCoverageReceipt {
     ingest_read_count: length(xs: ingest),
     produced_row_count: length(xs: produced),
-    coverage_complete: length(xs: ingest) == length(xs: produced)
+    coverage: if length(xs: ingest) == length(xs: produced) {
+      SourceRootCoverageComplete
+    } else {
+      SourceRootRowsMissing {
+        read_count: length(xs: ingest),
+        produced_row_count: length(xs: produced)
+      }
+    }
   }
 }
 

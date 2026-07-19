@@ -7,7 +7,7 @@ import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
 import v2.compiler.self_host.closure_witness_layer_roots {
   self_host_closure_witness_layer_roots
 }
-import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.source_authority { DagSourceReadWitness, source_root_coverage_is_complete }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.algebra { fold_list, length }
@@ -18,6 +18,7 @@ import v2.std.diagnostic {
   Rejected,
 }
 import v2.std.language_model { LanguageModel }
+import v2.std.node { Symbol }
 import v2.std.logic { Bool }
 import v2.test.workflow.host_source_root_ingest_manifest {
   host_source_root_ingest,
@@ -132,8 +133,17 @@ test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Boo
     )
 }
 
+data closure_receipt_describes_carrier_note: String = "The gate's live assertion after the coverage repair. It does NOT demand complete coverage — the compiler closure is 91 reads against a 64-row cap, so its manifest legitimately carries Empty and the completeness claim is quarantined as known-red (see known_red_frontier_note). What it demands instead is the property the repair actually established: the receipt must DESCRIBE THE CARRIER THAT LANDED. produced_row_count must equal the rows actually present, whatever that number is.
+
+That is the falsifiable half. The old shape hardcoded produced_row_count = read_count and coverage_complete = true, which passed over an Empty carrier and could never go red — a receipt that cannot be false reports nothing. This assertion goes red the moment the receipt drifts from the carrier again, in either direction, at any corpus size, and it stays meaningful while the elision persists. So the gate keeps a real consumer rather than being emptied out by the quarantine."
+
+test fn compiler_closure_ingest_receipt_describes_carrier_holds() -> Bool {
+  (host_source_root_ingest_coverage_receipt.produced_row_count == length(xs: host_source_root_ingest))
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
+}
+
 test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
-  host_source_root_ingest_coverage_receipt.coverage_complete
+  source_root_coverage_is_complete(coverage: host_source_root_ingest_coverage_receipt.coverage)
     && (host_source_root_ingest_coverage_receipt.ingest_read_count == host_source_root_ingest_coverage_receipt.produced_row_count)
     && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
 }
