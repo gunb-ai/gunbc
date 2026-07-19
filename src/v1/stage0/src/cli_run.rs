@@ -3820,8 +3820,16 @@ fn extend_with_bare_reference_closure(
             // module red under the entry's tree view killed an unrelated dag
             // witness).
             let in_call_position = candidates.call_position.contains(&name);
+            // Pullable = fn referenced in call position, named fn passed as a
+            // value (census sig carries params), or a DATA const (the census
+            // stub keeps `type_annotation` — `data x: T = ...` — while type
+            // decls never carry one); data consts are runtime values referenced
+            // bare (`design_argument`, `srv1_nvme0`: 42 counted
+            // no-such-function rows in the first full batch-2).
             let pullable = |binding: &Rc<crate::v1_compiler_infer_env::TypeBinding>| {
-                in_call_position || !binding.resolved.params.is_empty()
+                in_call_position
+                    || !binding.resolved.params.is_empty()
+                    || binding.resolved.type_annotation.is_some()
             };
             let target_module = match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
