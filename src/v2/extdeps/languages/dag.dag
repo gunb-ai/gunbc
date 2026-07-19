@@ -5656,7 +5656,7 @@ fn qualified_name_append_segment(qn: QualifiedName, sym: Symbol) -> QualifiedNam
   }
 }
 
-fn qualified_name_from_segment_list(segments: List<Symbol>, root: Node) -> Outcome<QualifiedName> {
+fn qualified_name_from_symbol_segments(segments: List<Symbol>, root: Node) -> Outcome<QualifiedName> {
   let qn = fold_list(
     xs: segments,
     empty: Empty,
@@ -5729,7 +5729,7 @@ fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<QualifiedName> 
       match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: root) {
         Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
         Accepted { value: segments, diagnostics: _ } =>
-          qualified_name_from_segment_list(segments: segments, root: root)
+          qualified_name_from_symbol_segments(segments: segments, root: root)
       }
   }
 }

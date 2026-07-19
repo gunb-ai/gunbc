@@ -50,8 +50,6 @@ DANGEROUS_HOST = {
     "import_closure_live_paths",
     "realization_vocab_containment_clean_live",
     "realization_vocab_leak_count_live",
-    "medium_structure_containment_clean_live",
-    "medium_structure_leak_count_live",
     "enforcement_consistency_live",
     "complexity_repo_wide_verdict_live",
     "complexity_linearity_syntactic_finding_count_live",

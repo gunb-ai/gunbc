@@ -1,0 +1,35 @@
+module v2.workflow.ci_retry_emit
+
+import gunbc.ci_spec { ci_cargo_eagain_retry_intent }
+import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
+import v2.std.diagnostic { Accepted, Rejected, None, Some }
+
+data ci_retry_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ retry-intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate and the yaml parse gate both go red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen - the String-typed seam cannot carry the diagnostics, so it carries a loud poison instead)\n"
+
+data ci_retry_emit_authority_note: String = "Retry shell emission for gunbc.ci_spec.ci_cargo_eagain_retry_intent lives here (realization edge): intent stays in ci_spec, bash medium binding stays out of the intent layer (shell→intent Phase 4 wall)."
+
+fn ci_cargo_eagain_retry_core(command: String) -> String {
+  match orch_emit_step(
+    s: ci_cargo_eagain_retry_intent(command: command),
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: source, diagnostics: d } =>
+      match d {
+        None => source.carried
+        Some { diagnostics: _ } => ci_retry_emit_refused_poison
+      }
+    Rejected { diagnostics: _ } => ci_retry_emit_refused_poison
+  }
+}
+
+fn ci_cargo_eagain_retry_script(command: String) -> String {
+  concat("set -o pipefail\n", ci_cargo_eagain_retry_core(command: command))
+}
+
+fn ci_cargo_eagain_retry_shell_exec(command: String) -> String {
+  concat(
+    concat("bash -o pipefail <<'__GUNBC_CI_RETRY__'\n", ci_cargo_eagain_retry_core(command: command)),
+    "__GUNBC_CI_RETRY__"
+  )
+}

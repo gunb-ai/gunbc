@@ -1,7 +1,7 @@
 module v2.workflow.ci_floor_plan
 
 import std.execution_mode { Hermetic, Wet }
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs, bin_witness_wet_entries, known_red_probe_entries }
 import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
 import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_regen_spec, CiSpec,
@@ -597,6 +597,29 @@ fn falsifier_self_host_wet_batch_enrolled() -> Bool {
   length(xs: falsifier_self_host_wet_entries()) > 0
 }
 
+data falsifier_known_red_probe_batch_note: String = "Nightly falsifier batch 3 (Phase 0(b) admission invariant): the declared Hermetic probe lane for known-red quarantined witnesses (gunbc.ci_layer_roots known_red_probe_entries — see known_red_probe_note). Runs SelectionApplied after the wet self-host batch; EXPECT RED on main so greening is a counted un-quarantine event, never a hand discovery. Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
+
+fn falsifier_known_red_probe_batch_enrolled() -> Bool {
+  length(xs: known_red_probe_entries) > 0
+}
+
+fn gunbc_falsifier_known_red_probe_batch() -> Runnable {
+  RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: [],
+    explicit_entries: known_red_probe_entries,
+    node_frontier_selection: SelectionApplied,
+    exclude_substrings: [],
+    discovery_scope_dirs: [],
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: false,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(),
+      execution_mode: Hermetic
+    )
+  }
+}
+
 fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
@@ -615,11 +638,24 @@ fn gunbc_falsifier_self_host_wet_batch() -> Runnable {
 }
 
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
-  if falsifier_self_host_wet_batch_enrolled() {
-  [
-    [gunbc_falsifier_predict_only_batch()],
-    [gunbc_falsifier_self_host_wet_batch()]
-  ]
+  let wet_enrolled = falsifier_self_host_wet_batch_enrolled()
+  let probe_enrolled = falsifier_known_red_probe_batch_enrolled()
+  if wet_enrolled && probe_enrolled {
+    [
+      [gunbc_falsifier_predict_only_batch()],
+      [gunbc_falsifier_self_host_wet_batch()],
+      [gunbc_falsifier_known_red_probe_batch()]
+    ]
+  } else if wet_enrolled {
+    [
+      [gunbc_falsifier_predict_only_batch()],
+      [gunbc_falsifier_self_host_wet_batch()]
+    ]
+  } else if probe_enrolled {
+    [
+      [gunbc_falsifier_predict_only_batch()],
+      [gunbc_falsifier_known_red_probe_batch()]
+    ]
   } else {
     [[gunbc_falsifier_predict_only_batch()]]
   }

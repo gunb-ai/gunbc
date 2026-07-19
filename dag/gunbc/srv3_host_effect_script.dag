@@ -36,7 +36,7 @@ import std.types { String, NonEmptyStr, List, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data srv3_host_effect_script_dissolution_trigger: String = "🟡 dissolve-on: srv3_host_effect_script — concat-built bash bodies for srv3 observe/effect intents (centralized handler staging post-P5a call-site migration); DISSOLVES WHEN bash-emit (#5828 / shell-emission slice0) realizes srv3 observe/effect intents as typed argv invocations / grammar-emitted nodes and srv3_host_effect_script_for retires without concat-built transport strings; retire medium_structure_exception_roster entry for dag/gunbc/srv3_host_effect_script.dag. Wave 4 residue (shell→dag census §1C category C). NOT gated on shell_exec_via_bash executor deletion (P5b)."
+data srv3_host_effect_script_dissolution_trigger: String = "🟡 dissolve-on: srv3_host_effect_script — concat-built bash bodies for srv3 observe/effect intents (centralized handler staging post-P5a call-site migration); DISSOLVES WHEN bash-emit (#5828 / shell-emission slice0) realizes srv3 observe/effect intents as typed argv invocations / grammar-emitted nodes and srv3_host_effect_script_for retires without concat-built transport strings. Wave 4 residue (shell→dag census §1C category C). NOT gated on shell_exec_via_bash executor deletion (P5b)."
 
 data srv3_host_effect_script_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

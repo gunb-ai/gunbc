@@ -1,6 +1,6 @@
 module gunbc.ci_layer_roots
 
-import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind }
+import std.realization_schedule { ScheduleWitnessEntry, ExecutionWitnessKind, CorpusWitnessKind }
 import gunbc.cli_invoke {
   source_roots_shell_flags,
   SourceRootBare,
@@ -60,6 +60,7 @@ data witness_exclusion_substrings: List<String> = [
   "test/claim/diagnostics_test.dag",
   "effects_rest_transport_parse_witness_test.dag",
   "floor_skip_discovery_witness_test.dag",
+  "synthetic_orphan_admission_witness_test.dag",
   "interp_recorded_fixture_witness_test.dag",
   "test/claim/parse_test.dag",
   "v1_dag_parse_witness_test.dag",
@@ -78,6 +79,56 @@ data witness_exclusion_substrings: List<String> = [
   "http_client_get_real_execution_witness_test.dag",
   "roadmap_belt_actuate_witness_test.dag",
   "host_build_cache_provision_real_execution_witness_test.dag"
+]
+
+data witness_admission_offline_exclusion_substrings: List<String> = [
+  "test/claim/execution/",
+  "claim/complexity/accumulator_copy_roster_gate",
+  "claim/identity_captured_navigation/roster_gate",
+  "test/claim/enforcement/",
+  "enforcement_live_witness_test.dag",
+  "lever_a_local_receipt_witness",
+  "host_effect_apply_witness_test.dag",
+  "deploy_access_privilege_witness_test.dag",
+  "ci_deploy_observed_wet_test.dag",
+  "random_bytes_csprng_witness_test.dag",
+  "test/manual/",
+  "test/claim/manual/",
+  "test/claim/long/",
+  "behavioral_witness_test.dag",
+  "ci_exclusion_proof_test.dag",
+  "impossible_bug",
+  "artifact_store_fs_witness_test.dag",
+  "emit_source_store_test.dag",
+  "glob_discovery",
+  "host_discovered_owned_data_manifest.dag",
+  "host_source_root_ingest_manifest.dag",
+  "program_assembly/real_ingest_test.dag",
+  "self_host/compiler_closure_emit_from_ingest_test.dag",
+  "unified_test_claim_substrate_equivalence.dag"
+]
+
+data witness_admission_fixture_exclusion_substrings: List<String> = [
+  "test/fixture/floor_skip/"
+]
+
+data witness_admission_offline_note: String = "Phase 0(b) admission invariant (module-identity-storage-binding): operator-ruled OFFLINE exclusion substrings whose witness rows carry OfflineLocalRecipe consumers — documented local recipes in the paired exclusion notes (wet_integration_offline_note, enforcement_coverage_exclusion_note, accumulator_copy_roster_gate_exclusion_note, identity_captured_navigation_roster_gate_exclusion_note, lever_a_local_receipt_witness_exclusion_note, long_lane_exclusion_note). Dissolves when each row graduates to a scheduled CI consumer or deletes."
+
+data witness_admission_fixture_note: String = "Phase 0(b): floor_skip control fixtures excluded at dir grain — consumers are explicit rosters in floor_skip_discovery_witness, not the discovery corpus. Dissolves when fixture-home policy changes."
+
+fn probe_red(entry: String, f: String) -> ScheduleWitnessEntry {
+  ScheduleWitnessEntry { entry: entry, function: f, kind: CorpusWitnessKind }
+}
+
+data known_red_probe_note: String = "Phase 0(b) quarantine probe cadence (module-identity-storage-binding): known-red frontier witnesses excluded from per-PR discovery that EXPECT RED on main — the falsifier probe batch runs them SelectionApplied; greening is a counted un-quarantine event (dissolve-on in known_red_frontier_note per row). Distinct from falsifier_self_host_wet (green-only SelfEmitted receipts)."
+
+data known_red_probe_entries: List<ScheduleWitnessEntry> = [
+  probe_red(entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag", f: "logic_complement_truth_table"),
+  probe_red(entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag", f: "logic_meet_truth_table"),
+  probe_red(entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag", f: "logic_join_truth_table"),
+  probe_red(entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag", f: "logic_truth_tables_all"),
+  probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_emit_ingest_round_trip_holds"),
+  probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_prose_holds")
 ]
 
 data long_lane_exclusion_note: String = "test/claim/long/ is the LONG-test home (operator 5-second rule, 2026-07-12; authority + enforcement: gunbc_ci_fast_lane_rule_note / gunbc_ci_fast_lane_witness_eval_budget in v2.workflow.ci_floor_plan): a witness whose own eval reaches 5s does not run in per-PR discovery — the executor's cooperative eval deadline REDs it by name (EvalBudgetExceeded), and the fix is moving its file here (dag/test/claim/long/, src/v2/test/claim/long/), where discovery excludes it at dir grain and it runs via the local recipe (claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>) or the scheduled lane's future enrollment. First residents (receipted): s1_closure_receipt_test (whole-closure re-parse through the interpreted v2 frontend, 90+min eval, the run-29183446733 wedge class) and self_host_module_emit_derisk_test (~31s/witness). Unlike the roster exclusions above, membership here is a HOME, not a per-file ruling: the 5s deadline makes an over-budget fast-lane witness unwritable-in-place, so the roster cannot silently grow stale (§5 construction over validation). Dissolve-on: per-witness declared cost envelopes (witness-cost-locality admission law) subsume the dir grain."
@@ -126,6 +177,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_positive_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_zero_byte_red_control_holds"),
   bin_wet(entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag", f: "roadmap_belt_actuate_witnesses"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_gunbc_cli_run_claim_holds"),
+  bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_executor_verify_build_artifacts_red_control_holds"),
   bin_wet(entry: "dag/test/claim/v1_dag_parse_witness_test.dag", f: "v1_dag_parse_witnesses"),
   bin_wet(entry: "src/v2/test/claim/auth_declared_but_unwired_witness_test.dag", f: "auth_declared_but_unwired_witness_keystone_holds"),
   bin_wet(entry: "src/v2/test/claim/bootstrap_test.dag", f: "bootstrap_witness_keystone_holds"),

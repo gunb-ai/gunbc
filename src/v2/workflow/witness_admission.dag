@@ -1,0 +1,177 @@
+module v2.workflow.witness_admission
+
+import gunbc.ci_layer_roots {
+  witness_exclusion_substrings,
+  bin_witness_wet_entries,
+  known_red_probe_entries,
+  witness_admission_offline_exclusion_substrings,
+  witness_admission_fixture_exclusion_substrings
+}
+import v2.compiler.self_host.wet_receipt_enrollment { falsifier_self_host_wet_entries }
+import std.realization_schedule {
+  ScheduleWitnessEntry,
+  schedule_witness_entry_eq
+}
+import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.witness_admission {
+  WitnessConsumerCadence,
+  WitnessAdmissionRefusal,
+  DiscoverySelection,
+  FalsifierSelfHostWet,
+  BinWitnessWet,
+  QuarantineProbeExpectRed,
+  OfflineLocalRecipe,
+  FixtureExplicitRoster,
+  NoConsumer,
+  WitnessAdmissionHolds,
+  UnexecutedDeferredWitness,
+  witness_consumer_cadence_is_live,
+  witness_admission_refusal_is_holds
+}
+
+data witness_admission_plan_doc_provenance: String = "bind: docs/plans/module-identity-storage-binding-design.md"
+
+fn schedule_row_matches(
+  w: ScheduleWitnessEntry,
+  entry: String,
+  function: String
+) -> Bool {
+  (w.entry == entry) && (w.function == function)
+}
+
+fn schedule_contains_entry(
+  xs: List<ScheduleWitnessEntry>,
+  entry: String,
+  function: String
+) -> Bool {
+  any(
+    xs: xs,
+    predicate: fn(w) { schedule_row_matches(w: w, entry: entry, function: function) }
+  )
+}
+
+fn path_contains_substring(path: String, sub: String) -> Bool {
+  string_contains(s: path, pattern: sub)
+}
+
+fn path_matches_any_substring(path: String, subs: List<String>) -> Bool {
+  any(xs: subs, predicate: fn(sub) { path_contains_substring(path: path, sub: sub) })
+}
+
+fn consumer_for_explicit_rosters(entry: String, function: String) -> WitnessConsumerCadence {
+  if schedule_contains_entry(
+    xs: falsifier_self_host_wet_entries(),
+    entry: entry,
+    function: function
+  ) {
+    FalsifierSelfHostWet
+  } else if schedule_contains_entry(
+    xs: bin_witness_wet_entries,
+    entry: entry,
+    function: function
+  ) {
+    BinWitnessWet
+  } else if schedule_contains_entry(
+    xs: known_red_probe_entries,
+    entry: entry,
+    function: function
+  ) {
+    QuarantineProbeExpectRed
+  } else {
+    NoConsumer
+  }
+}
+
+fn witness_consumer_cadence_for_row(
+  entry: String,
+  function: String,
+  excluded_from_discovery: Bool
+) -> WitnessConsumerCadence {
+  let explicit = consumer_for_explicit_rosters(entry: entry, function: function)
+  match explicit {
+    NoConsumer =>
+      if !excluded_from_discovery {
+        DiscoverySelection
+      } else if path_matches_any_substring(
+        path: entry,
+        subs: witness_admission_offline_exclusion_substrings
+      ) {
+        OfflineLocalRecipe
+      } else if path_matches_any_substring(
+        path: entry,
+        subs: witness_admission_fixture_exclusion_substrings
+      ) {
+        FixtureExplicitRoster
+      } else {
+        NoConsumer
+      }
+    _ => explicit
+  }
+}
+
+fn witness_admission_refusal_for_row(
+  entry: String,
+  function: String,
+  excluded_from_discovery: Bool
+) -> WitnessAdmissionRefusal {
+  if witness_consumer_cadence_is_live(
+    cadence: witness_consumer_cadence_for_row(
+      entry: entry,
+      function: function,
+      excluded_from_discovery: excluded_from_discovery
+    )
+  ) {
+    WitnessAdmissionHolds
+  } else {
+    UnexecutedDeferredWitness { entry: entry, function: function }
+  }
+}
+
+fn witness_row_excluded_from_discovery(entry: String) -> Bool {
+  path_matches_any_substring(path: entry, subs: witness_exclusion_substrings)
+}
+
+fn witness_admission_holds_for_row(entry: String, function: String) -> Bool {
+  witness_admission_refusal_is_holds(
+    refusal: witness_admission_refusal_for_row(
+      entry: entry,
+      function: function,
+      excluded_from_discovery: witness_row_excluded_from_discovery(entry: entry)
+    )
+  )
+}
+
+fn witness_admission_manifest_entry_key(entry: String, function: String) -> String {
+  concat(entry, "::", function)
+}
+
+fn witness_admission_explicit_consumer_manifest() -> List<String> {
+  fold_list(
+    xs: concat(
+      concat(falsifier_self_host_wet_entries(), bin_witness_wet_entries),
+      known_red_probe_entries
+    ),
+    empty: Empty,
+    cons: fn(acc, w) {
+      list_snoc_item(
+        xs: acc,
+        item: witness_admission_manifest_entry_key(entry: w.entry, function: w.function)
+      )
+    }
+  )
+}
+
+fn witness_admission_manifest_covers_row(entry: String, function: String) -> Bool {
+  contains(
+    xs: witness_admission_explicit_consumer_manifest(),
+    item: witness_admission_manifest_entry_key(entry: entry, function: function),
+    eq: string_eq
+  )
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
