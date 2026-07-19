@@ -3,6 +3,8 @@
 
 use self::RustCorpusRepr::*;
 use self::TypeRepr::*;
+pub use crate::v1_compiler_infer_env::TypeEnv;
+pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node,
 };
@@ -87,6 +89,8 @@ pub struct EmitGraphInfo {
     pub read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     pub read_only_params: Rc<BTreeSet<String>>,
     pub corpus_repr: RustCorpusRepr,
+    pub fn_generic_param_names: Rc<Vec<String>>,
+    pub fn_type_env: Rc<TypeEnv>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -119,6 +123,32 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         read_only_params: v1_rt::rc_empty_set::<String>(),
         corpus_repr: RustCorpusRepr::FaithfulFreeMonoid,
+        fn_generic_param_names: Rc::new(vec![]),
+        fn_type_env: empty_type_env(),
+    })
+}
+
+pub fn emit_info_with_fn_type_context(
+    emit_info: Rc<EmitGraphInfo>,
+    generic_param_names: Rc<Vec<String>>,
+    env: Rc<TypeEnv>,
+) -> Rc<EmitGraphInfo> {
+    Rc::new(EmitGraphInfo {
+        type_summaries: emit_info.type_summaries.clone(),
+        type_decl_items: emit_info.type_decl_items.clone(),
+        recursive_type_set: emit_info.recursive_type_set.clone(),
+        fielded_variants: emit_info.fielded_variants.clone(),
+        positional_payload_variants: emit_info.positional_payload_variants.clone(),
+        shared_types: emit_info.shared_types.clone(),
+        ownership_index: emit_info.ownership_index.clone(),
+        movable: emit_info.movable.clone(),
+        variant_to_enum: emit_info.variant_to_enum.clone(),
+        owned_bindings: emit_info.owned_bindings.clone(),
+        read_only_params_index: emit_info.read_only_params_index.clone(),
+        read_only_params: emit_info.read_only_params.clone(),
+        corpus_repr: emit_info.corpus_repr.clone(),
+        fn_generic_param_names: generic_param_names.clone(),
+        fn_type_env: env.clone(),
     })
 }
 

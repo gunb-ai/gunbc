@@ -1,0 +1,11 @@
+# Measure sign-off package — POST-fix 6-module curated probe
+# Baseline: session/neat-swift-795-flip-prep @ 308961e862 + regen_stage0 + gunbc rebuild
+# gunbc sha256 prefix: 0ac2e6ba82dc4050  mtime: 2026-07-19T07:12:06Z
+# CSSL_STD_SEED_LINK=1  probe: scripts/curated_cargo_probe_one.sh
+module	emit	cargo	first_error	mapped_gate	verdict
+src/v2/compiler/00_compile.dag	131 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/02_parse.dag	72 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/03_ingest.dag	133 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/materialization_carriers.dag	39 files emitted, 0 diagnostics	refuse	error[E0433]: cannot find `v2_std_text` in `crate`	ASSEMBLY_ROSTER_suspect	ROUTING_DEFERRED
+src/v2/compiler/program_assembly.dag	101 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/source_authority.dag	99 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
