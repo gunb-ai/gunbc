@@ -1,5 +1,43 @@
 module v2.test.emit.rust_field_access_emit
 
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.dag {
+  dag_arrow_with_body_node,
+  dag_field_access_arrow_domain_conj_node,
+  dag_field_access_arrow_with_body_fixture,
+  dag_type_atom_node
+}
+import v2.extdeps.languages.rust_test {
+  rust_field_access_source_text,
+  rust_field_access_wrong_field_source_text,
+  rust_field_access_target_model_staging
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  SyntheticOccurrence,
+  Transform
+}
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

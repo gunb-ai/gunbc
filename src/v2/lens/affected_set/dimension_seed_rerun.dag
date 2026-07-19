@@ -1,5 +1,29 @@
 module v2.test.lens_affected_set.dimension_seed_rerun
 
+import v2.lens.affected_set {
+  DimensionNotRead,
+  Excluded,
+  ExclusionKey,
+  FrontierDecision,
+  Rerun,
+  empty_frontier,
+  mark_rerun
+}
+import v2.lens.affected_set_examples {
+  affected_set_example_node
+}
+import v2.test.lens_affected_set.frontier_observation { frontier_decision_matches }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Node, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
 
 data dimension_seed_rerun_key: ExclusionKey = ExclusionKey {
   at: affected_set_example_node,

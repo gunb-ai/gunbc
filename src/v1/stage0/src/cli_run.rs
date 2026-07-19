@@ -5110,7 +5110,8 @@ fn resolved_graph_from_sources_with_index(
         s.reconcile_assembly += reconcile_total.saturating_sub(s.typecheck_compute + s.parent_envs);
     });
 
-    log_discovery_advisory_typecheck_batch(&typed.diagnostics, &source_indices, typecheck_gate);
+    let advisory_rows: Vec<Rc<ErrorNode>> = typed.diagnostics.iter().cloned().collect();
+    log_discovery_advisory_typecheck_batch(&advisory_rows, &source_indices, typecheck_gate);
     let has_type_errors = typed
         .diagnostics
         .iter()

@@ -1,5 +1,18 @@
 module v2.test.lens_cost.loop_unknown
 
+import v2.lens.cost { cost_lens }
+import v2.std.logic { Bool }
+import v2.std.node { ComputationNode, Conj, Loop, Node, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Violates }
 
 data loop_unknown_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
