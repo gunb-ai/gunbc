@@ -78,8 +78,8 @@ Legitimate and **excluded** from the residual: `src/v2/extdeps/languages/bash.da
 
 The headline is **"no language in the intent,"** with the sidecar delete demoted to Phase 0.
 
-0. **Sidecar delete** (in flight — PR-A/PR-B merged, PR-C migrate-last-consumers + PR-D trivial-delete queued). Removes the `serialize_bash`/`RawLine` string-smuggling vector and consolidates bash on the one grammar. Necessary, not sufficient.
-1. **Complete the agnostic emit.** `src/v2/std/orchestration.dag` emit has holes (bounded-poll/`While` rejected, `Retry` hardcoded to two levels) — the gap that pushed workflows to reach for `bash_build`. Close it so the intent graph can express what workflows need.
+0. **Sidecar delete** — LANDED (#6831, Phase 0). Removes the `serialize_bash`/`RawLine` string-smuggling vector and consolidates bash on the one grammar. Necessary, not sufficient.
+1. **Complete the agnostic emit — LANDED (#6832, 2026-07-18).** `While`/`BoundedPoll`/`Retry` (N-level escalation chain) emit via `05_emit_orchestration` + bash grammar rows; byte goldens in `orchestration_while_emit_test` / `orchestration_bounded_poll_emit_test` / `orchestration_retry_emit_test`; production consumer `ci_floor_peak_emit.dag` (cgroup locate `While`).
 2. **Model the operations with transports.** `git.diff`, the `gunbc run` invocation, unit upsert, package fetch, readiness-poll — each a §3 operation shape in `extdeps/**` with the bash-CLI as one handler.
 3. **Migrate the intent off shell.** Rewrite `gunbc_ci_deploy_invoke`, `floor_diff_observe`, `build_step_emit`, `live_deploy`, CI to build modeled-operation graphs; `bash_build` and raw `concat`-shell vanish from the intent layer.
 4. **Wall green with the intent layer in scope** — the generalized `realization_vocabulary_containment`, as the standing acceptance criterion throughout.
