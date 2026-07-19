@@ -5,8 +5,8 @@ use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
     discover_source_root_reads, discover_source_root_reads_for_entry,
-    emit_source_root_ingest_manifest, parse_source_root_entry_admission,
-    source_root_ingest_content_hash_fnv1a64,
+    emit_module_storage_binding_manifest, emit_source_root_ingest_manifest,
+    parse_source_root_entry_admission, source_root_ingest_content_hash_fnv1a64,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -27,6 +27,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut exclude_subpaths: Vec<String> =
         vec!["host_source_root_ingest_manifest.dag".to_string()];
     let mut manifest_path: Option<PathBuf> = None;
+    // The module-binding manifest is a DIFFERENT carrier from the ingest manifest: it holds
+    // module <-> path + provenance and no source text, so it is not bounded by the ingest
+    // manifest's corpus-protection inline cap.
+    let mut binding_manifest_path: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -53,6 +57,14 @@ fn run() -> Result<ExitCode, ExitCode> {
                     &args,
                     i,
                     "--emit-dag-manifest",
+                )?));
+            }
+            "--emit-module-binding-manifest" => {
+                i += 1;
+                binding_manifest_path = Some(PathBuf::from(require_value(
+                    &args,
+                    i,
+                    "--emit-module-binding-manifest",
                 )?));
             }
             other => {
@@ -116,6 +128,17 @@ fn run() -> Result<ExitCode, ExitCode> {
             "discover_source_root_ingest: wrote manifest {} ({} read witness(es))",
             path.display(),
             records.len()
+        );
+    }
+
+    if let Some(path) = binding_manifest_path {
+        if let Err(msg) = emit_module_storage_binding_manifest(&path, &source_roots) {
+            eprintln!("discover_source_root_ingest: {}", msg);
+            return Err(ExitCode::from(1));
+        }
+        eprintln!(
+            "discover_source_root_ingest: wrote module-binding manifest {}",
+            path.display()
         );
     }
 

@@ -9510,6 +9510,10 @@ fn target_carrier_probe_heap_node() -> Node {
   target_carrier_type_node(identity: ^target_carrier_probe_heap)
 }
 
+fn target_carrier_use_site_verdict_node() -> Node {
+  target_carrier_type_node(identity: ^target_carrier_use_site_verdict)
+}
+
 fn target_ownership_use_site_from_atom(id: Symbol) -> Optional<TargetOwnershipUseSite> {
   if id == discriminant(v: OwnershipAtFunctionReturn) {
     optional_present(value: OwnershipAtFunctionReturn)
