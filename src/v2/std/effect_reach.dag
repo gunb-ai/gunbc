@@ -2,7 +2,7 @@ module v2.std.effect_reach
 
 import v2.std.collection { List }
 
-data effect_reach_authority_note: String = "Phase 0 inference bridge (docs/plans/module-identity-storage-binding-design.md §3): a witness/tool closure reaches host-effect sinks when call-reachable bodies pass string literals (or data-init path literals) into file-read or exec-path operations. Derived host-reading routes witnesses to never-predict-skip admission until typed SourceRef boundaries make bare-string dependencies unwritable. Subsumes the masking-class where sn_source_rel-style data rows hide edges from import-closure selection (03_normalize behavioral receipt incident). Lives beside v2.std.live_read (carrier-module grain) — effect reach is sink-operation grain."
+data effect_reach_authority_note: String = "Phase 0 inference bridge (docs/plans/module-identity-storage-binding-design.md §3): a witness/tool closure reaches host-effect sinks when call-reachable bodies pass string literals (or data-init path literals) into file-read or exec-path operations. Derived host-reading routes witnesses to never-predict-skip admission until typed SourceRef boundaries are ENFORCED at host boundaries and the bare-string dependency class is MIGRATED — not merely declared (stage 0 landed the type only; task 5 flagship is per-row opt-in, 115 rows remain). Subsumes the masking-class where sn_source_rel-style data rows hide edges from import-closure selection (03_normalize behavioral receipt incident). Lives beside v2.std.live_read (carrier-module grain) — effect reach is sink-operation grain."
 
 type HostEffectSinkKind
   = FilesystemReadSink
