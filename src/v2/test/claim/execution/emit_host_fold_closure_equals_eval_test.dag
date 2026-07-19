@@ -157,8 +157,23 @@ fn emit_fold_eval_closure_operator_is_sub(closure: Node) -> Bool {
   }
 }
 
-fn emit_fold_eval_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  outcome_accepted(value: emit_fold_eval_octet_value(n: 3))
+fn emit_fold_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  match node.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^dag_binding_mvp1_fold_xs || id == ^dag_binding_mvp1_fold_lit_three {
+        outcome_accepted(value: emit_fold_eval_octet_value(n: 3))
+      } else if id == ^dag_binding_mvp1_fold_z || id == ^dag_binding_mvp1_fold_lit_four {
+        outcome_accepted(value: emit_fold_eval_octet_value(n: 4))
+      } else {
+        outcome_rejected(
+          d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_literal_miss, node: node)
+        )
+      }
+    _ =>
+      outcome_rejected(
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_literal_miss, node: node)
+      )
+  }
 }
 
 fn emit_fold_eval_call_primitive(

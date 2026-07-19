@@ -1,0 +1,13 @@
+# Gate-A flip-wave 6-module re-probe post-#6888+#6886+#6883
+# main_head=628ebe126bec  probed_at=2026-07-19T15:02:50Z  CSSL_STD_SEED_LINK=1  shim=empty
+# gunbc_sha256_prefix=ec27b11877d479b4  cssl_assemble_sha256_prefix=214e954194db0f89
+# probe: scripts/curated_cargo_probe_one.sh (calm-boar invocation contract)
+# SUMMARY: 6/6 emit 0 diag; 0/6 cargo-green; 0/6 std_dup/HARNESS_ARTIFACT; 5/6 refuse FreeMonoid; 1/6 refuse v2_std_text
+# materialization_carriers v2_std_text E0433: PERSISTS post-#6883 — MECHANISM: emitter closure-manifest gap (05_emit_rust hardcodes crate::v2_std_text:: refs; gunbc compile omits v2_std_text.rs + pub mod from closure lib.rs). NOT cssl assembly-roster (assembler projects emitted manifest faithfully). DISTINCT receipt from FreeMonoid import-emission; same package, two roots.
+module	branch_head	cssl_std_seed_link	shim_lib_rel	emit	cargo	first_error	mapped_gate	verdict	probe_notes
+src/v2/compiler/00_compile.dag	628ebe126bec	1		131 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid pass
+src/v2/compiler/02_parse.dag	628ebe126bec	1		72 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid pass
+src/v2/compiler/03_ingest.dag	628ebe126bec	1		133 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid pass
+src/v2/compiler/materialization_carriers.dag	628ebe126bec	1		39 files emitted, 0 diagnostics	refuse	error[E0433]: cannot find `v2_std_text` in `crate`	EMITTER_closure_manifest	EMITTER_GAP_DISTINCT	v2_std_text absent from emit closure manifest — NOT harness roster; receipt = cargo-green when v2.std.text included
+src/v2/compiler/program_assembly.dag	628ebe126bec	1		101 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid pass
+src/v2/compiler/source_authority.dag	628ebe126bec	1		99 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid pass
