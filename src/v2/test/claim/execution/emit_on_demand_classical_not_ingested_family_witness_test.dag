@@ -125,7 +125,8 @@ fn classical_not_family_cached_run_with_source(
   workspace: String,
   tree: InferredTree,
   source: Medium<String>,
-  expect_compile_skipped: Bool
+  expect_compile_skipped: Bool,
+  expected_octet: Int
 ) -> Bool {
   match run_emit_host_cached(
     workspace_dir: workspace,
@@ -140,7 +141,7 @@ fn classical_not_family_cached_run_with_source(
           diagnostics: None
         } =>
           receipt.compile_skipped == expect_compile_skipped
-            && stdout.bytes == emit_host_octets_byte_string(octets: [0, 0, 0, 0, 0])
+            && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
         _ => false
       }
     Rejected { diagnostics: _ } => false
@@ -150,7 +151,8 @@ fn classical_not_family_cached_run_with_source(
 fn classical_not_family_cached_run_checks(
   workspace: String,
   tree: InferredTree,
-  expect_compile_skipped: Bool
+  expect_compile_skipped: Bool,
+  expected_octet: Int
 ) -> Bool {
   match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
     Accepted { value: source, diagnostics: _ } =>
@@ -158,26 +160,33 @@ fn classical_not_family_cached_run_checks(
         workspace: workspace,
         tree: tree,
         source: source,
-        expect_compile_skipped: expect_compile_skipped
+        expect_compile_skipped: expect_compile_skipped,
+        expected_octet: expected_octet
       )
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn classical_not_family_cached_cold_then_warm(workspace: String, tree: InferredTree) -> Bool {
+fn classical_not_family_cached_cold_then_warm(
+  workspace: String,
+  tree: InferredTree,
+  expected_octet: Int
+) -> Bool {
   match emit(tree: tree, target: rust_classical_not_ingested_target_model_staging()) {
     Accepted { value: source, diagnostics: _ } =>
       classical_not_family_cached_run_with_source(
         workspace: workspace,
         tree: tree,
         source: source,
-        expect_compile_skipped: false
+        expect_compile_skipped: false,
+        expected_octet: expected_octet
       )
         && classical_not_family_cached_run_with_source(
           workspace: workspace,
           tree: tree,
           source: source,
-          expect_compile_skipped: true
+          expect_compile_skipped: true,
+          expected_octet: expected_octet
         )
     Rejected { diagnostics: _ } => false
   }
@@ -312,14 +321,16 @@ test fn emit_on_demand_classical_not_native_content_change_cold_rebuild_holds() 
             let _evict_alt = emit_on_demand_evict_native_cache(cache_root: shared_parent, key: key_alt)
             let warmed = classical_not_family_cached_cold_then_warm(
               workspace: workspace_primary,
-              tree: tree_primary
+              tree: tree_primary,
+              expected_octet: 0
             )
             let workspace_alt = native_cache_workspace_root(cache_root: shared_parent, key: key_alt)
             warmed
               && classical_not_family_cached_run_checks(
                 workspace: workspace_alt,
                 tree: tree_alt,
-                expect_compile_skipped: false
+                expect_compile_skipped: false,
+                expected_octet: 1
               )
           }
         Rejected { diagnostics: _ } => false
@@ -338,7 +349,8 @@ test fn emit_on_demand_classical_not_native_cold_holds() -> Bool {
       classical_not_family_cached_run_checks(
         workspace: workspace,
         tree: tree,
-        expect_compile_skipped: false
+        expect_compile_skipped: false,
+        expected_octet: 0
       )
     Rejected { diagnostics: _ } => false
   }
@@ -351,7 +363,11 @@ test fn emit_on_demand_classical_not_native_cold_then_warm_holds() -> Bool {
         test_id: "classical_not_native_cold_then_warm",
         tree: tree
       )
-      classical_not_family_cached_cold_then_warm(workspace: workspace, tree: tree)
+      classical_not_family_cached_cold_then_warm(
+        workspace: workspace,
+        tree: tree,
+        expected_octet: 0
+      )
     Rejected { diagnostics: _ } => false
   }
 }
