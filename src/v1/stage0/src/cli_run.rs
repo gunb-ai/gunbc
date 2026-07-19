@@ -3156,6 +3156,16 @@ mod compile_clean_via_index_verdict_equivalence {
 }
 
 thread_local! {
+    static MODULE_PATH_INDEX_CACHE: RefCell<HashMap<String, HashMap<String, String>>> =
+        RefCell::new(HashMap::new());
+}
+
+#[cfg(test)]
+pub(crate) fn reset_module_path_index_cache_for_test() {
+    MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().clear());
+}
+
+thread_local! {
     static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
         RefCell::new(HashMap::new());
 }
@@ -3163,6 +3173,7 @@ thread_local! {
 #[cfg(test)]
 pub(crate) fn reset_module_graph_facts_cache_for_test() {
     MODULE_GRAPH_FACTS_CACHE.with(|cache| cache.borrow_mut().clear());
+    reset_module_path_index_cache_for_test();
 }
 
 fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphFactsLive {
@@ -9714,13 +9725,6 @@ pub(crate) enum DeclaredSourceRefAxis {
     Untouched,
 }
 
-fn storage_path_to_module_index(source_roots: &[String]) -> HashMap<String, String> {
-    build_module_path_index(source_roots)
-        .into_iter()
-        .map(|(module, path)| (path, module))
-        .collect()
-}
-
 fn parse_source_ref_storage_path_from_rhs(rhs: &str) -> Option<String> {
     if let Some(rest) = rhs.split_once("path:") {
         let rest = rest.1.trim_start();
@@ -9908,6 +9912,15 @@ fn declared_source_refs_axis_for_paths(
     DeclaredSourceRefAxis::Untouched
 }
 
+fn path_to_module_from_declaration_facts(
+    nodes: &[ModuleDeclarationFactRaw],
+) -> HashMap<String, String> {
+    nodes
+        .iter()
+        .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
+        .collect()
+}
+
 pub(crate) fn declared_source_refs_axis_for_entry(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -9915,7 +9928,7 @@ pub(crate) fn declared_source_refs_axis_for_entry(
     touched_paths: &[String],
 ) -> DeclaredSourceRefAxis {
     let declared_paths = declared_source_ref_paths_for_entry(entry_path, facts);
-    let path_to_module = storage_path_to_module_index(source_roots);
+    let path_to_module = path_to_module_from_declaration_facts(&facts.nodes);
     declared_source_refs_axis_for_paths(
         &declared_paths,
         &path_to_module,
