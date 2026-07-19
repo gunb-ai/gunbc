@@ -3747,6 +3747,13 @@ struct BareCandidates {
     /// its provider module. The consumer tries each dot-prefix of the chain
     /// against the services census.
     dotted_chains: BTreeSet<String>,
+    /// Names seen in BINDING position (`let repo`, `data x`) or KEY position
+    /// (`repo:` — field init, named arg, param decl) anywhere in the file. A
+    /// dotted-chain head in this set is a local/param/field projection
+    /// (`repo.operation_name`), never a cross-module data-const reference —
+    /// consulted to keep dotted-head pulls from re-opening the over-pull the
+    /// binder/key lexer closed for bare names.
+    bound: BTreeSet<String>,
 }
 
 fn bare_identifier_candidates(content: &str) -> BareCandidates {
@@ -3757,6 +3764,7 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         names: BTreeSet::new(),
         call_position: BTreeSet::new(),
         dotted_chains: BTreeSet::new(),
+        bound: BTreeSet::new(),
     };
     let mut i = 0usize;
     // Previous identifier token on the same run (whitespace-separated): a name
@@ -3822,6 +3830,7 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         // Binding occurrence (`let repo`, `data repo`) — a name being BOUND is
         // never a reference to another module's decl.
         if prev_token.is_some_and(|t| binder_keywords.contains(&t)) {
+            out.bound.insert(name.to_string());
             prev_token = Some(name);
             continue;
         }
@@ -3832,6 +3841,7 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             peek += 1;
         }
         if peek < bytes.len() && bytes[peek] == b':' {
+            out.bound.insert(name.to_string());
             prev_token = Some(name);
             continue;
         }
@@ -3907,10 +3917,26 @@ fn extend_with_bare_reference_closure(
                 prefixes
             })
             .collect();
+        // A dotted-chain HEAD that is never body-bound in this file is a
+        // cross-module data-const projection (`gunbc_ci_spec.diff_policy`) —
+        // resolve it like a bare reference so the declaring module is pulled
+        // (its census binding carries the data const's type annotation, the
+        // same pull rule bare data refs use). Bound heads (`repo.x` on a let)
+        // stay excluded — that over-pull class is closed.
+        let dotted_head_refs: Vec<String> = candidates
+            .dotted_chains
+            .iter()
+            .filter_map(|chain| chain.split('.').next())
+            .filter(|h| {
+                !candidates.bound.contains(*h) && !candidates.names.contains(*h)
+            })
+            .map(|h| h.to_string())
+            .collect();
         let all_names: Vec<(String, bool)> = candidates
             .names
             .iter()
             .map(|n| (n.clone(), false))
+            .chain(dotted_head_refs.into_iter().map(|n| (n, false)))
             .chain(service_prefixes.into_iter().map(|n| (n, true)))
             .collect();
         for (name, service_head) in all_names {
@@ -3938,10 +3964,11 @@ fn extend_with_bare_reference_closure(
                     || !binding.resolved.params.is_empty()
                     || binding.resolved.type_annotation.is_some()
             };
-            let target_module = if service_head {
-                v1_rt::map_get(&census.services, name.clone())
-                    .map(|entry| entry.module_path.clone())
-            } else {
+            let resolve_in = |census: &Rc<SymbolIndex>| -> Option<String> {
+                if service_head {
+                    return v1_rt::map_get(&census.services, name.clone())
+                        .map(|entry| entry.module_path.clone());
+                }
                 match v1_rt::map_get(&census.global_bare, name.clone()) {
                     Some(state) => match state.as_ref() {
                         GlobalBareLookupState::GlobalBareUniqueBinding {
@@ -3977,6 +4004,14 @@ fn extend_with_bare_reference_closure(
                         }
                     }
                 }
+            };
+            // Own tree first (same-tree names keep priority — a cross-tree
+            // homonym can never steal one); the whole-pool census only fills an
+            // own-tree MISS, giving cross-tree references their provider pull
+            // (a v2 module's bare `gunbc_ci_spec` → dag/gunbc/ci_spec.dag).
+            let target_module = match resolve_in(&census) {
+                Some(m) => Some(m),
+                None => resolve_in(&pool_bare_census(index)?),
             };
             let Some(module_path) = target_module else {
                 continue;
