@@ -126,7 +126,7 @@ fn reference_qn_from_qualified_name_production_strict(
       match parse_qualified_name_segments_from_capture(qn_capture: capture, root: module_root) {
         Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: segments, diagnostics: _ } =>
-          v2.extdeps.languages.dag.qualified_name_from_segment_list(segments: segments, root: module_root)
+          v2.extdeps.languages.dag.qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
   }
 }
@@ -146,7 +146,7 @@ fn reference_qn_from_import_decl_strict(node: Node, module_root: Node) -> Outcom
       match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: module_root) {
         Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: segments, diagnostics: _ } =>
-          v2.extdeps.languages.dag.qualified_name_from_segment_list(segments: segments, root: module_root)
+          v2.extdeps.languages.dag.qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
   }
 }

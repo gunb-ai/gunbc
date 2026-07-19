@@ -1,0 +1,13 @@
+module	cssl_std_seed_link	shim_lib_rel	emit	cargo	first_error	mapped_gate	verdict
+src/v2/compiler/02_parse.dag	1		72 files emitted, 3 diagnostics	refuse	error: UNRESOLVED_CompilerError	UNKNOWN_unresolved	UNKNOWN-error:_UNRESOLVED_CompilerError
+src/v2/compiler/03_ingest.dag	1		133 files emitted, 3 diagnostics	refuse	error: UNRESOLVED_CompilerError	UNKNOWN_unresolved	UNKNOWN-error:_UNRESOLVED_CompilerError
+src/v2/compiler/05_emit.dag	1		58 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/05_emit_orchestration.dag	1		66 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/05_eval.dag	1		56 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/06_translate.dag	1		57 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_host.dag	1		67 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_module.dag	1		59 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_produced.dag	1		68 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_semantic_decl.dag	1		59 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/fold_lowering.dag	1		41 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/self_host.dag	1		34 files emitted, 0 diagnostics	refuse	error[E0255]: the name `Witness` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT

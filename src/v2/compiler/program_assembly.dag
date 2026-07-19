@@ -77,17 +77,16 @@ fn program_assembly_fold_step(
                 roots: list_snoc_item(xs: acc, item: root),
                 index: source_root_index_insert(index: idx, module: qn, root: read.source_root)
               }
-            Rejected { diagnostics: _ } =>
-              ProgramAssemblyFoldOk {
-                roots: list_snoc_item(xs: acc, item: root),
-                index: idx
-              }
+            Rejected { diagnostics: d } =>
+              ProgramAssemblyFoldFailed { diagnostics: d }
           }
         Rejected { diagnostics: d } =>
           ProgramAssemblyFoldFailed { diagnostics: d }
       }
   }
 }
+
+data program_assembly_module_binding_fail_closed_note: String = "§5 fail-closed repair (Phase 1, docs/plans/module-identity-storage-binding-design.md): the Rejected arm of qualified_name_from_module_node previously kept the root and left the SourceRootIndex UNCHANGED — a module whose name could not be derived was silently dropped from the index while its root stayed in the program, so every downstream lookup missed it with no diagnostic and no count. That is an absorbing fallback in drop form: the deficit's frequency was zero by construction, so it could never rank for fixing (§6 prices by displaced cost, and a masked cost displaces nothing). The arm now refuses with the located diagnostic the name derivation produced. The binding itself is homed on v2.compiler.source_authority (ModuleStorageBinding); this fold keeps the SourceRootIndex it already owned, and its name-derivation failure mode is now the same refusal the authority raises."
 
 data program_assembly_prepare_once_note: String = "prepare_grammar is hoisted ABOVE fold_list here so the grammar is well-formed-checked, validated (5 checks), and FIRST/nullable-analyzed ONCE per assembly — then parse_module_prepared reuses the PreparedGrammar for every module in the ingest. A door call over a K-module import closure therefore validates once, not K times (the recompute-per-module cost this dissolves). Empty-ingest is guarded so it never pays the one-time prepare for zero modules. Fail-closed: an invalid grammar fails the whole assembly (ProgramAssemblyFoldFailed) before any module is parsed, carrying the validation diagnostic — never a per-module silent skip."
 

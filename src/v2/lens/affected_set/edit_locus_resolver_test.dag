@@ -154,7 +154,7 @@ fn edit_locus_source_provenance_node_eq(left: Node, right: Node) -> Bool {
 }
 
 fn edit_locus_source_provenance_affected_set_wire_holds() -> Bool {
-  match source_ir_node_artifact_provenance_add(
+  match source_ir_node_artifact_provenance(
     source_read: edit_locus_source_producer_add_fixture_source_read
   ) {
     Accepted { value: provenance, diagnostics: _ } =>
@@ -221,7 +221,7 @@ fn edit_locus_source_provenance_parse_root_span_holds() -> Bool {
 }
 
 fn edit_locus_source_provenance_producer_rejects_malformed_source_holds() -> Bool {
-  match source_ir_node_artifact_provenance_add(
+  match source_ir_node_artifact_provenance(
     source_read: edit_locus_source_producer_malformed_source_read
   ) {
     Accepted { value: _, diagnostics: _ } => false

@@ -312,8 +312,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag",
-      check_fns: ["realization_vocab_clean_tree_holds"],
+      entry: "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators_test.dag",
+      check_fns: [
+        "fresh_non_edge_import_is_leak_holds",
+        "realization_edge_import_is_not_leak_holds",
+        "rostered_consumer_import_is_not_leak_holds",
+        "de_rostered_consumer_import_is_leak_holds",
+        "non_vocabulary_import_is_not_leak_holds",
+        "ci_spec_excused_from_bash_roster_holds",
+        "build_step_rostered_for_bash_build_holds",
+        "bash_vocab_fresh_non_edge_import_is_leak_holds",
+        "bash_vocab_realization_edge_import_is_not_leak_holds",
+        "node_http_server_emit_rostered_for_typescript_sidecar_holds"
+      ],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },
@@ -331,7 +342,7 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "src/v2/test/claim/realization_vocabulary_containment/roster_soundness_test.dag",
-      check_fns: ["realization_vocab_roster_soundness_holds"],
+      check_fns: ["realization_vocab_roster_soundness_planted_stale_red_holds"],
       kind: CorpusWitnessKind,
       span: SpanUndeclared
     },

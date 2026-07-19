@@ -70,8 +70,8 @@ Ordered by divergence risk. **Claims** = what the name/provenance implies; **Exe
 | `src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag:10` | `realization_vocab_clean_tree_holds` | `v2.lens.realization_vocabulary_containment` |
 | `src/v2/test/claim/realization_vocabulary_containment/scanner/planted_leak_test.dag:15` | `realization_vocab_planted_leak_detected_holds` | same (+ `realization_vocab_leak_count_live`) |
 | `src/v2/test/claim/realization_vocabulary_containment/roster_soundness_test.dag:30` | `realization_vocab_roster_soundness_holds` | same (+ roster `*_live`) |
-| `src/v2/test/claim/medium_structure_containment/clean_tree_test.dag:11` | `medium_structure_clean_tree_holds` | `v2.lens.medium_structure_containment` |
-| `src/v2/test/claim/medium_structure_containment/scanner/*.dag` | 2× planted/perturb tests | same |
+
+*Removed (deleted #6831):* `medium_structure_containment` witnesses and `*_live` builtins.
 
 *Not tier-2:* `layering_imports/clean_tree_test.dag:11` calls `.dag` `layering_imports_clean_holds` (class-a); host-fed facts only.
 

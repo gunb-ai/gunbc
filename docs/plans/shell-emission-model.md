@@ -75,7 +75,7 @@ Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emi
 
 - **(a) Dispatcher endgame (OPEN Q3):** dissolve `05_emit_orchestration`'s hand-dispatch into `06_translate`'s rule table — the §4 endgame that makes "a new construct is a row" TRUE.
 - **(b) `live_deploy_emit_shell_dissolution_trigger`:** retires only at host_effect Phase B (escalated).
-- **(c) Roster honesty:** `medium_structure_exception_roster` entries for `live_deploy`/`githooks` **never fully retire** while foreign-media heredoc bodies stay opaque — split "migratable raw control flow" (eventual wall) vs "permanent foreign-media framing" (permanent ratchet); check rosters by **model walk**, not grep.
+- **(c) Foreign-media honesty:** live_deploy/githooks heredoc bodies that stay opaque foreign media are permanent transport scaffolds, not migratable raw control flow — check by **model walk**, not grep.
 
 ## 8. Open questions (unresolved)
 

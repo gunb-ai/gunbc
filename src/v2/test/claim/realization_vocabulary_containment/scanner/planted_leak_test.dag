@@ -8,6 +8,7 @@ data planted_leak_scan_roots: List<String> = [
 ]
 
 test fn realization_vocab_planted_leak_detected_holds() -> Bool {
-  (realization_vocab_leak_count_live(scan_roots: planted_leak_scan_roots) == 1)
-    && (realization_vocab_containment_clean_live(scan_roots: planted_leak_scan_roots) == false)
+  let facts = layer_import_facts_live(std_roots: planted_leak_scan_roots, extdeps_roots: [])
+  (realization_vocab_leak_count_canonical(facts: facts) == 1)
+    && (realization_vocab_containment_holds_canonical(facts: facts) == false)
 }

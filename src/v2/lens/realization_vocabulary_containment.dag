@@ -5,20 +5,35 @@ data target_ast_vocab_modules: List<String> = [
   "extdeps.languages.typescript.program"
 ]
 
+data target_ast_vocab_module_prefixes: List<String> = [
+  "v2.extdeps.languages.bash",
+  "v2.workflow.bash"
+]
+
 data realization_edge_path_prefixes: List<String> = [
   "dag/extdeps/languages/",
   "src/v2/extdeps/languages/",
+  "src/v2/extdeps/github/diagnostic_emit",
   "src/v2/compiler/05_emit",
   "src/v2/compiler/06_translate",
   "src/v2/compiler/self_host/candidate_generation",
   "src/v2/workflow/shell_emit",
-  "src/v2/workflow/orchestration_emit",
-  "src/v2/workflow/orchestration_stmt_emit",
-  "src/v2/workflow/orchestration_word_emit"
+  "src/v2/workflow/bash_emit",
+  "src/v2/workflow/bash_command_fold_serialize",
+  "src/v2/workflow/build_step_emit",
+  "src/v2/workflow/ci_workflow_run_emit",
+  "src/v2/workflow/ci_release_build_emit",
+  "src/v2/workflow/ci_retry_emit",
+  "src/v2/workflow/ci_floor_peak_emit",
+  "src/v2/workflow/orchestration_",
+  "dag/gunbc/live_deploy/emit",
+  "dag/gunbc/fleet_converge_emit",
+  "dag/gunbc/assimilate/bmc_token_federation"
 ]
 
 data realization_vocab_exception_roster: List<String> = [
-  "dag/gunbc/node_http_server_emit.dag"
+  "dag/gunbc/node_http_server_emit.dag",
+  "dag/tools/build_step.dag"
 ]
 
 data realization_vocab_consumer_scan_roots: List<String> = [
@@ -62,6 +77,7 @@ fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
 
 fn module_is_target_ast_vocab(module: String) -> Bool {
   list_contains_str(xs: target_ast_vocab_modules, target: module)
+    || path_has_any_prefix(prefixes: target_ast_vocab_module_prefixes, path: module)
 }
 
 fn path_is_realization_edge(path: String) -> Bool {
@@ -133,9 +149,9 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
 
 data empty_realization_vocab_path_list: List<String> = []
 
-fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
+fn realization_vocab_leak_candidate_paths_from_facts(facts: List<LayerImportFact>) -> List<String> {
   fold_list(
-    xs: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: []),
+    xs: facts,
     empty: empty_realization_vocab_path_list,
     cons: fn(acc, fact) {
       if module_is_target_ast_vocab(module: fact.import_module)
@@ -145,6 +161,12 @@ fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List
         acc
       }
     }
+  )
+}
+
+fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
+  realization_vocab_leak_candidate_paths_from_facts(
+    facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
   )
 }
 

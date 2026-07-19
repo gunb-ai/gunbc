@@ -3,7 +3,8 @@ module tools.gunbc_ci
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.shell
-import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_run_script }
+import gunbc.ci_spec { gunbc_ci_spec }
+import v2.workflow.ci_release_build_emit { gunbc_ci_run_script }
 
 
 
