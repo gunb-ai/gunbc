@@ -234,7 +234,7 @@ fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) 
   )
 }
 
-fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<CoreNode> {
+fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<v2.compiler.compile.CoreNode> {
   bind_outcome(
     o: parse_tree_to_emitted_node(parse_tree: parse_tree, source_model: source_model),
     f: fn(emitted) {
