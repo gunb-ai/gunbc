@@ -12,6 +12,7 @@ import gunbc.fleet_intent { ComputeHost }
 import gunbc.host_converge { HostConverge }
 import std.effects {
   EffectShape,
+  KeySource,
   ReadEffect,
   AppendEffect,
   IdempotencyEvidence,

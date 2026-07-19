@@ -9,7 +9,7 @@ import std.logic { Bool }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List }
 import v2.std.text { String }
-import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 data cssl_doc: String = "Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated emit->shim-assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe lane consumes only cssl_v1_compiled_probe_lib_cargo_toml via tools.self_host_curated_probe_cargo. Curated = gunbc emit must succeed, then seed-retained dep shims + shim lib.rs replace the emitted closure so the entry module rustc-links against v1-compiler without waiting for full std self-emit or emitter Track-B body fixes. Each module lane supplies its own shim file paths, witness driver, pass marker, and optional supplementary claim-run. Empty shim_lib_rel = keep gunbc-emitted lib.rs (runtime closure only). Empty claim_entry_rel = skip supplementary claim-run. Dissolve-on: modeled self-host behavioral-equivalence harness producer emits this carrier's operations without per-module copy-paste (parallel to slb/ssuv_scaffold_dissolution_trigger)."
 
@@ -173,8 +173,8 @@ fn cssl_seed_linked_behavioral_receipt(
   let driver_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: driver_rel))
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let cssl_assemble_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
+  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let cssl_assemble_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
   let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
   let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
   let emit = gunbc.WitnessBin.Run(
