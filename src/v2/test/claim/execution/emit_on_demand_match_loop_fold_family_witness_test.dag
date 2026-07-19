@@ -195,8 +195,6 @@ fn family_evict_and_workspace(test_id: String, key: ContentHash) -> String {
   native_cache_workspace_root(cache_root: root, key: key)
 }
 
-// --- match family ---
-
 data match_expected_octets: List<Byte> = [0, 1, 0, 0, 0]
 
 fn match_fixture_inputs() -> Inputs {
@@ -313,8 +311,6 @@ test fn emit_on_demand_match_content_change_cold_rebuild_holds() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
-
-// --- loop family ---
 
 data loop_expected_octets: List<Byte> = [0, 1, 0, 0, 0]
 
@@ -433,8 +429,6 @@ test fn emit_on_demand_loop_content_change_cold_rebuild_holds() -> Bool {
   }
 }
 
-// --- fold_closure family ---
-
 data fold_expected_octets: List<Byte> = [0, 7, 0, 0, 0]
 
 fn fold_fixture_inputs() -> Inputs {
@@ -535,8 +529,6 @@ test fn emit_on_demand_fold_closure_content_change_cold_rebuild_holds() -> Bool 
       )
   }
 }
-
-// --- shared pure witnesses ---
 
 test fn emit_on_demand_match_loop_fold_grain_keys_differ_holds() -> Bool {
   match match_primary_tree() {
