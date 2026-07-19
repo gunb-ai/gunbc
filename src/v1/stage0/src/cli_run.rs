@@ -674,6 +674,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn declared_source_ref_selection_bridge_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER,
+            "cli_run_declared_source_ref_selection_bridge"
+        );
+    }
+
+    #[test]
     fn truncate_histogram_label_respects_utf8_boundaries() {
         let max = 80;
         let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
@@ -9577,10 +9585,23 @@ fn effect_reach_touched_via_path_literals(
     false
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_declared_source_ref_selection_bridge`):
 // Lane: declared-source-ref selection (docs/plans/declared-source-ref-selection-design.md
-// task 5). Host-fed bridge until the `.dag` authority is the sole consumer: declared refs
-// from witness/tool import closures, resolved through the derived module-storage index
-// (`build_module_path_index`, same authority as `ModuleStorageIndex`).
+// task 5) — host-fed declared-ref touch axis for floor discovery admission until discovery
+// admission consumes `v2.lens.affected_set.declared_source_ref_selection` directly (same
+// dissolution posture as sibling bridges: `.dag` authority via interpreter or emitted host
+// dispatch once witness-realization host-effect emission lands).
+// Unblock: skip-before-resolve and resolve paths evaluate the modeled selection axis instead
+// of re-parsing `data declared_source_refs` rows from import-closure text.
+// DELETE WHEN dissolved: `declared_source_refs_axis_for_entry`, `declared_source_refs_axis_for_paths`,
+// `declared_source_ref_paths_for_entry`, `collect_declared_source_ref_paths_for_closure`,
+// `parse_declared_source_ref_paths_from_content`, `parse_named_source_ref_paths`,
+// `parse_source_ref_storage_path_from_rhs`, `declared_source_ref_storage_resolves`,
+// `storage_path_to_module_index`, `declared_source_refs_blocks_skip`,
+// `entry_has_declared_source_refs`, `DeclaredSourceRefAxis`, and
+// `CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER` (~240 LOC).
+// Receipt: `rg cli_run_declared_source_ref_selection_bridge src/v1/stage0/src/cli_run.rs` == 1 until
+// deletion; drift gate `declared_source_ref_selection_bridge_scaffold_marker_is_declared`.
 pub(crate) const CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER: &str =
     "cli_run_declared_source_ref_selection_bridge";
 
