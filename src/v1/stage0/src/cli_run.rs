@@ -13982,9 +13982,18 @@ pub fn emit_source_root_ingest_manifest(
         dag_manifest_scalar_escape(&content_hash)?
     ));
     out.push_str("data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {\n");
+    // The receipt must describe the carrier that actually landed, not the discovery that
+    // preceded it. Past MANIFEST_INLINE_LIST_MAX the row list is elided to `Empty`, so
+    // hardcoding `coverage_complete: true` with the full read_count asserted complete
+    // coverage over an EMPTY carrier — and made `coverage_complete` unfalsifiable by
+    // construction (DESIGN.md §5: fabricated plausible output; a receipt that can never be
+    // false reports nothing). `ingest_read_count` stays the discovered count; the other two
+    // now describe what the manifest carries.
+    let produced_row_count = inline_records.len();
+    let coverage_complete = produced_row_count == read_count;
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
-    out.push_str(&format!("  produced_row_count: {read_count},\n"));
-    out.push_str("  coverage_complete: true\n");
+    out.push_str(&format!("  produced_row_count: {produced_row_count},\n"));
+    out.push_str(&format!("  coverage_complete: {coverage_complete}\n"));
     out.push_str("}\n\n\n");
     out.push_str("data host_source_root_ingest: SourceRootIngest = ");
     if inline_records.is_empty() {
@@ -14003,7 +14012,57 @@ pub fn emit_source_root_ingest_manifest(
 
 #[cfg(test)]
 mod source_root_ingest_manifest_tests {
-    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord};
+    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord, MANIFEST_INLINE_LIST_MAX};
+
+    fn sr_record(i: usize) -> SourceRootReadRecord {
+        SourceRootReadRecord {
+            file_path: format!("src/v2/std/cov_fixture_{i}.dag"),
+            module_path: format!("v2.std.cov_fixture_{i}"),
+            source: format!("module v2.std.cov_fixture_{i}"),
+            source_root: "src/v2".to_string(),
+        }
+    }
+
+    /// Past the inline cap the row list is elided, so the receipt must say so.
+    /// Before this fix `coverage_complete: true` was hardcoded and the full read_count
+    /// emitted as produced_row_count, asserting complete coverage over an empty carrier.
+    #[test]
+    fn receipt_reports_incomplete_coverage_when_rows_are_elided() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_cov_receipt_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("host_source_root_ingest_manifest.dag");
+
+        let over: Vec<SourceRootReadRecord> = (0..MANIFEST_INLINE_LIST_MAX + 1).map(sr_record).collect();
+        emit_source_root_ingest_manifest(&path, &over, None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("coverage_complete: false"),
+            "elided manifest must report incomplete coverage, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("produced_row_count: 0"),
+            "elided manifest must report the rows it actually carries (0), got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains(&format!("ingest_read_count: {}", MANIFEST_INLINE_LIST_MAX + 1)),
+            "discovered read count must still be reported, got:\n{emitted}"
+        );
+
+        // Control: within the cap, coverage really is complete.
+        let under: Vec<SourceRootReadRecord> = (0..3).map(sr_record).collect();
+        emit_source_root_ingest_manifest(&path, &under, None).unwrap();
+        let emitted = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            emitted.contains("coverage_complete: true") && emitted.contains("produced_row_count: 3"),
+            "inline manifest must report complete coverage over 3 rows, got:\n{emitted}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 
     #[test]
     fn manifest_imports_grounded_source_root_constructors() {
