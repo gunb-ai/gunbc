@@ -1,5 +1,6 @@
 module v2.workflow.source_root_ingest_transport
 
+import extdeps.shell
 import extdeps.git
 import extdeps.gunbc
 import gunbc.ci_layer_roots { witness_layer_roots }
@@ -27,15 +28,15 @@ data ingest_witness_module_roots_parse: String = "program_assembly_real_ingest_m
 data ingest_witness_host_manifest_receipt: String = "program_assembly_real_ingest_host_manifest_receipt_holds"
 data ingest_witness_validate_red: String = "program_assembly_real_ingest_validate_module_roots_red_on_parsed_roots"
 
-fn sri_claim_source_roots() -> List<String> {
-  concat(witness_layer_roots, [ingest_manifest_dir])
+fn sri_claim_source_roots(manifest_dir: String) -> List<String> {
+  concat(witness_layer_roots, [manifest_dir])
 }
 
-fn emit_manifest_args() -> List<String> {
+fn emit_manifest_args(manifest_dir: String) -> List<String> {
   [
     "--source-root", ingest_source_root,
     "--scan-dir", ingest_scan_dir,
-    "--emit-dag-manifest", ingest_manifest_path
+    "--emit-dag-manifest", concat(manifest_dir, ingest_manifest_name)
   ]
 }
 
@@ -43,20 +44,34 @@ func run_real_ingest_gate() -> Bool {
   let root = git.Core.Toplevel()
   let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
   if witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
-    let manifest = gunbc.WitnessBin.Run(
-      workdir: root.path,
-      bin_path: witness_bin_release_path(root: root.path, bin_name: "discover_source_root_ingest"),
-      args: emit_manifest_args()
-    )
-    if manifest.success {
-      run_gunbc_claims(
-        source_roots: sri_claim_source_roots(),
-        claims: [
-          ClaimRun { entry: ingest_entry, function: ingest_witness_module_roots_parse },
-          ClaimRun { entry: ingest_entry, function: ingest_witness_host_manifest_receipt },
-          ClaimRun { entry: ingest_entry, function: ingest_witness_validate_red }
-        ]
+    let target_ready = shell.Mkdir.Parents(path: concat(root.path, "/target"))
+    if target_ready.success {
+      let manifest_dir = shell.Mktemp.DirWithTemplate(
+        template: concat(root.path, ingest_manifest_template)
       )
+      if manifest_dir.success {
+        let manifest = gunbc.WitnessBin.Run(
+          workdir: root.path,
+          bin_path: witness_bin_release_path(root: root.path, bin_name: "discover_source_root_ingest"),
+          args: emit_manifest_args(manifest_dir: manifest_dir.path)
+        )
+        let ran = if manifest.success {
+          run_gunbc_claims(
+            source_roots: sri_claim_source_roots(manifest_dir: manifest_dir.path),
+            claims: [
+              ClaimRun { entry: ingest_entry, function: ingest_witness_module_roots_parse },
+              ClaimRun { entry: ingest_entry, function: ingest_witness_host_manifest_receipt },
+              ClaimRun { entry: ingest_entry, function: ingest_witness_validate_red }
+            ]
+          )
+        } else {
+          false
+        }
+        let cleaned = shell.Remove.RecursiveForce(path: manifest_dir.path)
+        ran && cleaned.success
+      } else {
+        false
+      }
     } else {
       false
     }
