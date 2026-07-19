@@ -9335,7 +9335,15 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
             } else {
                 (plus.parse::<i64>().unwrap_or(1), 1)
             };
-            let end = if count <= 0 { start } else { start + count - 1 };
+            // Zero-width new range (`+L,0`): the deletion gap sits between L and
+            // L+1 — attribute the single following line, mirroring
+            // parse_unified_diff_changed_new_lines (anchoring at L false-fired
+            // the module-line refusal for import strips under a module header).
+            let (start, end) = if count <= 0 {
+                (start + 1, start + 1)
+            } else {
+                (start, start + count - 1)
+            };
             out.entry(file)
                 .or_default()
                 .push(FileLineRange { start, end });
@@ -9358,11 +9366,21 @@ fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, Hash
         if line.starts_with("@@ ") {
             let plus = line.split_whitespace().nth(2).unwrap_or("");
             let plus = plus.trim_start_matches('+');
-            new_line = if let Some((s, _)) = plus.split_once(',') {
-                s.parse::<i64>().unwrap_or(1)
+            let (anchor, new_len) = if let Some((s, c)) = plus.split_once(',') {
+                (s.parse::<i64>().unwrap_or(1), c.parse::<i64>().unwrap_or(1))
             } else {
-                plus.parse::<i64>().unwrap_or(1)
+                (plus.parse::<i64>().unwrap_or(1), 1)
             };
+            // A zero-width new range (`+L,0`, deletion-only hunk) anchors at the
+            // new-side line BEFORE the gap; the removed content sits between L
+            // and L+1, so its new-side attribution is L+1 — the same
+            // following-line semantics a with-context hunk produces naturally
+            // (the cursor has advanced past the leading context when the `-`
+            // rows arrive). Anchoring at L false-fired the module-line (line 1)
+            // fail-closed refusal for every import-block strip directly under a
+            // `module` header. `+0,0` (the module line itself deleted) still
+            // attributes to line 1 and still refuses.
+            new_line = if new_len == 0 { anchor + 1 } else { anchor };
             in_hunk = true;
             continue;
         }
@@ -11892,7 +11910,9 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
 ";
         let changed = parse_unified_diff_changed_new_lines(diff);
         let file = "src/v2/lens/affected_set.dag";
-        assert_eq!(changed.get(file), Some(&HashSet::from([42])));
+        // Deletion-only hunk `+42,0`: the gap sits between new lines 42 and 43;
+        // following-line semantics attribute 43 (see the parser's `+L,0` note).
+        assert_eq!(changed.get(file), Some(&HashSet::from([43])));
     }
 
     #[test]
