@@ -3739,6 +3739,11 @@ pub fn load_sources_for_entry(
 struct BareCandidates {
     names: BTreeSet<String>,
     call_position: BTreeSet<String>,
+    /// HEAD segments of dotted chains (`cron` in `cron.Tab.List()`): the dotted
+    /// module-path scan owns chains whose head is a module-path prefix, but a
+    /// SERVICE head is a single census name with no module spelling — with its
+    /// import stripped, only the services census can name its provider module.
+    dotted_heads: BTreeSet<String>,
 }
 
 fn bare_identifier_candidates(content: &str) -> BareCandidates {
@@ -3748,6 +3753,7 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
     let mut out = BareCandidates {
         names: BTreeSet::new(),
         call_position: BTreeSet::new(),
+        dotted_heads: BTreeSet::new(),
     };
     let mut i = 0usize;
     while i < bytes.len() {
@@ -3771,8 +3777,11 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         while i < bytes.len() && is_ident(bytes[i]) {
             i += 1;
         }
-        // Part of a dotted chain → the dotted scan owns it.
+        // Part of a dotted chain → the dotted scan owns module-path chains, but
+        // record the HEAD: a service reference (`cron.Tab.List()`) is a dotted
+        // chain whose head is a services-census name, not a module path.
         if i < bytes.len() && bytes[i] == b'.' {
+            out.dotted_heads.insert(content[start..i].to_string());
             continue;
         }
         let name = content[start..i].to_string();

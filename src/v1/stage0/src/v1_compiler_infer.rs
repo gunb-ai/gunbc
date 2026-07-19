@@ -3447,11 +3447,22 @@ pub fn infer_expr(
                     expr_call_func_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
                 let span = texpr.span.clone();
                 let call_args = texpr.children.clone();
-                let sig = lookup_func_sig(
-                    scope.func_env.clone(),
-                    scope.type_env.clone(),
-                    func_name.clone(),
-                );
+                // Body-scope locals shadow the fn-sig lookup (nearest-first
+                // precedence: locals > module fns > census global_bare). Without
+                // this gate a corpus-unique census homonym out-precedes a `let`
+                // callee: refinement.dag's `let classify = by.classify;
+                // match classify(base)` typed the scrutinee as a v2 lens test
+                // module's `fn classify -> Optional<Finding>`, refusing the
+                // match arms against the wrong enum.
+                let sig = if v1_rt::map_get(&scope.locals, func_name.clone()).is_some() {
+                    None
+                } else {
+                    lookup_func_sig(
+                        scope.func_env.clone(),
+                        scope.type_env.clone(),
+                        func_name.clone(),
+                    )
+                };
                 let sig_params = match sig.clone() {
                     Some(s) => s.params.clone(),
                     None => Rc::new(vec![]),
