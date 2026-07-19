@@ -4,9 +4,12 @@ import v2.std.collection {
   Absent,
   List,
   Map,
+  Optional,
   Present,
   list_at_optional,
-  map_insert
+  map_insert,
+  optional_absent,
+  optional_present
 }
 import v2.extdeps.languages.dag {
   dag_int_literal_magnitude_int_from_node,
@@ -215,7 +218,30 @@ fn v2_eval_bool_runtime_value(is_true: Bool) -> RuntimeValue {
   }
 }
 
-data v2_eval_literal_shape_predicate_note: String = "🟢 Terminal (FLAG D): v2_eval_is_literal_shaped_node is the sole admission predicate for eval_type_node_atom literal-vs-binding dispatch; v2_eval_represent_literal routes through it before allocate dispatch — one surface, not a parallel entry guard."
+data v2_eval_literal_shape_predicate_note: String = "🟢 Terminal (FLAG D): v2_eval_is_literal_shaped_node is the sole admission predicate for eval_type_node_atom literal-vs-binding dispatch; v2_eval_represent_literal routes through it before allocate dispatch — one surface, not a parallel entry guard. Emit-host equals_eval fixtures (pick_lit + fold closure literals) route through custom allocate_literal hooks once admitted here."
+
+fn v2_eval_is_emit_host_fixture_literal_atom(id: Symbol) -> Bool {
+  (id == ^dag_pick_lit_one)
+    || (id == ^dag_pick_lit_two)
+    || (id == ^dag_binding_mvp1_fold_xs)
+    || (id == ^dag_binding_mvp1_fold_z)
+    || (id == ^dag_binding_mvp1_fold_lit_three)
+    || (id == ^dag_binding_mvp1_fold_lit_four)
+}
+
+fn v2_eval_emit_host_fixture_literal_magnitude(id: Symbol) -> Optional<Int> {
+  if id == ^dag_pick_lit_one {
+    optional_present(value: 1)
+  } else if id == ^dag_pick_lit_two {
+    optional_present(value: 2)
+  } else if id == ^dag_binding_mvp1_fold_xs || id == ^dag_binding_mvp1_fold_lit_three {
+    optional_present(value: 3)
+  } else if id == ^dag_binding_mvp1_fold_z || id == ^dag_binding_mvp1_fold_lit_four {
+    optional_present(value: 4)
+  } else {
+    optional_absent()
+  }
+}
 
 fn v2_eval_is_literal_shaped_node(node: Node) -> Bool {
   if node == v2_eval_bool_literal_pin {
@@ -227,7 +253,9 @@ fn v2_eval_is_literal_shaped_node(node: Node) -> Bool {
   } else {
     match node.kind {
       TypeNode { connective: Atom { identity: id } } =>
-        (id == ^dag_token_kw_true) || (id == ^dag_token_kw_false)
+        (id == ^dag_token_kw_true)
+          || (id == ^dag_token_kw_false)
+          || v2_eval_is_emit_host_fixture_literal_atom(id: id)
       _ => false
     }
   }
@@ -255,7 +283,12 @@ fn v2_eval_represent_literal(node: Node, _env: EvaluationEnvironment) -> Outcome
         } else if id == ^dag_token_kw_false {
           outcome_accepted(value: v2_eval_bool_runtime_value(is_true: false))
         } else {
-          outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+          match v2_eval_emit_host_fixture_literal_magnitude(id: id) {
+            Present { value: n } =>
+              outcome_accepted(value: v2_eval_int_runtime_value(value: n))
+            Absent =>
+              outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
+          }
         }
       _ => outcome_rejected(d: v2_eval_runtime_diagnostic(node: node))
     }

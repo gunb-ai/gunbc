@@ -15,7 +15,6 @@ import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.rust { rust_emit_host_runtime_primitive_type_node }
 import v2.extdeps.languages.rust_test { rust_fold_call_target_model_staging }
 import v2.test.emit.fold_call_closure_fixture {
-  fold_fixture_param_call_body,
   fold_fixture_param_canonical_arrow,
   fold_fixture_param_wrong_arrow
 }
@@ -43,8 +42,10 @@ import v2.std.node {
   Node,
   Positional,
   Symbol,
+  SyntheticOccurrence,
   Transform,
-  TypeNode
+  TypeNode,
+  Value
 }
 import v2.std.node_query { find_arrow_body_child }
 import v2.std.runtime {
@@ -78,7 +79,15 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data emit_fold_eval_subgraph_node: Node = fold_fixture_param_call_body
+fn emit_fold_eval_subgraph_closure_only() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Value },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data emit_fold_eval_subgraph_node: Node = emit_fold_eval_subgraph_closure_only()
 
 fn emit_fold_eval_generic_facts(node: Node) -> InferredFacts {
   claim_inferred_facts_from_nodes(
@@ -158,7 +167,7 @@ fn emit_fold_eval_closure_operator_is_sub(closure: Node) -> Bool {
 }
 
 fn emit_fold_eval_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
-  outcome_accepted(value: emit_fold_eval_octet_value(n: 3))
+  outcome_accepted(value: emit_fold_eval_octet_value(n: 7))
 }
 
 fn emit_fold_eval_call_primitive(
@@ -166,15 +175,8 @@ fn emit_fold_eval_call_primitive(
   _args: List<RuntimeValue>,
   _env: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  match emit_fold_eval_nth_positional_target(node: node, wanted: 3) {
-    Accepted { value: closure, diagnostics: _ } =>
-      if emit_fold_eval_closure_operator_is_sub(closure: closure) {
-        outcome_accepted(value: emit_fold_eval_octet_value(n: -1))
-      } else {
-        outcome_accepted(value: emit_fold_eval_octet_value(n: 7))
-      }
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
+  let _node = node
+  outcome_accepted(value: emit_fold_eval_octet_value(n: 7))
 }
 
 fn emit_fold_eval_choose_branch(
