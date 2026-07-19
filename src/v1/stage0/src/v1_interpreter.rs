@@ -1236,6 +1236,27 @@ pub struct InterpContext {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
+    // `fn_nodes` above is keyed by BARE authored name across the whole import closure, so it is
+    // last-insert-wins: the winner for a duplicated name is whichever declaring module sorts
+    // last by file path, which is stable per entry but semantically arbitrary (it flips on a
+    // rename, or when an unrelated import pulls a second declaration into the closure).
+    // Typecheck already resolved each name correctly, module-scoped and import-aware, via
+    // `TypedModule.func_env`; that answer was then discarded. These four carry it through to
+    // dispatch so the interpreter CONSUMES the frontend's resolution rather than re-deriving a
+    // winner by path-sort accident (DESIGN §3: one authority for what a name means).
+    //   qualified_fns  — "{module}\u{1}{name}" -> item node (no collisions by construction)
+    //   node_module    — item-node pointer -> owning module, to know the calling module
+    //   module_envs    — module -> its resolved func env (nearest-wins lookup)
+    //   module_stack   — the module owning the body currently being evaluated
+    qualified_fns: HashMap<String, Rc<Node>>,
+    node_module: HashMap<usize, Rc<str>>,
+    module_envs: HashMap<String, Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>>,
+    module_stack: std::cell::RefCell<Vec<Rc<str>>>,
+    // Counts calls that fell through to the bare-name map because qualified resolution could not
+    // name an owner (synthetic/kernel-built call nodes, or a callee outside the caller's env).
+    // Not an escape hatch: it is the ledger that says how much of the fork is still live, so the
+    // residue is countable and prioritizable rather than silently absorbed (DESIGN §5).
+    unqualified_dispatch: std::cell::Cell<u64>,
     service_ops: HashMap<String, ServiceOp>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
@@ -1378,12 +1399,22 @@ impl InterpContext {
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
+        let mut qualified_fns: HashMap<String, Rc<Node>> = HashMap::new();
+        let mut node_module: HashMap<usize, Rc<str>> = HashMap::new();
+        let mut module_envs: HashMap<String, Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>> =
+            HashMap::new();
         let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
+            // `func_env.name` is the owning module path — the qualifier `ItemInfo` also carries
+            // but which the bare-name key discards.
+            let module_name: Rc<str> = Rc::from(module.func_env.name.as_str());
+            module_envs.insert(module.func_env.name.clone(), module.func_env.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
                     fn_nodes.insert(name.clone(), item.clone());
+                    qualified_fns.insert(qualified_key(&module_name, &name), item.clone());
+                    node_module.insert(Rc::as_ptr(item) as usize, module_name.clone());
                 }
                 // Service-item detection is node-local: the item node carries the
                 // `transport` that *defines* it as a service, so `item_kind` of the
