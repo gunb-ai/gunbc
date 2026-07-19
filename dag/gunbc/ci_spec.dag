@@ -58,8 +58,6 @@ import v2.std.orchestration {
 }
 import v2.std.collection { Absent, Present }
 import v2.std.diagnostic { EmitDirective, SeverityWarning }
-import v2.compiler.emit_orchestration { orch_emit_step }
-import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -240,33 +238,6 @@ fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
   }
 }
 
-data ci_retry_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ retry-intent emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate and the yaml parse gate both go red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen - the String-typed seam cannot carry the diagnostics, so it carries a loud poison instead)\n"
-
-fn ci_cargo_eagain_retry_core(command: String) -> String {
-  match orch_emit_step(
-    s: ci_cargo_eagain_retry_intent(command: command),
-    medium: bash_orchestration_emit_medium()
-  ) {
-    Accepted { value: source, diagnostics: d } =>
-      match d {
-        None => source.carried
-        Some { diagnostics: _ } => ci_retry_emit_refused_poison
-      }
-    Rejected { diagnostics: _ } => ci_retry_emit_refused_poison
-  }
-}
-
-fn ci_cargo_eagain_retry_script(command: String) -> String {
-  concat("set -o pipefail\n", ci_cargo_eagain_retry_core(command: command))
-}
-
-fn ci_cargo_eagain_retry_shell_exec(command: String) -> String {
-  concat(
-    concat("bash -o pipefail <<'__GUNBC_CI_RETRY__'\n", ci_cargo_eagain_retry_core(command: command)),
-    "__GUNBC_CI_RETRY__"
-  )
-}
-
 data ci_floor_required_artifact_names: List<String> = [
   "claim_executor",
   "gunbc",
@@ -326,19 +297,6 @@ fn ci_release_bins_unpack_verify_script() -> String {
           concat(concat("rm -f \"$ROOT/", ci_release_bins_archive_name), "\"\n"),
           ci_floor_build_verify_script()
         )
-      )
-    )
-  )
-}
-
-fn ci_release_build_script() -> String {
-  concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    concat(
-      ci_cargo_eagain_retry_script(command: ci_release_build_line()),
-      concat(
-        ci_floor_build_verify_script(),
-        "sccache --show-stats 2>/dev/null || true"
       )
     )
   )
@@ -458,10 +416,6 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
       )
     )
   )
-}
-
-fn gunbc_ci_run_script(spec: CiSpec) -> String {
-  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_floor_only_script(spec: spec))
 }
 
 data regen_floor_skip_witness_bin: String = "regen_floor_skip_witness"

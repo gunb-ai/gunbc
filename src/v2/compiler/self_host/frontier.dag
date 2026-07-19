@@ -17,7 +17,6 @@ import v2.compiler.self_host.frontier_probe_types {
   SelfEmitReady,
   UnknownProbeCause,
   FixtureCemented,
-  gate_a_flip_probe_formal_nonterminal_btree_set_ord_reason,
   gate_a_flip_probe_unresolved_compiler_error_reason,
   gate_a_flip_probe_witness_std_dup_reason,
   frontier_blocker_class_matches,
@@ -286,7 +285,7 @@ data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measu
   closure_reads: 44,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_formal_nonterminal_btree_set_ord_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -412,7 +411,7 @@ data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = execut
   closure_reads: 58,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_formal_nonterminal_btree_set_ord_reason,
+  located_reason: gate_a_flip_probe_witness_std_dup_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
