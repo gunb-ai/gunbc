@@ -3984,6 +3984,11 @@ pub struct MultiEntryIndex {
         RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
     ownership_diag_cache:
         RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+    /// Whole-pool SymbolIndex census, built once per process (namespace-resolution-design.md
+    /// §7.5: "fill = whole tree; policy gates lookup, never fill"). The census is
+    /// parse-grade (unresolved stubs + module-local sig resolution), so it is
+    /// entry-independent — one snapshot serves every entry compile in the process.
+    pool_symbol_index: RefCell<Option<Rc<SymbolIndex>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -4039,6 +4044,7 @@ fn new_multi_entry_index_shell(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
+        pool_symbol_index: RefCell::new(None),
     }
 }
 
@@ -5009,28 +5015,6 @@ fn collect_qualified_projection_module_paths_from_node(
     }
 }
 
-fn qualified_projection_module_paths_in_graph(
-    graph: &v1_compiler_resolve::ModuleGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> HashSet<String> {
-    let mut paths = HashSet::new();
-    for resolved in graph.modules.iter() {
-        for item in module_items(resolved.module.clone()).iter() {
-            collect_qualified_projection_module_paths_from_node(
-                item.clone(),
-                source_indices.clone(),
-                &mut paths,
-            );
-        }
-    }
-    paths
-}
-
-fn merge_symbol_indices(left: Rc<SymbolIndex>, right: Rc<SymbolIndex>) -> Rc<SymbolIndex> {
-    right.entries.iter().fold(left, |acc, (key, value)| {
-        symbol_index_insert(acc, key.clone(), value.clone())
-    })
-}
 
 /// Record the source-content hash for `source` (insert-if-absent: the tree is a fixed
 /// snapshot within a process, so first sight is authoritative). This is the source-hash
@@ -5093,45 +5077,61 @@ fn parse_module_node_from_index_source(
     }
 }
 
-// SCAFFOLD (§7 seed-retained HAND-RUST — Grammar lane G1 entry-scoped reconcile)
-// 🟡 dissolve-on: build_symbol_index_for_reconcile — parse/resolve provider modules
-// referenced by dotted qualified names in the entry import closure when absent from that
-// closure; dissolve when multi-entry SymbolIndex authority is modeled (.dag census over
-// the indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
+// SCAFFOLD (§7 seed-retained HAND-RUST — namespace lane, fill side)
+// FILL = WHOLE TREE (namespace-resolution-design.md §7.5: "fill is policy-agnostic —
+// fill = whole tree; policy gates lookup, never fill"): the census walks the ENTIRE
+// indexed pool, not the entry closure plus dotted-named providers. The prior
+// closure-scoped fill starved the walk — a bare name could never discover a module no
+// surviving import edge or dotted spelling already named, which made import-stripped
+// files structurally unresolvable (`function 'fold' not found in scope`) — and its
+// per-provider `merge_symbol_indices` silently dropped provider `global_bare` (§5
+// fail-open). One census over the whole pool makes `global_bare` correct by single-pass
+// construction and deletes the merge. The census is parse-grade (unresolved stubs), so
+// it is entry-independent and cached once per process on `MultiEntryIndex`.
+// 🟡 dissolve-on: multi-entry SymbolIndex authority modeled in .dag (census over the
+// indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
 fn build_symbol_index_for_reconcile(
     index: &MultiEntryIndex,
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<SymbolIndex>, String> {
-    let mut symbol_index =
-        v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices.clone());
-    let closure_module_names: HashSet<String> = graph
-        .modules
-        .iter()
-        .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
-        .collect();
-    for module_path in qualified_projection_module_paths_in_graph(&graph, source_indices.clone()) {
-        if closure_module_names.contains(&module_path) {
-            continue;
-        }
-        let Some(source) = index.source_files.get(&module_path).cloned() else {
-            // Unindexed prefix — likely a non-module dotted token (e.g. method/field
-            // spelling), not a qualified module projection target; skip without widening.
-            continue;
-        };
-        let (module, provider_nl_index) = parse_module_node_from_index_source(index, source)?;
-        let mut provider_si = (*source_indices).clone();
-        provider_si.insert(provider_nl_index.file.clone(), provider_nl_index);
-        let provider_si = Rc::new(provider_si);
-        let provider_graph =
-            v1_compiler_resolve::resolve_modules(Rc::new(vec![module].into()), provider_si.clone());
-        let provider_index = v1_compiler_infer::build_symbol_index_census(
-            provider_graph.modules.clone(),
-            provider_si,
-        );
-        symbol_index = merge_symbol_indices(symbol_index, provider_index);
+    if let Some(cached) = index.pool_symbol_index.borrow().clone() {
+        return Ok(cached);
     }
-    Ok(symbol_index)
+    // Deterministic fill order (global_bare is order-independent by its invariant; a
+    // sorted walk keeps the whole build reproducible anyway — determinism gate).
+    let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
+    pool_paths.sort();
+    let mut combined_si: HashMap<String, Rc<NewlineIndex>> = (*source_indices).clone();
+    let mut module_nodes: Vec<Rc<Node>> = Vec::with_capacity(pool_paths.len() + 1);
+    let mut pool_module_names: HashSet<String> = HashSet::with_capacity(pool_paths.len());
+    for module_path in pool_paths {
+        let source = index
+            .source_files
+            .get(&module_path)
+            .cloned()
+            .expect("pool path came from source_files keys");
+        let (module, nl_index) = parse_module_node_from_index_source(index, source)?;
+        combined_si.insert(nl_index.file.clone(), nl_index);
+        pool_module_names.insert(module_path);
+        module_nodes.push(module);
+    }
+    // An entry compiled from outside the indexed roots is not in the pool; its closure
+    // modules must still enter the one census (no module may be invisible to the
+    // naming authority — fail-closed would refuse, but the module is in hand here).
+    for resolved in graph.modules.iter() {
+        let name = authored_name_at(source_indices.clone(), resolved.module.clone());
+        if !pool_module_names.contains(&name) {
+            module_nodes.push(resolved.module.clone());
+        }
+    }
+    let combined_si = Rc::new(combined_si);
+    let pool_graph =
+        v1_compiler_resolve::resolve_modules(Rc::new(module_nodes.into()), combined_si.clone());
+    let census =
+        v1_compiler_infer::build_symbol_index_census(pool_graph.modules.clone(), combined_si);
+    *index.pool_symbol_index.borrow_mut() = Some(census.clone());
+    Ok(census)
 }
 
 fn reconcile_with_typed_cache(
