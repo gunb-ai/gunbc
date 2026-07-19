@@ -4235,9 +4235,14 @@ pub fn resolve_entry_graph(
     ),
     String,
 > {
-    let index = build_module_index(source_roots);
-    let facts = build_module_graph_facts_live(source_roots);
-    resolve_entry_graph_with_index(&index, &facts, entry_file)
+    // Route through the same loader engine as `resolve_entry_graph_shared`
+    // (proven behaviorally identical to the cold import-adjacency resolve by
+    // resolve_typed_cache_equivalence_test): with imports stripped (namespace
+    // wave 1) an entry's dependencies are name-derived, and the old
+    // `load_sources_for_entry_with_index` walk only follows import edges — a
+    // stripped fixed entry (e.g. the floor runner) failed to resolve at all.
+    let index = process_shared_index(source_roots);
+    resolve_entry_with_index(&index, entry_file)
 }
 
 // Process-level (per-thread) resolve store — the S1a increment of the resolver
@@ -13024,6 +13029,19 @@ mod module_grain_affected_equivalence_tests {
     }
 
     fn rust_entry_affected(index: &MultiEntryIndex, entry_rel: &str, touched: &[String]) -> bool {
+        // Shared selection rule with production (`entry_file_touched_via_import_closure`) and
+        // the `.dag` authority (`entry_without_declared_edges_never_skips_note`): an entry
+        // that declares no imports is never selection-skippable — its name-derived
+        // dependencies are invisible to the import-edge model, so both sides answer
+        // affected=true rather than risking a false skip.
+        let source = std::fs::read_to_string(workspace_root().join(entry_rel))
+            .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
+        if !source
+            .lines()
+            .any(|l| l.trim_start().starts_with("import "))
+        {
+            return true;
+        }
         let (graph, _) = resolve_entry_with_index_for_discovery_corpus(index, entry_rel)
             .unwrap_or_else(|e| panic!("resolve {entry_rel}: {e}"));
         let closure_files: HashSet<String> = import_closure_files_from_graph(&graph);
@@ -13246,13 +13264,16 @@ mod module_grain_affected_equivalence_tests {
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
-        // `orchestration_emit_test.dag` reaches `bash.dag` transitively along two routes:
-        // via `bash_orchestration_emit.dag` and (since the bash-program-emit lane) via
-        // `05_emit_orchestration.dag`. Dropping the outgoing edges of BOTH intermediates
+        // `orchestration_bounded_poll_emit_test.dag` reaches `bash.dag` transitively along
+        // two routes: via `bash_orchestration_emit.dag` and via `05_emit_orchestration.dag`
+        // (both directly imported). Dropping the outgoing edges of BOTH intermediates
         // severs every route to the leaf without touching the entry's own imports — still
         // a genuine wiring perturbation (the entry stays resolvable; only reachability to
-        // the leaf flips).
-        let entry = "src/v2/workflow/orchestration_emit_test.dag";
+        // the leaf flips). The entry must be one that still DECLARES imports: an
+        // import-less entry answers affected=true by the shared never-skip rule
+        // (`entry_without_declared_edges_never_skips_note`) on both the perturbed and
+        // unperturbed sides, so no wiring perturbation could flip it.
+        let entry = "src/v2/workflow/orchestration_bounded_poll_emit_test.dag";
         let leaf = "src/v2/extdeps/languages/bash.dag".to_string();
         let intermediate_excludes = [
             "extdeps/languages/bash_orchestration_emit.dag".to_string(),

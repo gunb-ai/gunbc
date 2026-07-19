@@ -223,6 +223,7 @@ fn resolve_imports_transitively_with_index(
 fn analyze_complexity_options() -> CompilePipelineOptions {
     CompilePipelineOptions {
         analyze_complexity: true,
+        ..v1_compiler::v1_compiler_compile::default_compile_pipeline_options()
     }
 }
 
