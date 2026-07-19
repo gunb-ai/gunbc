@@ -14,8 +14,14 @@ import tools.host_prelude {
 
 data ingest_source_root: String = "src/v2"
 data ingest_scan_dir: String = "src/v2/test/fixture/program_assembly"
-data ingest_manifest_path: String = "target/v2-source-root-ingest-manifest.dag"
-data ingest_manifest_dir: String = "target"
+data ingest_manifest_class_note: String = "This gate used to emit its manifest to a fixed target/v2-source-root-ingest-manifest.dag and then add BARE target/ as a claim source root to read it back. That admitted the ENTIRE build-output tree as source, purely to make one generated file visible — build output as source, an unexcluded default rather than a deliberate design (nothing declares target/ as an ingest root; this was the only bare-target source root in the corpus).
+
+It is the CLASS behind a concrete break: any tool writing a .dag under target/ collides with a committed module of the same name and panics the indexer ('module-path collision ... one module, one authority'). The module-binding supply gate hit exactly that. Fixing only that gate's overlay would have left the class open for the next writer.
+
+So the manifest now lands in a per-run mktemp directory that is scanned and then removed, and no gate scans bare target/ any more. The emitted FILENAME is unchanged deliberately: the host-side stub-supersession table keys on the manifest BASENAME (cli_run.rs MANIFEST_STUB_OVERLAYS), so relocating the file cannot silently break stub supersession. Same shape as compiler_closure_ingest_transport, which already did this correctly."
+
+data ingest_manifest_name: String = "/v2-source-root-ingest-manifest.dag"
+data ingest_manifest_template: String = "/target/source-root-ingest-XXXXXX"
 data ingest_entry: String = "src/v2/test/claim/program_assembly/real_ingest_test.dag"
 data ingest_witness_module_roots_parse: String = "program_assembly_real_ingest_module_roots_parse_holds"
 data ingest_witness_host_manifest_receipt: String = "program_assembly_real_ingest_host_manifest_receipt_holds"
