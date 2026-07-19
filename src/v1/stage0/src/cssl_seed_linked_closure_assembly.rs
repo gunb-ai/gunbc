@@ -3,6 +3,7 @@
 //! dissolve-on: v2 std self-emits + gunbc emits seed-linked extern imports.
 
 use sha2::Digest;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -107,23 +108,15 @@ fn write_compiler_seed_reexport(dest: &Path, seed_mod: &str) -> Result<(), Assem
 }
 
 /// SCAFFOLD — see `cssl_emit_artifact_sanitize_scaffold_debt` in
-/// `dag/tools/self_host_curated_seed_linked_harness.dag`. String-scrub on emitted
-/// `v2_std_witness.rs` only; dissolve-on #6775 emitter defects. The `v2_std_integer.rs`
-/// arm (blind Int128..UInt8 line-range strip, no duplicate detection) was removed
-/// 2026-07-18: real-entry reproduction against the production `cssl_seed_linked_behavioral_receipt`
-/// path (04_infer.dag, full closure, primary-precedence pool) found the emit source
-/// already writes exactly one copy of each struct — the strip was silently deleting the
-/// only legitimate copy, not a duplicate. Its dissolve-on trigger was already satisfied.
+/// `dag/tools/self_host_curated_seed_linked_harness.dag`. Two structural passes on
+/// every emit-retained artifact (dissolve-on #6775 emitter coherence):
+/// (1) strip `use crate::v1_rt::NAME` when the file locally defines `pub enum/struct/type NAME`
+///     (generic-arg-aware: `Witness<C>` and `Optional<T>` share the same rule);
+/// (2) dedupe symbols across sequential `pub use path::{...}` lines (emitter may
+///     re-export the same name via transitive paths — e.g. Optional via grammar + collection).
 fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> {
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or_default();
-    if name != "v2_std_witness.rs" {
-        return Ok(());
-    }
     let content = fs::read_to_string(path)?;
-    let sanitized = sanitize_witness_import_conflict(&content);
+    let sanitized = sanitize_emit_artifact_content(&content);
     if sanitized != content {
         eprintln!(
             "CSSL_ASSEMBLE: sanitize scaffold applied to {}",
@@ -134,21 +127,89 @@ fn sanitize_emitter_artifact_in_place(path: &Path) -> Result<(), AssemblyError> 
     Ok(())
 }
 
-fn sanitize_witness_import_conflict(content: &str) -> String {
-    let defines_witness = content
-        .lines()
-        .any(|l| l.trim().starts_with("pub enum Witness"));
-    if !defines_witness {
+fn local_pub_item_names(content: &str) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for line in content.lines() {
+        let t = line.trim();
+        for prefix in ["pub enum ", "pub struct ", "pub type "] {
+            if let Some(rest) = t.strip_prefix(prefix) {
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    names.insert(name);
+                }
+                break;
+            }
+        }
+    }
+    names
+}
+
+fn strip_v1_rt_imports_for_local_defs(content: &str, local_names: &HashSet<String>) -> String {
+    if local_names.is_empty() {
         return content.to_string();
     }
     content
         .lines()
         .filter(|l| {
             let t = l.trim();
-            t != "use crate::v1_rt::Witness;" && !t.starts_with("use crate::v1_rt::Witness::")
+            !local_names.iter().any(|name| {
+                t == format!("use crate::v1_rt::{name};")
+                    || t.starts_with(&format!("use crate::v1_rt::{name}::"))
+            })
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn dedupe_pub_use_symbols(content: &str) -> String {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for line in content.lines() {
+        let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("pub use ") {
+            if let Some(brace_start) = rest.find('{') {
+                if let Some(brace_end) = rest.rfind('}') {
+                    if brace_end > brace_start {
+                        let path_prefix = &rest[..brace_start];
+                        let symbols_str = &rest[brace_start + 1..brace_end];
+                        let suffix = &rest[brace_end + 1..];
+                        let symbols: Vec<&str> = symbols_str
+                            .split(',')
+                            .map(|s| s.trim())
+                            .filter(|s| !s.is_empty())
+                            .collect();
+                        let mut kept = Vec::new();
+                        for sym in symbols {
+                            if seen.insert(sym.to_string()) {
+                                kept.push(sym);
+                            }
+                        }
+                        if kept.is_empty() {
+                            continue;
+                        }
+                        out.push(format!(
+                            "{indent}pub use {}{{{}}}{suffix}",
+                            path_prefix,
+                            kept.join(", "),
+                        ));
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push(line.to_string());
+    }
+    out.join("\n")
+}
+
+fn sanitize_emit_artifact_content(content: &str) -> String {
+    let local = local_pub_item_names(content);
+    let stripped = strip_v1_rt_imports_for_local_defs(content, &local);
+    dedupe_pub_use_symbols(&stripped)
 }
 
 /// Assembly arms: entry untouched · compiler seed re-export · shared std-bridge · dag/std
@@ -326,10 +387,6 @@ mod tests {
 
     #[test]
     fn witness_generic_enum_sanitize_strips_v1_rt_import() {
-        let root = temp_fixture_root();
-        let out = root.join("out");
-        let src = out.join("src");
-        fs::create_dir_all(&src).expect("src");
         let witness_src = concat!(
             "use crate::v1_rt::Witness;\n",
             "use crate::v1_rt::Witness::{Holds, Violates};\n",
@@ -338,12 +395,52 @@ mod tests {
             "    Violates { diagnostic: String },\n",
             "}\n"
         );
+        let kept = sanitize_emit_artifact_content(witness_src);
+        assert!(!kept.contains("use crate::v1_rt::Witness"));
+        assert!(kept.contains("pub enum Witness<C>"));
+    }
+
+    #[test]
+    fn optional_generic_enum_sanitize_strips_v1_rt_import() {
+        let optional_src = concat!(
+            "use crate::v1_rt::Optional;\n",
+            "use crate::v1_rt::Optional::{Absent, Present};\n",
+            "pub enum Optional<T> {\n",
+            "    Absent,\n",
+            "    Present { value: T },\n",
+            "}\n"
+        );
+        let kept = sanitize_emit_artifact_content(optional_src);
+        assert!(!kept.contains("use crate::v1_rt::Optional"));
+        assert!(kept.contains("pub enum Optional<T>"));
+    }
+
+    #[test]
+    fn pub_use_symbol_dedup_clears_transitive_reexport_collision() {
+        let src = concat!(
+            "pub use crate::v2_std_grammar::{grammar_formal_terminal, Optional};\n",
+            "pub use crate::v2_std_collection::{List, Map, Set, Optional};\n"
+        );
+        let kept = sanitize_emit_artifact_content(src);
+        assert_eq!(kept.matches("Optional").count(), 1);
+        assert!(!kept.contains("Set, Optional"));
+    }
+
+    #[test]
+    fn witness_file_sanitize_via_in_place_path() {
+        let root = temp_fixture_root();
+        let out = root.join("out");
+        let src = out.join("src");
+        fs::create_dir_all(&src).expect("src");
+        let witness_src = concat!(
+            "use crate::v1_rt::Witness;\n",
+            "pub enum Witness<C> { Holds { value: C }, Violates { diagnostic: String }, }\n"
+        );
         let path = src.join("v2_std_witness.rs");
         fs::write(&path, witness_src).expect("write witness");
         sanitize_emitter_artifact_in_place(&path).expect("sanitize");
         let kept = fs::read_to_string(&path).expect("read");
         assert!(!kept.contains("use crate::v1_rt::Witness"));
-        assert!(kept.contains("pub enum Witness<C>"));
     }
 
     #[test]
