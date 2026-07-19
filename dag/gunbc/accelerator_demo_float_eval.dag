@@ -9,7 +9,7 @@ fn float_relu(x: Float) -> Float {
   }
 }
 
-fn eval_relu_mul_add_elem_at_index(ai: Float, bi: Float, ci: Float) -> Float {
+fn eval_float_relu_mul_add_elem_at_index(ai: Float, bi: Float, ci: Float) -> Float {
   float_relu(x: ai * bi + ci)
 }
 
@@ -39,7 +39,7 @@ fn eval_float_pure_map_at_indices(
                   c: c.skip(n: 1),
                   acc: concat(
                     acc,
-                    [eval_relu_mul_add_elem_at_index(ai: ai, bi: bi, ci: ci)]
+                    [eval_float_relu_mul_add_elem_at_index(ai: ai, bi: bi, ci: ci)]
                   )
                 )
             }
