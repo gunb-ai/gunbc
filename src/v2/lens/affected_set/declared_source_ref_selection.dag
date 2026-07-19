@@ -3,7 +3,7 @@ module v2.lens.affected_set.declared_source_ref_selection
 import v2.compiler.source_authority {
   ModuleStorageIndex,
   SourceRef,
-  module_storage_module_for_path,
+  module_storage_binding_file_path,
   source_ref_path
 }
 import v2.lens.module_graph { path_matches_touched }
@@ -12,7 +12,7 @@ import v2.std.collection { Absent, List, Present }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data declared_source_ref_selection_note: String = "Task 5 of docs/plans/declared-source-ref-selection-design.md: selection-edge source for per-row opt-in declared SourceRef rows. Selection asks whether the touched set intersects refs this row declares, resolving each ref through the derived ModuleStorageIndex — never a hand-maintained path list. Arms: no refs → caller keeps ReadsLiveTree default; unresolvable ref → widen to RUN (typed, counted); resolves + intersects → selected; resolves + no intersection → skip-eligible on this axis. Skip-eligibility requires declaration completeness (§5.1): the flagship row is hand-verified; widening past the flagship waits on effect_reach census join admission."
+data declared_source_ref_selection_note: String = "Task 5 of docs/plans/declared-source-ref-selection-design.md: selection-edge source for per-row opt-in declared SourceRef rows. Selection asks whether the touched set intersects refs this row declares, resolving each ref through the derived ModuleStorageIndex — never a hand-maintained path list. Module-backed paths resolve via index file_path membership; storage-only paths (.rs shims) resolve at the host bridge via workspace file existence (the index is module-grain only). Arms: no refs → caller keeps ReadsLiveTree default; unresolvable ref → widen to RUN (typed, counted); resolves + intersects → selected; resolves + no intersection → skip-eligible on this axis."
 
 type DeclaredSourceRefSelectionAxis
   = NoDeclaredSourceRefs
@@ -25,10 +25,20 @@ fn declared_source_ref_resolves(
   ref: SourceRef
 ) -> Bool {
   let path = source_ref_path(ref: ref)
-  match module_storage_module_for_path(index: index, file_path: path) {
-    Absent => false
-    Present { value: _ } => true
-  }
+  fold_list(
+    xs: index,
+    empty: false,
+    cons: fn(found, binding) {
+      if found {
+        true
+      } else {
+        match module_storage_binding_file_path(binding: binding) {
+          Present { value: p } => p == path
+          Absent => false
+        }
+      }
+    }
+  )
 }
 
 fn source_ref_touched_by_paths(

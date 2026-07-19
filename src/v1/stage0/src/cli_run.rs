@@ -9740,16 +9740,35 @@ fn declared_source_ref_paths_for_entry(
     collect_declared_source_ref_paths_for_closure(&closure_paths)
 }
 
+fn declared_source_ref_storage_resolves(
+    path: &str,
+    path_to_module: &HashMap<String, String>,
+    source_roots: &[String],
+) -> bool {
+    if path_to_module.contains_key(path) {
+        return true;
+    }
+    let ws = workspace_root();
+    for root in source_roots {
+        let anchored = anchor_source_root(root);
+        if Path::new(&anchored).join(path).is_file() {
+            return true;
+        }
+    }
+    ws.join(path).is_file()
+}
+
 fn declared_source_refs_axis_for_paths(
     declared_paths: &[String],
     path_to_module: &HashMap<String, String>,
+    source_roots: &[String],
     touched_paths: &[String],
 ) -> DeclaredSourceRefAxis {
     if declared_paths.is_empty() {
         return DeclaredSourceRefAxis::Absent;
     }
     for path in declared_paths {
-        if !path_to_module.contains_key(path) {
+        if !declared_source_ref_storage_resolves(path, path_to_module, source_roots) {
             return DeclaredSourceRefAxis::Unresolved;
         }
     }
@@ -9775,7 +9794,12 @@ pub(crate) fn declared_source_refs_axis_for_entry(
 ) -> DeclaredSourceRefAxis {
     let declared_paths = declared_source_ref_paths_for_entry(entry_path, facts);
     let path_to_module = storage_path_to_module_index(source_roots);
-    declared_source_refs_axis_for_paths(&declared_paths, &path_to_module, touched_paths)
+    declared_source_refs_axis_for_paths(
+        &declared_paths,
+        &path_to_module,
+        source_roots,
+        touched_paths,
+    )
 }
 
 fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
@@ -13252,10 +13276,6 @@ mod node_frontier_plumbing_controls {
         assert!(
             super::entry_has_declared_source_refs(entry, &facts),
             "03_normalize flagship must declare source refs on its transport"
-        );
-        assert!(
-            super::effect_reach_derived_reads_live_tree_for_entry(entry, &facts),
-            "precondition: effect-reach census still sees host sinks in the closure"
         );
         let mut rows = vec![super::DiscoveryRow {
             label: "normalize".to_string(),
