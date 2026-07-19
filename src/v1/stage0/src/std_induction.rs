@@ -14,6 +14,21 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use crate::std_computation::IterationPrimitive;
+use crate::std_computation::SizeBound;
+use crate::std_computation::tree_size_bound;
+use crate::std_termination::peano_literal_materialization_cap;
+use crate::std_termination::positive_descent_count;
+use crate::std_termination::proportional_divisor_to_int;
+use crate::v1_compiler_compile::ProportionalDivisor;
+use crate::v1_compiler_complexity::CallPattern;
+use crate::v1_compiler_complexity::DescentEvidence;
+use crate::v1_compiler_complexity::LoweringTarget;
+use crate::v1_compiler_complexity::RankingDimension;
+use crate::v1_compiler_infer::PositiveDescentAmount;
+use crate::v1_compiler_infer::ShrinkFactor;
+use crate::v1_compiler_infer::positive_descent_amount_from_positive_int;
+use crate::v1_compiler_infer::proportional_divisor_from_int_at_least_two;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,

@@ -57,6 +57,8 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use crate::v1_compiler_infer_env::env_with_type_variable_bindings;
+use crate::v1_std_core::qualified_last_segment;
 
 pub fn is_unit_variant_node(variant: Rc<Node>) -> bool {
     ((variant.children.clone().len() as i64) == 0)

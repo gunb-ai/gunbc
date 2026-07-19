@@ -61,6 +61,13 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use crate::extdeps_languages_dag_syntax::dag_operators;
+use crate::v1_compiler_parse::ItemForm;
+use crate::v1_compiler_parse::ItemFormKind;
+use crate::v1_compiler_parse::OperatorSpec;
+use crate::v1_probe_emit_interp::RenderTarget;
+use crate::v1_std_core::AlgebraFieldKind;
+use crate::v1_std_core::BinOp;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]

@@ -51,6 +51,10 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use crate::std_types::container_template_alias_rows;
+use crate::v1_compiler_infer_resolve::TypeBinding;
+use crate::v1_std_core::qualified_last_segment;
+use crate::v1_std_core::type_name_compatible;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred.clone()).clone() {

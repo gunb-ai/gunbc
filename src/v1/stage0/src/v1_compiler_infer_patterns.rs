@@ -36,6 +36,8 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use crate::v1_compiler_infer_resolve::substitute_type_slots_scoped;
+use crate::v1_std_core::qualified_last_segment;
 
 pub fn generic_use_slot_bindings(
     scrut_node: Rc<Node>,

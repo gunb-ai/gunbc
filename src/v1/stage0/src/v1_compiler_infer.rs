@@ -65,9 +65,13 @@ pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
     SymbolIndex, TypeBinding, TypeEnv, TypeEnvCache, TypeEnvCacheMergeConflict,
 };
+use crate::v1_compiler_infer_env::lookup_binding_by_name;
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
+use crate::v1_compiler_infer_lookup::global_bare_callable_node;
+use crate::v1_compiler_infer_patterns::expand_scrut_type_for_variant_lookup;
+use crate::v1_compiler_infer_types::callable_return_type;
 pub use crate::v1_compiler_infer_items::{inferred_to_outputs, item_kind};
 pub use crate::v1_compiler_infer_items::{
     ItemInfo, ItemKind, ModuleInterface, ResolvedGraph, TypedGraph, TypedModule,

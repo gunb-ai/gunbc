@@ -51,6 +51,17 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use crate::v1_compiler_infer_env::GlobalBareLookupState;
+use crate::v1_compiler_infer_env::borrowed_generic_param_names;
+use crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate;
+use crate::v1_compiler_infer_env::lookup_binding_by_name;
+use crate::v1_compiler_infer_env::lookup_binding_by_name_local;
+use crate::v1_compiler_infer_env::qualified_all_but_last;
+use crate::v1_compiler_infer_env::qualify_borrowed_type_names;
+use crate::v1_compiler_infer_patterns::symbol_index_lookup;
+use crate::v1_compiler_infer_types::kernel_profile_lookup;
+use crate::v1_std_core::SubValueRelation;
+use crate::v1_std_core::error_type;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     match (*inferred.clone()).clone() {
