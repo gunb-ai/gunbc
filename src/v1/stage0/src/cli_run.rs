@@ -13776,6 +13776,124 @@ fn emit_source_root_ref_import(records: &[SourceRootReadRecord]) -> String {
     )
 }
 
+/// Emit the module-binding manifest: the host handler for the `.dag`-modeled op
+/// `v2.compiler.source_authority.module_storage_bindings_for_source_roots`.
+///
+/// This is a TRANSPORT of that modeled op, not a rival authority. It carries zero
+/// independent policy: it serializes what `build_module_path_index` already derived,
+/// which is the one host producer the module-identity design says must be repointed —
+/// so supplying the rows and repointing the producer are the same motion.
+///
+/// Rows are `DeclarationScanned`, never `ParsedFromSource`: `build_module_path_index`
+/// derives the mapping via `extract_module_path`, a substring scan with no spans and no
+/// parse. Emitting them as parsed would fabricate provenance (DESIGN.md §5).
+///
+/// Unlike the source-root ingest manifest this carries NO source text — the binding needs
+/// module <-> path only. That is what lets it scale past `MANIFEST_INLINE_LIST_MAX`, which
+/// exists to stop the ingest manifest from inlining the corpus.
+///
+/// Dissolve-on: host-effect emission (witness-realization lane), at which point this
+/// handler is emitted from the `.dag` model instead of hand-written here.
+pub fn emit_module_storage_binding_manifest(
+    path: &Path,
+    source_roots: &[String],
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("failed to create manifest parent {:?}: {}", parent, e))?;
+    }
+
+    // Per-root so each row records its own SourceRootRef, reusing build_module_path_index
+    // rather than introducing a second walker (which would be the fork this repoint removes).
+    let mut rows: Vec<(String, String, String)> = Vec::new();
+    for root in source_roots {
+        let root_variant = source_root_ref_variant_for_root(root)?;
+        let index = build_module_path_index(std::slice::from_ref(root));
+        let mut entries: Vec<(String, String)> = index.into_iter().collect();
+        // build_module_path_index returns a HashMap; sort so the emitted manifest is
+        // deterministic (byte-identical across runs on unchanged inputs).
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        for (module_path, rel) in entries {
+            rows.push((module_path, rel, root_variant.clone()));
+        }
+    }
+
+    let mut out = String::new();
+    out.push_str("module v2.test.workflow.host_module_binding_manifest\n\n\n");
+    out.push_str("import v2.compiler.source_authority {\n");
+    out.push_str("  ModuleStorageIndex,\n");
+    out.push_str("  module_storage_scanned_binding\n");
+    out.push_str("}\n");
+    out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import std.algebra { Cons, Empty }\n");
+    out.push_str("import v2.std.integer { Int }\n");
+    out.push_str(&emit_module_binding_source_root_import(&rows));
+    out.push('\n');
+    out.push_str(&format!(
+        "data host_module_binding_count: Int = {}\n\n\n",
+        rows.len()
+    ));
+    out.push_str("data host_module_bindings: ModuleStorageIndex = ");
+    out.push_str(&emit_module_binding_monoid(&rows)?);
+    out.push('\n');
+
+    std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
+}
+
+/// Import exactly the `SourceRootRef` constructors the rows reference (mirrors
+/// `emit_source_root_ref_import`; an unreferenced constructor import is an unlisted-import
+/// error, and a referenced-but-unimported one fails to resolve).
+fn emit_module_binding_source_root_import(rows: &[(String, String, String)]) -> String {
+    let mut names: Vec<&str> = rows.iter().map(|(_, _, v)| v.as_str()).collect();
+    names.sort_unstable();
+    names.dedup();
+    if names.is_empty() {
+        return String::new();
+    }
+    format!(
+        "import v2.std.cross_tree.import_model {{ {} }}\n",
+        names.join(", ")
+    )
+}
+
+/// Render a dotted module path as a `QualifiedName` (`FreeMonoid<Symbol>`) literal.
+fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, String> {
+    let segments: Vec<&str> = module_path.split('.').filter(|s| !s.is_empty()).collect();
+    if segments.is_empty() {
+        return Err(format!(
+            "module-binding manifest: empty module path (cannot render QualifiedName)"
+        ));
+    }
+    let mut out = String::from("Empty");
+    for segment in segments.iter().rev() {
+        let sym = source_root_ingest_symbol_from_stem(segment);
+        out = format!("Cons {{ head: {sym}, tail: {out} }}");
+    }
+    Ok(out)
+}
+
+fn emit_module_binding_row(row: &(String, String, String)) -> Result<String, String> {
+    let (module_path, rel, root_variant) = row;
+    let qn = emit_module_binding_qualified_name(module_path)?;
+    let artifact_id = source_root_ingest_artifact_id_for_path(rel);
+    Ok(format!(
+        "module_storage_scanned_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  source_root: {root_variant}\n)",
+        dag_manifest_scalar_escape(rel)?
+    ))
+}
+
+fn emit_module_binding_monoid(rows: &[(String, String, String)]) -> Result<String, String> {
+    let mut nodes: Vec<String> = rows
+        .iter()
+        .map(emit_module_binding_row)
+        .collect::<Result<_, _>>()?;
+    let mut out = String::from("Empty");
+    while let Some(head) = nodes.pop() {
+        out = format!("Cons {{\n  head: {head},\n  tail: {out}\n}}");
+    }
+    Ok(out)
+}
+
 pub fn emit_source_root_ingest_manifest(
     path: &Path,
     records: &[SourceRootReadRecord],
