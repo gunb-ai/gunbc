@@ -38,7 +38,7 @@ pub enum CostBasis {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
-    pub time: Rc<Measure<(), S, Nat>>,
+    pub time: Rc<Measure<Quantity, S, Nat>>,
     pub space: ByteSize,
     pub power: Watt,
     pub basis: CostBasis,
