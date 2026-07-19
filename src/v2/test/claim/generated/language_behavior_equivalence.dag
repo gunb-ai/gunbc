@@ -104,6 +104,9 @@ fn lbe_eval_context() -> EvalContext {
       },
       bind: BindInterpreter {
         bind_value: lbe_bind_value
+      },
+      match: MatchInterpreter {
+        choose_arm: runtime_reject_match_arm
       }
     },
     structure_witness: lbe_interpretation_structure_witness()

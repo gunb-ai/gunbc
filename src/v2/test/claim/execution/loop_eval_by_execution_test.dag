@@ -140,6 +140,9 @@ fn loop_interpretation() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: loop_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }

@@ -73,6 +73,9 @@ fn idempotent_operation_eval_context() -> EvalContext {
       },
       bind: BindInterpreter {
         bind_value: idempotent_operation_bind_value
+      },
+      match: MatchInterpreter {
+        choose_arm: runtime_reject_match_arm
       }
     },
     structure_witness: idempotent_operation_interpretation_structure_witness()

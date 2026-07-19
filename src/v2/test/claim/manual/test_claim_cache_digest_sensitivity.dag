@@ -337,6 +337,9 @@ fn tcc_interp_stub_allocate_body() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: v2_eval_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }
@@ -357,6 +360,9 @@ fn tcc_interp_stub_call_body() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: v2_eval_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }

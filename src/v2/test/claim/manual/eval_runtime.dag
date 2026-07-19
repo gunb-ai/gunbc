@@ -166,6 +166,9 @@ fn eval_interpretation_algebra() -> InterpretationAlgebra {
     },
     bind: BindInterpreter {
       bind_value: eval_bind_value
+    },
+    match: MatchInterpreter {
+      choose_arm: runtime_reject_match_arm
     }
   }
 }
