@@ -16104,6 +16104,13 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_remedy_eq",
     "src/v2/lens/enforcement/lens_module_gate.dag::lens_module_gate_verdict_authority_eq",
     "src/v2/lens/vacuity.dag::vacuity_evidence_eq",
+    // 2026-07-19 backfill: #6857 (effect-reach census lens) landed this site unrostered on
+    // main — same masking class as the 2026-07-18 block above (affected-set selection
+    // predict-skipped the corpus-read nfr witness for its landing diff; surfaced here when
+    // the namespace branch's .rs edits re-ran the whole-corpus receipt). Structural equality
+    // (param scrutinee, off-variant `_ => false`), sibling to the *_eq rows above; dissolves
+    // with derived equality from inhabitance (dag/std/algebra, DESIGN §3/§4).
+    "src/v2/lens/effect_reach.dag::sink_kind_eq",
     // 2026-07-13 backfill: #6533 (Wave 2 frontier probe) landed this site unrostered — the nfr
     // witnesses are corpus-read host-fed rows the affected-set selection did not run for that
     // diff, so the red surfaced on the next whole-corpus cold sweep, not on the landing PR
@@ -19137,6 +19144,7 @@ mod module_path_index_tests {
             vec![
                 "dag/test/claim".to_string(),
                 "src/v2/test/claim/manual".to_string(),
+                "src/v2/test/claim/emit".to_string(),
             ],
             "live authority scan-dir value drifted"
         );
