@@ -1,0 +1,16 @@
+# flip-wave feeder re-probe — integration head 3d41f06270 post-#6876 std_dup LANDED
+# CSSL_STD_SEED_LINK=1; empty shim (no lane lib.rs except 03_normalize — not in this roster)
+module	branch_head	cssl_std_seed_link	shim_lib_rel	emit	cargo	first_error	mapped_gate	verdict
+src/v2/compiler/01_tokenize.dag	3d41f06270	1		22 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/04_infer.dag	3d41f06270	1		49 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_resolve::ResolvedTree`	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/program_partition.dag	3d41f06270	1		64 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/05_emit.dag	3d41f06270	1		58 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/05_emit_orchestration.dag	3d41f06270	1		66 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/05_eval.dag	3d41f06270	1		56 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved imports `crate::v2_compiler_infer::InferredFacts`, `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/06_translate.dag	3d41f06270	1		57 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/emit_host.dag	3d41f06270	1		67 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved imports `crate::v2_compiler_infer::InferredFacts`, `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/emit_module.dag	3d41f06270	1		59 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/emit_produced.dag	3d41f06270	1		68 files emitted, 0 diagnostics	refuse	error[E0252]: the name `Optional` is defined multiple times	HARNESS_ARTIFACT_std_dup	HARNESS_ARTIFACT
+src/v2/compiler/emit_semantic_decl.dag	3d41f06270	1		59 files emitted, 0 diagnostics	refuse	error[E0432]: unresolved import `crate::v2_compiler_infer::InferredTree`	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/fold_lowering.dag	3d41f06270	1		41 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace
+src/v2/compiler/self_host.dag	3d41f06270	1		34 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace
