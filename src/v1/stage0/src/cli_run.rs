@@ -13925,8 +13925,9 @@ fn emit_module_binding_source_root_import(rows: &[(String, String, String)]) -> 
 fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, String> {
     let segments: Vec<&str> = module_path.split('.').filter(|s| !s.is_empty()).collect();
     if segments.is_empty() {
-        return Err("module-binding manifest: empty module path (cannot render QualifiedName)"
-            .to_string());
+        return Err(
+            "module-binding manifest: empty module path (cannot render QualifiedName)".to_string(),
+        );
     }
     let rendered: Vec<String> = segments
         .iter()
@@ -14066,7 +14067,8 @@ mod source_root_ingest_manifest_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("host_source_root_ingest_manifest.dag");
 
-        let over: Vec<SourceRootReadRecord> = (0..MANIFEST_INLINE_LIST_MAX + 1).map(sr_record).collect();
+        let over: Vec<SourceRootReadRecord> =
+            (0..MANIFEST_INLINE_LIST_MAX + 1).map(sr_record).collect();
         emit_source_root_ingest_manifest(&path, &over, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
@@ -14078,7 +14080,10 @@ mod source_root_ingest_manifest_tests {
             "elided manifest must report the rows it actually carries (0), got:\n{emitted}"
         );
         assert!(
-            emitted.contains(&format!("ingest_read_count: {}", MANIFEST_INLINE_LIST_MAX + 1)),
+            emitted.contains(&format!(
+                "ingest_read_count: {}",
+                MANIFEST_INLINE_LIST_MAX + 1
+            )),
             "discovered read count must still be reported, got:\n{emitted}"
         );
 
@@ -14087,7 +14092,8 @@ mod source_root_ingest_manifest_tests {
         emit_source_root_ingest_manifest(&path, &under, None).unwrap();
         let emitted = std::fs::read_to_string(&path).unwrap();
         assert!(
-            emitted.contains("coverage_complete: true") && emitted.contains("produced_row_count: 3"),
+            emitted.contains("coverage_complete: true")
+                && emitted.contains("produced_row_count: 3"),
             "inline manifest must report complete coverage over 3 rows, got:\n{emitted}"
         );
 
