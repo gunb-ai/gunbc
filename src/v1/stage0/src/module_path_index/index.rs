@@ -13,6 +13,22 @@ pub struct ParsedModuleBinding {
     pub ident_span: Rc<SourceSpan>,
 }
 
+/// Returns true when the first non-blank, non-comment line starts with `module `.
+/// Used only to distinguish module-less fragments (skip on parse failure) from
+/// broken module declarations (refuse per §5) — not as a binding authority.
+fn module_declaration_line_present(content: &str) -> bool {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("module ") {
+            return true;
+        }
+        if !trimmed.is_empty() && !trimmed.starts_with("//") {
+            break;
+        }
+    }
+    false
+}
+
 /// Parse a `.dag` file's module declaration through the v1 bootstrap parser.
 ///
 /// `Ok(None)` — module-less fragment (no `module` declaration).
@@ -30,11 +46,14 @@ pub fn parse_module_binding(
     let source_indices = Rc::new(indices);
     let result = parse(tokens, source_indices);
     if let Some(err) = result.error.as_ref() {
-        return Err(format!(
-            "parse error in {}: {}",
-            path.display(),
-            diagnostic_to_message(err.diagnostic.clone())
-        ));
+        if module_declaration_line_present(content) {
+            return Err(format!(
+                "parse error in {}: {}",
+                path.display(),
+                diagnostic_to_message(err.diagnostic.clone())
+            ));
+        }
+        return Ok(None);
     }
     let Some(module) = result.module.as_ref() else {
         return Ok(None);

@@ -1031,7 +1031,8 @@ fn collect_parsed_module_path_rows(source_roots: &[String]) -> Vec<ParsedModuleP
 }
 
 fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
-    let mut rows_by_module: HashMap<String, ModuleBindingManifestRow> = HashMap::new();
+    let mut rows_by_module: std::collections::HashMap<String, ModuleBindingManifestRow> =
+        std::collections::HashMap::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let rel_root = repo_relative_dag_path(root);
         let root_variant = source_root_ref_variant_for_root(&rel_root)
