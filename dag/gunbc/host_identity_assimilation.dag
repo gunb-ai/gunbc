@@ -5,6 +5,7 @@ import std.disposition { Disposition, Terminal }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { content_hash_atom }
 import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
 import extdeps.dns.domain_name { DnsLabel }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host }
@@ -290,7 +291,7 @@ fn host_identity_assimilate_exit(receipt: HostIdentityAssimilationReceipt?) -> P
   match receipt {
     Present { value: r } =>
       if host_identity_assimilation_receipt_is_valid(receipt: r) {
-        let announced = shell.Exec.Run(script: concat("echo ", host_identity_assimilation_receipt_message(receipt: r)))
+        let announced = shell.Exec.Run(script: transport_script_from_body(body: concat("echo ", host_identity_assimilation_receipt_message(receipt: r))))
         ExitSuccess
       } else {
         exit_failure(

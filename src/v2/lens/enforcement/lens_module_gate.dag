@@ -8,6 +8,7 @@ import v2.lens.registry {
   ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
   DocReachability, DuplicateComputation, EffectReach, ExtdepsExternalAuthority, ExtdepsShapeTransportPolicy,
   FactCardinality, FactDensity, FnFamily, Grounding, HostLanguageTransportScript,
+  MetaExecConfinement,
   IdenticalVariantPayload, InertCarrier, InertLens, IntentLinearity, InterfaceSummary,
   LanguagesConsumerCensus, LayeringImports, LeafModelVerification, LiveReadClassification,
   MachineShape, MockTotality, MutationAdequacy, NonFoldResidue,
@@ -437,6 +438,13 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       projection: ProjectionImportGraph,
       verdict_authority: VerdictLensVerdict,
       remedy: RemedyDelete,
+      admission: GenuinelyNewInvariant
+    }
+    MetaExecConfinement => LensInvariantSurface {
+      module: module,
+      projection: ProjectionModuleGraph,
+      verdict_authority: VerdictFidelityVerdict,
+      remedy: RemedyReport,
       admission: GenuinelyNewInvariant
     }
     MockTotality => LensInvariantSurface {

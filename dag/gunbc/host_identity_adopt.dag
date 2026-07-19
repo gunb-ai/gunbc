@@ -6,6 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.content_hash { content_hash_atom }
 import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
@@ -87,7 +88,7 @@ fn host_identity_adopt_model_hash() -> ContentHash {
 }
 
 fn host_identity_observed_probed_at() -> NonEmptyStr {
-  let result = shell.Exec.Run(script: "date -Iseconds")
+  let result = shell.Exec.Run(script: transport_script_from_body(body: "date -Iseconds"))
   if result.success {
     let line = trim(result.stdout)
     if line == "" { "unknown" as NonEmptyStr } else { line as NonEmptyStr }
@@ -178,7 +179,7 @@ fn host_identity_adopt_receipt_message(receipt: HostIdentityAdoptReceipt) -> Str
 
 fn host_identity_adopt_exit(receipt: HostIdentityAdoptReceipt) -> ProcessExit {
   if host_identity_adopt_receipt_is_valid(receipt: receipt) {
-    let announced = shell.Exec.Run(script: concat("echo ", host_identity_adopt_receipt_message(receipt: receipt)))
+    let announced = shell.Exec.Run(script: transport_script_from_body(body: concat("echo ", host_identity_adopt_receipt_message(receipt: receipt))))
     ExitSuccess
   } else {
     exit_failure(

@@ -19000,6 +19000,29 @@ pub fn transport_script_position_facts_for_path(
 }
 
 #[cfg(test)]
+mod transport_script_peel_tests {
+    use super::*;
+
+    #[test]
+    fn bare_literal_plant_detects_one_violation_through_transport_script_from_body() {
+        let facts = transport_script_position_facts_for_path(
+            "src/v2/test/fixture/transport_script_scan/bare_string_literal/plant.dag".to_string(),
+        );
+        assert_eq!(facts.len(), 1, "facts: {:?}", facts);
+        assert_eq!(facts[0].shape, "BareStringLiteral");
+    }
+
+    #[test]
+    fn let_bound_literal_plant_detects_one_violation_through_transport_script_from_body() {
+        let facts = transport_script_position_facts_for_path(
+            "src/v2/test/fixture/transport_script_scan/let_bound_literal/plant.dag".to_string(),
+        );
+        assert_eq!(facts.len(), 1, "facts: {:?}", facts);
+        assert_eq!(facts[0].shape, "LetBoundStringLiteral");
+    }
+}
+
+#[cfg(test)]
 mod module_path_index_tests {
     use super::*;
 

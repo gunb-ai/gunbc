@@ -349,6 +349,70 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/host_language_transport_script/lens_unit/transport_script_position_test.dag",
+      check_fns: ["transport_script_position_witnesses"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/host_language_transport_script/scanner/bare_string_literal_test.dag",
+      check_fns: ["scanner_bare_string_literal_red_detects_holds"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/host_language_transport_script/scanner/let_bound_literal_test.dag",
+      check_fns: ["scanner_let_bound_literal_red_detects_holds"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/host_language_transport_script/corpus/facts_readback_verdict_perturb_test.dag",
+      check_fns: ["transport_script_facts_readback_verdict_perturb_witness"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/meta_exec_confinement/lens_unit/discriminators_test.dag",
+      check_fns: [
+        "fresh_non_edge_import_is_leak_holds",
+        "realization_edge_import_is_not_leak_holds",
+        "rostered_consumer_import_is_not_leak_holds",
+        "de_rostered_consumer_import_is_leak_holds",
+        "non_exec_import_is_not_leak_holds",
+        "roster_stale_entry_red_holds"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/meta_exec_confinement/scanner/planted_leak_test.dag",
+      check_fns: [
+        "scanner_planted_meta_exec_leak_detected_holds",
+        "scanner_clean_tree_meta_exec_holds_on_rostered_corpus"
+      ],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "dag/test/claim/orchestration_if_emit_test.dag",
       check_fns: ["orch_if_band_holds"],
       kind: CorpusWitnessKind,
