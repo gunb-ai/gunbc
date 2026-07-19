@@ -43,7 +43,7 @@ import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
-  env_with_type_variable_bindings, variant_arm_type_projection
+  env_with_type_variable_bindings
 }
 
 fn is_unit_variant_node(variant: Node) -> Bool {
@@ -569,14 +569,7 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
       NodeResolveResult { resolved: n, diagnostics: [] }
     } else {
       match lookup_type_for(env: env, node: n) {
-        Present { value: resolved_binding } =>
-          let leaf_name = authored_name(env: env, node: n)
-          let resolved = if (resolved_binding.connective == Disj && authored_name(env: env, node: resolved_binding) != leaf_name) {
-            match variant_arm_type_projection(env: env, owner: resolved_binding, name: leaf_name) {
-              Present { value: arm } => arm
-              Absent => resolved_binding
-            }
-          } else { resolved_binding }
+        Present { value: resolved } =>
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
               Present { value: Resolved { node: target } } =>

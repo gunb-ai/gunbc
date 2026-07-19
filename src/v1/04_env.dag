@@ -715,7 +715,15 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
 
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   match lookup_binding_by_name(env: env, name: name) {
-    Present { value: binding } => Present { value: binding.resolved }
+    Present { value: binding } =>
+      match contains(name, ".") || binding_declares_name(binding: binding, name: name, source_indices: env.source_indices) {
+        true => Present { value: binding.resolved }
+        false =>
+          match variant_arm_type_projection(env: env, owner: binding.resolved, name: name) {
+            Present { value: arm } => Present { value: arm }
+            Absent => Present { value: binding.resolved }
+          }
+      }
     Absent => Absent
   }
 }
@@ -741,7 +749,20 @@ fn authored_name(env: TypeEnv, node: Node) -> String {
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
   match node.ident {
-    Present { value: id } => lookup_type(env: env, ident: id)
+    Present { value: id } =>
+      match lookup_type(env: env, ident: id) {
+        Present { value: resolved } =>
+          let name = authored_name(env: env, node: node)
+          match resolved.connective == Disj && authored_name_at(source_indices: env.source_indices, node: resolved) != name {
+            true =>
+              match variant_arm_type_projection(env: env, owner: resolved, name: name) {
+                Present { value: arm } => Present { value: arm }
+                Absent => Present { value: resolved }
+              }
+            false => Present { value: resolved }
+          }
+        Absent => Absent
+      }
     Absent => lookup_type_by_name(env: env, name: authored_name(env: env, node: node))
   }
 }
