@@ -288,7 +288,7 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
     /// Sources included in the NAME CENSUS but not compiled (fill = whole tree;

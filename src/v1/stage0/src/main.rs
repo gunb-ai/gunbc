@@ -453,7 +453,7 @@ fn main() {
 
             let pipeline_options = v1_compiler_compile::CompilePipelineOptions {
                 analyze_complexity: false,
-                census_only_sources: Rc::new(census_only_sources),
+                census_only_sources: Rc::new(census_only_sources.into()),
             };
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources_with_options(
