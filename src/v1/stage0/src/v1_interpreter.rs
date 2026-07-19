@@ -1448,6 +1448,11 @@ impl InterpContext {
             item_registry: graph.item_registry.clone(),
             source_indices,
             fn_nodes,
+            qualified_fns,
+            node_module,
+            module_envs,
+            module_stack: std::cell::RefCell::new(Vec::new()),
+            unqualified_dispatch: std::cell::Cell::new(0),
             service_ops,
             execution_mode,
             fixture_store,
@@ -1544,6 +1549,78 @@ impl InterpContext {
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
         self.fn_nodes.get(name)
+    }
+
+    /// Which module does `name` resolve to, called from inside `calling_module`?
+    ///
+    /// This is the same nearest-wins walk typecheck performed (`lookup_resolved_sig`): own
+    /// declarations first, then the imported modules' envs. We re-walk it here rather than
+    /// re-deriving a winner, because the env chain IS the frontend's resolution — it is carried
+    /// on `TypedModule.func_env` and was simply never consulted at runtime.
+    fn resolve_owner(&self, calling_module: &str, name: &str) -> Option<Rc<str>> {
+        let env = self.module_envs.get(calling_module)?;
+        if env.local.contains_key(name) {
+            return Some(Rc::from(env.name.as_str()));
+        }
+        env.parents
+            .iter()
+            .find(|p| p.local.contains_key(name))
+            .map(|p| Rc::from(p.name.as_str()))
+    }
+
+    /// Dispatch by qualified identity: resolve `name` in the module whose body is executing,
+    /// then look the winner up by `(owner, name)` — a key that cannot collide.
+    fn lookup_fn_qualified(&self, name: &str) -> Option<&Rc<Node>> {
+        let key = {
+            let stack = self.module_stack.borrow();
+            let owner = self.resolve_owner(stack.last()?, name)?;
+            qualified_key(&owner, name)
+        };
+        self.qualified_fns.get(&key)
+    }
+
+    /// Push the module owning `fn_node` for the duration of its body's evaluation, so nested
+    /// calls resolve in the callee's module (which is their calling module).
+    fn enter_module_of(&self, fn_node: &Rc<Node>) -> ModuleGuard<'_> {
+        match self.node_module.get(&(Rc::as_ptr(fn_node) as usize)) {
+            Some(m) => {
+                self.module_stack.borrow_mut().push(m.clone());
+                ModuleGuard {
+                    ctx: self,
+                    pushed: true,
+                }
+            }
+            None => ModuleGuard {
+                ctx: self,
+                pushed: false,
+            },
+        }
+    }
+
+    /// Calls that could not be dispatched by qualified identity and fell back to the bare map.
+    pub fn unqualified_dispatch_count(&self) -> u64 {
+        self.unqualified_dispatch.get()
+    }
+}
+
+fn qualified_key(module: &str, name: &str) -> String {
+    let mut k = String::with_capacity(module.len() + name.len() + 1);
+    k.push_str(module);
+    k.push('\u{1}');
+    k.push_str(name);
+    k
+}
+
+pub(crate) struct ModuleGuard<'a> {
+    ctx: &'a InterpContext,
+    pushed: bool,
+}
+
+impl Drop for ModuleGuard<'_> {
+    fn drop(&mut self) {
+        if self.pushed {
+            self.ctx.module_stack.borrow_mut().pop();
+        }
     }
 }
 
@@ -1700,6 +1777,8 @@ fn call_function_inner(
         })?;
 
     let _dag_fn_guard = DagFnGuard::enter(fn_node.name.as_str());
+    // Nested calls inside this body resolve against THIS function's module.
+    let _module_guard = ctx.enter_module_of(fn_node);
 
     let cached_params = {
         let key = Rc::as_ptr(fn_node) as usize;
@@ -3025,7 +3104,14 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(result);
     }
 
-    let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
+    // Qualified identity first: the frontend already decided which declaration this name means
+    // in the calling module. Only when that cannot name an owner do we fall back to the bare
+    // last-insert-wins map — counted, so the remaining fork surface is observable, never silent.
+    let fn_node = if let Some(node) = ctx.lookup_fn_qualified(&func_name) {
+        node.clone()
+    } else if let Some(node) = ctx.lookup_fn(&func_name) {
+        ctx.unqualified_dispatch
+            .set(ctx.unqualified_dispatch.get() + 1);
         node.clone()
     } else {
         match env.lookup(ctx.sym(&func_name)) {
