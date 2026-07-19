@@ -3842,7 +3842,11 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         }
         if peek < bytes.len() && bytes[peek] == b':' {
             out.bound.insert(name.to_string());
-            prev_token = Some(name);
+            // A key is not a binder-keyword context: `type: User` must leave
+            // `User` a collectable reference — carrying `type` forward as
+            // prev_token made the binder-keyword rule swallow the VALUE after
+            // any key that happens to spell a keyword.
+            prev_token = None;
             continue;
         }
         if i < bytes.len() && bytes[i] == b'(' {
