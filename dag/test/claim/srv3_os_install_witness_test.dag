@@ -1,38 +1,38 @@
 module test.claim.srv3_os_install
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
-  match extdeps.provisioning.network_boot.network_uefi_bootloader_artifact(arch: gunbc.os_install.srv3_os_install_plan.host_architecture) {
+  match network_uefi_bootloader_artifact(arch: srv3_os_install_plan.host_architecture) {
     Present { value: a } => a == "grubnetaa64.efi"
     Absent => false
   }
-    && match extdeps.provisioning.network_boot.network_uefi_bootloader_artifact(arch: X86_64) {
+    && match network_uefi_bootloader_artifact(arch: X86_64) {
       Present { value: x } => x == "grubnetx64.efi"
       Absent => false
     }
-    && match extdeps.provisioning.network_boot.network_uefi_bootloader_artifact(arch: Riscv64) {
+    && match network_uefi_bootloader_artifact(arch: Riscv64) {
       Present { value: _ } => false
       Absent => true
     }
 }
 
 test fn srv3_pxe_chain_is_uefi_http_boot_when_modeled() -> Bool {
-  match gunbc.os_install.srv3_pxe_network_boot_chain.boot_mode {
+  match srv3_pxe_network_boot_chain.boot_mode {
     UefiHttpBoot => true
     LegacyBiosPxe { tftp_root: _ } => false
-    extdeps.provisioning.network_boot.UefiPxe { tftp_root: _ } => false
+    UefiPxe { tftp_root: _ } => false
   }
 }
 
 test fn srv3_survey_forces_proxy_dhcp() -> Bool {
-  match gunbc.os_install.srv3_pxe_network_boot_chain.dhcp_direction {
+  match srv3_pxe_network_boot_chain.dhcp_direction {
     ProxyDhcp => true
     NativeDhcpBootOptions => false
   }
-    && match gunbc.os_install.survey_implied_dhcp_direction(
-      survey: gunbc.os_install.LanInstallInfraSurvey {
+    && match survey_implied_dhcp_direction(
+      survey: LanInstallInfraSurvey {
         existing_dhcp_configurable: true,
         dedicated_install_server_present: false,
       }
@@ -43,31 +43,31 @@ test fn srv3_survey_forces_proxy_dhcp() -> Bool {
 }
 
 test fn srv3_plan_is_solver_derived_nbd_proxy_virtual_media() -> Bool {
-  match gunbc.os_install_mechanism.srv3_install_mechanism {
+  match srv3_install_mechanism {
     NbdProxyVirtualMediaInstall => true
     _ => false
   }
-    && match gunbc.os_install.srv3_os_install_plan.delivery {
-      gunbc.os_install.VirtualMediaIso { autoinstall: _ } => true
-      gunbc.os_install.NetworkBoot { delivery: _ } => false
+    && match srv3_os_install_plan.delivery {
+      VirtualMediaIso { autoinstall: _ } => true
+      NetworkBoot { delivery: _ } => false
     }
-    && gunbc.os_install.fleet_install_server_specs.length() == 0
+    && fleet_install_server_specs.length() == 0
 }
 
 test fn srv3_plan_targets_ubuntu_2404_aarch64_nbd_proxy_boot_once() -> Bool {
-  match gunbc.os_install.srv3_os_install_plan.os_target {
-    std.os.types.UbuntuOs { distro: d } =>
+  match srv3_os_install_plan.os_target {
+    UbuntuOs { distro: d } =>
       match d {
         NobleNumbat2404Lts => true
       }
-    std.os.types.WindowsOs { distro: _ } => false
-    std.os.types.MacosOs { distro: _ } => false
+    WindowsOs { distro: _ } => false
+    MacosOs { distro: _ } => false
   }
-    && extdeps.bmc.types.redfish_boot_target_wire(t: gunbc.os_install.srv3_os_install_plan.bmc_boot_target) == "Cd"
-    && extdeps.bmc.types.redfish_boot_override_enabled_wire(e: gunbc.os_install.srv3_os_install_plan.bmc_boot_enabled) == "Once"
-    && gunbc.os_install.srv3_os_install_plan_autoinstall(plan: gunbc.os_install.srv3_os_install_plan).fully_automated
-    && gunbc.os_install.srv3_os_install_plan_autoinstall(plan: gunbc.os_install.srv3_os_install_plan).autoinstall_version == 1
-    && match gunbc.os_install.srv3_os_install_plan_autoinstall(plan: gunbc.os_install.srv3_os_install_plan).delivery {
+    && redfish_boot_target_wire(t: srv3_os_install_plan.bmc_boot_target) == "Cd"
+    && redfish_boot_override_enabled_wire(e: srv3_os_install_plan.bmc_boot_enabled) == "Once"
+    && srv3_os_install_plan_autoinstall(plan: srv3_os_install_plan).fully_automated
+    && srv3_os_install_plan_autoinstall(plan: srv3_os_install_plan).autoinstall_version == 1
+    && match srv3_os_install_plan_autoinstall(plan: srv3_os_install_plan).delivery {
       NoCloudNet { seed_url: _ } => true
       NoCloudLocal => false
     }

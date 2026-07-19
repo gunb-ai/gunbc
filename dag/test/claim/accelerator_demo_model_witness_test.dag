@@ -5,11 +5,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 
 fn witness_integer_contract_maps_to_lossless_fidelity() -> Bool {
   match extdeps.communication.numerical_fidelity.lowering_fidelity_verdict_for_contract(contract: std.numerical_contract.integer_exact_contract()) {
-    extdeps.communication.numerical_fidelity.LoweringAccepted { fidelity: f } => match f {
+    LoweringAccepted { fidelity: f } => match f {
       Lossless => true
       Lossy => false
     }
-    extdeps.communication.numerical_fidelity.LoweringRefused { reason: _ } => false
+    LoweringRefused { reason: _ } => false
   }
 }
 

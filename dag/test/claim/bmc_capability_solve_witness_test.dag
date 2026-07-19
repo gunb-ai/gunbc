@@ -1,33 +1,33 @@
 module test.claim.bmc_capability_solve
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_capabilities_are_grounded() -> Bool {
-  extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: extdeps.bmc.capability.CapabilityPowerControl)
-    && extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: extdeps.bmc.capability.CapabilityBootSourceOverride)
-    && extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: extdeps.bmc.capability.CapabilityAccountManagement)
-    && extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: extdeps.bmc.capability.CapabilityFirmwareUpdate)
-    && extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: extdeps.bmc.capability.CapabilityVirtualMedia) == false
-    && extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia)
-    && extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: extdeps.bmc.capability.CapabilityBiosAttributeConfig) == false
+  firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityPowerControl)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityBootSourceOverride)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityAccountManagement)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityFirmwareUpdate)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityBiosAttributeConfig) == false
 }
 
 test fn altrad8ud_firmware_catalog_is_board_grounded() -> Bool {
-  std.types.list_length(items: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == 2
-    && extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia)
-    && extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: extdeps.bmc.capability.CapabilityFirmwareUpdate)
-    && extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: extdeps.bmc.capability.CapabilityVirtualMedia) == false
-    && extdeps.bmc.capability.firmware_has_capability(row: extdeps.boards.asrock_rack.asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia) == false
-    && extdeps.bmc.capability.catalog_has_vm_capable_firmware(catalog: extdeps.boards.asrock_rack.asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == false
+  list_length(items: asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == 2
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_2_07_00_capabilities, cap: CapabilityNbdProxyVirtualMedia)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityFirmwareUpdate)
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityVirtualMedia) == false
+    && firmware_has_capability(row: asrock_altrad8ud_openbmc_3_06_00_capabilities, cap: CapabilityNbdProxyVirtualMedia) == false
+    && catalog_has_vm_capable_firmware(catalog: asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog) == false
 }
 
 test fn catalog_has_no_redfish_vm_capable_firmware_today() -> Bool {
-  extdeps.bmc.capability.catalog_has_vm_capable_firmware(catalog: gunbc.os_install_mechanism.srv3_firmware_catalog) == false
+  catalog_has_vm_capable_firmware(catalog: srv3_firmware_catalog) == false
 }
 
 test fn srv3_install_mechanism_is_nbd_proxy_after_dry_run() -> Bool {
-  match gunbc.os_install_mechanism.srv3_install_mechanism {
+  match srv3_install_mechanism {
     NbdProxyVirtualMediaInstall => true
     PxeHttpInstall => false
     VirtualMediaInstall => false
@@ -36,18 +36,18 @@ test fn srv3_install_mechanism_is_nbd_proxy_after_dry_run() -> Bool {
 }
 
 test fn nbd_proxy_vm_capable_row_solves() -> Bool {
-  let nbd_proxy_only_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
-    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
+  let nbd_proxy_only_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
       family: OpenBmc,
       version: "2.07.00",
     },
     capabilities: [
-      extdeps.bmc.capability.CapabilityPowerControl,
-      extdeps.bmc.capability.CapabilityBootSourceOverride,
-      extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia,
+      CapabilityPowerControl,
+      CapabilityBootSourceOverride,
+      CapabilityNbdProxyVirtualMedia,
     ],
   }
-  match gunbc.os_install_mechanism.solve_install_mechanism(current: nbd_proxy_only_row, catalog: [nbd_proxy_only_row]) {
+  match solve_install_mechanism(current: nbd_proxy_only_row, catalog: [nbd_proxy_only_row]) {
     NbdProxyVirtualMediaInstall => true
     VirtualMediaInstall => false
     PxeHttpInstall => false
@@ -56,18 +56,18 @@ test fn nbd_proxy_vm_capable_row_solves() -> Bool {
 }
 
 test fn redfish_vm_preferred_over_nbd_proxy() -> Bool {
-  let both_vm_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
-    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
+  let both_vm_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
       family: OpenBmc,
       version: "4.00.00",
     },
     capabilities: [
-      extdeps.bmc.capability.CapabilityPowerControl,
-      extdeps.bmc.capability.CapabilityVirtualMedia,
-      extdeps.bmc.capability.CapabilityNbdProxyVirtualMedia,
+      CapabilityPowerControl,
+      CapabilityVirtualMedia,
+      CapabilityNbdProxyVirtualMedia,
     ],
   }
-  match gunbc.os_install_mechanism.solve_install_mechanism(current: both_vm_row, catalog: [both_vm_row]) {
+  match solve_install_mechanism(current: both_vm_row, catalog: [both_vm_row]) {
     VirtualMediaInstall => true
     NbdProxyVirtualMediaInstall => false
     PxeHttpInstall => false
@@ -76,33 +76,33 @@ test fn redfish_vm_preferred_over_nbd_proxy() -> Bool {
 }
 
 test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
-  let update_only_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
-    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
+  let update_only_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
       family: OpenBmc,
       version: "1.00.00",
     },
     capabilities: [
-      extdeps.bmc.capability.CapabilityPowerControl,
-      extdeps.bmc.capability.CapabilityBootSourceOverride,
-      extdeps.bmc.capability.CapabilityAccountManagement,
-      extdeps.bmc.capability.CapabilityFirmwareUpdate,
+      CapabilityPowerControl,
+      CapabilityBootSourceOverride,
+      CapabilityAccountManagement,
+      CapabilityFirmwareUpdate,
     ],
   }
-  let vm_capable_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
-    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
+  let vm_capable_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
       family: OpenBmc,
       version: "3.00.00",
     },
     capabilities: [
-      extdeps.bmc.capability.CapabilityPowerControl,
-      extdeps.bmc.capability.CapabilityBootSourceOverride,
-      extdeps.bmc.capability.CapabilityAccountManagement,
-      extdeps.bmc.capability.CapabilityFirmwareUpdate,
-      extdeps.bmc.capability.CapabilityVirtualMedia,
+      CapabilityPowerControl,
+      CapabilityBootSourceOverride,
+      CapabilityAccountManagement,
+      CapabilityFirmwareUpdate,
+      CapabilityVirtualMedia,
     ],
   }
   let extended_catalog = [update_only_row, vm_capable_row]
-  match gunbc.os_install_mechanism.solve_install_mechanism(current: update_only_row, catalog: extended_catalog) {
+  match solve_install_mechanism(current: update_only_row, catalog: extended_catalog) {
     FirmwareUpdateThenVirtualMedia => true
     VirtualMediaInstall => false
     NbdProxyVirtualMediaInstall => false
@@ -111,17 +111,17 @@ test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
 }
 
 test fn update_only_row_without_vm_catalog_falls_to_pxe() -> Bool {
-  let update_only_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
-    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
+  let update_only_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
       family: OpenBmc,
       version: "1.00.00",
     },
     capabilities: [
-      extdeps.bmc.capability.CapabilityPowerControl,
-      extdeps.bmc.capability.CapabilityFirmwareUpdate,
+      CapabilityPowerControl,
+      CapabilityFirmwareUpdate,
     ],
   }
-  match gunbc.os_install_mechanism.solve_install_mechanism(current: update_only_row, catalog: [update_only_row]) {
+  match solve_install_mechanism(current: update_only_row, catalog: [update_only_row]) {
     PxeHttpInstall => true
     VirtualMediaInstall => false
     NbdProxyVirtualMediaInstall => false
@@ -130,18 +130,18 @@ test fn update_only_row_without_vm_catalog_falls_to_pxe() -> Bool {
 }
 
 test fn node_with_virtual_media_solves_direct() -> Bool {
-  let vm_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
-    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
+  let vm_row = BmcFirmwareCapabilityRow {
+    firmware: BmcFirmwareVersion {
       family: OpenBmc,
       version: "3.00.00",
     },
     capabilities: [
-      extdeps.bmc.capability.CapabilityPowerControl,
-      extdeps.bmc.capability.CapabilityBootSourceOverride,
-      extdeps.bmc.capability.CapabilityVirtualMedia,
+      CapabilityPowerControl,
+      CapabilityBootSourceOverride,
+      CapabilityVirtualMedia,
     ],
   }
-  match gunbc.os_install_mechanism.solve_install_mechanism(current: vm_row, catalog: [vm_row]) {
+  match solve_install_mechanism(current: vm_row, catalog: [vm_row]) {
     VirtualMediaInstall => true
     NbdProxyVirtualMediaInstall => false
     FirmwareUpdateThenVirtualMedia => false

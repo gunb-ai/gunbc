@@ -1,17 +1,17 @@
 module test.claim.host_effect_apply_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn host_os_target() -> gunbc.host_effect.NodeControlPlane {
-  HostOs { node: gunbc.fleet_intent.srv1_host }
+fn host_os_target() -> NodeControlPlane {
+  HostOs { node: srv1_host }
 }
 
-fn bmc_target() -> gunbc.host_effect.NodeControlPlane {
-  gunbc.host_effect.BmcController { node: gunbc.fleet_intent.srv1_host }
+fn bmc_target() -> NodeControlPlane {
+  BmcController { node: srv1_host }
 }
 
-fn directive_is_settled(d: gunbc.host_effect_realize.ConvergeDirective) -> Bool {
+fn directive_is_settled(d: ConvergeDirective) -> Bool {
   match d {
     Settled => true
     ReDrive => false
@@ -19,7 +19,7 @@ fn directive_is_settled(d: gunbc.host_effect_realize.ConvergeDirective) -> Bool 
   }
 }
 
-fn directive_is_redrive(d: gunbc.host_effect_realize.ConvergeDirective) -> Bool {
+fn directive_is_redrive(d: ConvergeDirective) -> Bool {
   match d {
     Settled => false
     ReDrive => true
@@ -27,7 +27,7 @@ fn directive_is_redrive(d: gunbc.host_effect_realize.ConvergeDirective) -> Bool 
   }
 }
 
-fn directive_is_refused(d: gunbc.host_effect_realize.ConvergeDirective) -> Bool {
+fn directive_is_refused(d: ConvergeDirective) -> Bool {
   match d {
     Settled => false
     ReDrive => false
@@ -36,112 +36,112 @@ fn directive_is_refused(d: gunbc.host_effect_realize.ConvergeDirective) -> Bool 
 }
 
 fn witness_shell_on_host_success_converges() -> Bool {
-  std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_realize.host_effect_apply(
+  reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "true" },
-    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
 
 fn witness_shell_on_host_failure_fails_closed() -> Bool {
-  !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_realize.host_effect_apply(
+  !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "exit 1" },
-    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
 
 fn witness_redfish_on_bmc_unimplemented_fails_closed() -> Bool {
-  !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_realize.host_effect_apply(
+  !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
-    effect: gunbc.host_effect.RedfishAction { action: extdeps.bmc.types.GetSystem },
-    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    effect: RedfishAction { action: GetSystem },
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
 
 fn witness_redfish_on_hostos_typed_mismatch() -> Bool {
-  !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_realize.host_effect_apply(
+  !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
-    effect: gunbc.host_effect.RedfishAction { action: extdeps.bmc.types.GetSystem },
-    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    effect: RedfishAction { action: GetSystem },
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
 
 fn witness_shell_on_bmc_typed_mismatch() -> Bool {
-  !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_realize.host_effect_apply(
+  !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
     effect: ShellCommand { script: "true" },
-    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
 
 fn witness_converge_policy_redrives_not_converged() -> Bool {
-  directive_is_redrive(d: gunbc.host_effect_realize.host_effect_drive_directive(r: gunbc.host_effect_realize.host_effect_apply(
+  directive_is_redrive(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "exit 1" },
-    evidence: gunbc.host_effect.host_effect_converge_loop_evidence,
+    evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   )))
 }
 
 fn witness_oneshot_policy_terminal_not_converged() -> Bool {
-  directive_is_settled(d: gunbc.host_effect_realize.host_effect_drive_directive(r: gunbc.host_effect_realize.host_effect_apply(
+  directive_is_settled(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "exit 1" },
-    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   )))
 }
 
 fn witness_incompatible_is_refused_terminal() -> Bool {
-  directive_is_refused(d: gunbc.host_effect_realize.host_effect_drive_directive(r: gunbc.host_effect_realize.host_effect_apply(
+  directive_is_refused(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
-    effect: gunbc.host_effect.RedfishAction { action: extdeps.bmc.types.GetSystem },
-    evidence: gunbc.host_effect.host_effect_converge_loop_evidence,
+    effect: RedfishAction { action: GetSystem },
+    evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   )))
 }
 
 fn witness_converged_is_settled() -> Bool {
-  directive_is_settled(d: gunbc.host_effect_realize.host_effect_drive_directive(r: gunbc.host_effect_realize.host_effect_apply(
+  directive_is_settled(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "true" },
-    evidence: gunbc.host_effect.host_effect_converge_loop_evidence,
+    evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   )))
 }
 
 fn witness_ssh_shell_unreachable_fails_closed() -> Bool {
-  !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_realize.host_effect_apply(
+  !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "true" },
-    evidence: gunbc.host_effect.host_effect_identity_evidence,
-    transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as std.types.NonEmptyStr }
+    evidence: host_effect_identity_evidence,
+    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
   ))
 }
 
 fn witness_ssh_empty_script_fails_closed() -> Bool {
-  !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_realize.host_effect_apply(
+  !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "" },
-    evidence: gunbc.host_effect.host_effect_identity_evidence,
-    transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as std.types.NonEmptyStr }
+    evidence: host_effect_identity_evidence,
+    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
   ))
 }
 
 fn witness_shell_failure_surfaces_captured_stdout() -> Bool {
-  match gunbc.host_effect_realize.host_effect_apply(
+  match host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "echo host-effect-preflight-marker && exit 1" },
-    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ) {
-    std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
+    NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "host-effect-preflight-marker")
         && string_contains(s: why, pattern: "--- stdout ---")
     Converged { evidence: _, applied: _ } => false
@@ -149,75 +149,75 @@ fn witness_shell_failure_surfaces_captured_stdout() -> Bool {
 }
 
 fn witness_identity_evidence_derives_oneshot_drive() -> Bool {
-  gunbc.host_effect.host_effect_drive_from_evidence(evidence: gunbc.host_effect.host_effect_identity_evidence) == OneShot
+  host_effect_drive_from_evidence(evidence: host_effect_identity_evidence) == OneShot
 }
 
 fn witness_converge_loop_evidence_derives_converge_drive() -> Bool {
-  gunbc.host_effect.host_effect_drive_from_evidence(evidence: gunbc.host_effect.host_effect_converge_loop_evidence) == ConvergeLoop
+  host_effect_drive_from_evidence(evidence: host_effect_converge_loop_evidence) == ConvergeLoop
 }
 
-data witness_arbitrary_non_idempotent_evidence: IdempotencyEvidence = std.effects.NonIdempotent {
-  shape: std.effects.AppendEffect,
+data witness_arbitrary_non_idempotent_evidence: IdempotencyEvidence = NonIdempotent {
+  shape: AppendEffect,
   reason: "breaking side effect — not a converge-loop authorization",
 }
 
 fn witness_arbitrary_non_idempotent_derives_oneshot_not_redrive() -> Bool {
-  gunbc.host_effect.host_effect_drive_from_evidence(evidence: witness_arbitrary_non_idempotent_evidence) == OneShot
+  host_effect_drive_from_evidence(evidence: witness_arbitrary_non_idempotent_evidence) == OneShot
 }
 
 fn witness_lattice_breaking_shape_derives_oneshot_not_redrive() -> Bool {
-  gunbc.host_effect.host_effect_drive_from_evidence(evidence: std.effects.LatticeEffect { shape: std.effects.AppendEffect }) == OneShot
+  host_effect_drive_from_evidence(evidence: LatticeEffect { shape: AppendEffect }) == OneShot
 }
 
-fn fixture_srv1_host_converge() -> gunbc.host_converge.HostConverge {
-  gunbc.host_converge.HostConverge {
-    identity: gunbc.fleet_intent.srv1_host.identity,
+fn fixture_srv1_host_converge() -> HostConverge {
+  HostConverge {
+    identity: srv1_host.identity,
     knobs: [
-      gunbc.host_converge.ConvergeKnob {
-        slice: gunbc.host_converge.GunbcSlice,
+      ConvergeKnob {
+        slice: GunbcSlice,
         name: "pinned_tree_sha",
-        desired: gunbc.host_converge.gunbc_pinned_tree_desired_label,
-        target: gunbc.host_converge.GunbcPinnedTree {
-          gunbc_root_env_key: gunbc.host_converge.gunbc_root_env_key,
-          gunbc_root_path: gunbc.host_converge.gunbc_host_gunbc_root_path,
-          dag_root: gunbc.host_converge.DeferToSubmodule { submodule_path: gunbc.host_converge.gunbc_dag_root_submodule_path },
-          ctrl_checkout_path: gunbc.host_converge.gunbc_host_ctrl_checkout_path,
-          binary: gunbc.host_converge.gunbc_pinned_binary_provenance_policy(),
-          pin_read_script: gunbc.host_converge.gunbc_ctrl_read_pin_script,
-          green_place_marker: gunbc.host_converge.gunbc_green_place_marker_spec(),
-          live_apply: gunbc.host_converge.gunbc_dashboard_live_apply_policy(),
+        desired: gunbc_pinned_tree_desired_label,
+        target: GunbcPinnedTree {
+          gunbc_root_env_key: gunbc_root_env_key,
+          gunbc_root_path: gunbc_host_gunbc_root_path,
+          dag_root: DeferToSubmodule { submodule_path: gunbc_dag_root_submodule_path },
+          ctrl_checkout_path: gunbc_host_ctrl_checkout_path,
+          binary: gunbc_pinned_binary_provenance_policy(),
+          pin_read_script: gunbc_ctrl_read_pin_script,
+          green_place_marker: gunbc_green_place_marker_spec(),
+          live_apply: gunbc_dashboard_live_apply_policy(),
         },
-        apply_mode: gunbc.host_converge.FreshStandup,
-        no_op: gunbc.host_converge.BlindApply,
+        apply_mode: FreshStandup,
+        no_op: BlindApply,
       }
     ],
-    membership: gunbc.host_converge.NoMembershipProbe,
+    membership: NoMembershipProbe,
   }
 }
 
 fn witness_converge_plan_fail_closed_on_knob_frontier() -> Bool {
-  !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_realize.host_effect_apply(
+  !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
-    effect: gunbc.host_effect.ConvergePlan { policy: fixture_srv1_host_converge() },
-    evidence: gunbc.host_effect.host_effect_converge_loop_evidence,
+    effect: ConvergePlan { policy: fixture_srv1_host_converge() },
+    evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   ))
 }
 
 fn witness_converge_plan_on_bmc_typed_mismatch() -> Bool {
-  !std.realization_reconcile.reconciliation_converged(r: gunbc.host_effect_realize.host_effect_apply(
+  !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
-    effect: gunbc.host_effect.ConvergePlan { policy: fixture_srv1_host_converge() },
-    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    effect: ConvergePlan { policy: fixture_srv1_host_converge() },
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
 
 fn witness_converge_plan_redrives_on_frontier() -> Bool {
-  directive_is_redrive(d: gunbc.host_effect_realize.host_effect_drive_directive(r: gunbc.host_effect_realize.host_effect_apply(
+  directive_is_redrive(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
-    effect: gunbc.host_effect.ConvergePlan { policy: fixture_srv1_host_converge() },
-    evidence: gunbc.host_effect.host_effect_converge_loop_evidence,
+    effect: ConvergePlan { policy: fixture_srv1_host_converge() },
+    evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   )))
 }

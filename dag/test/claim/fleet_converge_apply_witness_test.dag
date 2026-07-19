@@ -1,82 +1,82 @@
 module test.claim.fleet_converge_apply_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn fixture_srv3_host_converge() -> gunbc.host_converge.HostConverge {
-  gunbc.host_converge.HostConverge {
-    identity: gunbc.fleet_intent_network.operator_host_srv3,
+fn fixture_srv3_host_converge() -> HostConverge {
+  HostConverge {
+    identity: operator_host_srv3,
     knobs: [
-      gunbc.host_converge.ConvergeKnob {
-        slice: gunbc.host_converge.GunbcSlice,
+      ConvergeKnob {
+        slice: GunbcSlice,
         name: "pinned_tree_sha",
-        desired: gunbc.host_converge.gunbc_pinned_tree_desired_label,
-        target: gunbc.host_converge.GunbcPinnedTree {
-          gunbc_root_env_key: gunbc.host_converge.gunbc_root_env_key,
-          gunbc_root_path: gunbc.host_converge.gunbc_host_gunbc_root_path,
-          dag_root: gunbc.host_converge.DeferToSubmodule { submodule_path: gunbc.host_converge.gunbc_dag_root_submodule_path },
-          ctrl_checkout_path: gunbc.host_converge.gunbc_host_ctrl_checkout_path,
-          binary: gunbc.host_converge.gunbc_pinned_binary_provenance_policy(),
-          pin_read_script: gunbc.host_converge.gunbc_ctrl_read_pin_script,
-          green_place_marker: gunbc.host_converge.gunbc_green_place_marker_spec(),
-          live_apply: gunbc.host_converge.gunbc_dashboard_live_apply_policy(),
+        desired: gunbc_pinned_tree_desired_label,
+        target: GunbcPinnedTree {
+          gunbc_root_env_key: gunbc_root_env_key,
+          gunbc_root_path: gunbc_host_gunbc_root_path,
+          dag_root: DeferToSubmodule { submodule_path: gunbc_dag_root_submodule_path },
+          ctrl_checkout_path: gunbc_host_ctrl_checkout_path,
+          binary: gunbc_pinned_binary_provenance_policy(),
+          pin_read_script: gunbc_ctrl_read_pin_script,
+          green_place_marker: gunbc_green_place_marker_spec(),
+          live_apply: gunbc_dashboard_live_apply_policy(),
         },
-        apply_mode: gunbc.host_converge.FreshStandup,
-        no_op: gunbc.host_converge.BlindApply,
+        apply_mode: FreshStandup,
+        no_op: BlindApply,
       }
     ],
-    membership: gunbc.host_converge.NoMembershipProbe,
+    membership: NoMembershipProbe,
   }
 }
 
 fn witness_unsound_policy_refused() -> Bool {
-  match gunbc.fleet_converge_apply.converge_apply(
-    policy: gunbc.host_converge.ConvergePolicyUnsound { reason: "fixture" },
+  match converge_apply(
+    policy: ConvergePolicyUnsound { reason: "fixture" },
     transport: LocalShell
   ) {
-    gunbc.fleet_converge_apply.FleetConvergeApplyRefused { reason: why } => string_contains(s: why, pattern: "policy unsound")
+    FleetConvergeApplyRefused { reason: why } => string_contains(s: why, pattern: "policy unsound")
     FleetConvergeApplied { host_count: _, all_converged: _ } => false
   }
 }
 
 fn witness_converge_apply_fail_closed_on_knob_frontier() -> Bool {
-  match gunbc.fleet_converge_apply.converge_apply(
-    policy: gunbc.host_converge.ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
+  match converge_apply(
+    policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
     transport: LocalShell
   ) {
     FleetConvergeApplied { host_count: n, all_converged: ok } =>
       n == 1 && !ok
-    gunbc.fleet_converge_apply.FleetConvergeApplyRefused { reason: _ } => false
+    FleetConvergeApplyRefused { reason: _ } => false
   }
 }
 
 fn witness_thin_invocation_argv() -> Bool {
-  let inv = gunbc.fleet_converge_apply.fleet_converge_thin_invocation(host: gunbc.fleet_intent_network.operator_host_srv3)
+  let inv = fleet_converge_thin_invocation(host: operator_host_srv3)
   inv.argv.length() == 4
 }
 
 fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
-  match gunbc.host_effect.bootstrap_fragment_script_carrier_scaffold {
-    std.disposition.Scaffold {
-      dissolves_to: std.disposition.RealizationDispatch,
-      bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: d, field: std.decl_ref.WholeDeclaration },
+  match bootstrap_fragment_script_carrier_scaffold {
+    Scaffold {
+      dissolves_to: RealizationDispatch,
+      bind: DeclarationRef { module_path: m, decl_name: d, field: WholeDeclaration },
     } =>
       m == "gunbc.fleet_converge_emit"
         && d == "fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger"
     _ => false
   }
-    && match gunbc.host_effect.thin_invocation_argv_carrier_scaffold {
-      std.disposition.Scaffold {
-        dissolves_to: std.disposition.RealizationDispatch,
-        bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: d, field: std.decl_ref.WholeDeclaration },
+    && match thin_invocation_argv_carrier_scaffold {
+      Scaffold {
+        dissolves_to: RealizationDispatch,
+        bind: DeclarationRef { module_path: m, decl_name: d, field: WholeDeclaration },
       } =>
         m == "gunbc.fleet_converge_apply" && d == "fleet_converge_thin_invocation"
       _ => false
     }
-    && match gunbc.host_effect.emit_artifact_then_thin_run_transport_scaffold {
-      std.disposition.Scaffold {
-        dissolves_to: std.disposition.RealizationDispatch,
-        bind: std.decl_ref.DeclarationRef { module_path: m, decl_name: d, field: std.decl_ref.WholeDeclaration },
+    && match emit_artifact_then_thin_run_transport_scaffold {
+      Scaffold {
+        dissolves_to: RealizationDispatch,
+        bind: DeclarationRef { module_path: m, decl_name: d, field: WholeDeclaration },
       } =>
         m == "gunbc.fleet_converge_emit"
           && d == "fleet_converge_steady_state_doc_projection_dissolution_trigger"
@@ -85,11 +85,11 @@ fn witness_emit_artifact_carriers_name_bash_emit_scaffolds() -> Bool {
 }
 
 fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
-  !gunbc.fleet_converge_apply.fleet_converge_apply_result_converged(r: gunbc.fleet_converge_apply.converge_apply(
-    policy: gunbc.host_converge.ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
-    transport: gunbc.host_effect.EmitArtifactThenThinRun {
-      bootstrap: gunbc.host_effect.BootstrapFragment { script: "true" },
-      invocation: gunbc.fleet_converge_apply.fleet_converge_thin_invocation(host: gunbc.fleet_intent_network.operator_host_srv3),
+  !fleet_converge_apply_result_converged(r: converge_apply(
+    policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
+    transport: EmitArtifactThenThinRun {
+      bootstrap: BootstrapFragment { script: "true" },
+      invocation: fleet_converge_thin_invocation(host: operator_host_srv3),
     }
   ))
 }

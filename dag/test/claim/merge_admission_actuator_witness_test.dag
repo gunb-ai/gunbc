@@ -1,14 +1,14 @@
 module test.claim.merge_admission_actuator_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data scenario_base_b0: ContentHash = "merge-admission-witness-base-b0"
 data scenario_base_b1: ContentHash = "merge-admission-witness-base-b1"
 data scenario_roster_r0: ContentHash = "merge-admission-witness-roster-r0"
 data scenario_roster_r1: ContentHash = "merge-admission-witness-roster-r1"
 
-data scenario_pr_x_receipt: gunbc.merge_admission.MergeAdmissionReceipt = gunbc.merge_admission.MergeAdmissionReceipt {
+data scenario_pr_x_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
   pr_number: Present { value: 5933 },
   head_sha: "abc1234def5678901234567890abcd1234567890",
   base_tree_hash: scenario_base_b0,
@@ -17,11 +17,11 @@ data scenario_pr_x_receipt: gunbc.merge_admission.MergeAdmissionReceipt = gunbc.
 }
 
 test fn enforcement_policy_is_keyed_receipt() -> Bool {
-  merge_admission_enforcement_policy == gunbc.merge_admission.KeyedReceipt
+  merge_admission_enforcement_policy == KeyedReceipt
 }
 
 test fn enforcement_denies_stale_base_verdict() -> Bool {
-  match gunbc.merge_admission.classify_merge_admission_verdict(
+  match classify_merge_admission_verdict(
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b1,
     current_roster_hash: scenario_roster_r0,
@@ -34,7 +34,7 @@ test fn enforcement_denies_stale_base_verdict() -> Bool {
 }
 
 test fn enforcement_denies_stale_roster_verdict() -> Bool {
-  match gunbc.merge_admission.classify_merge_admission_verdict(
+  match classify_merge_admission_verdict(
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b0,
     current_roster_hash: scenario_roster_r1,
@@ -47,7 +47,7 @@ test fn enforcement_denies_stale_roster_verdict() -> Bool {
 }
 
 test fn enforcement_admits_fresh_verdict() -> Bool {
-  match gunbc.merge_admission.classify_merge_admission_verdict(
+  match classify_merge_admission_verdict(
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b0,
     current_roster_hash: scenario_roster_r0,
@@ -60,14 +60,14 @@ test fn enforcement_admits_fresh_verdict() -> Bool {
 }
 
 test fn enforcement_admits_documentation_only_skipped_fresh_receipt() -> Bool {
-  let receipt = gunbc.merge_admission.MergeAdmissionReceipt {
+  let receipt = MergeAdmissionReceipt {
     pr_number: Present { value: 5933 },
     head_sha: scenario_pr_x_receipt.head_sha,
     base_tree_hash: scenario_base_b0,
     gate_roster_hash: scenario_roster_r0,
     conclusion: Skipped,
   }
-  match gunbc.merge_admission.classify_merge_admission_verdict(
+  match classify_merge_admission_verdict(
     receipt: receipt,
     merge_target_tree_hash: scenario_base_b0,
     current_roster_hash: scenario_roster_r0,
@@ -81,13 +81,13 @@ test fn enforcement_admits_documentation_only_skipped_fresh_receipt() -> Bool {
 
 test fn documentation_only_skipped_admit_policy_is_on_carrier() -> Bool {
   string_contains(
-    s: gunbc.merge_admission.merge_admission_documentation_only_skipped_admit_policy,
+    s: merge_admission_documentation_only_skipped_admit_policy,
     pattern: "GatingEnforced"
   )
 }
 
 test fn enforcement_red_on_revert_stale_base() -> Bool {
-  let fresh = match gunbc.merge_admission.classify_merge_admission_verdict(
+  let fresh = match classify_merge_admission_verdict(
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b0,
     current_roster_hash: scenario_roster_r0,
@@ -97,7 +97,7 @@ test fn enforcement_red_on_revert_stale_base() -> Bool {
     MergeDeniedStaleRoster => false
     MergeDeniedNotSuccess => false
   }
-  let stale = match gunbc.merge_admission.classify_merge_admission_verdict(
+  let stale = match classify_merge_admission_verdict(
     receipt: scenario_pr_x_receipt,
     merge_target_tree_hash: scenario_base_b1,
     current_roster_hash: scenario_roster_r0,
@@ -111,13 +111,13 @@ test fn enforcement_red_on_revert_stale_base() -> Bool {
 }
 
 test fn activation_deferred_blocks_merge_false_for_stale() -> Bool {
-  (gunbc.ci_failure_class.gating_is_enforced(s: gunbc.ci_failure_class.merge_freshness_gating_status) == false)
-    && gunbc.merge_admission.merge_admission_would_block(
+  (gating_is_enforced(s: merge_freshness_gating_status) == false)
+    && merge_admission_would_block(
       receipt: scenario_pr_x_receipt,
       merge_target_tree_hash: scenario_base_b1,
       current_roster_hash: scenario_roster_r0,
     )
-    && (gunbc.ci_failure_class.merge_admission_blocks_merge(
+    && (merge_admission_blocks_merge(
       receipt: scenario_pr_x_receipt,
       merge_target_tree_hash: scenario_base_b1,
       current_roster_hash: scenario_roster_r0,

@@ -1,116 +1,116 @@
 module test.claim.markdown_roundtrip
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn roundtrip_core_doc() -> std.markdown.MarkdownDocument {
-  std.markdown.MarkdownDocument {
+fn roundtrip_core_doc() -> MarkdownDocument {
+  MarkdownDocument {
     blocks: [
-      std.markdown.HeadingBlock { level: H1, inlines: [ std.markdown.TextInline { text: "Roadmap" } ] },
-      std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "Status of the work." } ] },
-      std.markdown.HeadingBlock { level: H2, inlines: [ std.markdown.TextInline { text: "Tasks" } ] },
-      std.markdown.TaskListBlock {
+      HeadingBlock { level: H1, inlines: [ TextInline { text: "Roadmap" } ] },
+      ParagraphBlock { inlines: [ TextInline { text: "Status of the work." } ] },
+      HeadingBlock { level: H2, inlines: [ TextInline { text: "Tasks" } ] },
+      TaskListBlock {
         items: [
-          std.markdown.MarkdownTaskItem {
+          MarkdownTaskItem {
             state: Checked,
-            blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "done item" } ] } ],
+            blocks: [ ParagraphBlock { inlines: [ TextInline { text: "done item" } ] } ],
           },
-          std.markdown.MarkdownTaskItem {
+          MarkdownTaskItem {
             state: Unchecked,
-            blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "todo item" } ] } ],
+            blocks: [ ParagraphBlock { inlines: [ TextInline { text: "todo item" } ] } ],
           },
         ],
       },
-      std.markdown.UnorderedListBlock {
+      UnorderedListBlock {
         items: [
-          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "alpha" } ] } ] },
-          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "beta" } ] } ] },
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "alpha" } ] } ] },
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "beta" } ] } ] },
         ],
       },
-      std.markdown.OrderedListBlock {
+      OrderedListBlock {
         items: [
-          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "first" } ] } ] },
-          std.markdown.MarkdownListItem { blocks: [ std.markdown.ParagraphBlock { inlines: [ std.markdown.TextInline { text: "second" } ] } ] },
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "first" } ] } ] },
+          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "second" } ] } ] },
         ],
       },
-      std.markdown.CodeBlock { code: "let x = 1;\n" },
+      CodeBlock { code: "let x = 1;\n" },
     ],
   }
 }
 
 fn witness_roundtrip_core() -> Bool {
-  extdeps.languages.markdown.ingest_markdown_source(src: extdeps.languages.markdown.serialize_markdown_source(doc: roundtrip_core_doc())) == roundtrip_core_doc()
+  ingest_markdown_source(src: serialize_markdown_source(doc: roundtrip_core_doc())) == roundtrip_core_doc()
 }
 
-fn spellings_override(bullet: String, separator: String) -> extdeps.languages.markdown.MarkdownSpellings {
-  extdeps.languages.markdown.MarkdownSpellings {
-    heading_marker: extdeps.languages.markdown.commonmark_gfm_spellings.heading_marker,
-    heading_sep: extdeps.languages.markdown.commonmark_gfm_spellings.heading_sep,
+fn spellings_override(bullet: String, separator: String) -> MarkdownSpellings {
+  MarkdownSpellings {
+    heading_marker: commonmark_gfm_spellings.heading_marker,
+    heading_sep: commonmark_gfm_spellings.heading_sep,
     unordered_bullet: bullet,
-    ordered_suffix: extdeps.languages.markdown.commonmark_gfm_spellings.ordered_suffix,
-    task_checked: extdeps.languages.markdown.commonmark_gfm_spellings.task_checked,
-    task_unchecked: extdeps.languages.markdown.commonmark_gfm_spellings.task_unchecked,
-    emphasis_delim: extdeps.languages.markdown.commonmark_gfm_spellings.emphasis_delim,
-    strong_delim: extdeps.languages.markdown.commonmark_gfm_spellings.strong_delim,
-    code_span_delim: extdeps.languages.markdown.commonmark_gfm_spellings.code_span_delim,
-    code_fence: extdeps.languages.markdown.commonmark_gfm_spellings.code_fence,
-    link_text_open: extdeps.languages.markdown.commonmark_gfm_spellings.link_text_open,
-    link_text_close: extdeps.languages.markdown.commonmark_gfm_spellings.link_text_close,
-    link_url_open: extdeps.languages.markdown.commonmark_gfm_spellings.link_url_open,
-    link_url_close: extdeps.languages.markdown.commonmark_gfm_spellings.link_url_close,
-    image_marker: extdeps.languages.markdown.commonmark_gfm_spellings.image_marker,
-    table_pipe: extdeps.languages.markdown.commonmark_gfm_spellings.table_pipe,
-    table_cell_pad: extdeps.languages.markdown.commonmark_gfm_spellings.table_cell_pad,
-    table_align_none: extdeps.languages.markdown.commonmark_gfm_spellings.table_align_none,
-    table_align_left: extdeps.languages.markdown.commonmark_gfm_spellings.table_align_left,
-    table_align_center: extdeps.languages.markdown.commonmark_gfm_spellings.table_align_center,
-    table_align_right: extdeps.languages.markdown.commonmark_gfm_spellings.table_align_right,
-    blockquote_marker: extdeps.languages.markdown.commonmark_gfm_spellings.blockquote_marker,
-    list_indent: extdeps.languages.markdown.commonmark_gfm_spellings.list_indent,
+    ordered_suffix: commonmark_gfm_spellings.ordered_suffix,
+    task_checked: commonmark_gfm_spellings.task_checked,
+    task_unchecked: commonmark_gfm_spellings.task_unchecked,
+    emphasis_delim: commonmark_gfm_spellings.emphasis_delim,
+    strong_delim: commonmark_gfm_spellings.strong_delim,
+    code_span_delim: commonmark_gfm_spellings.code_span_delim,
+    code_fence: commonmark_gfm_spellings.code_fence,
+    link_text_open: commonmark_gfm_spellings.link_text_open,
+    link_text_close: commonmark_gfm_spellings.link_text_close,
+    link_url_open: commonmark_gfm_spellings.link_url_open,
+    link_url_close: commonmark_gfm_spellings.link_url_close,
+    image_marker: commonmark_gfm_spellings.image_marker,
+    table_pipe: commonmark_gfm_spellings.table_pipe,
+    table_cell_pad: commonmark_gfm_spellings.table_cell_pad,
+    table_align_none: commonmark_gfm_spellings.table_align_none,
+    table_align_left: commonmark_gfm_spellings.table_align_left,
+    table_align_center: commonmark_gfm_spellings.table_align_center,
+    table_align_right: commonmark_gfm_spellings.table_align_right,
+    blockquote_marker: commonmark_gfm_spellings.blockquote_marker,
+    list_indent: commonmark_gfm_spellings.list_indent,
     block_separator: separator,
-    thematic_break: extdeps.languages.markdown.commonmark_gfm_spellings.thematic_break,
+    thematic_break: commonmark_gfm_spellings.thematic_break,
   }
 }
 
-fn perturbed_bullet_spellings() -> extdeps.languages.markdown.MarkdownSpellings {
-  spellings_override(bullet: "+ ", separator: extdeps.languages.markdown.commonmark_gfm_spellings.block_separator)
+fn perturbed_bullet_spellings() -> MarkdownSpellings {
+  spellings_override(bullet: "+ ", separator: commonmark_gfm_spellings.block_separator)
 }
 
-fn perturbed_separator_spellings() -> extdeps.languages.markdown.MarkdownSpellings {
-  spellings_override(bullet: extdeps.languages.markdown.commonmark_gfm_spellings.unordered_bullet, separator: "\n---\n")
+fn perturbed_separator_spellings() -> MarkdownSpellings {
+  spellings_override(bullet: commonmark_gfm_spellings.unordered_bullet, separator: "\n---\n")
 }
 
 fn witness_roundtrip_under_perturbed_rows() -> Bool {
   let spb = perturbed_bullet_spellings()
-  let restored_b = extdeps.languages.markdown.ingest_markdown_source_with(src: extdeps.languages.markdown.serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: spb), sp: spb)
+  let restored_b = ingest_markdown_source_with(src: serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: spb), sp: spb)
   let sps = perturbed_separator_spellings()
-  let restored_s = extdeps.languages.markdown.ingest_markdown_source_with(src: extdeps.languages.markdown.serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: sps), sp: sps)
+  let restored_s = ingest_markdown_source_with(src: serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: sps), sp: sps)
   (restored_b == roundtrip_core_doc()) && (restored_s == roundtrip_core_doc())
 }
 
 fn witness_ingest_reads_bullet_row() -> Bool {
-  let emitted_b = extdeps.languages.markdown.serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_bullet_spellings())
-  let emitted_s = extdeps.languages.markdown.serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_separator_spellings())
-  !(extdeps.languages.markdown.ingest_markdown_source(src: emitted_b) == roundtrip_core_doc())
-    && !(extdeps.languages.markdown.ingest_markdown_source(src: emitted_s) == roundtrip_core_doc())
+  let emitted_b = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_bullet_spellings())
+  let emitted_s = serialize_markdown_source_with(doc: roundtrip_core_doc(), sp: perturbed_separator_spellings())
+  !(ingest_markdown_source(src: emitted_b) == roundtrip_core_doc())
+    && !(ingest_markdown_source(src: emitted_s) == roundtrip_core_doc())
 }
 
 fn witness_core_advertised_lossless() -> Bool {
-  let recovered = extdeps.languages.markdown.ingest_markdown_source(src: extdeps.languages.markdown.serialize_markdown_source(doc: roundtrip_core_doc()))
-  let m = extdeps.languages.markdown.markdown_medium_lossless(doc: recovered)
+  let recovered = ingest_markdown_source(src: serialize_markdown_source(doc: roundtrip_core_doc()))
+  let m = markdown_medium_lossless(doc: recovered)
   match m.fidelity {
     Lossless => m.carried == roundtrip_core_doc()
     Lossy => false
   }
 }
 
-fn frontier_emphasis_doc() -> std.markdown.MarkdownDocument {
-  std.markdown.MarkdownDocument {
+fn frontier_emphasis_doc() -> MarkdownDocument {
+  MarkdownDocument {
     blocks: [
-      std.markdown.ParagraphBlock {
+      ParagraphBlock {
         inlines: [
-          std.markdown.TextInline { text: "see " },
-          std.markdown.EmphasisInline { inlines: [ std.markdown.TextInline { text: "this" } ] },
+          TextInline { text: "see " },
+          EmphasisInline { inlines: [ TextInline { text: "this" } ] },
         ],
       },
     ],
@@ -118,7 +118,7 @@ fn frontier_emphasis_doc() -> std.markdown.MarkdownDocument {
 }
 
 fn witness_frontier_not_roundtripped() -> Bool {
-  !(extdeps.languages.markdown.ingest_markdown_source(src: extdeps.languages.markdown.serialize_markdown_source(doc: frontier_emphasis_doc())) == frontier_emphasis_doc())
+  !(ingest_markdown_source(src: serialize_markdown_source(doc: frontier_emphasis_doc())) == frontier_emphasis_doc())
 }
 
 test fn markdown_roundtrip_keystone_holds() -> Bool {

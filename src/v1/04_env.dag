@@ -1,5 +1,11 @@
 module v1.compiler.infer_env
 
+import v1.std.core { Node, NewlineIndex, InternTable, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr }
+
+import std.types { SourceSpan, is_kernel_type }
+
+import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
+
 
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
@@ -518,7 +524,10 @@ fn global_bare_nearest_ancestor_candidate(env_module_path: String, candidates: L
       GlobalBareNearestCandidateScan { best_lcp: acc.best_lcp, best: acc.best, tie: true }
     } else { acc }
   )
-  if scan.tie { Absent } else { scan.best }
+  match scan.tie {
+    true => Absent
+    false => scan.best
+  }
 }
 
 fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<GlobalBareCandidate>) -> TypeBinding? {
@@ -560,7 +569,7 @@ fn qualify_decl_reference_positions(n: Node, owner_module_path: String, env: Typ
 }
 
 fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> Node {
-  let qualified_children = if n.connective == NoConnective {
+  let qualified_children = if (n.connective == NoConnective) {
     n.children |> map(c => qualify_borrowed_type_names(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
   } else {
     n.children |> map(c => qualify_decl_reference_positions(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))

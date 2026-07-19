@@ -1,7 +1,7 @@
 module test.claim.types_arch_collapse
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 
 data std_types_path: String = "dag/std/types.dag"
@@ -30,30 +30,30 @@ fn witness_single_architecture_authority_present() -> Bool {
 }
 
 fn witness_goarch_parses_arm64_wire() -> Bool {
-  match extdeps.container.oci.types.parse_image_config_goarch("arm64") {
-    extdeps.container.oci.types.ImageConfigGoarchKnown { value: extdeps.os.ubuntu_install_media.Aarch64 } => true
-    extdeps.container.oci.types.ImageConfigGoarchUnknown { wire: _ } => false
+  match parse_image_config_goarch("arm64") {
+    ImageConfigGoarchKnown { value: Aarch64 } => true
+    ImageConfigGoarchUnknown { wire: _ } => false
   }
 }
 
 fn witness_goarch_rejects_unknown_wire() -> Bool {
-  match extdeps.container.oci.types.parse_image_config_goarch("plan9") {
-    extdeps.container.oci.types.ImageConfigGoarchUnknown { wire: _ } => true
-    extdeps.container.oci.types.ImageConfigGoarchKnown { value: _ } => false
+  match parse_image_config_goarch("plan9") {
+    ImageConfigGoarchUnknown { wire: _ } => true
+    ImageConfigGoarchKnown { value: _ } => false
   }
 }
 
 fn witness_goarch_label_roundtrips_known() -> Bool {
-  match extdeps.container.oci.types.image_config_goarch_label(extdeps.os.ubuntu_install_media.Aarch64) {
-    extdeps.container.oci.types.ImageConfigGoarchWireLabel { wire: w } => w == "arm64"
+  match image_config_goarch_label(Aarch64) {
+    ImageConfigGoarchWireLabel { wire: w } => w == "arm64"
     ImageConfigGoarchUnrepresentable => false
   }
 }
 
 fn witness_goarch_label_unrepresentable_armv7() -> Bool {
-  match extdeps.container.oci.types.image_config_goarch_label(Armv7) {
+  match image_config_goarch_label(Armv7) {
     ImageConfigGoarchUnrepresentable => true
-    extdeps.container.oci.types.ImageConfigGoarchWireLabel { wire: _ } => false
+    ImageConfigGoarchWireLabel { wire: _ } => false
   }
 }
 

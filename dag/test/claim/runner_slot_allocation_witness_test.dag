@@ -1,30 +1,30 @@
 module test.claim.runner_slot_allocation_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn runner_slot_allocation_wall_holds() -> Bool {
-  gunbc.runner_slot_allocation.gunbc_runner_slot_allocation_wall_holds()
+  gunbc_runner_slot_allocation_wall_holds()
 }
 
 test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
-  let per_slot = gunbc.runner_slot_allocation.gunbc_runner_slot_desired()
-  gunbc.runner_slot_allocation.gunbc_runner_slot_oversubscription_within_slice(
-    slots: gunbc.runner_slot_allocation.gunbc_runner_slots_per_host(),
+  let per_slot = gunbc_runner_slot_desired()
+  gunbc_runner_slot_oversubscription_within_slice(
+    slots: gunbc_runner_slots_per_host(),
     per_slot: per_slot.memory_max,
-    slice_cap: gunbc.runner_slot_allocation.gunbc_runner_slice_cap_declared()
+    slice_cap: gunbc_runner_slice_cap_declared()
   )
 }
 
 test fn runner_slot_allocation_committed_hosts_nonempty() -> Bool {
-  gunbc.runner_slot_allocation.gunbc_committed_runner_slot_allocations() |> count == 2
+  gunbc_committed_runner_slot_allocations() |> count == 2
 }
 
 test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
-  let per_slot = gunbc.runner_slot_allocation.gunbc_runner_slot_desired()
-  !gunbc.runner_slot_allocation.gunbc_runner_slot_oversubscription_within_slice(
-    slots: gunbc.runner_slot_allocation.gunbc_runner_slots_per_host() + 1,
+  let per_slot = gunbc_runner_slot_desired()
+  !gunbc_runner_slot_oversubscription_within_slice(
+    slots: gunbc_runner_slots_per_host() + 1,
     per_slot: per_slot.memory_max,
-    slice_cap: gunbc.runner_slot_allocation.gunbc_runner_slice_cap_declared()
+    slice_cap: gunbc_runner_slice_cap_declared()
   )
 }

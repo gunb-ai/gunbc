@@ -1,154 +1,154 @@
 module test.claim.runner_placement_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn live_plan() -> gunbc.ci_runner_placement.RunnerDeploymentPlan {
-  gunbc.ci_runner_placement.runner_deployment_plan()
+fn live_plan() -> RunnerDeploymentPlan {
+  runner_deployment_plan()
 }
 
 fn witness_live_plan_is_conservation_sound() -> Bool {
   match live_plan() {
-    gunbc.ci_runner_placement.PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
-      hosts.length() == gunbc.ci_fleet.fleet_intent_offers.length()
-        && total == gunbc.fleet_host_budget.declared_runner_count() * gunbc.ci_fleet.fleet_intent_offers.length()
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
+      hosts.length() == fleet_intent_offers.length()
+        && total == declared_runner_count() * fleet_intent_offers.length()
         && all(hosts, h =>
-            h.runner_count == gunbc.fleet_host_budget.declared_runner_count()
-              && std.measure.byte_size_count(b: h.per_runner_memory_cap) == std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_cgroup_memory_cap)
-              && std.measure.byte_size_count(b: h.runner_slice_cap) == std.measure.byte_size_count(b: gunbc.fleet_host_budget.gunbc_runner_pool_budget)
-              && std.measure.hardware_thread_count_value(t: h.build_tokens) > 0
+            h.runner_count == declared_runner_count()
+              && byte_size_count(b: h.per_runner_memory_cap) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+              && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget)
+              && hardware_thread_count_value(t: h.build_tokens) > 0
           )
-    gunbc.ci_runner_placement.PlanUnsound { reason: _ } => false
+    PlanUnsound { reason: _ } => false
   }
 }
 
 fn witness_per_runner_cap_within_runner_pool() -> Bool {
   match live_plan() {
-    gunbc.ci_runner_placement.PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0
         && all(hosts, h =>
-            h.runner_count * std.measure.byte_size_count(b: h.per_runner_memory_cap) <= std.measure.byte_size_count(b: h.runner_slice_cap)
+            h.runner_count * byte_size_count(b: h.per_runner_memory_cap) <= byte_size_count(b: h.runner_slice_cap)
           )
-    gunbc.ci_runner_placement.PlanUnsound { reason: _ } => false
+    PlanUnsound { reason: _ } => false
   }
 }
 
 fn witness_live_session_plan_fail_closed() -> Bool {
-  match gunbc.ci_runner_placement.session_reservation_plan() {
-    gunbc.ci_runner_placement.SessionReservationUnsound { reason: _ } => true
-    gunbc.ci_runner_placement.SessionReservationDerived { hosts: _, fleet_concurrent_sessions: _, per_session_reservation: _, coverage_count: _, sample_count: _ } => false
+  match session_reservation_plan() {
+    SessionReservationUnsound { reason: _ } => true
+    SessionReservationDerived { hosts: _, fleet_concurrent_sessions: _, per_session_reservation: _, coverage_count: _, sample_count: _ } => false
   }
 }
 
 fn witness_live_effective_runners_derives_declared_count() -> Bool {
-  match gunbc.ci_runner_placement.effective_runners_per_host() {
-    gunbc.ci_runner_placement.RunnersPerHostDerived { count: c } => c == gunbc.fleet_host_budget.declared_runner_count()
-    gunbc.ci_runner_placement.RunnersPerHostUnsound { reason: _ } => false
+  match effective_runners_per_host() {
+    RunnersPerHostDerived { count: c } => c == declared_runner_count()
+    RunnersPerHostUnsound { reason: _ } => false
   }
 }
 
 fn witness_sound_manifest_line_is_populated() -> Bool {
   match live_plan() {
-    gunbc.ci_runner_placement.PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0
         && all(hosts, h => {
-            let rendered = render(doc: gunbc.runner_deploy_emit.manifest_host_doc(h: h), proto: gunbc.runner_deploy_emit.runner_deploy_protocol)
+            let rendered = render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol)
             starts_with(s: rendered, prefix: concat(concat("host=", h.identity), " runner_count="))
           })
-    gunbc.ci_runner_placement.PlanUnsound { reason: _ } => false
+    PlanUnsound { reason: _ } => false
   }
 }
 
 fn witness_regime1_resolves_worst_case_slice() -> Bool {
-  match gunbc.ci_runner_placement.resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime1WorstCase { point: gunbc.ci_floor_measurement.SessionOperatingPointSet { per_session_cap: std.measure.byte_size(10000000000), session_concurrency: 4 } }, oomd: gunbc.ci_floor_measurement.OomdEnforced) {
-    gunbc.ci_runner_placement.SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
-      std.measure.byte_size_count(b: b) == 40000000000 && std.measure.byte_size_count(b: c) == 10000000000 && n == 4
-    gunbc.ci_runner_placement.SessionSliceUnresolved { reason: _ } => false
+  match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: byte_size(10000000000), session_concurrency: 4 } }, oomd: OomdEnforced) {
+    SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
+      byte_size_count(b: b) == 40000000000 && byte_size_count(b: c) == 10000000000 && n == 4
+    SessionSliceUnresolved { reason: _ } => false
   }
 }
 
 fn witness_mode_unset_is_unresolved() -> Bool {
-  match gunbc.ci_runner_placement.resolve_session_slice(mode: gunbc.ci_floor_measurement.SessionReservationModeUnset, oomd: gunbc.ci_floor_measurement.OomdEnforced) {
-    gunbc.ci_runner_placement.SessionSliceUnresolved { reason: _ } => true
-    gunbc.ci_runner_placement.SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
+  match resolve_session_slice(mode: SessionReservationModeUnset, oomd: OomdEnforced) {
+    SessionSliceUnresolved { reason: _ } => true
+    SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
   }
 }
 
 fn witness_regime2_oomd_unverified_is_unresolved() -> Bool {
-  match gunbc.ci_runner_placement.resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime2AggregateOomd {
-    oomd_eviction_ceiling: std.measure.byte_size(8000000000),
+  match resolve_session_slice(mode: Regime2AggregateOomd {
+    oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
-    aggregate_reservation: gunbc.ci_floor_measurement.SessionAggregateMeasured { bytes: std.measure.byte_size(15000000000) },
-  }, oomd: gunbc.ci_floor_measurement.OomdUnverified) {
-    gunbc.ci_runner_placement.SessionSliceUnresolved { reason: _ } => true
-    gunbc.ci_runner_placement.SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
+    aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(15000000000) },
+  }, oomd: OomdUnverified) {
+    SessionSliceUnresolved { reason: _ } => true
+    SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
   }
 }
 
 fn witness_regime2_aggregate_unmeasured_is_unresolved() -> Bool {
-  match gunbc.ci_runner_placement.resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime2AggregateOomd {
-    oomd_eviction_ceiling: std.measure.byte_size(8000000000),
+  match resolve_session_slice(mode: Regime2AggregateOomd {
+    oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
-    aggregate_reservation: gunbc.ci_floor_measurement.SessionAggregateUnmeasured,
-  }, oomd: gunbc.ci_floor_measurement.OomdEnforced) {
-    gunbc.ci_runner_placement.SessionSliceUnresolved { reason: _ } => true
-    gunbc.ci_runner_placement.SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
+    aggregate_reservation: SessionAggregateUnmeasured,
+  }, oomd: OomdEnforced) {
+    SessionSliceUnresolved { reason: _ } => true
+    SessionSliceResolved { bytes: _, per_session_cap: _, concurrency: _ } => false
   }
 }
 
 fn witness_regime2_reserves_aggregate_not_product() -> Bool {
-  match gunbc.ci_runner_placement.resolve_session_slice(mode: gunbc.ci_floor_measurement.Regime2AggregateOomd {
-    oomd_eviction_ceiling: std.measure.byte_size(8000000000),
+  match resolve_session_slice(mode: Regime2AggregateOomd {
+    oomd_eviction_ceiling: byte_size(8000000000),
     session_concurrency: 16,
-    aggregate_reservation: gunbc.ci_floor_measurement.SessionAggregateMeasured { bytes: std.measure.byte_size(15000000000) },
-  }, oomd: gunbc.ci_floor_measurement.OomdEnforced) {
-    gunbc.ci_runner_placement.SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
-      std.measure.byte_size_count(b: b) == 15000000000 && std.measure.byte_size_count(b: c) == 8000000000 && n == 16
-    gunbc.ci_runner_placement.SessionSliceUnresolved { reason: _ } => false
+    aggregate_reservation: SessionAggregateMeasured { bytes: byte_size(15000000000) },
+  }, oomd: OomdEnforced) {
+    SessionSliceResolved { bytes: b, per_session_cap: c, concurrency: n } =>
+      byte_size_count(b: b) == 15000000000 && byte_size_count(b: c) == 8000000000 && n == 16
+    SessionSliceUnresolved { reason: _ } => false
   }
 }
 
 fn witness_coverage_is_distribution_grounded() -> Bool {
-  gunbc.ci_runner_placement.samples_covered(cap: std.measure.byte_size(0)) == 0
-    && gunbc.ci_runner_placement.samples_covered(cap: std.measure.byte_size(2211908157)) == 6
-    && gunbc.ci_runner_placement.samples_covered(cap: std.measure.byte_size(8879844884)) == 13
+  samples_covered(cap: byte_size(0)) == 0
+    && samples_covered(cap: byte_size(2211908157)) == 6
+    && samples_covered(cap: byte_size(8879844884)) == 13
 }
 
 fn witness_curve_coverage_monotone_in_cap() -> Bool {
-  let lo = gunbc.ci_runner_placement.evaluate_operating_point(cap: std.measure.byte_size(2000000000), n: 6)
-  let hi = gunbc.ci_runner_placement.evaluate_operating_point(cap: std.measure.byte_size(8000000000), n: 6)
+  let lo = evaluate_operating_point(cap: byte_size(2000000000), n: 6)
+  let hi = evaluate_operating_point(cap: byte_size(8000000000), n: 6)
   hi.coverage_count >= lo.coverage_count
-    && std.measure.byte_size_count(b: hi.sessions_slice) >= std.measure.byte_size_count(b: lo.sessions_slice)
+    && byte_size_count(b: hi.sessions_slice) >= byte_size_count(b: lo.sessions_slice)
 }
 
 fn witness_curve_has_full_coverage_option() -> Bool {
-  v2.std.algebra.any(gunbc.ci_runner_placement.operating_curve(), r => r.coverage_count == r.sample_count)
+  any(operating_curve(), r => r.coverage_count == r.sample_count)
 }
 
 fn witness_manifest_drift_red_receipt() -> Bool {
-  !gunbc.runner_deploy_emit.runner_deploy_drifted(committed: gunbc.runner_deploy_emit.expected_runner_deploy_manifest())
-    && gunbc.runner_deploy_emit.runner_deploy_drifted(committed: concat(gunbc.runner_deploy_emit.expected_runner_deploy_manifest(), "x"))
+  !runner_deploy_drifted(committed: expected_runner_deploy_manifest())
+    && runner_deploy_drifted(committed: concat(expected_runner_deploy_manifest(), "x"))
 }
 
 fn witness_session_cpu_weight_exceeds_runner_cpu_weight() -> Bool {
-  gunbc.ci_runner_placement.workload_class_cpu_weight(wc: gunbc.ci_runner_placement.InteractiveLatencySensitive) > gunbc.ci_runner_placement.workload_class_cpu_weight(wc: gunbc.ci_runner_placement.BatchLatencyTolerant)
+  workload_class_cpu_weight(wc: InteractiveLatencySensitive) > workload_class_cpu_weight(wc: BatchLatencyTolerant)
 }
 
 fn witness_runner_manifest_line_contains_cpu_weight() -> Bool {
   match live_plan() {
-    gunbc.ci_runner_placement.PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0
-        && all(hosts, h => string_contains(s: render(doc: gunbc.runner_deploy_emit.manifest_host_doc(h: h), proto: gunbc.runner_deploy_emit.runner_deploy_protocol), pattern: " cpu_weight=100"))
-    gunbc.ci_runner_placement.PlanUnsound { reason: _ } => false
+        && all(hosts, h => string_contains(s: render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol), pattern: " cpu_weight=100"))
+    PlanUnsound { reason: _ } => false
   }
 }
 
 fn witness_runner_and_session_cpu_weights_are_distinct() -> Bool {
-  gunbc.ci_runner_placement.workload_class_cpu_weight(wc: gunbc.ci_runner_placement.BatchLatencyTolerant) != gunbc.ci_runner_placement.workload_class_cpu_weight(wc: gunbc.ci_runner_placement.InteractiveLatencySensitive)
+  workload_class_cpu_weight(wc: BatchLatencyTolerant) != workload_class_cpu_weight(wc: InteractiveLatencySensitive)
 }
 
 fn witness_session_slice_line_emits_cpu_weight() -> Bool {
-  let rendered = gunbc.runner_deploy_emit.expected_runner_deploy_manifest()
+  let rendered = expected_runner_deploy_manifest()
   string_contains(s: rendered, pattern: "session-slice host=")
     && string_contains(s: rendered, pattern: " cpu_weight=1000")
     && string_contains(s: rendered, pattern: " slice_max_bytes=")
@@ -158,23 +158,23 @@ fn witness_session_slice_line_emits_cpu_weight() -> Bool {
 }
 
 fn witness_session_reservation_line_has_no_cpu_weight() -> Bool {
-  let fixture = gunbc.ci_runner_placement.SessionHostReservation {
+  let fixture = SessionHostReservation {
     identity: "fixture-host",
     session_count: 4,
-    per_session_reservation: std.measure.byte_size(4294967296),
-    workload_class: gunbc.ci_runner_placement.InteractiveLatencySensitive,
+    per_session_reservation: byte_size(4294967296),
+    workload_class: InteractiveLatencySensitive,
   }
-  !(string_contains(s: render(doc: gunbc.runner_deploy_emit.session_host_doc(h: fixture), proto: gunbc.runner_deploy_emit.runner_deploy_protocol), pattern: "cpu_weight"))
+  !(string_contains(s: render(doc: session_host_doc(h: fixture), proto: runner_deploy_protocol), pattern: "cpu_weight"))
 }
 
 fn witness_real_manifest_fields_drive_both_formats() -> Bool {
-  match gunbc.ci_runner_placement.runner_deployment_plan() {
-    gunbc.ci_runner_placement.PlanUnsound { reason: _ } => false
-    gunbc.ci_runner_placement.PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+  match runner_deployment_plan() {
+    PlanUnsound { reason: _ } => false
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0 &&
       all(hosts, h => {
-        let text_out = render(doc: gunbc.runner_deploy_emit.manifest_host_doc(h: h), proto: gunbc.runner_deploy_emit.runner_deploy_protocol)
-        let json_out = render(doc: std.serialize.serialize_record_doc(knobs: std.languages.json_record_knobs, fields: gunbc.runner_deploy_emit.manifest_host_fields(h: h)), proto: gunbc.runner_deploy_emit.runner_deploy_protocol)
+        let text_out = render(doc: manifest_host_doc(h: h), proto: runner_deploy_protocol)
+        let json_out = render(doc: serialize_record_doc(knobs: json_record_knobs, fields: manifest_host_fields(h: h)), proto: runner_deploy_protocol)
         text_out != json_out &&
           string_contains(s: text_out, pattern: concat("host=", h.identity)) &&
           string_contains(s: json_out, pattern: concat("\"host\": \"", h.identity))

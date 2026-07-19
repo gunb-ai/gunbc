@@ -1,32 +1,32 @@
 module test.claim.realization_scale_agnostic
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn milli(count: std.nat.Nat) -> std.measure.Measure<Time, std.measure.Milli, std.nat.Nat> {
-  std.measure.time_measure(count: count)
+fn milli(count: std.nat.Nat) -> Measure<Time, Milli, std.nat.Nat> {
+  time_measure(count: count)
 }
 
 fn witness_milli_seq_and_par() -> Bool {
   let a = milli(count: 30)
   let b = milli(count: 12)
-  (std.measure.measure_count(m: std.realization_measurement.time_measure_seq(a: a, b: b)) == 42)
-    && (std.measure.measure_count(m: std.realization_measurement.time_measure_par(a: a, b: b)) == 30)
+  (measure_count(m: time_measure_seq(a: a, b: b)) == 42)
+    && (measure_count(m: time_measure_par(a: a, b: b)) == 30)
 }
 
 fn witness_milli_critical_path() -> Bool {
   let batches = [[milli(count: 10), milli(count: 40)], [milli(count: 5)]]
-  std.measure.measure_count(m: std.realization_measurement.schedule_critical_path_time(batch_times: batches)) == 45
+  measure_count(m: schedule_critical_path_time(batch_times: batches)) == 45
 }
 
 fn witness_milli_cost_account() -> Bool {
   let batches = [[milli(count: 7)], [milli(count: 8)]]
-  let account = std.realization_measurement.cost_account_measured_from_schedule_critical_path(batch_times: batches)
-  std.realization_schedule.cost_account_time_count(account: account) == 15
+  let account = cost_account_measured_from_schedule_critical_path(batch_times: batches)
+  cost_account_time_count(account: account) == 15
 }
 
 fn witness_milli_rollup_discriminates() -> Bool {
-  std.realization_measurement.witness_measured_rollup_differs_from_predicted_zero(wall_time: milli(count: 99))
+  witness_measured_rollup_differs_from_predicted_zero(wall_time: milli(count: 99))
 }
 
 test fn realization_scale_agnostic_witnesses() -> Bool {

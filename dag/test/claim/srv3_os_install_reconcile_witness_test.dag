@@ -1,29 +1,29 @@
 module test.claim.srv3_os_install_reconcile
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_uefi_stuck_observation: gunbc.srv3_os_install_diagnostic.Srv3InstallDebugObservation = gunbc.srv3_os_install_diagnostic.Srv3InstallDebugObservation {
-  actuator_serve: gunbc.srv3_os_install_diagnostic.ServeObserved {
-    process: gunbc.srv3_os_install_diagnostic.ServeProcessesPresent,
-    port: gunbc.srv3_os_install_diagnostic.ServePortListening {
+data witness_uefi_stuck_observation: Srv3InstallDebugObservation = Srv3InstallDebugObservation {
+  actuator_serve: ServeObserved {
+    process: ServeProcessesPresent,
+    port: ServePortListening {
       port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port,
       owner_matches_expected: true,
     },
     session: gunbc.srv3_os_install_diagnostic.TokenPresent,
-    iso: gunbc.srv3_os_install_diagnostic.IsoPresent { observed_content_hash: gunbc.srv3_seeded_install_media_artifact.srv3_seeded_install_media_content_hash },
+    iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
   },
-  bmc_websocket: gunbc.srv3_os_install_diagnostic.WebsocketUpgradeAccepted,
-  redfish_boot: gunbc.srv3_os_install_diagnostic.RedfishBootObservation {
+  bmc_websocket: WebsocketUpgradeAccepted,
+  redfish_boot: RedfishBootObservation {
     power_state: On,
     boot_override_enabled: BootOverrideDisabled,
     boot_override_target: BootTargetNone,
-    boot_progress: gunbc.srv3_os_install_diagnostic.BootProgressNone,
+    boot_progress: BootProgressNone,
   },
-  virtual_media_session: gunbc.srv3_os_install_diagnostic.AttachedToExpectedServe,
+  virtual_media_session: AttachedToExpectedServe,
   sol: Present {
-    value: gunbc.srv3_os_install_diagnostic.SolConsoleContentObservation {
-      bytes_captured: std.measure.byte_size(0),
+    value: SolConsoleContentObservation {
+      bytes_captured: byte_size(0),
       duration_ms: 3600000,
       contains_grub: false,
       contains_subiquity: false,
@@ -33,12 +33,12 @@ data witness_uefi_stuck_observation: gunbc.srv3_os_install_diagnostic.Srv3Instal
       capture_available: true,
     }
   },
-  router_lease_table: Present { value: gunbc.network_identity_subsumption.srv3_pre_install_lease_table },
+  router_lease_table: Present { value: srv3_pre_install_lease_table },
   kvm: Absent,
   elapsed_since_boot_once_ms: Present { value: 3600000 },
 }
 
-data witness_router_unknown_observation: gunbc.srv3_os_install_diagnostic.Srv3InstallDebugObservation = gunbc.srv3_os_install_diagnostic.Srv3InstallDebugObservation {
+data witness_router_unknown_observation: Srv3InstallDebugObservation = Srv3InstallDebugObservation {
   actuator_serve: witness_uefi_stuck_observation.actuator_serve,
   bmc_websocket: witness_uefi_stuck_observation.bmc_websocket,
   redfish_boot: witness_uefi_stuck_observation.redfish_boot,
@@ -50,7 +50,7 @@ data witness_router_unknown_observation: gunbc.srv3_os_install_diagnostic.Srv3In
 }
 
 test fn reconcile_preflight_is_complete_for_unattended() -> Bool {
-  let result = gunbc.srv3_os_install_reconcile.reconcile_srv3_os_install_dry_run_fixture(
+  let result = reconcile_srv3_os_install_dry_run_fixture(
     observation: witness_uefi_stuck_observation,
   )
   match result.preflight {
@@ -60,7 +60,7 @@ test fn reconcile_preflight_is_complete_for_unattended() -> Bool {
 }
 
 test fn reconcile_uefi_stuck_maps_kvm_firmware_idle() -> Bool {
-  let result = gunbc.srv3_os_install_reconcile.reconcile_srv3_os_install_dry_run_fixture(
+  let result = reconcile_srv3_os_install_dry_run_fixture(
     observation: witness_uefi_stuck_observation,
   )
   match result.diagnostic {
@@ -68,26 +68,26 @@ test fn reconcile_uefi_stuck_maps_kvm_firmware_idle() -> Bool {
     _ => false
   }
     && match result.deduction_runtime {
-      gunbc.srv3_os_install_reconcile_types.DeductionRuntimePresent { verdict: gunbc.os_install_deduction.KvmFirmwareIdleObserved } => true
+      DeductionRuntimePresent { verdict: KvmFirmwareIdleObserved } => true
       _ => false
     }
 }
 
 test fn reconcile_uefi_stuck_plans_boot_once_awaiting_approval() -> Bool {
-  let result = gunbc.srv3_os_install_reconcile.reconcile_srv3_os_install_dry_run_fixture(
+  let result = reconcile_srv3_os_install_dry_run_fixture(
     observation: witness_uefi_stuck_observation,
   )
-  result.pending_step_id == ("boot-once-cd" as std.types.NonEmptyStr)
+  result.pending_step_id == ("boot-once-cd" as NonEmptyStr)
     && match result.temporal_plan {
-      std.temporal_effect.PlanAwaitApproval { escalation_id: e } =>
-        e == ("srv3-boot-once-cd" as std.types.NonEmptyStr)
+      PlanAwaitApproval { escalation_id: e } =>
+        e == ("srv3-boot-once-cd" as NonEmptyStr)
       _ => false
     }
 }
 
 test fn reconcile_receipt_line_names_preflight_and_deduction() -> Bool {
-  let line = gunbc.srv3_os_install_reconcile_receipt.srv3_install_reconcile_receipt_line(
-    result: gunbc.srv3_os_install_reconcile.reconcile_srv3_os_install_dry_run_fixture(observation: witness_uefi_stuck_observation),
+  let line = srv3_install_reconcile_receipt_line(
+    result: reconcile_srv3_os_install_dry_run_fixture(observation: witness_uefi_stuck_observation),
   )
   string_contains(s: line, pattern: "preflight=CompleteForUnattended")
     && string_contains(s: line, pattern: "deduction_runtime=KvmFirmwareIdleObserved")
@@ -96,17 +96,17 @@ test fn reconcile_receipt_line_names_preflight_and_deduction() -> Bool {
 
 test fn reconcile_full_receipt_typed_router_and_virtual_media() -> Bool {
   let observation = witness_uefi_stuck_observation
-  let result = gunbc.srv3_os_install_reconcile.reconcile_srv3_os_install_dry_run_fixture(observation: observation)
-  let lease = gunbc.srv3_os_install_reconcile.srv3_held_lease_from_serve(serve: observation.actuator_serve)
-  let receipt = gunbc.srv3_os_install_reconcile_receipt.srv3_install_reconcile_full_receipt(
+  let result = reconcile_srv3_os_install_dry_run_fixture(observation: observation)
+  let lease = srv3_held_lease_from_serve(serve: observation.actuator_serve)
+  let receipt = srv3_install_reconcile_full_receipt(
     result: result,
-    intent: gunbc.srv3_os_install_diagnostic.srv3_os_install_attempt_intent,
+    intent: srv3_os_install_attempt_intent,
     observation: observation,
-    grant: std.temporal_effect.GrantAbsent,
-    prior: std.temporal_effect.NoPriorReceipt,
+    grant: GrantAbsent,
+    prior: NoPriorReceipt,
     lease: lease,
-    git_branch: "witness" as std.types.NonEmptyStr,
-    git_commit: "witness" as std.types.NonEmptyStr,
+    git_branch: "witness" as NonEmptyStr,
+    git_commit: "witness" as NonEmptyStr,
   )
   string_contains(s: receipt, pattern: "router_lease_state=OnlyBmcLeasePresent")
     && string_contains(s: receipt, pattern: "virtual_media_observation=AttachedExpectedIso")
@@ -116,52 +116,52 @@ test fn reconcile_full_receipt_typed_router_and_virtual_media() -> Bool {
 
 test fn reconcile_full_receipt_router_unknown_operator_required() -> Bool {
   let observation = witness_router_unknown_observation
-  let result = gunbc.srv3_os_install_reconcile.reconcile_srv3_os_install_dry_run_fixture(observation: observation)
-  let lease = gunbc.srv3_os_install_reconcile.srv3_held_lease_from_serve(serve: observation.actuator_serve)
-  let receipt = gunbc.srv3_os_install_reconcile_receipt.srv3_install_reconcile_full_receipt(
+  let result = reconcile_srv3_os_install_dry_run_fixture(observation: observation)
+  let lease = srv3_held_lease_from_serve(serve: observation.actuator_serve)
+  let receipt = srv3_install_reconcile_full_receipt(
     result: result,
-    intent: gunbc.srv3_os_install_diagnostic.srv3_os_install_attempt_intent,
+    intent: srv3_os_install_attempt_intent,
     observation: observation,
-    grant: std.temporal_effect.GrantAbsent,
-    prior: std.temporal_effect.NoPriorReceipt,
+    grant: GrantAbsent,
+    prior: NoPriorReceipt,
     lease: lease,
-    git_branch: "witness" as std.types.NonEmptyStr,
-    git_commit: "witness" as std.types.NonEmptyStr,
+    git_branch: "witness" as NonEmptyStr,
+    git_commit: "witness" as NonEmptyStr,
   )
   string_contains(s: receipt, pattern: "router_lease_state=RouterLeaseUnknownOperatorRequired")
 }
 
-data witness_active_boot_once_grant: DurableApprovalGrant = std.temporal_effect.GrantActive {
-  escalation_id: "srv3-boot-once-cd" as std.types.NonEmptyStr,
-  intent_hash: gunbc.srv3_seeded_install_media_artifact.srv3_seeded_install_media_content_hash,
-  granted_by: "operator" as std.types.NonEmptyStr,
+data witness_active_boot_once_grant: DurableApprovalGrant = GrantActive {
+  escalation_id: "srv3-boot-once-cd" as NonEmptyStr,
+  intent_hash: srv3_seeded_install_media_content_hash,
+  granted_by: "operator" as NonEmptyStr,
   granted_at: "2026-07-03T00:00:00Z",
   expires_at: "2026-07-04T00:00:00Z",
 }
 
 test fn reconcile_active_grant_plans_boot_once_apply() -> Bool {
-  let lease = gunbc.srv3_os_install_reconcile.srv3_held_lease_from_serve(serve: witness_uefi_stuck_observation.actuator_serve)
-  match gunbc.srv3_os_install_reconcile.plan_boot_once_cd_step(
-    intent: gunbc.srv3_os_install_reconcile_types.srv3_install_effect_attempt_intent,
-    escalation_id: "srv3-boot-once-cd" as std.types.NonEmptyStr,
+  let lease = srv3_held_lease_from_serve(serve: witness_uefi_stuck_observation.actuator_serve)
+  match plan_boot_once_cd_step(
+    intent: srv3_install_effect_attempt_intent,
+    escalation_id: "srv3-boot-once-cd" as NonEmptyStr,
     grant: witness_active_boot_once_grant,
     lease: lease,
-    prior: std.temporal_effect.NoPriorReceipt,
-    observed_at: "2026-07-03T01:00:00Z" as std.types.Timestamp,
+    prior: NoPriorReceipt,
+    observed_at: "2026-07-03T01:00:00Z" as Timestamp,
   ) {
-    std.temporal_effect.PlanApply { step_id: s } => s == ("boot-once-cd" as std.types.NonEmptyStr)
+    PlanApply { step_id: s } => s == ("boot-once-cd" as NonEmptyStr)
     _ => false
   }
 }
 
-data witness_post_boot_armed_observation: gunbc.srv3_os_install_diagnostic.Srv3InstallDebugObservation = gunbc.srv3_os_install_diagnostic.Srv3InstallDebugObservation {
+data witness_post_boot_armed_observation: Srv3InstallDebugObservation = Srv3InstallDebugObservation {
   actuator_serve: witness_uefi_stuck_observation.actuator_serve,
   bmc_websocket: witness_uefi_stuck_observation.bmc_websocket,
-  redfish_boot: gunbc.srv3_os_install_diagnostic.RedfishBootObservation {
+  redfish_boot: RedfishBootObservation {
     power_state: On,
-    boot_override_enabled: extdeps.bmc.types.BootOverrideOnce,
-    boot_override_target: extdeps.bmc.types.BootTargetCd,
-    boot_progress: gunbc.srv3_os_install_diagnostic.BootProgressNone,
+    boot_override_enabled: BootOverrideOnce,
+    boot_override_target: BootTargetCd,
+    boot_progress: BootProgressNone,
   },
   virtual_media_session: witness_uefi_stuck_observation.virtual_media_session,
   sol: witness_uefi_stuck_observation.sol,
@@ -170,7 +170,7 @@ data witness_post_boot_armed_observation: gunbc.srv3_os_install_diagnostic.Srv3I
   elapsed_since_boot_once_ms: Present { value: 60000 },
 }
 
-data witness_ready_to_boot_pre_observation: gunbc.srv3_os_install_diagnostic.Srv3InstallDebugObservation = gunbc.srv3_os_install_diagnostic.Srv3InstallDebugObservation {
+data witness_ready_to_boot_pre_observation: Srv3InstallDebugObservation = Srv3InstallDebugObservation {
   actuator_serve: witness_uefi_stuck_observation.actuator_serve,
   bmc_websocket: witness_uefi_stuck_observation.bmc_websocket,
   redfish_boot: witness_uefi_stuck_observation.redfish_boot,
@@ -181,7 +181,7 @@ data witness_ready_to_boot_pre_observation: gunbc.srv3_os_install_diagnostic.Srv
   elapsed_since_boot_once_ms: Absent,
 }
 
-data witness_ready_to_boot_post_consumed_observation: gunbc.srv3_os_install_diagnostic.Srv3InstallDebugObservation = gunbc.srv3_os_install_diagnostic.Srv3InstallDebugObservation {
+data witness_ready_to_boot_post_consumed_observation: Srv3InstallDebugObservation = Srv3InstallDebugObservation {
   actuator_serve: witness_ready_to_boot_pre_observation.actuator_serve,
   bmc_websocket: witness_ready_to_boot_pre_observation.bmc_websocket,
   redfish_boot: witness_ready_to_boot_pre_observation.redfish_boot,
@@ -193,7 +193,7 @@ data witness_ready_to_boot_post_consumed_observation: gunbc.srv3_os_install_diag
 }
 
 test fn reconcile_boot_once_read_back_ok_rejects_noop_when_already_consumed() -> Bool {
-  !gunbc.srv3_os_install_reconcile.boot_once_apply_read_back_ok(
+  !boot_once_apply_read_back_ok(
     pre: witness_uefi_stuck_observation,
     post: witness_uefi_stuck_observation,
     apply_succeeded: true,
@@ -201,7 +201,7 @@ test fn reconcile_boot_once_read_back_ok_rejects_noop_when_already_consumed() ->
 }
 
 test fn reconcile_boot_once_read_back_ok_rejects_armed_to_consumed_without_install_progress() -> Bool {
-  !gunbc.srv3_os_install_reconcile.boot_once_apply_read_back_ok(
+  !boot_once_apply_read_back_ok(
     pre: witness_post_boot_armed_observation,
     post: witness_uefi_stuck_observation,
     apply_succeeded: true,
@@ -209,7 +209,7 @@ test fn reconcile_boot_once_read_back_ok_rejects_armed_to_consumed_without_insta
 }
 
 test fn reconcile_boot_once_read_back_ok_rejects_elapsed_only_without_install_progress() -> Bool {
-  !gunbc.srv3_os_install_reconcile.boot_once_apply_read_back_ok(
+  !boot_once_apply_read_back_ok(
     pre: witness_ready_to_boot_pre_observation,
     post: witness_ready_to_boot_post_consumed_observation,
     apply_succeeded: true,
@@ -217,7 +217,7 @@ test fn reconcile_boot_once_read_back_ok_rejects_elapsed_only_without_install_pr
 }
 
 test fn reconcile_boot_once_read_back_ok_rejects_still_armed() -> Bool {
-  !gunbc.srv3_os_install_reconcile.boot_once_apply_read_back_ok(
+  !boot_once_apply_read_back_ok(
     pre: witness_uefi_stuck_observation,
     post: witness_post_boot_armed_observation,
     apply_succeeded: true,
@@ -225,14 +225,14 @@ test fn reconcile_boot_once_read_back_ok_rejects_still_armed() -> Bool {
 }
 
 test fn parse_observed_at_from_stdout_absent_without_surface() -> Bool {
-  match gunbc.srv3_os_install_reconcile.parse_observed_at_from_stdout(stdout: "Srv3InstallObserveReceipt: surface=serve\n") {
+  match parse_observed_at_from_stdout(stdout: "Srv3InstallObserveReceipt: surface=serve\n") {
     Absent => true
     _ => false
   }
 }
 
 test fn parse_observed_at_from_stdout_present_on_surface_line() -> Bool {
-  match gunbc.srv3_os_install_reconcile.parse_observed_at_from_stdout(
+  match parse_observed_at_from_stdout(
     stdout: "Srv3InstallObserveReceipt: surface=observed_at=2026-07-03T12:00:00Z\n",
   ) {
     Present { value: t } => t == "2026-07-03T12:00:00Z"
@@ -241,7 +241,7 @@ test fn parse_observed_at_from_stdout_present_on_surface_line() -> Bool {
 }
 
 test fn reconcile_parse_durable_grant_file_accepts_matching_intent() -> Bool {
-  let intent_hash = gunbc.srv3_seeded_install_media_artifact.srv3_seeded_install_media_content_hash as String
+  let intent_hash = srv3_seeded_install_media_content_hash as String
   let contents = concat(
     "Srv3InstallApprovalGrant: escalation_id=srv3-boot-once-cd intent_hash=",
     concat(
@@ -249,15 +249,15 @@ test fn reconcile_parse_durable_grant_file_accepts_matching_intent() -> Bool {
       " granted_by=operator granted_at=2026-07-03T00:00:00Z expires_at=2026-07-04T00:00:00Z",
     ),
   )
-  match gunbc.srv3_os_install_reconcile.parse_durable_approval_grant_file(contents: contents) {
-    std.temporal_effect.GrantActive { escalation_id: e, intent_hash: h, granted_by: _, granted_at: _, expires_at: _ } =>
-      e == ("srv3-boot-once-cd" as std.types.NonEmptyStr) && h == gunbc.srv3_seeded_install_media_artifact.srv3_seeded_install_media_content_hash
+  match parse_durable_approval_grant_file(contents: contents) {
+    GrantActive { escalation_id: e, intent_hash: h, granted_by: _, granted_at: _, expires_at: _ } =>
+      e == ("srv3-boot-once-cd" as NonEmptyStr) && h == srv3_seeded_install_media_content_hash
     _ => false
   }
 }
 
 test fn reconcile_parse_durable_grant_file_strips_trailing_newline_on_expires_at() -> Bool {
-  let intent_hash = gunbc.srv3_seeded_install_media_artifact.srv3_seeded_install_media_content_hash as String
+  let intent_hash = srv3_seeded_install_media_content_hash as String
   let contents = concat(
     "Srv3InstallApprovalGrant: escalation_id=srv3-boot-once-cd intent_hash=",
     concat(
@@ -265,8 +265,8 @@ test fn reconcile_parse_durable_grant_file_strips_trailing_newline_on_expires_at
       " granted_by=operator granted_at=2026-07-03T00:00:00Z expires_at=2026-07-04T00:00:00Z\n",
     ),
   )
-  match gunbc.srv3_os_install_reconcile.parse_durable_approval_grant_file(contents: contents) {
-    std.temporal_effect.GrantActive { escalation_id: _, intent_hash: _, granted_by: _, granted_at: _, expires_at: exp } =>
+  match parse_durable_approval_grant_file(contents: contents) {
+    GrantActive { escalation_id: _, intent_hash: _, granted_by: _, granted_at: _, expires_at: exp } =>
       exp == "2026-07-04T00:00:00Z"
     _ => false
   }

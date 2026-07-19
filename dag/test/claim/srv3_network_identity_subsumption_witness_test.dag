@@ -1,38 +1,38 @@
 module test.claim.srv3_network_identity_subsumption
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_pre_install_has_no_os_up_on_lan() -> Bool {
-  gunbc.network_identity_subsumption.srv3_pre_install_has_no_os_up_subsumption()
+  srv3_pre_install_has_no_os_up_subsumption()
 }
 
 test fn srv3_bmc_static_row_is_not_os_identity_subsumption() -> Bool {
-  gunbc.network_identity_subsumption.bmc_static_reservation_does_not_subsume_os_fleet_slot()
+  bmc_static_reservation_does_not_subsume_os_fleet_slot()
 }
 
 test fn srv3_post_install_fixture_subsumes_operator_host_srv3() -> Bool {
-  gunbc.network_identity_subsumption.srv3_post_install_fixture_subsumes_fleet_slot()
+  srv3_post_install_fixture_subsumes_fleet_slot()
 }
 
 test fn network_identity_subsumption_discriminates_static_vs_dynamic() -> Bool {
-  !gunbc.network_identity_subsumption.network_identity_subsumes_fleet_slot(
-    fleet_slot: gunbc.fleet_intent_network.operator_host_srv3,
-    lease: gunbc.network_identity_subsumption.srv3_bmc_static_lease_row.lease,
+  !network_identity_subsumes_fleet_slot(
+    fleet_slot: operator_host_srv3,
+    lease: srv3_bmc_static_lease_row.lease,
   )
-    && gunbc.network_identity_subsumption.network_identity_subsumes_fleet_slot(
-      fleet_slot: gunbc.fleet_intent_network.operator_host_srv3,
-      lease: gunbc.network_identity_subsumption.srv3_os_up_dynamic_lease_row.lease,
+    && network_identity_subsumes_fleet_slot(
+      fleet_slot: operator_host_srv3,
+      lease: srv3_os_up_dynamic_lease_row.lease,
     )
 }
 
 test fn srv3_os_lan_placeholders_carry_dissolution_triggers() -> Bool {
-  match gunbc.network_identity_subsumption.srv3_os_lan_mac_dissolution_trigger {
-    std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+  match srv3_os_lan_mac_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
     Terminal { reason: _ } => false
   }
-    && match gunbc.network_identity_subsumption.srv3_os_lan_ipv4_dissolution_trigger {
-      std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    && match srv3_os_lan_ipv4_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
       Terminal { reason: _ } => false
     }
 }

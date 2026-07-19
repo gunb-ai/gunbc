@@ -209,9 +209,7 @@ pub fn preserve_nominal_brand_on_resolve(
         && (brand_name.clone() != authored_name_at(source_indices.clone(), structural.clone())))
         && !is_declared_container_alias_spelling(brand_name.clone()))
         && (!is_transparent_primitive_alias_rhs(structural.clone(), source_indices.clone())
-            || crate::v1_std_core::is_kernel_type(
-                crate::v1_compiler_infer_env::qualified_last_segment(brand_name.clone()),
-            )))
+            || is_kernel_type(qualified_last_segment(brand_name.clone()))))
     {
         with_authored_identity(identity.clone(), structural.clone())
     } else {
@@ -267,9 +265,7 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                     && (!is_transparent_primitive_alias_rhs(
                         structural.clone(),
                         source_indices.clone(),
-                    ) || crate::v1_std_core::is_kernel_type(
-                        crate::v1_compiler_infer_env::qualified_last_segment(brand.clone()),
-                    )))
+                    ) || is_kernel_type(qualified_last_segment(brand.clone()))))
                 {
                     with_authored_identity(n.clone(), structural.clone())
                 } else {
@@ -493,7 +489,13 @@ pub fn substitute_type_slots(
     decl_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    substitute_type_slots_scoped(n, slot_bindings, decl_name, source_indices, false)
+    substitute_type_slots_scoped(
+        n.clone(),
+        slot_bindings.clone(),
+        decl_name.clone(),
+        source_indices.clone(),
+        false,
+    )
 }
 
 pub fn substitute_type_slots_scoped(
@@ -504,18 +506,18 @@ pub fn substitute_type_slots_scoped(
     bind_type_variables: bool,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let tv_slot = if bind_type_variables {
+        let tv_slot = if bind_type_variables.clone() {
             match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
-                    v1_rt::map_get(&slot_bindings, tv_id)
+                    v1_rt::map_get(&slot_bindings, tv_id.clone())
                 }
                 _ => None,
             }
         } else {
             None
         };
-        if let Some(concrete) = tv_slot {
-            return concrete.clone();
+        if (tv_slot.clone() != None) {
+            return tv_slot.clone().unwrap();
         }
         let is_slot = (((((n.children.clone().len() as i64) == 0)
             && (n.connective.clone() == Connective::NoConnective))
@@ -547,7 +549,7 @@ pub fn substitute_type_slots_scoped(
                                                 slot_bindings.clone(),
                                                 decl_name.clone(),
                                                 source_indices.clone(),
-                                                bind_type_variables,
+                                                bind_type_variables.clone(),
                                             ));
                                         }
                                         __result
@@ -581,7 +583,7 @@ pub fn substitute_type_slots_scoped(
                                     slot_bindings.clone(),
                                     decl_name.clone(),
                                     source_indices.clone(),
-                                    bind_type_variables,
+                                    bind_type_variables.clone(),
                                 )
                             },
                         );
@@ -596,7 +598,7 @@ pub fn substitute_type_slots_scoped(
                                 slot_bindings.clone(),
                                 decl_name.clone(),
                                 source_indices.clone(),
-                                bind_type_variables,
+                                bind_type_variables.clone(),
                             ),
                         }))
                     }
@@ -1737,26 +1739,19 @@ pub fn resolve_node_bounded(
                                                         diagnostics: Rc::new(vec![]),
                                                     })
                                                 } else {
-                                                    match lookup_unit_variant_phantom_type(
-                                                        env.clone(),
-                                                        authored_name(env.clone(), n.clone()),
-                                                    ) {
-                                                        Some(phantom) => {
-                                                            Rc::new(NodeResolveResult {
-                                                                resolved: phantom.clone(),
-                                                                diagnostics: Rc::new(vec![]),
-                                                            })
-                                                        }
-                                                        None => {
-                                                            Rc::new(NodeResolveResult {
+                                                    match lookup_unit_variant_phantom_type(env.clone(), authored_name(env.clone(), n.clone())) {
+    Some(phantom) => Rc::new(NodeResolveResult {
+    resolved: phantom.clone(),
+    diagnostics: Rc::new(vec![]),
+}),
+    None => Rc::new(NodeResolveResult {
     resolved: n.clone(),
     diagnostics: Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::UnresolvedType {
     name: authored_name(env.clone(), n.clone()),
     span: n.span.clone(),
 }), module_name.clone())]),
-})
-                                                        }
-                                                    }
+}),
+}
                                                 }
                                             }
                                         }
@@ -3201,10 +3196,7 @@ pub fn resolve_item_types(
         } else {
             Rc::new(vec![])
         };
-        let env = crate::v1_compiler_infer_env::env_with_type_variable_bindings(
-            env.clone(),
-            tp_names.clone(),
-        );
+        let env = env_with_type_variable_bindings(env.clone(), tp_names.clone());
         let param_results = Rc::new({
             let mut __result = Vec::new();
             for p in item.params.clone().iter().cloned() {

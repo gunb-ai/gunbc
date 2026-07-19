@@ -1,7 +1,7 @@
 module test.claim.v1_source_audit_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data core_path: String = "src/v1/00_core.dag"
 data parse_path: String = "src/v1/02_parse.dag"
@@ -44,14 +44,14 @@ fn src_lacks(path: String, needle: String) -> Bool {
 }
 
 fn map_has_key(m: Map<String, Bool>, key: String) -> Bool {
-  match v2.std.collection.map_get(m, key) {
+  match map_get(m, key) {
     Present { value: _ } => true
     Absent => false
   }
 }
 
 fn str_map_has_key(m: Map<String, String>, key: String) -> Bool {
-  match v2.std.collection.map_get(m, key) {
+  match map_get(m, key) {
     Present { value: _ } => true
     Absent => false
   }
@@ -344,46 +344,46 @@ test fn no_expr_data_arm_present_in_core() -> Bool {
 }
 
 test fn rt_functions_derived_from_registry() -> Bool {
-  map_has_key(extdeps.languages.rust.emit.rt_functions(), "filesystem_read")
-    && map_has_key(extdeps.languages.rust.emit.rt_functions(), "concat")
-    && map_has_key(extdeps.languages.rust.emit.rt_functions(), "index_by")
+  map_has_key(rt_functions(), "filesystem_read")
+    && map_has_key(rt_functions(), "concat")
+    && map_has_key(rt_functions(), "index_by")
 }
 
 test fn rt_bridge_function_names_derived_from_registry() -> Bool {
-  let overridden = match v2.std.collection.map_get(extdeps.languages.rust.emit.rt_bridge_function_names(), "index_by") {
+  let overridden = match map_get(rt_bridge_function_names(), "index_by") {
     Present { value: b } => b == "rc_index_by"
     Absent => false
   }
-  overridden && !str_map_has_key(extdeps.languages.rust.emit.rt_bridge_function_names(), "concat")
+  overridden && !str_map_has_key(rt_bridge_function_names(), "concat")
 }
 
 test fn rt_wraps_result_derived_from_registry() -> Bool {
-  map_has_key(extdeps.languages.rust.emit.rt_wraps_result(), "append")
-    && map_has_key(extdeps.languages.rust.emit.rt_wraps_result(), "map_keys")
-    && !map_has_key(extdeps.languages.rust.emit.rt_wraps_result(), "concat")
+  map_has_key(rt_wraps_result(), "append")
+    && map_has_key(rt_wraps_result(), "map_keys")
+    && !map_has_key(rt_wraps_result(), "concat")
 }
 
 test fn method_wraps_result_derived_from_specs() -> Bool {
-  map_has_key(extdeps.languages.rust.emit.rust_method_wraps_result(), "split")
-    && !map_has_key(extdeps.languages.rust.emit.rust_method_wraps_result(), "last")
+  map_has_key(rust_method_wraps_result(), "split")
+    && !map_has_key(rust_method_wraps_result(), "last")
 }
 
 test fn method_templates_derived_from_specs() -> Bool {
-  str_map_has_key(extdeps.languages.rust.emit.rust_method_templates(), "split")
-    && str_map_has_key(extdeps.languages.rust.emit.rust_method_templates(), "last")
-    && str_map_has_key(extdeps.languages.rust.emit.rust_method_templates(), "first")
+  str_map_has_key(rust_method_templates(), "split")
+    && str_map_has_key(rust_method_templates(), "last")
+    && str_map_has_key(rust_method_templates(), "first")
 }
 
 test fn python_flat_method_templates_exclude_bridge_routed() -> Bool {
-  !str_map_has_key(extdeps.languages.python.emit.python_method_templates_flat(), "map")
-    && !str_map_has_key(extdeps.languages.python.emit.python_method_templates_flat(), "fold")
-    && !str_map_has_key(extdeps.languages.python.emit.python_method_templates_flat(), "concat")
+  !str_map_has_key(python_method_templates_flat(), "map")
+    && !str_map_has_key(python_method_templates_flat(), "fold")
+    && !str_map_has_key(python_method_templates_flat(), "concat")
 }
 
 test fn go_flat_method_templates_exclude_bridge_routed() -> Bool {
-  !str_map_has_key(extdeps.languages.go.emit.go_method_templates_flat(), "map")
-    && !str_map_has_key(extdeps.languages.go.emit.go_method_templates_flat(), "fold")
-    && !str_map_has_key(extdeps.languages.go.emit.go_method_templates_flat(), "concat")
+  !str_map_has_key(go_method_templates_flat(), "map")
+    && !str_map_has_key(go_method_templates_flat(), "fold")
+    && !str_map_has_key(go_method_templates_flat(), "concat")
 }
 
 test fn is_copy_checkpoint_authority_present() -> Bool {

@@ -1,22 +1,22 @@
 module test.claim.dag_compile_clean_shard_a_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
-data witness_compose_red_on_injected_failure: Bool = tools.dag_compile_clean_partition.compose_compile_clean_shard_verdicts(
-  verdicts: [tools.dag_compile_clean_partition.ShardClean, tools.dag_compile_clean_partition.ShardFailed { entry_path: tools.dag_compile_clean_shard_transport.shard_a_exemplar_entry_path }]
-) != tools.dag_compile_clean_partition.ShardClean
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data witness_compose_red_on_injected_failure: Bool = compose_compile_clean_shard_verdicts(
+  verdicts: [ShardClean, ShardFailed { entry_path: shard_a_exemplar_entry_path }]
+) != ShardClean
 
 test fn compile_clean_partition_boundary_matches_compile_clean_source_roots() -> Bool {
-  tools.dag_compile_clean_partition.witness_partition_entry_root_is_first_witness_layer_root()
-    && tools.dag_compile_clean_partition.witness_partition_pool_roots_are_compile_clean_source_roots()
+  witness_partition_entry_root_is_first_witness_layer_root()
+    && witness_partition_pool_roots_are_compile_clean_source_roots()
 }
 
 test fn compile_clean_shard_verdict_compose_laws_hold() -> Bool {
-  tools.dag_compile_clean_partition.witness_compose_all_clean_is_clean()
-    && tools.dag_compile_clean_partition.witness_compose_any_failure_fails_closed()
-    && tools.dag_compile_clean_partition.witness_compose_associativity()
-    && tools.dag_compile_clean_partition.witness_reduce_projection_preserves_compose()
-    && tools.dag_compile_clean_partition.witness_empty_compose_is_unknown_reduce()
+  witness_compose_all_clean_is_clean()
+    && witness_compose_any_failure_fails_closed()
+    && witness_compose_associativity()
+    && witness_reduce_projection_preserves_compose()
+    && witness_empty_compose_is_unknown_reduce()
 }
 
 test fn compile_clean_shard_verdict_compose_RED_on_injected_failure() -> Bool {
@@ -24,5 +24,5 @@ test fn compile_clean_shard_verdict_compose_RED_on_injected_failure() -> Bool {
 }
 
 test fn compile_clean_shard_a_exemplar_compile_green() -> Bool {
-  tools.dag_compile_clean_shard_transport.run_shard_a_exemplar_compile()
+  run_shard_a_exemplar_compile()
 }

@@ -1,18 +1,18 @@
 module test.claim.contracts_placement
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn anthropic_chat_message_contract_targets_correct_coproduct() -> Bool {
-  extdeps.llm.anthropic_contracts.anthropic_chat_message_wire_contract.coproduct.decl_name == "AnthropicChatMessage"
+  anthropic_chat_message_wire_contract.coproduct.decl_name == "AnthropicChatMessage"
 }
 
 test fn pull_request_state_contract_targets_correct_coproduct() -> Bool {
-  extdeps.github.pulls_contracts.pull_request_state_wire_contract.coproduct.decl_name == "PullRequestState"
+  pull_request_state_wire_contract.coproduct.decl_name == "PullRequestState"
 }
 
 test fn review_state_contract_targets_correct_coproduct() -> Bool {
-  extdeps.github.pulls_contracts.review_state_wire_contract.coproduct.decl_name == "ReviewState"
+  review_state_wire_contract.coproduct.decl_name == "ReviewState"
 }
 
 test fn llm_snake_wire_contract_is_variant_encoding() -> Bool {

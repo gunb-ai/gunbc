@@ -1,104 +1,104 @@
 module test.claim.host_build_cache_provision_design
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn design_witness_read_back_fails_closed_in_shell() -> Bool {
-  gunbc.host_build_cache_provision_script.build_cache_provision_read_back_fails_closed()
+  build_cache_provision_read_back_fails_closed()
 }
 
 fn design_witness_unknown_catalog_refuses_at_gate() -> Bool {
-  match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(
-    catalog_id: gunbc.host_build_cache_catalog_gate.provision_build_cache_unknown_catalog_fixture,
+  match provision_build_cache_catalog_gate_verdict(
+    catalog_id: provision_build_cache_unknown_catalog_fixture,
   ) {
-    gunbc.host_build_cache_catalog_gate.ProvisionBuildCacheCatalogRefused { reason: _ } => true
+    ProvisionBuildCacheCatalogRefused { reason: _ } => true
     ProvisionBuildCacheCatalogRealizable => false
   }
 }
 
 fn design_witness_known_non_sccache_catalog_refuses_at_gate() -> Bool {
-  match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: extdeps.cache.github_actions.gha_actions_cache_id) {
-    gunbc.host_build_cache_catalog_gate.ProvisionBuildCacheCatalogRefused { reason: reason } =>
+  match provision_build_cache_catalog_gate_verdict(catalog_id: gha_actions_cache_id) {
+    ProvisionBuildCacheCatalogRefused { reason: reason } =>
       string_contains(s: reason as String, pattern: "not yet realized")
     ProvisionBuildCacheCatalogRealizable => false
   }
 }
 
 fn design_witness_known_non_sccache_catalog_refuses_at_verdict() -> Bool {
-  match gunbc.host_build_cache_provision.provision_build_cache_verdict(
-    catalog_id: extdeps.cache.github_actions.gha_actions_cache_id,
-    observed: gunbc.host_build_cache_provision.DaemonStatsOk { stats_line: "compile_requests=1" },
+  match provision_build_cache_verdict(
+    catalog_id: gha_actions_cache_id,
+    observed: DaemonStatsOk { stats_line: "compile_requests=1" },
   ) {
-    gunbc.host_build_cache_provision.ProvisionRefused { cause: gunbc.host_build_cache_provision.RefusalCatalogUnknown, reason: reason } =>
+    ProvisionRefused { cause: RefusalCatalogUnknown, reason: reason } =>
       string_contains(s: reason as String, pattern: "not yet realized")
-    gunbc.host_build_cache_provision.ProvisionConverged { catalog_id: _, stats_line: _ } => false
+    ProvisionConverged { catalog_id: _, stats_line: _ } => false
   }
 }
 
 fn design_witness_sccache_catalog_passes_gate() -> Bool {
-  match gunbc.host_build_cache_catalog_gate.provision_build_cache_catalog_gate_verdict(catalog_id: extdeps.cache.sccache.sccache_local_id) {
+  match provision_build_cache_catalog_gate_verdict(catalog_id: sccache_local_id) {
     ProvisionBuildCacheCatalogRealizable => true
-    gunbc.host_build_cache_catalog_gate.ProvisionBuildCacheCatalogRefused { reason: _ } => false
+    ProvisionBuildCacheCatalogRefused { reason: _ } => false
   }
 }
 
 fn design_witness_routes_through_host_effect_apply() -> Bool {
-  gunbc.host_build_cache_provision.provision_build_cache_routes_through_host_effect_apply()
+  provision_build_cache_routes_through_host_effect_apply()
 }
 
 fn design_witness_default_effect_pins_sccache_catalog() -> Bool {
-  match gunbc.host_build_cache_provision.provision_build_cache_default_effect() {
-    gunbc.host_effect.ProvisionBuildCache { catalog_id: id } => id == extdeps.cache.sccache.sccache_local_id
+  match provision_build_cache_default_effect() {
+    ProvisionBuildCache { catalog_id: id } => id == sccache_local_id
     _ => false
   }
 }
 
 fn design_witness_absent_daemon_fail_closed() -> Bool {
-  gunbc.host_build_cache_provision.daemon_absent_refuses_fail_closed()
+  daemon_absent_refuses_fail_closed()
 }
 
 fn design_witness_authority_gate_accepts_absent_refusal() -> Bool {
-  gunbc.host_build_cache_provision.build_cache_provision_gate_accepts(
-    verdict: gunbc.host_build_cache_provision.provision_build_cache_verdict(
-      catalog_id: extdeps.cache.sccache.sccache_local_id,
-      observed: gunbc.host_build_cache_provision.DaemonAbsent,
+  build_cache_provision_gate_accepts(
+    verdict: provision_build_cache_verdict(
+      catalog_id: sccache_local_id,
+      observed: DaemonAbsent,
     ),
-    observed: gunbc.host_build_cache_provision.DaemonAbsent,
+    observed: DaemonAbsent,
   )
 }
 
 fn design_witness_cited_fatal_error_fragment() -> Bool {
-  gunbc.host_build_cache_provision.misconfigured_matches_cited_fragment()
+  misconfigured_matches_cited_fragment()
 }
 
 fn design_witness_converged_not_refused_on_ok_stats() -> Bool {
-  match gunbc.host_build_cache_provision.provision_build_cache_verdict(
-    catalog_id: extdeps.cache.sccache.sccache_local_id,
-    observed: gunbc.host_build_cache_provision.DaemonStatsOk { stats_line: "compile_requests=42" },
+  match provision_build_cache_verdict(
+    catalog_id: sccache_local_id,
+    observed: DaemonStatsOk { stats_line: "compile_requests=42" },
   ) {
-    gunbc.host_build_cache_provision.ProvisionConverged { catalog_id: id, stats_line: _ } => id == extdeps.cache.sccache.sccache_local_id
-    gunbc.host_build_cache_provision.ProvisionRefused { cause: _, reason: _ } => false
+    ProvisionConverged { catalog_id: id, stats_line: _ } => id == sccache_local_id
+    ProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
 fn witness_widen_sketch_fabricates_converged_on_absent() -> Bool {
-  match gunbc.host_build_cache_provision.provision_build_cache_absorbing_fallback_widen_sketch(
-    catalog_id: extdeps.cache.sccache.sccache_local_id,
-    observed: gunbc.host_build_cache_provision.DaemonAbsent,
+  match provision_build_cache_absorbing_fallback_widen_sketch(
+    catalog_id: sccache_local_id,
+    observed: DaemonAbsent,
   ) {
-    gunbc.host_build_cache_provision.ProvisionConverged { catalog_id: _, stats_line: _ } => true
-    gunbc.host_build_cache_provision.ProvisionRefused { cause: _, reason: _ } => false
+    ProvisionConverged { catalog_id: _, stats_line: _ } => true
+    ProvisionRefused { cause: _, reason: _ } => false
   }
 }
 
 fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
   witness_widen_sketch_fabricates_converged_on_absent()
-    && !gunbc.host_build_cache_provision.build_cache_provision_gate_accepts(
-      verdict: gunbc.host_build_cache_provision.provision_build_cache_absorbing_fallback_widen_sketch(
-        catalog_id: extdeps.cache.sccache.sccache_local_id,
-        observed: gunbc.host_build_cache_provision.DaemonAbsent,
+    && !build_cache_provision_gate_accepts(
+      verdict: provision_build_cache_absorbing_fallback_widen_sketch(
+        catalog_id: sccache_local_id,
+        observed: DaemonAbsent,
       ),
-      observed: gunbc.host_build_cache_provision.DaemonAbsent,
+      observed: DaemonAbsent,
     )
     && design_witness_authority_gate_accepts_absent_refusal()
 }

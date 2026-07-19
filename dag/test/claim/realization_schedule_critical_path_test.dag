@@ -1,49 +1,49 @@
 module test.claim.realization_schedule_critical_path
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_parallel_batch_takes_max_not_sum() -> Bool {
   let batch = [
-    std.verification.nanosecond_duration(count: 100),
-    std.verification.nanosecond_duration(count: 5),
+    nanosecond_duration(count: 100),
+    nanosecond_duration(count: 5),
   ]
-  let critical = std.realization_measurement.schedule_batch_critical_path(batch_times: batch)
-  let summed = std.realization_measurement.time_measure_list_total(times: batch)
-  std.verification.nanosecond_duration_count(d: critical) == 100
-    && std.verification.nanosecond_duration_count(d: summed) == 105
-    && std.verification.nanosecond_duration_count(d: critical) != std.verification.nanosecond_duration_count(d: summed)
+  let critical = schedule_batch_critical_path(batch_times: batch)
+  let summed = time_measure_list_total(times: batch)
+  nanosecond_duration_count(d: critical) == 100
+    && nanosecond_duration_count(d: summed) == 105
+    && nanosecond_duration_count(d: critical) != nanosecond_duration_count(d: summed)
 }
 
 fn witness_sequential_batches_add_critical_paths() -> Bool {
   let batches = [
-    [std.verification.nanosecond_duration(count: 50)],
+    [nanosecond_duration(count: 50)],
     [
-      std.verification.nanosecond_duration(count: 100),
-      std.verification.nanosecond_duration(count: 5),
+      nanosecond_duration(count: 100),
+      nanosecond_duration(count: 5),
     ],
   ]
-  std.verification.nanosecond_duration_count(d: std.realization_measurement.schedule_critical_path_time(batch_times: batches)) == 150
+  nanosecond_duration_count(d: schedule_critical_path_time(batch_times: batches)) == 150
 }
 
 fn witness_measured_total_uses_critical_path_basis() -> Bool {
   let batches = [
     [
-      std.verification.nanosecond_duration(count: 200),
-      std.verification.nanosecond_duration(count: 10),
+      nanosecond_duration(count: 200),
+      nanosecond_duration(count: 10),
     ],
   ]
-  let account = std.realization_measurement.cost_account_measured_from_schedule_critical_path(batch_times: batches)
+  let account = cost_account_measured_from_schedule_critical_path(batch_times: batches)
   match account.basis {
     Measured =>
-      std.realization_schedule.cost_account_time_count(account: account) == 200
+      cost_account_time_count(account: account) == 200
     Predicted => false
   }
 }
 
 fn witness_nat_ordering_supports_max() -> Bool {
   match std.nat.nat_compare(a: 7, b: 3) {
-    Greater => std.nat.nat_max(a: 7, b: 3) == 7
+    Greater => nat_max(a: 7, b: 3) == 7
     _ => false
   }
 }

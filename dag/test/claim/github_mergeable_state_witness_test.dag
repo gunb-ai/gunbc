@@ -1,29 +1,29 @@
 module test.claim.github_mergeable_state_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_mergeable_wire_decodes_to_mergeable() -> Bool {
-  match extdeps.github.mergeable_state.parse_mergeable_state(raw: "MERGEABLE") {
-    Present { value: extdeps.github.mergeable_state.Mergeable } => true
+  match parse_mergeable_state(raw: "MERGEABLE") {
+    Present { value: Mergeable } => true
     _ => false
   }
 }
 
 test fn witness_conflicting_wire_decodes_to_conflicting() -> Bool {
-  match extdeps.github.mergeable_state.parse_mergeable_state(raw: "CONFLICTING") {
-    Present { value: extdeps.github.mergeable_state.Conflicting } => true
+  match parse_mergeable_state(raw: "CONFLICTING") {
+    Present { value: Conflicting } => true
     _ => false
   }
 }
 
 test fn witness_lowercase_mergeable_does_not_decode() -> Bool {
-  match extdeps.github.mergeable_state.parse_mergeable_state(raw: "mergeable") {
+  match parse_mergeable_state(raw: "mergeable") {
     none => true
     _ => false
   }
 }
 
 test fn witness_mergeable_state_roundtrip_conflicting() -> Bool {
-  extdeps.github.mergeable_state.mergeable_state_wire_label(s: extdeps.github.mergeable_state.Conflicting) == "CONFLICTING"
+  mergeable_state_wire_label(s: Conflicting) == "CONFLICTING"
 }

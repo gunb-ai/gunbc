@@ -1,29 +1,29 @@
 module test.claim.power_watt
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn total_power_watts(components: List<std.measure.Watt>) -> std.measure.Watt {
-  std.measure.watt(count: fold(components, init: 0, f: (acc, w) => acc + std.measure.watt_count(w: w)))
+fn total_power_watts(components: List<Watt>) -> Watt {
+  watt(count: fold(components, init: 0, f: (acc, w) => acc + watt_count(w: w)))
 }
 
-data example_component_draws: List<std.measure.Watt> = [
-  std.measure.watt(count: 166),
-  std.measure.watt(count: 3), std.measure.watt(count: 3), std.measure.watt(count: 3), std.measure.watt(count: 3),
-  std.measure.watt(count: 3), std.measure.watt(count: 3), std.measure.watt(count: 3), std.measure.watt(count: 3),
-  std.measure.watt(count: 30)
+data example_component_draws: List<Watt> = [
+  watt(count: 166),
+  watt(count: 3), watt(count: 3), watt(count: 3), watt(count: 3),
+  watt(count: 3), watt(count: 3), watt(count: 3), watt(count: 3),
+  watt(count: 30)
 ]
 
 fn total_power_is_computed_sum() -> Bool {
-  std.measure.watt_count(w: total_power_watts(components: example_component_draws)) == 220
+  watt_count(w: total_power_watts(components: example_component_draws)) == 220
 }
 
 fn empty_budget_is_zero_watts() -> Bool {
-  std.measure.watt_count(w: total_power_watts(components: [])) == 0
+  watt_count(w: total_power_watts(components: [])) == 0
 }
 
 fn watt_roundtrips() -> Bool {
-  std.measure.watt_count(w: std.measure.watt(count: 183)) == 183
+  watt_count(w: watt(count: 183)) == 183
 }
 
 test fn power_watt_witnesses() -> Bool {

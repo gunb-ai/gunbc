@@ -1,29 +1,29 @@
 module test.claim.os_install_actuator_toolchain_grant
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_actuator_toolchain_grant_declares_four_tools() -> Bool {
-  std.types.list_length(items: extdeps.bmc.os_install_actuator_toolchain.srv3_os_install_actuator_toolchain_grant.required_tools) == 4
-    && extdeps.bmc.os_install_actuator_toolchain.srv3_os_install_actuator_toolchain_is_complete()
+  list_length(items: srv3_os_install_actuator_toolchain_grant.required_tools) == 4
+    && srv3_os_install_actuator_toolchain_is_complete()
 }
 
 test fn srv3_actuator_toolchain_grant_is_fail_closed_on_websocat() -> Bool {
-  extdeps.bmc.os_install_actuator_toolchain.actuator_toolchain_requirement_includes_tool(
-    requirement: extdeps.bmc.os_install_actuator_toolchain.srv3_os_install_actuator_toolchain_grant,
-    tool_name: extdeps.tools.websocat.websocat_cli_tool.name,
+  actuator_toolchain_requirement_includes_tool(
+    requirement: srv3_os_install_actuator_toolchain_grant,
+    tool_name: websocat_cli_tool.name,
   )
-    && extdeps.bmc.os_install_actuator_toolchain.actuator_toolchain_requirement_includes_tool(
-      requirement: extdeps.bmc.os_install_actuator_toolchain.srv3_os_install_actuator_toolchain_grant,
-      tool_name: extdeps.tools.nbdkit.nbdkit_cli_tool.name,
+    && actuator_toolchain_requirement_includes_tool(
+      requirement: srv3_os_install_actuator_toolchain_grant,
+      tool_name: nbdkit_cli_tool.name,
     )
-    && extdeps.bmc.os_install_actuator_toolchain.actuator_toolchain_requirement_includes_tool(
-      requirement: extdeps.bmc.os_install_actuator_toolchain.srv3_os_install_actuator_toolchain_grant,
-      tool_name: extdeps.tools.socat.socat_cli_tool.name,
+    && actuator_toolchain_requirement_includes_tool(
+      requirement: srv3_os_install_actuator_toolchain_grant,
+      tool_name: socat_cli_tool.name,
     )
-    && extdeps.bmc.os_install_actuator_toolchain.actuator_toolchain_requirement_includes_tool(
-      requirement: extdeps.bmc.os_install_actuator_toolchain.srv3_os_install_actuator_toolchain_grant,
-      tool_name: extdeps.tools.curl.curl_cli_tool.name,
+    && actuator_toolchain_requirement_includes_tool(
+      requirement: srv3_os_install_actuator_toolchain_grant,
+      tool_name: curl_cli_tool.name,
     )
 }
 

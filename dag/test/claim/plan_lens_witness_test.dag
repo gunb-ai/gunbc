@@ -1,42 +1,42 @@
 module test.claim.plan_lens_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn plan_with_trigger() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "x", title: "x", body: [], dissolution: HasTrigger { text: "delete when X is witnessed" } }
+fn plan_with_trigger() -> Plan {
+  Plan { slug: "x", title: "x", body: [], dissolution: HasTrigger { text: "delete when X is witnessed" } }
 }
 
-fn plan_without_trigger() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "y", title: "y", body: [], dissolution: NoTrigger }
+fn plan_without_trigger() -> Plan {
+  Plan { slug: "y", title: "y", body: [], dissolution: NoTrigger }
 }
 
-fn plan_untitled() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "z", title: "", body: [], dissolution: HasTrigger { text: "t" } }
+fn plan_untitled() -> Plan {
+  Plan { slug: "z", title: "", body: [], dissolution: HasTrigger { text: "t" } }
 }
 
-fn plan_with_empty_trigger() -> gunbc.plan.Plan {
-  gunbc.plan.Plan { slug: "w", title: "w", body: [], dissolution: HasTrigger { text: "" } }
+fn plan_with_empty_trigger() -> Plan {
+  Plan { slug: "w", title: "w", body: [], dissolution: HasTrigger { text: "" } }
 }
 
 test fn every_registered_plan_has_dissolution_trigger() -> Bool {
-  gunbc.plan.plans_all_have_dissolution_trigger(plans: gunbc.plan_registry.all_plans)
+  plans_all_have_dissolution_trigger(plans: all_plans)
 }
 
 test fn every_registered_plan_is_titled() -> Bool {
-  gunbc.plan.plans_all_titled(plans: gunbc.plan_registry.all_plans)
+  plans_all_titled(plans: all_plans)
 }
 
 test fn missing_dissolution_trigger_is_detected() -> Bool {
-  gunbc.plan.plan_has_dissolution_trigger(p: plan_with_trigger())
-    && (gunbc.plan.plan_has_dissolution_trigger(p: plan_without_trigger()) == false)
-    && (gunbc.plan.plan_has_dissolution_trigger(p: plan_with_empty_trigger()) == false)
-    && (gunbc.plan.plans_all_have_dissolution_trigger(plans: [plan_with_trigger(), plan_without_trigger()]) == false)
-    && (gunbc.plan.plans_all_have_dissolution_trigger(plans: [plan_with_trigger(), plan_with_empty_trigger()]) == false)
+  plan_has_dissolution_trigger(p: plan_with_trigger())
+    && (plan_has_dissolution_trigger(p: plan_without_trigger()) == false)
+    && (plan_has_dissolution_trigger(p: plan_with_empty_trigger()) == false)
+    && (plans_all_have_dissolution_trigger(plans: [plan_with_trigger(), plan_without_trigger()]) == false)
+    && (plans_all_have_dissolution_trigger(plans: [plan_with_trigger(), plan_with_empty_trigger()]) == false)
 }
 
 test fn missing_title_is_detected() -> Bool {
-  gunbc.plan.plan_title_is_present(p: plan_with_trigger())
-    && (gunbc.plan.plan_title_is_present(p: plan_untitled()) == false)
-    && (gunbc.plan.plans_all_titled(plans: [plan_with_trigger(), plan_untitled()]) == false)
+  plan_title_is_present(p: plan_with_trigger())
+    && (plan_title_is_present(p: plan_untitled()) == false)
+    && (plans_all_titled(plans: [plan_with_trigger(), plan_untitled()]) == false)
 }

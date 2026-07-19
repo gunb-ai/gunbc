@@ -72,7 +72,8 @@ import v1.compiler.infer_types {
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
   resolved_type, child_type_node, is_type_expr_annotation,
-  emit_map_has
+  emit_map_has,
+  callable_return_type
 }
 import v1.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -91,7 +92,8 @@ import v1.compiler.infer_env {
   SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
-  ServiceCensusEntry, qualify_decl_reference_positions
+  ServiceCensusEntry, qualify_decl_reference_positions,
+  lookup_binding_by_name
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -109,8 +111,10 @@ import std.interface_summary {
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown,
-  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   sub_value_to_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
+}
+import std.computation {
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
 }
 import std.termination {
   positive_descent_amount_from_positive_int,
@@ -154,7 +158,8 @@ import v1.compiler.infer_patterns {
   lookup_variant_in_type, lookup_field_in_variant,
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
-  check_match_exhaustiveness
+  check_match_exhaustiveness,
+  expand_scrut_type_for_variant_lookup
 }
 import v1.compiler.infer_lookup {
   KnownMethodResolution,
@@ -162,7 +167,8 @@ import v1.compiler.infer_lookup {
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig
+  lookup_in_scope, lookup_func_sig,
+  global_bare_callable_node
 }
 import v1.compiler.infer_access {
   AccessCheckResultNode,
@@ -633,7 +639,7 @@ fn record_lit_expected_coproduct(expected: Node?, scope: InferScope) -> Node? {
         Present { value: r } => r
         Absent => exp
       }
-      if resolved.connective == Disj { Present { value: resolved } } else { none }
+      if (resolved.connective == Disj) { Present { value: resolved } } else { none }
     Absent => none
   }
 }
@@ -6417,7 +6423,7 @@ fn census_upgrade_binding(binding: TypeBinding, module_path: String, census: Sym
     census_upgrade_sig_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
   } else if census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices) {
     census_qualify_sig_return_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
-  } else if binding.resolved.connective != NoConnective {
+  } else if (binding.resolved.connective != NoConnective) {
     census_upgrade_type_decl_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
   } else if binding.resolved.inferred != none {
     census_qualify_leaf_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)

@@ -1,36 +1,36 @@
 module test.claim.floor_materialization_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn live_floor_gates() -> List<gunbc.ci_gate.Gate> {
-  gunbc.commit_workflow.project_ci_floor_gates(roster: gunbc.commit_workflow.commit_gate_roster)
+fn live_floor_gates() -> List<Gate> {
+  project_ci_floor_gates(roster: commit_gate_roster)
 }
 
-fn live_floor_witnesses() -> List<std.realization_schedule.ScheduleWitnessEntry> {
-  gunbc.commit_workflow.project_ci_floor_witness_entries(roster: gunbc.commit_workflow.commit_gate_roster)
+fn live_floor_witnesses() -> List<ScheduleWitnessEntry> {
+  project_ci_floor_witness_entries(roster: commit_gate_roster)
 }
 
-data floor_materialization_witness_note: String = "The value-tier ladder run against the LIVE floor consumer roster (spec gates + witness entries projected from gunbc.commit_workflow.commit_gate_roster, plus the fixed prelude), enrolled on the CI surface. Proves the in-process index-build share (process_shared_index) discharges the plural readonly reads as ValueSharedByReference — green because the share is DECLARED and covers every consumer, not because nothing looked. RED control removes the ReferenceTier provider and demands ValueRefusedNoCarrierProvider, so the witness discriminates. Backing green-by-execution (cited, run under rust_tests nextest): memo_deduplicates_resolve_count + memo_warm_cold_results_are_identical (claim_executor.rs), union_view_result_equals_private_resolve_in_every_order + union_resolve_typechecks_each_node_once (src/v1/tests/src/union_resolve_receipts_test.rs)."
+data floor_materialization_witness_note: String = "The value-tier ladder run against the LIVE floor consumer roster (spec gates + witness entries projected from commit_gate_roster, plus the fixed prelude), enrolled on the CI surface. Proves the in-process index-build share (process_shared_index) discharges the plural readonly reads as ValueSharedByReference — green because the share is DECLARED and covers every consumer, not because nothing looked. RED control removes the ReferenceTier provider and demands ValueRefusedNoCarrierProvider, so the witness discriminates. Backing green-by-execution (cited, run under rust_tests nextest): memo_deduplicates_resolve_count + memo_warm_cold_results_are_identical (claim_executor.rs), union_view_result_equals_private_resolve_in_every_order + union_resolve_typechecks_each_node_once (src/v1/tests/src/union_resolve_receipts_test.rs)."
 
 test fn floor_index_build_share_is_shared_by_reference() -> Bool {
   let gates = live_floor_gates()
   let witnesses = live_floor_witnesses()
-  std.materialization_ladder.value_verdict_is_shared_by_reference(
-    v: gunbc.floor_materialization.floor_index_build_materialization(gates: gates, witnesses: witnesses),
-    identity: gunbc.floor_materialization.floor_index_build_identity,
-    provider_id: gunbc.floor_materialization.floor_index_build_share_provider_id,
-    reader_count: gunbc.floor_materialization.floor_index_build_reader_count(gates: gates, witnesses: witnesses)
+  value_verdict_is_shared_by_reference(
+    v: floor_index_build_materialization(gates: gates, witnesses: witnesses),
+    identity: floor_index_build_identity,
+    provider_id: floor_index_build_share_provider_id,
+    reader_count: floor_index_build_reader_count(gates: gates, witnesses: witnesses)
   )
 }
 
 test fn floor_index_build_has_plural_readers() -> Bool {
-  gunbc.floor_materialization.floor_index_build_reader_count(gates: live_floor_gates(), witnesses: live_floor_witnesses()) >= 2
+  floor_index_build_reader_count(gates: live_floor_gates(), witnesses: live_floor_witnesses()) >= 2
 }
 
 test fn floor_index_build_reds_without_reference_provider() -> Bool {
-  std.materialization_ladder.value_verdict_is_refused_needing_reference(
-    v: gunbc.floor_materialization.floor_index_build_materialization_without_provider(gates: live_floor_gates(), witnesses: live_floor_witnesses()),
-    identity: gunbc.floor_materialization.floor_index_build_identity
+  value_verdict_is_refused_needing_reference(
+    v: floor_index_build_materialization_without_provider(gates: live_floor_gates(), witnesses: live_floor_witnesses()),
+    identity: floor_index_build_identity
   )
 }

@@ -1,12 +1,12 @@
 module test.claim.roadmap_page_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn authority_page_html() -> String {
-  match extdeps.languages.html.try_serialize_html_source(node: gunbc.roadmap_page.roadmap_page_for_authority()) {
-    extdeps.languages.html.EmitOk { html: h } => h
-    extdeps.languages.html.EmitRejected { reason: _ } => ""
+  match try_serialize_html_source(node: roadmap_page_for_authority()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
   }
 }
 
@@ -20,9 +20,9 @@ fn witness_authority_serializes_with_structure() -> Bool {
 
 fn empty_doc_html() -> String {
   let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
-  match extdeps.languages.html.try_serialize_html_source(node: roadmap_page(doc: empty, merged: [])) {
-    extdeps.languages.html.EmitOk { html: h } => h
-    extdeps.languages.html.EmitRejected { reason: _ } => ""
+  match try_serialize_html_source(node: roadmap_page(doc: empty, merged: [])) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
   }
 }
 
@@ -41,17 +41,17 @@ fn depth_chain_html(fuel: Int) -> String {
   let parent = gunbc.roadmap_authority.authored(id: "p", done: false, content: "parent-node")
   let child = gunbc.roadmap_authority.authored(id: "c", done: false, content: "child-node-title")
   let edge = RoadmapEdge { child: child.node, parent: parent.node }
-  match extdeps.languages.html.try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel)) {
-    extdeps.languages.html.EmitOk { html: h } => h
-    extdeps.languages.html.EmitRejected { reason: _ } => ""
+  match try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
   }
 }
 
 fn bold_title_html() -> String {
   let rn = gunbc.roadmap_authority.authored(id: "bold1", done: false, content: "**bold** item")
-  match extdeps.languages.html.try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0)) {
-    extdeps.languages.html.EmitOk { html: h } => h
-    extdeps.languages.html.EmitRejected { reason: _ } => ""
+  match try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
   }
 }
 

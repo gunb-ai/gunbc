@@ -1,43 +1,43 @@
 module test.claim.os_install_actuator_selection
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn os_install_actuator_requirements_dispatch_through_kind_rows() -> Bool {
-  gunbc.os_install_actuator_selection.os_install_actuator_requirement_kinds.first() == gunbc.os_install_actuator_selection.BmcNetworkReach
-    && gunbc.os_install_actuator_selection.os_install_actuator_requirement_kinds.skip(n: 1).first() == gunbc.os_install_actuator_selection.ActuatorToolchainGrant
-    && gunbc.os_install_actuator_selection.os_install_actuator_requirement_satisfied(
-      kind: gunbc.os_install_actuator_selection.BmcNetworkReach,
-      candidate: gunbc.fleet_intent.srv1_host,
-      reach_facts: gunbc.os_install_actuator_selection.live_srv3_actuator_reach_facts,
+  os_install_actuator_requirement_kinds.first() == BmcNetworkReach
+    && os_install_actuator_requirement_kinds.skip(n: 1).first() == ActuatorToolchainGrant
+    && os_install_actuator_requirement_satisfied(
+      kind: BmcNetworkReach,
+      candidate: srv1_host,
+      reach_facts: live_srv3_actuator_reach_facts,
     )
 }
 
 test fn srv3_actuator_selection_live_fleet_never_unsatisfiable() -> Bool {
-  gunbc.os_install_actuator_selection.srv3_os_install_actuator_selection_is_selected_on_live_fleet()
-    && match gunbc.os_install_actuator_selection.srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger {
-      std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+  srv3_os_install_actuator_selection_is_selected_on_live_fleet()
+    && match srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
       Terminal { reason: _ } => false
     }
-    && match gunbc.os_install_actuator_selection.srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger {
-      std.disposition.Scaffold { dissolves_to: _, bind: _ } => true
+    && match srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger {
+      Scaffold { dissolves_to: _, bind: _ } => true
       Terminal { reason: _ } => false
     }
 }
 
 test fn srv3_actuator_host_selected_because_requirements_and_policy() -> Bool {
-  gunbc.os_install_actuator_selection.srv3_os_install_actuator_host_selected_because_requirements_and_policy()
-    && gunbc.os_install_actuator_selection.srv3_os_install_actuator_host_is_derived_srv1()
-    && srv3_os_install_actuator_host == gunbc.fleet_intent.srv1_host
-    && match gunbc.os_install_actuator_selection.srv3_os_install_actuator_tie_break_policy {
-      gunbc.os_install_actuator_selection.OperatorHostPreference { order: order } =>
-        order.first() == gunbc.fleet_intent_network.operator_host_srv1
-          && order.skip(n: 1).first() == gunbc.fleet_intent_network.operator_host_srv2
+  srv3_os_install_actuator_host_selected_because_requirements_and_policy()
+    && srv3_os_install_actuator_host_is_derived_srv1()
+    && srv3_os_install_actuator_host == srv1_host
+    && match srv3_os_install_actuator_tie_break_policy {
+      OperatorHostPreference { order: order } =>
+        order.first() == operator_host_srv1
+          && order.skip(n: 1).first() == operator_host_srv2
       _ => false
     }
 }
 
 test fn srv3_actuator_host_failover_fixture_selects_srv2() -> Bool {
-  gunbc.os_install_actuator_selection.srv3_os_install_actuator_host_failover_fixture_selects_srv2()
-    && srv3_os_install_actuator_host == gunbc.fleet_intent.srv1_host
+  srv3_os_install_actuator_host_failover_fixture_selects_srv2()
+    && srv3_os_install_actuator_host == srv1_host
 }

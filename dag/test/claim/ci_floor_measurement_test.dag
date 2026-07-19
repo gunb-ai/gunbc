@@ -2,12 +2,12 @@ module test.claim.ci_floor_measurement
 
 
 fn witness_runner_cap_lt_session_cap() -> Bool {
-  gunbc.ci_floor_measurement.witness_runner_cgroup_cap_lt_dashboard_session_cap()
+  witness_runner_cgroup_cap_lt_dashboard_session_cap()
 }
 
 fn witness_ram_speed_ceiling_is_min_of_high_and_max() -> Bool {
-  std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_slot_ram_speed_ceiling()) <= std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_slot_memory_max_live)
-    && std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_slot_ram_speed_ceiling()) <= std.measure.byte_size_count(b: gunbc.ci_floor_measurement.gunbc_ci_runner_slot_memory_high_live)
+  byte_size_count(b: gunbc_ci_runner_slot_ram_speed_ceiling()) <= byte_size_count(b: gunbc_ci_runner_slot_memory_max_live)
+    && byte_size_count(b: gunbc_ci_runner_slot_ram_speed_ceiling()) <= byte_size_count(b: gunbc_ci_runner_slot_memory_high_live)
 }
 
 test fn ci_floor_measurement_witnesses() -> Bool {

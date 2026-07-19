@@ -1,14 +1,14 @@
 module test.claim.dag_compile_clean_seam_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn cross_shard_seam_algebra_holds() -> Bool {
-  tools.dag_compile_clean_seam.witness_seam_algebra_reds_on_synthetic_break()
-    && tools.dag_compile_clean_seam.witness_seam_algebra_fails_closed_when_class_missing()
-    && tools.dag_compile_clean_seam.witness_seam_algebra_fails_closed_when_importer_silently_passes()
+  witness_seam_algebra_reds_on_synthetic_break()
+    && witness_seam_algebra_fails_closed_when_class_missing()
+    && witness_seam_algebra_fails_closed_when_importer_silently_passes()
 }
 
 test fn cross_shard_seam_preservation_holds_on_live_tree() -> Bool {
-  tools.dag_compile_clean_seam.witness_cross_shard_seam_preservation_holds()
+  witness_cross_shard_seam_preservation_holds()
 }

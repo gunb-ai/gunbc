@@ -1,8 +1,8 @@
 module test.claim.dag_collect_fingerprint_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn dag_collect_fingerprint_witness_keystone_holds() -> Bool {
-  tools.dag_collect_fingerprint_witness_transport.run_dag_collect_fingerprint_witness()
+  run_dag_collect_fingerprint_witness()
 }
