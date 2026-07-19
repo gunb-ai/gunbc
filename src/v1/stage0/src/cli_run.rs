@@ -958,7 +958,9 @@ fn witness_layer_root_spelling(root: &str) -> String {
     if p.is_absolute() {
         repo_relative_path_normalized(p)
     } else {
-        root.trim_start_matches("./").trim_end_matches('/').to_string()
+        root.trim_start_matches("./")
+            .trim_end_matches('/')
+            .to_string()
     }
 }
 
