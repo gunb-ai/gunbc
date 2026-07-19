@@ -26,7 +26,7 @@ data witness_family_fanout_lanes: List<WitnessFamilyLane> = [
     lane_number: 4,
     kind: EmitHostExecutionFamily,
     title: "meet_join — std/logic meet and join emit-on-demand native witnesses",
-    scope_note: "emit_on_demand_meet_join_family_witness_test: native cold/warm, closure_digest key sensitivity, swapped-arms RED, store Share/Recompute. Template: emit_on_demand_kernel_witness_test.dag.",
+    scope_note: "emit_on_demand_meet_join_family_witness_test: native cold/warm octet receipts (NOT equals_eval agreement — pre-red debt in emit_host_meet_join_equals_eval_test.dag), swapped-arms RED, closure_digest key sensitivity. Template: emit_on_demand_kernel_witness_test.dag.",
     witness_entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness_test.dag",
     witness_function: "emit_on_demand_meet_join_family_witnesses",
     lane_state: "LANDED (wise-fox-351)"
@@ -36,7 +36,7 @@ data witness_family_fanout_lanes: List<WitnessFamilyLane> = [
     lane_number: 4,
     kind: EmitHostExecutionFamily,
     title: "variant_construct — variant-construct-then-match emit-on-demand native witnesses",
-    scope_note: "emit_on_demand_variant_construct_family_witness_test: native cold/warm, wrong-value fixture RED, closure_digest key sensitivity.",
+    scope_note: "emit_on_demand_variant_construct_family_witness_test: native cold/warm octet receipts (NOT equals_eval agreement — pre-red debt in emit_host_variant_construct_equals_eval_test.dag), wrong-value RED, closure_digest key sensitivity.",
     witness_entry: "src/v2/test/claim/execution/emit_on_demand_variant_construct_family_witness_test.dag",
     witness_function: "emit_on_demand_variant_construct_family_witnesses",
     lane_state: "LANDED (wise-fox-351)"
@@ -46,7 +46,7 @@ data witness_family_fanout_lanes: List<WitnessFamilyLane> = [
     lane_number: 4,
     kind: EmitHostExecutionFamily,
     title: "classical_not_ingested — ingested classical_not emit-on-demand native witnesses",
-    scope_note: "emit_on_demand_classical_not_ingested_family_witness_test: run_test_claim_emit_vs_eval agreement (ingested pipeline), native cold/warm, swapped-source RED, closure_digest key sensitivity.",
+    scope_note: "emit_on_demand_classical_not_ingested_family_witness_test: interpreted==native equals_eval via run_test_claim_emit_vs_eval, native cold/warm, swapped-source RED, closure_digest key sensitivity.",
     witness_entry: "src/v2/test/claim/execution/emit_on_demand_classical_not_ingested_family_witness_test.dag",
     witness_function: "emit_on_demand_classical_not_ingested_family_witnesses",
     lane_state: "LANDED (wise-fox-351)"

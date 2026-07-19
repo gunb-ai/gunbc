@@ -56,7 +56,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_classical_not_family_note: String = "Witness-realization fan-out lane 4 (classical_not_ingested): emit-on-demand native execution for ingested classical_not — extension of #6879 kernel. Wet: agreement on parsed+inferred tree, cold/warm compile_skipped, swapped-source RED, closure_digest key sensitivity."
+data emit_on_demand_classical_not_family_note: String = "Witness-realization fan-out lane 4 (classical_not_ingested): emit-on-demand native execution for ingested classical_not — extension of #6879 kernel. Wet: interpreted==native equals_eval agreement via run_test_claim_emit_vs_eval (ingested pipeline), cold/warm compile_skipped, swapped-source RED, closure_digest key sensitivity."
 
 data classical_not_family_cache_root: String = "/tmp/gunbc_emit_on_demand_classical_not_family"
 data classical_not_family_emitter: String = "v2.compiler.emit"

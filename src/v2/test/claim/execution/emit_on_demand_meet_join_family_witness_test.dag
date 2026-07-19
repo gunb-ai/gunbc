@@ -58,7 +58,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): emit-on-demand native execution for std/logic meet and join — extension of #6879 kernel. Wet: native==eval agreement (run_emit_host_cached vs eval oracle; bool-fn run_test_claim_emit_vs_eval is upstream debt), cold/warm compile_skipped, closure_digest key sensitivity, swapped-arms RED."
+data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): emit-on-demand native execution for std/logic meet and join — extension of #6879 kernel. Wet: native cold/warm receipts (run_emit_host_cached octet oracle — NOT interpreted==native equals_eval; bool-fn run_test_claim_emit_vs_eval is pre-red upstream debt in emit_host_meet_join_equals_eval_test.dag), closure_digest key sensitivity, swapped-arms RED."
 
 data meet_join_family_cache_root: String = "/tmp/gunbc_emit_on_demand_meet_join_family"
 data meet_join_family_emitter: String = "v2.compiler.emit"
@@ -274,10 +274,6 @@ test fn emit_on_demand_join_closure_keys_differ_for_distinct_trees_holds() -> Bo
   key_primary != key_alt
 }
 
-test fn emit_on_demand_meet_agreement_holds() -> Bool {
-  emit_on_demand_meet_native_cold_holds()
-}
-
 test fn emit_on_demand_meet_wrong_fixture_refuses_holds() -> Bool {
   let workspace = meet_join_family_evict_and_workspace(
     test_id: "meet_wrong_fixture_native",
@@ -291,10 +287,6 @@ test fn emit_on_demand_meet_wrong_fixture_refuses_holds() -> Bool {
     expect_compile_skipped: false,
     expected_octet: 0
   )
-}
-
-test fn emit_on_demand_join_agreement_holds() -> Bool {
-  emit_on_demand_join_native_cold_then_warm_holds()
 }
 
 test fn emit_on_demand_join_wrong_fixture_refuses_holds() -> Bool {
@@ -363,7 +355,7 @@ test fn emit_on_demand_meet_native_cold_then_warm_holds() -> Bool {
     tree: meet_family_tree(),
     target: rust_logic_meet_target_model_staging(),
     subgraph: dag_meet_eval_subgraph_fixture,
-      expected_octet: 1
+    expected_octet: 1
   )
 }
 
@@ -385,9 +377,7 @@ test fn emit_on_demand_meet_join_family_witnesses() -> Bool {
     && emit_on_demand_meet_join_schedule_refuses_unreadable_budget_holds()
     && emit_on_demand_meet_closure_keys_differ_for_distinct_trees_holds()
     && emit_on_demand_join_closure_keys_differ_for_distinct_trees_holds()
-    && emit_on_demand_meet_agreement_holds()
     && emit_on_demand_meet_wrong_fixture_refuses_holds()
-    && emit_on_demand_join_agreement_holds()
     && emit_on_demand_join_wrong_fixture_refuses_holds()
     && emit_on_demand_meet_native_content_change_cold_rebuild_holds()
     && emit_on_demand_meet_native_cold_holds()
