@@ -703,6 +703,14 @@ mod process_workspace_root_tests {
     }
 
     #[test]
+    fn declared_source_ref_selection_bridge_scaffold_marker_is_declared() {
+        assert_eq!(
+            super::CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER,
+            "cli_run_declared_source_ref_selection_bridge"
+        );
+    }
+
+    #[test]
     fn truncate_histogram_label_respects_utf8_boundaries() {
         let max = 80;
         let s = "é".repeat(50); // 2-byte chars; byte slice at 79 would straddle
@@ -3582,7 +3590,17 @@ fn entry_eligible_for_discovery_skip_before_resolve(
     if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_paths) {
         return Ok(false);
     }
-    if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
+    let declared_axis = declared_source_refs_axis_for_entry(
+        entry_path,
+        facts,
+        &default_source_roots(),
+        touched_paths,
+    );
+    if declared_axis != DeclaredSourceRefAxis::Absent {
+        if declared_source_refs_blocks_skip(declared_axis) {
+            return Ok(false);
+        }
+    } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_paths) {
         return Ok(false);
     }
     Ok(true)
@@ -3654,16 +3672,26 @@ fn resolve_discovery_entry_for_corpus_row(
                     touched_entry_paths,
                 )?
             };
+            let declared_axis = declared_source_refs_axis_for_entry(
+                entry_path,
+                &index.module_graph_facts,
+                &default_source_roots(),
+                touched_entry_paths,
+            );
             let entry_runtime_dependency_touched =
                 runtime_data_dependency_touched_via_carrier_closure(
                     entry_path,
                     &index.module_graph_facts,
                     touched_entry_paths,
-                ) || effect_reach_touched_via_path_literals(
-                    entry_path,
-                    &index.module_graph_facts,
-                    touched_entry_paths,
-                );
+                ) || match declared_axis {
+                    DeclaredSourceRefAxis::Absent => effect_reach_touched_via_path_literals(
+                        entry_path,
+                        &index.module_graph_facts,
+                        touched_entry_paths,
+                    ),
+                    DeclaredSourceRefAxis::Touched | DeclaredSourceRefAxis::Unresolved => true,
+                    DeclaredSourceRefAxis::Untouched => false,
+                };
             (
                 frontier_nodes,
                 touches_frontier,
@@ -10312,6 +10340,255 @@ fn effect_reach_touched_via_path_literals(
     false
 }
 
+// SCAFFOLD (§7 HAND-RUST — `cli_run_declared_source_ref_selection_bridge`):
+// Lane: declared-source-ref selection (docs/plans/declared-source-ref-selection-design.md
+// task 5) — host-fed declared-ref touch axis for floor discovery admission until discovery
+// admission consumes `v2.lens.affected_set.declared_source_ref_selection` directly (same
+// dissolution posture as sibling bridges: `.dag` authority via interpreter or emitted host
+// dispatch once witness-realization host-effect emission lands).
+// Unblock: skip-before-resolve and resolve paths evaluate the modeled selection axis instead
+// of re-parsing `data declared_source_refs` rows from import-closure text.
+// DELETE WHEN dissolved: `declared_source_refs_axis_for_entry`, `declared_source_refs_axis_for_paths`,
+// `declared_source_ref_paths_for_entry`, `collect_declared_source_ref_paths_for_closure`,
+// `parse_declared_source_ref_paths_from_content`, `parse_named_source_ref_paths`,
+// `parse_source_ref_storage_path_from_rhs`, `declared_source_ref_storage_resolves`,
+// `storage_path_to_module_index`, `declared_source_refs_blocks_skip`,
+// `entry_has_declared_source_refs`, `DeclaredSourceRefAxis`, and
+// `CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER` (~240 LOC).
+// Receipt: `rg cli_run_declared_source_ref_selection_bridge src/v1/stage0/src/cli_run.rs` == 1 until
+// deletion; drift gate `declared_source_ref_selection_bridge_scaffold_marker_is_declared`.
+pub(crate) const CLI_RUN_DECLARED_SOURCE_REF_SELECTION_BRIDGE_MARKER: &str =
+    "cli_run_declared_source_ref_selection_bridge";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeclaredSourceRefAxis {
+    Absent,
+    Unresolved,
+    Touched,
+    Untouched,
+}
+
+fn storage_path_to_module_index(source_roots: &[String]) -> HashMap<String, String> {
+    build_module_path_index(source_roots)
+        .into_iter()
+        .map(|(module, path)| (path, module))
+        .collect()
+}
+
+fn parse_source_ref_storage_path_from_rhs(rhs: &str) -> Option<String> {
+    if let Some(rest) = rhs.split_once("path:") {
+        let rest = rest.1.trim_start();
+        if let Some(rest) = rest.strip_prefix('"') {
+            if let Some((path, _)) = rest.split_once('"') {
+                if (path.starts_with("src/") || path.starts_with("dag/")) && !path.contains(' ') {
+                    return Some(path.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn parse_named_source_ref_paths(content: &str) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        let Some(rest) = trimmed.strip_prefix("data ") else {
+            continue;
+        };
+        let Some((name, rhs)) = rest.split_once(':') else {
+            continue;
+        };
+        if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            continue;
+        }
+        let rhs = rhs.trim_start();
+        if !rhs.starts_with("SourceRef") && !rhs.contains("source_ref_for_storage_path") {
+            continue;
+        }
+        let rhs = rhs.split_once('=').map(|(_, v)| v.trim()).unwrap_or(rhs);
+        if let Some(path) = parse_source_ref_storage_path_from_rhs(rhs) {
+            out.insert(name.to_string(), path);
+        }
+    }
+    out
+}
+
+fn parse_declared_source_ref_paths_from_content(
+    content: &str,
+    named: &HashMap<String, String>,
+) -> Option<Vec<String>> {
+    let mut in_list = false;
+    let mut list_depth = 0i32;
+    let mut list_body = String::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if !in_list {
+            if trimmed.starts_with("data declared_source_refs") {
+                if let Some(open) = trimmed.find('[') {
+                    in_list = true;
+                    list_depth = 1;
+                    list_body.push_str(&trimmed[open + 1..]);
+                    list_body.push('\n');
+                    if trimmed.contains(']') {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        for ch in trimmed.chars() {
+            match ch {
+                '[' => list_depth += 1,
+                ']' => {
+                    list_depth -= 1;
+                    if list_depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if list_depth <= 0 {
+            if let Some(close) = trimmed.rfind(']') {
+                list_body.push_str(&trimmed[..close]);
+            }
+            break;
+        }
+        list_body.push_str(trimmed);
+        list_body.push('\n');
+    }
+    if list_body.is_empty() {
+        return None;
+    }
+    let mut paths = Vec::new();
+    for segment in list_body.split(',') {
+        let segment = segment.trim();
+        if segment.is_empty() {
+            continue;
+        }
+        if let Some(path) = parse_source_ref_storage_path_from_rhs(segment) {
+            paths.push(path);
+            continue;
+        }
+        let name = segment
+            .trim_end_matches(',')
+            .split_whitespace()
+            .next()
+            .unwrap_or("");
+        if let Some(path) = named.get(name) {
+            paths.push(path.clone());
+        }
+    }
+    if paths.is_empty() {
+        None
+    } else {
+        Some(paths)
+    }
+}
+
+fn collect_declared_source_ref_paths_for_closure(closure_paths: &HashSet<String>) -> Vec<String> {
+    let mut paths = Vec::new();
+    for rel in closure_paths {
+        let path = if std::path::Path::new(rel).is_absolute() {
+            rel.clone()
+        } else {
+            workspace_root().join(rel).to_string_lossy().into_owned()
+        };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let named = parse_named_source_ref_paths(&content);
+        if let Some(mut declared) = parse_declared_source_ref_paths_from_content(&content, &named) {
+            paths.append(&mut declared);
+        }
+    }
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn declared_source_ref_paths_for_entry(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+) -> Vec<String> {
+    let closure_paths: HashSet<String> = import_closure_repo_paths_for_entry(entry_path, facts);
+    collect_declared_source_ref_paths_for_closure(&closure_paths)
+}
+
+fn declared_source_ref_storage_resolves(
+    path: &str,
+    path_to_module: &HashMap<String, String>,
+    source_roots: &[String],
+) -> bool {
+    if path_to_module.contains_key(path) {
+        return true;
+    }
+    let ws = workspace_root();
+    for root in source_roots {
+        let anchored = anchor_source_root(root);
+        if Path::new(&anchored).join(path).is_file() {
+            return true;
+        }
+    }
+    ws.join(path).is_file()
+}
+
+fn declared_source_refs_axis_for_paths(
+    declared_paths: &[String],
+    path_to_module: &HashMap<String, String>,
+    source_roots: &[String],
+    touched_paths: &[String],
+) -> DeclaredSourceRefAxis {
+    if declared_paths.is_empty() {
+        return DeclaredSourceRefAxis::Absent;
+    }
+    for path in declared_paths {
+        if !declared_source_ref_storage_resolves(path, path_to_module, source_roots) {
+            return DeclaredSourceRefAxis::Unresolved;
+        }
+    }
+    if touched_paths.is_empty() {
+        return DeclaredSourceRefAxis::Untouched;
+    }
+    for declared in declared_paths {
+        if touched_paths
+            .iter()
+            .any(|touched| repo_paths_match_touched(declared, touched))
+        {
+            return DeclaredSourceRefAxis::Touched;
+        }
+    }
+    DeclaredSourceRefAxis::Untouched
+}
+
+pub(crate) fn declared_source_refs_axis_for_entry(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+    source_roots: &[String],
+    touched_paths: &[String],
+) -> DeclaredSourceRefAxis {
+    let declared_paths = declared_source_ref_paths_for_entry(entry_path, facts);
+    let path_to_module = storage_path_to_module_index(source_roots);
+    declared_source_refs_axis_for_paths(
+        &declared_paths,
+        &path_to_module,
+        source_roots,
+        touched_paths,
+    )
+}
+
+fn declared_source_refs_blocks_skip(axis: DeclaredSourceRefAxis) -> bool {
+    matches!(
+        axis,
+        DeclaredSourceRefAxis::Unresolved | DeclaredSourceRefAxis::Touched
+    )
+}
+
+fn entry_has_declared_source_refs(entry_path: &str, facts: &ModuleGraphFactsLive) -> bool {
+    !declared_source_ref_paths_for_entry(entry_path, facts).is_empty()
+}
+
 fn discovery_rows_live_tree_count(rows: &[DiscoveryRow]) -> usize {
     rows.iter().filter(|r| r.reads_live_tree).count()
 }
@@ -10321,6 +10598,9 @@ fn apply_effect_reach_derived_reads_live_tree(
     facts: &ModuleGraphFactsLive,
 ) {
     for row in rows.iter_mut() {
+        if entry_has_declared_source_refs(&row.entry, facts) {
+            continue;
+        }
         if !row.reads_live_tree && effect_reach_derived_reads_live_tree_for_entry(&row.entry, facts)
         {
             row.reads_live_tree = true;
@@ -10468,9 +10748,17 @@ fn entry_qualifies_for_skip_without_resolve(
     if runtime_data_dependency_touched_via_carrier_closure(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
-    // Additive touch evidence only (Phase 0 effect-reach): a path-literal match may
-    // convert would-skip → run; absence never enables skip beyond today's rules.
-    if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
+    let declared_axis = declared_source_refs_axis_for_entry(
+        entry_path,
+        facts,
+        &default_source_roots(),
+        touched_entry_paths,
+    );
+    if declared_axis != DeclaredSourceRefAxis::Absent {
+        if declared_source_refs_blocks_skip(declared_axis) {
+            return Ok(false);
+        }
+    } else if effect_reach_touched_via_path_literals(entry_path, facts, touched_entry_paths) {
         return Ok(false);
     }
     if !diff_edits.overlapping_data_items.is_empty() {
@@ -13782,37 +14070,50 @@ mod node_frontier_plumbing_controls {
         assert!(err.contains("UnexecutedDeferredWitness"));
     }
 
-    // Phase 0 receipt (module-identity-storage-binding): the 03_normalize behavioral
-    // witness declares a hermetic import closure but carries string-carried path deps via
-    // tools.self_host_03_normalize_behavioral_transport — derived host-reading must fire.
+    // Task 5 (declared-source-ref selection): the 03_normalize flagship opts into
+    // declared_source_refs on its transport — effect_reach must NOT upgrade it to
+    // ReadsLiveTree; selection uses the declared-ref axis instead.
     #[test]
-    fn effect_reach_derived_reads_live_tree_for_03_normalize_witness() {
+    fn declared_source_refs_suppress_effect_reach_upgrade_for_03_normalize_witness() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = setup_roots(&ws);
         let facts = super::build_module_graph_facts_live(&roots);
         let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
         assert!(
-            super::effect_reach_derived_reads_live_tree_for_entry(entry, &facts),
-            "03_normalize behavioral witness must classify as derived host-reading"
+            super::entry_has_declared_source_refs(entry, &facts),
+            "03_normalize flagship must declare source refs on its transport"
+        );
+        let mut rows = vec![super::DiscoveryRow {
+            label: "normalize".to_string(),
+            entry: entry.to_string(),
+            function: "self_host_03_normalize_behavioral_receipt_holds".to_string(),
+            reads_live_tree: false,
+        }];
+        super::apply_effect_reach_derived_reads_live_tree(&mut rows, &facts);
+        assert!(
+            !rows[0].reads_live_tree,
+            "declared_source_refs must prevent effect_reach from upgrading the flagship row"
         );
     }
 
     #[test]
-    fn effect_reach_touched_via_normalize_path_for_03_normalize_witness() {
+    fn declared_source_refs_selection_both_directions_for_03_normalize_witness() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = setup_roots(&ws);
         let facts = super::build_module_graph_facts_live(&roots);
         let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
         let touched = vec!["src/v2/compiler/03_normalize.dag".to_string()];
-        assert!(
-            super::effect_reach_touched_via_path_literals(entry, &facts, &touched),
-            "emitter/normalize-path touch must select the 03_normalize behavioral witness"
+        assert_eq!(
+            super::declared_source_refs_axis_for_entry(entry, &facts, &roots, &touched),
+            super::DeclaredSourceRefAxis::Touched,
+            "emitter touch must select the 03_normalize behavioral witness"
         );
         let unrelated = vec!["src/v2/std/logic.dag".to_string()];
-        assert!(
-            !super::effect_reach_touched_via_path_literals(entry, &facts, &unrelated),
+        assert_eq!(
+            super::declared_source_refs_axis_for_entry(entry, &facts, &roots, &unrelated),
+            super::DeclaredSourceRefAxis::Untouched,
             "unrelated path must not select the 03_normalize behavioral witness"
         );
     }
@@ -13887,7 +14188,7 @@ mod node_frontier_plumbing_controls {
     }
 
     #[test]
-    fn effect_reach_touched_additive_blocks_skip_on_literal_match() {
+    fn declared_source_refs_touch_blocks_skip_for_03_normalize_witness() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = setup_roots(&ws);
@@ -13909,7 +14210,34 @@ mod node_frontier_plumbing_controls {
                 &diff_edits,
             )
             .expect("qualify"),
-            "literal-path touch must convert would-skip into run (additive only)"
+            "declared-source-ref touch must convert would-skip into run"
+        );
+    }
+
+    #[test]
+    fn declared_source_refs_unrelated_diff_skips_03_normalize_witness() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let entry = "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag";
+        let entry_abs = abs(&ws, entry);
+        let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
+        let diff_edits =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
+        let declared = index.module_graph_facts.declared_repo_paths();
+        let touched: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+        assert!(
+            super::entry_qualifies_for_skip_without_resolve(
+                &entry_abs,
+                false,
+                &index.module_graph_facts,
+                &declared,
+                &touched,
+                &diff_edits,
+            )
+            .expect("qualify"),
+            "unrelated diff must skip the 03_normalize behavioral witness via declared refs"
         );
     }
 

@@ -1,0 +1,107 @@
+module v2.lens.affected_set.declared_source_ref_selection
+
+import v2.compiler.source_authority {
+  ModuleStorageIndex,
+  SourceRef,
+  module_storage_binding_file_path,
+  source_ref_path
+}
+import v2.lens.module_graph { path_matches_touched }
+import v2.std.algebra { any, fold_list, length }
+import v2.std.collection { Absent, List, Present }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data declared_source_ref_selection_note: String = "Task 5 of docs/plans/declared-source-ref-selection-design.md: selection-edge source for per-row opt-in declared SourceRef rows. Selection asks whether the touched set intersects refs this row declares, resolving each ref through the derived ModuleStorageIndex — never a hand-maintained path list. Module-backed paths resolve via index file_path membership; storage-only paths (.rs shims) resolve at the host bridge via workspace file existence (the index is module-grain only). Arms: no refs → caller keeps ReadsLiveTree default; unresolvable ref → widen to RUN (typed, counted); resolves + intersects → selected; resolves + no intersection → skip-eligible on this axis."
+
+type DeclaredSourceRefSelectionAxis
+  = NoDeclaredSourceRefs
+  | DeclaredSourceRefsUnresolved { count: Int }
+  | DeclaredSourceRefsTouched
+  | DeclaredSourceRefsUntouched
+
+fn declared_source_ref_resolves(
+  index: ModuleStorageIndex,
+  ref: SourceRef
+) -> Bool {
+  let path = source_ref_path(ref: ref)
+  fold_list(
+    xs: index,
+    empty: false,
+    cons: fn(found, binding) {
+      if found {
+        true
+      } else {
+        match module_storage_binding_file_path(binding: binding) {
+          Present { value: p } => p == path
+          Absent => false
+        }
+      }
+    }
+  )
+}
+
+fn source_ref_touched_by_paths(
+  ref: SourceRef,
+  touched_paths: List<String>
+) -> Bool {
+  let path = source_ref_path(ref: ref)
+  any(
+    xs: touched_paths,
+    predicate: fn(touched) {
+      path_matches_touched(closure_path: path, touched_path: touched)
+    }
+  )
+}
+
+fn declared_source_refs_unresolved_count(
+  index: ModuleStorageIndex,
+  refs: List<SourceRef>
+) -> Int {
+  fold_list(
+    xs: refs,
+    empty: 0,
+    cons: fn(count, ref) {
+      if declared_source_ref_resolves(index: index, ref: ref) {
+        count
+      } else {
+        count + 1
+      }
+    }
+  )
+}
+
+fn declared_source_refs_selection_axis(
+  index: ModuleStorageIndex,
+  refs: List<SourceRef>,
+  touched_paths: List<String>
+) -> DeclaredSourceRefSelectionAxis {
+  if length(xs: refs) == 0 {
+    NoDeclaredSourceRefs
+  } else {
+    let unresolved = declared_source_refs_unresolved_count(index: index, refs: refs)
+    if unresolved > 0 {
+      DeclaredSourceRefsUnresolved { count: unresolved }
+    } else if any(
+      xs: refs,
+      predicate: fn(ref) {
+        source_ref_touched_by_paths(ref: ref, touched_paths: touched_paths)
+      }
+    ) {
+      DeclaredSourceRefsTouched
+    } else {
+      DeclaredSourceRefsUntouched
+    }
+  }
+}
+
+fn declared_source_refs_blocks_skip(
+  axis: DeclaredSourceRefSelectionAxis
+) -> Bool {
+  match axis {
+    NoDeclaredSourceRefs => false
+    DeclaredSourceRefsUnresolved { count: _ } => true
+    DeclaredSourceRefsTouched => true
+    DeclaredSourceRefsUntouched => false
+  }
+}
