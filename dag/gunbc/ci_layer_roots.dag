@@ -163,6 +163,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_golden_length_matches_declared_count_holds"),
   bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_content_equality_discriminates_count_identical_bytes_holds"),
   bin_wet(entry: "dag/test/claim/build_artifact_corruption_probe_witness_test.dag", f: "build_artifact_corruption_probe_holds"),
+  bin_wet(entry: "dag/test/claim/build_artifact_corruption_probe_witness_test.dag", f: "witness_bin_readiness_arms_are_discriminating"),
   bin_wet(entry: "dag/test/claim/floor_skip_discovery_witness_test.dag", f: "floor_skip_discovery_keystone_holds"),
   bin_wet(entry: "dag/test/claim/interp_recorded_fixture_witness_test.dag", f: "interp_recorded_fixture_keystone_holds"),
   bin_wet(entry: "dag/test/claim/parse_test.dag", f: "parse_witness_floor_holds"),
