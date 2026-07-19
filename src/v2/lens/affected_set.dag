@@ -1,8 +1,7 @@
 module v2.lens.affected_set
-
-
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
+
 import v2.std.collection { Absent, List, Map, Present, list_at_optional, map_get, map_insert }
 import v2.std.algebra { TailAbsent, TailFound, contains, length, list_append, list_snoc_item, list_tail }
 import v2.compiler.infer { InferredTree }
@@ -56,14 +55,12 @@ import v2.std.node {
   Transform,
   TypeNode,
   Value,
+  content_hash,
   SyntheticOccurrence
 }
-import v2.std.node_content_hash { content_hash }
 import v2.std.witness { Holds, Witness }
 import v2.std.node_query { coproduct_arm_keys }
 import v2.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at }
-
-
 
 type Dag = Node
 
@@ -589,7 +586,7 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
 
-      match v2.std.collection.map_get(decisions, key) {
+      match map_get(decisions, key) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: decision } =>
             match decision {
