@@ -3927,9 +3927,7 @@ fn extend_with_bare_reference_closure(
             .dotted_chains
             .iter()
             .filter_map(|chain| chain.split('.').next())
-            .filter(|h| {
-                !candidates.bound.contains(*h) && !candidates.names.contains(*h)
-            })
+            .filter(|h| !candidates.bound.contains(*h) && !candidates.names.contains(*h))
             .map(|h| h.to_string())
             .collect();
         let all_names: Vec<(String, bool)> = candidates
@@ -5548,16 +5546,23 @@ fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, Strin
 /// The source root (longest prefix match) a workspace-relative file lives under,
 /// or None for files outside every indexed root.
 fn source_tree_root_of(roots: &[String], file: &str) -> Option<String> {
-    let mut best: Option<&str> = None;
+    let mut best: Option<String> = None;
     for root in roots {
-        let trimmed = root.trim_end_matches('/');
+        // Roots arrive as the caller spelled them — CI's claim_executor passes
+        // ABSOLUTE `--source-root "$ROOT/dag"` while pool/decl paths here are
+        // workspace-relative. Normalize before comparing: without this, every
+        // lookup missed under absolute roots and the bare-reference loader and
+        // the per-module census underlay silently no-oped in CI while working
+        // locally (relative roots) — a CI-vs-local dual-surface split.
+        let trimmed = workspace_relative_repo_path(root.trim_end_matches('/'));
+        let trimmed = trimmed.trim_end_matches('/');
         if (file == trimmed || file.starts_with(&format!("{trimmed}/")))
-            && best.is_none_or(|b| trimmed.len() > b.len())
+            && best.as_deref().is_none_or(|b| trimmed.len() > b.len())
         {
-            best = Some(trimmed);
+            best = Some(trimmed.to_string());
         }
     }
-    best.map(|s| s.to_string())
+    best
 }
 
 /// The SAME-TREE bare census for one source root: the full census (bare +
