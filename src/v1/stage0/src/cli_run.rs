@@ -3781,10 +3781,20 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             i += 1;
         }
         // Part of a dotted chain → the dotted scan owns module-path chains, but
-        // record the HEAD: a service reference (`cron.Tab.List()`) is a dotted
-        // chain whose head is a services-census name, not a module path.
+        // record the FULL chain: a service reference (`cron.Tab.List()`) is a
+        // dotted chain whose prefix is a services-census key, not a module path.
         if i < bytes.len() && bytes[i] == b'.' {
-            out.dotted_heads.insert(content[start..i].to_string());
+            while i < bytes.len()
+                && bytes[i] == b'.'
+                && i + 1 < bytes.len()
+                && is_ident_start(bytes[i + 1])
+            {
+                i += 1;
+                while i < bytes.len() && is_ident(bytes[i]) {
+                    i += 1;
+                }
+            }
+            out.dotted_chains.insert(content[start..i].to_string());
             continue;
         }
         let name = content[start..i].to_string();
@@ -3817,6 +3827,19 @@ fn extend_with_bare_reference_closure(
         .collect();
     let mut scan_queue: Vec<Rc<v1_compiler_compile::SourceFile>> = sources.clone();
     while let Some(sf) = scan_queue.pop() {
+        // Name-derived pulls serve IMPORT-STRIPPED modules only. A module that
+        // declares imports is main-parity: its closure derives from those edges,
+        // and scanning its bare names manufactures over-pull (measured: bare
+        // 'repo' in an unstripped extdeps module pulled the review-agent tooling
+        // into a merge-admission run, coupling the run to modules it never
+        // executes — and to their health).
+        if sf
+            .content
+            .lines()
+            .any(|l| l.trim_start().starts_with("import "))
+        {
+            continue;
+        }
         let file_rel = workspace_relative_repo_path(&sf.path);
         let Some(root) = source_tree_root_of(&index.source_roots, &file_rel) else {
             continue;
@@ -3824,22 +3847,33 @@ fn extend_with_bare_reference_closure(
         let census = tree_bare_census_for_root(index, &root)?;
         let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
         let candidates = bare_identifier_candidates(&sf.content);
-        // Dotted-chain heads that name a SERVICE pull its provider module: with
-        // the import stripped (`import extdeps.cron` gone from cron_tag.dag),
-        // `cron.Tab.List()` has no module-path spelling the dotted scan can
-        // follow — the services census is the only edge back to the provider.
-        // A module-path head (`v2`, `std`) misses the services census: no pull.
-        let service_heads: Vec<String> = candidates
-            .dotted_heads
+        // Dotted-chain prefixes that name a SERVICE pull its provider module:
+        // with the import stripped (`import extdeps.cron` gone from
+        // cron_tag.dag), `cron.Tab.List()` has no module-path spelling the
+        // dotted scan can follow — the services census key (`cron.Tab`; service
+        // names are themselves dotted) is the only edge back to the provider.
+        // A module-path chain (`v2.std....`) misses the services census: no pull.
+        let service_prefixes: BTreeSet<String> = candidates
+            .dotted_chains
             .iter()
-            .filter(|h| !candidates.names.contains(h.as_str()))
-            .cloned()
+            .flat_map(|chain| {
+                let mut prefixes = Vec::new();
+                let mut acc = String::new();
+                for seg in chain.split('.') {
+                    if !acc.is_empty() {
+                        acc.push('.');
+                    }
+                    acc.push_str(seg);
+                    prefixes.push(acc.clone());
+                }
+                prefixes
+            })
             .collect();
         let all_names: Vec<(String, bool)> = candidates
             .names
             .iter()
             .map(|n| (n.clone(), false))
-            .chain(service_heads.into_iter().map(|n| (n, true)))
+            .chain(service_prefixes.into_iter().map(|n| (n, true)))
             .collect();
         for (name, service_head) in all_names {
             // Only CALLABLE-shaped references pull a module: the runtime gap this

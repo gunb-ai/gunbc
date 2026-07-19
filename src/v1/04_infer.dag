@@ -217,6 +217,7 @@ type InferScope {
   type_env: TypeEnv
   func_env: ResolvedFuncEnv
   locals: Map<String, TypeBinding>
+  body_locals: Map<String, Bool>
   match_bound_names: Map<String, Bool>
   module_name: String
   service_registry: Map<String, List<OpEntry>>
@@ -1227,10 +1228,14 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
     map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), TypeBinding { name: param_node_name_at(n: p, source_indices: scope.type_env.source_indices), resolved: param_node_type_expr(n: p), provenance: PreservedValue })
   )
+  let new_body_locals = fold(params, init: scope.body_locals, f: (acc, p) =>
+    map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), true)
+  )
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: new_locals,
+    body_locals: new_body_locals,
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -1244,6 +1249,7 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
+    body_locals: map_insert(scope.body_locals, name, true),
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -1257,6 +1263,7 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
+    body_locals: map_insert(scope.body_locals, name, true),
     match_bound_names: map_insert(scope.match_bound_names, name, true),
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -1269,10 +1276,14 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
     map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown })
   )
+  let new_body_locals = fold(params, init: scope.body_locals, f: (acc, p) =>
+    map_insert(acc, p, true)
+  )
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: new_locals,
+    body_locals: new_body_locals,
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -1424,6 +1435,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         type_env: scope.type_env,
         func_env: scope.func_env,
         locals: scope.locals,
+        body_locals: scope.body_locals,
         match_bound_names: scope.match_bound_names,
         module_name: scope.module_name,
         service_registry: scope.service_registry,
@@ -1443,6 +1455,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           type_env: scope.type_env,
           func_env: scope.func_env,
           locals: scope.locals,
+          body_locals: scope.body_locals,
           match_bound_names: scope.match_bound_names,
           module_name: scope.module_name,
           service_registry: scope.service_registry,
@@ -1760,7 +1773,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       let call_args = texpr.children
 
-      let sig = match map_get(scope.locals, func_name) {
+      let sig = match map_get(scope.body_locals, func_name) {
         Present { value: _ } => Absent
         Absent => lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
       }
@@ -2622,7 +2635,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       } else { none }
       let body_scope = InferScope {
         type_env: lam_scope.type_env, func_env: lam_scope.func_env,
-        locals: lam_scope.locals, match_bound_names: lam_scope.match_bound_names,
+        locals: lam_scope.locals, body_locals: lam_scope.body_locals,
+        match_bound_names: lam_scope.match_bound_names,
         module_name: lam_scope.module_name, service_registry: lam_scope.service_registry,
         item_registry: lam_scope.item_registry, lambda_param_provenance: empty_map()
       }
@@ -2962,7 +2976,7 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
   }
 }
 
-data call_locals_shadow_note: String = "Body-scope locals shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate returns Absent when scope.locals binds the callee name, sending the call down the local-callable path exactly as the pre-census seed did."
+data call_locals_shadow_note: String = "Body-scope binders shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: body locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate reads body_locals — the strict body-grain subset (let / match pattern / fn+lambda params) of scope.locals — because the module context pre-seeds locals with variant and service census bindings that must NOT eclipse fn sigs (an imported 0-arg fn would lose its sig to its own census row: html_fragment.dag's html_markup_medium() typed as an unresolved primitive). Absent sends the call down the local-callable path exactly as the pre-census seed did."
 
 data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). Breaking at the fixpoint returns the same answer the else arm already gives for non-alias shapes: downstream field-access inference reds with a located type error if the shape is genuinely wrong — typed and loud, never fabricated."
 
@@ -7400,6 +7414,7 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     type_env: env,
     func_env: ctx.func_env,
     locals: data_locals,
+    body_locals: empty_map(),
     match_bound_names: empty_map(),
     module_name: resolved_module_name,
     service_registry: ctx.svc_registry,
