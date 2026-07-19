@@ -272,7 +272,7 @@ fn run_host_process(
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
   run_host_process_with_cache(
-    cache_root: "",
+    workspace_dir: "",
     row: row,
     target: target,
     source: source,
@@ -282,14 +282,14 @@ fn run_host_process(
 }
 
 fn run_host_process_cached(
-  cache_root: String,
+  workspace_dir: String,
   row: EmitHostRuntimeRow,
   target: TargetModel,
   source: Medium<String>,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
   run_host_process_with_cache(
-    cache_root: cache_root,
+    workspace_dir: workspace_dir,
     row: row,
     target: target,
     source: source,
@@ -299,7 +299,7 @@ fn run_host_process_cached(
 }
 
 fn run_host_process_with_cache(
-  cache_root: String,
+  workspace_dir: String,
   row: EmitHostRuntimeRow,
   target: TargetModel,
   source: Medium<String>,
@@ -325,7 +325,7 @@ fn run_host_process_with_cache(
           )
           let result = if use_cache {
             emit_host_run_transport_cached(
-              cache_root: cache_root,
+              workspace_dir: workspace_dir,
               files: files,
               build: builds,
               run: run_argv
@@ -380,7 +380,7 @@ fn run_emit_host(
 }
 
 fn run_emit_host_cached(
-  cache_root: String,
+  workspace_dir: String,
   target: TargetModel,
   source: Medium<String>,
   fixture_inputs: Inputs
@@ -389,7 +389,7 @@ fn run_emit_host_cached(
     o: runtime_row_from_target(target: target),
     f: fn(row) {
       run_host_process_cached(
-        cache_root: cache_root,
+        workspace_dir: workspace_dir,
         row: row,
         target: target,
         source: source,

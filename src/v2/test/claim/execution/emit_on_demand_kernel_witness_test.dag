@@ -185,7 +185,7 @@ fn kernel_cached_run_with_source_for_tree(
   expect_compile_skipped: Bool
 ) -> Bool {
   match run_emit_host_cached(
-    cache_root: workspace,
+    workspace_dir: workspace,
     target: rust_target_model_staging(),
     source: source,
     fixture_inputs: kernel_add_fixture_inputs()

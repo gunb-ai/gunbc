@@ -6961,17 +6961,21 @@ fn eval_emit_host_run_transport_builtin(
 /// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.v1_deletion_plan
 /// ^witness_realization_kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
 /// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
-/// content-addressed emit_host transport persists workspace under cache_root and
-/// skips build when `.native_ready` is present. Workspace reuse is keyed by the
-/// caller's content-derived path (emit_on_demand_key closure_digest); a different
-/// closure MUST land in a different workspace dir — file set is assumed a pure
-/// function of that digest (benign-by-identity on partial writes before
-/// `.native_ready`). Registered in 04_method.dag as
+/// content-addressed emit_host transport persists workspace under workspace_dir and
+/// skips build when `.native_ready` is present. workspace_dir is the pre-composed
+/// path (native_cache_workspace_root(cache_root, key)); callers must not pass the
+/// cache parent alone. Workspace reuse is keyed by the caller's content-derived
+/// path (emit_on_demand_key closure_digest); a different closure MUST land in a
+/// different workspace dir — file set is assumed a pure function of that digest
+/// (benign-by-identity on partial writes before `.native_ready`). `.native_ready`
+/// is written only after a successful run (not after build alone): the P3 kernel's
+/// warm boundary is build+run proof, so a transient run failure must not skip
+/// rebuild on retry. Registered in 04_method.dag as
 /// emit_host_run_transport_cached; dissolve-on: witness_realization_kernel emits
 /// this builtin from v2 self-hosted transport rows (same dissolution as
 /// emit_host_run_transport seed handler).
 fn eval_emit_host_run_transport_cached_builtin(
-    cache_root_arg: Option<&Value>,
+    workspace_dir_arg: Option<&Value>,
     files_arg: Option<&Value>,
     build_arg: Option<&Value>,
     run_arg: Option<&Value>,
@@ -6987,19 +6991,19 @@ fn eval_emit_host_run_transport_cached_builtin(
         });
     }
 
-    let cache_root = free_monoid_to_string(cache_root_arg.ok_or_else(|| {
+    let workspace_dir = free_monoid_to_string(workspace_dir_arg.ok_or_else(|| {
         InterpError::TypeError {
             msg:
-                "emit_host_run_transport_cached requires (cache_root, files, build, run) arguments"
+                "emit_host_run_transport_cached requires (workspace_dir, files, build, run) arguments"
                     .to_string(),
         }
     })?)
     .ok_or_else(|| InterpError::TypeError {
-        msg: "emit_host_run_transport_cached: cache_root must be String".to_string(),
+        msg: "emit_host_run_transport_cached: workspace_dir must be String".to_string(),
     })?;
 
     let files_val = files_arg.ok_or_else(|| InterpError::TypeError {
-        msg: "emit_host_run_transport_cached requires (cache_root, files, build, run) arguments"
+        msg: "emit_host_run_transport_cached requires (workspace_dir, files, build, run) arguments"
             .to_string(),
     })?;
     let files = free_monoid_to_vec(files_val).ok_or_else(|| InterpError::TypeError {
@@ -7038,7 +7042,7 @@ fn eval_emit_host_run_transport_cached_builtin(
     }
 
     let build_val = build_arg.ok_or_else(|| InterpError::TypeError {
-        msg: "emit_host_run_transport_cached requires (cache_root, files, build, run) arguments"
+        msg: "emit_host_run_transport_cached requires (workspace_dir, files, build, run) arguments"
             .to_string(),
     })?;
     let build_lists = free_monoid_to_vec(build_val).ok_or_else(|| InterpError::TypeError {
@@ -7089,7 +7093,7 @@ fn eval_emit_host_run_transport_cached_builtin(
         });
     }
 
-    let workspace = std::path::PathBuf::from(&cache_root);
+    let workspace = std::path::PathBuf::from(&workspace_dir);
     std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
     })?;
