@@ -65,7 +65,7 @@ import v2.test.emit.fold_call_closure_fixture {
 }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.machine { Byte }
-import v2.std.collection { List }
+import v2.std.collection { List, Optional, Present, Absent, optional_present, optional_absent }
 import v2.std.diagnostic { Accepted, Rejected, Outcome }
 import v2.std.host_run { HostLogicalRun }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -84,11 +84,10 @@ data family_provider: CacheProvider = provider_row(
   eviction: SpacePacked { budget: "match loop fold native cache" }
 )
 
-fn family_test_store() -> ArtifactStore {
+fn family_open_test_store() -> Optional<ArtifactStore> {
   match store_over_provider(provider: family_provider, budget: byte_size(count: 1000000)) {
-    StoreReady { store: s } => s
-    StoreRefusedEviction { provider_id: _, declared: _ } =>
-      ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+    StoreReady { store: s } => optional_present(value: s)
+    StoreRefusedEviction { provider_id: _, declared: _ } => optional_absent()
   }
 }
 
@@ -636,14 +635,18 @@ test fn emit_on_demand_match_loop_fold_grain_keys_differ_holds() -> Bool {
 test fn emit_on_demand_match_loop_fold_materialize_share_on_hit_holds() -> Bool {
   match match_primary_tree() {
     Accepted { value: tree, diagnostics: _ } =>
-      let key = family_native_key_for(tree: tree)
-      let put = store_put(store: family_test_store(), key: key, artifact_bytes: byte_size(count: 64))
-      let lookup = emit_on_demand_lookup(store: put.store, key: key)
-      match lookup {
-        EmitOnDemandHit { receipt: r } =>
-          r.compile_skipped
-            && materialization_for_lookup(lookup: lookup) == Share
-        EmitOnDemandMiss => false
+      match family_open_test_store() {
+        Present { value: store } =>
+          let key = family_native_key_for(tree: tree)
+          let put = store_put(store: store, key: key, artifact_bytes: byte_size(count: 64))
+          let lookup = emit_on_demand_lookup(store: put.store, key: key)
+          match lookup {
+            EmitOnDemandHit { receipt: r } =>
+              r.compile_skipped
+                && materialization_for_lookup(lookup: lookup) == Share
+            EmitOnDemandMiss => false
+          }
+        Absent => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -652,13 +655,17 @@ test fn emit_on_demand_match_loop_fold_materialize_share_on_hit_holds() -> Bool 
 test fn emit_on_demand_match_loop_fold_materialize_recompute_on_miss_holds() -> Bool {
   match match_primary_tree() {
     Accepted { value: tree, diagnostics: _ } =>
-      let lookup = emit_on_demand_lookup(
-        store: family_test_store(),
-        key: family_native_key_for(tree: tree)
-      )
-      match lookup {
-        EmitOnDemandMiss => materialization_for_lookup(lookup: lookup) == Recompute
-        EmitOnDemandHit { receipt: _ } => false
+      match family_open_test_store() {
+        Present { value: store } =>
+          let lookup = emit_on_demand_lookup(
+            store: store,
+            key: family_native_key_for(tree: tree)
+          )
+          match lookup {
+            EmitOnDemandMiss => materialization_for_lookup(lookup: lookup) == Recompute
+            EmitOnDemandHit { receipt: _ } => false
+          }
+        Absent => false
       }
     Rejected { diagnostics: _ } => false
   }
