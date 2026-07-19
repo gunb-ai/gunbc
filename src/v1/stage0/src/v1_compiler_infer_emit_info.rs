@@ -75,6 +75,7 @@ pub enum RustCorpusRepr {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
     pub recursive_type_set: Rc<BTreeSet<String>>,
     pub fielded_variants: Rc<BTreeSet<String>>,
     pub positional_payload_variants: Rc<BTreeSet<String>>,
@@ -91,11 +92,22 @@ pub struct EmitGraphInfo {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitInfoBuildState {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+}
+
+pub fn empty_emit_graph_info_ord_fallback_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Conservatism: render paths without EmitGraphInfo pass empty_emit_graph_info(); bare-ref BTreeSet Ord eligibility fails closed (lookup_emit_type_decl -> Absent) and surfaces compile_error! at probe time — nine call sites inherit this, loud not silent widen.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
         type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
+        type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         recursive_type_set: v1_rt::rc_empty_set::<String>(),
         fielded_variants: v1_rt::rc_empty_set::<String>(),
         positional_payload_variants: v1_rt::rc_empty_set::<String>(),
@@ -136,6 +148,25 @@ pub fn lookup_emit_type_summary(
     type_name: String,
 ) -> Option<Rc<TypeSummary>> {
     v1_rt::map_get(&emit_info.type_summaries.clone(), type_name.clone())
+}
+
+pub fn lookup_emit_type_decl(emit_info: Rc<EmitGraphInfo>, type_name: String) -> Option<Rc<Node>> {
+    v1_rt::map_get(&emit_info.type_decl_items.clone(), type_name.clone())
+}
+
+pub fn emit_graph_records_type_decl(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match build_type_summary(item.clone(), source_indices.clone()) {
+        Some(_) => true,
+        None => {
+            ((((item.connective.clone() == Connective::NoConnective)
+                && ((item.children.clone().len() as i64) == 0))
+                && ((item.params.clone().len() as i64) == 0))
+                && (item.transport.clone() == None))
+        }
+    }
 }
 
 pub fn derive_variant_to_enum(
@@ -655,69 +686,104 @@ pub fn add_emit_item_summary(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<EmitInfoBuildState> {
-    match build_type_summary(item.clone(), source_indices.clone()) {
-        Some(summary) => {
-            let with_variants = match (*summary.repr.clone()).clone() {
-                TypeRepr::EnumRepr { unit_only: _, .. } => {
-                    item.children.clone().iter().cloned().fold(
-                        state.type_summaries.clone(),
-                        |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| {
-                            if ((variant.children.clone().len() as i64) > 0) {
-                                {
-                                    let v_has_fn = {
-                                        let mut __found = false;
-                                        for vc in variant.children.clone().iter().cloned() {
-                                            if match vc.inferred.clone().as_deref().cloned() {
-                                                Some(InferredNode::Resolved {
-                                                    node: rt, ..
-                                                }) => (rt.connective.clone() == Connective::Arrow),
-                                                _ => false,
-                                            } {
-                                                __found = true;
-                                                break;
-                                            }
-                                        }
-                                        __found
-                                    };
-                                    let vname =
-                                        authored_name_at(source_indices.clone(), variant.clone());
-                                    let qualified_vname =
-                                        variant_summary_key(summary.name.clone(), vname.clone());
-                                    v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        qualified_vname.clone(),
-                                        Rc::new(TypeSummary {
-                                            name: qualified_vname.clone(),
-                                            repr: Rc::new(TypeRepr::StructRepr),
-                                            field_summaries: build_struct_field_summaries(
-                                                variant.clone(),
-                                                source_indices.clone(),
-                                            ),
-                                            field_type_map: build_field_type_map(
-                                                variant.children.clone(),
-                                                source_indices.clone(),
-                                            ),
-                                            variant_name_set: v1_rt::rc_empty_map::<String, bool>(),
-                                            generic_param_names: Rc::new(vec![]),
-                                            has_fn_fields: v_has_fn.clone(),
-                                        }),
-                                    )
-                                }
-                            } else {
-                                acc.clone()
-                            }
-                        },
-                    )
-                }
-                _ => state.type_summaries.clone(),
-            };
-            let next_summaries =
-                v1_rt::rc_map_insert(with_variants.clone(), summary.name.clone(), summary.clone());
+    {
+        let decl_name = authored_name_at(source_indices.clone(), item.clone());
+        let state = if ((decl_name.clone() != "".to_string())
+            && emit_graph_records_type_decl(item.clone(), source_indices.clone()))
+        {
             Rc::new(EmitInfoBuildState {
-                type_summaries: next_summaries.clone(),
+                type_summaries: state.type_summaries.clone(),
+                type_decl_items: v1_rt::rc_map_insert(
+                    state.type_decl_items.clone(),
+                    decl_name.clone(),
+                    item.clone(),
+                ),
             })
+        } else {
+            state.clone()
+        };
+        match build_type_summary(item.clone(), source_indices.clone()) {
+            Some(summary) => {
+                let with_variants =
+                    match (*summary.repr.clone()).clone() {
+                        TypeRepr::EnumRepr { unit_only: _, .. } => {
+                            item.children.clone().iter().cloned().fold(
+                                state.type_summaries.clone(),
+                                |acc: Rc<HashMap<String, Rc<TypeSummary>>>, variant: Rc<Node>| {
+                                    if ((variant.children.clone().len() as i64) > 0) {
+                                        {
+                                            let v_has_fn = {
+                                                let mut __found = false;
+                                                for vc in variant.children.clone().iter().cloned() {
+                                                    if match vc.inferred.clone().as_deref().cloned()
+                                                    {
+                                                        Some(InferredNode::Resolved {
+                                                            node: rt,
+                                                            ..
+                                                        }) => {
+                                                            (rt.connective.clone()
+                                                                == Connective::Arrow)
+                                                        }
+                                                        _ => false,
+                                                    } {
+                                                        __found = true;
+                                                        break;
+                                                    }
+                                                }
+                                                __found
+                                            };
+                                            let vname = authored_name_at(
+                                                source_indices.clone(),
+                                                variant.clone(),
+                                            );
+                                            let qualified_vname = variant_summary_key(
+                                                summary.name.clone(),
+                                                vname.clone(),
+                                            );
+                                            v1_rt::rc_map_insert(
+                                                acc.clone(),
+                                                qualified_vname.clone(),
+                                                Rc::new(TypeSummary {
+                                                    name: qualified_vname.clone(),
+                                                    repr: Rc::new(TypeRepr::StructRepr),
+                                                    field_summaries: build_struct_field_summaries(
+                                                        variant.clone(),
+                                                        source_indices.clone(),
+                                                    ),
+                                                    field_type_map: build_field_type_map(
+                                                        variant.children.clone(),
+                                                        source_indices.clone(),
+                                                    ),
+                                                    variant_name_set: v1_rt::rc_empty_map::<
+                                                        String,
+                                                        bool,
+                                                    >(
+                                                    ),
+                                                    generic_param_names: Rc::new(vec![]),
+                                                    has_fn_fields: v_has_fn.clone(),
+                                                }),
+                                            )
+                                        }
+                                    } else {
+                                        acc.clone()
+                                    }
+                                },
+                            )
+                        }
+                        _ => state.type_summaries.clone(),
+                    };
+                let next_summaries = v1_rt::rc_map_insert(
+                    with_variants.clone(),
+                    summary.name.clone(),
+                    summary.clone(),
+                );
+                Rc::new(EmitInfoBuildState {
+                    type_summaries: next_summaries.clone(),
+                    type_decl_items: state.type_decl_items.clone(),
+                })
+            }
+            None => state.clone(),
         }
-        None => state.clone(),
     }
 }
 

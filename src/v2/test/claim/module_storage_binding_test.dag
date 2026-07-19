@@ -1,0 +1,91 @@
+module v2.test.claim.module_storage_binding
+
+import v2.compiler.source_authority {
+  ModuleStorageBinding,
+  ModuleStorageIndex,
+  module_storage_binding_file_path,
+  module_storage_binding_module_dotted,
+  module_storage_index_insert,
+  module_storage_module_for_path,
+  module_storage_produced_binding
+}
+import v2.std.collection { Absent, Present }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
+import std.algebra { Cons, Empty }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data msb_fast_lane_note: String = "FAST-LANE half of the Phase-1 binding witnesses (operator 5-second rule 2026-07-12; authority gunbc.ci_layer_roots long_lane_exclusion_note). These exercise the index CONSTRUCTION WALL — duplicate-module refusal, its accept control, and the produced/zero-file arm — over hand-built ModuleStorageBinding rows, so they carry ZERO parse cost and run in per-PR discovery. The parse-DERIVED proofs (that the binding is read back out of a real parsed module node, and the underivable-name refusal) cost ~13s of eval each and therefore live in src/v2/test/claim/long/module_storage_binding_derivation_test.dag, run by the long-lane recipe. Split, not deleted: the note's own division — fast receipts stay discovered, execution proofs live in long/. Duplicate detection keys on module identity independently of provenance, which is exactly why the §5 wall can be proven here without paying for a parse."
+
+data msb_fixture_qn: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons { head: ^std, tail: Cons { head: ^msb_fixture, tail: Empty } }
+}
+
+data msb_other_qn: QualifiedName = Cons {
+  head: ^v2,
+  tail: Cons { head: ^std, tail: Cons { head: ^msb_other_fixture, tail: Empty } }
+}
+
+data msb_produced_binding: ModuleStorageBinding = module_storage_produced_binding(
+  module: msb_fixture_qn,
+  producer: ^msb_body_producer,
+  source_root: V2Tree
+)
+
+data msb_produced_duplicate_binding: ModuleStorageBinding = module_storage_produced_binding(
+  module: msb_fixture_qn,
+  producer: ^msb_other_body_producer,
+  source_root: V2Tree
+)
+
+data msb_produced_other_binding: ModuleStorageBinding = module_storage_produced_binding(
+  module: msb_other_qn,
+  producer: ^msb_body_producer,
+  source_root: V2Tree
+)
+
+data msb_singleton_index: ModuleStorageIndex = Cons { head: msb_produced_binding, tail: Empty }
+
+test fn module_storage_duplicate_module_insert_refuses() -> Bool {
+  match module_storage_index_insert(
+    index: msb_singleton_index,
+    binding: msb_produced_duplicate_binding
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn module_storage_distinct_module_insert_accepts() -> Bool {
+  match module_storage_index_insert(
+    index: msb_singleton_index,
+    binding: msb_produced_other_binding
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => true
+  }
+}
+
+test fn module_storage_produced_module_has_no_storage() -> Bool {
+  match module_storage_binding_file_path(binding: msb_produced_binding) {
+    Present { value: _ } => false
+    Absent =>
+      module_storage_binding_module_dotted(binding: msb_produced_binding) == "v2.std.msb_fixture"
+  }
+}
+
+test fn module_storage_produced_module_answers_absent_for_path_lookup() -> Bool {
+  match module_storage_module_for_path(
+    index: msb_singleton_index,
+    file_path: "src/v2/std/msb_fixture.dag"
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
