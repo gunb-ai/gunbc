@@ -1614,28 +1614,7 @@ pub fn resolve_node_bounded(
                                         })
                                     } else {
                                         match lookup_type_for(env.clone(), n.clone()) {
-                                            Some(resolved_binding) => {
-                                                let leaf_name =
-                                                    authored_name(env.clone(), n.clone());
-                                                let resolved =
-                                                    if ((resolved_binding.connective.clone()
-                                                        == Connective::Disj)
-                                                        && (authored_name(
-                                                            env.clone(),
-                                                            resolved_binding.clone(),
-                                                        ) != leaf_name.clone()))
-                                                    {
-                                                        match variant_arm_type_projection(
-                                                            env.clone(),
-                                                            resolved_binding.clone(),
-                                                            leaf_name.clone(),
-                                                        ) {
-                                                            Some(arm) => arm.clone(),
-                                                            None => resolved_binding.clone(),
-                                                        }
-                                                    } else {
-                                                        resolved_binding.clone()
-                                                    };
+                                            Some(resolved) => {
                                                 let structurally_resolved = if (((resolved
                                                     .connective
                                                     .clone()
