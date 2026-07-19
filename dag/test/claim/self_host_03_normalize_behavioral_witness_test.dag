@@ -1,8 +1,11 @@
 module test.claim.self_host_03_normalize_behavioral_witness
 
 import tools.self_host_03_normalize_behavioral_transport { sn_behavioral_receipt_holds }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data self_host_03_normalize_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Gate-A flip (03_normalize): tools.self_host_03_normalize_behavioral_transport emits src/v2/compiler/03_normalize.dag via gunbc --entry, assembles curated seed-linked v1_compiled (emitted entry + dep shims + v1-compiler path dep), runs cargo build + witness (plain + --inject-fault). Enrolled on nightly falsifier when frontier row is SelfEmitted."
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data self_host_03_normalize_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Gate-A flip (03_normalize): tools.self_host_03_normalize_behavioral_transport emits src/v2/compiler/03_normalize.dag via gunbc --entry, assembles curated seed-linked v1_compiled (emitted entry + dep shims + v1-compiler path dep), runs cargo build + witness (plain + --inject-fault). Enrolled on nightly falsifier when frontier row is SelfEmitted. Selection: declared_source_refs on the transport (hand-verified complete per docs/plans/declared-source-ref-selection-design.md §5.1) joined through ModuleStorageIndex — selected on emitter-touch, skipped on unrelated diffs."
 
 test fn self_host_03_normalize_behavioral_receipt_holds() -> Bool {
   sn_behavioral_receipt_holds()
