@@ -10611,7 +10611,14 @@ fn floor_diff_edits_from_line_ranges(
             }
         }
         if decls.is_empty() {
-            return Err(format!("no declarations in {file_path}"));
+            // A declaration-less module (a lone `module` line — e.g. the
+            // shadow-masked fixtures) has nothing to attribute at decl grain;
+            // its only edit surface IS the file, so the file-grain touched set
+            // carries it (dependents rerun via the import closure). Refusing
+            // here dead-ended the frontier on a fixture that is legitimately
+            // empty — not an incoherent observation.
+            touched_entry_files.insert(file_norm.clone());
+            continue;
         }
         decls.sort_by_key(|(line, _, _)| *line);
         let first_decl_line = decls[0].0;
