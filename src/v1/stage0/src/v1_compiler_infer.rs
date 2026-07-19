@@ -14090,14 +14090,15 @@ pub fn symbol_index_with_bare_fill(
     let bare_keys = v1_rt::sorted_map_keys(&tree.global_bare);
     let global2 = bare_keys.iter().cloned().fold(
         closure.global_bare.clone(),
-        |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, k: String| {
-            match v1_rt::map_get(&acc, k.clone()) {
-                Some(_) => acc,
-                None => match v1_rt::map_get(&tree.global_bare, k.clone()) {
-                    Some(state) => v1_rt::rc_map_insert(acc, k.clone(), state.clone()),
-                    None => acc,
-                },
-            }
+        |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, k: String| match v1_rt::map_get(
+            &acc,
+            k.clone(),
+        ) {
+            Some(_) => acc,
+            None => match v1_rt::map_get(&tree.global_bare, k.clone()) {
+                Some(state) => v1_rt::rc_map_insert(acc, k.clone(), state.clone()),
+                None => acc,
+            },
         },
     );
     let service_keys = v1_rt::sorted_map_keys(&tree.services);
@@ -14141,18 +14142,19 @@ pub fn build_symbol_index_qualified_fill(
             let items = module_items(module_node.clone());
             let with_items = items.clone().iter().cloned().fold(
                 index,
-                |acc: Rc<SymbolIndex>, item: Rc<Node>| {
-                    match local_binding_for_item(item.clone(), source_indices.clone()) {
-                        None => acc,
-                        Some(binding) => symbol_index_insert(
-                            acc,
-                            v1_rt::concat(
-                                v1_rt::concat(module_path.clone(), ".".to_string()),
-                                binding.name.clone(),
-                            ),
-                            binding.resolved.clone(),
+                |acc: Rc<SymbolIndex>, item: Rc<Node>| match local_binding_for_item(
+                    item.clone(),
+                    source_indices.clone(),
+                ) {
+                    None => acc,
+                    Some(binding) => symbol_index_insert(
+                        acc,
+                        v1_rt::concat(
+                            v1_rt::concat(module_path.clone(), ".".to_string()),
+                            binding.name.clone(),
                         ),
-                    }
+                        binding.resolved.clone(),
+                    ),
                 },
             );
             // Module-unique Disj variants: the qualified alias only (the qualified

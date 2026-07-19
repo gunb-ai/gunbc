@@ -5354,11 +5354,10 @@ fn reconcile_with_typed_cache(
                             Some(root) => match tree_symbol_index_memo.get(&root) {
                                 Some(hit) => hit.clone(),
                                 None => {
-                                    let composed =
-                                        v1_compiler_infer::symbol_index_with_bare_fill(
-                                            symbol_index.clone(),
-                                            tree_bare_census_for_root(index, &root)?,
-                                        );
+                                    let composed = v1_compiler_infer::symbol_index_with_bare_fill(
+                                        symbol_index.clone(),
+                                        tree_bare_census_for_root(index, &root)?,
+                                    );
                                     tree_symbol_index_memo.insert(root, composed.clone());
                                     composed
                                 }
