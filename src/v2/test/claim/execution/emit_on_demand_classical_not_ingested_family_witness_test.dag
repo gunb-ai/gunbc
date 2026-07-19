@@ -7,7 +7,7 @@ import std.materialization_ladder {
   CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, SpacePacked, provider_row,
 }
 import std.artifact_store {
-  ArtifactStore, StoreReady, StoreRefusedEviction, store_put,
+  ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider, store_put,
 }
 import std.realization { Share, Recompute }
 import std.realize_pack {
