@@ -3984,12 +3984,23 @@ pub struct MultiEntryIndex {
         RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
     ownership_diag_cache:
         RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+    /// The source roots this index was built from — the tree identities behind the
+    /// per-tree bare census layers (a module's bare-name universe is its own tree).
+    source_roots: Vec<String>,
+    /// Parse-grade pool snapshot (every indexed module parsed once, with pool-wide
+    /// newline indexes) — the shared input of the qualified fill and the per-tree
+    /// bare layers below. Entry-independent, built once per process.
+    pool_parse: RefCell<Option<Rc<PoolParse>>>,
     /// Whole-pool QUALIFIED-ONLY census layer (entries keyed by qualified name;
     /// empty global_bare/services), built once per process and underlaid beneath
     /// each entry's closure census (namespace-resolution-design.md §7.5: "fill =
-    /// whole tree; policy gates lookup, never fill"). Parse-grade and
-    /// entry-independent — one snapshot serves every entry compile in the process.
+    /// whole tree; policy gates lookup, never fill").
     pool_qualified_fill: RefCell<Option<Rc<SymbolIndex>>>,
+    /// Per-source-root full census (bare + qualified + services) over that root's
+    /// pool modules — the SAME-TREE bare layer underlaid beneath a module's closure
+    /// census when it typechecks (bare = own tree; qualified = whole pool; cross-
+    /// tree bare reach stays refused). Keyed by source root, built lazily.
+    tree_bare_census: RefCell<std::collections::HashMap<String, Rc<SymbolIndex>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -4045,8 +4056,19 @@ fn new_multi_entry_index_shell(
         normalize_diag_cache: RefCell::new(std::collections::HashMap::new()),
         ownership_diag_cache: RefCell::new(std::collections::HashMap::new()),
         resolved_graph_memo: RefCell::new(HashMap::new()),
+        source_roots: source_roots.to_vec(),
+        pool_parse: RefCell::new(None),
         pool_qualified_fill: RefCell::new(None),
+        tree_bare_census: RefCell::new(std::collections::HashMap::new()),
     }
+}
+
+/// Parse-grade pool snapshot: every indexed module's node plus the pool-wide
+/// newline indexes, in deterministic (sorted module path) order.
+struct PoolParse {
+    /// Workspace-relative file path → parsed module node.
+    nodes_by_file: Vec<(String, Rc<Node>)>,
+    combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
 // Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
@@ -5093,41 +5115,107 @@ fn parse_module_node_from_index_source(
 // bare GET/Persistent/JsonValue across 28 witness rows).
 // 🟡 dissolve-on: multi-entry SymbolIndex authority modeled in .dag (census over the
 // indexed pool — namespace-resolution-design.md / type-env-single-authority lane).
+fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
+    if let Some(cached) = index.pool_parse.borrow().clone() {
+        return Ok(cached);
+    }
+    // Deterministic pool order (sorted module paths keeps every derived census
+    // build reproducible — determinism gate).
+    let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
+    pool_paths.sort();
+    let mut combined_si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    let mut nodes_by_file: Vec<(String, Rc<Node>)> = Vec::with_capacity(pool_paths.len());
+    for module_path in pool_paths {
+        let source = index
+            .source_files
+            .get(&module_path)
+            .cloned()
+            .expect("pool path came from source_files keys");
+        let (module, nl_index) = parse_module_node_from_index_source(index, source)?;
+        let file = nl_index.file.clone();
+        combined_si.insert(file.clone(), nl_index);
+        nodes_by_file.push((file, module));
+    }
+    let parsed = Rc::new(PoolParse {
+        nodes_by_file,
+        combined_si: Rc::new(combined_si),
+    });
+    *index.pool_parse.borrow_mut() = Some(parsed.clone());
+    Ok(parsed)
+}
+
+fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
+    if let Some(cached) = index.pool_qualified_fill.borrow().clone() {
+        return Ok(cached);
+    }
+    let pool = pool_parse(index)?;
+    let nodes: im_rc::Vector<Rc<Node>> = pool
+        .nodes_by_file
+        .iter()
+        .map(|(_, node)| node.clone())
+        .collect();
+    let fill = v1_compiler_infer::build_symbol_index_qualified_fill(
+        Rc::new(nodes),
+        pool.combined_si.clone(),
+    );
+    *index.pool_qualified_fill.borrow_mut() = Some(fill.clone());
+    Ok(fill)
+}
+
+/// The source root (longest prefix match) a workspace-relative file lives under,
+/// or None for files outside every indexed root.
+fn source_tree_root_of(roots: &[String], file: &str) -> Option<String> {
+    let mut best: Option<&str> = None;
+    for root in roots {
+        let trimmed = root.trim_end_matches('/');
+        if (file == trimmed || file.starts_with(&format!("{trimmed}/")))
+            && best.is_none_or(|b| trimmed.len() > b.len())
+        {
+            best = Some(trimmed);
+        }
+    }
+    best.map(|s| s.to_string())
+}
+
+/// The SAME-TREE bare census for one source root: the full census (bare +
+/// qualified + services) over exactly the pool modules under that root — what a
+/// whole-tree compile of the root would hold in its closure census. Built lazily,
+/// cached per root.
+fn tree_bare_census_for_root(
+    index: &MultiEntryIndex,
+    root: &str,
+) -> Result<Rc<SymbolIndex>, String> {
+    if let Some(hit) = index.tree_bare_census.borrow().get(root) {
+        return Ok(hit.clone());
+    }
+    let pool = pool_parse(index)?;
+    let trimmed = root.trim_end_matches('/');
+    let prefix = format!("{trimmed}/");
+    let nodes: im_rc::Vector<Rc<Node>> = pool
+        .nodes_by_file
+        .iter()
+        .filter(|(file, _)| file == trimmed || file.starts_with(&prefix))
+        .map(|(_, node)| node.clone())
+        .collect();
+    let census = v1_compiler_infer::build_symbol_index_census_nodes(
+        Rc::new(nodes),
+        pool.combined_si.clone(),
+    );
+    index
+        .tree_bare_census
+        .borrow_mut()
+        .insert(root.to_string(), census.clone());
+    Ok(census)
+}
+
 fn build_symbol_index_for_reconcile(
     index: &MultiEntryIndex,
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<SymbolIndex>, String> {
-    let fill = match index.pool_qualified_fill.borrow().clone() {
-        Some(cached) => cached,
-        None => {
-            // Deterministic fill order (entries are keyed by pool-unique qualified
-            // names; a sorted walk keeps the build reproducible — determinism gate).
-            let mut pool_paths: Vec<String> = index.source_files.keys().cloned().collect();
-            pool_paths.sort();
-            let mut combined_si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
-            let mut module_nodes: Vec<Rc<Node>> = Vec::with_capacity(pool_paths.len());
-            for module_path in pool_paths {
-                let source = index
-                    .source_files
-                    .get(&module_path)
-                    .cloned()
-                    .expect("pool path came from source_files keys");
-                let (module, nl_index) = parse_module_node_from_index_source(index, source)?;
-                combined_si.insert(nl_index.file.clone(), nl_index);
-                module_nodes.push(module);
-            }
-            let fill = v1_compiler_infer::build_symbol_index_qualified_fill(
-                Rc::new(module_nodes.into()),
-                Rc::new(combined_si),
-            );
-            *index.pool_qualified_fill.borrow_mut() = Some(fill.clone());
-            fill
-        }
-    };
     Ok(v1_compiler_infer::symbol_index_with_qualified_fill(
         v1_compiler_infer::build_symbol_index_census(graph.modules.clone(), source_indices),
-        fill,
+        pool_qualified_fill(index)?,
     ))
 }
 
@@ -5143,9 +5231,16 @@ fn reconcile_with_typed_cache(
         v1_rt::rc_empty_map();
     // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
     // built once, order-independent, over the whole graph before any module typechecks — see
-    // global_bare_fallback_invariant in v1_compiler_infer_env.
+    // global_bare_fallback_invariant in v1_compiler_infer_env. Layering (§7.5 "fill =
+    // whole tree; policy gates lookup, never fill"): the base below is the entry's
+    // closure census plus the whole-pool QUALIFIED underlay; each module that
+    // actually typechecks additionally gets its OWN tree's bare census underlaid
+    // (bare = own tree, qualified = whole pool, cross-tree bare stays refused),
+    // composed lazily per root in `tree_symbol_index_memo`.
     let symbol_index =
         build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
+    let mut tree_symbol_index_memo: std::collections::HashMap<String, Rc<SymbolIndex>> =
+        std::collections::HashMap::new();
 
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
@@ -5229,13 +5324,32 @@ fn reconcile_with_typed_cache(
                         eprintln!("[typecheck-attribution] module={mod_name} start");
                     }
                     let module_tc_started = std::time::Instant::now();
+                    // Same-tree bare underlay for the module being typechecked
+                    // (bare = own tree, qualified = whole pool); out-of-root
+                    // modules keep the closure-only bare universe.
+                    let module_symbol_index =
+                        match source_tree_root_of(&index.source_roots, &decl_file) {
+                            Some(root) => match tree_symbol_index_memo.get(&root) {
+                                Some(hit) => hit.clone(),
+                                None => {
+                                    let composed =
+                                        v1_compiler_infer::symbol_index_with_bare_fill(
+                                            symbol_index.clone(),
+                                            tree_bare_census_for_root(index, &root)?,
+                                        );
+                                    tree_symbol_index_memo.insert(root, composed.clone());
+                                    composed
+                                }
+                            },
+                            None => symbol_index.clone(),
+                        };
                     let computed = v1_compiler_infer::typecheck_module(
                         resolved.clone(),
                         module_index.clone(),
                         variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
-                        symbol_index.clone(),
+                        module_symbol_index,
                     );
                     // Per-module attribution for the typecheck-dominant resolves measured
                     // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of

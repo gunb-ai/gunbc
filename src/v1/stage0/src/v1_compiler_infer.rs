@@ -13327,14 +13327,28 @@ pub fn disj_variant_name_counts(
     )
 }
 
-pub fn corpus_disj_variant_name_counts(
-    modules: Rc<Vec<Rc<ResolvedModule>>>,
+/// Project the raw module nodes out of resolved modules — the census reads only
+/// the module node, so the node list is the census's true input (one census over
+/// two front ends: resolved closures and parse-grade pool fills).
+pub fn census_module_nodes(modules: Rc<Vec<Rc<ResolvedModule>>>) -> Rc<Vec<Rc<Node>>> {
+    Rc::new(
+        modules
+            .clone()
+            .iter()
+            .cloned()
+            .map(|rm: Rc<ResolvedModule>| rm.module.clone())
+            .collect(),
+    )
+}
+
+pub fn corpus_disj_variant_name_counts_nodes(
+    module_nodes: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, i64>> {
-    modules.clone().iter().cloned().fold(
+    module_nodes.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, i64>(),
-        |counts: Rc<HashMap<String, i64>>, mod_: Rc<ResolvedModule>| {
-            module_items(mod_.module.clone()).iter().cloned().fold(
+        |counts: Rc<HashMap<String, i64>>, module_node: Rc<Node>| {
+            module_items(module_node.clone()).iter().cloned().fold(
                 counts,
                 |c: Rc<HashMap<String, i64>>, item: Rc<Node>| match item.connective.clone() {
                     Connective::Disj => item.children.clone().iter().cloned().fold(
@@ -13353,14 +13367,21 @@ pub fn corpus_disj_variant_name_counts(
     )
 }
 
-pub fn corpus_item_name_counts(
+pub fn corpus_disj_variant_name_counts(
     modules: Rc<Vec<Rc<ResolvedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, i64>> {
-    modules.clone().iter().cloned().fold(
+    corpus_disj_variant_name_counts_nodes(census_module_nodes(modules), source_indices)
+}
+
+pub fn corpus_item_name_counts_nodes(
+    module_nodes: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, i64>> {
+    module_nodes.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, i64>(),
-        |counts: Rc<HashMap<String, i64>>, mod_: Rc<ResolvedModule>| {
-            module_items(mod_.module.clone()).iter().cloned().fold(
+        |counts: Rc<HashMap<String, i64>>, module_node: Rc<Node>| {
+            module_items(module_node.clone()).iter().cloned().fold(
                 counts,
                 |c: Rc<HashMap<String, i64>>, item: Rc<Node>| {
                     disj_variant_name_count_inc(
@@ -13371,6 +13392,13 @@ pub fn corpus_item_name_counts(
             )
         },
     )
+}
+
+pub fn corpus_item_name_counts(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, i64>> {
+    corpus_item_name_counts_nodes(census_module_nodes(modules), source_indices)
 }
 
 pub fn symbol_index_insert_unique_disj_variant_aliases(
@@ -13446,18 +13474,19 @@ pub fn symbol_index_insert_unique_disj_variant_aliases(
     }
 }
 
-pub fn build_symbol_index_census_raw(
-    modules: Rc<Vec<Rc<ResolvedModule>>>,
+pub fn build_symbol_index_census_raw_nodes(
+    module_nodes: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<SymbolIndex> {
     let corpus_variant_counts =
-        corpus_disj_variant_name_counts(modules.clone(), source_indices.clone());
-    let corpus_item_counts = corpus_item_name_counts(modules.clone(), source_indices.clone());
-    modules.clone().iter().cloned().fold(
+        corpus_disj_variant_name_counts_nodes(module_nodes.clone(), source_indices.clone());
+    let corpus_item_counts =
+        corpus_item_name_counts_nodes(module_nodes.clone(), source_indices.clone());
+    module_nodes.clone().iter().cloned().fold(
         empty_symbol_index(),
-        |index: Rc<SymbolIndex>, mod_: Rc<ResolvedModule>| {
-            let module_path = authored_name_at(source_indices.clone(), mod_.module.clone());
-            let items = module_items(mod_.module.clone());
+        |index: Rc<SymbolIndex>, module_node: Rc<Node>| {
+            let module_path = authored_name_at(source_indices.clone(), module_node.clone());
+            let items = module_items(module_node.clone());
             let with_items = items.clone().iter().cloned().fold(
                 index,
                 |acc: Rc<SymbolIndex>, item: Rc<Node>| {
@@ -13479,6 +13508,13 @@ pub fn build_symbol_index_census_raw(
             )
         },
     )
+}
+
+pub fn build_symbol_index_census_raw(
+    modules: Rc<Vec<Rc<ResolvedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SymbolIndex> {
+    build_symbol_index_census_raw_nodes(census_module_nodes(modules), source_indices)
 }
 
 pub fn census_fn_sig_env(
@@ -14026,6 +14062,63 @@ pub fn build_symbol_index_census(
 ) -> Rc<SymbolIndex> {
     let raw = build_symbol_index_census_raw(modules.clone(), source_indices.clone());
     census_with_resolved_fn_sigs(raw, source_indices.clone())
+}
+
+/// The full census (bare + qualified + services) over parse-grade module nodes —
+/// the same build as `build_symbol_index_census`, entered from a pool parse
+/// instead of a resolved closure. Used for the SAME-TREE bare layer: a module's
+/// bare-name universe is its own source tree (the tree a whole-tree compile of
+/// that root would put in the closure census), not the cross-tree pool.
+pub fn build_symbol_index_census_nodes(
+    module_nodes: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SymbolIndex> {
+    let raw = build_symbol_index_census_raw_nodes(module_nodes.clone(), source_indices.clone());
+    census_with_resolved_fn_sigs(raw, source_indices.clone())
+}
+
+/// Underlay a same-tree bare census beneath a closure census: `global_bare` and
+/// `services` keys ABSENT from the closure enter from the tree layer (the closure
+/// census always wins; the tree layer's own Unique/Ambiguous states carry over
+/// unchanged, so tree-internal homonyms refuse exactly as a whole-tree closure
+/// would). `entries` are untouched — the qualified underlay
+/// (`symbol_index_with_qualified_fill`) owns that axis.
+pub fn symbol_index_with_bare_fill(
+    closure: Rc<SymbolIndex>,
+    tree: Rc<SymbolIndex>,
+) -> Rc<SymbolIndex> {
+    let bare_keys = v1_rt::sorted_map_keys(&tree.global_bare);
+    let global2 = bare_keys.iter().cloned().fold(
+        closure.global_bare.clone(),
+        |acc: Rc<HashMap<String, Rc<GlobalBareLookupState>>>, k: String| {
+            match v1_rt::map_get(&acc, k.clone()) {
+                Some(_) => acc,
+                None => match v1_rt::map_get(&tree.global_bare, k.clone()) {
+                    Some(state) => v1_rt::rc_map_insert(acc, k.clone(), state.clone()),
+                    None => acc,
+                },
+            }
+        },
+    );
+    let service_keys = v1_rt::sorted_map_keys(&tree.services);
+    let services2 = service_keys.iter().cloned().fold(
+        closure.services.clone(),
+        |acc: Rc<HashMap<String, Rc<crate::v1_compiler_infer_env::ServiceCensusEntry>>>,
+         k: String| {
+            match v1_rt::map_get(&acc, k.clone()) {
+                Some(_) => acc,
+                None => match v1_rt::map_get(&tree.services, k.clone()) {
+                    Some(entry) => v1_rt::rc_map_insert(acc, k.clone(), entry.clone()),
+                    None => acc,
+                },
+            }
+        },
+    );
+    Rc::new(SymbolIndex {
+        entries: closure.entries.clone(),
+        global_bare: global2,
+        services: services2,
+    })
 }
 
 /// Qualified-only census layer over parse-grade module nodes (namespace fill):
