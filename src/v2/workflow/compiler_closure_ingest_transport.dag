@@ -7,6 +7,8 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
 import tools.host_prelude {
   ClaimRun,
+  WitnessBinReady,
+  WitnessBinRefused,
   run_gunbc_claims,
   witness_bin,
   witness_bin_ensure_built_typed,
@@ -29,10 +31,7 @@ fn closure_manifest_emit_args(manifest_dir: String) -> List<String> {
   ]
 }
 
-func run_compiler_closure_ingest_gate() -> Bool {
-  let root = git.Core.Toplevel()
-  let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
-  if witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+func run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
     let pre_overlay = run_gunbc_claims(
       source_roots: witness_layer_roots,
       claims: [
@@ -41,15 +40,15 @@ func run_compiler_closure_ingest_gate() -> Bool {
       ]
     )
     if pre_overlay {
-      let target_ready = shell.Mkdir.Parents(path: concat(root.path, "/target"))
+      let target_ready = shell.Mkdir.Parents(path: concat(root, "/target"))
       if target_ready.success {
         let manifest_dir = shell.Mktemp.DirWithTemplate(
-          template: concat(root.path, "/target/closure-ingest-XXXXXX")
+          template: concat(root, "/target/closure-ingest-XXXXXX")
         )
         if manifest_dir.success {
           let emitted = gunbc.WitnessBin.Run(
-            workdir: root.path,
-            bin_path: witness_bin_release_path(root: root.path, bin_name: "discover_source_root_ingest"),
+            workdir: root,
+            bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
             args: closure_manifest_emit_args(manifest_dir: manifest_dir.path)
           )
           let overlay = if emitted.success {
@@ -71,7 +70,13 @@ func run_compiler_closure_ingest_gate() -> Bool {
     } else {
       false
     }
-  } else {
-    false
+}
+
+func run_compiler_closure_ingest_gate() -> Bool {
+  let root = git.Core.Toplevel()
+  let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
+  match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    WitnessBinReady { path: _ } => run_compiler_closure_ingest_gate_ready(root: root.path)
   }
 }

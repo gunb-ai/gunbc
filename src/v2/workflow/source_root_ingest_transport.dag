@@ -6,6 +6,8 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import std.logic { Bool }
 import tools.host_prelude {
   ClaimRun,
+  WitnessBinReady,
+  WitnessBinRefused,
   run_gunbc_claims,
   witness_bin,
   witness_bin_ensure_built_typed,
@@ -33,28 +35,31 @@ fn emit_manifest_args() -> List<String> {
   ]
 }
 
+func run_real_ingest_gate_ready(root: String) -> Bool {
+  let manifest = gunbc.WitnessBin.Run(
+    workdir: root,
+    bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+    args: emit_manifest_args()
+  )
+  if manifest.success {
+    run_gunbc_claims(
+      source_roots: sri_claim_source_roots(),
+      claims: [
+        ClaimRun { entry: ingest_entry, function: ingest_witness_module_roots_parse },
+        ClaimRun { entry: ingest_entry, function: ingest_witness_host_manifest_receipt },
+        ClaimRun { entry: ingest_entry, function: ingest_witness_validate_red }
+      ]
+    )
+  } else {
+    false
+  }
+}
+
 func run_real_ingest_gate() -> Bool {
   let root = git.Core.Toplevel()
   let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
-  if witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
-    let manifest = gunbc.WitnessBin.Run(
-      workdir: root.path,
-      bin_path: witness_bin_release_path(root: root.path, bin_name: "discover_source_root_ingest"),
-      args: emit_manifest_args()
-    )
-    if manifest.success {
-      run_gunbc_claims(
-        source_roots: sri_claim_source_roots(),
-        claims: [
-          ClaimRun { entry: ingest_entry, function: ingest_witness_module_roots_parse },
-          ClaimRun { entry: ingest_entry, function: ingest_witness_host_manifest_receipt },
-          ClaimRun { entry: ingest_entry, function: ingest_witness_validate_red }
-        ]
-      )
-    } else {
-      false
-    }
-  } else {
-    false
+  match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    WitnessBinReady { path: _ } => run_real_ingest_gate_ready(root: root.path)
   }
 }
