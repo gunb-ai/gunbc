@@ -9,13 +9,18 @@ pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profi
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
 };
+pub use crate::std_induction::SubValueRelation;
+use crate::std_induction::SubValueRelation::*;
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
+use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, is_recursive_type, lookup_type, lookup_type_for,
+    authored_name, borrowed_generic_param_names, global_bare_nearest_ancestor_candidate,
+    is_recursive_type, lookup_binding_by_name, lookup_binding_by_name_local, lookup_type,
+    lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
 };
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
 pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
@@ -23,8 +28,8 @@ pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, is_declared_container_alias_spelling,
-    make_container_type, method_receiver_element_node, node_is_keyed_collection,
-    node_is_set_collection, nominal_type_ref, normalize_access_type_node,
+    kernel_profile_lookup, make_container_type, method_receiver_element_node,
+    node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
     reground_alias_carrier_identity,
 };
 use crate::v1_rt;
@@ -40,7 +45,7 @@ use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 pub use crate::v1_std_core::{
-    authored_name_at, find_child_named, has_child_named, param_node_type_expr,
+    authored_name_at, error_type, find_child_named, has_child_named, param_node_type_expr,
     with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
@@ -166,9 +171,11 @@ pub fn func_sig_from_global_bare(
                                 node.params.clone(),
                                 type_env.source_indices.clone(),
                             );
-                            let raw_return = match node.inferred.clone() {
-                                Some(inferred) => inferred.clone(),
-                                None => match node.type_annotation.clone() {
+                            let raw_return = match node.inferred.clone().as_deref().cloned() {
+                                Some(InferredNode::Resolved { node: inferred, .. }) => {
+                                    inferred.clone()
+                                }
+                                _ => match node.type_annotation.clone() {
                                     Some(ann) => ann.clone(),
                                     None => error_type(),
                                 },

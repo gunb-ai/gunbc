@@ -132,8 +132,8 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
         true =>
         let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
         let raw_return = match node.inferred {
-          Present { value: inferred } => inferred
-          Absent => match node.type_annotation {
+          Present { value: Resolved { node: inferred } } => inferred
+          _ => match node.type_annotation {
             Present { value: ann } => ann
             Absent => error_type
           }

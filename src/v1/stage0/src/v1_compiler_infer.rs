@@ -54,12 +54,13 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 pub use crate::v1_compiler_infer_env::{
     empty_symbol_index, empty_type_env_cache, env_with_type_variable_bindings,
     global_bare_is_ambiguous, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    node_with_children, node_with_inferred, put_inductive_field, put_inductive_field_cross,
-    qualified_all_but_last, qualify_borrowed_inferred, qualify_borrowed_type_names,
-    qualify_decl_reference_positions, str_bindings_from_bindings, symbol_index_insert,
-    symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
+    is_recursive_type, is_recursive_type_by_name, lookup_binding_by_name, lookup_type,
+    lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
+    merge_type_env_cache_guarded, node_with_children, node_with_inferred, put_inductive_field,
+    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
+    qualify_borrowed_type_names, qualify_decl_reference_positions, str_bindings_from_bindings,
+    symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
+    symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
@@ -74,10 +75,10 @@ pub use crate::v1_compiler_infer_items::{
 };
 pub use crate::v1_compiler_infer_lookup::KnownMethodResolution;
 pub use crate::v1_compiler_infer_lookup::{
-    field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
-    lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
-    product_field_result_type, resolve_known_method_node, resolve_method_receiver_type,
-    resolve_scrutinee_type_node, set_element_type_in_env,
+    field_summary_for_type, global_bare_callable_node, lookup_coproduct_common_field_node,
+    lookup_field_type_node, lookup_func_sig, lookup_in_scope, map_key_type_in_env,
+    map_value_type_in_env, product_field_result_type, resolve_known_method_node,
+    resolve_method_receiver_type, resolve_scrutinee_type_node, set_element_type_in_env,
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -85,9 +86,9 @@ pub use crate::v1_compiler_infer_method::{
 };
 use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
-    check_match_exhaustiveness, lookup_field_in_variant, lookup_result_subject,
-    lookup_variant_in_type, pattern_binding_type, pattern_subject_from_inferred,
-    pattern_subject_from_node,
+    check_match_exhaustiveness, expand_scrut_type_for_variant_lookup, lookup_field_in_variant,
+    lookup_result_subject, lookup_variant_in_type, pattern_binding_type,
+    pattern_subject_from_inferred, pattern_subject_from_node,
 };
 pub use crate::v1_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v1_compiler_infer_resolve::{
@@ -105,8 +106,8 @@ pub use crate::v1_compiler_infer_sigs::{flatten_parent_envs, resolve_func_sigs};
 pub use crate::v1_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
-    bare_map_node, bare_set_node, callable_inferred, child_type_node, emit_map_has,
-    extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
+    bare_map_node, bare_set_node, callable_inferred, callable_return_type, child_type_node,
+    emit_map_has, extract_optional_inner_node, for_each_element_type_node, infer_binop_type_node,
     infer_literal_node, is_declared_container_alias_spelling, is_fully_resolved,
     is_type_expr_annotation, make_callable_type, make_container_type, method_receiver_element_node,
     node_is_collection, node_is_element_collection, node_is_keyed_collection,

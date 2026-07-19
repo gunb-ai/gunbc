@@ -6,6 +6,26 @@ use self::CostBound::*;
 use self::PolynomialExponent::*;
 use self::RecursionShape::*;
 use self::SubValueRelation::*;
+pub use crate::std_computation::tree_size_bound;
+use crate::std_computation::CallPattern::*;
+use crate::std_computation::IterationPrimitive::*;
+use crate::std_computation::ShrinkFactor::*;
+use crate::std_computation::SizeBound::*;
+pub use crate::std_computation::{
+    CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
+};
+use crate::std_termination::DescentEvidence::*;
+use crate::std_termination::PositiveDescentAmount::*;
+use crate::std_termination::ProportionalDivisor::*;
+use crate::std_termination::RankingDimension::*;
+pub use crate::std_termination::{
+    peano_literal_materialization_cap, positive_descent_amount_from_positive_int,
+    positive_descent_count, proportional_divisor_from_int_at_least_two,
+    proportional_divisor_to_int,
+};
+pub use crate::std_termination::{
+    DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
+};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

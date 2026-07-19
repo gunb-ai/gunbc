@@ -539,14 +539,26 @@ fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<Global
 
 fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: String) -> String? {
   match map_get(env.symbol_index.global_bare, name) {
-    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } => Present { value: mp }
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+      match binding_declares_name(binding: b, name: name, source_indices: env.source_indices) {
+        true => Present { value: mp }
+        false => Absent
+      }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       match global_bare_nearest_ancestor_candidate(env_module_path: owner_module_path, candidates: cands) {
-        Present { value: cand } => Present { value: cand.module_path }
+        Present { value: cand } =>
+          match binding_declares_name(binding: cand.binding, name: name, source_indices: env.source_indices) {
+            true => Present { value: cand.module_path }
+            false => Absent
+          }
         Absent => Absent
       }
     Absent => Absent
   }
+}
+
+fn binding_declares_name(binding: TypeBinding, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: binding.resolved) == name
 }
 
 fn borrowed_generic_param_names(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
@@ -703,7 +715,11 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
 
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   match lookup_binding_by_name(env: env, name: name) {
-    Present { value: binding } => Present { value: binding.resolved }
+    Present { value: binding } =>
+      match contains(name, ".") || binding_declares_name(binding: binding, name: name, source_indices: env.source_indices) {
+        true => Present { value: binding.resolved }
+        false => Absent
+      }
     Absent => Absent
   }
 }

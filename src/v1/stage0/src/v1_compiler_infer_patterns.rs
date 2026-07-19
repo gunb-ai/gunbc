@@ -10,6 +10,7 @@ pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name, symbol_index_lookup};
 pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
+    substitute_type_slots_scoped,
 };
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
@@ -26,7 +27,8 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::LitPattern;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, find_child_named, generic_param_name_at,
-    is_compiler_error, kernel_span, make_error_node, no_span, none_type, with_optional_cardinality,
+    is_compiler_error, kernel_span, make_error_node, no_span, none_type, qualified_last_segment,
+    with_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern,

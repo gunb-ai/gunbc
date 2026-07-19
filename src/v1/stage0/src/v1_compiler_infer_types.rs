@@ -24,8 +24,9 @@ pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
-    container_template_alias_algebra, is_container_type,
+    container_template_alias_algebra, container_template_alias_rows, is_container_type,
 };
+pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -40,8 +41,8 @@ pub use crate::v1_std_core::{
     authored_name_at, bool_type, default_ident_span, error_type, find_child_named, float_type,
     has_inferred, int_type, is_compiler_error, is_kernel_type, kernel_span, leaf_node_with_span,
     make_error_node, make_expr_error_node, make_expr_node, make_param_node, make_span, no_span,
-    none_type, param_node_type_expr, string_type, unit_type, with_optional_cardinality,
-    with_required_cardinality,
+    none_type, param_node_type_expr, qualified_last_segment, string_type, type_name_compatible,
+    unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -169,8 +170,7 @@ pub fn is_declared_container_alias_spelling(name: String) -> bool {
 }
 
 pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
-    container_template_alias_rows()
-        .sorted_map_keys()
+    Rc::new(v1_rt::sorted_map_keys(&container_template_alias_rows()))
         .iter()
         .cloned()
         .fold(None, |acc: _, k: String| match acc.clone() {

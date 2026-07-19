@@ -107,7 +107,7 @@ fn is_declared_container_alias_spelling(name: String) -> Bool {
 }
 
 fn container_alias_canonical_spelling(algebra: String) -> String? {
-  fold(container_template_alias_rows |> sorted_map_keys, init: none, f: (acc, k) =>
+  fold(sorted_map_keys(container_template_alias_rows), init: none, f: (acc, k) =>
     match acc {
       Present { value: _ } => acc
       Absent =>

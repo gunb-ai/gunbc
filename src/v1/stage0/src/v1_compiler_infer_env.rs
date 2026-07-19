@@ -7,16 +7,24 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
+pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
+use crate::v1_std_core::Cardinality::*;
+use crate::v1_std_core::Connective::*;
+use crate::v1_std_core::ExprData::*;
+use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
-    authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
+    authored_name_at, empty_intern_table, intern, intern_find, intern_str, kernel_span,
+    merge_intern_tables, module_path_segments, param_node_name_at, param_node_type_expr,
     source_text_at,
 };
-pub use crate::v1_std_core::{InternTable, NewlineIndex, Node};
+pub use crate::v1_std_core::{
+    Cardinality, Connective, ExprData, InferredNode, InternTable, NewlineIndex, Node,
+};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -954,18 +962,38 @@ pub fn global_bare_owner_module(
         .cloned()
     {
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-            module_path: mp, ..
-        }) => Some(mp.clone()),
+            module_path: mp,
+            binding: b,
+            ..
+        }) => match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
+            true => Some(mp.clone()),
+            false => None,
+        },
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => {
             match global_bare_nearest_ancestor_candidate(owner_module_path.clone(), cands.clone()) {
-                Some(cand) => Some(cand.module_path.clone()),
+                Some(cand) => match binding_declares_name(
+                    cand.binding.clone(),
+                    name.clone(),
+                    env.source_indices.clone(),
+                ) {
+                    true => Some(cand.module_path.clone()),
+                    false => None,
+                },
                 None => None,
             }
         }
         None => None,
     }
+}
+
+pub fn binding_declares_name(
+    binding: Rc<TypeBinding>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (authored_name_at(source_indices.clone(), binding.resolved.clone()) == name.clone())
 }
 
 pub fn borrowed_generic_param_names(
@@ -1271,7 +1299,12 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
 
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match lookup_binding_by_name(env.clone(), name.clone()) {
-        Some(binding) => Some(binding.resolved.clone()),
+        Some(binding) => match (v1_rt::contains(name.clone(), ".".to_string())
+            || binding_declares_name(binding.clone(), name.clone(), env.source_indices.clone()))
+        {
+            true => Some(binding.resolved.clone()),
+            false => None,
+        },
         None => None,
     }
 }

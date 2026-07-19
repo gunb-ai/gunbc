@@ -21,6 +21,7 @@ pub use crate::extdeps_languages_dag_emit::{
     dag_tuple_multi_template, dag_tuple_pair_template, dag_tuple_separator, dag_type_alias_keyword,
     dag_type_arg_close, dag_type_arg_open, dag_void_type,
 };
+pub use crate::extdeps_languages_dag_syntax::dag_operators;
 pub use crate::extdeps_languages_go_emit::{
     go_async_prefix, go_error_expr_template, go_error_type_template, go_import_from_keyword,
     go_import_keyword, go_keywords, go_lambda_template, go_list_literal_empty,
@@ -53,6 +54,12 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_visibility, rust_void_type,
 };
 pub use crate::extdeps_languages_rust_syntax::{rust_item_forms, rust_operators};
+use crate::std_syntax::AlgebraFieldKind::*;
+use crate::std_syntax::BinOp::*;
+use crate::std_syntax::ItemFormKind::*;
+pub use crate::std_syntax::{AlgebraFieldKind, BinOp, ItemForm, ItemFormKind, OperatorSpec};
+pub use crate::v1_compiler_artifact::RenderTarget;
+use crate::v1_compiler_artifact::RenderTarget::*;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
