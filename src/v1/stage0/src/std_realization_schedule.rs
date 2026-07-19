@@ -38,7 +38,7 @@ pub enum CostBasis {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
-    pub time: Rc<Measure<Quantity, S, Nat>>,
+    pub time: Rc<Measure<(), S, Nat>>,
     pub space: ByteSize,
     pub power: Watt,
     pub basis: CostBasis,
@@ -55,7 +55,7 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     })
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<Quantity, S, Nat>>) -> Rc<CostAccount<S>> {
+pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Nat>>) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time.clone(),
         space: byte_size(0),

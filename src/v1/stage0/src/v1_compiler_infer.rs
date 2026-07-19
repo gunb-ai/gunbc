@@ -56,7 +56,7 @@ pub use crate::v1_compiler_infer_env::{
     inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name,
     lookup_binding_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
     merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded,
-    put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
+    put_inductive_field, put_inductive_field_cross, qualified_all_but_last, qualified_last_segment,
     qualify_borrowed_inferred, qualify_borrowed_type_names, str_bindings_from_bindings,
     symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
     symbol_index_lookup,
@@ -150,7 +150,7 @@ use crate::v1_std_core::VarBindingKind::{
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, arm_body, arm_guard, arm_pattern, authored_name_at, binop_left,
     binop_right, bool_type, build_newline_index, cast_expr, cast_target, container_expected_arity,
-    default_ident_span, empty_intern_table, error_type, expr_call_func_at, qualified_last_segment,
+    default_ident_span, empty_intern_table, error_type, expr_call_func_at,
     expr_has_non_tail_self_call, expr_has_self_call, expr_method_name_at, expr_var_name_at,
     field_access_base, field_access_field_at, field_binding_name_at, field_binding_pattern,
     field_init_node_name_at, field_init_node_value, field_node_name_at, field_node_type_expr,

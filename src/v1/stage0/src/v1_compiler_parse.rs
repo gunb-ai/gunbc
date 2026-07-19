@@ -61,9 +61,9 @@ pub use crate::v1_std_core::{
     variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
-    FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
-    OperationModifier, StringPart, Token, TokenShape, UnaryOpKind,
+    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
+    InternResult, InternTable, MatchPattern, NewlineIndex, Node, OperationModifier, StringPart,
+    Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -11308,51 +11308,49 @@ pub fn try_postfix(
                             ctx: ctx.clone(),
                             err: None,
                         })
-                    } else {
-                        if is_uppercase_start(last_seg.clone()) {
-                            match field_access_spine(lhs.clone(), ctx.source_indices.clone()) {
-                                Some(spine) => {
-                                    let r = parse_record_literal_named(
-                                        tokens.clone(),
-                                        ctx.clone(),
-                                        spine.dotted.clone(),
-                                        field_access_chain_span(lhs.clone()),
-                                        kernel_span(spine.dotted.clone()),
-                                    );
-                                    if has_err(r.err.clone()) {
-                                        return Rc::new(PostfixResult {
-                                            expr: lhs.clone(),
-                                            changed: false,
-                                            tokens: r.tokens.clone(),
-                                            ctx: r.ctx.clone(),
-                                            err: r.err.clone(),
-                                        });
-                                    }
-                                    Rc::new(PostfixResult {
-                                        expr: r.expr.clone(),
-                                        changed: true,
+                    } else if is_uppercase_start(last_seg.clone()) {
+                        match field_access_spine(lhs.clone(), ctx.source_indices.clone()) {
+                            Some(spine) => {
+                                let r = parse_record_literal_named(
+                                    tokens.clone(),
+                                    ctx.clone(),
+                                    spine.dotted.clone(),
+                                    field_access_chain_span(lhs.clone()),
+                                    kernel_span(spine.dotted.clone()),
+                                );
+                                if has_err(r.err.clone()) {
+                                    return Rc::new(PostfixResult {
+                                        expr: lhs.clone(),
+                                        changed: false,
                                         tokens: r.tokens.clone(),
                                         ctx: r.ctx.clone(),
-                                        err: None,
-                                    })
+                                        err: r.err.clone(),
+                                    });
                                 }
-                                None => Rc::new(PostfixResult {
-                                    expr: lhs.clone(),
-                                    changed: false,
-                                    tokens: tokens.clone(),
-                                    ctx: ctx.clone(),
+                                Rc::new(PostfixResult {
+                                    expr: r.expr.clone(),
+                                    changed: true,
+                                    tokens: r.tokens.clone(),
+                                    ctx: r.ctx.clone(),
                                     err: None,
-                                }),
+                                })
                             }
-                        } else {
-                            Rc::new(PostfixResult {
+                            None => Rc::new(PostfixResult {
                                 expr: lhs.clone(),
                                 changed: false,
                                 tokens: tokens.clone(),
                                 ctx: ctx.clone(),
                                 err: None,
-                            })
+                            }),
                         }
+                    } else {
+                        Rc::new(PostfixResult {
+                            expr: lhs.clone(),
+                            changed: false,
+                            tokens: tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: None,
+                        })
                     }
                 }
                 _ => Rc::new(PostfixResult {
@@ -13157,23 +13155,21 @@ pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
 }
 
 pub fn field_access_chain_span(texpr: Rc<Node>) -> Rc<SourceSpan> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprFieldAccess { summary: _, .. } => {
-                let base_span = field_access_chain_span(field_access_base(texpr.clone()));
-                let chain_end = match texpr.ident_span.clone() {
-                    Some(is) => is.end.clone(),
-                    None => texpr.span.clone().end.clone(),
-                };
-                Rc::new(SourceSpan {
-                    file: base_span.file.clone(),
-                    start: base_span.start.clone(),
-                    end: chain_end.clone(),
-                })
-            }
-            _ => texpr.span.clone(),
+    match (*texpr.expr_data.clone()).clone() {
+        ExprData::ExprFieldAccess { summary: _, .. } => {
+            let base_span = field_access_chain_span(field_access_base(texpr.clone()));
+            let chain_end = match texpr.ident_span.clone() {
+                Some(is) => is.end,
+                None => texpr.span.end,
+            };
+            Rc::new(SourceSpan {
+                file: base_span.file.clone(),
+                start: base_span.start,
+                end: chain_end,
+            })
         }
-    })
+        _ => texpr.span.clone(),
+    }
 }
 
 pub fn parse_record_literal(
@@ -13182,13 +13178,7 @@ pub fn parse_record_literal(
     name: String,
     span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
-    parse_record_literal_named(
-        tokens.clone(),
-        ctx.clone(),
-        name.clone(),
-        span.clone(),
-        span.clone(),
-    )
+    parse_record_literal_named(tokens, ctx, name, span.clone(), span)
 }
 
 pub fn parse_record_literal_named(

@@ -215,20 +215,20 @@ pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, Nat>>, b: Rc<Measure<Q, S, Nat>>) ->
     (a.count.clone() <= b.count.clone())
 }
 
-pub fn time_measure<S>(count: Nat) -> Rc<Measure<Quantity, S, Nat>> {
+pub fn time_measure<S>(count: Nat) -> Rc<Measure<(), S, Nat>> {
     Rc::new(Measure {
         count: count.clone(),
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub type ByteSize = Rc<Measure<Quantity, Scale, i64>>;
+pub type ByteSize = Rc<Measure<(), (), i64>>;
 
-pub type Kibibyte = Rc<Measure<Quantity, Scale, i64>>;
+pub type Kibibyte = Rc<Measure<(), (), i64>>;
 
-pub type Mebibyte = Rc<Measure<Quantity, Scale, i64>>;
+pub type Mebibyte = Rc<Measure<(), (), i64>>;
 
-pub type Gibibyte = Rc<Measure<Quantity, Scale, i64>>;
+pub type Gibibyte = Rc<Measure<(), (), i64>>;
 
 pub fn mebibyte(count: Nat) -> Mebibyte {
     Rc::new(Measure {
@@ -256,25 +256,25 @@ pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
     byte_size((gibibyte_count(g.clone()) * gibibyte_scale_factor_bytes()))
 }
 
-pub type BitWidth = Rc<Measure<Quantity, Scale, i64>>;
+pub type BitWidth = Rc<Measure<(), (), i64>>;
 
 pub fn bits_per_byte() -> Nat {
     8
 }
 
-pub type Hertz = Rc<Measure<Quantity, Scale, i64>>;
+pub type Hertz = Rc<Measure<(), (), i64>>;
 
-pub type HardwareThreadCount = Rc<Measure<Quantity, Scale, i64>>;
+pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
 
-pub type Millicore = Rc<Measure<Quantity, Scale, i64>>;
+pub type Millicore = Rc<Measure<(), (), i64>>;
 
-pub type Watt = Rc<Measure<Quantity, Scale, i64>>;
+pub type Watt = Rc<Measure<(), (), i64>>;
 
-pub type Joule = Rc<Measure<Quantity, Scale, i64>>;
+pub type Joule = Rc<Measure<(), (), i64>>;
 
-pub type Celsius = Rc<Measure<Quantity, Scale, i64>>;
+pub type Celsius = Rc<Measure<(), (), i64>>;
 
-pub type RevolutionsPerMinute = Rc<Measure<Quantity, Scale, i64>>;
+pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
 
 pub fn watt(count: Nat) -> Watt {
     Rc::new(Measure {
@@ -320,7 +320,7 @@ pub fn rpm_count(r: RevolutionsPerMinute) -> Nat {
     measure_count(r.clone())
 }
 
-pub type MoneyAmount<S> = Rc<Measure<Quantity, S, i64>>;
+pub type MoneyAmount<S> = Rc<Measure<(), S, i64>>;
 
 pub type MoneyAmountMicro = MoneyAmount<()>;
 
@@ -390,7 +390,7 @@ pub fn millicore_count(m: Millicore) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Bandwidth = Rc<Measure<Quantity, Scale, i64>>;
+pub type Bandwidth = Rc<Measure<(), (), i64>>;
 
 pub fn bandwidth(count: Nat) -> Bandwidth {
     Rc::new(Measure {
@@ -403,7 +403,7 @@ pub fn bandwidth_count(b: Bandwidth) -> Nat {
     measure_count(b.clone())
 }
 
-pub type Nanosecond = Rc<Measure<Quantity, Scale, i64>>;
+pub type Nanosecond = Rc<Measure<(), (), i64>>;
 
 pub fn nanosecond(count: Nat) -> Nanosecond {
     Rc::new(Measure {
@@ -416,7 +416,7 @@ pub fn nanosecond_count(n: Nanosecond) -> Nat {
     measure_count(n.clone())
 }
 
-pub type Microsecond = Rc<Measure<Quantity, Scale, i64>>;
+pub type Microsecond = Rc<Measure<(), (), i64>>;
 
 pub fn microsecond(count: Nat) -> Microsecond {
     Rc::new(Measure {
@@ -429,7 +429,7 @@ pub fn microsecond_count(m: Microsecond) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Millisecond = Rc<Measure<Quantity, Scale, i64>>;
+pub type Millisecond = Rc<Measure<(), (), i64>>;
 
 pub fn millisecond(count: Nat) -> Millisecond {
     Rc::new(Measure {
@@ -442,7 +442,7 @@ pub fn millisecond_count(m: Millisecond) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Second = Rc<Measure<Quantity, Scale, i64>>;
+pub type Second = Rc<Measure<(), (), i64>>;
 
 pub fn second(count: Nat) -> Second {
     Rc::new(Measure {
@@ -459,7 +459,7 @@ pub fn energy_from_power_and_time(power: Watt, time: Second) -> Joule {
     joule((watt_count(power.clone()) * second_count(time.clone())))
 }
 
-pub type Minute = Rc<Measure<Quantity, Scale, i64>>;
+pub type Minute = Rc<Measure<(), (), i64>>;
 
 pub fn minute(count: Nat) -> Minute {
     Rc::new(Measure {
@@ -472,7 +472,7 @@ pub fn minute_count(m: Minute) -> Nat {
     measure_count(m.clone())
 }
 
-pub type Percent = Rc<Measure<Quantity, Scale, i64>>;
+pub type Percent = Rc<Measure<(), (), i64>>;
 
 pub fn percent(count: Nat) -> Percent {
     Rc::new(Measure {
