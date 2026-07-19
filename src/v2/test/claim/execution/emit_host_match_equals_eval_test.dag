@@ -337,27 +337,6 @@ fn emit_match_eval_verdict_is_semantic_mismatch(run: TestClaimRun<Node, RuntimeV
   }
 }
 
-fn emit_match_eval_verdict_is_run_failed(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    RunFailed { actual: _, diagnostic: _ } => true
-    _ => false
-  }
-}
-
-fn emit_match_eval_verdict_is_build_failed(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    BuildFailed { actual: _, diagnostic: _ } => true
-    _ => false
-  }
-}
-
-fn emit_match_eval_verdict_is_deferred(run: TestClaimRun<Node, RuntimeValue>) -> Bool {
-  match run.verdict {
-    Deferred { actual: _, diagnostic: _ } => true
-    _ => false
-  }
-}
-
 test fn emit_host_match_equals_eval_holds() -> Bool {
   match emit_match_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
@@ -396,38 +375,6 @@ test fn emit_host_match_emit_only_accepts() -> Bool {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn emit_host_match_equals_eval_debug_semantic_mismatch() -> Bool {
-  match emit_match_eval_producer_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      emit_match_eval_verdict_is_semantic_mismatch(run: emit_match_eval_run(tree: tree))
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn emit_host_match_equals_eval_debug_run_failed() -> Bool {
-  match emit_match_eval_producer_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      emit_match_eval_verdict_is_run_failed(run: emit_match_eval_run(tree: tree))
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn emit_host_match_equals_eval_debug_build_failed() -> Bool {
-  match emit_match_eval_producer_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      emit_match_eval_verdict_is_build_failed(run: emit_match_eval_run(tree: tree))
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-test fn emit_host_match_equals_eval_debug_deferred() -> Bool {
-  match emit_match_eval_producer_tree() {
-    Accepted { value: tree, diagnostics: _ } =>
-      emit_match_eval_verdict_is_deferred(run: emit_match_eval_run(tree: tree))
     Rejected { diagnostics: _ } => false
   }
 }
