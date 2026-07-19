@@ -6388,14 +6388,31 @@ fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census:
   } else { binding }
 }
 
+fn stamp_type_param_occurrences(n: Node, param_names: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Node {
+  let is_bare = (n.children |> count) == 0 && n.connective == NoConnective && (n.params |> count) == 0
+  if is_bare {
+    if n.inferred == none {
+      let nm = type_node_label(n: n, source_indices: source_indices)
+      match map_get(param_names, nm) {
+        Present { value: _ } => node_with_inferred(n: n, inferred: TypeVariable { id: nm })
+        _ => n
+      }
+    } else { n }
+  } else {
+    node_with_children(n: n, children: n.children |> map(c => stamp_type_param_occurrences(n: c, param_names: param_names, source_indices: source_indices)))
+  }
+}
+
 fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
   let node = binding.resolved
+  let param_names = node.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
+  let param_set = fold(param_names, init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
   let excluded = fold(
-    node.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices)),
+    param_names,
     init: map_insert(empty_map(), binding.name, true),
     f: (acc, nm) => map_insert(acc, nm, true)
   )
-  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
+  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: param_names, source_indices: source_indices)
   TypeBinding {
     name: binding.name,
     resolved: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded),

@@ -13568,21 +13568,28 @@ pub fn census_upgrade_type_decl_binding(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypeBinding> {
     let node = binding.resolved.clone();
-    let excluded = node
+    let param_names: Vec<String> = node
         .params
         .iter()
         .cloned()
         .map(|p| generic_param_name_at(p.clone(), source_indices.clone()))
-        .fold(
-            v1_rt::rc_map_insert(v1_rt::rc_empty_map(), binding.name.clone(), true),
-            |acc: Rc<HashMap<String, bool>>, nm: String| {
-                v1_rt::rc_map_insert(acc.clone(), nm.clone(), true)
-            },
-        );
+        .collect();
+    let excluded = param_names.iter().cloned().fold(
+        v1_rt::rc_map_insert(v1_rt::rc_empty_map(), binding.name.clone(), true),
+        |acc: Rc<HashMap<String, bool>>, nm: String| {
+            v1_rt::rc_map_insert(acc.clone(), nm.clone(), true)
+        },
+    );
+    // tp_names = the decl's own params (was `[]`): param occurrences inside reference
+    // positions come out TypeVariable-stamped, matching the generic-fn-sig path
+    // (census_upgrade_sig_binding) and the local-closure resolver. The whole-tree
+    // census path losing these stamps is what turned main's (latent, deferral-green)
+    // generic-payload hole into the loud `no field 'mid' on type 'M'` compile-clean
+    // red (M.mid, membership_reconcile_witness_test.dag:144).
     let env = census_fn_sig_env(
         census.clone(),
         module_path.clone(),
-        Rc::new(vec![]),
+        Rc::new(param_names),
         source_indices.clone(),
     );
     Rc::new(TypeBinding {
