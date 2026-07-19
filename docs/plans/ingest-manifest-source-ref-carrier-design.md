@@ -72,17 +72,24 @@ This is a real cost and it must be priced, not waved through:
 
 ## 6. Staging, each stage with its trigger
 
-1. **Model the row.** `DagSourceReadWitness` gains the ref+hash shape alongside `Medium<String>`; nothing switches. Trigger to proceed: the shape reviewed and the `SourceRef` carrier agreed with the Phase-3 boundary work, so this is not a second spelling of it.
+0. **Declare `SourceRef` itself.** Pulled forward from Phase 3 by parent ruling (2026-07-19): the *type declaration only*, not the effect-boundary enforcement, homed with the storage-binding authority on the `v2.compiler.source_authority` side. This lane owns the Phase-3 boundary type, so waiting on it would have been waiting on itself. Trigger to proceed: the declaration lands as the **single** authority that both the manifest rows and the later effect boundary consume — one spelling, established before it has two consumers rather than reconciled after.
+
+1. **Model the row.** `DagSourceReadWitness` gains the ref+hash shape alongside `Medium<String>`; nothing switches. Trigger to proceed: stage 0's declaration landed and the row shape reviewed against it.
 2. **Emit both, consume inlined.** Host emits ref+hash on every row *and* keeps inlining under the cap. Over-cap manifests now carry rows (ref-only) where they previously carried `Empty`. Trigger: over-cap manifests non-empty and the quarantined completeness witness re-run to see what it says.
-3. **Consume through the ref, with verification.** The parse oracle reads through the ref; witnesses flip to `ReadsLiveTree` with that cost declared. Trigger: the compiler-closure completeness witness **greens by itself** — that is the counted un-quarantine event this lane already registered, and it is the acceptance test for the whole redesign.
+3. **Consume through the ref, with verification.** The parse oracle reads through the ref; witnesses flip to `ReadsLiveTree` with that cost declared. **The flip is separable from stage 5 by explicit ruling** — a correct-but-unselectable witness is a bounded, known cost, and these rows join an *existing* never-predict-skip class rather than minting one, so nothing new is invented to absorb them. Trigger: the compiler-closure completeness witness **greens by itself** — the counted un-quarantine event this lane already registered, and the acceptance test for the whole redesign.
 4. **Drop the inlined text.** Cap deleted, `MANIFEST_INLINE_LIST_MAX` and its elision arm deleted with it. Trigger: stage 3 green across every ingest consumer, not just the closure.
 5. **Restore selection eligibility.** Ref-reads become selection-eligible keyed on the content hash. Trigger: named here so stage 3's cost has a declared end; scheduling is the affected-set lane's call, not this note's.
 
 Stages 1–2 are additive and cannot regress a consumer. Stage 3 is the behavioral flip and carries the real risk.
 
-## 7. Open questions for review
+## 7. Questions, resolved (parent rulings 2026-07-19)
 
-1. **Is `SourceRef` here the same `SourceRef` as the Phase-3 effect-boundary type?** It should be — two would be a §3 fork. If the boundary type is not ready, this lane should consume a draft of it rather than mint a parallel one, and stage 1's trigger is exactly that agreement.
-2. **Does the ref name a path or a module?** This lane's own answer is that code references modules and only host boundaries project paths. A ref that is a `QualifiedName` + source root is the consistent choice; a ref that is a path re-introduces the string dependency the lane exists to remove. But the ingest reads *files*, including files that may not be modules — so the ref may need to be a coproduct, and that decision belongs with the binding authority, not here.
-3. **Is the hermeticity flip acceptable at stage 3, or must stage 5 land with it?** I believe it is acceptable and separable (a correct-but-unselectable witness is a known, bounded cost). If the affected-set lane disagrees, stages 3 and 5 merge and the runway is longer.
-4. **Fidelity:** `Medium<String>` carries `DecodeFidelity`. A ref+hash row still needs to declare the fidelity of what the ref resolves to — dropping it would lose the `Lossless` boundary the round-trip laws depend on.
+1. **Same `SourceRef` as the Phase-3 effect boundary?** **Yes, and this lane owns it.** The Phase-3 boundary type is this lane's own later phase — there was no external owner to wait on. The type declaration is pulled forward to stage 0 (declaration only, not enforcement), homed with the storage-binding authority. A draft type owned here beats a dependency waited on elsewhere.
+
+2. **Path or module?** **The ref names the STORAGE REALIZATION — path + source root + `ContentHash` — not a module, and not a coproduct fusing both.** The reasoning is this design's own separation applied consistently: the manifest is a *host-boundary artifact about files the host read*, and only host boundaries project paths, so a path-shaped ref is correct exactly there. The module binding, where one exists, is the **derived** fact the binding authority already owns — **joined, not fused**. A `ModuleRef | FileRef` coproduct would fuse two facts this lane deliberately keeps apart.
+
+   *Consequence to reconcile (raised, not yet settled):* the parent design's §3 currently describes the boundary `SourceRef` as "module reference, **or** an explicit typed path for genuinely-extra-graph files" — which admits a module-shaped ref. Under this ruling the ref is uniformly storage-shaped, with module identity joined through the binding rather than carried inside. Those are two readings of one type name, and one of them has to go before stage 0 declares it — otherwise the fork is minted at the moment of declaration, in the very type introduced to prevent forks.
+
+3. **Is the hermeticity flip separable from stage 5?** **Yes** — bounded judgment accepted. Named in stage 3's trigger above. These rows join an existing never-predict-skip class rather than creating one.
+
+4. **Fidelity on ref+hash rows?** **Required.** A row must declare the `DecodeFidelity` of what the ref resolves to, or the `Lossless` boundary the round-trip laws depend on is lost.
