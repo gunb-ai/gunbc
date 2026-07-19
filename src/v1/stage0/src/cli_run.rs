@@ -7836,7 +7836,10 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
     static KEYS: OnceLock<Vec<String>> = OnceLock::new();
     KEYS.get_or_init(|| {
         let mut keys =
-            witness_admission_entry_function_keys_from_source(ci_layer_roots_authority_content());
+            witness_admission_entry_function_keys_from_source(
+                "dag/gunbc/ci_layer_roots.dag",
+                ci_layer_roots_authority_content(),
+            );
         let wet =
             std::fs::read_to_string(workspace_root().join(WET_RECEIPT_ENROLLMENT_AUTHORITY_REL))
                 .unwrap_or_else(|e| {
@@ -7845,7 +7848,10 @@ fn witness_admission_explicit_consumer_keys() -> Vec<String> {
                         WET_RECEIPT_ENROLLMENT_AUTHORITY_REL
                     )
                 });
-        for key in witness_admission_entry_function_keys_from_source(&wet) {
+        for key in witness_admission_entry_function_keys_from_source(
+            WET_RECEIPT_ENROLLMENT_AUTHORITY_REL,
+            &wet,
+        ) {
             if !keys.iter().any(|k| k == &key) {
                 keys.push(key);
             }

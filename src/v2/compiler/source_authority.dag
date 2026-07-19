@@ -583,30 +583,7 @@ fn source_ir_node_artifact_provenance(
   )
 }
 
-fn source_ir_node_artifact_provenance_add_from_model(
-  source_read: DagSourceReadWitness,
-  lm: LanguageModel
-) -> Outcome<NodeArtifactProvenance> {
-  match source_ir_artifact_provenance_from_model(source_read: source_read, lm: lm) {
-    Accepted { value: prov, diagnostics: _ } =>
-      outcome_accepted(
-        value: NodeArtifactProvenance {
-          node: prov.node,
-          artifact: prov.artifact
-        }
-      )
-    Rejected { diagnostics: r } => Rejected { diagnostics: r }
-  }
-}
 
-fn source_ir_node_artifact_provenance_add(
-  source_read: DagSourceReadWitness
-) -> Outcome<NodeArtifactProvenance> {
-  source_ir_node_artifact_provenance_add_from_model(
-    source_read: source_read,
-    lm: dag_language_model()
-  )
-}
 
 type NodeArtifactProvenanceFoldState
   = NodeArtifactProvenanceFoldOk {
@@ -624,7 +601,7 @@ fn node_artifact_provenance_fold_step(
     NodeArtifactProvenanceFoldFailed { diagnostics: d } =>
       NodeArtifactProvenanceFoldFailed { diagnostics: d }
     NodeArtifactProvenanceFoldOk { provenance: acc } =>
-      match source_ir_node_artifact_provenance_add(source_read: read) {
+      match source_ir_node_artifact_provenance(source_read: read) {
         Accepted { value: row, diagnostics: _ } =>
           NodeArtifactProvenanceFoldOk {
             provenance: list_snoc_item(xs: acc, item: row)
