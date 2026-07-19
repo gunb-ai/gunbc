@@ -46,7 +46,7 @@ import v2.std.diagnostic {
   Unavailable,
   node_locus
 }
-import gunbc.ci_spec { ci_cargo_eagain_retry_core }
+import v2.workflow.ci_retry_emit { ci_cargo_eagain_retry_core }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
