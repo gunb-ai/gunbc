@@ -28,6 +28,7 @@ mod constructor_owner_ruling_test;
 mod coproduct_reflection_conformance_test;
 #[cfg(test)]
 mod coverage_completeness_lens_test;
+#[cfg(test)]
 mod cross_representation_equality_test;
 #[cfg(test)]
 mod dag_comment_wall_test;
