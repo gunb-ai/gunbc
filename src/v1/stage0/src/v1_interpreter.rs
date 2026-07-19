@@ -1236,27 +1236,6 @@ pub struct InterpContext {
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
-    // `fn_nodes` above is keyed by BARE authored name across the whole import closure, so it is
-    // last-insert-wins: the winner for a duplicated name is whichever declaring module sorts
-    // last by file path, which is stable per entry but semantically arbitrary (it flips on a
-    // rename, or when an unrelated import pulls a second declaration into the closure).
-    // Typecheck already resolved each name correctly, module-scoped and import-aware, via
-    // `TypedModule.func_env`; that answer was then discarded. These four carry it through to
-    // dispatch so the interpreter CONSUMES the frontend's resolution rather than re-deriving a
-    // winner by path-sort accident (DESIGN §3: one authority for what a name means).
-    //   qualified_fns  — "{module}\u{1}{name}" -> item node (no collisions by construction)
-    //   node_module    — item-node pointer -> owning module, to know the calling module
-    //   module_envs    — module -> its resolved func env (nearest-wins lookup)
-    //   module_stack   — the module owning the body currently being evaluated
-    qualified_fns: HashMap<String, Rc<Node>>,
-    node_module: HashMap<usize, Rc<str>>,
-    module_envs: HashMap<String, Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>>,
-    module_stack: std::cell::RefCell<Vec<Rc<str>>>,
-    // Counts calls that fell through to the bare-name map because qualified resolution could not
-    // name an owner (synthetic/kernel-built call nodes, or a callee outside the caller's env).
-    // Not an escape hatch: it is the ledger that says how much of the fork is still live, so the
-    // residue is countable and prioritizable rather than silently absorbed (DESIGN §5).
-    unqualified_dispatch: std::cell::Cell<u64>,
     service_ops: HashMap<String, ServiceOp>,
     pub execution_mode: ExecutionMode,
     pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
@@ -1399,22 +1378,12 @@ impl InterpContext {
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
-        let mut qualified_fns: HashMap<String, Rc<Node>> = HashMap::new();
-        let mut node_module: HashMap<usize, Rc<str>> = HashMap::new();
-        let mut module_envs: HashMap<String, Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>> =
-            HashMap::new();
         let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
-            // `func_env.name` is the owning module path — the qualifier `ItemInfo` also carries
-            // but which the bare-name key discards.
-            let module_name: Rc<str> = Rc::from(module.func_env.name.as_str());
-            module_envs.insert(module.func_env.name.clone(), module.func_env.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
                     fn_nodes.insert(name.clone(), item.clone());
-                    qualified_fns.insert(qualified_key(&module_name, &name), item.clone());
-                    node_module.insert(Rc::as_ptr(item) as usize, module_name.clone());
                 }
                 // Service-item detection is node-local: the item node carries the
                 // `transport` that *defines* it as a service, so `item_kind` of the
@@ -1448,11 +1417,6 @@ impl InterpContext {
             item_registry: graph.item_registry.clone(),
             source_indices,
             fn_nodes,
-            qualified_fns,
-            node_module,
-            module_envs,
-            module_stack: std::cell::RefCell::new(Vec::new()),
-            unqualified_dispatch: std::cell::Cell::new(0),
             service_ops,
             execution_mode,
             fixture_store,
@@ -1549,78 +1513,6 @@ impl InterpContext {
 
     fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
         self.fn_nodes.get(name)
-    }
-
-    /// Which module does `name` resolve to, called from inside `calling_module`?
-    ///
-    /// This is the same nearest-wins walk typecheck performed (`lookup_resolved_sig`): own
-    /// declarations first, then the imported modules' envs. We re-walk it here rather than
-    /// re-deriving a winner, because the env chain IS the frontend's resolution — it is carried
-    /// on `TypedModule.func_env` and was simply never consulted at runtime.
-    fn resolve_owner(&self, calling_module: &str, name: &str) -> Option<Rc<str>> {
-        let env = self.module_envs.get(calling_module)?;
-        if env.local.contains_key(name) {
-            return Some(Rc::from(env.name.as_str()));
-        }
-        env.parents
-            .iter()
-            .find(|p| p.local.contains_key(name))
-            .map(|p| Rc::from(p.name.as_str()))
-    }
-
-    /// Dispatch by qualified identity: resolve `name` in the module whose body is executing,
-    /// then look the winner up by `(owner, name)` — a key that cannot collide.
-    fn lookup_fn_qualified(&self, name: &str) -> Option<&Rc<Node>> {
-        let key = {
-            let stack = self.module_stack.borrow();
-            let owner = self.resolve_owner(stack.last()?, name)?;
-            qualified_key(&owner, name)
-        };
-        self.qualified_fns.get(&key)
-    }
-
-    /// Push the module owning `fn_node` for the duration of its body's evaluation, so nested
-    /// calls resolve in the callee's module (which is their calling module).
-    fn enter_module_of(&self, fn_node: &Rc<Node>) -> ModuleGuard<'_> {
-        match self.node_module.get(&(Rc::as_ptr(fn_node) as usize)) {
-            Some(m) => {
-                self.module_stack.borrow_mut().push(m.clone());
-                ModuleGuard {
-                    ctx: self,
-                    pushed: true,
-                }
-            }
-            None => ModuleGuard {
-                ctx: self,
-                pushed: false,
-            },
-        }
-    }
-
-    /// Calls that could not be dispatched by qualified identity and fell back to the bare map.
-    pub fn unqualified_dispatch_count(&self) -> u64 {
-        self.unqualified_dispatch.get()
-    }
-}
-
-fn qualified_key(module: &str, name: &str) -> String {
-    let mut k = String::with_capacity(module.len() + name.len() + 1);
-    k.push_str(module);
-    k.push('\u{1}');
-    k.push_str(name);
-    k
-}
-
-pub(crate) struct ModuleGuard<'a> {
-    ctx: &'a InterpContext,
-    pushed: bool,
-}
-
-impl Drop for ModuleGuard<'_> {
-    fn drop(&mut self) {
-        if self.pushed {
-            self.ctx.module_stack.borrow_mut().pop();
-        }
     }
 }
 
@@ -1777,8 +1669,6 @@ fn call_function_inner(
         })?;
 
     let _dag_fn_guard = DagFnGuard::enter(fn_node.name.as_str());
-    // Nested calls inside this body resolve against THIS function's module.
-    let _module_guard = ctx.enter_module_of(fn_node);
 
     let cached_params = {
         let key = Rc::as_ptr(fn_node) as usize;
@@ -3104,14 +2994,7 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         return Ok(result);
     }
 
-    // Qualified identity first: the frontend already decided which declaration this name means
-    // in the calling module. Only when that cannot name an owner do we fall back to the bare
-    // last-insert-wins map — counted, so the remaining fork surface is observable, never silent.
-    let fn_node = if let Some(node) = ctx.lookup_fn_qualified(&func_name) {
-        node.clone()
-    } else if let Some(node) = ctx.lookup_fn(&func_name) {
-        ctx.unqualified_dispatch
-            .set(ctx.unqualified_dispatch.get() + 1);
+    let fn_node = if let Some(node) = ctx.lookup_fn(&func_name) {
         node.clone()
     } else {
         match env.lookup(ctx.sym(&func_name)) {
