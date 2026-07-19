@@ -4675,6 +4675,23 @@ fn eval_algebra_method_inner(
             },
         },
 
+        // Known-method bridge parity: infer rewrites bare `is_empty(xs)` on
+        // import-stripped modules into a method call (the census never serves
+        // algebra template names), so eval must implement the same member the
+        // bridge targets — emptiness via the shared length authority above.
+        "is_empty" => match native_len(&receiver) {
+            Some(n) => Ok(Value::Bool(n == 0)),
+            None => match free_monoid_to_vec(&receiver) {
+                Some(items) => Ok(Value::Bool(items.is_empty())),
+                None => match &receiver {
+                    Value::Map(m) => Ok(Value::Bool(m.is_empty())),
+                    _ => Err(InterpError::TypeError {
+                        msg: format!("cannot check is_empty of {}", receiver.type_label()),
+                    }),
+                },
+            },
+        },
+
         "first" => {
             let items = expect_list(&receiver, "first")?;
             Ok(items.front().cloned().unwrap_or(Value::Null))
