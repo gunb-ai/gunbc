@@ -560,7 +560,7 @@ fn qualify_decl_reference_positions(n: Node, owner_module_path: String, env: Typ
 }
 
 fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> Node {
-  let qualified_children = if n.connective == NoConnective {
+  let qualified_children = if (n.connective == NoConnective) {
     n.children |> map(c => qualify_borrowed_type_names(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
   } else {
     n.children |> map(c => qualify_decl_reference_positions(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
