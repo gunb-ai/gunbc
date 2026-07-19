@@ -17,7 +17,7 @@ fn witness_github_pr(draft: Bool, state: PullRequestState, merged_at: Timestamp?
     body: none,
     state: state,
     html_url: witness_pr_url,
-    user: GitHubUser { login: "bot", id: 1, type: User },
+    user: GitHubUser { login: "bot", id: 1, type: extdeps.github.github.User },
     head: PullRequestRef {
       ref: "feature",
       sha: witness_head_sha,

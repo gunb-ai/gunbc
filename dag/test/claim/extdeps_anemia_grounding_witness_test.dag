@@ -57,7 +57,7 @@ fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
     body: none,
     state: extdeps.github.pulls.Open,
     html_url: "https://github.com/mock/pull/42",
-    user: GitHubUser { login: "mock-user", id: 1, type: User },
+    user: GitHubUser { login: "mock-user", id: 1, type: extdeps.github.github.User },
     head: PullRequestRef {
       ref: sample_ref,
       sha: sample_sha,
