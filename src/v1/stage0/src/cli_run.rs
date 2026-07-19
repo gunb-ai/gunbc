@@ -945,11 +945,21 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
     index
 }
 
+#[derive(Clone)]
 struct ModuleBindingManifestRow {
     module_path: String,
     rel_path: String,
     root_variant: String,
     ident_span: Rc<SourceSpan>,
+}
+
+fn witness_layer_root_spelling(root: &str) -> String {
+    let p = Path::new(root);
+    if p.is_absolute() {
+        repo_relative_path_normalized(p)
+    } else {
+        root.trim_start_matches("./").trim_end_matches('/').to_string()
+    }
 }
 
 fn insert_module_path(index: &mut HashMap<String, String>, module_path: &str, rel: String) {
@@ -995,7 +1005,7 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
     let root_variants: Vec<String> = source_roots
         .iter()
         .map(|root| {
-            let rel_root = repo_relative_dag_path(root);
+            let rel_root = witness_layer_root_spelling(root);
             source_root_ref_variant_for_root(&rel_root)
                 .unwrap_or_else(|e| panic!("collect_module_binding_manifest_rows: {e}"))
         })
@@ -19206,6 +19216,7 @@ mod module_path_index_tests {
             vec![
                 "dag/test/claim".to_string(),
                 "src/v2/test/claim/manual".to_string(),
+                "src/v2/test/claim/emit".to_string(),
             ],
             "live authority scan-dir value drifted"
         );
