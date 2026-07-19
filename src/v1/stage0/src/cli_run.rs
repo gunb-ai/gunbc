@@ -4343,6 +4343,15 @@ pub struct MultiEntryIndex {
     /// census when it typechecks (bare = own tree; qualified = whole pool; cross-
     /// tree bare reach stays refused). Keyed by source root, built lazily.
     tree_bare_census: RefCell<std::collections::HashMap<String, Rc<SymbolIndex>>>,
+    /// Whole-pool census (every pool module, both trees) — the LOADER's cross-
+    /// tree fallback: a bare reference that misses the referencing file's own
+    /// tree census resolves here so the provider still gets pulled into the
+    /// closure (fill = whole tree). Same-tree resolution keeps priority — this
+    /// is consulted only on an own-tree miss, so cross-tree homonyms cannot
+    /// steal a same-tree name. Typecheck-side bare visibility is unchanged
+    /// (closure census + own-tree underlay); the pulled provider becomes
+    /// closure-visible, which is what serves the name at typecheck.
+    pool_bare_census: RefCell<Option<Rc<SymbolIndex>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -4402,6 +4411,7 @@ fn new_multi_entry_index_shell(
         pool_parse: RefCell::new(None),
         pool_qualified_fill: RefCell::new(None),
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
+        pool_bare_census: RefCell::new(None),
     }
 }
 
@@ -5565,6 +5575,29 @@ fn tree_bare_census_for_root(
         .tree_bare_census
         .borrow_mut()
         .insert(root.to_string(), census.clone());
+    Ok(census)
+}
+
+/// Whole-pool census: every pool module regardless of tree. The loader's
+/// cross-tree fallback (see the `pool_bare_census` field note) — a v2 module's
+/// bare `gunbc_ci_spec` (declared in dag/gunbc/ci_spec.dag) resolves here after
+/// missing the v2 tree census, so the provider is pulled and becomes
+/// closure-visible at typecheck.
+fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
+    if let Some(hit) = index.pool_bare_census.borrow().as_ref() {
+        return Ok(hit.clone());
+    }
+    let pool = pool_parse(index)?;
+    let nodes: im_rc::Vector<Rc<Node>> = pool
+        .nodes_by_file
+        .iter()
+        .map(|(_, node)| node.clone())
+        .collect();
+    let census = v1_compiler_infer::build_symbol_index_census_nodes(
+        Rc::new(nodes),
+        pool.combined_si.clone(),
+    );
+    *index.pool_bare_census.borrow_mut() = Some(census.clone());
     Ok(census)
 }
 
