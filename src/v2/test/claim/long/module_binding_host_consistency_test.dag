@@ -3,7 +3,6 @@ module v2.test.long.module_binding_host_consistency
 import v2.compiler.source_authority {
   ModuleStorageAgrees,
   ModuleStorageDivergent,
-  ModuleStorageIndex,
   ModuleStorageUncovered,
   module_storage_bindings_from_ingest,
   module_storage_host_agrees_with_oracle,
@@ -15,7 +14,7 @@ import v2.test.workflow.host_module_binding_manifest {
 }
 import v2.test.workflow.host_source_root_ingest_manifest { host_source_root_ingest }
 import v2.std.collection { Absent, Present }
-import std.algebra { Empty }
+import v2.std.algebra { length }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.logic { Bool }
@@ -30,25 +29,28 @@ Both manifests are host-emitted into one overlay source root by the transport: -
 
 Lives in long/ because the oracle re-parses every module it covers (~6.5s eval per module, operator 5-second fast-lane rule). That cost is acceptable at ORACLE scale and is exactly why the oracle is not the consumer path."
 
-fn mbhc_oracle_index() -> ModuleStorageIndex {
-  match module_storage_bindings_from_ingest(ingest: host_source_root_ingest) {
-    Accepted { value: index, diagnostics: _ } => index
-    Rejected { diagnostics: _ } => Empty
-  }
-}
+data mbhc_oracle_vacuity_note: String = "Two ways this witness could go green while testing NOTHING, both closed here (review 39729 caught the first). (1) A Rejected oracle must FAIL, never degrade to Empty: module_storage_host_agrees_with_oracle folds over the oracle starting at ModuleStorageAgrees, so an empty oracle agrees vacuously — a failed derivation would have reported agreement (§5 fabricated plausible output; the sibling ingest witness already returns false on Rejected). (2) An oracle that is legitimately Accepted but EMPTY is equally vacuous — that is the state when the overlay manifest is absent and host_source_root_ingest is still the committed empty stub, i.e. exactly the mis-run this witness must not silently pass. So the oracle is required to be non-empty as well as derivable. Neither arm widens: both refuse."
 
 test fn module_binding_host_manifest_is_populated() -> Bool {
   host_module_binding_count > 0
 }
 
 test fn module_binding_host_agrees_with_parse_oracle() -> Bool {
-  match module_storage_host_agrees_with_oracle(
-    oracle: mbhc_oracle_index(),
-    host: host_module_bindings
-  ) {
-    ModuleStorageAgrees => true
-    ModuleStorageDivergent { path: _ } => false
-    ModuleStorageUncovered { path: _ } => false
+  match module_storage_bindings_from_ingest(ingest: host_source_root_ingest) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: oracle, diagnostics: _ } =>
+      if length(xs: oracle) == 0 {
+        false
+      } else {
+        match module_storage_host_agrees_with_oracle(
+          oracle: oracle,
+          host: host_module_bindings
+        ) {
+          ModuleStorageAgrees => true
+          ModuleStorageDivergent { path: _ } => false
+          ModuleStorageUncovered { path: _ } => false
+        }
+      }
   }
 }
 
