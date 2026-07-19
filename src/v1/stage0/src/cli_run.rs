@@ -13853,6 +13853,7 @@ pub fn emit_module_storage_binding_manifest(
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.integer { Int }\n");
+    out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
     out.push('\n');
     out.push_str(&format!(
@@ -13882,20 +13883,29 @@ fn emit_module_binding_source_root_import(rows: &[(String, String, String)]) -> 
     )
 }
 
-/// Render a dotted module path as a `QualifiedName` (`FreeMonoid<Symbol>`) literal.
+/// Render a dotted module path as a `QualifiedName`, via the std construction authority
+/// `qualified_name_from_string_segments`.
+///
+/// Deliberately NOT `^segment` symbol literals: module segments may collide with `.dag`
+/// keywords (`v2.test.claim.compiler.pipeline.corpus` emits `^pipeline`, which is a parse
+/// error), and the `^(...)` form is discriminant sugar with different semantics, not an
+/// escape hatch. Going through the std helper takes segments as STRINGS, so keywords are
+/// inert, and it reuses the one construction authority instead of hand-rolling a second
+/// spelling of the same value (DESIGN.md §3).
 fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, String> {
     let segments: Vec<&str> = module_path.split('.').filter(|s| !s.is_empty()).collect();
     if segments.is_empty() {
-        return Err(format!(
-            "module-binding manifest: empty module path (cannot render QualifiedName)"
-        ));
+        return Err("module-binding manifest: empty module path (cannot render QualifiedName)"
+            .to_string());
     }
-    let mut out = String::from("Empty");
-    for segment in segments.iter().rev() {
-        let sym = source_root_ingest_symbol_from_stem(segment);
-        out = format!("Cons {{ head: {sym}, tail: {out} }}");
-    }
-    Ok(out)
+    let rendered: Vec<String> = segments
+        .iter()
+        .map(|s| dag_manifest_scalar_escape(s).map(|e| format!("\"{e}\"")))
+        .collect::<Result<_, _>>()?;
+    Ok(format!(
+        "qualified_name_from_string_segments(segments: [{}])",
+        rendered.join(", ")
+    ))
 }
 
 fn emit_module_binding_row(row: &(String, String, String)) -> Result<String, String> {

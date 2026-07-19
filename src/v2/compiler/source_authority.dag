@@ -552,6 +552,58 @@ data module_storage_supply_dissolution_trigger: String = "dissolve-on: host-effe
 
 data module_storage_projection_note: String = "Both requested directions are queries against ONE table (design §2). file → graph region: given a path, the module parsed from it. module → file(s): given a module reference, its current storage — needed ONLY at host boundaries; user code and tool .dag reference modules and never see paths. A produced module answers Absent for storage, which is a real answer, not a miss."
 
+data module_storage_agreement_note: String = "The host transport is SCANNED and the in-graph derivation PARSES, so 'do they agree?' is a REAL question, not a restatement — extract_module_path takes the first non-blank non-comment line starting with 'module ', while the parser reads the module declaration through the grammar, and the two are different code paths that can diverge. This is the check that pins the transport to the model: it is what stops the host handler from quietly becoming a rival authority (§3) and it is the reason DeclarationScanned exists as its own arm rather than being folded into ParsedFromSource. A row present in the oracle whose path the host resolves to a DIFFERENT module is a genuine divergence; a row the host does not carry at all is a COVERAGE gap, and the two are reported separately rather than collapsed into one boolean, because their remedies differ."
+
+type ModuleStorageAgreement
+  = ModuleStorageAgrees
+  | ModuleStorageDivergent { path: String }
+  | ModuleStorageUncovered { path: String }
+
+fn module_storage_agreement_for_binding(
+  oracle_binding: ModuleStorageBinding,
+  host: ModuleStorageIndex
+) -> ModuleStorageAgreement {
+  match module_storage_binding_file_path(binding: oracle_binding) {
+    Absent => ModuleStorageAgrees
+    Present { value: p } =>
+      match module_storage_module_for_path(index: host, file_path: p) {
+        Absent => ModuleStorageUncovered { path: p }
+        Present { value: host_module } =>
+          if host_module == module_storage_binding_module(binding: oracle_binding) {
+            ModuleStorageAgrees
+          } else {
+            ModuleStorageDivergent { path: p }
+          }
+      }
+  }
+}
+
+fn module_storage_agreement_step(
+  acc: ModuleStorageAgreement,
+  oracle_binding: ModuleStorageBinding,
+  host: ModuleStorageIndex
+) -> ModuleStorageAgreement {
+  match acc {
+    ModuleStorageAgrees =>
+      module_storage_agreement_for_binding(oracle_binding: oracle_binding, host: host)
+    ModuleStorageDivergent { path: p } => ModuleStorageDivergent { path: p }
+    ModuleStorageUncovered { path: p } => ModuleStorageUncovered { path: p }
+  }
+}
+
+fn module_storage_host_agrees_with_oracle(
+  oracle: ModuleStorageIndex,
+  host: ModuleStorageIndex
+) -> ModuleStorageAgreement {
+  fold_list(
+    xs: oracle,
+    empty: ModuleStorageAgrees,
+    cons: fn(acc, oracle_binding) {
+      module_storage_agreement_step(acc: acc, oracle_binding: oracle_binding, host: host)
+    }
+  )
+}
+
 fn module_storage_module_for_path(
   index: ModuleStorageIndex,
   file_path: String
