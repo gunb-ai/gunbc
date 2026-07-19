@@ -147,7 +147,7 @@ fn import_closure_fixpoint_step(
   }
 }
 
-fn import_closure(root: String, facts: List<ModuleImportFact>) -> List<String> {
+fn witness_import_closure(root: String, facts: List<ModuleImportFact>) -> List<String> {
   let rounds = list_append(left: facts, right: facts)
   let state = fold_list(xs: rounds, empty: ImportClosureFixpointState { members: [root], stable: false }, cons: fn(acc, ignored) {
     import_closure_fixpoint_step(facts: facts, state: acc)
@@ -162,7 +162,7 @@ fn witness_cost_locality_from_facts(
   pipeline_stages: List<String>
 ) -> WitnessCostLocality {
   witness_cost_locality(
-    closure_modules: import_closure(root: entry_module, facts: facts),
+    closure_modules: witness_import_closure(root: entry_module, facts: facts),
     ambient_read_carriers: ambient_read_carriers,
     pipeline_stages: pipeline_stages
   )

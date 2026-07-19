@@ -76,7 +76,7 @@ fn live_read_classification_from_facts(
   carrier_homes: List<LiveReadCarrierHome>
 ) -> LiveReadClassification {
   live_read_classification_g1(
-    closure_modules: import_closure(root: entry_module, facts: facts),
+    closure_modules: witness_import_closure(root: entry_module, facts: facts),
     carrier_homes: carrier_homes
   )
 }
@@ -507,7 +507,7 @@ fn live_read_classification_g2_from_facts(
   decls: List<FnArrowDecl>,
   carrier_homes: List<LiveReadCarrierHome>
 ) -> LiveReadClassification {
-  let closure_modules = import_closure(root: entry_module, facts: facts)
+  let closure_modules = witness_import_closure(root: entry_module, facts: facts)
   let g1 = live_read_classification_g1(
     closure_modules: closure_modules,
     carrier_homes: carrier_homes
