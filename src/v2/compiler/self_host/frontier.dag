@@ -940,7 +940,7 @@ fn frontier_hand_rows_self_emitted_row_basename(row: CompilerModuleFrontierRow) 
   }
 }
 
-fn compiler_frontier_self_emitted_stage0_mod_basenames_hand_rows() -> List<String> {
+fn compiler_frontier_self_emitted_stage0_mod_basenames() -> List<String> {
   fold(
     compiler_frontier_roster,
     init: [],
@@ -1046,7 +1046,7 @@ fn self_emitted_frontier_row_stage0_mod_basename(
   }
 }
 
-fn compiler_frontier_self_emitted_stage0_mod_basenames(index: ModuleStorageIndex) -> List<String> {
+fn compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: ModuleStorageIndex) -> List<String> {
   fold(
     compiler_frontier_roster,
     init: [],
@@ -1190,7 +1190,7 @@ data frontier_hand_maintained_arity_note: String = "These three keep their ORIGI
 fn hand_maintained_pub_mod_basenames() -> List<String> {
   concat(
     concat(seed_retained_intrinsic_pub_mod_basenames(), seed_retained_scaffold_pub_mod_basenames()),
-    compiler_frontier_self_emitted_stage0_mod_basenames_hand_rows()
+    compiler_frontier_self_emitted_stage0_mod_basenames()
   )
 }
 
@@ -1202,14 +1202,14 @@ fn hand_maintained_stage0_filenames() -> List<String> {
   concat(
     concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files()),
     basenames_to_stage0_filenames(
-      basenames: compiler_frontier_self_emitted_stage0_mod_basenames_hand_rows()
+      basenames: compiler_frontier_self_emitted_stage0_mod_basenames()
     )
   )
 }
 
 fn compiler_frontier_crate_layout_holds(index: ModuleStorageIndex) -> Bool {
   compiler_frontier_qualified_module_bindings_unique_holds(index: index)
-    && (length(xs: compiler_frontier_self_emitted_stage0_mod_basenames(index: index)) == compiler_frontier_self_emitted_count())
+    && (length(xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: index)) == compiler_frontier_self_emitted_count())
 }
 
 fn compiler_frontier_census_holds() -> Bool {

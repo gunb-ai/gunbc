@@ -19,7 +19,7 @@ import v2.compiler.self_host.frontier {
   compiler_frontier_row_use_site_verdict,
   compiler_frontier_self_emitted_baseline,
   compiler_frontier_self_emitted_count,
-  compiler_frontier_self_emitted_stage0_mod_basenames,
+  compiler_frontier_self_emitted_stage0_mod_basenames_from_index,
   emit_hand_maintained_pub_mod_block,
   frontier_row_stage0_mod_basename,
   hand_maintained_pub_mod_basenames,
@@ -59,7 +59,7 @@ fn row_basename_is_registered(row: CompilerModuleFrontierRow) -> Bool {
   match frontier_row_stage0_mod_basename(index: layout_index(), row: row) {
     Accepted { value: b, diagnostics: _ } =>
       string_list_contains(
-        xs: compiler_frontier_self_emitted_stage0_mod_basenames(index: layout_index()),
+        xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index()),
         needle: b
       )
     Rejected { diagnostics: _ } => false
@@ -88,20 +88,20 @@ fn witness_discovery_enumeration_derived_from_frontier_holds() -> Bool {
 }
 
 fn witness_generated_pub_mod_block_matches_frontier_holds() -> Bool {
-  generated_pub_mod_block == emit_hand_maintained_pub_mod_block(index: layout_index())
+  generated_pub_mod_block == emit_hand_maintained_pub_mod_block()
 }
 
 fn witness_generated_basenames_match_frontier_holds() -> Bool {
   lists_have_same_members(
     a: generated_pub_mod_basenames,
-    b: hand_maintained_pub_mod_basenames(index: layout_index())
+    b: hand_maintained_pub_mod_basenames()
   )
 }
 
 fn witness_generated_filenames_match_frontier_holds() -> Bool {
   lists_have_same_members(
     a: generated_stage0_filenames,
-    b: hand_maintained_stage0_filenames(index: layout_index())
+    b: hand_maintained_stage0_filenames()
   )
 }
 
@@ -111,7 +111,7 @@ fn witness_generated_dirs_match_frontier_holds() -> Bool {
 
 fn witness_generated_includes_every_self_emitted_basename_holds() -> Bool {
   fold_list(
-    xs: compiler_frontier_self_emitted_stage0_mod_basenames(index: layout_index()),
+    xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index()),
     empty: true,
     cons: fn(ok, basename) {
       ok && string_list_contains(xs: generated_pub_mod_basenames, needle: basename)
@@ -124,7 +124,7 @@ fn witness_generated_has_no_phantom_registration_holds() -> Bool {
     xs: generated_pub_mod_basenames,
     empty: true,
     cons: fn(ok, basename) {
-      ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(index: layout_index()), needle: basename)
+      ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(), needle: basename)
     }
   )
 }
@@ -145,24 +145,28 @@ fn witness_hand_maintained_filenames_include_self_emitted_holds() -> Bool {
 }
 
 fn witness_self_emitted_count_matches_derived_basenames_holds() -> Bool {
-  length(xs: compiler_frontier_self_emitted_stage0_mod_basenames(index: layout_index())) == compiler_frontier_self_emitted_count()
+  length(xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index())) == compiler_frontier_self_emitted_count()
 }
 
 fn witness_no_orphan_self_emitted_basename_holds() -> Bool {
   fold_list(
-    xs: compiler_frontier_self_emitted_stage0_mod_basenames(index: layout_index()),
+    xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: layout_index()),
     empty: true,
     cons: fn(ok, basename) {
-      ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(index: layout_index()), needle: basename)
+      ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(), needle: basename)
     }
   )
 }
 
-data transition_parity_receipt_note: String = "TRANSITION ARTIFACT, deleted with the oracle it reads — see compiler_frontier_binding_transition_oracle_note. This is the one-time switchover receipt: for every path the 27 hand rows named, the HOST-SUPPLIED index must answer the same qualified module. It exists because 'the projection compiles and the gates are green' does not distinguish a correct derivation from one that changed answers — the gates downstream consume the projection, so they cannot themselves witness a disagreement with what was there before.
+data standing_parity_witness_note: String = "STANDING WITNESS — not a one-time switchover receipt (promoted, parent ruling 2026-07-19), and the reason for the promotion is the whole point.
 
-It catches two different failures with one comparison, which is why it is worth the temporary duplication: a PROJECTION BUG (derivation disagrees with a known-good table) and HAND-ROW DRIFT (the table was already stale and the derivation is right). Both surface as the same red and are told apart by inspecting which side is wrong.
+Two representations of the path⇄module fact are live at once: the derived index serves the witness path here, and the 27 hand rows still feed the crate-layout EMITTER, which cannot be handed a host index without polluting an unrelated 18-variant dispatch (frontier_emitter_hand_row_debt_note). §3 forbids that duality in general. THIS WITNESS IS WHAT MAKES IT HONEST: it asserts, on every wet run, that the derived index and the hand rows answer identically for every path the rows name — so a drift between the two authorities REDS instead of silently diverging.
 
-dissolve-on: observed green on the wet cadence, at which point this receipt, FrontierQualifiedModuleBinding, and the 27-row block are deleted together."
+As a one-time receipt it would have proven agreement at a single moment and said nothing afterwards, leaving exactly the silent fork it was meant to prevent. As a standing check it is the §3 protection for as long as the duality lives.
+
+It catches two failures with one comparison: a PROJECTION BUG (derivation disagrees with a known-good table) and HAND-ROW DRIFT (the table went stale and the derivation is right). Both surface as the same red, told apart by inspecting which side is wrong.
+
+dissolve-on: host-driven generation of the crate-layout artifact with the index supplied at the boundary — at which point this witness, FrontierQualifiedModuleBinding, the 27-row block, and the _hand_rows fn family are deleted TOGETHER."
 
 fn parity_row_agrees(row: FrontierQualifiedModuleBinding) -> Bool {
   match compiler_frontier_qualified_module_dotted_for_path(index: layout_index(), target: row.module_path) {
