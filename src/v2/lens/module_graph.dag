@@ -347,18 +347,36 @@ fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
   any(xs: closure, predicate: fn(closure_path) { path_matches_touched(closure_path: closure_path, touched_path: path) })
 }
 
+data entry_without_declared_edges_never_skips_note: String = "Shared selection rule with the host twin (entry_file_touched_via_import_closure, cli_run.rs): an entry that declares NO outgoing dependency edges is never selection-skippable — with imports stripped (namespace wave 1) its real dependencies are name-derived and invisible to this edge producer, so a precise 'unaffected' answer would false-skip (fail-open cache impurity). Affected=true is the edge model's precision frontier for such entries, not an absorption. Dissolves when dependency_resolution_facts_live swaps to the reference-derived edge producer (see dependency_edge_source_migration_note)."
+
+fn module_declares_outgoing_dependency_edge(
+  entry_path: String,
+  edges: List<ModuleDependencyEdge>
+) -> Bool {
+  any(xs: edges, predicate: fn(edge) { path_matches_touched(closure_path: edge.path, touched_path: entry_path) })
+}
+
 fn entry_affected_by_touched_paths_excluding(
   entry_path: String,
   pool_roots: List<String>,
   touched_paths: List<String>,
   exclude_substrings: List<String>
 ) -> Bool {
-  let closure = dependency_closure_live_excluding(
-    entry_path: entry_path,
+  let edges = dependency_resolution_facts_live(
     pool_roots: pool_roots,
+    importer_roots: pool_roots,
     exclude_substrings: exclude_substrings
   )
-  any(xs: touched_paths, predicate: fn(path) { touched_path_in_closure(closure: closure, path: path) })
+  if module_declares_outgoing_dependency_edge(entry_path: entry_path, edges: edges) {
+    let closure = dependency_closure(
+      entry_path: entry_path,
+      edges: edges,
+      nodes: module_declaration_facts_live(pool_roots: pool_roots)
+    )
+    any(xs: touched_paths, predicate: fn(path) { touched_path_in_closure(closure: closure, path: path) })
+  } else {
+    true
+  }
 }
 
 fn entry_affected_by_touched_paths(

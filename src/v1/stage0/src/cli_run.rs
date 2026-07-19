@@ -3277,6 +3277,19 @@ fn entry_file_touched_via_import_closure(
              than widening to run-all or narrowing to skip"
         ));
     }
+    // Shared selection rule with the `.dag` authority (`entry_affected_by_touched_paths`,
+    // module_graph.dag `entry_without_declared_edges_never_skips_note`): an entry that
+    // declares NO outgoing import edges is never selection-skippable — with imports
+    // stripped (namespace wave 1) its real dependencies are name-derived and invisible to
+    // this adjacency, so a precise "unaffected" answer would false-skip. Dissolves when
+    // the edge producer swaps to reference-derived resolution facts.
+    if facts
+        .adjacency
+        .get(&entry_rel)
+        .is_none_or(|targets| targets.is_empty())
+    {
+        return Ok(true);
+    }
     let closure = import_closure_from_adjacency(entry_path, &facts.adjacency);
     Ok(touched_paths.iter().any(|touched| {
         closure
