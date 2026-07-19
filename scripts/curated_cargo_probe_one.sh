@@ -5,6 +5,21 @@
 # dissolve-on alt: gunbc bash-emit #5828 / modeled cssl_probe transport in .dag.
 # Authority: cssl_v1_compiled_cargo_toml via dag/tools/self_host_curated_probe_cargo.dag
 # (scripts/lib/render_cssl_probe_lib_cargo_toml.sh — no parallel Cargo.toml heredoc).
+#
+# INVOCATION CONTRACT (2026-07-19, calm-boar-697 — durable; do not re-learn expensively):
+#   CSSL_STD_SEED_LINK=1  — required for std-seed-link closure assembly via cssl_assemble.
+#   shim_lib_rel (arg 2)  — ONLY the lane's own lib.rs from dag/tools/self_host_<lane>_shims/
+#                           when that lane provides one (see behavioral_transport shim_lib_rel).
+#                           Empty = raw cssl-assembled lib.rs (correct default when no lane shim).
+#   PHANTOM-GREEN hazard: wrong-lane lib.rs REPLACES cssl lib.rs entirely → cargo green with
+#                           invalid shim (false green). Observed: normalize shim on 00_compile → PHANTOM.
+#   FALSE-RED hazard:     missing required lane shim → out-of-scope refusals unrelated to entry.
+#                           Observed: FormalNonterminal/BTreeSet without 03_normalize shims.
+#   When verdicts flip between runs, diff INVOCATION first (shim path, CSSL_STD_SEED_LINK).
+#   Ground-truth discriminator for embedded refusals: rg 'UNRESOLVED_CompilerError' or the rustc
+#                           error literal in the emitted crate AFTER cssl_assemble — compile_error!
+#                           in source = real emit-residue (no shim can fix); string-only = note.
+#   Lane shim authority: dag/tools/self_host_*_behavioral_transport.dag shim_lib_rel per module.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
