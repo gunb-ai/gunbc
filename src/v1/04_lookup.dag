@@ -72,7 +72,9 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig
   match borrowed {
     Present { value: bd } =>
       let node = bd.node
-      if (node.params |> count) > 0 || node.inferred != none || node.type_annotation != none {
+      match (node.params |> count) > 0 || node.inferred != none || node.type_annotation != none {
+        false => Absent
+        true =>
         let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
         let raw_return = match node.inferred {
           Present { value: inferred } => inferred

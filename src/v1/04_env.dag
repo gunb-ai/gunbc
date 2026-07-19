@@ -518,7 +518,10 @@ fn global_bare_nearest_ancestor_candidate(env_module_path: String, candidates: L
       GlobalBareNearestCandidateScan { best_lcp: acc.best_lcp, best: acc.best, tie: true }
     } else { acc }
   )
-  if scan.tie { Absent } else { scan.best }
+  match scan.tie {
+    true => Absent
+    false => scan.best
+  }
 }
 
 fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<GlobalBareCandidate>) -> TypeBinding? {

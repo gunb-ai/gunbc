@@ -109,8 +109,10 @@ import std.interface_summary {
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown,
-  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   sub_value_to_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
+}
+import std.computation {
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
 }
 import std.termination {
   positive_descent_amount_from_positive_int,

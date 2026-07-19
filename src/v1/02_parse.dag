@@ -49,7 +49,7 @@ import v1.std.core {
   InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens
 }
 
-import v1.compiler.languages {
+import std.syntax {
   ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
