@@ -82,6 +82,38 @@ This is a real cost and it must be priced, not waved through:
 
 Stages 1–2 are additive and cannot regress a consumer. Stage 3 is the behavioral flip and carries the real risk.
 
+## 6a. Named constraints (invariants the staging depends on)
+
+**C1 — the stage-4 read-through returns `Medium<String>`, never a bare `String`.**
+
+Stage 4 deletes the inlined source text from `DagSourceReadWitness`. The obvious
+way to do that is to delete the `source: Medium<String>` field. **That is wrong,
+and it fails silently.**
+
+`Medium<R> { carried: R, fidelity: DecodeFidelity }` is where a row's
+`DecodeFidelity` actually lives (`dag/extdeps/communication/medium.dag:13`).
+Deleting the field to remove the text takes the **fidelity carrier** with it, so
+the row silently stops declaring `Lossless` — and the round-trip laws in this
+module (`SourceAuthorityRoundTripLaw` and friends) depend on that boundary.
+Nothing goes red: the laws still typecheck, they just no longer rest on a declared
+fidelity. A `Lossless` boundary that quietly became undeclared is the §5
+fabricated-plausible-output shape at the level of a proof obligation.
+
+So the read-through introduced in stage 3 and made exclusive in stage 4 **must
+return `Medium<String>`**. Fidelity then attaches at the moment of decode, which
+is where it belongs on the meaning: fidelity is a property of a decode, not of a
+location.
+
+*Corollary (Q4, resolved 2026-07-19):* for the same reason, `SourceRef` itself
+carries **no** fidelity field. A ref decodes nothing, so a fidelity on the ref
+would assert what no read has established, and would stand a second fidelity
+authority beside `Medium`'s (§3). `SourceRef` = path + source root + `ContentHash`.
+
+*Why this is stated here rather than left to the implementer:* stage 4 is several
+PRs downstream of stage 0. The failure is invisible at the diff — deleting one
+field is the natural edit and produces no red — so the wall belongs in the
+document, where the implementer meets it before the tree does.
+
 ## 7. Questions, resolved (parent rulings 2026-07-19)
 
 1. **Same `SourceRef` as the Phase-3 effect boundary?** **Yes, and this lane owns it.** The Phase-3 boundary type is this lane's own later phase — there was no external owner to wait on. The type declaration is pulled forward to stage 0 (declaration only, not enforcement), homed with the storage-binding authority. A draft type owned here beats a dependency waited on elsewhere.
