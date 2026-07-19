@@ -43,7 +43,8 @@ use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, Hos
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
-    close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, lookup_emit_type_summary,
+    close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_env,
+    lookup_emit_type_summary,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, RustCorpusRepr, TypeRepr, TypeSummary,
@@ -15456,6 +15457,8 @@ pub fn build_emit_graph_info(
             read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
             corpus_repr: rust_corpus_repr(has_v1_seed.clone()),
+            fn_generic_param_names: Rc::new(vec![]),
+            fn_type_env: empty_type_env(),
         })
     }
 }
