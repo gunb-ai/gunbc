@@ -1299,14 +1299,7 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
 
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match lookup_binding_by_name(env.clone(), name.clone()) {
-        Some(binding) => match (v1_rt::contains(name.clone(), ".".to_string())
-            || binding_declares_name(binding.clone(), name.clone(), env.source_indices.clone()))
-        {
-            true => Some(binding.resolved.clone()),
-            false => {
-                variant_arm_type_projection(env.clone(), binding.resolved.clone(), name.clone())
-            }
-        },
+        Some(binding) => Some(binding.resolved.clone()),
         None => None,
     }
 }
@@ -1330,26 +1323,7 @@ pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
     match node.ident.clone() {
-        Some(id) => match lookup_type(env.clone(), id.clone()) {
-            Some(resolved) => {
-                let name = authored_name(env.clone(), node.clone());
-                match ((resolved.connective.clone() == Connective::Disj)
-                    && (authored_name_at(env.source_indices.clone(), resolved.clone())
-                        != name.clone()))
-                {
-                    true => match variant_arm_type_projection(
-                        env.clone(),
-                        resolved.clone(),
-                        name.clone(),
-                    ) {
-                        Some(arm) => Some(arm.clone()),
-                        None => Some(resolved.clone()),
-                    },
-                    false => Some(resolved.clone()),
-                }
-            }
-            None => None,
-        },
+        Some(id) => lookup_type(env.clone(), id.clone()),
         None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }

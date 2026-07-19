@@ -11,6 +11,7 @@ pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
     authored_name, env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
     is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
+    variant_arm_type_projection,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -1613,7 +1614,28 @@ pub fn resolve_node_bounded(
                                         })
                                     } else {
                                         match lookup_type_for(env.clone(), n.clone()) {
-                                            Some(resolved) => {
+                                            Some(resolved_binding) => {
+                                                let leaf_name =
+                                                    authored_name(env.clone(), n.clone());
+                                                let resolved =
+                                                    if ((resolved_binding.connective.clone()
+                                                        == Connective::Disj)
+                                                        && (authored_name(
+                                                            env.clone(),
+                                                            resolved_binding.clone(),
+                                                        ) != leaf_name.clone()))
+                                                    {
+                                                        match variant_arm_type_projection(
+                                                            env.clone(),
+                                                            resolved_binding.clone(),
+                                                            leaf_name.clone(),
+                                                        ) {
+                                                            Some(arm) => arm.clone(),
+                                                            None => resolved_binding.clone(),
+                                                        }
+                                                    } else {
+                                                        resolved_binding.clone()
+                                                    };
                                                 let structurally_resolved = if (((resolved
                                                     .connective
                                                     .clone()
