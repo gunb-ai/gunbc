@@ -220,6 +220,8 @@ fn v2_eval_bool_runtime_value(is_true: Bool) -> RuntimeValue {
 
 data v2_eval_literal_shape_predicate_note: String = "🟢 Terminal (FLAG D): v2_eval_is_literal_shaped_node is the sole admission predicate for eval_type_node_atom literal-vs-binding dispatch; v2_eval_represent_literal routes through it before allocate dispatch — one surface, not a parallel entry guard. Emit-host equals_eval fixtures (pick_lit + fold closure literals) route through custom allocate_literal hooks once admitted here."
 
+data v2_eval_emit_host_fixture_literal_coupling_note: String = "v2_eval_emit_host_fixture_literal_magnitude hardcodes atom→int for emit-host equals_eval fixtures only (not derived from lexeme). Coupled to: src/v2/extdeps/languages/dag.dag pick_lit match arms; src/v2/test/claim/emit/fold_call_closure_fixture.dag fold xs/z/lit bindings; rust_test.dag binding_spellings for fold literals. Dissolve-on: derive magnitudes from dag int-literal ingest or fixture lexeme rows at a single authority."
+
 fn v2_eval_is_emit_host_fixture_literal_atom(id: Symbol) -> Bool {
   (id == ^dag_pick_lit_one)
     || (id == ^dag_pick_lit_two)
