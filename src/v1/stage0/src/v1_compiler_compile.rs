@@ -32,6 +32,7 @@ pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
 pub use crate::v1_compiler_emit_rust::emit_rust;
 pub use crate::v1_compiler_infer::reconcile;
+pub use crate::v1_compiler_infer::reconcile_with_census_extra;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
 pub use crate::v1_compiler_normalize::normalize_graph;
@@ -290,11 +291,19 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
+    /// Sources included in the NAME CENSUS but not compiled (fill = whole tree;
+    /// policy gates lookup, never fill — namespace-resolution-design.md §7.5).
+    /// Qualified references to modules outside the compile closure resolve against
+    /// these; compiling them here instead would subject them to this invocation's
+    /// pool-precedence tree view, where cross-tree bare names break (measured:
+    /// 344 diagnostics, the Empty/Cons poisoning class).
+    pub census_only_sources: Rc<Vec<Rc<SourceFile>>>,
 }
 
 pub fn default_compile_pipeline_options() -> CompilePipelineOptions {
     CompilePipelineOptions {
         analyze_complexity: false,
+        census_only_sources: Rc::new(vec![]),
     }
 }
 
@@ -2474,10 +2483,41 @@ pub fn compile_to_resolved_with_options(
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
-                let typed = reconcile(
+                // Census-only sources: parsed and module-resolved for the name census
+                // ONLY — never normalized, typechecked, or emitted here. Their parse
+                // diagnostics surface loudly below (a census silently skipping a broken
+                // module would be an absorbing fallback, §5).
+                let (census_extra_modules, census_si, census_extra_diags) =
+                    if options.census_only_sources.len() == 0 {
+                        (
+                            Rc::new(vec![]),
+                            source_indices.clone(),
+                            Rc::new(vec![]) as Rc<Vec<Rc<ErrorNode>>>,
+                        )
+                    } else {
+                        let extra_fe = front_end_sources(options.census_only_sources.clone());
+                        let census_si = extra_fe.newline_indices.clone().iter().cloned().fold(
+                            source_indices.clone(),
+                            |acc: Rc<HashMap<String, Rc<NewlineIndex>>>,
+                             index: Rc<NewlineIndex>| {
+                                v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
+                            },
+                        );
+                        match extra_fe.graph.clone() {
+                            Some(g) => (
+                                g.modules.clone(),
+                                census_si,
+                                extra_fe.diagnostics.clone(),
+                            ),
+                            None => (Rc::new(vec![]), census_si, extra_fe.diagnostics.clone()),
+                        }
+                    };
+                let typed = reconcile_with_census_extra(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
+                    census_extra_modules.clone(),
+                    census_si.clone(),
                 );
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
                 let typed_diags = typed.diagnostics.clone();
@@ -2499,7 +2539,13 @@ pub fn compile_to_resolved_with_options(
                     graph: Some(typed.clone()),
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat(frontend.diagnostics.clone(), norm_diags.clone()),
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    frontend.diagnostics.clone(),
+                                    census_extra_diags.clone(),
+                                ),
+                                norm_diags.clone(),
+                            ),
                             all_diags.clone(),
                         ),
                         ownership_diags.clone(),

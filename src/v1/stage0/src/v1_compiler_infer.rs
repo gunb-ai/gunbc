@@ -16833,6 +16833,29 @@ pub fn typecheck(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypedGraph> {
+    typecheck_with_census_extra(
+        graph.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        Rc::new(vec![]),
+        source_indices.clone(),
+    )
+}
+
+/// `typecheck` with census-only extra modules: the name census (SymbolIndex) is built
+/// over `graph.modules ++ census_extra_modules` using `census_si` (a superset of
+/// `source_indices` carrying the extras' newline indexes), while ONLY `graph.modules`
+/// are typechecked. Fill = whole tree; policy gates lookup, never fill
+/// (namespace-resolution-design.md §7.5) — qualified references to modules outside
+/// the compile closure resolve without pulling those modules into this invocation's
+/// tree view.
+pub fn typecheck_with_census_extra(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    census_extra_modules: Rc<Vec<Rc<ResolvedModule>>>,
+    census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<TypedGraph> {
     {
         let intern_table = seed_kernel_intern_table(intern_table.clone());
         let resolved_by_name = graph.modules.clone().iter().cloned().fold(
@@ -16845,7 +16868,19 @@ pub fn typecheck(
                 )
             },
         );
-        let symbol_index = build_symbol_index_census(graph.modules.clone(), source_indices.clone());
+        let census_modules: Rc<Vec<Rc<ResolvedModule>>> = if census_extra_modules.len() == 0 {
+            graph.modules.clone()
+        } else {
+            Rc::new(
+                graph
+                    .modules
+                    .iter()
+                    .cloned()
+                    .chain(census_extra_modules.iter().cloned())
+                    .collect(),
+            )
+        };
+        let symbol_index = build_symbol_index_census(census_modules.clone(), census_si.clone());
         let state = graph.modules.clone().iter().cloned().fold(
             Rc::new(RealizeState {
                 module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
@@ -17642,8 +17677,31 @@ pub fn reconcile(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<ResolvedGraph> {
+    reconcile_with_census_extra(
+        graph.clone(),
+        source_indices.clone(),
+        intern_table.clone(),
+        Rc::new(vec![]),
+        source_indices.clone(),
+    )
+}
+
+/// `reconcile` with census-only extra modules — see `typecheck_with_census_extra`.
+pub fn reconcile_with_census_extra(
+    graph: Rc<ModuleGraph>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+    census_extra_modules: Rc<Vec<Rc<ResolvedModule>>>,
+    census_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<ResolvedGraph> {
     {
-        let typed = typecheck(graph.clone(), source_indices.clone(), intern_table.clone());
+        let typed = typecheck_with_census_extra(
+            graph.clone(),
+            source_indices.clone(),
+            intern_table.clone(),
+            census_extra_modules.clone(),
+            census_si.clone(),
+        );
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
         let modules =
             rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
