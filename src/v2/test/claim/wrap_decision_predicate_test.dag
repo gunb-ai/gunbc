@@ -18,6 +18,7 @@ import v2.std.compilers.target_model {
   WrapGateInapplicable,
   target_carrier_diagnostics_node,
   target_carrier_probe_heap_node,
+  target_carrier_use_site_verdict_node,
   target_use_site_ownership_catalog_node
 }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -30,7 +31,7 @@ import v2.std.node {
 }
 import v2.std.text { String }
 
-data wrap_decision_predicate_note: String = "Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single authority for Rc/Box/owned type wrapping at emit sites. RED: omit Diagnostics param row -> param witness rejects; add silent default wrap on WrapGateInapplicable -> bundle_absent witness fails."
+data wrap_decision_predicate_note: String = "Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single authority for Rc/Box/owned type wrapping at emit sites. UseSiteVerdict enrolled (owned-at-all-sites). RED: omit Diagnostics param row -> param witness rejects; add silent default wrap on WrapGateInapplicable -> bundle_absent witness fails."
 
 fn wrap_decision_sg_rc_target() -> TargetModel {
   rust_sg2_type_expr_target_model()
@@ -179,10 +180,28 @@ test fn wrap_decision_bundle_partial_rejects() -> Bool {
   )
 }
 
+test fn wrap_decision_use_site_verdict_param_is_owned() -> Bool {
+  wrap_decision_gate_is_by_value(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_use_site_verdict_node(),
+    use_site: OwnershipAtFunctionParameter
+  )
+}
+
+test fn wrap_decision_use_site_verdict_return_is_owned() -> Bool {
+  wrap_decision_gate_is_by_value(
+    target: wrap_decision_sg_rc_target(),
+    source_carrier: target_carrier_use_site_verdict_node(),
+    use_site: OwnershipAtFunctionReturn
+  )
+}
+
 test fn wrap_decision_predicate_witness_holds() -> Bool {
   wrap_decision_diagnostics_return_is_rc()
     && wrap_decision_diagnostics_param_is_owned()
     && wrap_decision_probe_heap_param_miss_rejects()
     && wrap_decision_bundle_absent_inapplicable()
     && wrap_decision_bundle_partial_rejects()
+    && wrap_decision_use_site_verdict_param_is_owned()
+    && wrap_decision_use_site_verdict_return_is_owned()
 }
