@@ -865,22 +865,52 @@ mod regen_input_closure_tests {
 const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
     "src/v2/test/claim/workflow/host_source_root_ingest_manifest.dag";
 
-fn is_source_root_ingest_manifest_stub_rel(rel_forward: &str) -> bool {
-    rel_forward.replace('\\', "/") == SOURCE_ROOT_INGEST_MANIFEST_STUB_REL
-}
+/// Empty module-binding-manifest placeholder, superseded the same way (module-identity
+/// supply carrier). Separate carrier from the ingest manifest: module <-> path +
+/// provenance, no source text.
+const MODULE_BINDING_MANIFEST_STUB_REL: &str =
+    "src/v2/test/claim/workflow/host_module_binding_manifest.dag";
 
-fn source_root_ingest_manifest_overlay_in_later_roots(
+/// Committed manifest stubs and the generated filenames that supersede them.
+///
+/// One table rather than a predicate pair per manifest: the stub/overlay rule is a single
+/// fact, and forking it per carrier would mean the next manifest silently misses whichever
+/// half its author forgot to extend (DESIGN.md §2/§3).
+const MANIFEST_STUB_OVERLAYS: &[(&str, &[&str])] = &[
+    (
+        SOURCE_ROOT_INGEST_MANIFEST_STUB_REL,
+        &[
+            "v2-source-root-ingest-manifest.dag",
+            "host_source_root_ingest_manifest.dag",
+        ],
+    ),
+    (
+        MODULE_BINDING_MANIFEST_STUB_REL,
+        &["host_module_binding_manifest.dag"],
+    ),
+];
+
+/// True when `rel_forward` is a committed manifest stub AND a strictly later source root
+/// carries its generated counterpart, so the stub must be excluded from the module index
+/// and the generated file becomes the sole declarer of that module. Without this the two
+/// files collide and trip `module_path_collision_panic_message`.
+fn manifest_stub_superseded_by_overlay(
+    rel_forward: &str,
     source_roots: &[String],
     after_root_idx: usize,
 ) -> bool {
+    let normalized = rel_forward.replace('\\', "/");
+    let Some((_, overlay_names)) = MANIFEST_STUB_OVERLAYS
+        .iter()
+        .find(|(stub_rel, _)| normalized == *stub_rel)
+    else {
+        return false;
+    };
     source_roots.iter().skip(after_root_idx + 1).any(|root| {
         let root_path = Path::new(root);
-        root_path
-            .join("v2-source-root-ingest-manifest.dag")
-            .is_file()
-            || root_path
-                .join("host_source_root_ingest_manifest.dag")
-                .is_file()
+        overlay_names
+            .iter()
+            .any(|name| root_path.join(name).is_file())
     })
 }
 
@@ -907,9 +937,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
             });
             if let Some(module_path) = extract_module_path(&content) {
                 let rel = module_index_path_key(&path);
-                if is_source_root_ingest_manifest_stub_rel(&rel)
-                    && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
-                {
+                if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
                     continue;
                 }
                 if let Some(existing) = index.get(&module_path) {
@@ -1355,9 +1383,7 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = module_index_path_key(&path);
                 let rel_forward = rel_path.clone();
-                if is_source_root_ingest_manifest_stub_rel(&rel_forward)
-                    && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
-                {
+                if manifest_stub_superseded_by_overlay(&rel_forward, source_roots, root_idx) {
                     continue;
                 }
                 if let Some(existing) = index.get(&module_path) {
