@@ -3961,6 +3961,15 @@ fn extend_with_bare_reference_closure(
                 in_call_position
                     || !binding.resolved.params.is_empty()
                     || binding.resolved.type_annotation.is_some()
+                    // A TYPE decl (Disj/Conj) referenced bare is a real Rule-1
+                    // edge: typecheck is census-served, but RUNTIME construction
+                    // and variant-tag identity need the declaring module loaded
+                    // (re-eval of `{ type: User }` died `undefined variable:
+                    // User` with the enum's module unpulled). Binder/key-position
+                    // occurrences are already excluded, so the residual
+                    // over-pull is a census-unique type homonym of a plain
+                    // local — bounded and rare.
+                    || binding.resolved.connective != crate::v1_std_core::Connective::NoConnective
             };
             let resolve_in = |census: &Rc<SymbolIndex>| -> Option<String> {
                 if service_head {
