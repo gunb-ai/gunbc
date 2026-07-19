@@ -228,6 +228,13 @@ pub struct InferScope {
     pub type_env: Rc<TypeEnv>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    /// Names bound by BODY-grain binders only (let / match pattern / fn+lambda
+    /// params) — a strict subset of `locals`, which the module context pre-seeds
+    /// with variant/service census bindings. The call-sig lookup gates on THIS
+    /// set (nearest-first: body locals > module fns > census global_bare): a
+    /// `let classify` callee must shadow a census homonym, while an imported
+    /// 0-arg fn sharing a name with its own census row must not lose its sig.
+    pub body_locals: Rc<HashMap<String, bool>>,
     pub match_bound_names: Rc<HashMap<String, bool>>,
     pub module_name: String,
     pub service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
@@ -2335,10 +2342,21 @@ pub fn build_params_scope(scope: Rc<InferScope>, params: Rc<Vec<Rc<Node>>>) -> R
                 )
             },
         );
+        let new_body_locals = params.clone().iter().cloned().fold(
+            scope.body_locals.clone(),
+            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    param_node_name_at(p.clone(), scope.type_env.clone().source_indices.clone()),
+                    true,
+                )
+            },
+        );
         Rc::new(InferScope {
             type_env: scope.type_env.clone(),
             func_env: scope.func_env.clone(),
             locals: new_locals.clone(),
+            body_locals: new_body_locals.clone(),
             match_bound_names: scope.match_bound_names.clone(),
             module_name: scope.module_name.clone(),
             service_registry: scope.service_registry.clone(),
@@ -2366,6 +2384,7 @@ pub fn extend_scope(
                 provenance: provenance.clone(),
             }),
         ),
+        body_locals: v1_rt::rc_map_insert(scope.body_locals.clone(), name.clone(), true),
         match_bound_names: scope.match_bound_names.clone(),
         module_name: scope.module_name.clone(),
         service_registry: scope.service_registry.clone(),
@@ -2392,6 +2411,7 @@ pub fn extend_scope_match_bound(
                 provenance: provenance.clone(),
             }),
         ),
+        body_locals: v1_rt::rc_map_insert(scope.body_locals.clone(), name.clone(), true),
         match_bound_names: v1_rt::rc_map_insert(
             scope.match_bound_names.clone(),
             name.clone(),
@@ -2420,10 +2440,15 @@ pub fn extend_scope_with_params(scope: Rc<InferScope>, params: Rc<Vec<String>>) 
                 )
             },
         );
+        let new_body_locals = params.clone().iter().cloned().fold(
+            scope.body_locals.clone(),
+            |acc: Rc<HashMap<String, bool>>, p: String| v1_rt::rc_map_insert(acc, p.clone(), true),
+        );
         Rc::new(InferScope {
             type_env: scope.type_env.clone(),
             func_env: scope.func_env.clone(),
             locals: new_locals.clone(),
+            body_locals: new_body_locals.clone(),
             match_bound_names: scope.match_bound_names.clone(),
             module_name: scope.module_name.clone(),
             service_registry: scope.service_registry.clone(),
@@ -2849,6 +2874,7 @@ pub fn infer_method_args_with_fold(
                                     type_env: scope.type_env.clone(),
                                     func_env: scope.func_env.clone(),
                                     locals: scope.locals.clone(),
+                                    body_locals: scope.body_locals.clone(),
                                     match_bound_names: scope.match_bound_names.clone(),
                                     module_name: scope.module_name.clone(),
                                     service_registry: scope.service_registry.clone(),
@@ -2891,6 +2917,7 @@ pub fn infer_method_args_with_fold(
                                         type_env: scope.type_env.clone(),
                                         func_env: scope.func_env.clone(),
                                         locals: scope.locals.clone(),
+                                        body_locals: scope.body_locals.clone(),
                                         match_bound_names: scope.match_bound_names.clone(),
                                         module_name: scope.module_name.clone(),
                                         service_registry: scope.service_registry.clone(),
@@ -3447,14 +3474,17 @@ pub fn infer_expr(
                     expr_call_func_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
                 let span = texpr.span.clone();
                 let call_args = texpr.children.clone();
-                // Body-scope locals shadow the fn-sig lookup (nearest-first
-                // precedence: locals > module fns > census global_bare). Without
-                // this gate a corpus-unique census homonym out-precedes a `let`
-                // callee: refinement.dag's `let classify = by.classify;
+                // Body-scope binders shadow the fn-sig lookup (nearest-first
+                // precedence: body locals > module fns > census global_bare).
+                // Without this gate a corpus-unique census homonym out-precedes
+                // a `let` callee: refinement.dag's `let classify = by.classify;
                 // match classify(base)` typed the scrutinee as a v2 lens test
                 // module's `fn classify -> Optional<Finding>`, refusing the
-                // match arms against the wrong enum.
-                let sig = if v1_rt::map_get(&scope.locals, func_name.clone()).is_some() {
+                // match arms against the wrong enum. Gates on body_locals, not
+                // locals: the module context pre-seeds locals with variant and
+                // service census bindings that must NOT eclipse fn sigs (an
+                // imported 0-arg fn would lose its sig to its own census row).
+                let sig = if v1_rt::map_get(&scope.body_locals, func_name.clone()).is_some() {
                     None
                 } else {
                     lookup_func_sig(
@@ -5337,6 +5367,7 @@ match bare_s.clone() {
                     type_env: lam_scope.type_env.clone(),
                     func_env: lam_scope.func_env.clone(),
                     locals: lam_scope.locals.clone(),
+                    body_locals: lam_scope.body_locals.clone(),
                     match_bound_names: lam_scope.match_bound_names.clone(),
                     module_name: lam_scope.module_name.clone(),
                     service_registry: lam_scope.service_registry.clone(),
@@ -16303,6 +16334,7 @@ pub fn typecheck_module(
             type_env: env.clone(),
             func_env: ctx.func_env.clone(),
             locals: data_locals.clone(),
+            body_locals: v1_rt::rc_empty_map::<String, bool>(),
             match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
             module_name: resolved_module_name.clone(),
             service_registry: ctx.svc_registry.clone(),

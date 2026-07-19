@@ -1760,7 +1760,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       let call_args = texpr.children
 
-      let sig = lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
+      let sig = match map_get(scope.locals, func_name) {
+        Present { value: _ } => Absent
+        Absent => lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
+      }
       let sig_params = match sig {
         Present { value: s } => s.params
         Absent => []
@@ -2958,6 +2961,8 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
     }
   }
 }
+
+data call_locals_shadow_note: String = "Body-scope locals shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate returns Absent when scope.locals binds the callee name, sending the call down the local-callable path exactly as the pre-census seed did."
 
 data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). Breaking at the fixpoint returns the same answer the else arm already gives for non-alias shapes: downstream field-access inference reds with a located type error if the shape is genuinely wrong — typed and loud, never fabricated."
 

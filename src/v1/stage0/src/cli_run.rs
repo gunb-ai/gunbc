@@ -3739,11 +3739,14 @@ pub fn load_sources_for_entry(
 struct BareCandidates {
     names: BTreeSet<String>,
     call_position: BTreeSet<String>,
-    /// HEAD segments of dotted chains (`cron` in `cron.Tab.List()`): the dotted
-    /// module-path scan owns chains whose head is a module-path prefix, but a
-    /// SERVICE head is a single census name with no module spelling — with its
-    /// import stripped, only the services census can name its provider module.
-    dotted_heads: BTreeSet<String>,
+    /// Full dotted chains (`cron.Tab.List` in `cron.Tab.List()`): the dotted
+    /// module-path scan owns chains whose prefix is a module path, but a
+    /// SERVICE reference's prefix is a services-census key (`cron.Tab`,
+    /// `llm.Codex` — service names are themselves dotted) with no module
+    /// spelling — with its import stripped, only the services census can name
+    /// its provider module. The consumer tries each dot-prefix of the chain
+    /// against the services census.
+    dotted_chains: BTreeSet<String>,
 }
 
 fn bare_identifier_candidates(content: &str) -> BareCandidates {
@@ -3753,7 +3756,7 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
     let mut out = BareCandidates {
         names: BTreeSet::new(),
         call_position: BTreeSet::new(),
-        dotted_heads: BTreeSet::new(),
+        dotted_chains: BTreeSet::new(),
     };
     let mut i = 0usize;
     while i < bytes.len() {
@@ -3821,7 +3824,24 @@ fn extend_with_bare_reference_closure(
         let census = tree_bare_census_for_root(index, &root)?;
         let referencing_module = extract_module_path(&sf.content).unwrap_or_default();
         let candidates = bare_identifier_candidates(&sf.content);
-        for name in candidates.names.iter().cloned() {
+        // Dotted-chain heads that name a SERVICE pull its provider module: with
+        // the import stripped (`import extdeps.cron` gone from cron_tag.dag),
+        // `cron.Tab.List()` has no module-path spelling the dotted scan can
+        // follow — the services census is the only edge back to the provider.
+        // A module-path head (`v2`, `std`) misses the services census: no pull.
+        let service_heads: Vec<String> = candidates
+            .dotted_heads
+            .iter()
+            .filter(|h| !candidates.names.contains(h.as_str()))
+            .cloned()
+            .collect();
+        let all_names: Vec<(String, bool)> = candidates
+            .names
+            .iter()
+            .map(|n| (n.clone(), false))
+            .chain(service_heads.into_iter().map(|n| (n, true)))
+            .collect();
+        for (name, service_head) in all_names {
             // Only CALLABLE-shaped references pull a module: the runtime gap this
             // closure exists for is the interpreter's fn/service registry
             // (`no such function`); types and variants are census-served at
@@ -3846,7 +3866,10 @@ fn extend_with_bare_reference_closure(
                     || !binding.resolved.params.is_empty()
                     || binding.resolved.type_annotation.is_some()
             };
-            let target_module = match v1_rt::map_get(&census.global_bare, name.clone()) {
+            let target_module = if service_head {
+                v1_rt::map_get(&census.services, name.clone()).map(|entry| entry.module_path.clone())
+            } else {
+                match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
                     GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path,
@@ -3879,6 +3902,7 @@ fn extend_with_bare_reference_closure(
                     } else {
                         None
                     }
+                }
                 }
             };
             let Some(module_path) = target_module else {
