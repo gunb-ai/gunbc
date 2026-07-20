@@ -73,7 +73,7 @@ type RoadmapServeHandler
   = BeltDispatchHandler        -- POST /dispatch/{node_id}
 ```
 
-The route table = every row of `roadmap_dashboard_served_static_route_table()` lifted via `StaticRoute` (GET `/`, GET `/roadmap`, `/healthz`, `/ROADMAP.md`, `/target/roadmap-dispatch.json` — the page rows now carry the launch button + script, §4 below) **plus** one dynamic row: `DynamicRoute { method: POST, path_pattern: /dispatch/{node_id}, handler: BeltDispatchHandler }`.
+The route table = every row of `roadmap_dashboard_served_static_route_table()` lifted via `StaticRoute` (GET `/`, GET `/roadmap`, `/healthz`, `/ROADMAP.md`, `/target/roadmap-dispatch.json`) **plus** one dynamic row: `DynamicRoute { method: POST, path_pattern: /dispatch/{node_id}, handler: BeltDispatchHandler }`.
 
 Wait — static page rows frozen into the table would re-freeze the roadmap (the §3 cost this design exists to remove). So the page rows are **not** static rows here:
 
@@ -131,7 +131,7 @@ The launch button + minimal client script land in `gunbc.roadmap_page` in **belt
 `gunbc.live_deploy.spec` today: members = {tailscale pkg, nodejs pkg (Ensured), server.js, systemd unit, tailscale-serve (Owned)}. B's desired membership:
 
 - **New single authority `dag/gunbc/host_layout.dag`** (`gunbc.host_layout`): `srv1_gunbc_repo_root = /opt/gunbc/gunbc`, `srv1_gunbc_serve_binary = /opt/gunbc/bin/gunbc`, `srv1_dispatch_worktree_root = /opt/gunbc/dispatch-worktrees`. `roadmap_belt_actuate.belt_actuate_workdir` AND `roadmap_dispatch_actuator.dispatch_worktree_root` re-ground as projections of these rows (deleting their private copies — the belt spawn root and the serve tree are **the same fact**, which is precisely why dispatch works in-process: the serving tree is the repo the belt worktrees from). The deploy spec and the systemd unit consume the same rows. Lane agreement (parent 2026-07-20): A provisions srv1 **manually to these exact paths** for the interim (no env-var fork, no .dag path change on A's side), so the baked defaults work today; B's PR formalizes that same provisioning through the deploy membership — after B's apply, the paths exist *because the deploy's own membership says so*, and the interim hand-provisioning retires.
-- **Members:** `ServeBinary` (Owned, path `srv1_gunbc_serve_binary`; upsert = `sudo install -m 0755` of the deploy job's built seed binary — the deploy job already builds the seed to run `gunbc run --function live_deploy_apply_srv1_wet`, so the artifact is present by construction), `GunbcSourceTree` (Owned, path `srv1_gunbc_repo_root`; upsert = rsync of the runner checkout **including `.git`** — the belt's `git worktree add` requires a real repo), `SystemdUnit` (ExecStart flips to `gunbc serve …` per §3, `WorkingDirectory` = repo root), `TailscaleServeMapping` (unchanged), `TmuxPackage` (Ensured — the belt's observe/spawn substrate; today present by hand). `NodeJsPackage` and `ServerScript` leave the desired set — under the membership poles that is exactly a `Removed → Teardown` for the Owned server.js and **no teardown** for the Ensured nodejs (R5: Ensured is never torn down — the wall already in the spine). The `claude` CLI is deliberately NOT a member this PR (hand-present on srv1; a follow-up models its provisioning honestly rather than smuggling a curl|bash).
+- **Members:** `ServeBinary` (Owned, path `srv1_gunbc_serve_binary`; upsert = `sudo install -m 0755` of the deploy job's built seed binary — the deploy job already builds the seed to run `gunbc run --function live_deploy_apply_srv1_wet`, so the artifact is present by construction), `GunbcSourceTree` (Owned, path `srv1_gunbc_repo_root`; upsert = rsync of the runner checkout **including `.git`** — the belt's `git worktree add` requires a real repo), `DispatchWorktreeRoot` (Owned, path `srv1_dispatch_worktree_root`; upsert = `install -d` — the belt's worktree target must exist before the first spawn), `SystemdUnit` (ExecStart flips to `gunbc serve …` per §3, `WorkingDirectory` = repo root), `TailscaleServeMapping` (unchanged), `TmuxPackage` (Ensured — the belt's observe/spawn substrate; today present by hand). `NodeJsPackage` and `ServerScript` leave the desired set — under the membership poles that is exactly a `Removed → Teardown` for the Owned server.js and **no teardown** for the Ensured nodejs (R5: Ensured is never torn down — the wall already in the spine). The `claude` CLI is deliberately NOT a member this PR (hand-present on srv1; a follow-up models its provisioning honestly rather than smuggling a curl|bash).
 - The apply/retract scripts + systemd unit goldens regenerate through the existing `emit.dag` pipeline (`orch_emit_pipeline` over the bash medium); the committed `.github/live-deploy-srv1-apply.sh`/`-retract.sh` drift gates stay the byte oracles. The `install_d_shared_setup_latent_coupling_note` marker fires by design: a second (and third) `/opt/gunbc` writer arrives, so the `install -d` moves to the shared-prefix form the note prescribes.
 - Readiness/digest read-back (`live_deploy.readiness`, `roadmap_static_site` digest): unchanged consumers — `/healthz` and the served-digest read-back now prove the **gunbc-served** process. The digest artifact remains content-addressed over the *body*, so the read-back is server-implementation-agnostic by construction (the receipt that proves A→B preserved the contract).
 
@@ -144,8 +144,8 @@ Deploy risk containment: the flip is one systemd unit + two new members; retract
 - `match_path_template`: literal hit · param binding extraction (`/dispatch/abc` → `node_id=abc`) · segment-count miss · literal miss (each a separate witness; the miss cases are the REDs).
 - `serve_select_route`: GET `/` selects the daily page handler · POST `/dispatch/x` selects `BeltDispatchHandler` with the param bound · GET `/dispatch/x` → `MethodNotAllowed [POST]` · unknown path → `NoRouteMatched` · first-match-wins on an overlapping table (discriminating input).
 - status mapping totality: every `BeltDispatchResult` variant → its status row (6 witnesses; the 409/503/502 arms are the REDs that a lazy 200-or-500 collapse would fail).
-- page: a not-signed-off fixture node renders the `data-dispatch` button; a signed-off node renders none; the script guard witness — the live script passes `escape_text(js) == js`, and a perturbed script containing `&&` **refuses** (the RED that keeps the wall live).
-- goldens: server.js + apply/retract scripts + systemd unit re-frozen; drift gates stay the byte oracles.
+- (page button/script witnesses are A's, with the page edit — not duplicated here.)
+- goldens: apply/retract scripts + systemd unit re-frozen; drift gates stay the byte oracles.
 
 **Seed-side receipts (documented in the PR, run by execution):**
 
@@ -166,6 +166,6 @@ Deploy risk containment: the flip is one systemd unit + two new members; retract
 | Scaffold | Dissolves to |
 |---|---|
 | interpreted `gunbc serve` accept-loop realization | emit-on-demand of the serve closure (ROADMAP §④) |
-| escape-free-script guard | `std.markup` raw-text elements (HTML5-grounded) |
-| `node_http_server_emit` static server (+ belt A exec path) | this design live on srv1 |
+| `node_http_server_emit` static server + A's interim Node POST /dispatch exec route | this design live on srv1 (A's route is declared throwaway by the parent lane) |
+| A's interim manual srv1 provisioning of the host-layout paths | this design's deploy membership (same paths, formalized) |
 | hand-present `claude` CLI on srv1 | a modeled Ensured member with a cited install authority |
