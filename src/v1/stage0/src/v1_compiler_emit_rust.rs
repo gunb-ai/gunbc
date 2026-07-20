@@ -1101,15 +1101,35 @@ pub fn render_rust_decl_type(
             None => None,
         };
         match applied_overlay.clone() {
-            Some(applied) => render_rust_applied_type_shared(
-                applied.clone(),
-                generic_param_names.clone(),
-                shared_types.clone(),
-                corpus_repr.clone(),
-                source_indices.clone(),
-                variant_to_enum.clone(),
-                env.clone(),
-            ),
+            Some(applied) => {
+                let outer_name = authored_name_at(source_indices.clone(), n.clone());
+                if (((((outer_name.clone() != "".to_string())
+                    && (n.connective.clone() == Connective::NoConnective))
+                    && ((n.children.clone().len() as i64) == 0))
+                    && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
+                    && rust_fn_sig_preserves_authored_alias_leaf(
+                        outer_name.clone(),
+                        corpus_repr.clone(),
+                    ))
+                {
+                    render_rust_shared_type_with_optional(
+                        n.clone(),
+                        outer_name.clone(),
+                        outer_name.clone(),
+                        shared_types.clone(),
+                    )
+                } else {
+                    render_rust_applied_type_shared(
+                        applied.clone(),
+                        generic_param_names.clone(),
+                        shared_types.clone(),
+                        corpus_repr.clone(),
+                        source_indices.clone(),
+                        variant_to_enum.clone(),
+                        env.clone(),
+                    )
+                }
+            }
             None => {
                 let name = authored_name_at(source_indices.clone(), n.clone());
                 if (((n.connective.clone() == Connective::NoConnective)
@@ -1447,13 +1467,25 @@ pub fn render_rust_fn_sig_type(
                             env.clone(),
                         )
                     } else {
-                        render_rust_fn_sig_type_applied_binding(
-                            n.clone(),
-                            shared_types.clone(),
-                            corpus_repr.clone(),
-                            source_indices.clone(),
-                            env.clone(),
-                        )
+                        if is_container_type(name.clone()) {
+                            render_rust_decl_type(
+                                n.clone(),
+                                Rc::new(vec![]),
+                                shared_types.clone(),
+                                corpus_repr.clone(),
+                                source_indices.clone(),
+                                variant_to_enum.clone(),
+                                env.clone(),
+                            )
+                        } else {
+                            render_rust_fn_sig_type_applied_binding(
+                                n.clone(),
+                                shared_types.clone(),
+                                corpus_repr.clone(),
+                                source_indices.clone(),
+                                env.clone(),
+                            )
+                        }
                     }
                 }
             }
