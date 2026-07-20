@@ -16,11 +16,11 @@
 | **Peak RSS on worker object (this box)?** | **~1.51 GiB** VmHWM after discovery warm (73 entries). Shell-only build: **~50 MiB**, **~7.5 s**. |
 | **Width duplication (RSS)?** | **~linear**: W=1 → 1.58 GiB; W=2 → 3.16 GiB on the same box. |
 | **RSS crossover for sharing?** | At W=2, private ≈3.16 GiB vs one union ≈1.58 GiB — memory favors sharing from width 2 **on RSS alone**. This box has a **31.25 GiB cgroup cap**; even W=9 private ≈14 GiB stays under cap — **bytes are not the binding constraint here**. |
-| **Is width worth it for wall-clock?** | **Not answered by this spike alone.** PR #6905 showed parallel pool is a wall-clock **loss** (serial 11.75 min green vs un-latched 47 min+). Shell build is ~7.5 s/worker; discovery warm is ~55 s/worker on this box. Sharing must remove the **warm typecheck path**, not just bytes, or the lane stays Amdahl-bound. |
+| **Is width worth it for wall-clock?** | **No — decode dominates typecheck.** Module-grain ratio (§3.6): **0.01** typecheck/decode per module (~3.8 ms typecheck vs ~318 ms decode on 40 serde-eligible modules). Sharing typed snapshots does **not** remove the ~55 s warm; it would **add** serde decode cost. PR #6905 Amdahl bound still holds. |
 | **store-path-only vs whole-seed?** | **store-path-only** for increment C (design §9.2 default). `im_rc` collections stay `!Send` without `im-rc`→`im`. |
 | **im-rc price?** | **123 / 154** stage0 `.rs` files reference `im_rc` (dynamic census). `lib.rs` aliases `HashMap`/`Vector`/`BTreeSet` to it. |
 
-**What is NOT established:** serde-based crossover (discarded — see §2.2). Full `build-vs-attach` on this box (**OOM exit 137**, §3.5). Whole-tree strict resolve to the ~10.7 GiB nimble-owl/srv1 receipt (not re-run here).
+**What is NOT established:** serde-based byte crossover (discarded — see §2.2). Whole-tree strict resolve to the ~10.7 GiB nimble-owl/srv1 receipt (not re-run here). `build-vs-attach` was **not retried** (OOM by construction on 31 GiB — two whole-tree indexes); module-grain (§3.6) answers the wall-clock question instead.
 
 ---
 
@@ -40,7 +40,8 @@
 1. **Peak RSS (VmHWM) is the only byte metric used for conclusions.** Per-field `index-field` lines are shallow map-shell + key counts; they **under-count** parse trees, resolved graphs, and typed payloads. They are diagnostic, not summed for crossover.
 2. **Serde transport bytes are not reported** — per-module encode OOM'd or produced non-credible extrapolations; using them for crossover was an error in the first draft (corrected per operator review).
 3. **Residue is under-estimated** — `parse_cache`, `resolved_graph_memo`, and `intern_table` payloads stay per-worker after Arc migration; shallow accounting excludes their heap bodies.
-4. **`build-vs-attach` OOM'd** on this box (exit 137, ~100 s) — cannot report attach-vs-cold wall-clock on shared store here without a larger cgroup or split processes.
+4. **`build-vs-attach` not run** — holds two whole-tree indexes in one process; OOM on 31 GiB cgroup by construction. Module-grain (§3.6) measures the same decision at module residency.
+5. **Module-grain sample bias** — serde snapshots capped at 50 MiB to stay inside cgroup; only **40 / 513** cold-miss modules fit (473 skipped). Ratio is over the serde-eligible tail, not a uniform corpus draw.
 
 ### 2.3 Shareable vs per-worker residue (design §4.2)
 
@@ -115,26 +116,33 @@ Per-field shallow accounting (shell + keys only — **not** payload bodies; peak
 
 **RSS net-win sketch (not a done-bar):** `private(W) ≈ 1.58 GiB × W`; `shared(W) ≈ 1.58 GiB + (W−1) × 0.05 GiB` (one warm union + cold shells). Crossover **W≥2** on bytes alone — but cgroup headroom is ample to W=9 (~14 GiB naive linear).
 
-### 3.6 build-vs-attach — **BLOCKED on this box**
+### 3.6 Module-grain typecheck vs decode (`--mode module-grain-produce --sample-size 200`)
+
+Operator-directed replacement for `build-vs-attach`: cold typecheck per module during discovery warm, bounded serde encode (50 MiB cap), decode in a **fresh subprocess** — peak residency is N modules, not two whole-tree indexes.
 
 ```
-EXIT=137 (OOM killed, ~100s)
-[rc-arc-spike] kind=host-metadata hostname=b96c6d293441 mem_available_kb=111314968 cgroup_max_bytes=33578549248
-measure_rc_arc_share_spike: build-vs-attach
+[rc-arc-spike] kind=host-metadata hostname=b96c6d293441 mem_available_kb=118522284 cgroup_max_bytes=33578549248
+[rc-arc-spike] kind=timing label=module-grain-warm elapsed_ms=60491 peak_rss_bytes=1593118720
+[rc-arc-spike] kind=module-grain-produce discovery_entries=73 discovery_rows=299 sampled_modules=40 skipped_large=473 skipped_missing=0 manifest=target/rc-arc-spike-module-grain/manifest.jsonl
+[rc-arc-spike] kind=module-grain-summary modules=40 missing_typecheck_ns=0 typecheck_ms_per_module=3.761 decode_ms_per_module=318.119 typecheck_to_decode_ratio=0.01
 ```
 
-Warm shared index + cold shell + attach in one process exceeds the **31.25 GiB cgroup** before timing lines emit. **Escalation:** re-run on srv3 (125 GiB budget, no tight cgroup) or split into separate processes.
-
-### 3.7 The decisive question (time, not bytes)
-
-From PR #6905: widening the pool is a **wall-clock loss** on ~12 min total corpus work because each worker front-loads index build + warm resolve.
-
-| Phase | This box (worker object) |
+| Metric | Value |
 |---|---|
-| Shell build | ~7.5 s |
-| Discovery warm (73 entries) | ~55 s |
+| Modules encoded+decoded | **40** (473 skipped: serde snapshot > 50 MiB) |
+| Typecheck ms/module (cold miss) | **3.761** |
+| Decode ms/module (fresh process) | **318.119** |
+| Ratio typecheck/decode | **0.01** (~100× **slower** to decode than to typecheck) |
 
-Increment C helps **only if** `build_multi_entry_index_with_shared_caches` + warm shared typed store lets workers **skip the ~55 s cold typecheck warm** (decode/hit path on cache hits). It does **not** remove the ~7.5 s shell build (`build_module_index` + `build_module_graph_facts_live` are per-worker). `build-vs-attach` wall-clock remains **unmeasured** here (OOM).
+**Conclusion:** increment C does **not** buy wall-clock. Even if workers shared typed bytes and skipped cold typecheck, paying serde decode per module is ~100× worse per module than computing types. The ~55 s discovery warm survives; sharing buys bytes only (§3.5). **Lane is dead for wall-clock** unless the transport changes (not in scope for this spike).
+
+### 3.7 build-vs-attach — **not run (superseded by §3.6)**
+
+```
+EXIT=137 (OOM killed, ~100s) — two whole-tree indexes in one 31.25 GiB cgroup
+```
+
+Not retried per operator direction; module-grain answers the decode-vs-typecheck question without holding two indexes.
 
 ---
 
@@ -156,7 +164,7 @@ cargo build --release -p v1-compiler --bin measure_rc_arc_share_spike
 ./target/release/measure_rc_arc_share_spike --mode worker-shell-build
 ./target/release/measure_rc_arc_share_spike --mode worker-discovery-warm
 ./target/release/measure_rc_arc_share_spike --mode width-scaling-worker --max-width 2
-./target/release/measure_rc_arc_share_spike --mode build-vs-attach   # blocked on 31GiB cgroup
+./target/release/measure_rc_arc_share_spike --mode module-grain-produce --sample-size 200
 ```
 
 ---

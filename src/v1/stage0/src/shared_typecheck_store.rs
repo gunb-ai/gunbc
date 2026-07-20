@@ -15,6 +15,7 @@
 //! *names* and diagnostic trees — not per-worker `InternTable` indices — so worker B can decode
 //! worker A's byte snapshot against its own intern table without a cross-representation straddle.
 
+use serde::Deserialize;
 use std::collections::HashMap as StdHashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -71,7 +72,9 @@ impl SharedTypecheckCaches {
     /// Decode a typed snapshot **without** holding the store lock.
     /// Payload is name-keyed (no intern-table indices) — safe to materialize on any worker index.
     pub fn decode_typed_snapshot(bytes: &[u8]) -> Result<Rc<TypecheckModuleResult>, String> {
-        let value: TypecheckModuleResult = serde_json::from_slice(bytes)
+        let mut de = serde_json::Deserializer::from_slice(bytes);
+        de.disable_recursion_limit();
+        let value = TypecheckModuleResult::deserialize(&mut de)
             .map_err(|e| format!("shared typecheck store decode: {e}"))?;
         Ok(Rc::new(value))
     }
