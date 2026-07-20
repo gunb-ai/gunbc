@@ -1383,7 +1383,9 @@ fn pool_parse_heads_only_does_not_prefill_parse_cache() {
 
     let huge_body = format!(
         "module huge\nfn big() -> Int {{\n{}\n}}\n",
-        (0..50_000).map(|i| format!("  let x{i} = {i}\n")).collect::<String>()
+        (0..50_000)
+            .map(|i| format!("  let x{i} = {i}\n"))
+            .collect::<String>()
     );
     std::fs::write(dir.join("huge.dag"), huge_body).expect("write huge.dag");
     std::fs::write(
