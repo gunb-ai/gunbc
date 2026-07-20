@@ -1,5 +1,6 @@
 module gunbc.tools.review_codex
 
+import extdeps.shell
 
 data default_model: String = "gpt-5.4"
 data default_reasoning_effort: String = "xhigh"

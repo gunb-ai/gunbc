@@ -4278,8 +4278,18 @@ fn extend_with_bare_reference_closure(
             let Some(module_path) = target_module else {
                 continue;
             };
+            // Same class as the provenance refusal below, and it refuses for the same
+            // reason: the census RESOLVED this name to a module, so the pool asserted the
+            // module exists — a missing source file is the pool contradicting itself, not
+            // a name that failed to resolve. Dropping it silently would widen the
+            // "unresolved name" bucket with a pool defect whose frequency then reads zero
+            // (DESIGN 5: a failure arm must refuse, never widen).
             let Some(dep) = index.source_files.get(&module_path) else {
-                continue;
+                return Err(format!(
+                    "bare_reference_closure: census resolved '{name}' in '{file_rel}' to \
+                     module '{module_path}', but that module has no source file in the pool \
+                     (fail-closed)"
+                ));
             };
             // A `test fn`/`test data` ROW is an execution ROOT, never a
             // dependency: a bare homonym resolving to another module's witness
