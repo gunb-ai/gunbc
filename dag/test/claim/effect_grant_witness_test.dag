@@ -6,7 +6,7 @@ import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
   Verb, Read, Write, Execute, verb_of_effect_shape, verb_eq,
   NamespaceTree, FilesystemPathTree, UriTree, ServiceOpTree,
-  NamespacePosition, position_under, filesystem_execute_position,
+  NamespacePosition, position_under, filesystem_position,
   HandlerBinding, RealTransport, Replay,
   LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,
   Grant, Envelope,
@@ -57,11 +57,11 @@ data write_only_env: Envelope = Envelope {
   grants: [workspace_write_grant]
 }
 
-data usr_bin_root: NamespacePosition = filesystem_execute_position(path: ["usr", "bin"])
+data usr_bin_root: NamespacePosition = filesystem_position(path: ["usr", "bin"])
 
-data apt_get_target: NamespacePosition = filesystem_execute_position(path: ["usr", "bin", "apt-get"])
+data apt_get_target: NamespacePosition = filesystem_position(path: ["usr", "bin", "apt-get"])
 
-data other_bin_target: NamespacePosition = filesystem_execute_position(path: ["usr", "sbin", "other"])
+data other_bin_target: NamespacePosition = filesystem_position(path: ["usr", "sbin", "other"])
 
 data execute_only_grant: Grant = Grant {
   verb: Execute,

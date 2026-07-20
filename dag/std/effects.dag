@@ -77,7 +77,11 @@ fn create_effect_is_dedupable(shape: EffectShape<KeySource>) -> Bool {
         PostAlways => false
         KeylessFallback { method: method } => false
       }
-    _ => false
+    ReadEffect => false
+    UpsertEffect { key_source: key_source } => false
+    DeleteEffect { key_source: key_source } => false
+    AppendEffect => false
+    ExecuteEffect => false
   }
 }
 
@@ -93,12 +97,20 @@ fn create_double_init_collapsible(a: EffectShape<KeySource>, b: EffectShape<KeyS
                 PostAlways => false
                 KeylessFallback { method: method } => false
               }
-            _ => false
+            ReadEffect => false
+            UpsertEffect { key_source: key_source } => false
+            DeleteEffect { key_source: key_source } => false
+            AppendEffect => false
+            ExecuteEffect => false
           }
         PostAlways => false
         KeylessFallback { method: method } => false
       }
-    _ => false
+    ReadEffect => false
+    UpsertEffect { key_source: key_source } => false
+    DeleteEffect { key_source: key_source } => false
+    AppendEffect => false
+    ExecuteEffect => false
   }
 }
 
@@ -216,7 +228,15 @@ fn check_modifier_vs_derivation(
           CreateIfAbsent { key_source: key_source } =>
             Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
         }
-      _ =>
+      ReadEffect =>
+        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+      UpsertEffect { key_source: key_source } =>
+        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+      DeleteEffect { key_source: key_source } =>
+        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+      AppendEffect =>
+        Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
+      ExecuteEffect =>
         Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
     }
   } else if !declared_idempotent && derived_idempotent {
@@ -228,8 +248,11 @@ fn check_modifier_vs_derivation(
           PostAlways => Agrees
           KeylessFallback { method: method } => Agrees
         }
-      _ =>
-        Agrees
+      ReadEffect => Agrees
+      UpsertEffect { key_source: key_source } => Agrees
+      DeleteEffect { key_source: key_source } => Agrees
+      AppendEffect => Agrees
+      ExecuteEffect => Agrees
     }
   } else if !declared_idempotent && declared_readonly {
     match op.method {

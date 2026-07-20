@@ -93,7 +93,7 @@ fn verb_eq(a: Verb, b: Verb) -> Bool {
   }
 }
 
-fn filesystem_execute_position(path: List<String>) -> NamespacePosition {
+fn filesystem_position(path: List<String>) -> NamespacePosition {
   NamespacePosition {
     tree: FilesystemPathTree,
     path: path

@@ -3,7 +3,7 @@ module v1.compiler.effect_derivation
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 
 import std.effects {
-  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
+  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
   KeySource, PathParam, InputField, CompositeKey,
   DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput,
   ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
