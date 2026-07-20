@@ -202,11 +202,9 @@ pub enum Bool {
     False,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Json(pub std::marker::PhantomData<()>);
+pub type Json = serde_json::Value;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Bytes(pub std::marker::PhantomData<()>);
+pub type Bytes = Vec<u8>;
 
 pub type Char = i64;
 
