@@ -17346,8 +17346,20 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // in #6817 (P-A), surfaced when this PR brought effect_grant.dag into the affected
     // set. Dissolves with derived equality from inhabitance (DESIGN §3/§4), with its siblings.
     "dag/std/effect_grant.dag::namespace_tree_eq",
-    "dag/std/effects.dag::create_double_init_collapsible",
-    "dag/std/effects.dag::create_effect_is_dedupable",
+    // 2026-07-20 STALE-ROW REMOVAL: `create_double_init_collapsible` and
+    // `create_effect_is_dedupable` were rostered here AND declared kernel-permanent in
+    // `cla_is_kernel_permanent_fn`, so the analyzer never reports them as live sites and the
+    // two rows could only ever count as stale. DESIGN §6 makes them mutually exclusive — a
+    // non-fold residue is "either a named irreducible kernel or un-migrated modeling, there is
+    // no third" — so a declared kernel must not also carry a burn-down row. The kernel
+    // declaration is the authority; these rows were the duplicate.
+    //
+    // Attribution (checked, not assumed): main was already red on
+    // `non_fold_residue_clean_holds` / `non_fold_residue_no_unrostered_or_stale` before #6848
+    // merged — the scheduled cold falsifier failed on exactly these two witnesses at
+    // 2026-07-20T14:12Z on main at 73eea76dd7 (#6914). Main's per-PR `ci` stayed green because
+    // affected-set selection did not run the corpus-read nfr witnesses for those diffs; #6848
+    // surfaced it by running them, which is the masking class the dated blocks above describe.
     "dag/std/effects.dag::key_source_eq",
     "dag/std/encoding.dag::encoding_lattice_join",
     "dag/std/encoding.dag::encoding_lattice_meet",
