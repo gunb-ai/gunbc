@@ -751,26 +751,6 @@ impl MemoryGovernor {
         }
     }
 
-    /// A unit of work completed WITHOUT holding an admission slot: the discovery pump's
-    /// width-1 inline lane, which runs a group against an index already resident on the
-    /// pump thread and so claims no worker-sized residency (`active` is denominated in
-    /// worker-sized claims — the quantity `measured_worker_share` calibrates).
-    ///
-    /// It IS an increase point, and the only one available off the floor: the window is 1,
-    /// so no worker exists to land a cost, and the lane is reached only while the window
-    /// stays 1. Without it width 1 is an absorbing state — nothing inside the lane could
-    /// lift the window off 1 (CI run 29707161743: a whole 621-group floor at
-    /// max_width_reached=1, admissions=1, on a 125 GB budget).
-    ///
-    /// It is bounded to the exploratory step. `note_completion` re-reads the signals and
-    /// grows only when they are calm and one more worker is predicted to fit; once a
-    /// worker has landed a cost, that prediction is real arithmetic rather than the
-    /// unmeasured commitment it necessarily is on the first step.
-    /// 🟡 dissolve-on: Rc→Arc makes the index shareable, retiring the inline lane entirely.
-    pub fn note_inline_unit_complete(&self) {
-        self.observe(CompletionKind::IncreasePoint)
-    }
-
     fn note_first_cost_paid(&self) {
         let sig = self.source.read();
         let mut core = self.core.lock().unwrap();
@@ -1107,35 +1087,26 @@ mod tests {
     }
 
     #[test]
-    fn slotless_inline_completion_lifts_the_window_off_one() {
-        // The discovery pump's width-1 lane holds NO slot (it claims no worker-sized
-        // residency), but its calm completion must still be an additive-increase point.
-        // Otherwise width 1 is an ABSORBING state: the lane is reached only while the
-        // window is 1, and nothing inside it can lift the window off 1 — which is what
-        // ran a whole 621-entry-group floor serially on a 125 GB budget (CI run
-        // 29707161743: max_width_reached=1, admissions=1, peak 6.97 GB, zero creep).
+    fn creep_is_never_grown_through_at_an_increase_point() {
+        // Calm is a PRECONDITION of additive increase, not a property of which event
+        // carries the evidence: an increase point observed under creep backs the window
+        // off, exactly as the admission path would. The symmetric case (creep seen at an
+        // observe-only unit poll) is asserted in
+        // `the_window_tracks_worker_cost_not_the_unit_completion_rate`.
         let lim = limits(1_000_000, 8);
         let mut core = GovCore::new();
         assert_eq!(core.target_width, 1, "a run starts at the width-1 floor");
-        assert_eq!(core.active, 0, "the inline lane holds no admission slot");
         note_completion(&mut core, &calm(), &lim, CompletionKind::IncreasePoint);
-        assert_eq!(
-            core.target_width, 2,
-            "a calm slot-free completion must lift the window"
-        );
+        assert_eq!(core.target_width, 2, "a calm increase point lifts the window");
         assert_eq!(core.width_growths, 1);
-        // RED control: the lane's bytes are visible in `memory.current` whether or not it
-        // held a slot, so a completion observed under creep must NOT be grown through.
+        // RED control: the same event under creep must NOT be grown through.
         let mut hot_core = GovCore::new();
         let hot = MemorySignals {
             current_bytes: Some(900_000), // > 800_000 high-water
             ..calm()
         };
         note_completion(&mut hot_core, &hot, &lim, CompletionKind::IncreasePoint);
-        assert_eq!(
-            hot_core.target_width, 1,
-            "creep is never grown through, slot or no slot"
-        );
+        assert_eq!(hot_core.target_width, 1, "creep is never grown through");
         assert_eq!(hot_core.creep_backoffs, 1);
         assert_eq!(hot_core.width_growths, 0);
     }
