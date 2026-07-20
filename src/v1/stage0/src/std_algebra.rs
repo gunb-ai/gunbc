@@ -1442,34 +1442,6 @@ pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<Algeb
     }
 }
 
-/// Every method name declared by any kernel algebra profile's templates — the
-/// reserved-name set for the census precedence law (see `func_sig_from_global_bare`):
-/// a whole-pool census entry must never serve one of these names as a bare fn sig,
-/// because the known-method bridge (receiver-type-directed, main-parity) owns them.
-pub fn algebra_method_template_names() -> Rc<std::collections::HashSet<String>> {
-    thread_local! {
-        static CACHED: Rc<std::collections::HashSet<String>> = {
-            let profiles = [
-                AlgebraProfile::OrderedRingProfile,
-                AlgebraProfile::ApproximateFieldProfile,
-                AlgebraProfile::BooleanAlgebraProfile,
-                AlgebraProfile::BooleanAlgebraCollectionProfile,
-                AlgebraProfile::FreeMonoidScalarProfile,
-                AlgebraProfile::FreeMonoidCollectionProfile,
-                AlgebraProfile::PartialFunctionProfile,
-            ];
-            let mut names = std::collections::HashSet::new();
-            for profile in profiles {
-                for template in algebra_templates_for_profile(profile).iter() {
-                    names.insert(template.name.clone());
-                }
-            }
-            Rc::new(names)
-        };
-    }
-    CACHED.with(|c| c.clone())
-}
-
 pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
     match profile.clone() {
         AlgebraProfile::OrderedRingProfile => Rc::new(vec![]),

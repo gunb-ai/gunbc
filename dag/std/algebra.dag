@@ -314,6 +314,14 @@ fn partial_function_templates() -> List<AlgebraFieldTemplate> {
   ]
 }
 
+fn algebra_method_template_name(name: String) -> Bool {
+  [
+    OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile,
+    BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile,
+    FreeMonoidCollectionProfile, PartialFunctionProfile
+  ] |> any(p => algebra_templates_for_profile(profile: p) |> any(t => t.name == name))
+}
+
 fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTemplate> {
   match profile {
     OrderedRingProfile => ordered_ring_templates()

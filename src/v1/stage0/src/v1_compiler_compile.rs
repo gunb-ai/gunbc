@@ -31,8 +31,7 @@ pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
 pub use crate::v1_compiler_emit_rust::emit_rust;
-pub use crate::v1_compiler_infer::reconcile;
-pub use crate::v1_compiler_infer::reconcile_with_census_extra;
+pub use crate::v1_compiler_infer::{reconcile, reconcile_with_census_extra};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
 pub use crate::v1_compiler_normalize::normalize_graph;
@@ -291,20 +290,23 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
-    /// Sources included in the NAME CENSUS but not compiled (fill = whole tree;
-    /// policy gates lookup, never fill — namespace-resolution-design.md §7.5).
-    /// Qualified references to modules outside the compile closure resolve against
-    /// these; compiling them here instead would subject them to this invocation's
-    /// pool-precedence tree view, where cross-tree bare names break (measured:
-    /// 344 diagnostics, the Empty/Cons poisoning class).
     pub census_only_sources: Rc<Vec<Rc<SourceFile>>>,
 }
 
-pub fn default_compile_pipeline_options() -> CompilePipelineOptions {
-    CompilePipelineOptions {
+pub fn census_only_sources_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup, never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the compile closure resolve against these; compiling them here instead would subject them to this invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344 diagnostics, the Empty/Cons poisoning class).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
+    Rc::new(CompilePipelineOptions {
         analyze_complexity: false,
         census_only_sources: Rc::new(vec![]),
-    }
+    })
 }
 
 pub fn run_complexity_analysis(
@@ -2339,12 +2341,15 @@ pub struct CensusFillParse {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-/// Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve
-/// (a fill module's imports live in the compile closure or a different tree
-/// view; resolving against a fill-only pool fabricates unresolved-import
-/// diagnostics about the view, not the modules). Diagnostics are parse errors
-/// only — those are load-bearing (a broken-parse module contributes no names to
-/// the census) and must surface, never be skipped (§5).
+pub fn parse_census_fill_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
     {
         let prepared = Rc::new({
@@ -2444,7 +2449,7 @@ pub fn compile_sources(
 pub fn compile_sources_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
-    options: CompilePipelineOptions,
+    options: Rc<CompilePipelineOptions>,
 ) -> Rc<PipelineResult> {
     emit_resolved_for_target(
         compile_to_resolved_with_options(sources.clone(), options.clone()),
@@ -2545,7 +2550,7 @@ pub fn compile_to_resolved_discovery_corpus_advisory(
 
 pub fn compile_to_resolved_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
-    options: CompilePipelineOptions,
+    options: Rc<CompilePipelineOptions>,
 ) -> Rc<ResolvedPipelineResult> {
     {
         let _ = v1_rt::trace_mark("compile.frontend.begin".to_string());
@@ -2571,13 +2576,6 @@ pub fn compile_to_resolved_with_options(
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
                 let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
-                // Census-only sources: PARSED for the name census only — never
-                // resolved, typechecked, or emitted here (their imports point into
-                // the compile closure; resolving them against a fill-only pool would
-                // fabricate unresolved-import diagnostics about the view, not the
-                // modules). Parse failures surface loudly below: a module that fails
-                // to parse contributes no names, and a census silently missing it
-                // would be an absorbing skip (§5).
                 let fill = parse_census_fill_sources(options.census_only_sources.clone());
                 let census_si = fill.newline_indices.clone().iter().cloned().fold(
                     source_indices.clone(),
