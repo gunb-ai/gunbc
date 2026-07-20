@@ -98,7 +98,7 @@ impl SharedTypecheckCaches {
         };
         match serde_json::to_writer(&mut writer, result) {
             Ok(()) => Ok(Some(Arc::new(writer.buf))),
-            Err(e) if writer.over_limit => Ok(None),
+            Err(_e) if writer.over_limit => Ok(None),
             Err(e) => Err(format!("shared typecheck store encode: {e}")),
         }
     }
