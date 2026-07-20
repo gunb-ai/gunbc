@@ -5009,9 +5009,10 @@ fn typed_module_content_key(
     // selection already consumes (DESIGN §3: no second edge producer), strict-tier only
     // (Qualified + UniqueBare — an AmbiguousBare homonym is not a declared dependency).
     let file_rel = workspace_relative_repo_path(file);
-    for ref_mod in Vec::<String>::new()
+    for ref_mod in index
+        .module_graph_facts
+        .reference_only_direct_import_modules(&file_rel)
     {
-        let _ = &file_rel;
         let hash = interface_hash_by_name
             .get(&ref_mod)
             .cloned()
