@@ -1784,6 +1784,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     []
   }
   let v2_std_integer_stub = if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr)
+    && module_files_reference_v2_std_integer(files: module_files)
     && !module_files_include_v2_std_integer(files: module_files) {
     [emit_v2_std_integer_closure_stub_module()]
   } else {
@@ -1807,12 +1808,18 @@ fn module_files_reference_v2_std_text(files: List<TextFile>) -> Bool {
   files |> any(f => string_contains(s: f.content, pattern: "crate::v2_std_text::"))
 }
 
+fn module_files_reference_v2_std_integer(files: List<TextFile>) -> Bool {
+  files |> any(f => string_contains(s: f.content, pattern: "v2_std_integer::"))
+}
+
 fn module_files_include_v2_std_text(files: List<TextFile>) -> Bool {
-  files |> any(f => string_contains(s: f.path, pattern: "v2_std_text"))
+  let expected = concat(rust_source_root(), "v2_std_text", rust_source_ext())
+  files |> any(f => f.path == expected)
 }
 
 fn module_files_include_v2_std_integer(files: List<TextFile>) -> Bool {
-  files |> any(f => string_contains(s: f.path, pattern: "v2_std_integer"))
+  let expected = concat(rust_source_root(), "v2_std_integer", rust_source_ext())
+  files |> any(f => f.path == expected)
 }
 
 fn emit_v2_std_integer_closure_stub_module() -> TextFile {
@@ -1918,8 +1925,20 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let prelude = emit_prelude(imported_names: prelude_imported_names)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
-  let carrier_import_lines = if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr) {
-    emit_faithful_text_carrier_import_lines(imported_names: prelude_imported_names, local_type_names: local_type_names)
+  let carrier_import_lines = if module_needs_faithful_carrier_imports(
+    items: typed_module.items,
+    corpus_repr: emit_info.corpus_repr,
+    shared_types: shared_types,
+    source_indices: scope.type_env.source_indices
+  ) {
+    emit_faithful_text_carrier_import_lines(
+      imported_names: prelude_imported_names,
+      local_type_names: local_type_names,
+      items: typed_module.items,
+      source_indices: scope.type_env.source_indices,
+      corpus_repr: emit_info.corpus_repr,
+      shared_types: shared_types
+    )
   } else {
     []
   }
@@ -3174,13 +3193,16 @@ fn node_tree_references_type_name(n: Node, type_name: String, source_indices: Ma
   }
 }
 
-fn module_needs_freemonoid_import(items: List<Node>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn module_needs_faithful_carrier_imports(items: List<Node>, corpus_repr: RustCorpusRepr, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if !corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     false
   } else {
-    items |> any(item =>
-      node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
-      || node_tree_references_type_name(n: item, type_name: "FreeMonoid", source_indices: source_indices)
+    module_renders_faithful_text_carrier(items: items, corpus_repr: corpus_repr, shared_types: shared_types, source_indices: source_indices)
+    || items |> any(item =>
+      node_tree_references_type_name(n: item, type_name: "FreeMonoid", source_indices: source_indices)
+      || node_tree_references_type_name(n: item, type_name: "Char", source_indices: source_indices)
+      || node_tree_references_type_name(n: item, type_name: "NonEmptyStr", source_indices: source_indices)
+      || node_tree_references_type_name(n: item, type_name: "Int", source_indices: source_indices)
     )
   }
 }
@@ -3207,23 +3229,29 @@ fn rust_import_name_already_resolved(imported_names: List<String>, local_type_na
   imported_names |> any(n => n == name) || local_type_names |> any(n => n == name)
 }
 
-fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_type_names: List<String>) -> List<String> {
-  let free_monoid = if rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "FreeMonoid") {
+fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_type_names: List<String>, items: List<Node>, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr, shared_types: Set<String>) -> List<String> {
+  let needs_free_monoid = items |> any(item => node_tree_references_type_name(n: item, type_name: "FreeMonoid", source_indices: source_indices))
+    || module_renders_faithful_text_carrier(items: items, corpus_repr: corpus_repr, shared_types: shared_types, source_indices: source_indices)
+  let needs_char = items |> any(item => node_tree_references_type_name(n: item, type_name: "Char", source_indices: source_indices))
+    || module_renders_faithful_text_carrier(items: items, corpus_repr: corpus_repr, shared_types: shared_types, source_indices: source_indices)
+  let needs_non_empty_str = items |> any(item => node_tree_references_type_name(n: item, type_name: "NonEmptyStr", source_indices: source_indices))
+  let needs_int = items |> any(item => node_tree_references_type_name(n: item, type_name: "Int", source_indices: source_indices))
+  let free_monoid = if !needs_free_monoid || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "FreeMonoid") {
     []
   } else {
     [concat(rust_visibility_prefix(), "use crate::std_algebra::FreeMonoid;")]
   }
-  let char_line = if rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Char") {
+  let char_line = if !needs_char || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Char") {
     []
   } else {
     [concat(rust_visibility_prefix(), "use crate::std_types::Char;")]
   }
-  let non_empty_str = if rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "NonEmptyStr") {
+  let non_empty_str = if !needs_non_empty_str || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "NonEmptyStr") {
     []
   } else {
     [concat(rust_visibility_prefix(), "use crate::std_types::NonEmptyStr;")]
   }
-  let int_line = if local_type_names |> any(n => n == "Int") {
+  let int_line = if !needs_int || local_type_names |> any(n => n == "Int") {
     []
   } else {
     [concat(rust_visibility_prefix(), "use crate::v2_std_integer::Int;")]
