@@ -67,11 +67,11 @@ func artifact_fs_get(store_root: String, key: ContentHash) -> ArtifactFsLookup {
   match artifact_store_scratch_read_admissible(store_root: store_root) {
     EffectOutsideGrant { verb: v, target: t, frame: f } =>
       ArtifactFsRefused { verb: v, target: t, frame: f }
-    Admitted { via_root: r } => {
+    Admitted { via_root: _ } => {
       let path = artifact_fs_path(store_root: store_root, key: key)
-      let r = Filesystem.Read(path: path)
-      if r.success {
-        return ArtifactFsHit { payload: r.content }
+      let read_out = Filesystem.Read(path: path)
+      if read_out.success {
+        return ArtifactFsHit { payload: read_out.content }
       }
       return ArtifactFsMiss { path: path }
     }
