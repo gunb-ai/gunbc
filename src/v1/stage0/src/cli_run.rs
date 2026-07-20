@@ -3379,56 +3379,6 @@ fn runtime_data_dependency_touched_via_carrier_closure(
         })
 }
 
-// SPIKE (not for commit): cross-entry typed-cache reuse. Measures the upper bound on what
-// cross-worker sharing could buy, without any Arc work.
-#[cfg(test)]
-mod typed_cache_reuse_spike {
-    use super::{
-        build_multi_entry_index, corpus_dag_files, is_test_dag,
-        resolve_entry_with_index_for_discovery_corpus, workspace_root, TYPED_CACHE_HITS,
-        TYPED_CACHE_MISSES,
-    };
-
-    #[test]
-    #[ignore]
-    fn cross_entry_typed_cache_reuse() {
-        std::env::set_current_dir(workspace_root()).expect("chdir workspace");
-        let index = build_multi_entry_index(&["dag".to_string(), "src/v2".to_string()]);
-        let entries: Vec<String> = corpus_dag_files()
-            .into_iter()
-            .map(|(rel, _)| rel)
-            .filter(|r| is_test_dag(r))
-            .take(80)
-            .collect();
-        eprintln!("[reuse-spike] entries={}", entries.len());
-        let (mut tot_h, mut tot_m) = (0u64, 0u64);
-        let t0 = std::time::Instant::now();
-        for (i, entry) in entries.iter().enumerate() {
-            TYPED_CACHE_HITS.with(|c| c.set(0));
-            TYPED_CACHE_MISSES.with(|c| c.set(0));
-            let started = std::time::Instant::now();
-            let ok = resolve_entry_with_index_for_discovery_corpus(&index, entry).is_ok();
-            let h = TYPED_CACHE_HITS.with(|c| c.get());
-            let m = TYPED_CACHE_MISSES.with(|c| c.get());
-            tot_h += h;
-            tot_m += m;
-            eprintln!(
-                "[reuse-spike] i={i} hits={h} misses={m} ms={} ok={ok} entry={entry}",
-                started.elapsed().as_millis()
-            );
-        }
-        let pct = if tot_h + tot_m > 0 {
-            tot_h as f64 * 100.0 / (tot_h + tot_m) as f64
-        } else {
-            0.0
-        };
-        eprintln!(
-            "[reuse-spike] TOTAL hits={tot_h} misses={tot_m} hit_pct={pct:.1} wall_s={}",
-            t0.elapsed().as_secs()
-        );
-    }
-}
-
 #[cfg(test)]
 mod live_read_carrier_home_roster_drift_gate_tests {
     use super::{
@@ -4264,30 +4214,7 @@ fn note_interface_hash(
 /// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
 /// cross-worker store is armed (no local duplicate — serde transport is one authority).
 /// `typed_key` is the content key from `typed_module_content_key`, never a module name.
-// SPIKE INSTRUMENTATION (not for commit): counts typed-cache hits vs misses at the single
-// read chokepoint, to measure cross-entry reuse — the upper bound on what cross-worker
-// sharing could buy.
-thread_local! {
-    pub(crate) static TYPED_CACHE_HITS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-    pub(crate) static TYPED_CACHE_MISSES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
-}
-
 fn index_get_typed(
-    index: &MultiEntryIndex,
-    typed_key: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
-    let out = index_get_typed_inner(index, typed_key);
-    if let Ok(found) = &out {
-        if found.is_some() {
-            TYPED_CACHE_HITS.with(|c| c.set(c.get() + 1));
-        } else {
-            TYPED_CACHE_MISSES.with(|c| c.set(c.get() + 1));
-        }
-    }
-    out
-}
-
-fn index_get_typed_inner(
     index: &MultiEntryIndex,
     typed_key: &str,
 ) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
