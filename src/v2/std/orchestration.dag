@@ -1,15 +1,15 @@
 module v2.std.orchestration
 
 import v2.std.text { String }
-
-data orchestration_bash_emit_scaffold_note: String = "v2.std.orchestration Pipeline/PipelineStep is the bash-emit scaffold: Do{run: Run} leaves carry command strings for foreign-executor/bootstrap emission via v2.compiler.emit_orchestration. Runtime-present bounded composition authority is v2.std.effect_plan EffectPlan/Do{effect} (host-effect-orchestration.md section 1b; #6903 Wave A2)."
-
-data orchestration_to_effect_plan_dissolve_on: String = "🟡 dissolve-on: v2.std.orchestration — bash-emit Pipeline/PipelineStep scaffold (Do{run: Run} string leaves). Composition authority for bounded external effects is v2.std.effect_plan (landed #6903). DISSOLVES WHEN host-effect-orchestration.md Phase B: module renames/merges into std.effect_plan, Run.command leaves migrate onto typed EffectPlan Do{effect} leaves and extdeps operations, and foreign-executor sites route through emit_orchestration only."
 import std.nat { Nat }
 import std.algebra { FreeMonoid }
 import v2.std.collection { List, Optional }
 import v2.std.diagnostic { EmitDirective }
 import v2.std.node { Symbol }
+
+data orchestration_bash_emit_scaffold_note: String = "v2.std.orchestration Pipeline/PipelineStep is the bash-emit scaffold: Do{run: Run} leaves carry command strings for foreign-executor/bootstrap emission via v2.compiler.emit_orchestration. Runtime-present bounded composition authority is v2.std.effect_plan EffectPlan/Do{effect} (host-effect-orchestration.md section 1b; #6903 Wave A2)."
+
+data orchestration_to_effect_plan_dissolve_on: String = "🟡 dissolve-on: v2.std.orchestration — bash-emit Pipeline/PipelineStep scaffold (Do{run: Run} string leaves). Composition authority for bounded external effects is v2.std.effect_plan (landed #6903). DISSOLVES WHEN host-effect-orchestration.md Phase B: module renames/merges into std.effect_plan, Run.command leaves migrate onto typed EffectPlan Do{effect} leaves and extdeps operations, and foreign-executor sites route through emit_orchestration only."
 
 type EnvBinding
   = EnvSet { name: String, value: String }
