@@ -1915,13 +1915,16 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   )
   let prelude_imported_names = module_imports(n: m)
     |> flat_map(imp => import_specific_names_at(n: imp, source_indices: scope.type_env.source_indices))
-  let local_type_names = typed_module.items
-    |> filter(item =>
-      is_type_def_item(item: item)
-      || is_type_alias_item(item: item, source_indices: scope.type_env.source_indices)
-      || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
-    )
-    |> map(item => authored_name(env: scope.type_env, node: item))
+  let local_type_names = concat(
+    typed_module.items
+      |> filter(item =>
+        is_type_def_item(item: item)
+        || is_type_alias_item(item: item, source_indices: scope.type_env.source_indices)
+        || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
+      )
+      |> map(item => authored_name(env: scope.type_env, node: item)),
+    collect_phantom_zst_marker_names(items: typed_module.items, env: scope.type_env)
+  )
   let prelude = emit_prelude(imported_names: prelude_imported_names)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }

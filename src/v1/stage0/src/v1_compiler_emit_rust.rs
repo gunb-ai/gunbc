@@ -4239,33 +4239,36 @@ pub fn emit_module_full(
             }
             __result
         });
-        let local_type_names = Rc::new({
-            let mut __result = Vec::new();
-            for item in Rc::new({
+        let local_type_names = v1_rt::concat(
+            Rc::new({
                 let mut __result = Vec::new();
-                for item in typed_module.items.clone().iter().cloned() {
-                    if ((is_type_def_item(item.clone())
-                        || is_type_alias_item(
-                            item.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        ))
-                        || is_type_decl_item(
-                            item.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        ))
-                    {
-                        __result.push(item);
+                for item in Rc::new({
+                    let mut __result = Vec::new();
+                    for item in typed_module.items.clone().iter().cloned() {
+                        if ((is_type_def_item(item.clone())
+                            || is_type_alias_item(
+                                item.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ))
+                            || is_type_decl_item(
+                                item.clone(),
+                                scope.type_env.clone().source_indices.clone(),
+                            ))
+                        {
+                            __result.push(item);
+                        }
                     }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
+                    __result.push(authored_name(scope.type_env.clone(), item.clone()));
                 }
                 __result
-            })
-            .iter()
-            .cloned()
-            {
-                __result.push(authored_name(scope.type_env.clone(), item.clone()));
-            }
-            __result
-        });
+            }),
+            collect_phantom_zst_marker_names(typed_module.items.clone(), scope.type_env.clone()),
+        );
         let prelude = emit_prelude(prelude_imported_names.clone());
         let imports_str = emit_imports(
             module_imports(m.clone()),
