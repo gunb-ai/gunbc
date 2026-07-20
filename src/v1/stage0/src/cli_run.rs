@@ -2905,6 +2905,19 @@ pub struct ModuleGraphFactsLive {
     // `resolve_transitively`), so deriving it per call would rebuild an O(corpus)
     // set per entry (bare-minimum-cost, DESIGN §6).
     declared_paths: HashSet<String>,
+    // SELECTION-ONLY adjacency: `adjacency` above PLUS strict-tier (Qualified + UniqueBare)
+    // reference-derived edges for import-less files.
+    //
+    // It is a second map rather than a widening of `adjacency` because the two consumers need
+    // different tiers and mixing them is a live regression, not a hypothetical: `adjacency` also
+    // feeds LOADER closures (`import_closure_live_paths_with_facts`, and `resolve_transitively`
+    // inside `precompute_whole_tree_published_mock_keys`), which then Strict-resolve whatever they
+    // reach. Unioning reference edges into that map grew the mock-corpus precompute closure until
+    // it pulled `dag/` modules importing `v2.*` into a dag-only pool, where those imports cannot
+    // resolve — measured, not predicted (the precompute went from 82 keys to a hard failure).
+    // Selection wants maximum precision; the loader wants a safe superset over a pool it can
+    // actually resolve. Same facts build, two answers, no shared tier.
+    selection_adjacency: HashMap<String, Vec<String>>,
     // Import-less files the reference-edge producer could not answer for (unreadable / no module
     // line / parse failure). An entry in this set has an UNKNOWN dependency set, which is the one
     // state `entry_file_touched_via_import_closure` may refuse on. Every other edgeless entry has
@@ -3336,18 +3349,23 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
     //
     // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
     // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
-    let mut edges = import_resolution_facts(&roots, &roots, EXCLUDE);
-    edges.extend(reference_edges_as_import_facts(
+    let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
+    let nodes = module_declaration_facts(&roots);
+    // Loader tier: import edges only, unchanged. Every consumer that goes on to RESOLVE what it
+    // reaches reads this one.
+    let adjacency = build_import_adjacency(&edges, &nodes);
+    // Selection tier: import edges + strict reference edges.
+    let mut selection_edges = edges.clone();
+    selection_edges.extend(reference_edges_as_import_facts(
         &reference_resolution_facts(&roots, &roots, EXCLUDE),
         /* strict */ true,
     ));
+    let selection_adjacency = build_import_adjacency(&selection_edges, &nodes);
     let reference_unaccounted: HashSet<String> =
         reference_accounting_refusals(&roots, &roots, EXCLUDE)
             .into_iter()
             .map(|r| workspace_relative_repo_path(&r.path))
             .collect();
-    let nodes = module_declaration_facts(&roots);
-    let adjacency = build_import_adjacency(&edges, &nodes);
     let declared_paths = nodes
         .iter()
         .map(|n| workspace_relative_repo_path(&n.path))
@@ -3356,6 +3374,7 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         edges,
         nodes,
         adjacency,
+        selection_adjacency,
         declared_paths,
         reference_unaccounted,
     }
@@ -3478,7 +3497,7 @@ fn entry_file_touched_via_import_closure(
              run-all or narrowing to skip"
         ));
     }
-    let closure = import_closure_from_adjacency(entry_path, &facts.adjacency);
+    let closure = import_closure_from_adjacency(entry_path, &facts.selection_adjacency);
     Ok(touched_paths.iter().any(|touched| {
         closure
             .iter()
@@ -19636,7 +19655,7 @@ mod witness_layer_roots_compile_clean_tests {
 
             // Wiring receipt: the entry declares no imports, so a non-empty adjacency here is
             // reference-derived by construction.
-            let targets = facts.adjacency.get(entry).cloned().unwrap_or_default();
+            let targets = facts.selection_adjacency.get(entry).cloned().unwrap_or_default();
             assert!(
                 !targets.is_empty(),
                 "expected reference-derived edges for import-less {entry}; empty adjacency means \
@@ -19695,7 +19714,7 @@ mod witness_layer_roots_compile_clean_tests {
                 .iter()
                 .filter(|p| {
                     facts
-                        .adjacency
+                        .selection_adjacency
                         .get(*p)
                         .is_none_or(|targets| targets.is_empty())
                 })
