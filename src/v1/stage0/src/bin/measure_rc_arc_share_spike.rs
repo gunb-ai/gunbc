@@ -2,29 +2,25 @@
 
 //! Rc→Arc share spike — measurement harness (NOT a migration).
 //!
-//! Modes:
-//!   index-fields   — per-field bytes on a strict whole-tree resolve through MultiEntryIndex
-//!   width-point    — peak RSS with W parallel worker-index simulations (one process)
-//!   width-scaling  — width-point for widths 1..=max-width (subprocess isolation per point)
-//!   union-sample   — shareable union across sampled witness entry closures
-//!   im-rc-census   — im_rc blocker file census (report-only)
-//!
-//! Every line is `[rc-arc-spike] kind=...` for grep/oracle consumption. Reports numbers,
-//! never asserts migration success.
+//! Measures the **floor worker object**: `build_multi_entry_index` over both roots (`dag`, `src/v2`),
+//! then discovery-corpus warm — not per-entry import closures.
 
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
+use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    peak_rss_vhwm_bytes, populate_multi_entry_index_discovery_corpus,
-    populate_multi_entry_index_entry, populate_multi_entry_index_representative_entries,
+    build_worker_index_shell, build_worker_index_with_warm_store, new_shared_typecheck_caches,
+    peak_rss_vhwm_bytes, populate_multi_entry_index_whole_tree_discovery,
+    populate_worker_discovery_index, resolve_entry_with_index_for_discovery_corpus,
+    spike_measurement_host_metadata, warm_discovery_on_index,
     whole_tree_resolve_exclusion_substrings, workspace_root,
 };
 use v1_compiler::index_memory_receipt::{
-    emit_im_rc_census, emit_index_memory_receipt, emit_net_win_point, emit_width_scaling_point,
-    multi_entry_index_memory_receipt, net_win_curve,
+    emit_host_metadata, emit_im_rc_census, emit_index_memory_receipt, emit_timing_point,
+    emit_width_scaling_point, multi_entry_index_memory_receipt,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -52,210 +48,201 @@ fn default_source_roots() -> Vec<String> {
         .collect()
 }
 
-fn populate_for_corpus(
-    source_roots: &[String],
-    corpus: &str,
-) -> Result<(v1_compiler::cli_run::MultiEntryIndex, usize, usize), String> {
-    match corpus {
-        "representative" => populate_multi_entry_index_representative_entries(source_roots)
-            .map(|(index, n)| (index, n, n)),
-        "discovery-full" => populate_multi_entry_index_discovery_corpus(source_roots, None),
-        other => {
-            if let Some(n) = other.strip_prefix("discovery:") {
-                let limit = n
-                    .parse::<usize>()
-                    .map_err(|_| format!("invalid discovery corpus limit `{other}`"))?;
-                populate_multi_entry_index_discovery_corpus(source_roots, Some(limit))
-            } else {
-                Err(format!("unknown corpus `{other}`"))
-            }
-        }
-    }
-}
-
-fn run_index_fields(source_roots: &[String], corpus: &str) -> Result<ExitCode, ExitCode> {
+fn run_worker_shell_build(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
     eprintln!(
-        "measure_rc_arc_share_spike: index-fields corpus={corpus} roots={}",
+        "measure_rc_arc_share_spike: worker-shell-build roots={}",
         source_roots.len()
     );
-    let (index, entry_count, row_count) =
-        populate_for_corpus(source_roots, corpus).map_err(|e| {
-            eprintln!("measure_rc_arc_share_spike: populate failed:\n{e}");
-            ExitCode::from(2)
-        })?;
-    eprintln!(
-        "measure_rc_arc_share_spike: populate done entries={entry_count} rows={row_count} peak_rss_before_receipt={:?}",
-        peak_rss_vhwm_bytes()
+    let start = Instant::now();
+    let _index = build_worker_index_shell(source_roots);
+    emit_timing_point(
+        "worker-shell-build",
+        start.elapsed().as_millis(),
+        peak_rss_vhwm_bytes(),
     );
-    let peak = peak_rss_vhwm_bytes();
-    let receipt = multi_entry_index_memory_receipt(&index, peak);
-    eprintln!(
-        "[rc-arc-spike] kind=corpus corpus={corpus} discovery_entries={entry_count} discovery_rows={row_count}"
-    );
-    emit_index_memory_receipt(&receipt);
     Ok(ExitCode::SUCCESS)
 }
 
-fn run_width_point(
-    source_roots: &[String],
-    corpus: &str,
-    width: usize,
-) -> Result<ExitCode, ExitCode> {
-    if width == 0 {
-        eprintln!("measure_rc_arc_share_spike: --width must be >= 1");
-        return Err(ExitCode::from(2));
-    }
-    eprintln!("measure_rc_arc_share_spike: width-point width={width} corpus={corpus}");
-    let roots = Arc::new(source_roots.to_vec());
-    let errors: Arc<std::sync::Mutex<Vec<String>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
-    let barrier = Arc::new(Barrier::new(width));
-    let corpus = Arc::new(corpus.to_string());
-    let mut handles = Vec::new();
-    for worker in 0..width {
-        let roots = Arc::clone(&roots);
-        let errors = Arc::clone(&errors);
-        let barrier = Arc::clone(&barrier);
-        let corpus = Arc::clone(&corpus);
-        handles.push(thread::spawn(move || {
-            barrier.wait();
-            let result = populate_for_corpus(roots.as_ref(), corpus.as_str()).map(|_| ());
-            if let Err(e) = result {
-                errors.lock().unwrap().push(format!("worker {worker}: {e}"));
-            }
-        }));
-    }
-    for handle in handles {
-        handle.join().map_err(|_| ExitCode::from(2))?;
-    }
-    let errs = errors.lock().unwrap();
-    if !errs.is_empty() {
-        for e in errs.iter() {
-            eprintln!("measure_rc_arc_share_spike: {e}");
+fn run_worker_discovery_warm(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
+    eprintln!(
+        "measure_rc_arc_share_spike: worker-discovery-warm roots={}",
+        source_roots.len()
+    );
+    let shell_start = Instant::now();
+    let _shell = build_worker_index_shell(source_roots);
+    emit_timing_point(
+        "worker-shell-only",
+        shell_start.elapsed().as_millis(),
+        peak_rss_vhwm_bytes(),
+    );
+
+    let warm_start = Instant::now();
+    match populate_worker_discovery_index(source_roots) {
+        Ok((index, entries, rows)) => {
+            let warm_ms = warm_start.elapsed().as_millis();
+            let peak = peak_rss_vhwm_bytes();
+            emit_timing_point("worker-discovery-warm", warm_ms, peak);
+            eprintln!(
+                "[rc-arc-spike] kind=worker-object discovery_entries={entries} discovery_rows={rows} peak_rss_bytes={}",
+                peak.map(|b| b.to_string()).unwrap_or_else(|| "unavailable".into())
+            );
+            emit_index_memory_receipt(&multi_entry_index_memory_receipt(&index, peak));
+            Ok(ExitCode::SUCCESS)
         }
-        return Err(ExitCode::from(2));
+        Err(e) => {
+            eprintln!(
+                "[rc-arc-spike] kind=blocked measurement=worker-discovery-warm elapsed_ms={} error={e}",
+                warm_start.elapsed().as_millis()
+            );
+            Err(ExitCode::from(2))
+        }
     }
-    emit_width_scaling_point(width, peak_rss_vhwm_bytes());
-    Ok(ExitCode::SUCCESS)
 }
 
-fn run_width_scaling(
+fn run_whole_tree_fields(
     source_roots: &[String],
-    corpus: &str,
-    max_width: usize,
+    exclude_subpaths: &[String],
 ) -> Result<ExitCode, ExitCode> {
-    eprintln!("measure_rc_arc_share_spike: width-scaling 1..={max_width} corpus={corpus}");
-    for width in 1..=max_width {
-        run_width_point(source_roots, corpus, width)?;
-    }
-    Ok(ExitCode::SUCCESS)
-}
-
-fn sample_witness_entries(source_roots: &[String], sample_count: usize) -> Vec<String> {
-    use v1_compiler::cli_run::discover_floor_corpus_rows;
-    let scan_dirs = vec!["dag".to_string(), "src/v2".to_string()];
-    let excludes = whole_tree_resolve_exclusion_substrings();
-    let rows = discover_floor_corpus_rows(source_roots, &scan_dirs, &excludes).unwrap_or_default();
-    let mut entries: Vec<String> = rows
-        .iter()
-        .map(|r| r.entry.clone())
-        .collect::<std::collections::HashSet<_>>()
-        .into_iter()
-        .collect();
-    entries.sort();
-    if entries.len() > sample_count {
-        let stride = entries.len() / sample_count;
-        entries = entries
-            .into_iter()
-            .enumerate()
-            .filter_map(|(i, e)| {
-                if i % stride.max(1) == 0 {
-                    Some(e)
-                } else {
-                    None
-                }
-            })
-            .take(sample_count)
-            .collect();
-    }
-    entries
-}
-
-fn run_union_sample(
-    source_roots: &[String],
-    sample_count: usize,
-    max_width: usize,
-) -> Result<ExitCode, ExitCode> {
-    let entries = sample_witness_entries(source_roots, sample_count);
     eprintln!(
-        "measure_rc_arc_share_spike: union-sample {} entr(y/ies)",
-        entries.len()
+        "measure_rc_arc_share_spike: whole-tree-fields roots={}",
+        source_roots.len()
     );
-    let mut receipts = Vec::new();
-    for entry in &entries {
-        let index = populate_multi_entry_index_entry(source_roots, entry).map_err(|e| {
-            eprintln!("measure_rc_arc_share_spike: entry populate failed for {entry}:\n{e}");
+    let start = Instant::now();
+    match populate_multi_entry_index_whole_tree_discovery(source_roots, exclude_subpaths) {
+        Ok((index, modules_resolved, modules_excluded)) => {
+            let peak = peak_rss_vhwm_bytes();
+            emit_timing_point(
+                "whole-tree-discovery-resolve",
+                start.elapsed().as_millis(),
+                peak,
+            );
+            eprintln!(
+                "[rc-arc-spike] kind=whole-tree modules_resolved={modules_resolved} modules_excluded={modules_excluded}"
+            );
+            emit_index_memory_receipt(&multi_entry_index_memory_receipt(&index, peak));
+            Ok(ExitCode::SUCCESS)
+        }
+        Err(e) => {
+            eprintln!(
+                "[rc-arc-spike] kind=blocked measurement=whole-tree-fields elapsed_ms={} error={e}",
+                start.elapsed().as_millis()
+            );
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
+fn run_build_vs_attach(source_roots: &[String]) -> Result<ExitCode, ExitCode> {
+    eprintln!("measure_rc_arc_share_spike: build-vs-attach");
+
+    let store = new_shared_typecheck_caches();
+    let warm_start = Instant::now();
+    let warm_index = build_worker_index_with_warm_store(source_roots, store.clone());
+    let (entries, rows) = warm_discovery_on_index(&warm_index, source_roots).map_err(|e| {
+        eprintln!("[rc-arc-spike] kind=blocked measurement=build-vs-attach-warm error={e}");
+        ExitCode::from(2)
+    })?;
+    let warm_ms = warm_start.elapsed().as_millis();
+    let warm_peak = peak_rss_vhwm_bytes();
+    emit_timing_point("build-vs-attach-warm-shared-index", warm_ms, warm_peak);
+    eprintln!(
+        "[rc-arc-spike] kind=shared-store-warm discovery_entries={entries} discovery_rows={rows}"
+    );
+
+    let cold_shell_start = Instant::now();
+    let _cold = build_worker_index_shell(source_roots);
+    let cold_shell_ms = cold_shell_start.elapsed().as_millis();
+    emit_timing_point(
+        "build-vs-attach-cold-shell",
+        cold_shell_ms,
+        peak_rss_vhwm_bytes(),
+    );
+
+    let attach_start = Instant::now();
+    let attached = build_worker_index_with_warm_store(source_roots, store);
+    let attach_ms = attach_start.elapsed().as_millis();
+    emit_timing_point(
+        "build-vs-attach-shared-shell",
+        attach_ms,
+        peak_rss_vhwm_bytes(),
+    );
+
+    let sample_entry = v1_compiler::cli_run::discovery_corpus_entry_roster(source_roots)
+        .map_err(|e| {
+            eprintln!("measure_rc_arc_share_spike: discovery roster failed: {e}");
+            ExitCode::from(2)
+        })?
+        .0
+        .into_iter()
+        .next()
+        .ok_or_else(|| {
+            eprintln!("measure_rc_arc_share_spike: discovery roster empty");
             ExitCode::from(2)
         })?;
-        receipts.push(multi_entry_index_memory_receipt(&index, None));
-    }
-    if receipts.is_empty() {
-        eprintln!("measure_rc_arc_share_spike: union-sample found zero entries");
-        return Err(ExitCode::from(2));
-    }
-    let shareable_per_worker =
-        receipts.iter().map(|r| r.shareable_bytes).sum::<u64>() / receipts.len() as u64;
-    let residue_per_worker =
-        receipts.iter().map(|r| r.residue_bytes).sum::<u64>() / receipts.len() as u64;
-    // Union shareable: walk is expensive; upper bound = sum of per-entry shareable (private W×),
-    // lower bound = max (identical prefix). Report both + max for crossover model.
-    let union_shareable_sum: u64 = receipts.iter().map(|r| r.shareable_bytes).sum();
-    let union_shareable_max = receipts
-        .iter()
-        .map(|r| r.shareable_bytes)
-        .max()
-        .unwrap_or(0);
-    eprintln!(
-        "[rc-arc-spike] kind=union-sample entries={} shareable_per_worker_avg={} residue_per_worker_avg={} union_shareable_sum={} union_shareable_max={}",
-        receipts.len(),
-        shareable_per_worker,
-        residue_per_worker,
-        union_shareable_sum,
-        union_shareable_max,
+    let resolve_start = Instant::now();
+    resolve_entry_with_index_for_discovery_corpus(&attached, &sample_entry).map_err(|e| {
+        eprintln!("measure_rc_arc_share_spike: attached resolve failed: {e}");
+        ExitCode::from(2)
+    })?;
+    let resolve_ms = resolve_start.elapsed().as_millis();
+    emit_timing_point(
+        "build-vs-attach-shared-resolve-one",
+        resolve_ms,
+        peak_rss_vhwm_bytes(),
     );
-    for point in net_win_curve(
-        shareable_per_worker,
-        residue_per_worker,
-        union_shareable_max,
-        max_width,
-    ) {
-        emit_net_win_point(&point);
-    }
-    for point in net_win_curve(
-        shareable_per_worker,
-        residue_per_worker,
-        union_shareable_sum,
-        max_width,
-    ) {
+
+    eprintln!(
+        "[rc-arc-spike] kind=build-vs-attach-summary warm_shared_ms={warm_ms} cold_shell_ms={cold_shell_ms} shared_attach_ms={attach_ms} shared_resolve_one_ms={resolve_ms}"
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn run_width_scaling_worker(
+    source_roots: &[String],
+    max_width: usize,
+) -> Result<ExitCode, ExitCode> {
+    eprintln!("measure_rc_arc_share_spike: width-scaling-worker 1..={max_width}");
+    for width in 1..=max_width {
         eprintln!(
-            "[rc-arc-spike] kind=net-win-pessimistic width={} private_total_bytes={} shared_model_bytes={} net_win_bytes={}",
-            point.width,
-            point.private_total_bytes,
-            point.shared_model_bytes,
-            point.net_win_bytes,
+            "measure_rc_arc_share_spike: width-point width={width} object=worker-discovery-warm"
         );
+        let roots = Arc::new(source_roots.to_vec());
+        let errors = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let barrier = Arc::new(Barrier::new(width));
+        let mut handles = Vec::new();
+        for worker in 0..width {
+            let roots = Arc::clone(&roots);
+            let errors = Arc::clone(&errors);
+            let barrier = Arc::clone(&barrier);
+            handles.push(thread::spawn(move || {
+                barrier.wait();
+                if let Err(e) = populate_worker_discovery_index(roots.as_ref()) {
+                    errors.lock().unwrap().push(format!("worker {worker}: {e}"));
+                }
+            }));
+        }
+        for handle in handles {
+            handle.join().map_err(|_| ExitCode::from(2))?;
+        }
+        let errs = errors.lock().unwrap();
+        if !errs.is_empty() {
+            for e in errs.iter() {
+                eprintln!("measure_rc_arc_share_spike: {e}");
+            }
+            eprintln!("[rc-arc-spike] kind=blocked measurement=width-scaling-worker width={width}");
+            return Err(ExitCode::from(2));
+        }
+        emit_width_scaling_point(width, peak_rss_vhwm_bytes());
     }
     Ok(ExitCode::SUCCESS)
 }
 
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
-    let mut mode = String::from("index-fields");
-    let mut corpus = String::from("representative");
+    let mut mode = String::from("worker-discovery-warm");
     let mut source_roots: Vec<String> = Vec::new();
     let mut exclude_subpaths = whole_tree_resolve_exclusion_substrings();
-    let mut max_width = 4usize;
-    let mut width = 1usize;
-    let mut sample_count = 9usize;
+    let mut max_width = 3usize;
 
     let mut i = 1;
     while i < args.len() {
@@ -276,21 +263,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 max_width = parse_usize("--max-width", &require_value(&args, i, "--max-width")?)?;
             }
-            "--width" => {
-                i += 1;
-                width = parse_usize("--width", &require_value(&args, i, "--width")?)?;
-            }
-            "--corpus" => {
-                i += 1;
-                corpus = require_value(&args, i, "--corpus")?;
-            }
-            "--sample-entries" => {
-                i += 1;
-                sample_count = parse_usize(
-                    "--sample-entries",
-                    &require_value(&args, i, "--sample-entries")?,
-                )?;
-            }
             other => {
                 eprintln!("measure_rc_arc_share_spike: unknown argument: {other}");
                 return Err(ExitCode::from(2));
@@ -303,18 +275,22 @@ fn run() -> Result<ExitCode, ExitCode> {
         source_roots = default_source_roots();
     }
 
+    let (hostname, mem_available_kb, cgroup_max_bytes) = spike_measurement_host_metadata();
+    emit_host_metadata(&hostname, mem_available_kb, cgroup_max_bytes);
+
     match mode.as_str() {
-        "index-fields" => run_index_fields(&source_roots, &corpus),
-        "width-point" => run_width_point(&source_roots, &corpus, width),
-        "width-scaling" => run_width_scaling(&source_roots, &corpus, max_width),
-        "union-sample" => run_union_sample(&source_roots, sample_count, max_width),
+        "worker-shell-build" => run_worker_shell_build(&source_roots),
+        "worker-discovery-warm" => run_worker_discovery_warm(&source_roots),
+        "whole-tree-fields" => run_whole_tree_fields(&source_roots, &exclude_subpaths),
+        "build-vs-attach" => run_build_vs_attach(&source_roots),
+        "width-scaling-worker" => run_width_scaling_worker(&source_roots, max_width),
         "im-rc-census" => {
             emit_im_rc_census();
             Ok(ExitCode::SUCCESS)
         }
         other => {
             eprintln!(
-                "measure_rc_arc_share_spike: unknown --mode {other} (expected index-fields|width-point|width-scaling|union-sample|im-rc-census)"
+                "measure_rc_arc_share_spike: unknown --mode {other} (expected worker-shell-build|worker-discovery-warm|whole-tree-fields|build-vs-attach|width-scaling-worker|im-rc-census)"
             );
             Err(ExitCode::from(2))
         }

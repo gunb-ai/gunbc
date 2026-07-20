@@ -528,6 +528,32 @@ pub fn emit_index_memory_receipt(receipt: &IndexMemoryReceipt) {
     );
 }
 
+pub fn emit_host_metadata(
+    hostname: &str,
+    mem_available_kb: Option<u64>,
+    cgroup_max_bytes: Option<u64>,
+) {
+    eprintln!(
+        "[rc-arc-spike] kind=host-metadata hostname={} mem_available_kb={} cgroup_max_bytes={}",
+        hostname,
+        mem_available_kb
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unavailable".into()),
+        cgroup_max_bytes
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unlimited".into()),
+    );
+}
+
+pub fn emit_timing_point(label: &str, elapsed_ms: u128, peak_rss_bytes: Option<u64>) {
+    eprintln!(
+        "[rc-arc-spike] kind=timing label={label} elapsed_ms={elapsed_ms} peak_rss_bytes={}",
+        peak_rss_bytes
+            .map(|b| b.to_string())
+            .unwrap_or_else(|| "unavailable".into()),
+    );
+}
+
 pub fn emit_width_scaling_point(width: usize, peak_rss_bytes: Option<u64>) {
     eprintln!(
         "[rc-arc-spike] kind=width-scaling width={} peak_rss_bytes={}",
@@ -547,11 +573,33 @@ pub fn emit_net_win_point(point: &NetWinPoint) {
 
 /// Census for the im_rc blocker (no code changes — report-only).
 pub fn im_rc_blocker_census() -> (usize, usize, &'static str) {
+    let stage0_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut total_rs = 0usize;
+    let mut im_rc_files = 0usize;
+    fn walk(dir: &std::path::Path, total_rs: &mut usize, im_rc_files: &mut usize) {
+        let Ok(read) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in read.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, total_rs, im_rc_files);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                *total_rs += 1;
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if content.contains("im_rc::") || content.contains("use im_rc") {
+                        *im_rc_files += 1;
+                    }
+                }
+            }
+        }
+    }
+    walk(&stage0_root, &mut total_rs, &mut im_rc_files);
     const NOTE: &str = "im-rc (Rc-backed HAMT) is aliased as HashMap/Vector/BTreeSet in lib.rs; \
                         the Arc-backed sibling crate is `im`. Collections remain !Send even if \
                         outer Rc→Arc lands — swapping im-rc→im touches every persistent map/list \
-                        in the 122/154 stage0 .rs files plus serde feature parity.";
-    (123, 154, NOTE)
+                        in stage0 .rs files plus serde feature parity.";
+    (im_rc_files, total_rs, NOTE)
 }
 
 pub fn emit_im_rc_census() {

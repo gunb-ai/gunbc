@@ -6097,13 +6097,11 @@ pub fn spike_measurement_host_metadata() -> (String, Option<u64>, Option<u64>) {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "unknown".to_string());
-    let mem_available_kb = std::fs::read_to_string("/proc/meminfo")
-        .ok()
-        .and_then(|s| {
-            s.lines()
-                .find(|l| l.starts_with("MemAvailable:"))
-                .and_then(|l| l.split_whitespace().nth(1)?.parse::<u64>().ok())
-        });
+    let mem_available_kb = std::fs::read_to_string("/proc/meminfo").ok().and_then(|s| {
+        s.lines()
+            .find(|l| l.starts_with("MemAvailable:"))
+            .and_then(|l| l.split_whitespace().nth(1)?.parse::<u64>().ok())
+    });
     let cgroup_max_bytes = std::fs::read_to_string("/sys/fs/cgroup/memory.max")
         .ok()
         .and_then(|s| {
@@ -6122,6 +6120,35 @@ pub fn spike_measurement_host_metadata() -> (String, Option<u64>, Option<u64>) {
         });
     (hostname, mem_available_kb, cgroup_max_bytes)
 }
+
+pub fn discovery_corpus_entry_roster(
+    source_roots: &[String],
+) -> Result<(Vec<String>, usize), String> {
+    let scan_dirs = witness_discovery_scan_dirs();
+    let excludes = whole_tree_resolve_exclusion_substrings();
+    let rows = discover_floor_corpus_rows(source_roots, &scan_dirs, &excludes)?;
+    let mut entries: Vec<String> = rows
+        .iter()
+        .map(|r| r.entry.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    entries.sort();
+    Ok((entries, rows.len()))
+}
+
+pub fn warm_discovery_on_index(
+    index: &MultiEntryIndex,
+    source_roots: &[String],
+) -> Result<(usize, usize), String> {
+    let (entries, rows) = discovery_corpus_entry_roster(source_roots)?;
+    for entry in &entries {
+        resolve_entry_with_index_for_discovery_corpus(index, entry)?;
+    }
+    Ok((entries.len(), rows))
+}
+
+pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
     let sources =
         load_sources_for_entry_with_index(&index.source_files, &index.module_graph_facts, entry)?;
     Ok(subject_digest_for_closure(&sources))
