@@ -145,22 +145,6 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
     })
 }
 
-pub fn empty_type_env() -> Rc<TypeEnv> {
-    Rc::new(TypeEnv {
-        bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-        str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        parents: Rc::new(vec![]),
-        recursive_types: Rc::new(vec![]),
-        recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-        inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-        source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        intern_table: empty_intern_table(),
-        source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
-        symbol_index: empty_symbol_index(),
-    })
-}
-
 pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Option<Rc<Node>> {
     v1_rt::map_get(&index.entries.clone(), qualified_name.clone())
 }
