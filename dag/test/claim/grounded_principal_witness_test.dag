@@ -19,8 +19,9 @@ import gunbc.fleet_posix_accounts {
   posix_sudo_grant_to_effect_grant,
 }
 import std.effect_grant {
-  Execute, verb_eq, grant_verb, filesystem_execute_position, grant_root, position_under,
+  Execute, verb_eq, grant_verb, filesystem_execute_position, grant_root, position_under, verb_of_effect_shape,
 }
+import std.effects { ExecuteEffect }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_srv1_operator_access,
@@ -171,7 +172,8 @@ fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
   )
   let expected = filesystem_execute_position(path: ["usr", "bin", "apt-get"])
   let root = grant_root(g: projected)
-  verb_eq(a: grant_verb(g: projected), b: Execute)
+  verb_eq(a: grant_verb(g: projected), b: verb_of_effect_shape(shape: ExecuteEffect))
+    && verb_eq(a: grant_verb(g: projected), b: Execute)
     && position_under(target: expected, root: root)
     && position_under(target: root, root: expected)
 }

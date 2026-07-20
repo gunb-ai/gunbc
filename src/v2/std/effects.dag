@@ -2,7 +2,7 @@ module v2.std.effects
 
 import v2.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, SyntheticOccurrence }
 import std.effects {
-  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
+  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
   PostAlways, CreateIfAbsent, KeylessFallback
 }
 
@@ -171,6 +171,7 @@ fn effect_shape_node(shape: EffectShape<KeySource>) -> Node {
         KeylessFallback { method: method } => atom_node(s: ^effect_shape_variant_create_keyless)
       }
     AppendEffect => atom_node(s: ^effect_shape_variant_append)
+    ExecuteEffect => atom_node(s: ^effect_shape_variant_execute)
   }
 }
 
