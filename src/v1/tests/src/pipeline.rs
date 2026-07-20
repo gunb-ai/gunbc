@@ -6723,8 +6723,9 @@ type RealEnum
     // contract must refuse loudly, naming the omitted field.
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("missing required field 'tag_field'")
-            && m.contains("InternallyTaggedObject")),
+        msgs.iter()
+            .any(|m| m.contains("missing required field 'tag_field'")
+                && m.contains("InternallyTaggedObject")),
         "malformed InternallyTaggedObject contracts must refuse at typecheck; got: {msgs:?}"
     );
 }
@@ -6763,8 +6764,9 @@ type MissingPrefixEnum
     // shapes the literal wall cannot see.
     let msgs = diagnostic_messages(&result);
     assert!(
-        msgs.iter().any(|m| m.contains("missing required field 'naming'")
-            && m.contains("InternallyTaggedObject")),
+        msgs.iter()
+            .any(|m| m.contains("missing required field 'naming'")
+                && m.contains("InternallyTaggedObject")),
         "malformed naming policies must refuse at typecheck; got: {msgs:?}"
     );
 }
