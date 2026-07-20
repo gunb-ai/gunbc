@@ -17,7 +17,7 @@ fn parse_one(path: &str) {
     let mut source_indices = HashMap::new();
     source_indices.insert(path.to_string(), source_index);
     let t1 = Instant::now();
-    let result = v1_compiler::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
+    let result = v1_compiler::v1_compiler_parse::parse(tokens, std::sync::Arc::new(source_indices));
     let t_parse = t1.elapsed();
     let ok = result.error.is_none() && result.module.is_some();
     println!(

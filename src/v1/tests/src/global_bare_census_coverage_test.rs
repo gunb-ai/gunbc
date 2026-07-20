@@ -3,13 +3,13 @@
 //! `global_bare` binds a bare cross-module reference iff the name is globally
 //! unique. These probes isolate which declaration shapes the census covers.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
 use v1_compiler::v1_std_core::is_interpreter_blocking_diagnostic;
 
-fn src(path: &str, content: &str) -> Rc<SourceFile> {
-    Rc::new(SourceFile {
+fn src(path: &str, content: &str) -> Arc<SourceFile> {
+    Arc::new(SourceFile {
         path: path.to_string(),
         content: content.to_string(),
     })
@@ -21,7 +21,7 @@ fn hard_diags(definer: &str, user: &str) -> Vec<String> {
         src("dag/probe_use.dag", user),
     ];
     let result = compile_sources(
-        Rc::new(sources.into()),
+        Arc::new(sources.into()),
         v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
     );
     result
@@ -52,7 +52,7 @@ fn probe_census_indexes_variant_and_fn() {
     use v1_compiler::v1_compiler_infer::build_global_bare_census;
     use v1_compiler::v1_compiler_infer_env::GlobalBareLookupState;
 
-    let sources = Rc::new(
+    let sources = Arc::new(
         vec![src("dag/probe_def.dag", DEFINER)]
             .into_iter()
             .collect::<im::Vector<_>>(),
@@ -66,7 +66,7 @@ fn probe_census_indexes_variant_and_fn() {
         .fold(im::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
-    let source_indices_rc = Rc::new(source_indices);
+    let source_indices_rc = Arc::new(source_indices);
     let census = build_global_bare_census(graph.modules.clone(), source_indices_rc.clone());
     assert!(
         matches!(
@@ -192,7 +192,7 @@ fn code() -> Int {
         src("dag/probe_use.dag", user),
     ];
     let result = compile_sources(
-        Rc::new(sources.into()),
+        Arc::new(sources.into()),
         v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
     );
     let d: Vec<String> = result

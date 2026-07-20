@@ -24,26 +24,26 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
-pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
+pub fn dag_item_forms() -> Arc<Vec<Arc<ItemForm>>> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<ItemForm>>> = {
-                Rc::new(vec![Rc::new(ItemForm {
+            static CACHED: Arc<Vec<Arc<ItemForm>>> = {
+                Arc::new(vec![Arc::new(ItemForm {
         kind: ItemFormKind::TypeAliasForm,
         keyword: "type".to_string(),
         has_type_params: true,
@@ -52,7 +52,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::TypeBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::FuncForm,
         keyword: "fn".to_string(),
         has_type_params: true,
@@ -61,7 +61,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: true,
         has_uses: false,
         body_kind: BodyKind::ExprBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::FuncForm,
         keyword: "func".to_string(),
         has_type_params: false,
@@ -70,7 +70,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: true,
         body_kind: BodyKind::BlockBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "resource".to_string(),
         has_type_params: false,
@@ -79,7 +79,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::ResourceBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "service".to_string(),
         has_type_params: false,
@@ -88,7 +88,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::ServiceBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "data".to_string(),
         has_type_params: false,
@@ -97,7 +97,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::ValueBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "pattern".to_string(),
         has_type_params: false,
@@ -106,7 +106,7 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: true,
         body_kind: BodyKind::BlockBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "interface".to_string(),
         has_type_params: false,
@@ -118,30 +118,30 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<ItemForm>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<ItemForm>>>| c.clone())
 }
 
-pub fn dag_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
+pub fn dag_keyword_literals() -> Arc<HashMap<String, Arc<LiteralValue>>> {
     thread_local! {
-            static CACHED: Rc<HashMap<String, Rc<LiteralValue>>> = {
+            static CACHED: Arc<HashMap<String, Arc<LiteralValue>>> = {
                 let mut __m = HashMap::new();
-                __m.insert("true".to_string(), Rc::new(LiteralValue::LitBool {
+                __m.insert("true".to_string(), Arc::new(LiteralValue::LitBool {
         value: true,
     }));
-                __m.insert("false".to_string(), Rc::new(LiteralValue::LitBool {
+                __m.insert("false".to_string(), Arc::new(LiteralValue::LitBool {
         value: false,
     }));
-                __m.insert("none".to_string(), Rc::new(LiteralValue::LitNull));
-                __m.insert("null".to_string(), Rc::new(LiteralValue::LitNull));
-                Rc::new(__m)
+                __m.insert("none".to_string(), Arc::new(LiteralValue::LitNull));
+                __m.insert("null".to_string(), Arc::new(LiteralValue::LitNull));
+                Arc::new(__m)
             };
         }
-    CACHED.with(|c: &Rc<HashMap<String, Rc<LiteralValue>>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, Arc<LiteralValue>>>| c.clone())
 }
 
-pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
+pub fn dag_keyword_set() -> Arc<HashMap<String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Arc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("module".to_string(), true);
             __m.insert("import".to_string(), true);
@@ -178,15 +178,15 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
             __m.insert("idempotent".to_string(), true);
             __m.insert("readonly".to_string(), true);
             __m.insert("hermetic".to_string(), true);
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, bool>>| c.clone())
 }
 
-pub fn dag_non_name_keywords() -> Rc<HashMap<String, bool>> {
+pub fn dag_non_name_keywords() -> Arc<HashMap<String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Arc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), true);
             __m.insert("false".to_string(), true);
@@ -194,106 +194,106 @@ pub fn dag_non_name_keywords() -> Rc<HashMap<String, bool>> {
             __m.insert("null".to_string(), true);
             __m.insert("acquire".to_string(), true);
             __m.insert("release".to_string(), true);
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, bool>>| c.clone())
 }
 
-pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
+pub fn dag_operators() -> Arc<Vec<Arc<OperatorSpec>>> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {
-                Rc::new(vec![Rc::new(OperatorSpec {
+            static CACHED: Arc<Vec<Arc<OperatorSpec>>> = {
+                Arc::new(vec![Arc::new(OperatorSpec {
         symbol: "||".to_string(),
         left_bp: 5,
         right_bp: 6,
         binop: Some(BinOp::Or),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "&&".to_string(),
         left_bp: 7,
         right_bp: 8,
         binop: Some(BinOp::And),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "??".to_string(),
         left_bp: 8,
         right_bp: 9,
         binop: Some(BinOp::NullCoalesce),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "==".to_string(),
         left_bp: 9,
         right_bp: 10,
         binop: Some(BinOp::Eq),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "!=".to_string(),
         left_bp: 9,
         right_bp: 10,
         binop: Some(BinOp::Ne),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "<".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Lt),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: ">".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Gt),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "<=".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Le),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: ">=".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Ge),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "+".to_string(),
         left_bp: 13,
         right_bp: 14,
         binop: Some(BinOp::Add),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "-".to_string(),
         left_bp: 13,
         right_bp: 14,
         binop: Some(BinOp::Sub),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "*".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Mul),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "/".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Div),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "%".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Mod),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "|>".to_string(),
         left_bp: 17,
         right_bp: 18,
         binop: None,
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: ".".to_string(),
         left_bp: 19,
         right_bp: 20,
@@ -302,12 +302,12 @@ pub fn dag_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<OperatorSpec>>>| c.clone())
 }
 
-pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
+pub fn v3_supported_dag_operators() -> Arc<HashMap<String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Arc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("||".to_string(), true);
             __m.insert("&&".to_string(), true);
@@ -323,16 +323,16 @@ pub fn v3_supported_dag_operators() -> Rc<HashMap<String, bool>> {
             __m.insert("/".to_string(), true);
             __m.insert("|>".to_string(), true);
             __m.insert(".".to_string(), true);
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, bool>>| c.clone())
 }
 
-pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
+pub fn dag_syntax_spec() -> Arc<SyntaxSpec> {
     thread_local! {
-            static CACHED: Rc<SyntaxSpec> = {
-                Rc::new(SyntaxSpec {
+            static CACHED: Arc<SyntaxSpec> = {
+                Arc::new(SyntaxSpec {
         item_forms: dag_item_forms(),
         operators: dag_operators(),
         keyword_literals: dag_keyword_literals(),
@@ -340,5 +340,5 @@ pub fn dag_syntax_spec() -> Rc<SyntaxSpec> {
     })
             };
         }
-    CACHED.with(|c: &Rc<SyntaxSpec>| c.clone())
+    CACHED.with(|c: &Arc<SyntaxSpec>| c.clone())
 }

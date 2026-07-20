@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::cli_run::value_to_wire_json;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
@@ -47,7 +47,7 @@ fn witness() -> List<AnthropicChatMessage> {
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = v1_interpreter::InterpContext::new(

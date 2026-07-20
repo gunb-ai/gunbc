@@ -96,7 +96,7 @@ pub use crate::v1_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineInd
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -111,12 +111,12 @@ pub enum SizeExpr {
         collection: String,
     },
     SizeAdd {
-        left: Rc<SizeExpr>,
-        right: Rc<SizeExpr>,
+        left: Arc<SizeExpr>,
+        right: Arc<SizeExpr>,
     },
     SizeMax {
-        left: Rc<SizeExpr>,
-        right: Rc<SizeExpr>,
+        left: Arc<SizeExpr>,
+        right: Arc<SizeExpr>,
     },
 }
 
@@ -127,25 +127,25 @@ pub enum CostExpr {
         value: i64,
     },
     CostAdd {
-        left: Rc<CostExpr>,
-        right: Rc<CostExpr>,
+        left: Arc<CostExpr>,
+        right: Arc<CostExpr>,
     },
     CostMul {
-        left: Rc<CostExpr>,
-        right: Rc<CostExpr>,
+        left: Arc<CostExpr>,
+        right: Arc<CostExpr>,
     },
     CostMax {
-        left: Rc<CostExpr>,
-        right: Rc<CostExpr>,
+        left: Arc<CostExpr>,
+        right: Arc<CostExpr>,
     },
     CostSum {
         binder: String,
-        upper: Rc<SizeExpr>,
-        body: Rc<CostExpr>,
+        upper: Arc<SizeExpr>,
+        body: Arc<CostExpr>,
     },
     CostLog {
         base: i64,
-        argument: Rc<SizeExpr>,
+        argument: Arc<SizeExpr>,
     },
     CostExtern {
         name: String,
@@ -166,30 +166,30 @@ pub enum Certainty {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexitySummary {
-    pub work: Rc<CostExpr>,
-    pub span: Rc<CostExpr>,
-    pub output_size: Rc<HashMap<String, Rc<CostExpr>>>,
+    pub work: Arc<CostExpr>,
+    pub span: Arc<CostExpr>,
+    pub output_size: Arc<HashMap<String, Arc<CostExpr>>>,
     pub certainty: Certainty,
-    pub peak_space: Option<Rc<CostExpr>>,
+    pub peak_space: Option<Arc<CostExpr>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostInternTable {
-    pub summaries: Rc<HashMap<String, Rc<ComplexitySummary>>>,
+    pub summaries: Arc<HashMap<String, Arc<ComplexitySummary>>>,
 }
 
-pub fn empty_cost_intern_table() -> Rc<CostInternTable> {
-    Rc::new(CostInternTable {
-        summaries: v1_rt::rc_empty_map::<String, Rc<ComplexitySummary>>(),
+pub fn empty_cost_intern_table() -> Arc<CostInternTable> {
+    Arc::new(CostInternTable {
+        summaries: v1_rt::rc_empty_map::<String, Arc<ComplexitySummary>>(),
     })
 }
 
 pub fn cache_summary(
-    table: Rc<CostInternTable>,
+    table: Arc<CostInternTable>,
     func_name: String,
-    summary: Rc<ComplexitySummary>,
-) -> Rc<CostInternTable> {
-    Rc::new(CostInternTable {
+    summary: Arc<ComplexitySummary>,
+) -> Arc<CostInternTable> {
+    Arc::new(CostInternTable {
         summaries: v1_rt::rc_map_insert(
             table.summaries.clone(),
             func_name.clone(),
@@ -199,20 +199,20 @@ pub fn cache_summary(
 }
 
 pub fn lookup_summary(
-    table: Rc<CostInternTable>,
+    table: Arc<CostInternTable>,
     func_name: String,
-) -> Option<Rc<ComplexitySummary>> {
+) -> Option<Arc<ComplexitySummary>> {
     v1_rt::map_get(&table.summaries.clone(), func_name.clone())
 }
 
-pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostInternTable> {
+pub fn evict_summary(table: Arc<CostInternTable>, func_name: String) -> Arc<CostInternTable> {
     cache_summary(
         table.clone(),
         func_name.clone(),
-        Rc::new(ComplexitySummary {
-            work: Rc::new(CostExpr::CostConst { value: 0 }),
-            span: Rc::new(CostExpr::CostConst { value: 0 }),
-            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+        Arc::new(ComplexitySummary {
+            work: Arc::new(CostExpr::CostConst { value: 0 }),
+            span: Arc::new(CostExpr::CostConst { value: 0 }),
+            output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
             certainty: Certainty::Proven,
             peak_space: None,
         }),
@@ -221,23 +221,23 @@ pub fn evict_summary(table: Rc<CostInternTable>, func_name: String) -> Rc<CostIn
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccInfo {
-    pub members: Rc<Vec<String>>,
-    pub member_set: Rc<BTreeSet<String>>,
-    pub pattern: Rc<LoweringTarget>,
+    pub members: Arc<Vec<String>>,
+    pub member_set: Arc<BTreeSet<String>>,
+    pub pattern: Arc<LoweringTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccBuildAcc {
-    pub assigned: Rc<BTreeSet<String>>,
-    pub index: Rc<HashMap<String, Rc<SccInfo>>>,
+    pub assigned: Arc<BTreeSet<String>>,
+    pub index: Arc<HashMap<String, Arc<SccInfo>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccResult {
-    pub index: Rc<HashMap<String, Rc<SccInfo>>>,
-    pub topo_order: Rc<Vec<String>>,
-    pub processing_order: Rc<Vec<String>>,
-    pub call_graph: Rc<CallGraph>,
+    pub index: Arc<HashMap<String, Arc<SccInfo>>>,
+    pub topo_order: Arc<Vec<String>>,
+    pub processing_order: Arc<Vec<String>>,
+    pub call_graph: Arc<CallGraph>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -289,35 +289,35 @@ pub struct ParserProgressEdge {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserProgressEnv {
-    pub state_aliases: Rc<HashMap<String, DescentEvidence>>,
-    pub result_sources: Rc<HashMap<String, Rc<ParserResultSource>>>,
+    pub state_aliases: Arc<HashMap<String, DescentEvidence>>,
+    pub result_sources: Arc<HashMap<String, Arc<ParserResultSource>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ParserProgressAcc {
-    pub edges: Rc<Vec<Rc<ParserProgressEdge>>>,
-    pub env: Rc<ParserProgressEnv>,
+    pub edges: Arc<Vec<Arc<ParserProgressEdge>>>,
+    pub env: Arc<ParserProgressEnv>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DescentCheckAcc {
     pub ok: bool,
-    pub vars: Rc<HashMap<String, bool>>,
+    pub vars: Arc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EvidenceBlockAcc {
     pub evidence: Option<DescentEvidence>,
-    pub vars: Rc<HashMap<String, bool>>,
+    pub vars: Arc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccEdgeBlockAcc {
-    pub edges: Rc<Vec<Rc<ParserProgressEdge>>>,
-    pub vars: Rc<HashMap<String, bool>>,
+    pub edges: Arc<Vec<Arc<ParserProgressEdge>>>,
+    pub vars: Arc<HashMap<String, bool>>,
 }
 
-pub fn is_algebra_iteration_method(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
+pub fn is_algebra_iteration_method(method_semantics: Option<Arc<MethodSemantics>>) -> bool {
     match method_semantics.clone().as_deref().cloned() {
         Some(MethodSemantics::AlgebraMethodSemantics { .. }) => true,
         _ => false,
@@ -325,7 +325,7 @@ pub fn is_algebra_iteration_method(method_semantics: Option<Rc<MethodSemantics>>
 }
 
 pub fn method_size_effect(
-    method_semantics: Option<Rc<MethodSemantics>>,
+    method_semantics: Option<Arc<MethodSemantics>>,
 ) -> Option<CollectionSizeEffect> {
     match method_semantics.clone().as_deref().cloned() {
         Some(MethodSemantics::AlgebraMethodSemantics {
@@ -336,7 +336,7 @@ pub fn method_size_effect(
 }
 
 pub fn method_callback_element_position(
-    method_semantics: Option<Rc<MethodSemantics>>,
+    method_semantics: Option<Arc<MethodSemantics>>,
 ) -> Option<i64> {
     match method_semantics.clone().as_deref().cloned() {
         Some(MethodSemantics::AlgebraMethodSemantics {
@@ -351,9 +351,9 @@ pub fn method_callback_element_position(
 }
 
 pub fn iteration_element_name(
-    method_semantics: Option<Rc<MethodSemantics>>,
-    lambda: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    method_semantics: Option<Arc<MethodSemantics>>,
+    lambda: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     {
         let params = lambda_param_names_at(lambda.clone(), si.clone());
@@ -365,14 +365,14 @@ pub fn iteration_element_name(
 }
 
 pub fn proof_has_non_descending_cycle(
-    proof: Rc<TerminationProof>,
-    members: Rc<Vec<String>>,
-    edges: Rc<Vec<Rc<ProofEdge>>>,
+    proof: Arc<TerminationProof>,
+    members: Arc<Vec<String>>,
+    edges: Arc<Vec<Arc<ProofEdge>>>,
 ) -> bool {
     (is_valid_proof(proof.clone(), edges.clone()) == false)
 }
 
-pub fn set_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
+pub fn set_has(m: Arc<HashMap<String, bool>>, key: String) -> bool {
     (v1_rt::map_get(&m, key.clone()) != None)
 }
 
@@ -383,18 +383,18 @@ pub fn strict_after_parser_witness(input: DescentEvidence) -> DescentEvidence {
     }
 }
 
-pub fn empty_parser_progress_env() -> Rc<ParserProgressEnv> {
-    Rc::new(ParserProgressEnv {
+pub fn empty_parser_progress_env() -> Arc<ParserProgressEnv> {
+    Arc::new(ParserProgressEnv {
         state_aliases: v1_rt::rc_empty_map::<String, DescentEvidence>(),
-        result_sources: v1_rt::rc_empty_map::<String, Rc<ParserResultSource>>(),
+        result_sources: v1_rt::rc_empty_map::<String, Arc<ParserResultSource>>(),
     })
 }
 
 pub fn parser_state_param(
-    params: Rc<Vec<Rc<Node>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<ParserStateParam>> {
-    Rc::new(
+    params: Arc<Vec<Arc<Node>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<ParserStateParam>> {
+    Arc::new(
         params
             .clone()
             .iter()
@@ -405,7 +405,7 @@ pub fn parser_state_param(
     )
     .iter()
     .cloned()
-    .fold(None, |acc: _, pair: (i64, Rc<Node>)| {
+    .fold(None, |acc: _, pair: (i64, Arc<Node>)| {
         if (acc.clone() != None) {
             acc.clone()
         } else {
@@ -415,7 +415,7 @@ pub fn parser_state_param(
                 if (authored_name_at(si.clone(), param_node_type_expr(param.clone()))
                     == "ParserState".to_string())
                 {
-                    Some(Rc::new(ParserStateParam {
+                    Some(Arc::new(ParserStateParam {
                         name: param_node_name_at(param.clone(), si.clone()),
                         index: idx.clone(),
                     }))
@@ -428,8 +428,8 @@ pub fn parser_state_param(
 }
 
 pub fn parser_state_base_var(
-    expr: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    expr: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { .. } => match expr.children.clone().first().cloned() {
@@ -446,9 +446,9 @@ pub fn parser_state_base_var(
 }
 
 pub fn parser_result_state_progress(
-    source: Rc<ParserResultSource>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    consumed_true_set: Rc<HashMap<String, bool>>,
+    source: Arc<ParserResultSource>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    consumed_true_set: Arc<HashMap<String, bool>>,
     result_name: String,
 ) -> DescentEvidence {
     match (*source.clone()).clone() {
@@ -480,11 +480,11 @@ pub fn parser_result_state_progress(
 }
 
 pub fn parser_state_arg_expr(
-    call_node: Rc<Node>,
-    state_param: Rc<ParserStateParam>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    Rc::new(
+    call_node: Arc<Node>,
+    state_param: Arc<ParserStateParam>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
+    Arc::new(
         call_node
             .children
             .clone()
@@ -496,7 +496,7 @@ pub fn parser_state_arg_expr(
     )
     .iter()
     .cloned()
-    .fold(None, |acc: _, pair: (i64, Rc<Node>)| {
+    .fold(None, |acc: _, pair: (i64, Arc<Node>)| {
         if (acc.clone() != None) {
             acc.clone()
         } else {
@@ -522,12 +522,12 @@ pub fn parser_state_arg_expr(
 }
 
 pub fn parser_state_expr_progress(
-    expr: Rc<Node>,
-    state_param: Rc<ParserStateParam>,
-    env: Rc<ParserProgressEnv>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    consumed_true_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    expr: Arc<Node>,
+    state_param: Arc<ParserStateParam>,
+    env: Arc<ParserProgressEnv>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    consumed_true_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> DescentEvidence {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
@@ -629,7 +629,7 @@ pub fn parser_state_expr_progress(
                 }
             }
             ExprData::ExprMatch => {
-                let arm_progresses = Rc::new({
+                let arm_progresses = Arc::new({
                     let mut __result = Vec::new();
                     for arm_node in match_arm_nodes(expr.clone()).iter().cloned() {
                         __result.push(parser_state_expr_progress(
@@ -667,17 +667,17 @@ pub fn parser_state_expr_progress(
 }
 
 pub fn parser_block_state_progress(
-    stmts: Rc<Vec<Rc<Node>>>,
-    state_param: Rc<ParserStateParam>,
-    env: Rc<ParserProgressEnv>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    consumed_true_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    stmts: Arc<Vec<Arc<Node>>>,
+    state_param: Arc<ParserStateParam>,
+    env: Arc<ParserProgressEnv>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    consumed_true_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> DescentEvidence {
     match stmts.clone().last().cloned() {
         None => DescentEvidence::DescentUnknown,
         Some(last_stmt) => {
-            let leading = Rc::new(
+            let leading = Arc::new(
                 stmts
                     .clone()
                     .iter()
@@ -687,7 +687,7 @@ pub fn parser_block_state_progress(
             );
             let final_env = leading.clone().iter().cloned().fold(
                 env.clone(),
-                |acc_env: Rc<ParserProgressEnv>, stmt: Rc<Node>| match (*stmt.expr_data.clone())
+                |acc_env: Arc<ParserProgressEnv>, stmt: Arc<Node>| match (*stmt.expr_data.clone())
                     .clone()
                 {
                     ExprData::ExprLet => match let_body(stmt.clone()) {
@@ -718,13 +718,13 @@ pub fn parser_block_state_progress(
 }
 
 pub fn parser_result_source_for_expr(
-    expr: Rc<Node>,
-    state_param: Rc<ParserStateParam>,
-    env: Rc<ParserProgressEnv>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    consumed_true_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ParserResultSource> {
+    expr: Arc<Node>,
+    state_param: Arc<ParserStateParam>,
+    env: Arc<ParserProgressEnv>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    consumed_true_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<ParserResultSource> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let input_progress =
@@ -741,31 +741,31 @@ pub fn parser_result_source_for_expr(
                 };
             match (*parser_result_witness(expr.clone(), si.clone())).clone() {
                 ParserResultWitness::ParserWitnessAdvance => {
-                    Rc::new(ParserResultSource::ParserResultAdvance {
+                    Arc::new(ParserResultSource::ParserResultAdvance {
                         input: input_progress.clone(),
                     })
                 }
                 ParserResultWitness::ParserWitnessExpect => {
-                    Rc::new(ParserResultSource::ParserResultExpect {
+                    Arc::new(ParserResultSource::ParserResultExpect {
                         input: input_progress.clone(),
                     })
                 }
                 ParserResultWitness::ParserWitnessEat => {
-                    Rc::new(ParserResultSource::ParserResultEat {
+                    Arc::new(ParserResultSource::ParserResultEat {
                         input: input_progress.clone(),
                     })
                 }
                 ParserResultWitness::ParserWitnessCall { callee: callee, .. } => {
                     match (*callee.clone()).clone() {
                         ParserCallIdentity::ParserCallHelper { helper: _, .. } => {
-                            Rc::new(ParserResultSource::ParserResultOpaque)
+                            Arc::new(ParserResultSource::ParserResultOpaque)
                         }
                         ParserCallIdentity::ParserCallFunction { name: name, .. } => {
                             match input_progress.clone() {
                                 DescentEvidence::DescentUnknown => {
-                                    Rc::new(ParserResultSource::ParserResultOpaque)
+                                    Arc::new(ParserResultSource::ParserResultOpaque)
                                 }
-                                _ => Rc::new(ParserResultSource::ParserResultCall {
+                                _ => Arc::new(ParserResultSource::ParserResultCall {
                                     input: input_progress.clone(),
                                     callee: name.clone(),
                                 }),
@@ -774,7 +774,7 @@ pub fn parser_result_source_for_expr(
                     }
                 }
                 ParserResultWitness::ParserWitnessOpaque => {
-                    Rc::new(ParserResultSource::ParserResultOpaque)
+                    Arc::new(ParserResultSource::ParserResultOpaque)
                 }
             }
         }
@@ -788,8 +788,8 @@ pub fn parser_result_source_for_expr(
                 si.clone(),
             );
             match progress.clone() {
-                DescentEvidence::DescentUnknown => Rc::new(ParserResultSource::ParserResultOpaque),
-                _ => Rc::new(ParserResultSource::ParserResultDirectState {
+                DescentEvidence::DescentUnknown => Arc::new(ParserResultSource::ParserResultOpaque),
+                _ => Arc::new(ParserResultSource::ParserResultDirectState {
                     input: progress.clone(),
                 }),
             }
@@ -799,13 +799,13 @@ pub fn parser_result_source_for_expr(
 
 pub fn parser_env_with_binding(
     name: String,
-    value_expr: Rc<Node>,
-    env: Rc<ParserProgressEnv>,
-    state_param: Rc<ParserStateParam>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    consumed_true_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ParserProgressEnv> {
+    value_expr: Arc<Node>,
+    env: Arc<ParserProgressEnv>,
+    state_param: Arc<ParserStateParam>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    consumed_true_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<ParserProgressEnv> {
     {
         let state_progress = parser_state_expr_progress(
             value_expr.clone(),
@@ -823,7 +823,7 @@ pub fn parser_env_with_binding(
             consumed_true_set.clone(),
             si.clone(),
         );
-        Rc::new(ParserProgressEnv {
+        Arc::new(ParserProgressEnv {
             state_aliases: v1_rt::rc_map_insert(
                 env.state_aliases.clone(),
                 name.clone(),
@@ -839,12 +839,12 @@ pub fn parser_env_with_binding(
 }
 
 pub fn parser_call_edge_progress(
-    call_node: Rc<Node>,
-    state_param: Rc<ParserStateParam>,
-    env: Rc<ParserProgressEnv>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    consumed_true_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    call_node: Arc<Node>,
+    state_param: Arc<ParserStateParam>,
+    env: Arc<ParserProgressEnv>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    consumed_true_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> DescentEvidence {
     match parser_state_arg_expr(call_node.clone(), state_param.clone(), si.clone()) {
         Some(state_expr) => {
@@ -871,21 +871,21 @@ pub fn parser_call_edge_progress(
 
 pub fn collect_parser_progress_block_edges(
     caller: String,
-    stmts: Rc<Vec<Rc<Node>>>,
-    state_param: Rc<ParserStateParam>,
-    scc_name_set: Rc<HashMap<String, bool>>,
-    env: Rc<ParserProgressEnv>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    consumed_true_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ParserProgressEdge>>> {
+    stmts: Arc<Vec<Arc<Node>>>,
+    state_param: Arc<ParserStateParam>,
+    scc_name_set: Arc<HashMap<String, bool>>,
+    env: Arc<ParserProgressEnv>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    consumed_true_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ParserProgressEdge>>> {
     {
         let acc = stmts.clone().iter().cloned().fold(
-            Rc::new(ParserProgressAcc {
-                edges: Rc::new(vec![]),
+            Arc::new(ParserProgressAcc {
+                edges: Arc::new(vec![]),
                 env: env.clone(),
             }),
-            |acc: Rc<ParserProgressAcc>, stmt: Rc<Node>| match (*stmt.expr_data.clone()).clone() {
+            |acc: Arc<ParserProgressAcc>, stmt: Arc<Node>| match (*stmt.expr_data.clone()).clone() {
                 ExprData::ExprLet => match let_body(stmt.clone()) {
                     None => {
                         let value_expr = let_value(stmt.clone());
@@ -908,7 +908,7 @@ pub fn collect_parser_progress_block_edges(
                             consumed_true_set.clone(),
                             si.clone(),
                         );
-                        Rc::new(ParserProgressAcc {
+                        Arc::new(ParserProgressAcc {
                             edges: v1_rt::concat(acc.edges.clone(), value_edges.clone()),
                             env: next_env.clone(),
                         })
@@ -924,7 +924,7 @@ pub fn collect_parser_progress_block_edges(
                             consumed_true_set.clone(),
                             si.clone(),
                         );
-                        Rc::new(ParserProgressAcc {
+                        Arc::new(ParserProgressAcc {
                             edges: v1_rt::concat(acc.edges.clone(), stmt_edges.clone()),
                             env: acc.env.clone(),
                         })
@@ -941,7 +941,7 @@ pub fn collect_parser_progress_block_edges(
                         consumed_true_set.clone(),
                         si.clone(),
                     );
-                    Rc::new(ParserProgressAcc {
+                    Arc::new(ParserProgressAcc {
                         edges: v1_rt::concat(acc.edges.clone(), stmt_edges.clone()),
                         env: acc.env.clone(),
                     })
@@ -954,14 +954,14 @@ pub fn collect_parser_progress_block_edges(
 
 pub fn collect_parser_progress_edges(
     caller: String,
-    body: Rc<Node>,
-    state_param: Rc<ParserStateParam>,
-    scc_name_set: Rc<HashMap<String, bool>>,
-    env: Rc<ParserProgressEnv>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    consumed_true_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ParserProgressEdge>>> {
+    body: Arc<Node>,
+    state_param: Arc<ParserStateParam>,
+    scc_name_set: Arc<HashMap<String, bool>>,
+    env: Arc<ParserProgressEnv>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    consumed_true_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ParserProgressEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
@@ -969,7 +969,7 @@ pub fn collect_parser_progress_edges(
                     scc_name_set.clone(),
                     expr_call_func_at(body.clone(), si.clone()),
                 ) {
-                    Rc::new(vec![Rc::new(ParserProgressEdge {
+                    Arc::new(vec![Arc::new(ParserProgressEdge {
                         caller: caller.clone(),
                         callee: expr_call_func_at(body.clone(), si.clone()),
                         progress: parser_call_edge_progress(
@@ -982,9 +982,9 @@ pub fn collect_parser_progress_edges(
                         ),
                     })])
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 };
-                let child_edges = Rc::new({
+                let child_edges = Arc::new({
                     let mut __result = Vec::new();
                     for child in body.children.clone().iter().cloned() {
                         __result.extend(
@@ -1045,7 +1045,7 @@ pub fn collect_parser_progress_edges(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 v1_rt::concat(
                     v1_rt::concat(cond_edges.clone(), then_edges.clone()),
@@ -1084,7 +1084,7 @@ pub fn collect_parser_progress_edges(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 v1_rt::concat(value_edges.clone(), body_edges.clone())
             }
@@ -1109,7 +1109,7 @@ pub fn collect_parser_progress_edges(
                     consumed_true_set.clone(),
                     si.clone(),
                 );
-                let arm_edges = Rc::new({
+                let arm_edges = Arc::new({
                     let mut __result = Vec::new();
                     for arm_node in match_arm_nodes(body.clone()).iter().cloned() {
                         __result.extend(
@@ -1131,7 +1131,7 @@ pub fn collect_parser_progress_edges(
                 });
                 v1_rt::concat(scrut_edges.clone(), arm_edges.clone())
             }
-            _ => Rc::new({
+            _ => Arc::new({
                 let mut __result = Vec::new();
                 for child in body.children.clone().iter().cloned() {
                     __result.extend(
@@ -1156,13 +1156,13 @@ pub fn collect_parser_progress_edges(
 }
 
 pub fn parser_record_field_value(
-    expr: Rc<Node>,
+    expr: Arc<Node>,
     field_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    Rc::new({
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for child in Rc::new({
+        for child in Arc::new({
             let mut __result = Vec::new();
             for child in expr.children.clone().iter().cloned() {
                 if (field_init_node_name_at(child.clone(), si.clone()) == field_name.clone()) {
@@ -1182,7 +1182,7 @@ pub fn parser_record_field_value(
     .cloned()
 }
 
-pub fn parser_expr_is_none(expr: Rc<Node>) -> bool {
+pub fn parser_expr_is_none(expr: Arc<Node>) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitNull => true,
@@ -1193,12 +1193,12 @@ pub fn parser_expr_is_none(expr: Rc<Node>) -> bool {
 }
 
 pub fn parser_success_progress(
-    expr: Rc<Node>,
-    state_param: Rc<ParserStateParam>,
-    env: Rc<ParserProgressEnv>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    consumed_true_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    expr: Arc<Node>,
+    state_param: Arc<ParserStateParam>,
+    env: Arc<ParserProgressEnv>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    consumed_true_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> DescentEvidence {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
@@ -1315,7 +1315,7 @@ pub fn parser_success_progress(
                 }
             }
             ExprData::ExprBlock => {
-                let prefix = v1_rt::reverse(Rc::new(
+                let prefix = v1_rt::reverse(Arc::new(
                     v1_rt::reverse(expr.children.clone())
                         .iter()
                         .cloned()
@@ -1323,11 +1323,11 @@ pub fn parser_success_progress(
                         .collect::<Vec<_>>(),
                 ));
                 let acc = prefix.clone().iter().cloned().fold(
-                    Rc::new(ParserProgressAcc {
-                        edges: Rc::new(vec![]),
+                    Arc::new(ParserProgressAcc {
+                        edges: Arc::new(vec![]),
                         env: env.clone(),
                     }),
-                    |acc: Rc<ParserProgressAcc>, stmt: Rc<Node>| match (*stmt.expr_data.clone())
+                    |acc: Arc<ParserProgressAcc>, stmt: Arc<Node>| match (*stmt.expr_data.clone())
                         .clone()
                     {
                         ExprData::ExprLet => match let_body(stmt.clone()) {
@@ -1341,7 +1341,7 @@ pub fn parser_success_progress(
                                     consumed_true_set.clone(),
                                     si.clone(),
                                 );
-                                Rc::new(ParserProgressAcc {
+                                Arc::new(ParserProgressAcc {
                                     edges: acc.edges.clone(),
                                     env: next_env.clone(),
                                 })
@@ -1369,10 +1369,10 @@ pub fn parser_success_progress(
 }
 
 pub fn parser_member_is_always_advancing(
-    entry: Rc<FuncEntry>,
-    parser_name_set: Rc<HashMap<String, bool>>,
-    proven: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    entry: Arc<FuncEntry>,
+    parser_name_set: Arc<HashMap<String, bool>>,
+    proven: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match parser_state_param(entry.params.clone(), si.clone()) {
         Some(state_param) => {
@@ -1412,17 +1412,17 @@ pub fn parser_member_is_always_advancing(
 }
 
 pub fn infer_parser_always_advancing_members_worklist(
-    mut queue: Rc<Vec<String>>,
-    mut func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    mut parser_name_set: Rc<HashMap<String, bool>>,
-    mut reverse_graph: Rc<HashMap<String, Rc<Vec<String>>>>,
-    mut proven: Rc<HashMap<String, bool>>,
-    mut si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, bool>> {
+    mut queue: Arc<Vec<String>>,
+    mut func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    mut parser_name_set: Arc<HashMap<String, bool>>,
+    mut reverse_graph: Arc<HashMap<String, Arc<Vec<String>>>>,
+    mut proven: Arc<HashMap<String, bool>>,
+    mut si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, bool>> {
     loop {
         match queue.clone().first().cloned() {
             Some(name) => {
-                let rest = Rc::new(
+                let rest = Arc::new(
                     queue
                         .clone()
                         .iter()
@@ -1447,7 +1447,7 @@ pub fn infer_parser_always_advancing_members_worklist(
                             ) {
                                 let callers = match v1_rt::map_get(&reverse_graph, name.clone()) {
                                     Some(members) => members.clone(),
-                                    None => Rc::new(vec![]),
+                                    None => Arc::new(vec![]),
                                 };
                                 {
                                     let __tco_0 =
@@ -1481,24 +1481,24 @@ pub fn infer_parser_always_advancing_members_worklist(
 }
 
 pub fn infer_parser_always_advancing_members(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, bool>> {
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, bool>> {
     {
         let parser_name_set = members.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
+            |acc: Arc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
         );
-        let parser_entries = Rc::new({
+        let parser_entries = Arc::new({
             let mut __result = Vec::new();
             for name in members.clone().iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&func_index, name.clone()) {
-                        Some(entry) => Rc::new(vec![entry.clone()]),
-                        None => Rc::new(vec![]),
+                        Some(entry) => Arc::new(vec![entry.clone()]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -1520,12 +1520,12 @@ pub fn infer_parser_always_advancing_members(
 }
 
 pub fn parser_function_names(
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for name in Rc::new(v1_rt::map_keys(&func_index)).iter().cloned() {
+        for name in Arc::new(v1_rt::map_keys(&func_index)).iter().cloned() {
             if match v1_rt::map_get(&func_index, name.clone()) {
                 Some(entry) => (parser_state_param(entry.params.clone(), si.clone()) != None),
                 None => false,
@@ -1538,16 +1538,16 @@ pub fn parser_function_names(
 }
 
 pub fn infer_all_parser_always_advancing(
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, bool>> {
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, bool>> {
     {
         let members = parser_function_names(func_index.clone(), si.clone());
         infer_parser_always_advancing_members(members.clone(), func_index.clone(), si.clone())
     }
 }
 
-pub fn seed_string_map(key: String, value: String) -> Rc<HashMap<String, String>> {
+pub fn seed_string_map(key: String, value: String) -> Arc<HashMap<String, String>> {
     v1_rt::rc_map_insert(
         v1_rt::rc_empty_map::<String, String>(),
         key.clone(),
@@ -1555,13 +1555,13 @@ pub fn seed_string_map(key: String, value: String) -> Rc<HashMap<String, String>
     )
 }
 
-pub fn seed_bool_map(key: String) -> Rc<HashMap<String, bool>> {
+pub fn seed_bool_map(key: String) -> Arc<HashMap<String, bool>> {
     v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, bool>(), key.clone(), true)
 }
 
-pub fn seed_cost_map(key: String, value: Rc<CostExpr>) -> Rc<HashMap<String, Rc<CostExpr>>> {
+pub fn seed_cost_map(key: String, value: Arc<CostExpr>) -> Arc<HashMap<String, Arc<CostExpr>>> {
     v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+        v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
         key.clone(),
         value.clone(),
     )
@@ -1569,23 +1569,23 @@ pub fn seed_cost_map(key: String, value: Rc<CostExpr>) -> Rc<HashMap<String, Rc<
 
 pub fn seed_func_entry_map(
     key: String,
-    value: Rc<FuncEntry>,
-) -> Rc<HashMap<String, Rc<FuncEntry>>> {
+    value: Arc<FuncEntry>,
+) -> Arc<HashMap<String, Arc<FuncEntry>>> {
     v1_rt::rc_map_insert(
-        v1_rt::rc_empty_map::<String, Rc<FuncEntry>>(),
+        v1_rt::rc_empty_map::<String, Arc<FuncEntry>>(),
         key.clone(),
         value.clone(),
     )
 }
 
 pub fn build_call_graph_from_parser_edges(
-    names: Rc<Vec<String>>,
-    edges: Rc<Vec<Rc<ParserProgressEdge>>>,
-) -> Rc<CallGraph> {
-    Rc::new(CallGraph {
-        edges: Rc::new({
+    names: Arc<Vec<String>>,
+    edges: Arc<Vec<Arc<ParserProgressEdge>>>,
+) -> Arc<CallGraph> {
+    Arc::new(CallGraph {
+        edges: Arc::new({
             let mut __result = Vec::new();
-            for edge in Rc::new({
+            for edge in Arc::new({
                 let mut __result = Vec::new();
                 for edge in edges.clone().iter().cloned() {
                     if (edge.caller.clone() != edge.callee.clone()) {
@@ -1597,7 +1597,7 @@ pub fn build_call_graph_from_parser_edges(
             .iter()
             .cloned()
             {
-                __result.push(Rc::new(GraphEdge {
+                __result.push(Arc::new(GraphEdge {
                     caller: edge.caller.clone(),
                     callee: edge.callee.clone(),
                 }));
@@ -1608,11 +1608,11 @@ pub fn build_call_graph_from_parser_edges(
 }
 
 pub fn same_progress_subgraph_has_cycle(
-    members: Rc<Vec<String>>,
-    edges: Rc<Vec<Rc<ParserProgressEdge>>>,
+    members: Arc<Vec<String>>,
+    edges: Arc<Vec<Arc<ParserProgressEdge>>>,
 ) -> bool {
     {
-        let same_edges = Rc::new({
+        let same_edges = Arc::new({
             let mut __result = Vec::new();
             for edge in edges.clone().iter().cloned() {
                 if (edge.progress.clone() == DescentEvidence::NonIncreasing) {
@@ -1635,7 +1635,7 @@ pub fn same_progress_subgraph_has_cycle(
             true
         } else {
             {
-                let same_cross_edges = Rc::new({
+                let same_cross_edges = Arc::new({
                     let mut __result = Vec::new();
                     for edge in same_edges.clone().iter().cloned() {
                         if (edge.caller.clone() != edge.callee.clone()) {
@@ -1653,11 +1653,11 @@ pub fn same_progress_subgraph_has_cycle(
 }
 
 pub fn collect_parser_edges_for_scc(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_name_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ParserProgressEdge>>> {
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_name_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ParserProgressEdge>>> {
     {
         let all_have_state = {
             let mut __all = true;
@@ -1673,7 +1673,7 @@ pub fn collect_parser_edges_for_scc(
             __all
         };
         if (all_have_state.clone() == false) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             {
                 let proven = infer_parser_always_advancing_members(
@@ -1682,7 +1682,7 @@ pub fn collect_parser_edges_for_scc(
                     si.clone(),
                 );
                 let parser_always_advancing = proven.clone();
-                Rc::new({
+                Arc::new({
                     let mut __result = Vec::new();
                     for name in members.clone().iter().cloned() {
                         __result.extend(
@@ -1699,10 +1699,10 @@ pub fn collect_parser_edges_for_scc(
                                             v1_rt::rc_empty_map::<String, bool>(),
                                             si.clone(),
                                         ),
-                                        None => Rc::new(vec![]),
+                                        None => Arc::new(vec![]),
                                     }
                                 }
-                                None => Rc::new(vec![]),
+                                None => Arc::new(vec![]),
                             })
                             .iter()
                             .cloned(),
@@ -1716,14 +1716,14 @@ pub fn collect_parser_edges_for_scc(
 }
 
 pub fn classify_parser_scc_recursion_pattern(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<LoweringTarget>> {
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<LoweringTarget>> {
     {
         let scc_name_set = members.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
+            |acc: Arc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
         );
@@ -1750,7 +1750,7 @@ pub fn classify_parser_scc_recursion_pattern(
                 if (all_known.clone()
                     && (same_progress_subgraph_has_cycle(members.clone(), edges.clone()) == false))
                 {
-                    Some(lower_call_pattern(Rc::new(
+                    Some(lower_call_pattern(Arc::new(
                         CallPattern::ParserAdvanceCall {
                             witness: "parser_state".to_string(),
                         },
@@ -1764,9 +1764,9 @@ pub fn classify_parser_scc_recursion_pattern(
 }
 
 pub fn count_self_calls(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let own = match (*body.expr_data.clone()).clone() {
@@ -1785,7 +1785,7 @@ pub fn count_self_calls(
                 .clone()
                 .iter()
                 .cloned()
-                .fold(0, |acc: i64, child: Rc<Node>| {
+                .fold(0, |acc: i64, child: Arc<Node>| {
                     (acc + count_self_calls(child.clone(), func_name.clone(), si.clone()))
                 });
         (own.clone() + from_children.clone())
@@ -1793,18 +1793,18 @@ pub fn count_self_calls(
 }
 
 pub fn max_path_self_calls(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> i64 {
     max_path_self_calls_with_cont(body.clone(), func_name.clone(), 0, si.clone())
 }
 
 pub fn max_path_self_calls_with_cont(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
     continue_calls: i64,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
@@ -1820,7 +1820,7 @@ pub fn max_path_self_calls_with_cont(
                         .clone()
                         .iter()
                         .cloned()
-                        .fold(0, |acc: i64, child: Rc<Node>| {
+                        .fold(0, |acc: i64, child: Arc<Node>| {
                             let val = arg_value(child.clone());
                             match (*val.expr_data.clone()).clone() {
                                 ExprData::ExprLambda => {
@@ -1854,7 +1854,7 @@ pub fn max_path_self_calls_with_cont(
                 );
                 let max_arm = match_arm_nodes(body.clone()).iter().cloned().fold(
                     continue_calls.clone(),
-                    |acc: i64, arm_node: Rc<Node>| {
+                    |acc: i64, arm_node: Arc<Node>| {
                         let arm_calls = max_path_self_calls_with_cont(
                             arm_body(arm_node.clone()),
                             func_name.clone(),
@@ -1927,7 +1927,7 @@ pub fn max_path_self_calls_with_cont(
             }
             ExprData::ExprBlock => v1_rt::reverse(body.children.clone()).iter().cloned().fold(
                 continue_calls.clone(),
-                |acc: i64, stmt: Rc<Node>| {
+                |acc: i64, stmt: Arc<Node>| {
                     max_path_self_calls_with_cont(stmt.clone(), func_name.clone(), acc, si.clone())
                 },
             ),
@@ -1943,7 +1943,7 @@ pub fn max_path_self_calls_with_cont(
                 );
                 let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(
                     0,
-                    |acc: i64, arg_node: Rc<Node>| {
+                    |acc: i64, arg_node: Arc<Node>| {
                         let val = arg_value(arg_node.clone());
                         match (*val.expr_data.clone()).clone() {
                             ExprData::ExprLambda => {
@@ -1981,7 +1981,7 @@ pub fn max_path_self_calls_with_cont(
                     .clone()
                     .iter()
                     .cloned()
-                    .fold(0, |acc: i64, child: Rc<Node>| {
+                    .fold(0, |acc: i64, child: Arc<Node>| {
                         (acc + max_path_self_calls_with_cont(
                             child.clone(),
                             func_name.clone(),
@@ -1996,23 +1996,23 @@ pub fn max_path_self_calls_with_cont(
 }
 
 pub fn max_path_self_calls_block(
-    stmts: Rc<Vec<Rc<Node>>>,
+    stmts: Arc<Vec<Arc<Node>>>,
     func_name: String,
     continue_calls: i64,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> i64 {
     v1_rt::reverse(stmts.clone()).iter().cloned().fold(
         continue_calls.clone(),
-        |acc: i64, stmt: Rc<Node>| {
+        |acc: i64, stmt: Arc<Node>| {
             max_path_self_calls_with_cont(stmt.clone(), func_name.clone(), acc, si.clone())
         },
     )
 }
 
 pub fn count_target_calls(
-    body: Rc<Node>,
-    target_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    body: Arc<Node>,
+    target_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let own = match (*body.expr_data.clone()).clone() {
@@ -2031,7 +2031,7 @@ pub fn count_target_calls(
                 .clone()
                 .iter()
                 .cloned()
-                .fold(0, |acc: i64, child: Rc<Node>| {
+                .fold(0, |acc: i64, child: Arc<Node>| {
                     (acc + count_target_calls(child.clone(), target_set.clone(), si.clone()))
                 });
         (own.clone() + from_children.clone())
@@ -2039,18 +2039,18 @@ pub fn count_target_calls(
 }
 
 pub fn max_path_target_calls(
-    body: Rc<Node>,
-    target_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    body: Arc<Node>,
+    target_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> i64 {
     max_path_target_calls_with_cont(body.clone(), target_set.clone(), 0, si.clone())
 }
 
 pub fn max_path_target_calls_with_cont(
-    body: Rc<Node>,
-    target_set: Rc<HashMap<String, bool>>,
+    body: Arc<Node>,
+    target_set: Arc<HashMap<String, bool>>,
     continue_calls: i64,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
@@ -2066,7 +2066,7 @@ pub fn max_path_target_calls_with_cont(
                         .clone()
                         .iter()
                         .cloned()
-                        .fold(0, |acc: i64, child: Rc<Node>| {
+                        .fold(0, |acc: i64, child: Arc<Node>| {
                             (acc + max_path_target_calls_with_cont(
                                 arg_value(child.clone()),
                                 target_set.clone(),
@@ -2085,7 +2085,7 @@ pub fn max_path_target_calls_with_cont(
                 );
                 let max_arm = match_arm_nodes(body.clone()).iter().cloned().fold(
                     continue_calls.clone(),
-                    |acc: i64, arm_node: Rc<Node>| {
+                    |acc: i64, arm_node: Arc<Node>| {
                         let arm_calls = max_path_target_calls_with_cont(
                             arm_body(arm_node.clone()),
                             target_set.clone(),
@@ -2158,7 +2158,7 @@ pub fn max_path_target_calls_with_cont(
             }
             ExprData::ExprBlock => v1_rt::reverse(body.children.clone()).iter().cloned().fold(
                 continue_calls.clone(),
-                |acc: i64, stmt: Rc<Node>| {
+                |acc: i64, stmt: Arc<Node>| {
                     max_path_target_calls_with_cont(
                         stmt.clone(),
                         target_set.clone(),
@@ -2179,7 +2179,7 @@ pub fn max_path_target_calls_with_cont(
                 );
                 let arg_calls = method_arg_nodes(body.clone()).iter().cloned().fold(
                     0,
-                    |acc: i64, arg_node: Rc<Node>| {
+                    |acc: i64, arg_node: Arc<Node>| {
                         let val = arg_value(arg_node.clone());
                         match (*val.expr_data.clone()).clone() {
                             ExprData::ExprLambda => {
@@ -2213,7 +2213,7 @@ pub fn max_path_target_calls_with_cont(
             ),
             _ => body.children.clone().iter().cloned().fold(
                 continue_calls.clone(),
-                |acc: i64, child: Rc<Node>| {
+                |acc: i64, child: Arc<Node>| {
                     (acc + max_path_target_calls_with_cont(
                         child.clone(),
                         target_set.clone(),
@@ -2227,13 +2227,13 @@ pub fn max_path_target_calls_with_cont(
 }
 
 pub fn build_scc_measure_params(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<HashMap<String, String>>>> {
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, Arc<HashMap<String, String>>>> {
     members.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
-        |acc: Rc<HashMap<String, Rc<HashMap<String, String>>>>, name: String| match v1_rt::map_get(
+        v1_rt::rc_empty_map::<String, Arc<HashMap<String, String>>>(),
+        |acc: Arc<HashMap<String, Arc<HashMap<String, String>>>>, name: String| match v1_rt::map_get(
             &func_index,
             name.clone(),
         ) {
@@ -2248,11 +2248,11 @@ pub fn build_scc_measure_params(
 }
 
 pub fn target_call_has_arithmetic_descent(
-    call_node: Rc<Node>,
-    target_set: Rc<HashMap<String, bool>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_measure_params: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    call_node: Arc<Node>,
+    target_set: Arc<HashMap<String, bool>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_measure_params: Arc<HashMap<String, Arc<HashMap<String, String>>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let callee = expr_call_func_at(call_node.clone(), si.clone());
@@ -2268,7 +2268,7 @@ pub fn target_call_has_arithmetic_descent(
                         };
                     {
                         let mut __found = false;
-                        for pair in Rc::new(
+                        for pair in Arc::new(
                             call_node
                                 .children
                                 .clone()
@@ -2318,11 +2318,11 @@ pub fn target_call_has_arithmetic_descent(
 }
 
 pub fn scc_calls_have_arithmetic_descent(
-    body: Rc<Node>,
-    target_set: Rc<HashMap<String, bool>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_measure_params: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    body: Arc<Node>,
+    target_set: Arc<HashMap<String, bool>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_measure_params: Arc<HashMap<String, Arc<HashMap<String, String>>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
@@ -2371,12 +2371,12 @@ pub fn scc_calls_have_arithmetic_descent(
 }
 
 pub fn descending_name_set_without_key(
-    names: Rc<HashMap<String, String>>,
+    names: Arc<HashMap<String, String>>,
     key: String,
-) -> Rc<HashMap<String, String>> {
-    Rc::new(v1_rt::map_keys(&names)).iter().cloned().fold(
+) -> Arc<HashMap<String, String>> {
+    Arc::new(v1_rt::map_keys(&names)).iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, name: String| {
+        |acc: Arc<HashMap<String, String>>, name: String| {
             if (name.clone() == key.clone()) {
                 acc.clone()
             } else {
@@ -2390,9 +2390,9 @@ pub fn descending_name_set_without_key(
 }
 
 pub fn expr_descending_witness_source(
-    mut expr: Rc<Node>,
-    mut descending_witness_names: Rc<HashMap<String, String>>,
-    mut si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut expr: Arc<Node>,
+    mut descending_witness_names: Arc<HashMap<String, String>>,
+    mut si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     loop {
         match (*expr.expr_data.clone()).clone() {
@@ -2427,10 +2427,10 @@ pub fn expr_descending_witness_source(
 }
 
 pub fn condition_param_names(
-    expr: Rc<Node>,
-    param_set: Rc<HashMap<String, String>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, String>> {
+    expr: Arc<Node>,
+    param_set: Arc<HashMap<String, String>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -2444,7 +2444,7 @@ pub fn condition_param_names(
             }
             _ => expr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, String>(),
-                |acc: Rc<HashMap<String, String>>, child: Rc<Node>| {
+                |acc: Arc<HashMap<String, String>>, child: Arc<Node>| {
                     v1_rt::rc_map_merge(
                         acc,
                         condition_param_names(child.clone(), param_set.clone(), si.clone()),
@@ -2456,14 +2456,14 @@ pub fn condition_param_names(
 }
 
 pub fn recursive_measure_param_names(
-    body: Rc<Node>,
-    params: Rc<Vec<Rc<Node>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, String>> {
+    body: Arc<Node>,
+    params: Arc<Vec<Arc<Node>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let param_set = params.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, param: Rc<Node>| {
+            |acc: Arc<HashMap<String, String>>, param: Arc<Node>| {
                 v1_rt::rc_map_insert(
                     acc,
                     param_node_name_at(param.clone(), si.clone()),
@@ -2504,7 +2504,7 @@ pub fn recursive_measure_param_names(
                 );
                 let arm_names = match_arm_nodes(body.clone()).iter().cloned().fold(
                     v1_rt::rc_empty_map::<String, String>(),
-                    |acc: Rc<HashMap<String, String>>, arm_node: Rc<Node>| {
+                    |acc: Arc<HashMap<String, String>>, arm_node: Arc<Node>| {
                         v1_rt::rc_map_merge(
                             acc,
                             recursive_measure_param_names(
@@ -2523,7 +2523,7 @@ pub fn recursive_measure_param_names(
             },
             ExprData::ExprBlock => body.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, String>(),
-                |acc: Rc<HashMap<String, String>>, stmt: Rc<Node>| {
+                |acc: Arc<HashMap<String, String>>, stmt: Arc<Node>| {
                     v1_rt::rc_map_merge(
                         acc,
                         recursive_measure_param_names(stmt.clone(), params.clone(), si.clone()),
@@ -2532,7 +2532,7 @@ pub fn recursive_measure_param_names(
             ),
             _ => body.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, String>(),
-                |acc: Rc<HashMap<String, String>>, child: Rc<Node>| {
+                |acc: Arc<HashMap<String, String>>, child: Arc<Node>| {
                     v1_rt::rc_map_merge(
                         acc,
                         recursive_measure_param_names(child.clone(), params.clone(), si.clone()),
@@ -2545,17 +2545,17 @@ pub fn recursive_measure_param_names(
 
 pub fn recursive_param_name_for_arg(
     idx: i64,
-    arg_node: Rc<Node>,
-    params: Rc<Vec<Rc<Node>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    arg_node: Arc<Node>,
+    params: Arc<Vec<Arc<Node>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     match arg_name_at(arg_node.clone(), si.clone()) {
         Some(name) => Some(name.clone()),
-        None => Rc::new({
+        None => Arc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new({
+            for pair in Arc::new({
                 let mut __result = Vec::new();
-                for pair in Rc::new(
+                for pair in Arc::new(
                     params
                         .clone()
                         .iter()
@@ -2585,7 +2585,7 @@ pub fn recursive_param_name_for_arg(
     }
 }
 
-pub fn is_descending_expr(expr: Rc<Node>) -> bool {
+pub fn is_descending_expr(expr: Arc<Node>) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprBinOp { op, .. } => match op.clone() {
             BinOp::Sub => match (*binop_left(expr.clone()).expr_data.clone()).clone() {
@@ -2607,9 +2607,9 @@ pub fn is_descending_expr(expr: Rc<Node>) -> bool {
 }
 
 pub fn has_arithmetic_descent(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
@@ -2658,10 +2658,10 @@ pub fn has_arithmetic_descent(
 }
 
 pub fn is_accessor_of_param(
-    expr: Rc<Node>,
+    expr: Arc<Node>,
     param_name: String,
-    vars: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    vars: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
@@ -2691,10 +2691,10 @@ pub fn is_accessor_of_param(
 }
 
 pub fn is_children_of_param(
-    mut expr: Rc<Node>,
+    mut expr: Arc<Node>,
     mut param_name: String,
-    mut vars: Rc<HashMap<String, bool>>,
-    mut si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut vars: Arc<HashMap<String, bool>>,
+    mut si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     loop {
         match (*expr.expr_data.clone()).clone() {
@@ -2735,10 +2735,10 @@ pub fn is_children_of_param(
 }
 
 pub fn is_structural_children(
-    expr: Rc<Node>,
+    expr: Arc<Node>,
     param_name: String,
-    vars: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    vars: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         (is_children_of_param(expr.clone(), param_name.clone(), vars.clone(), si.clone())
@@ -2778,10 +2778,10 @@ pub fn is_structural_children(
 }
 
 pub fn is_child_descent_expr(
-    expr: Rc<Node>,
+    expr: Arc<Node>,
     param_name: String,
-    vars: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    vars: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     if is_accessor_of_param(expr.clone(), param_name.clone(), vars.clone(), si.clone()) {
         true
@@ -2805,8 +2805,8 @@ pub fn is_child_descent_expr(
 }
 
 pub fn is_tree_size_preserving_wrapper(
-    expr: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    expr: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
@@ -2817,14 +2817,17 @@ pub fn is_tree_size_preserving_wrapper(
     }
 }
 
-pub fn wrapper_inner_arg(expr: Rc<Node>) -> Rc<Node> {
+pub fn wrapper_inner_arg(expr: Arc<Node>) -> Arc<Node> {
     match expr.children.clone().first().cloned() {
         Some(arg_node) => arg_value(arg_node.clone()),
         None => expr,
     }
 }
 
-pub fn is_sub_value_extractor(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+pub fn is_sub_value_extractor(
+    expr: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let callee = expr_call_func_at(expr.clone(), si.clone());
@@ -2834,7 +2837,7 @@ pub fn is_sub_value_extractor(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineI
     }
 }
 
-pub fn extractor_inner_arg(expr: Rc<Node>) -> Rc<Node> {
+pub fn extractor_inner_arg(expr: Arc<Node>) -> Arc<Node> {
     match expr.children.clone().first().cloned() {
         Some(arg_node) => arg_value(arg_node.clone()),
         None => expr,
@@ -2842,9 +2845,9 @@ pub fn extractor_inner_arg(expr: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn is_list_shrink_expr(
-    expr: Rc<Node>,
+    expr: Arc<Node>,
     param_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprMethodCall {
@@ -2884,7 +2887,7 @@ pub fn is_list_shrink_expr(
     }
 }
 
-pub fn is_generalized_shrink(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+pub fn is_generalized_shrink(expr: Arc<Node>, si: Arc<HashMap<String, Arc<NewlineIndex>>>) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprMethodCall {
             method_semantics: ms,
@@ -2915,28 +2918,31 @@ pub fn is_generalized_shrink(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIn
 }
 
 pub fn list_passthrough_inner(
-    expr: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    expr: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     parser_passthrough_state_expr(expr.clone(), si.clone())
 }
 
-pub fn is_list_passthrough_call(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
+pub fn is_list_passthrough_call(
+    expr: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> bool {
     (list_passthrough_inner(expr.clone(), si.clone()) != None)
 }
 
 pub fn list_passthrough_inner_arg(
-    expr: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    expr: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     list_passthrough_inner(expr.clone(), si.clone())
 }
 
 pub fn is_tokens_consuming_call(
-    expr: Rc<Node>,
+    expr: Arc<Node>,
     param_name: String,
-    vars: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    vars: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => match consuming_tokens_arg(expr.clone(), si.clone()) {
@@ -2953,14 +2959,14 @@ pub fn is_tokens_consuming_call(
 }
 
 pub fn consuming_tokens_arg(
-    expr: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    expr: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     expr.children
         .clone()
         .iter()
         .cloned()
-        .fold(None, |acc: _, child: Rc<Node>| match acc.clone() {
+        .fold(None, |acc: _, child: Arc<Node>| match acc.clone() {
             Some(_) => acc.clone(),
             None => match arg_name_at(child.clone(), si.clone()) {
                 Some(name) => {
@@ -2976,10 +2982,10 @@ pub fn consuming_tokens_arg(
 }
 
 pub fn is_tokens_input_expr(
-    mut expr: Rc<Node>,
+    mut expr: Arc<Node>,
     mut param_name: String,
-    mut vars: Rc<HashMap<String, bool>>,
-    mut si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut vars: Arc<HashMap<String, bool>>,
+    mut si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     loop {
         match (*expr.expr_data.clone()).clone() {
@@ -3056,12 +3062,12 @@ pub fn is_tokens_input_expr(
 }
 
 pub fn is_descent_arg(
-    expr: Rc<Node>,
+    expr: Arc<Node>,
     param_name: String,
-    descent_vars: Rc<HashMap<String, bool>>,
+    descent_vars: Arc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -3085,12 +3091,12 @@ pub fn is_descent_arg(
 }
 
 pub fn expr_contains_descent(
-    expr: Rc<Node>,
+    expr: Arc<Node>,
     param_name: String,
-    vars: Rc<HashMap<String, bool>>,
+    vars: Arc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if ((check_child.clone()
@@ -3190,9 +3196,9 @@ pub fn expr_contains_descent(
 }
 
 pub fn collect_field_binding_names(
-    fb: Rc<Node>,
-    vars: Rc<HashMap<String, bool>>,
-) -> Rc<HashMap<String, bool>> {
+    fb: Arc<Node>,
+    vars: Arc<HashMap<String, bool>>,
+) -> Arc<HashMap<String, bool>> {
     stacker::maybe_grow(
         512 * 1024,
         2 * 1024 * 1024,
@@ -3205,7 +3211,7 @@ pub fn collect_field_binding_names(
                 ..
             } => nested.clone().iter().cloned().fold(
                 vars.clone(),
-                |inner: Rc<HashMap<String, bool>>, nested_fb: Rc<Node>| {
+                |inner: Arc<HashMap<String, bool>>, nested_fb: Arc<Node>| {
                     collect_field_binding_names(nested_fb.clone(), inner)
                 },
             ),
@@ -3215,12 +3221,12 @@ pub fn collect_field_binding_names(
 }
 
 pub fn is_if_option_descent(
-    val: Rc<Node>,
+    val: Arc<Node>,
     param_name: String,
-    vars: Rc<HashMap<String, bool>>,
+    vars: Arc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*val.expr_data.clone()).clone() {
         ExprData::ExprIf => {
@@ -3253,12 +3259,12 @@ pub fn is_if_option_descent(
 }
 
 pub fn is_match_option_descent(
-    val: Rc<Node>,
+    val: Arc<Node>,
     param_name: String,
-    vars: Rc<HashMap<String, bool>>,
+    vars: Arc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*val.expr_data.clone()).clone() {
         ExprData::ExprMatch => {
@@ -3283,7 +3289,7 @@ pub fn is_match_option_descent(
                                 } => {
                                     let binding_names = bindings.clone().iter().cloned().fold(
                                         v1_rt::rc_empty_map::<String, bool>(),
-                                        |acc: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
+                                        |acc: Arc<HashMap<String, bool>>, fb: Arc<Node>| {
                                             collect_field_binding_names(fb.clone(), acc)
                                         },
                                     );
@@ -3338,13 +3344,13 @@ pub fn is_match_option_descent(
 }
 
 pub fn collect_descent_vars(
-    body: Rc<Node>,
+    body: Arc<Node>,
     param_name: String,
-    vars: Rc<HashMap<String, bool>>,
+    vars: Arc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, bool>> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, bool>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprLet => {
@@ -3553,7 +3559,7 @@ pub fn collect_descent_vars(
                 let with_patterns = if (scrut_is_descent.clone() || scrut_is_param.clone()) {
                     match_arm_nodes(body.clone()).iter().cloned().fold(
                         vars.clone(),
-                        |acc: Rc<HashMap<String, bool>>, arm_node: Rc<Node>| match (*arm_pattern(
+                        |acc: Arc<HashMap<String, bool>>, arm_node: Arc<Node>| match (*arm_pattern(
                             arm_node.clone(),
                         ))
                         .clone()
@@ -3563,7 +3569,7 @@ pub fn collect_descent_vars(
                                 ..
                             } => bindings.clone().iter().cloned().fold(
                                 acc.clone(),
-                                |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
+                                |inner: Arc<HashMap<String, bool>>, fb: Arc<Node>| {
                                     collect_field_binding_names(fb.clone(), inner)
                                 },
                             ),
@@ -3584,7 +3590,7 @@ pub fn collect_descent_vars(
                 };
                 match_arm_nodes(body.clone()).iter().cloned().fold(
                     with_patterns.clone(),
-                    |acc: Rc<HashMap<String, bool>>, arm_node: Rc<Node>| {
+                    |acc: Arc<HashMap<String, bool>>, arm_node: Arc<Node>| {
                         let arm_result = collect_descent_vars(
                             arm_body(arm_node.clone()),
                             param_name.clone(),
@@ -3621,7 +3627,7 @@ pub fn collect_descent_vars(
             }
             ExprData::ExprBlock => body.children.clone().iter().cloned().fold(
                 vars.clone(),
-                |acc: Rc<HashMap<String, bool>>, stmt: Rc<Node>| {
+                |acc: Arc<HashMap<String, bool>>, stmt: Arc<Node>| {
                     collect_descent_vars(
                         stmt.clone(),
                         param_name.clone(),
@@ -3649,12 +3655,12 @@ pub fn collect_descent_vars(
 }
 
 pub fn all_self_calls_descend(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
     param_name: String,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     all_self_calls_descend_inc(
         body.clone(),
@@ -3668,13 +3674,13 @@ pub fn all_self_calls_descend(
 }
 
 pub fn all_self_calls_descend_inc(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
     param_name: String,
-    vars: Rc<HashMap<String, bool>>,
+    vars: Arc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
@@ -3796,7 +3802,7 @@ pub fn all_self_calls_descend_inc(
                                         ..
                                     } => bindings.clone().iter().cloned().fold(
                                         vars.clone(),
-                                        |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
+                                        |inner: Arc<HashMap<String, bool>>, fb: Arc<Node>| {
                                             collect_field_binding_names(fb.clone(), inner)
                                         },
                                     ),
@@ -3871,11 +3877,11 @@ pub fn all_self_calls_descend_inc(
             }
             ExprData::ExprBlock => {
                 let result = body.children.clone().iter().cloned().fold(
-                    Rc::new(DescentCheckAcc {
+                    Arc::new(DescentCheckAcc {
                         ok: true,
                         vars: vars.clone(),
                     }),
-                    |acc: Rc<DescentCheckAcc>, stmt: Rc<Node>| {
+                    |acc: Arc<DescentCheckAcc>, stmt: Arc<Node>| {
                         if (acc.ok.clone() == false) {
                             acc.clone()
                         } else {
@@ -3897,7 +3903,7 @@ pub fn all_self_calls_descend_inc(
                                     check_list.clone(),
                                     si.clone(),
                                 );
-                                Rc::new(DescentCheckAcc {
+                                Arc::new(DescentCheckAcc {
                                     ok: stmt_ok.clone(),
                                     vars: next_vars.clone(),
                                 })
@@ -4072,7 +4078,7 @@ pub fn all_self_calls_descend_inc(
     })
 }
 
-pub fn unwrap_to_match(mut body: Rc<Node>) -> Option<Rc<Node>> {
+pub fn unwrap_to_match(mut body: Arc<Node>) -> Option<Arc<Node>> {
     loop {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprMatch => {
@@ -4106,9 +4112,9 @@ pub fn unwrap_to_match(mut body: Rc<Node>) -> Option<Rc<Node>> {
 }
 
 pub fn matches_on_sub_value_field(
-    body: Rc<Node>,
+    body: Arc<Node>,
     param_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match unwrap_to_match(body.clone()) {
         Some(m) => {
@@ -4133,10 +4139,10 @@ pub fn matches_on_sub_value_field(
 }
 
 pub fn is_container_child_descent(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    params: Arc<Vec<Arc<Node>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -4162,10 +4168,10 @@ pub fn is_container_child_descent(
 }
 
 pub fn is_list_shrinkage_descent(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    params: Arc<Vec<Arc<Node>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -4190,9 +4196,9 @@ pub fn is_list_shrinkage_descent(
 }
 
 pub fn is_arithmetic_descent_expr(
-    expr: Rc<Node>,
+    expr: Arc<Node>,
     param_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprBinOp { op: BinOp::Sub, .. } => {
@@ -4221,12 +4227,12 @@ pub fn is_arithmetic_descent_expr(
 }
 
 pub fn classify_self_call_evidence(
-    arg_expr: Rc<Node>,
+    arg_expr: Arc<Node>,
     param_name: String,
-    descent_vars: Rc<HashMap<String, bool>>,
+    descent_vars: Arc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> DescentEvidence {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (check_child.clone()
@@ -4376,12 +4382,12 @@ pub fn classify_self_call_evidence(
 }
 
 pub fn try_dimension_for_param(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
     param_name: String,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<DescentEvidence> {
     collect_evidence_incremental(
         body.clone(),
@@ -4396,12 +4402,12 @@ pub fn try_dimension_for_param(
 }
 
 pub fn try_branching_dimension_for_param(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
     param_name: String,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<DescentEvidence> {
     collect_evidence_incremental(
         body.clone(),
@@ -4423,14 +4429,14 @@ pub fn merge_optional_evidence(
 }
 
 pub fn collect_evidence_incremental(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
     param_name: String,
-    vars: Rc<HashMap<String, bool>>,
+    vars: Arc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
     branching_only: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<DescentEvidence> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
@@ -4660,7 +4666,7 @@ pub fn collect_evidence_incremental(
                 };
                 let arms_ev = match_arm_nodes(body.clone()).iter().cloned().fold(
                     None,
-                    |acc: _, arm_node: Rc<Node>| {
+                    |acc: _, arm_node: Arc<Node>| {
                         let is_base_case = if branching_only.clone() {
                             (max_path_self_calls(
                                 arm_body(arm_node.clone()),
@@ -4682,7 +4688,7 @@ pub fn collect_evidence_incremental(
                                                 ..
                                             } => bindings.clone().iter().cloned().fold(
                                                 vars.clone(),
-                                                |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
+                                                |inner: Arc<HashMap<String, bool>>, fb: Arc<Node>| {
                                                     collect_field_binding_names(fb.clone(), inner)
                                                 },
                                             ),
@@ -4789,7 +4795,7 @@ pub fn collect_evidence_incremental(
                     {
                         let arg_evidence = body.children.clone().iter().cloned().fold(
                             DescentEvidence::DescentUnknown,
-                            |acc: DescentEvidence, arg_node: Rc<Node>| {
+                            |acc: DescentEvidence, arg_node: Arc<Node>| {
                                 let aname = arg_name_at(arg_node.clone(), si.clone());
                                 if (aname.clone().as_deref() == Some(param_name.clone()).as_deref())
                                 {
@@ -4816,7 +4822,7 @@ pub fn collect_evidence_incremental(
                         .clone()
                         .iter()
                         .cloned()
-                        .fold(None, |acc: _, child: Rc<Node>| {
+                        .fold(None, |acc: _, child: Arc<Node>| {
                             let ce = collect_evidence_incremental(
                                 child.clone(),
                                 func_name.clone(),
@@ -4833,11 +4839,11 @@ pub fn collect_evidence_incremental(
             }
             ExprData::ExprBlock => {
                 let result = body.children.clone().iter().cloned().fold(
-                    Rc::new(EvidenceBlockAcc {
+                    Arc::new(EvidenceBlockAcc {
                         evidence: None,
                         vars: vars.clone(),
                     }),
-                    |acc: Rc<EvidenceBlockAcc>, stmt: Rc<Node>| {
+                    |acc: Arc<EvidenceBlockAcc>, stmt: Arc<Node>| {
                         let stmt_ev = collect_evidence_incremental(
                             stmt.clone(),
                             func_name.clone(),
@@ -4856,7 +4862,7 @@ pub fn collect_evidence_incremental(
                             check_list.clone(),
                             si.clone(),
                         );
-                        Rc::new(EvidenceBlockAcc {
+                        Arc::new(EvidenceBlockAcc {
                             evidence: merge_optional_evidence(
                                 acc.evidence.clone(),
                                 stmt_ev.clone(),
@@ -4893,7 +4899,7 @@ pub fn collect_evidence_incremental(
                         );
                         let args_ev = method_arg_nodes(body.clone()).iter().cloned().fold(
                             None,
-                            |acc: _, arg_node: Rc<Node>| {
+                            |acc: _, arg_node: Arc<Node>| {
                                 let arg_val = arg_value(arg_node.clone());
                                 let ev = match (*arg_val.expr_data.clone()).clone() {
                                     ExprData::ExprLambda => match iteration_element_name(
@@ -4941,7 +4947,7 @@ pub fn collect_evidence_incremental(
                         .clone()
                         .iter()
                         .cloned()
-                        .fold(None, |acc: _, child: Rc<Node>| {
+                        .fold(None, |acc: _, child: Arc<Node>| {
                             let ce = collect_evidence_incremental(
                                 child.clone(),
                                 func_name.clone(),
@@ -4961,7 +4967,7 @@ pub fn collect_evidence_incremental(
                 .clone()
                 .iter()
                 .cloned()
-                .fold(None, |acc: _, child: Rc<Node>| {
+                .fold(None, |acc: _, child: Arc<Node>| {
                     let ce = collect_evidence_incremental(
                         child.clone(),
                         func_name.clone(),
@@ -4979,12 +4985,12 @@ pub fn collect_evidence_incremental(
 }
 
 pub fn try_type_directed_dimension(
-    body: Rc<Node>,
+    body: Arc<Node>,
     func_name: String,
     param_name: String,
     dim: IterationDimension,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<TerminationProof>> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<TerminationProof>> {
     match dim.clone() {
         IterationDimension::TreeDescent => match try_dimension_for_param(
             body.clone(),
@@ -4994,8 +5000,8 @@ pub fn try_type_directed_dimension(
             false,
             si.clone(),
         ) {
-            Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
-                dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
+            Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
+                dimensions: Arc::new(vec![Arc::new(RankingDimension::TreeSize {
                     param: param_name.clone(),
                 })]),
             })),
@@ -5009,8 +5015,8 @@ pub fn try_type_directed_dimension(
             true,
             si.clone(),
         ) {
-            Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
-                dimensions: Rc::new(vec![Rc::new(RankingDimension::ListLength {
+            Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
+                dimensions: Arc::new(vec![Arc::new(RankingDimension::ListLength {
                     param: param_name.clone(),
                 })]),
             })),
@@ -5024,8 +5030,8 @@ pub fn try_type_directed_dimension(
             false,
             si.clone(),
         ) {
-            Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
-                dimensions: Rc::new(vec![Rc::new(RankingDimension::ArithmeticValue {
+            Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
+                dimensions: Arc::new(vec![Arc::new(RankingDimension::ArithmeticValue {
                     param: param_name.clone(),
                 })]),
             })),
@@ -5036,85 +5042,90 @@ pub fn try_type_directed_dimension(
 
 pub fn construct_termination_proof(
     func_name: String,
-    body: Rc<Node>,
-    params: Rc<Vec<Rc<Node>>>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<TerminationProof>> {
+    body: Arc<Node>,
+    params: Arc<Vec<Arc<Node>>>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<TerminationProof>> {
     {
-        let structural_proof = params
-            .clone()
-            .iter()
-            .cloned()
-            .fold(None, |best: _, p: Rc<Node>| match best.clone() {
-                Some(_) => best.clone(),
-                None => {
-                    let pname = param_node_name_at(p.clone(), si.clone());
-                    let type_name = authored_name_at(si.clone(), param_node_type_expr(p.clone()));
-                    match type_iteration_dimension(type_name.clone()) {
-                        Some(dim) => try_type_directed_dimension(
-                            body.clone(),
-                            func_name.clone(),
-                            pname.clone(),
-                            dim.clone(),
-                            si.clone(),
-                        ),
-                        None => {
-                            let tree_evidence = try_dimension_for_param(
+        let structural_proof =
+            params
+                .clone()
+                .iter()
+                .cloned()
+                .fold(None, |best: _, p: Arc<Node>| match best.clone() {
+                    Some(_) => best.clone(),
+                    None => {
+                        let pname = param_node_name_at(p.clone(), si.clone());
+                        let type_name =
+                            authored_name_at(si.clone(), param_node_type_expr(p.clone()));
+                        match type_iteration_dimension(type_name.clone()) {
+                            Some(dim) => try_type_directed_dimension(
                                 body.clone(),
                                 func_name.clone(),
                                 pname.clone(),
-                                true,
-                                false,
+                                dim.clone(),
                                 si.clone(),
-                            );
-                            match tree_evidence.clone() {
-                                Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
-                                    dimensions: Rc::new(vec![Rc::new(
-                                        RankingDimension::TreeSize {
-                                            param: pname.clone(),
-                                        },
-                                    )]),
-                                })),
-                                _ => {
-                                    let list_evidence = try_dimension_for_param(
-                                        body.clone(),
-                                        func_name.clone(),
-                                        pname.clone(),
-                                        false,
-                                        true,
-                                        si.clone(),
-                                    );
-                                    match list_evidence.clone() {
-                                        Some(DescentEvidence::Strict) => {
-                                            Some(Rc::new(TerminationProof {
-                                                dimensions: Rc::new(vec![Rc::new(
-                                                    RankingDimension::ListLength {
-                                                        param: pname.clone(),
-                                                    },
-                                                )]),
-                                            }))
-                                        }
-                                        _ => {
-                                            let arith_evidence = try_dimension_for_param(
-                                                body.clone(),
-                                                func_name.clone(),
-                                                pname.clone(),
-                                                false,
-                                                false,
-                                                si.clone(),
-                                            );
-                                            match arith_evidence.clone() {
-                                                Some(DescentEvidence::Strict) => {
-                                                    Some(Rc::new(TerminationProof {
-                                                        dimensions: Rc::new(vec![Rc::new(
-                                                            RankingDimension::ArithmeticValue {
-                                                                param: pname.clone(),
-                                                            },
-                                                        )]),
-                                                    }))
+                            ),
+                            None => {
+                                let tree_evidence = try_dimension_for_param(
+                                    body.clone(),
+                                    func_name.clone(),
+                                    pname.clone(),
+                                    true,
+                                    false,
+                                    si.clone(),
+                                );
+                                match tree_evidence.clone() {
+                                    Some(DescentEvidence::Strict) => {
+                                        Some(Arc::new(TerminationProof {
+                                            dimensions: Arc::new(vec![Arc::new(
+                                                RankingDimension::TreeSize {
+                                                    param: pname.clone(),
+                                                },
+                                            )]),
+                                        }))
+                                    }
+                                    _ => {
+                                        let list_evidence = try_dimension_for_param(
+                                            body.clone(),
+                                            func_name.clone(),
+                                            pname.clone(),
+                                            false,
+                                            true,
+                                            si.clone(),
+                                        );
+                                        match list_evidence.clone() {
+                                            Some(DescentEvidence::Strict) => {
+                                                Some(Arc::new(TerminationProof {
+                                                    dimensions: Arc::new(vec![Arc::new(
+                                                        RankingDimension::ListLength {
+                                                            param: pname.clone(),
+                                                        },
+                                                    )]),
+                                                }))
+                                            }
+                                            _ => {
+                                                let arith_evidence = try_dimension_for_param(
+                                                    body.clone(),
+                                                    func_name.clone(),
+                                                    pname.clone(),
+                                                    false,
+                                                    false,
+                                                    si.clone(),
+                                                );
+                                                match arith_evidence.clone() {
+                                                    Some(DescentEvidence::Strict) => {
+                                                        Some(Arc::new(TerminationProof {
+                                                            dimensions: Arc::new(vec![Arc::new(
+                                                                RankingDimension::ArithmeticValue {
+                                                                    param: pname.clone(),
+                                                                },
+                                                            )]),
+                                                        }))
+                                                    }
+                                                    _ => None,
                                                 }
-                                                _ => None,
                                             }
                                         }
                                     }
@@ -5122,8 +5133,7 @@ pub fn construct_termination_proof(
                             }
                         }
                     }
-                }
-            });
+                });
         let single_dim_proof = match structural_proof.clone() {
             Some(_) => structural_proof.clone(),
             None => match parser_state_param(params.clone(), si.clone()) {
@@ -5149,8 +5159,8 @@ pub fn construct_termination_proof(
                         }
                         __all
                     }) {
-                        Some(Rc::new(TerminationProof {
-                            dimensions: Rc::new(vec![Rc::new(RankingDimension::TokenPosition {
+                        Some(Arc::new(TerminationProof {
+                            dimensions: Arc::new(vec![Arc::new(RankingDimension::TokenPosition {
                                 param: state_param.name.clone(),
                             })]),
                         }))
@@ -5165,7 +5175,7 @@ pub fn construct_termination_proof(
             Some(_) => single_dim_proof.clone(),
             None => {
                 let self_set = seed_bool_map(func_name.clone());
-                let func_entry = Rc::new(FuncEntry {
+                let func_entry = Arc::new(FuncEntry {
                     name: func_name.clone(),
                     body: body.clone(),
                     params: params.clone(),
@@ -5174,7 +5184,7 @@ pub fn construct_termination_proof(
                 });
                 let func_index = seed_func_entry_map(func_name.clone(), func_entry.clone());
                 construct_scc_termination_proof(
-                    Rc::new(vec![func_name.clone()]),
+                    Arc::new(vec![func_name.clone()]),
                     func_index.clone(),
                     self_set.clone(),
                     si.clone(),
@@ -5186,15 +5196,15 @@ pub fn construct_termination_proof(
 
 pub fn construct_branching_termination_proof(
     func_name: String,
-    body: Rc<Node>,
-    params: Rc<Vec<Rc<Node>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<TerminationProof>> {
+    body: Arc<Node>,
+    params: Arc<Vec<Arc<Node>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<TerminationProof>> {
     params
         .clone()
         .iter()
         .cloned()
-        .fold(None, |best: _, p: Rc<Node>| match best.clone() {
+        .fold(None, |best: _, p: Arc<Node>| match best.clone() {
             Some(_) => best.clone(),
             None => {
                 let pname = param_node_name_at(p.clone(), si.clone());
@@ -5209,8 +5219,8 @@ pub fn construct_branching_termination_proof(
                             false,
                             si.clone(),
                         ) {
-                            Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
-                                dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
+                            Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
+                                dimensions: Arc::new(vec![Arc::new(RankingDimension::TreeSize {
                                     param: pname.clone(),
                                 })]),
                             })),
@@ -5226,10 +5236,12 @@ pub fn construct_branching_termination_proof(
                             true,
                             si.clone(),
                         ) {
-                            Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
-                                dimensions: Rc::new(vec![Rc::new(RankingDimension::ListLength {
-                                    param: pname.clone(),
-                                })]),
+                            Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
+                                dimensions: Arc::new(vec![Arc::new(
+                                    RankingDimension::ListLength {
+                                        param: pname.clone(),
+                                    },
+                                )]),
                             })),
                             _ => None,
                         }
@@ -5245,8 +5257,8 @@ pub fn construct_branching_termination_proof(
                             si.clone(),
                         );
                         match tree_ev.clone() {
-                            Some(DescentEvidence::Strict) => Some(Rc::new(TerminationProof {
-                                dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
+                            Some(DescentEvidence::Strict) => Some(Arc::new(TerminationProof {
+                                dimensions: Arc::new(vec![Arc::new(RankingDimension::TreeSize {
                                     param: pname.clone(),
                                 })]),
                             })),
@@ -5261,8 +5273,8 @@ pub fn construct_branching_termination_proof(
                                 );
                                 match list_ev.clone() {
                                     Some(DescentEvidence::Strict) => {
-                                        Some(Rc::new(TerminationProof {
-                                            dimensions: Rc::new(vec![Rc::new(
+                                        Some(Arc::new(TerminationProof {
+                                            dimensions: Arc::new(vec![Arc::new(
                                                 RankingDimension::ListLength {
                                                     param: pname.clone(),
                                                 },
@@ -5279,44 +5291,44 @@ pub fn construct_branching_termination_proof(
         })
 }
 
-pub fn proof_to_call_pattern(proof: Rc<TerminationProof>) -> Rc<CallPattern> {
+pub fn proof_to_call_pattern(proof: Arc<TerminationProof>) -> Arc<CallPattern> {
     match proof.dimensions.clone().first().cloned() {
         Some(dim) => match (*dim.clone()).clone() {
             RankingDimension::TreeSize { param: p, .. } => {
-                Rc::new(CallPattern::ChildAccessorCall {
+                Arc::new(CallPattern::ChildAccessorCall {
                     accessor: p.clone(),
                 })
             }
             RankingDimension::ListLength { param: p, .. } => {
-                Rc::new(CallPattern::CollectionShrinkCall {
-                    amount: Rc::new(PositiveDescentAmount::OneStep),
+                Arc::new(CallPattern::CollectionShrinkCall {
+                    amount: Arc::new(PositiveDescentAmount::OneStep),
                     collection: p.clone(),
                 })
             }
             RankingDimension::ArithmeticValue { param: p, .. } => {
-                Rc::new(CallPattern::ArithmeticSubtractCall {
-                    steps: Rc::new(PositiveDescentAmount::OneStep),
+                Arc::new(CallPattern::ArithmeticSubtractCall {
+                    steps: Arc::new(PositiveDescentAmount::OneStep),
                     ring_param: p.clone(),
                 })
             }
             RankingDimension::TokenPosition { param: p, .. } => {
-                Rc::new(CallPattern::ParserAdvanceCall { witness: p.clone() })
+                Arc::new(CallPattern::ParserAdvanceCall { witness: p.clone() })
             }
             RankingDimension::SetCardinality { param: p, .. } => {
-                Rc::new(CallPattern::WorklistDrainCall { element: p.clone() })
+                Arc::new(CallPattern::WorklistDrainCall { element: p.clone() })
             }
         },
-        None => Rc::new(CallPattern::SameArgumentCall),
+        None => Arc::new(CallPattern::SameArgumentCall),
     }
 }
 
 pub fn classify_recursion_pattern(
     func_name: String,
-    body: Rc<Node>,
-    params: Rc<Vec<Rc<Node>>>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<LoweringTarget> {
+    body: Arc<Node>,
+    params: Arc<Vec<Arc<Node>>>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<LoweringTarget> {
     {
         let path_calls = max_path_self_calls(body.clone(), func_name.clone(), si.clone());
         if (path_calls.clone() == 0) {
@@ -5325,7 +5337,7 @@ pub fn classify_recursion_pattern(
                     Some(p0) => param_node_name_at(p0.clone(), si.clone()),
                     None => "_fold_body".to_string(),
                 };
-                lower_call_pattern(Rc::new(CallPattern::FoldBodyCall {
+                lower_call_pattern(Arc::new(CallPattern::FoldBodyCall {
                     outer_collection: outer.clone(),
                 }))
             }
@@ -5403,11 +5415,11 @@ pub fn classify_recursion_pattern(
                             __all
                         };
                         let first_call = if all_calls_arithmetic_only.clone() {
-                            Rc::new({
+                            Arc::new({
                                 let mut __result = Vec::new();
                                 for call_ev in all_evidence.clone().iter().cloned() {
                                     __result.extend(
-                                        (*Rc::new({
+                                        (*Arc::new({
                                             let mut __result = Vec::new();
                                             for rel in call_ev.clone().iter().cloned() {
                                                 if match (*rel.clone()).clone() {
@@ -5432,11 +5444,11 @@ pub fn classify_recursion_pattern(
                         } else {
                             {
                                 let tree_rels =
-                                    Rc::new({
+                                    Arc::new({
                                         let mut __result = Vec::new();
                                         for call_ev in all_evidence.clone().iter().cloned() {
                                             __result.extend(
-                                                (*Rc::new({
+                                                (*Arc::new({
                                                     let mut __result = Vec::new();
                                                     for rel in call_ev.clone().iter().cloned() {
                                                         if match (*rel.clone()).clone() {
@@ -5455,11 +5467,11 @@ pub fn classify_recursion_pattern(
                                     });
                                 match tree_rels.clone().first().cloned() {
                                     Some(_) => tree_rels.clone().first().cloned(),
-                                    None => Rc::new({
+                                    None => Arc::new({
                                         let mut __result = Vec::new();
                                         for call_ev in all_evidence.clone().iter().cloned() {
                                             __result.extend(
-                                                (*Rc::new({
+                                                (*Arc::new({
                                                     let mut __result = Vec::new();
                                                     for rel in call_ev.clone().iter().cloned() {
                                                         if match (*rel.clone()).clone() {
@@ -5490,16 +5502,16 @@ pub fn classify_recursion_pattern(
                             None => false,
                         };
                         if is_arithmetic_branching.clone() {
-                            lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                            lower_call_pattern(Arc::new(CallPattern::SameArgumentCall))
                         } else {
                             match first_call.clone() {
                                 Some(rel) => match sub_value_to_lowering_target(rel.clone()) {
                                     Some(target) => target.clone(),
                                     None => {
-                                        lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                                        lower_call_pattern(Arc::new(CallPattern::SameArgumentCall))
                                     }
                                 },
-                                None => lower_call_pattern(Rc::new(CallPattern::SameArgumentCall)),
+                                None => lower_call_pattern(Arc::new(CallPattern::SameArgumentCall)),
                             }
                         }
                     }
@@ -5583,12 +5595,12 @@ pub fn classify_recursion_pattern(
                                             Some(bp) => lower_call_pattern(proof_to_call_pattern(
                                                 bp.clone(),
                                             )),
-                                            None => lower_call_pattern(Rc::new(
+                                            None => lower_call_pattern(Arc::new(
                                                 CallPattern::SameArgumentCall,
                                             )),
                                         }
                                     } else {
-                                        lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                                        lower_call_pattern(Arc::new(CallPattern::SameArgumentCall))
                                     }
                                 }
                             }
@@ -5601,17 +5613,17 @@ pub fn classify_recursion_pattern(
                                                     bp.clone(),
                                                 ))
                                             } else {
-                                                lower_call_pattern(Rc::new(
+                                                lower_call_pattern(Arc::new(
                                                     CallPattern::SameArgumentCall,
                                                 ))
                                             }
                                         }
-                                        None => lower_call_pattern(Rc::new(
+                                        None => lower_call_pattern(Arc::new(
                                             CallPattern::SameArgumentCall,
                                         )),
                                     }
                                 } else {
-                                    lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                                    lower_call_pattern(Arc::new(CallPattern::SameArgumentCall))
                                 }
                             }
                         }
@@ -5623,22 +5635,22 @@ pub fn classify_recursion_pattern(
 }
 
 pub fn bounded_recursive_cost(
-    target: Rc<LoweringTarget>,
-    per_iter: Rc<CostExpr>,
+    target: Arc<LoweringTarget>,
+    per_iter: Arc<CostExpr>,
     func_name: String,
-) -> Rc<CostExpr> {
+) -> Arc<CostExpr> {
     {
         let p = size_bound_param(target.bound.clone());
         match p.clone() {
             Some(v) => {
                 let var = v1_rt::concat("n_".to_string(), v.clone());
-                Rc::new(CostExpr::CostSum {
+                Arc::new(CostExpr::CostSum {
                     binder: var.clone(),
-                    upper: Rc::new(SizeExpr::SizeVar { name: var.clone() }),
+                    upper: Arc::new(SizeExpr::SizeVar { name: var.clone() }),
                     body: simplify_cost(per_iter.clone()),
                 })
             }
-            None => Rc::new(CostExpr::CostUnknown {
+            None => Arc::new(CostExpr::CostUnknown {
                 reason: v1_rt::concat("same-argument recursion in ".to_string(), func_name.clone()),
             }),
         }
@@ -5646,22 +5658,22 @@ pub fn bounded_recursive_cost(
 }
 
 pub fn bounded_scc_cost(
-    target: Rc<LoweringTarget>,
-    per_iter: Rc<CostExpr>,
-    members: Rc<Vec<String>>,
-) -> Rc<CostExpr> {
+    target: Arc<LoweringTarget>,
+    per_iter: Arc<CostExpr>,
+    members: Arc<Vec<String>>,
+) -> Arc<CostExpr> {
     {
         let p = size_bound_param(target.bound.clone());
         match p.clone() {
             Some(v) => {
                 let var = v1_rt::concat("n_".to_string(), v.clone());
-                Rc::new(CostExpr::CostSum {
+                Arc::new(CostExpr::CostSum {
                     binder: var.clone(),
-                    upper: Rc::new(SizeExpr::SizeVar { name: var.clone() }),
+                    upper: Arc::new(SizeExpr::SizeVar { name: var.clone() }),
                     body: simplify_cost(per_iter.clone()),
                 })
             }
-            None => Rc::new(CostExpr::CostUnknown {
+            None => Arc::new(CostExpr::CostUnknown {
                 reason: v1_rt::concat(
                     "same-argument mutual recursion in ".to_string(),
                     match members.clone().first().cloned() {
@@ -5674,7 +5686,7 @@ pub fn bounded_scc_cost(
     }
 }
 
-pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
+pub fn is_unknown_cost(expr: Arc<CostExpr>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
             CostExpr::CostUnknown { reason: _, .. } => true,
@@ -5693,7 +5705,7 @@ pub fn is_unknown_cost(expr: Rc<CostExpr>) -> bool {
     })
 }
 
-pub fn extract_unknown_reason(mut expr: Rc<CostExpr>) -> String {
+pub fn extract_unknown_reason(mut expr: Arc<CostExpr>) -> String {
     loop {
         match (*expr.clone()).clone() {
             CostExpr::CostUnknown { reason: r, .. } => {
@@ -5764,26 +5776,26 @@ pub fn extract_unknown_reason(mut expr: Rc<CostExpr>) -> String {
 
 pub fn collect_local_call_edges_in_expr(
     caller: String,
-    body: Rc<Node>,
-    local_func_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<CallEdge>>> {
+    body: Arc<Node>,
+    local_func_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<CallEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_edges = match (*body.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
                 let callee = expr_call_func_at(body.clone(), si.clone());
                 if set_has(local_func_set.clone(), callee.clone()) {
-                    Rc::new(vec![Rc::new(CallEdge {
+                    Arc::new(vec![Arc::new(CallEdge {
                         caller: caller.clone(),
                         callee: callee.clone(),
                     })])
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
             }
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         };
-        let child_edges = Rc::new({
+        let child_edges = Arc::new({
             let mut __result = Vec::new();
             for child in body.children.clone().iter().cloned() {
                 __result.extend(
@@ -5804,11 +5816,11 @@ pub fn collect_local_call_edges_in_expr(
 }
 
 pub fn build_call_graph(
-    func_entries: Rc<Vec<Rc<FuncEntry>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<CallGraph> {
+    func_entries: Arc<Vec<Arc<FuncEntry>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<CallGraph> {
     {
-        let names = Rc::new({
+        let names = Arc::new({
             let mut __result = Vec::new();
             for entry in func_entries.clone().iter().cloned() {
                 __result.push(entry.name.clone());
@@ -5817,11 +5829,11 @@ pub fn build_call_graph(
         });
         let local_func_set = names.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
+            |acc: Arc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
         );
-        let edges = Rc::new({
+        let edges = Arc::new({
             let mut __result = Vec::new();
             for entry in func_entries.clone().iter().cloned() {
                 __result.extend(
@@ -5837,10 +5849,10 @@ pub fn build_call_graph(
             }
             __result
         });
-        Rc::new(CallGraph {
-            edges: Rc::new({
+        Arc::new(CallGraph {
+            edges: Arc::new({
                 let mut __result = Vec::new();
-                for edge in Rc::new({
+                for edge in Arc::new({
                     let mut __result = Vec::new();
                     for edge in edges.clone().iter().cloned() {
                         if (edge.caller.clone() != edge.callee.clone()) {
@@ -5852,7 +5864,7 @@ pub fn build_call_graph(
                 .iter()
                 .cloned()
                 {
-                    __result.push(Rc::new(GraphEdge {
+                    __result.push(Arc::new(GraphEdge {
                         caller: edge.caller.clone(),
                         callee: edge.callee.clone(),
                     }));
@@ -5863,7 +5875,7 @@ pub fn build_call_graph(
     }
 }
 
-pub fn scc_label(members: Rc<Vec<String>>) -> String {
+pub fn scc_label(members: Arc<Vec<String>>) -> String {
     match members.clone().first().cloned() {
         Some(name) => name.clone(),
         None => "scc".to_string(),
@@ -5871,10 +5883,10 @@ pub fn scc_label(members: Rc<Vec<String>>) -> String {
 }
 
 pub fn classify_scc_call_progress(
-    arg_expr: Rc<Node>,
+    arg_expr: Arc<Node>,
     param_name: String,
-    descent_vars: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    descent_vars: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> DescentEvidence {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_child_descent_expr(
@@ -6001,19 +6013,19 @@ pub fn classify_scc_call_progress(
 }
 
 pub fn collect_scc_child_edges(
-    body: Rc<Node>,
+    body: Arc<Node>,
     caller: String,
     param_name: String,
-    descent_vars: Rc<HashMap<String, bool>>,
-    target_set: Rc<HashMap<String, bool>>,
+    descent_vars: Arc<HashMap<String, bool>>,
+    target_set: Arc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
-    scc_measure_params: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ParserProgressEdge>>> {
+    scc_measure_params: Arc<HashMap<String, Arc<HashMap<String, String>>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ParserProgressEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
-            ExprData::ExprLambda => Rc::new(vec![]),
+            ExprData::ExprLambda => Arc::new(vec![]),
             ExprData::ExprCall { .. } => {
                 let callee = expr_call_func_at(body.clone(), si.clone());
                 let own_edges = if set_has(target_set.clone(), callee.clone()) {
@@ -6025,7 +6037,7 @@ pub fn collect_scc_child_edges(
                             };
                         let progress = body.children.clone().iter().cloned().fold(
                             DescentEvidence::DescentUnknown,
-                            |acc: DescentEvidence, arg_node: Rc<Node>| {
+                            |acc: DescentEvidence, arg_node: Arc<Node>| {
                                 let targets_measure =
                                     match arg_name_at(arg_node.clone(), si.clone()) {
                                         Some(aname) => {
@@ -6055,16 +6067,16 @@ pub fn collect_scc_child_edges(
                                 }
                             },
                         );
-                        Rc::new(vec![Rc::new(ParserProgressEdge {
+                        Arc::new(vec![Arc::new(ParserProgressEdge {
                             caller: caller.clone(),
                             callee: callee.clone(),
                             progress: progress.clone(),
                         })])
                     }
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 };
-                let child_edges = Rc::new({
+                let child_edges = Arc::new({
                     let mut __result = Vec::new();
                     for child in body.children.clone().iter().cloned() {
                         __result.extend(
@@ -6112,7 +6124,7 @@ pub fn collect_scc_child_edges(
                             scc_measure_params.clone(),
                             si.clone(),
                         );
-                        let args_edges = Rc::new({
+                        let args_edges = Arc::new({
                             let mut __result = Vec::new();
                             for arg_node in method_arg_nodes(body.clone()).iter().cloned() {
                                 __result.extend(
@@ -6142,7 +6154,7 @@ pub fn collect_scc_child_edges(
                                                         si.clone(),
                                                     )
                                                 }
-                                                None => Rc::new(vec![]),
+                                                None => Arc::new(vec![]),
                                             },
                                             _ => collect_scc_child_edges(
                                                 arg_val.clone(),
@@ -6166,7 +6178,7 @@ pub fn collect_scc_child_edges(
                         v1_rt::concat(recv_edges.clone(), args_edges.clone())
                     }
                 } else {
-                    Rc::new({
+                    Arc::new({
                         let mut __result = Vec::new();
                         for child in body.children.clone().iter().cloned() {
                             __result.extend(
@@ -6389,7 +6401,7 @@ pub fn collect_scc_child_edges(
                         scc_measure_params.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 v1_rt::concat(val_edges.clone(), body_edges.clone())
             }
@@ -6406,7 +6418,7 @@ pub fn collect_scc_child_edges(
                     scc_measure_params.clone(),
                     si.clone(),
                 );
-                let arms_edges = Rc::new({
+                let arms_edges = Arc::new({
                     let mut __result = Vec::new();
                     for arm_node in match_arm_nodes(body.clone()).iter().cloned() {
                         __result.extend(
@@ -6431,11 +6443,11 @@ pub fn collect_scc_child_edges(
             }
             ExprData::ExprBlock => {
                 let result = body.children.clone().iter().cloned().fold(
-                    Rc::new(SccEdgeBlockAcc {
-                        edges: Rc::new(vec![]),
+                    Arc::new(SccEdgeBlockAcc {
+                        edges: Arc::new(vec![]),
                         vars: descent_vars.clone(),
                     }),
-                    |acc: Rc<SccEdgeBlockAcc>, stmt: Rc<Node>| {
+                    |acc: Arc<SccEdgeBlockAcc>, stmt: Arc<Node>| {
                         let stmt_edges = collect_scc_child_edges(
                             stmt.clone(),
                             caller.clone(),
@@ -6455,7 +6467,7 @@ pub fn collect_scc_child_edges(
                             check_list.clone(),
                             si.clone(),
                         );
-                        Rc::new(SccEdgeBlockAcc {
+                        Arc::new(SccEdgeBlockAcc {
                             edges: v1_rt::concat(acc.edges.clone(), stmt_edges.clone()),
                             vars: next_vars.clone(),
                         })
@@ -6500,14 +6512,14 @@ pub fn collect_scc_child_edges(
                         scc_measure_params.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 v1_rt::concat(
                     cond_edges.clone(),
                     v1_rt::concat(then_edges.clone(), else_edges.clone()),
                 )
             }
-            _ => Rc::new({
+            _ => Arc::new({
                 let mut __result = Vec::new();
                 for child in body.children.clone().iter().cloned() {
                     __result.extend(
@@ -6533,23 +6545,23 @@ pub fn collect_scc_child_edges(
 }
 
 pub fn is_scc_container_child_descent(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_name_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_name_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let measure_params =
             build_scc_measure_params(members.clone(), func_index.clone(), si.clone());
-        let edges = Rc::new({
+        let edges = Arc::new({
             let mut __result = Vec::new();
             for name in members.clone().iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&func_index, name.clone()) {
                         Some(entry) => {
                             let best_edges = entry.params.clone().iter().cloned().fold(
-                                Rc::new(vec![]),
-                                |best: _, p: Rc<Node>| {
+                                Arc::new(vec![]),
+                                |best: _, p: Arc<Node>| {
                                     let pname = param_node_name_at(p.clone(), si.clone());
                                     let descent_vars = collect_descent_vars(
                                         entry.body.clone(),
@@ -6584,7 +6596,7 @@ pub fn is_scc_container_child_descent(
                             );
                             best_edges.clone()
                         }
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -6598,16 +6610,16 @@ pub fn is_scc_container_child_descent(
     }
 }
 
-pub fn progress_edge_to_proof_edge(pe: Rc<ParserProgressEdge>) -> Rc<ProofEdge> {
-    Rc::new(ProofEdge {
+pub fn progress_edge_to_proof_edge(pe: Arc<ParserProgressEdge>) -> Arc<ProofEdge> {
+    Arc::new(ProofEdge {
         caller: pe.caller.clone(),
         callee: pe.callee.clone(),
-        evidence: Rc::new(vec![pe.progress.clone()]),
+        evidence: Arc::new(vec![pe.progress.clone()]),
     })
 }
 
-pub fn count_unknown_progress_edges(edges: Rc<Vec<Rc<ParserProgressEdge>>>) -> i64 {
-    (Rc::new({
+pub fn count_unknown_progress_edges(edges: Arc<Vec<Arc<ParserProgressEdge>>>) -> i64 {
+    (Arc::new({
         let mut __result = Vec::new();
         for e in edges.clone().iter().cloned() {
             if (e.progress.clone() == DescentEvidence::DescentUnknown) {
@@ -6619,8 +6631,8 @@ pub fn count_unknown_progress_edges(edges: Rc<Vec<Rc<ParserProgressEdge>>>) -> i
     .len() as i64)
 }
 
-pub fn count_unknown_proof_edges(edges: Rc<Vec<Rc<ProofEdge>>>) -> i64 {
-    (Rc::new({
+pub fn count_unknown_proof_edges(edges: Arc<Vec<Arc<ProofEdge>>>) -> i64 {
+    (Arc::new({
         let mut __result = Vec::new();
         for e in edges.clone().iter().cloned() {
             if match e.evidence.clone().first().cloned() {
@@ -6636,41 +6648,41 @@ pub fn count_unknown_proof_edges(edges: Rc<Vec<Rc<ProofEdge>>>) -> i64 {
 }
 
 pub fn collect_scc_proof_edges_for_dim(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_name_set: Rc<HashMap<String, bool>>,
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_name_set: Arc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ProofEdge>>> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ProofEdge>>> {
     {
         let measure_params =
             build_scc_measure_params(members.clone(), func_index.clone(), si.clone());
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for name in members.clone().iter().cloned() {
                 __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-            let best_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+            let best_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best: Arc<HashMap<String, DescentEvidence>>, p: Arc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
 let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), check_child.clone(), check_list.clone(), si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), check_child.clone(), check_list.clone(), measure_params.clone(), si.clone());
-let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Arc<HashMap<String, DescentEvidence>>, pe: Arc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best, param_map.clone())
 });
-Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&best_map)).iter().cloned() { __result.push({
+Arc::new({ let mut __result = Vec::new(); for callee in Arc::new(v1_rt::map_keys(&best_map)).iter().cloned() { __result.push({
                 let ev = match v1_rt::map_get(&best_map, callee.clone()) {
     Some(e) => e.clone(),
     None => DescentEvidence::DescentUnknown,
 };
-Rc::new(ProofEdge {
+Arc::new(ProofEdge {
     caller: name.clone(),
     callee: callee.clone(),
-    evidence: Rc::new(vec![ev.clone()]),
+    evidence: Arc::new(vec![ev.clone()]),
 })
 }); } __result })
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned());
             }
             __result
@@ -6679,16 +6691,16 @@ Rc::new(ProofEdge {
 }
 
 pub fn merge_edge_evidence(
-    acc_map: Rc<HashMap<String, DescentEvidence>>,
-    pe: Rc<ParserProgressEdge>,
-) -> Rc<HashMap<String, DescentEvidence>> {
+    acc_map: Arc<HashMap<String, DescentEvidence>>,
+    pe: Arc<ParserProgressEdge>,
+) -> Arc<HashMap<String, DescentEvidence>> {
     map_evidence_merge_at(acc_map.clone(), pe.callee.clone(), pe.progress.clone())
 }
 
-pub fn count_known_in_edge_map(m: Rc<HashMap<String, DescentEvidence>>) -> i64 {
-    (Rc::new({
+pub fn count_known_in_edge_map(m: Arc<HashMap<String, DescentEvidence>>) -> i64 {
+    (Arc::new({
         let mut __result = Vec::new();
-        for k in Rc::new(v1_rt::map_keys(&m)).iter().cloned() {
+        for k in Arc::new(v1_rt::map_keys(&m)).iter().cloned() {
             if match v1_rt::map_get(&m, k.clone()) {
                 Some(DescentEvidence::DescentUnknown) => false,
                 _ => true,
@@ -6702,9 +6714,9 @@ pub fn count_known_in_edge_map(m: Rc<HashMap<String, DescentEvidence>>) -> i64 {
 }
 
 pub fn pick_best_param_edges(
-    current: Rc<HashMap<String, DescentEvidence>>,
-    candidate: Rc<HashMap<String, DescentEvidence>>,
-) -> Rc<HashMap<String, DescentEvidence>> {
+    current: Arc<HashMap<String, DescentEvidence>>,
+    candidate: Arc<HashMap<String, DescentEvidence>>,
+) -> Arc<HashMap<String, DescentEvidence>> {
     if (count_known_in_edge_map(candidate.clone()) > count_known_in_edge_map(current.clone())) {
         candidate.clone()
     } else {
@@ -6713,36 +6725,36 @@ pub fn pick_best_param_edges(
 }
 
 pub fn collect_scc_independent_dim_edges(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_name_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ProofEdge>>> {
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_name_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ProofEdge>>> {
     {
         let measure_params =
             build_scc_measure_params(members.clone(), func_index.clone(), si.clone());
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for name in members.clone().iter().cloned() {
                 __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-            let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+            let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Arc<HashMap<String, DescentEvidence>>, p: Arc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
 let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
-let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Arc<HashMap<String, DescentEvidence>>, pe: Arc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
-let list_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+let list_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Arc<HashMap<String, DescentEvidence>>, p: Arc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
 let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), false, true, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), list_vars.clone(), scc_name_set.clone(), false, true, measure_params.clone(), si.clone());
-let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Arc<HashMap<String, DescentEvidence>>, pe: Arc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
-let all_keys = v1_rt::concat(Rc::new(v1_rt::map_keys(&tree_edge_map)), Rc::new(v1_rt::map_keys(&list_edge_map)));
-let unique_keys = all_keys.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
-Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
+let all_keys = v1_rt::concat(Arc::new(v1_rt::map_keys(&tree_edge_map)), Arc::new(v1_rt::map_keys(&list_edge_map)));
+let unique_keys = all_keys.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, bool>(), |acc: Arc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
+Arc::new({ let mut __result = Vec::new(); for callee in Arc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
                 let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
     None => DescentEvidence::DescentUnknown,
@@ -6751,14 +6763,14 @@ let list_ev = match v1_rt::map_get(&list_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
     None => DescentEvidence::DescentUnknown,
 };
-Rc::new(ProofEdge {
+Arc::new(ProofEdge {
     caller: name.clone(),
     callee: callee.clone(),
-    evidence: Rc::new(vec![tree_ev.clone(), list_ev.clone()]),
+    evidence: Arc::new(vec![tree_ev.clone(), list_ev.clone()]),
 })
 }); } __result })
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned());
             }
             __result
@@ -6767,11 +6779,11 @@ Rc::new(ProofEdge {
 }
 
 pub fn collect_scc_parser_proof_edges(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_name_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ProofEdge>>> {
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_name_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ProofEdge>>> {
     {
         let edges = collect_parser_edges_for_scc(
             members.clone(),
@@ -6779,7 +6791,7 @@ pub fn collect_scc_parser_proof_edges(
             scc_name_set.clone(),
             si.clone(),
         );
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for pe in edges.clone().iter().cloned() {
                 __result.push(progress_edge_to_proof_edge(pe.clone()));
@@ -6790,11 +6802,11 @@ pub fn collect_scc_parser_proof_edges(
 }
 
 pub fn collect_scc_tree_parser_dim_edges(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_name_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ProofEdge>>> {
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_name_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ProofEdge>>> {
     {
         let all_parser_edges = collect_parser_edges_for_scc(
             members.clone(),
@@ -6803,28 +6815,28 @@ pub fn collect_scc_tree_parser_dim_edges(
             si.clone(),
         );
         if ((all_parser_edges.clone().len() as i64) == 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             {
                 let measure_params =
                     build_scc_measure_params(members.clone(), func_index.clone(), si.clone());
-                Rc::new({
+                Arc::new({
                     let mut __result = Vec::new();
                     for name in members.clone().iter().cloned() {
                         __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-                    let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
+                    let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Arc<HashMap<String, DescentEvidence>>, p: Arc<Node>| {
                         let pname = param_node_name_at(p.clone(), si.clone());
 let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
 let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
-let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Arc<HashMap<String, DescentEvidence>>, pe: Arc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
-let my_parser_edges = Rc::new({ let mut __result = Vec::new(); for pe in all_parser_edges.clone().iter().cloned() { if (pe.caller.clone() == name.clone()) { __result.push(pe); } } __result });
-let parser_edge_map = my_parser_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
-let all_keys = v1_rt::concat(Rc::new(v1_rt::map_keys(&tree_edge_map)), Rc::new(v1_rt::map_keys(&parser_edge_map)));
-let unique_keys = all_keys.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, bool>(), |acc: Rc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
-Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
+let my_parser_edges = Arc::new({ let mut __result = Vec::new(); for pe in all_parser_edges.clone().iter().cloned() { if (pe.caller.clone() == name.clone()) { __result.push(pe); } } __result });
+let parser_edge_map = my_parser_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Arc<HashMap<String, DescentEvidence>>, pe: Arc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
+let all_keys = v1_rt::concat(Arc::new(v1_rt::map_keys(&tree_edge_map)), Arc::new(v1_rt::map_keys(&parser_edge_map)));
+let unique_keys = all_keys.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, bool>(), |acc: Arc<HashMap<String, bool>>, k: String| v1_rt::rc_map_insert(acc, k.clone(), true));
+Arc::new({ let mut __result = Vec::new(); for callee in Arc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
                         let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
     None => DescentEvidence::DescentUnknown,
@@ -6833,14 +6845,14 @@ let parser_ev = match v1_rt::map_get(&parser_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
     None => DescentEvidence::DescentUnknown,
 };
-Rc::new(ProofEdge {
+Arc::new(ProofEdge {
     caller: name.clone(),
     callee: callee.clone(),
-    evidence: Rc::new(vec![tree_ev.clone(), parser_ev.clone()]),
+    evidence: Arc::new(vec![tree_ev.clone(), parser_ev.clone()]),
 })
 }); } __result })
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned());
                     }
                     __result
@@ -6851,15 +6863,15 @@ Rc::new(ProofEdge {
 }
 
 pub fn collect_scc_cx_l2_tree_edges(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_name_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ProofEdge>>> {
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_name_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ProofEdge>>> {
     {
         let measure_params =
             build_scc_measure_params(members.clone(), func_index.clone(), si.clone());
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for name in members.clone().iter().cloned() {
                 __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
@@ -6873,7 +6885,7 @@ let self_all_structural = (self_has_calls.clone() && { let mut __all = true; for
     _ => false,
 } { __found = true; break; } } __found }) { __all = false; break; } } __all });
 let descending_param = match self_evidence.clone().first().cloned() {
-    Some(call_ev) => call_ev.clone().iter().cloned().fold("".to_string(), |found: String, rel: Rc<SubValueRelation>| if (found.clone() != "".to_string()) {
+    Some(call_ev) => call_ev.clone().iter().cloned().fold("".to_string(), |found: String, rel: Arc<SubValueRelation>| if (found.clone() != "".to_string()) {
                 found.clone()
             } else {
                 match (*rel.clone()).clone() {
@@ -6888,8 +6900,8 @@ let descending_param = match self_evidence.clone().first().cloned() {
 let self_edge = if self_has_calls.clone() {
                 if self_all_structural.clone() {
                     {
-                        let derived = self_evidence.clone().iter().cloned().fold(DescentEvidence::Strict, |worst: DescentEvidence, call_ev: Rc<Vec<Rc<SubValueRelation>>>| {
-                            let call_best = call_ev.clone().iter().cloned().fold(DescentEvidence::DescentUnknown, |best: DescentEvidence, rel: Rc<SubValueRelation>| {
+                        let derived = self_evidence.clone().iter().cloned().fold(DescentEvidence::Strict, |worst: DescentEvidence, call_ev: Arc<Vec<Arc<SubValueRelation>>>| {
+                            let call_best = call_ev.clone().iter().cloned().fold(DescentEvidence::DescentUnknown, |best: DescentEvidence, rel: Arc<SubValueRelation>| {
                                 let ev = sub_value_to_evidence(rel.clone());
 match ev.clone() {
     DescentEvidence::Strict => DescentEvidence::Strict,
@@ -6901,41 +6913,41 @@ match ev.clone() {
 });
 descent_evidence_lattice_meet(worst, call_best.clone())
 });
-Rc::new(vec![Rc::new(ProofEdge {
+Arc::new(vec![Arc::new(ProofEdge {
     caller: name.clone(),
     callee: name.clone(),
-    evidence: Rc::new(vec![derived.clone()]),
+    evidence: Arc::new(vec![derived.clone()]),
 })])
 }
                 } else {
-                    Rc::new(vec![Rc::new(ProofEdge {
+                    Arc::new(vec![Arc::new(ProofEdge {
     caller: name.clone(),
     callee: name.clone(),
-    evidence: Rc::new(vec![DescentEvidence::DescentUnknown]),
+    evidence: Arc::new(vec![DescentEvidence::DescentUnknown]),
 })])
                 }
             } else {
-                Rc::new(vec![])
+                Arc::new(vec![])
             };
-let other_members = Rc::new({ let mut __result = Vec::new(); for m in Rc::new(v1_rt::map_keys(&scc_name_set)).iter().cloned() { if (m.clone() != name.clone()) { __result.push(m); } } __result });
-let cross_edges = Rc::new({ let mut __result = Vec::new(); for callee in other_members.clone().iter().cloned() { __result.extend((*{
+let other_members = Arc::new({ let mut __result = Vec::new(); for m in Arc::new(v1_rt::map_keys(&scc_name_set)).iter().cloned() { if (m.clone() != name.clone()) { __result.push(m); } } __result });
+let cross_edges = Arc::new({ let mut __result = Vec::new(); for callee in other_members.clone().iter().cloned() { __result.extend((*{
                 let callee_evidence = collect_callee_evidence(entry.body.clone(), callee.clone(), si.clone());
 if ((callee_evidence.clone().len() as i64) > 0) {
                     {
                         let ev = derive_edge_evidence(callee_evidence.clone());
-Rc::new(vec![Rc::new(ProofEdge {
+Arc::new(vec![Arc::new(ProofEdge {
     caller: name.clone(),
     callee: callee.clone(),
-    evidence: Rc::new(vec![ev.clone()]),
+    evidence: Arc::new(vec![ev.clone()]),
 })])
 }
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
 }).iter().cloned()); } __result });
 v1_rt::concat(self_edge.clone(), cross_edges.clone())
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned());
             }
             __result
@@ -6944,9 +6956,9 @@ v1_rt::concat(self_edge.clone(), cross_edges.clone())
 }
 
 pub fn scc_descending_param(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     members
         .clone()
@@ -6966,7 +6978,7 @@ pub fn scc_descending_param(
                         match evidence.clone().first().cloned() {
                             Some(call_ev) => call_ev.clone().iter().cloned().fold(
                                 "".to_string(),
-                                |p: String, rel: Rc<SubValueRelation>| {
+                                |p: String, rel: Arc<SubValueRelation>| {
                                     if (p.clone() != "".to_string()) {
                                         p.clone()
                                     } else {
@@ -6996,11 +7008,11 @@ pub fn scc_descending_param(
 }
 
 pub fn construct_scc_termination_proof(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_name_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<TerminationProof>> {
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_name_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<TerminationProof>> {
     {
         let cx_l2_edges = collect_scc_cx_l2_tree_edges(
             members.clone(),
@@ -7022,8 +7034,8 @@ pub fn construct_scc_termination_proof(
             __all
         };
         let cx_l2_param = scc_descending_param(members.clone(), func_index.clone(), si.clone());
-        let cx_l2_proof = Rc::new(TerminationProof {
-            dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
+        let cx_l2_proof = Arc::new(TerminationProof {
+            dimensions: Arc::new(vec![Arc::new(RankingDimension::TreeSize {
                 param: if (cx_l2_param.clone() != "".to_string()) {
                     cx_l2_param.clone()
                 } else {
@@ -7062,8 +7074,8 @@ pub fn construct_scc_termination_proof(
                     }
                     __all
                 };
-                let tree_proof = Rc::new(TerminationProof {
-                    dimensions: Rc::new(vec![Rc::new(RankingDimension::TreeSize {
+                let tree_proof = Arc::new(TerminationProof {
+                    dimensions: Arc::new(vec![Arc::new(RankingDimension::TreeSize {
                         param: "scc".to_string(),
                     })]),
                 });
@@ -7098,8 +7110,8 @@ pub fn construct_scc_termination_proof(
                             }
                             __all
                         };
-                        let list_proof = Rc::new(TerminationProof {
-                            dimensions: Rc::new(vec![Rc::new(RankingDimension::ListLength {
+                        let list_proof = Arc::new(TerminationProof {
+                            dimensions: Arc::new(vec![Arc::new(RankingDimension::ListLength {
                                 param: "scc".to_string(),
                             })]),
                         });
@@ -7132,8 +7144,8 @@ pub fn construct_scc_termination_proof(
                                     }
                                     __all
                                 };
-                                let parser_proof = Rc::new(TerminationProof {
-                                    dimensions: Rc::new(vec![Rc::new(
+                                let parser_proof = Arc::new(TerminationProof {
+                                    dimensions: Arc::new(vec![Arc::new(
                                         RankingDimension::TokenPosition {
                                             param: "scc".to_string(),
                                         },
@@ -7172,12 +7184,12 @@ pub fn construct_scc_termination_proof(
                                             }
                                             __all
                                         };
-                                        let lex_proof = Rc::new(TerminationProof {
-                                            dimensions: Rc::new(vec![
-                                                Rc::new(RankingDimension::TreeSize {
+                                        let lex_proof = Arc::new(TerminationProof {
+                                            dimensions: Arc::new(vec![
+                                                Arc::new(RankingDimension::TreeSize {
                                                     param: "scc".to_string(),
                                                 }),
-                                                Rc::new(RankingDimension::ListLength {
+                                                Arc::new(RankingDimension::ListLength {
                                                     param: "scc".to_string(),
                                                 }),
                                             ]),
@@ -7225,12 +7237,12 @@ pub fn construct_scc_termination_proof(
                                                     }
                                                     __all
                                                 };
-                                                let tp_proof = Rc::new(TerminationProof {
-                                                    dimensions: Rc::new(vec![
-                                                        Rc::new(RankingDimension::TreeSize {
+                                                let tp_proof = Arc::new(TerminationProof {
+                                                    dimensions: Arc::new(vec![
+                                                        Arc::new(RankingDimension::TreeSize {
                                                             param: "scc".to_string(),
                                                         }),
-                                                        Rc::new(RankingDimension::TokenPosition {
+                                                        Arc::new(RankingDimension::TokenPosition {
                                                             param: "scc".to_string(),
                                                         }),
                                                     ]),
@@ -7262,14 +7274,14 @@ pub fn construct_scc_termination_proof(
 }
 
 pub fn classify_scc_recursion_pattern(
-    members: Rc<Vec<String>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<LoweringTarget> {
+    members: Arc<Vec<String>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<LoweringTarget> {
     {
         let scc_name_set = members.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
+            |acc: Arc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
         );
@@ -7322,7 +7334,7 @@ pub fn classify_scc_recursion_pattern(
                                 let ring_param = match members.clone().first().cloned() {
                                     Some(m0) => {
                                         match v1_rt::map_get(&scc_measure_params, m0.clone()) {
-                                            Some(pmap) => match Rc::new(v1_rt::map_keys(&pmap))
+                                            Some(pmap) => match Arc::new(v1_rt::map_keys(&pmap))
                                                 .first()
                                                 .cloned()
                                             {
@@ -7334,13 +7346,13 @@ pub fn classify_scc_recursion_pattern(
                                     }
                                     None => "_scc_arithmetic".to_string(),
                                 };
-                                lower_call_pattern(Rc::new(CallPattern::ArithmeticSubtractCall {
-                                    steps: Rc::new(PositiveDescentAmount::OneStep),
+                                lower_call_pattern(Arc::new(CallPattern::ArithmeticSubtractCall {
+                                    steps: Arc::new(PositiveDescentAmount::OneStep),
                                     ring_param: ring_param.clone(),
                                 }))
                             }
                         } else {
-                            lower_call_pattern(Rc::new(CallPattern::SameArgumentCall))
+                            lower_call_pattern(Arc::new(CallPattern::SameArgumentCall))
                         }
                     }
                 }
@@ -7350,12 +7362,12 @@ pub fn classify_scc_recursion_pattern(
 }
 
 pub fn build_scc_index(
-    func_entries: Rc<Vec<Rc<FuncEntry>>>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<SccResult> {
+    func_entries: Arc<Vec<Arc<FuncEntry>>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<SccResult> {
     {
-        let names = Rc::new({
+        let names = Arc::new({
             let mut __result = Vec::new();
             for entry in func_entries.clone().iter().cloned() {
                 __result.push(entry.name.clone());
@@ -7366,21 +7378,21 @@ pub fn build_scc_index(
         let adjacency = forward_adjacency(names.clone(), graph.clone());
         let reverse_graph = reverse_adjacency(names.clone(), graph.clone());
         let finish = names.clone().iter().cloned().fold(
-            Rc::new(DfsFinishAcc {
+            Arc::new(DfsFinishAcc {
                 visited: v1_rt::rc_empty_set::<String>(),
-                order: Rc::new(vec![]),
+                order: Arc::new(vec![]),
             }),
-            |acc: Rc<DfsFinishAcc>, name: String| {
+            |acc: Arc<DfsFinishAcc>, name: String| {
                 dfs_finish_order(name.clone(), adjacency.clone(), acc)
             },
         );
         let topo_order = v1_rt::reverse(finish.order.clone());
         let result = topo_order.clone().iter().cloned().fold(
-            Rc::new(SccBuildAcc {
+            Arc::new(SccBuildAcc {
                 assigned: v1_rt::rc_empty_set::<String>(),
-                index: v1_rt::rc_empty_map::<String, Rc<SccInfo>>(),
+                index: v1_rt::rc_empty_map::<String, Arc<SccInfo>>(),
             }),
-            |acc: Rc<SccBuildAcc>, name: String| {
+            |acc: Arc<SccBuildAcc>, name: String| {
                 if v1_rt::set_contains(&acc.assigned.clone(), name.clone()) {
                     acc.clone()
                 } else {
@@ -7388,9 +7400,9 @@ pub fn build_scc_index(
                         let component = dfs_collect_component(
                             name.clone(),
                             reverse_graph.clone(),
-                            Rc::new(SccComponentAcc {
+                            Arc::new(SccComponentAcc {
                                 visited: acc.assigned.clone(),
-                                members: Rc::new(vec![]),
+                                members: Arc::new(vec![]),
                             }),
                         );
                         let member_set =
@@ -7400,7 +7412,7 @@ pub fn build_scc_index(
                                     v1_rt::rc_set_insert(inner, member.clone())
                                 },
                             );
-                        let members = Rc::new({
+                        let members = Arc::new({
                             let mut __result = Vec::new();
                             for member in names.clone().iter().cloned() {
                                 if v1_rt::set_contains(&member_set, member.clone()) {
@@ -7412,7 +7424,7 @@ pub fn build_scc_index(
                         let next_assigned = component.visited.clone();
                         if ((members.clone().len() as i64) > 1) {
                             {
-                                let info = Rc::new(SccInfo {
+                                let info = Arc::new(SccInfo {
                                     members: members.clone(),
                                     member_set: member_set.clone(),
                                     pattern: classify_scc_recursion_pattern(
@@ -7423,17 +7435,17 @@ pub fn build_scc_index(
                                 });
                                 let next_index = members.clone().iter().cloned().fold(
                                     acc.index.clone(),
-                                    |inner: Rc<HashMap<String, Rc<SccInfo>>>, member: String| {
+                                    |inner: Arc<HashMap<String, Arc<SccInfo>>>, member: String| {
                                         v1_rt::rc_map_insert(inner, member.clone(), info.clone())
                                     },
                                 );
-                                Rc::new(SccBuildAcc {
+                                Arc::new(SccBuildAcc {
                                     assigned: next_assigned.clone(),
                                     index: next_index.clone(),
                                 })
                             }
                         } else {
-                            Rc::new(SccBuildAcc {
+                            Arc::new(SccBuildAcc {
                                 assigned: next_assigned.clone(),
                                 index: acc.index.clone(),
                             })
@@ -7442,7 +7454,7 @@ pub fn build_scc_index(
                 }
             },
         );
-        Rc::new(SccResult {
+        Arc::new(SccResult {
             index: result.index.clone(),
             topo_order: topo_order.clone(),
             processing_order: finish.order.clone(),
@@ -7451,12 +7463,12 @@ pub fn build_scc_index(
     }
 }
 
-pub fn cost_seq(a: Rc<CostExpr>, b: Rc<CostExpr>) -> Rc<CostExpr> {
+pub fn cost_seq(a: Arc<CostExpr>, b: Arc<CostExpr>) -> Arc<CostExpr> {
     match (*a.clone()).clone() {
         CostExpr::CostConst { value: 0, .. } => b.clone(),
         _ => match (*b.clone()).clone() {
             CostExpr::CostConst { value: 0, .. } => a.clone(),
-            _ => Rc::new(CostExpr::CostAdd {
+            _ => Arc::new(CostExpr::CostAdd {
                 left: a.clone(),
                 right: b.clone(),
             }),
@@ -7464,12 +7476,12 @@ pub fn cost_seq(a: Rc<CostExpr>, b: Rc<CostExpr>) -> Rc<CostExpr> {
     }
 }
 
-pub fn cost_par(a: Rc<CostExpr>, b: Rc<CostExpr>) -> Rc<CostExpr> {
+pub fn cost_par(a: Arc<CostExpr>, b: Arc<CostExpr>) -> Arc<CostExpr> {
     match (*a.clone()).clone() {
         CostExpr::CostConst { value: 0, .. } => b.clone(),
         _ => match (*b.clone()).clone() {
             CostExpr::CostConst { value: 0, .. } => a.clone(),
-            _ => Rc::new(CostExpr::CostMax {
+            _ => Arc::new(CostExpr::CostMax {
                 left: a.clone(),
                 right: b.clone(),
             }),
@@ -7477,10 +7489,10 @@ pub fn cost_par(a: Rc<CostExpr>, b: Rc<CostExpr>) -> Rc<CostExpr> {
     }
 }
 
-pub fn cost_loop(binder: String, iterations: Rc<SizeExpr>, body: Rc<CostExpr>) -> Rc<CostExpr> {
+pub fn cost_loop(binder: String, iterations: Arc<SizeExpr>, body: Arc<CostExpr>) -> Arc<CostExpr> {
     match (*body.clone()).clone() {
-        CostExpr::CostConst { value: 0, .. } => Rc::new(CostExpr::CostConst { value: 0 }),
-        _ => Rc::new(CostExpr::CostSum {
+        CostExpr::CostConst { value: 0, .. } => Arc::new(CostExpr::CostConst { value: 0 }),
+        _ => Arc::new(CostExpr::CostSum {
             binder: binder.clone(),
             upper: iterations.clone(),
             body: body.clone(),
@@ -7488,11 +7500,14 @@ pub fn cost_loop(binder: String, iterations: Rc<SizeExpr>, body: Rc<CostExpr>) -
     }
 }
 
-pub fn cost_conditional(condition: Rc<CostExpr>, branches: Rc<Vec<Rc<CostExpr>>>) -> Rc<CostExpr> {
+pub fn cost_conditional(
+    condition: Arc<CostExpr>,
+    branches: Arc<Vec<Arc<CostExpr>>>,
+) -> Arc<CostExpr> {
     {
         let max_branch = branches.clone().iter().cloned().fold(
-            Rc::new(CostExpr::CostConst { value: 0 }),
-            |acc: Rc<CostExpr>, b: Rc<CostExpr>| cost_par(acc, b.clone()),
+            Arc::new(CostExpr::CostConst { value: 0 }),
+            |acc: Arc<CostExpr>, b: Arc<CostExpr>| cost_par(acc, b.clone()),
         );
         cost_seq(condition.clone(), max_branch.clone())
     }
@@ -7507,11 +7522,11 @@ pub fn space_of_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn space_of(work: Rc<CostExpr>) -> Rc<CostExpr> {
+pub fn space_of(work: Arc<CostExpr>) -> Arc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*work.clone()).clone() {
             CostExpr::CostConst { value: v, .. } => {
-                Rc::new(CostExpr::CostConst { value: v.clone() })
+                Arc::new(CostExpr::CostConst { value: v.clone() })
             }
             CostExpr::CostAdd {
                 left: l, right: r, ..
@@ -7527,21 +7542,21 @@ pub fn space_of(work: Rc<CostExpr>) -> Rc<CostExpr> {
                 base: b,
                 argument: a,
                 ..
-            } => Rc::new(CostExpr::CostLog {
+            } => Arc::new(CostExpr::CostLog {
                 base: b.clone(),
                 argument: a.clone(),
             }),
             CostExpr::CostExtern { name: n, .. } => {
-                Rc::new(CostExpr::CostExtern { name: n.clone() })
+                Arc::new(CostExpr::CostExtern { name: n.clone() })
             }
             CostExpr::CostUnknown { reason: r, .. } => {
-                Rc::new(CostExpr::CostUnknown { reason: r.clone() })
+                Arc::new(CostExpr::CostUnknown { reason: r.clone() })
             }
         }
     })
 }
 
-pub fn fold_peak_space(body_peak: Rc<CostExpr>, output_size: Rc<CostExpr>) -> Rc<CostExpr> {
+pub fn fold_peak_space(body_peak: Arc<CostExpr>, output_size: Arc<CostExpr>) -> Arc<CostExpr> {
     cost_seq(output_size.clone(), space_of(body_peak.clone()))
 }
 
@@ -7555,9 +7570,9 @@ pub fn derive_peak_space_note() -> String {
 }
 
 pub fn derive_peak_space(
-    work: Rc<CostExpr>,
-    output_size: Rc<HashMap<String, Rc<CostExpr>>>,
-) -> Rc<CostExpr> {
+    work: Arc<CostExpr>,
+    output_size: Arc<HashMap<String, Arc<CostExpr>>>,
+) -> Arc<CostExpr> {
     match v1_rt::map_get(&output_size, "result".to_string()) {
         Some(out) => fold_peak_space(work.clone(), out.clone()),
         None => space_of(work.clone()),
@@ -7574,8 +7589,8 @@ pub fn cost_account_space_from_summary_note() -> String {
 }
 
 pub fn cost_account_space_from_summary(
-    summary: Rc<ComplexitySummary>,
-    size_env: Rc<HashMap<String, i64>>,
+    summary: Arc<ComplexitySummary>,
+    size_env: Arc<HashMap<String, i64>>,
 ) -> Option<ByteSize> {
     match summary.peak_space.clone() {
         Some(ps) => match eval_cost_expr_concrete(ps.clone(), size_env.clone()) {
@@ -7595,7 +7610,7 @@ pub fn cost_expr_degree_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn cost_expr_degree(e: Rc<CostExpr>) -> Option<i64> {
+pub fn cost_expr_degree(e: Arc<CostExpr>) -> Option<i64> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*e.clone()).clone() {
         CostExpr::CostConst { value: _, .. } => Some(0),
         CostExpr::CostAdd {
@@ -7643,7 +7658,7 @@ pub fn cost_expr_degree(e: Rc<CostExpr>) -> Option<i64> {
     })
 }
 
-pub fn degree_to_bound(degree: i64, param: String) -> Rc<CostBound> {
+pub fn degree_to_bound(degree: i64, param: String) -> Arc<CostBound> {
     if (degree.clone() == 0) {
         cost_constant()
     } else {
@@ -7651,21 +7666,21 @@ pub fn degree_to_bound(degree: i64, param: String) -> Rc<CostBound> {
     }
 }
 
-pub fn space_asymptotic_bound(work: Rc<CostExpr>, param: String) -> Rc<CostBound> {
+pub fn space_asymptotic_bound(work: Arc<CostExpr>, param: String) -> Arc<CostBound> {
     match cost_expr_degree(space_of(work.clone())) {
         Some(d) => degree_to_bound(d.clone(), param.clone()),
-        None => Rc::new(CostBound::ForeverBound),
+        None => Arc::new(CostBound::ForeverBound),
     }
 }
 
-pub fn time_asymptotic_bound(work: Rc<CostExpr>, param: String) -> Rc<CostBound> {
+pub fn time_asymptotic_bound(work: Arc<CostExpr>, param: String) -> Arc<CostBound> {
     match cost_expr_degree(work.clone()) {
         Some(d) => degree_to_bound(d.clone(), param.clone()),
-        None => Rc::new(CostBound::ForeverBound),
+        None => Arc::new(CostBound::ForeverBound),
     }
 }
 
-pub fn eval_size_expr_concrete(s: Rc<SizeExpr>, env: Rc<HashMap<String, i64>>) -> Option<i64> {
+pub fn eval_size_expr_concrete(s: Arc<SizeExpr>, env: Arc<HashMap<String, i64>>) -> Option<i64> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*s.clone()).clone() {
         SizeExpr::SizeConst { value: v, .. } => Some(v.clone()),
         SizeExpr::SizeVar { name: n, .. } => v1_rt::map_get(&env, n.clone()),
@@ -7703,7 +7718,7 @@ pub fn int_max2(a: i64, b: i64) -> i64 {
     }
 }
 
-pub fn eval_cost_expr_concrete(e: Rc<CostExpr>, env: Rc<HashMap<String, i64>>) -> Option<i64> {
+pub fn eval_cost_expr_concrete(e: Arc<CostExpr>, env: Arc<HashMap<String, i64>>) -> Option<i64> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*e.clone()).clone() {
         CostExpr::CostConst { value: v, .. } => Some(v.clone()),
         CostExpr::CostAdd {
@@ -7750,25 +7765,28 @@ pub fn eval_cost_expr_concrete(e: Rc<CostExpr>, env: Rc<HashMap<String, i64>>) -
     })
 }
 
-pub fn collection_output(binder: String, size: Rc<SizeExpr>) -> Rc<HashMap<String, Rc<CostExpr>>> {
+pub fn collection_output(
+    binder: String,
+    size: Arc<SizeExpr>,
+) -> Arc<HashMap<String, Arc<CostExpr>>> {
     {
         let result = seed_cost_map(
             "result".to_string(),
             cost_loop(
                 binder.clone(),
                 size.clone(),
-                Rc::new(CostExpr::CostConst { value: 1 }),
+                Arc::new(CostExpr::CostConst { value: 1 }),
             ),
         );
         result
     }
 }
 
-pub fn scalar_output() -> Rc<HashMap<String, Rc<CostExpr>>> {
-    v1_rt::rc_empty_map::<String, Rc<CostExpr>>()
+pub fn scalar_output() -> Arc<HashMap<String, Arc<CostExpr>>> {
+    v1_rt::rc_empty_map::<String, Arc<CostExpr>>()
 }
 
-pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
+pub fn method_preserves_collection_size(method_semantics: Option<Arc<MethodSemantics>>) -> bool {
     if (method_semantics.clone() == None) {
         false
     } else {
@@ -7786,18 +7804,18 @@ pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemant
 }
 
 pub fn receiver_size_var(
-    mut recv: Rc<Node>,
-    mut si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<SizeExpr> {
+    mut recv: Arc<Node>,
+    mut si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<SizeExpr> {
     loop {
         match (*recv.expr_data.clone()).clone() {
             ExprData::ExprVar { .. } => {
-                break Rc::new(SizeExpr::SizeLen {
+                break Arc::new(SizeExpr::SizeLen {
                     collection: expr_var_name_at(recv.clone(), si.clone()),
                 });
             }
             ExprData::ExprFieldAccess { .. } => {
-                break Rc::new(SizeExpr::SizeLen {
+                break Arc::new(SizeExpr::SizeLen {
                     collection: field_access_field_at(recv.clone(), si.clone()),
                 });
             }
@@ -7816,13 +7834,13 @@ pub fn receiver_size_var(
                         continue;
                     }
                 } else {
-                    break Rc::new(SizeExpr::SizeLen {
+                    break Arc::new(SizeExpr::SizeLen {
                         collection: "__expr".to_string(),
                     });
                 }
             }
             _ => {
-                break Rc::new(SizeExpr::SizeLen {
+                break Arc::new(SizeExpr::SizeLen {
                     collection: "__expr".to_string(),
                 });
             }
@@ -7830,7 +7848,7 @@ pub fn receiver_size_var(
     }
 }
 
-pub fn size_binder_name(size: Rc<SizeExpr>) -> String {
+pub fn size_binder_name(size: Arc<SizeExpr>) -> String {
     match (*size.clone()).clone() {
         SizeExpr::SizeLen { collection: c, .. } => v1_rt::concat("_".to_string(), c.clone()),
         SizeExpr::SizeVar { name: n, .. } => n.clone(),
@@ -7839,11 +7857,11 @@ pub fn size_binder_name(size: Rc<SizeExpr>) -> String {
 }
 
 pub fn resolve_lambda_arg(
-    mc_arg_nodes: Rc<Vec<Rc<Node>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    mc_arg_nodes: Arc<Vec<Arc<Node>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     {
-        let f_arg = Rc::new({
+        let f_arg = Arc::new({
             let mut __result = Vec::new();
             for a in mc_arg_nodes.clone().iter().cloned() {
                 if (authored_name_at(si.clone(), a.clone()) == "f".to_string()) {
@@ -7856,7 +7874,7 @@ pub fn resolve_lambda_arg(
         .cloned();
         match f_arg.clone() {
             Some(fa) => Some(arg_value(fa.clone())),
-            None => Rc::new({
+            None => Arc::new({
                 let mut __result = Vec::new();
                 for a in mc_arg_nodes.clone().iter().cloned() {
                     __result.push(arg_value(a.clone()));
@@ -7870,14 +7888,14 @@ pub fn resolve_lambda_arg(
 }
 
 pub fn resolve_callback_cost(
-    lambda_arg: Option<Rc<Node>>,
-    recv_r: Rc<SummaryResult>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_index: Rc<HashMap<String, Rc<SccInfo>>>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
+    lambda_arg: Option<Arc<Node>>,
+    recv_r: Arc<SummaryResult>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_index: Arc<HashMap<String, Arc<SccInfo>>>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
     recursion_ctx: RecursionContext,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<SummaryResult> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<SummaryResult> {
     match lambda_arg.clone() {
         Some(la) => match (*la.expr_data.clone()).clone() {
             ExprData::ExprVar { .. } => {
@@ -7913,11 +7931,11 @@ pub fn resolve_callback_cost(
                 si.clone(),
             ),
         },
-        None => Rc::new(SummaryResult {
-            summary: Rc::new(ComplexitySummary {
-                work: Rc::new(CostExpr::CostConst { value: 1 }),
-                span: Rc::new(CostExpr::CostConst { value: 1 }),
-                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+        None => Arc::new(SummaryResult {
+            summary: Arc::new(ComplexitySummary {
+                work: Arc::new(CostExpr::CostConst { value: 1 }),
+                span: Arc::new(CostExpr::CostConst { value: 1 }),
+                output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                 certainty: Certainty::Conservative,
                 peak_space: None,
             }),
@@ -7929,16 +7947,16 @@ pub fn resolve_callback_cost(
 pub fn cost_of_method_by_shape(
     shape: CostShape,
     produces_collection: bool,
-    recv_r: Rc<SummaryResult>,
-    mc_args: Rc<Vec<Rc<Node>>>,
-    size: Rc<SizeExpr>,
+    recv_r: Arc<SummaryResult>,
+    mc_args: Arc<Vec<Arc<Node>>>,
+    size: Arc<SizeExpr>,
     binder: String,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_index: Rc<HashMap<String, Rc<SccInfo>>>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_index: Arc<HashMap<String, Arc<SccInfo>>>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
     recursion_ctx: RecursionContext,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<SummaryResult> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<SummaryResult> {
     match shape.clone() {
         CostShape::ShapeIterateBody => {
             let lambda_arg = resolve_lambda_arg(mc_args.clone(), si.clone());
@@ -7965,14 +7983,14 @@ pub fn cost_of_method_by_shape(
                         cost_loop(
                             binder.clone(),
                             size.clone(),
-                            Rc::new(CostExpr::CostConst { value: 1 }),
+                            Arc::new(CostExpr::CostConst { value: 1 }),
                         ),
                     );
                     r.clone()
                 }
             };
-            Rc::new(SummaryResult {
-                summary: Rc::new(ComplexitySummary {
+            Arc::new(SummaryResult {
+                summary: Arc::new(ComplexitySummary {
                     work: cost_seq(recv_r.summary.clone().work.clone(), loop_work.clone()),
                     span: cost_seq(recv_r.summary.clone().span.clone(), loop_work.clone()),
                     output_size: os.clone(),
@@ -7994,23 +8012,23 @@ pub fn cost_of_method_by_shape(
                     recursion_ctx.clone(),
                     si.clone(),
                 ),
-                None => Rc::new(SummaryResult {
-                    summary: Rc::new(ComplexitySummary {
-                        work: Rc::new(CostExpr::CostConst { value: 1 }),
-                        span: Rc::new(CostExpr::CostConst { value: 1 }),
-                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                None => Arc::new(SummaryResult {
+                    summary: Arc::new(ComplexitySummary {
+                        work: Arc::new(CostExpr::CostConst { value: 1 }),
+                        span: Arc::new(CostExpr::CostConst { value: 1 }),
+                        output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
                     table: recv_r.table.clone(),
                 }),
             };
-            let log_factor = Rc::new(CostExpr::CostLog {
+            let log_factor = Arc::new(CostExpr::CostLog {
                 base: 2,
                 argument: size.clone(),
             });
             let per_comparison = key_result.summary.clone().work.clone();
-            let sort_work = Rc::new(CostExpr::CostMul {
+            let sort_work = Arc::new(CostExpr::CostMul {
                 left: cost_loop(binder.clone(), size.clone(), per_comparison.clone()),
                 right: log_factor.clone(),
             });
@@ -8019,11 +8037,11 @@ pub fn cost_of_method_by_shape(
                 cost_loop(
                     binder.clone(),
                     size.clone(),
-                    Rc::new(CostExpr::CostConst { value: 1 }),
+                    Arc::new(CostExpr::CostConst { value: 1 }),
                 ),
             );
-            Rc::new(SummaryResult {
-                summary: Rc::new(ComplexitySummary {
+            Arc::new(SummaryResult {
+                summary: Arc::new(ComplexitySummary {
                     work: cost_seq(recv_r.summary.clone().work.clone(), sort_work.clone()),
                     span: cost_seq(recv_r.summary.clone().span.clone(), sort_work.clone()),
                     output_size: sort_os.clone(),
@@ -8037,7 +8055,7 @@ pub fn cost_of_method_by_shape(
             let loop_work = cost_loop(
                 binder.clone(),
                 size.clone(),
-                Rc::new(CostExpr::CostConst { value: 1 }),
+                Arc::new(CostExpr::CostConst { value: 1 }),
             );
             let scan_os = if produces_collection.clone() {
                 seed_cost_map(
@@ -8045,14 +8063,14 @@ pub fn cost_of_method_by_shape(
                     cost_loop(
                         binder.clone(),
                         size.clone(),
-                        Rc::new(CostExpr::CostConst { value: 1 }),
+                        Arc::new(CostExpr::CostConst { value: 1 }),
                     ),
                 )
             } else {
-                v1_rt::rc_empty_map::<String, Rc<CostExpr>>()
+                v1_rt::rc_empty_map::<String, Arc<CostExpr>>()
             };
-            Rc::new(SummaryResult {
-                summary: Rc::new(ComplexitySummary {
+            Arc::new(SummaryResult {
+                summary: Arc::new(ComplexitySummary {
                     work: cost_seq(recv_r.summary.clone().work.clone(), loop_work.clone()),
                     span: cost_seq(recv_r.summary.clone().span.clone(), loop_work.clone()),
                     output_size: scan_os.clone(),
@@ -8062,17 +8080,17 @@ pub fn cost_of_method_by_shape(
                 table: recv_r.table.clone(),
             })
         }
-        CostShape::ShapeConstant => Rc::new(SummaryResult {
-            summary: Rc::new(ComplexitySummary {
+        CostShape::ShapeConstant => Arc::new(SummaryResult {
+            summary: Arc::new(ComplexitySummary {
                 work: cost_seq(
                     recv_r.summary.clone().work.clone(),
-                    Rc::new(CostExpr::CostConst { value: 1 }),
+                    Arc::new(CostExpr::CostConst { value: 1 }),
                 ),
                 span: cost_seq(
                     recv_r.summary.clone().span.clone(),
-                    Rc::new(CostExpr::CostConst { value: 1 }),
+                    Arc::new(CostExpr::CostConst { value: 1 }),
                 ),
-                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                 certainty: recv_r.summary.clone().certainty.clone(),
                 peak_space: None,
             }),
@@ -8085,38 +8103,38 @@ pub fn cost_of_method_by_shape(
 pub struct ComplexityViolation {
     pub func_name: String,
     pub reason: String,
-    pub span: Rc<SourceSpan>,
+    pub span: Arc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StructuralBoundResult {
     pub func_name: String,
     pub param: String,
-    pub recurrence_bound: Rc<CostBound>,
-    pub stack_bound: Rc<CostBound>,
-    pub span: Rc<SourceSpan>,
+    pub recurrence_bound: Arc<CostBound>,
+    pub stack_bound: Arc<CostBound>,
+    pub span: Arc<SourceSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ComplexityReport {
-    pub function_classes: Rc<HashMap<String, String>>,
-    pub space_classes: Rc<HashMap<String, String>>,
-    pub function_space_bytes: Rc<HashMap<String, i64>>,
-    pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
-    pub structural_bounds: Rc<Vec<Rc<StructuralBoundResult>>>,
+    pub function_classes: Arc<HashMap<String, String>>,
+    pub space_classes: Arc<HashMap<String, String>>,
+    pub function_space_bytes: Arc<HashMap<String, i64>>,
+    pub violations: Arc<Vec<Arc<ComplexityViolation>>>,
+    pub structural_bounds: Arc<Vec<Arc<StructuralBoundResult>>>,
 }
 
-pub fn empty_complexity_report() -> Rc<ComplexityReport> {
-    Rc::new(ComplexityReport {
+pub fn empty_complexity_report() -> Arc<ComplexityReport> {
+    Arc::new(ComplexityReport {
         function_classes: v1_rt::rc_empty_map::<String, String>(),
         space_classes: v1_rt::rc_empty_map::<String, String>(),
         function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
-        violations: Rc::new(vec![]),
-        structural_bounds: Rc::new(vec![]),
+        violations: Arc::new(vec![]),
+        structural_bounds: Arc::new(vec![]),
     })
 }
 
-pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
+pub fn simplify_cost(expr: Arc<CostExpr>) -> Arc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
             CostExpr::CostConst { value: _, .. } => expr.clone(),
@@ -8129,17 +8147,17 @@ pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                     CostExpr::CostConst { value: 0, .. } => sr.clone(),
                     CostExpr::CostConst { value: a, .. } => match (*sr.clone()).clone() {
                         CostExpr::CostConst { value: 0, .. } => sl.clone(),
-                        CostExpr::CostConst { value: b, .. } => Rc::new(CostExpr::CostConst {
+                        CostExpr::CostConst { value: b, .. } => Arc::new(CostExpr::CostConst {
                             value: (a.clone() + b.clone()),
                         }),
-                        _ => Rc::new(CostExpr::CostAdd {
+                        _ => Arc::new(CostExpr::CostAdd {
                             left: sl.clone(),
                             right: sr.clone(),
                         }),
                     },
                     _ => match (*sr.clone()).clone() {
                         CostExpr::CostConst { value: 0, .. } => sl.clone(),
-                        _ => Rc::new(CostExpr::CostAdd {
+                        _ => Arc::new(CostExpr::CostAdd {
                             left: sl.clone(),
                             right: sr.clone(),
                         }),
@@ -8154,15 +8172,15 @@ pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                 let sr = simplify_cost(r.clone());
                 let simplified = match (*sl.clone()).clone() {
                     CostExpr::CostConst { value: 0, .. } => {
-                        Rc::new(CostExpr::CostConst { value: 0 })
+                        Arc::new(CostExpr::CostConst { value: 0 })
                     }
                     CostExpr::CostConst { value: 1, .. } => sr.clone(),
                     _ => match (*sr.clone()).clone() {
                         CostExpr::CostConst { value: 0, .. } => {
-                            Rc::new(CostExpr::CostConst { value: 0 })
+                            Arc::new(CostExpr::CostConst { value: 0 })
                         }
                         CostExpr::CostConst { value: 1, .. } => sl.clone(),
-                        _ => Rc::new(CostExpr::CostMul {
+                        _ => Arc::new(CostExpr::CostMul {
                             left: sl.clone(),
                             right: sr.clone(),
                         }),
@@ -8186,14 +8204,14 @@ pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                                 sr.clone()
                             }
                         }
-                        _ => Rc::new(CostExpr::CostMax {
+                        _ => Arc::new(CostExpr::CostMax {
                             left: sl.clone(),
                             right: sr.clone(),
                         }),
                     },
                     _ => match (*sr.clone()).clone() {
                         CostExpr::CostConst { value: 0, .. } => sl.clone(),
-                        _ => Rc::new(CostExpr::CostMax {
+                        _ => Arc::new(CostExpr::CostMax {
                             left: sl.clone(),
                             right: sr.clone(),
                         }),
@@ -8210,9 +8228,9 @@ pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                 let sbd = simplify_cost(bd.clone());
                 match (*sbd.clone()).clone() {
                     CostExpr::CostConst { value: 0, .. } => {
-                        Rc::new(CostExpr::CostConst { value: 0 })
+                        Arc::new(CostExpr::CostConst { value: 0 })
                     }
-                    _ => Rc::new(CostExpr::CostSum {
+                    _ => Arc::new(CostExpr::CostSum {
                         binder: b.clone(),
                         upper: u.clone(),
                         body: sbd.clone(),
@@ -8223,7 +8241,7 @@ pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                 base: b,
                 argument: a,
                 ..
-            } => Rc::new(CostExpr::CostLog {
+            } => Arc::new(CostExpr::CostLog {
                 base: b.clone(),
                 argument: a.clone(),
             }),
@@ -8233,7 +8251,7 @@ pub fn simplify_cost(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     })
 }
 
-pub fn format_size(size: Rc<SizeExpr>) -> String {
+pub fn format_size(size: Arc<SizeExpr>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*size.clone()).clone() {
             SizeExpr::SizeLen { collection: c, .. } => {
@@ -8263,14 +8281,14 @@ pub fn format_size(size: Rc<SizeExpr>) -> String {
     })
 }
 
-pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
+pub fn normalize_asymptotic(expr: Arc<CostExpr>) -> Arc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
             CostExpr::CostConst { value: v, .. } => {
                 if (v.clone() <= 0) {
-                    Rc::new(CostExpr::CostConst { value: 0 })
+                    Arc::new(CostExpr::CostConst { value: 0 })
                 } else {
-                    Rc::new(CostExpr::CostConst { value: 1 })
+                    Arc::new(CostExpr::CostConst { value: 1 })
                 }
             }
             CostExpr::CostAdd {
@@ -8286,14 +8304,14 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                         CostExpr::CostConst { value: _, .. } => match (*nr.clone()).clone() {
                             CostExpr::CostConst { value: 0, .. } => nl.clone(),
                             CostExpr::CostConst { value: _, .. } => {
-                                Rc::new(CostExpr::CostConst { value: 1 })
+                                Arc::new(CostExpr::CostConst { value: 1 })
                             }
                             _ => nr.clone(),
                         },
                         _ => match (*nr.clone()).clone() {
                             CostExpr::CostConst { value: 0, .. } => nl.clone(),
                             CostExpr::CostConst { value: _, .. } => nl.clone(),
-                            _ => Rc::new(CostExpr::CostAdd {
+                            _ => Arc::new(CostExpr::CostAdd {
                                 left: nl.clone(),
                                 right: nr.clone(),
                             }),
@@ -8314,14 +8332,14 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                         CostExpr::CostConst { value: _, .. } => match (*nr.clone()).clone() {
                             CostExpr::CostConst { value: 0, .. } => nl.clone(),
                             CostExpr::CostConst { value: _, .. } => {
-                                Rc::new(CostExpr::CostConst { value: 1 })
+                                Arc::new(CostExpr::CostConst { value: 1 })
                             }
                             _ => nr.clone(),
                         },
                         _ => match (*nr.clone()).clone() {
                             CostExpr::CostConst { value: 0, .. } => nl.clone(),
                             CostExpr::CostConst { value: _, .. } => nl.clone(),
-                            _ => Rc::new(CostExpr::CostMax {
+                            _ => Arc::new(CostExpr::CostMax {
                                 left: nl.clone(),
                                 right: nr.clone(),
                             }),
@@ -8336,15 +8354,15 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                 let nr = normalize_asymptotic(r.clone());
                 match (*nl.clone()).clone() {
                     CostExpr::CostConst { value: 0, .. } => {
-                        Rc::new(CostExpr::CostConst { value: 0 })
+                        Arc::new(CostExpr::CostConst { value: 0 })
                     }
                     CostExpr::CostConst { value: _, .. } => nr.clone(),
                     _ => match (*nr.clone()).clone() {
                         CostExpr::CostConst { value: 0, .. } => {
-                            Rc::new(CostExpr::CostConst { value: 0 })
+                            Arc::new(CostExpr::CostConst { value: 0 })
                         }
                         CostExpr::CostConst { value: _, .. } => nl.clone(),
-                        _ => Rc::new(CostExpr::CostMul {
+                        _ => Arc::new(CostExpr::CostMul {
                             left: nl.clone(),
                             right: nr.clone(),
                         }),
@@ -8360,11 +8378,11 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                 let nbd = normalize_asymptotic(bd.clone());
                 match (*nbd.clone()).clone() {
                     CostExpr::CostConst { value: 0, .. } => {
-                        Rc::new(CostExpr::CostConst { value: 0 })
+                        Arc::new(CostExpr::CostConst { value: 0 })
                     }
                     _ => match (*u.clone()).clone() {
                         SizeExpr::SizeConst { value: _, .. } => nbd.clone(),
-                        _ => Rc::new(CostExpr::CostSum {
+                        _ => Arc::new(CostExpr::CostSum {
                             binder: b.clone(),
                             upper: u.clone(),
                             body: nbd.clone(),
@@ -8376,7 +8394,7 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
                 base: b,
                 argument: a,
                 ..
-            } => Rc::new(CostExpr::CostLog {
+            } => Arc::new(CostExpr::CostLog {
                 base: b.clone(),
                 argument: a.clone(),
             }),
@@ -8386,7 +8404,7 @@ pub fn normalize_asymptotic(expr: Rc<CostExpr>) -> Rc<CostExpr> {
     })
 }
 
-pub fn format_cost_class(expr: Rc<CostExpr>) -> String {
+pub fn format_cost_class(expr: Arc<CostExpr>) -> String {
     match (*expr.clone()).clone() {
         CostExpr::CostConst { value: _, .. } => "O(1)".to_string(),
         CostExpr::CostExtern { name: n, .. } => v1_rt::concat(
@@ -8455,7 +8473,7 @@ pub fn format_cost_class(expr: Rc<CostExpr>) -> String {
     }
 }
 
-pub fn format_cost_inner(expr: Rc<CostExpr>) -> String {
+pub fn format_cost_inner(expr: Arc<CostExpr>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
             CostExpr::CostConst { value: _, .. } => "1".to_string(),
@@ -8520,7 +8538,7 @@ pub fn format_cost_inner(expr: Rc<CostExpr>) -> String {
     })
 }
 
-pub fn parenthesize_additive_cost(expr: Rc<CostExpr>) -> String {
+pub fn parenthesize_additive_cost(expr: Arc<CostExpr>) -> String {
     match (*expr.clone()).clone() {
         CostExpr::CostAdd { .. } => v1_rt::concat(
             v1_rt::concat("(".to_string(), format_cost_inner(expr.clone())),
@@ -8579,22 +8597,22 @@ pub fn short_var_name(index: i64) -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Legend {
-    pub substitution: Rc<HashMap<String, String>>,
+    pub substitution: Arc<HashMap<String, String>>,
     pub suffix: String,
 }
 
-pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
+pub fn build_legend(size_names: Arc<Vec<String>>) -> Arc<Legend> {
     {
         let unique = deduplicate(size_names.clone());
         if ((unique.clone().len() as i64) == 0) {
-            Rc::new(Legend {
+            Arc::new(Legend {
                 substitution: v1_rt::rc_empty_map::<String, String>(),
                 suffix: "".to_string(),
             })
         } else {
             if ((unique.clone().len() as i64) == 1) {
                 match unique.clone().first().cloned() {
-                    Some(name) => Rc::new(Legend {
+                    Some(name) => Arc::new(Legend {
                         substitution: v1_rt::rc_map_insert(
                             v1_rt::rc_empty_map::<String, String>(),
                             name.clone(),
@@ -8602,7 +8620,7 @@ pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
                         ),
                         suffix: "".to_string(),
                     }),
-                    None => Rc::new(Legend {
+                    None => Arc::new(Legend {
                         substitution: v1_rt::rc_empty_map::<String, String>(),
                         suffix: "".to_string(),
                     }),
@@ -8610,15 +8628,15 @@ pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
             } else {
                 {
                     let indexed = unique.clone().iter().cloned().fold(
-                        Rc::new(Legend {
+                        Arc::new(Legend {
                             substitution: v1_rt::rc_empty_map::<String, String>(),
                             suffix: "".to_string(),
                         }),
-                        |acc: Rc<Legend>, name: String| {
+                        |acc: Arc<Legend>, name: String| {
                             let idx =
-                                (Rc::new(v1_rt::map_keys(&acc.substitution.clone())).len() as i64);
+                                (Arc::new(v1_rt::map_keys(&acc.substitution.clone())).len() as i64);
                             let short = short_var_name(idx.clone());
-                            Rc::new(Legend {
+                            Arc::new(Legend {
                                 substitution: v1_rt::rc_map_insert(
                                     acc.substitution.clone(),
                                     name.clone(),
@@ -8654,30 +8672,30 @@ pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
     }
 }
 
-pub fn substitute_size(size: Rc<SizeExpr>, legend: Rc<HashMap<String, String>>) -> Rc<SizeExpr> {
+pub fn substitute_size(size: Arc<SizeExpr>, legend: Arc<HashMap<String, String>>) -> Arc<SizeExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*size.clone()).clone() {
             SizeExpr::SizeLen { collection: c, .. } => match v1_rt::map_get(&legend, c.clone()) {
-                Some(short) => Rc::new(SizeExpr::SizeVar {
+                Some(short) => Arc::new(SizeExpr::SizeVar {
                     name: short.clone(),
                 }),
                 None => size.clone(),
             },
             SizeExpr::SizeVar { name: n, .. } => match v1_rt::map_get(&legend, n.clone()) {
-                Some(short) => Rc::new(SizeExpr::SizeVar {
+                Some(short) => Arc::new(SizeExpr::SizeVar {
                     name: short.clone(),
                 }),
                 None => size.clone(),
             },
             SizeExpr::SizeAdd {
                 left: l, right: r, ..
-            } => Rc::new(SizeExpr::SizeAdd {
+            } => Arc::new(SizeExpr::SizeAdd {
                 left: substitute_size(l.clone(), legend.clone()),
                 right: substitute_size(r.clone(), legend.clone()),
             }),
             SizeExpr::SizeMax {
                 left: l, right: r, ..
-            } => Rc::new(SizeExpr::SizeMax {
+            } => Arc::new(SizeExpr::SizeMax {
                 left: substitute_size(l.clone(), legend.clone()),
                 right: substitute_size(r.clone(), legend.clone()),
             }),
@@ -8686,25 +8704,25 @@ pub fn substitute_size(size: Rc<SizeExpr>, legend: Rc<HashMap<String, String>>) 
     })
 }
 
-pub fn substitute_cost(expr: Rc<CostExpr>, legend: Rc<HashMap<String, String>>) -> Rc<CostExpr> {
+pub fn substitute_cost(expr: Arc<CostExpr>, legend: Arc<HashMap<String, String>>) -> Arc<CostExpr> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
             CostExpr::CostConst { value: _, .. } => expr.clone(),
             CostExpr::CostAdd {
                 left: l, right: r, ..
-            } => Rc::new(CostExpr::CostAdd {
+            } => Arc::new(CostExpr::CostAdd {
                 left: substitute_cost(l.clone(), legend.clone()),
                 right: substitute_cost(r.clone(), legend.clone()),
             }),
             CostExpr::CostMul {
                 left: l, right: r, ..
-            } => Rc::new(CostExpr::CostMul {
+            } => Arc::new(CostExpr::CostMul {
                 left: substitute_cost(l.clone(), legend.clone()),
                 right: substitute_cost(r.clone(), legend.clone()),
             }),
             CostExpr::CostMax {
                 left: l, right: r, ..
-            } => Rc::new(CostExpr::CostMax {
+            } => Arc::new(CostExpr::CostMax {
                 left: substitute_cost(l.clone(), legend.clone()),
                 right: substitute_cost(r.clone(), legend.clone()),
             }),
@@ -8713,7 +8731,7 @@ pub fn substitute_cost(expr: Rc<CostExpr>, legend: Rc<HashMap<String, String>>) 
                 upper: u,
                 body: bd,
                 ..
-            } => Rc::new(CostExpr::CostSum {
+            } => Arc::new(CostExpr::CostSum {
                 binder: b.clone(),
                 upper: substitute_size(u.clone(), legend.clone()),
                 body: substitute_cost(bd.clone(), legend.clone()),
@@ -8722,7 +8740,7 @@ pub fn substitute_cost(expr: Rc<CostExpr>, legend: Rc<HashMap<String, String>>) 
                 base: b,
                 argument: a,
                 ..
-            } => Rc::new(CostExpr::CostLog {
+            } => Arc::new(CostExpr::CostLog {
                 base: b.clone(),
                 argument: substitute_size(a.clone(), legend.clone()),
             }),
@@ -8732,7 +8750,7 @@ pub fn substitute_cost(expr: Rc<CostExpr>, legend: Rc<HashMap<String, String>>) 
     })
 }
 
-pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
+pub fn classify_complexity(expr: Arc<CostExpr>) -> String {
     {
         let normalized = normalize_asymptotic(simplify_cost(expr.clone()));
         let size_names = collect_size_vars(normalized.clone());
@@ -8745,21 +8763,21 @@ pub fn classify_complexity(expr: Rc<CostExpr>) -> String {
     }
 }
 
-pub fn collect_size_vars_from_size(size: Rc<SizeExpr>) -> Rc<Vec<String>> {
+pub fn collect_size_vars_from_size(size: Arc<SizeExpr>) -> Arc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*size.clone()).clone() {
             SizeExpr::SizeLen { collection: c, .. } => {
                 if (c.clone() == "__expr".to_string()) {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 } else {
-                    Rc::new(vec![c.clone()])
+                    Arc::new(vec![c.clone()])
                 }
             }
             SizeExpr::SizeVar { name: n, .. } => {
                 if (n.clone() == "__k".to_string()) {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 } else {
-                    Rc::new(vec![n.clone()])
+                    Arc::new(vec![n.clone()])
                 }
             }
             SizeExpr::SizeAdd {
@@ -8774,12 +8792,12 @@ pub fn collect_size_vars_from_size(size: Rc<SizeExpr>) -> Rc<Vec<String>> {
                 collect_size_vars_from_size(l.clone()),
                 collect_size_vars_from_size(r.clone()),
             ),
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         }
     })
 }
 
-pub fn collect_size_vars(expr: Rc<CostExpr>) -> Rc<Vec<String>> {
+pub fn collect_size_vars(expr: Arc<CostExpr>) -> Arc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.clone()).clone() {
             CostExpr::CostSum {
@@ -8798,30 +8816,30 @@ pub fn collect_size_vars(expr: Rc<CostExpr>) -> Rc<Vec<String>> {
                 left: l, right: r, ..
             } => v1_rt::concat(collect_size_vars(l.clone()), collect_size_vars(r.clone())),
             CostExpr::CostLog { argument: a, .. } => collect_size_vars_from_size(a.clone()),
-            _ => Rc::new(vec![]),
+            _ => Arc::new(vec![]),
         }
     })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeduplicateAcc {
-    pub seen: Rc<HashMap<String, bool>>,
-    pub out: Rc<Vec<String>>,
+    pub seen: Arc<HashMap<String, bool>>,
+    pub out: Arc<Vec<String>>,
 }
 
-pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
+pub fn deduplicate(items: Arc<Vec<String>>) -> Arc<Vec<String>> {
     {
         let result = items.clone().iter().cloned().fold(
-            Rc::new(DeduplicateAcc {
+            Arc::new(DeduplicateAcc {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
-                out: Rc::new(vec![]),
+                out: Arc::new(vec![]),
             }),
-            |acc: Rc<DeduplicateAcc>, item: String| match v1_rt::map_get(
+            |acc: Arc<DeduplicateAcc>, item: String| match v1_rt::map_get(
                 &acc.seen.clone(),
                 item.clone(),
             ) {
                 Some(_) => acc.clone(),
-                None => Rc::new(DeduplicateAcc {
+                None => Arc::new(DeduplicateAcc {
                     seen: v1_rt::rc_map_insert(acc.seen.clone(), item.clone(), true),
                     out: v1_rt::rc_list_push(acc.out.clone(), item.clone()),
                 }),
@@ -8834,9 +8852,9 @@ pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FuncEntry {
     pub name: String,
-    pub body: Rc<Node>,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub span: Rc<SourceSpan>,
+    pub body: Arc<Node>,
+    pub params: Arc<Vec<Arc<Node>>>,
+    pub span: Arc<SourceSpan>,
     pub is_tail_recursive: bool,
 }
 
@@ -8845,63 +8863,63 @@ pub struct RecursionContext;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SummaryResult {
-    pub summary: Rc<ComplexitySummary>,
-    pub table: Rc<CostInternTable>,
+    pub summary: Arc<ComplexitySummary>,
+    pub table: Arc<CostInternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopoBuildAcc {
-    pub table: Rc<CostInternTable>,
-    pub classes: Rc<HashMap<String, String>>,
-    pub space_classes: Rc<HashMap<String, String>>,
-    pub function_space_bytes: Rc<HashMap<String, i64>>,
-    pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
-    pub fan_in: Rc<HashMap<String, i64>>,
-    pub processed: Rc<HashMap<String, bool>>,
+    pub table: Arc<CostInternTable>,
+    pub classes: Arc<HashMap<String, String>>,
+    pub space_classes: Arc<HashMap<String, String>>,
+    pub function_space_bytes: Arc<HashMap<String, i64>>,
+    pub violations: Arc<Vec<Arc<ComplexityViolation>>>,
+    pub fan_in: Arc<HashMap<String, i64>>,
+    pub processed: Arc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MatchCostAccum {
-    pub result: Rc<SummaryResult>,
-    pub branch_costs: Rc<Vec<Rc<CostExpr>>>,
+    pub result: Arc<SummaryResult>,
+    pub branch_costs: Arc<Vec<Arc<CostExpr>>>,
 }
 
 pub fn cost_of_expr(
-    texpr: Rc<Node>,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_index: Rc<HashMap<String, Rc<SccInfo>>>,
-    table: Rc<CostInternTable>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
+    texpr: Arc<Node>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_index: Arc<HashMap<String, Arc<SccInfo>>>,
+    table: Arc<CostInternTable>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
     recursion_ctx: RecursionContext,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<SummaryResult> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<SummaryResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { value: _, .. } => Rc::new(SummaryResult {
-                summary: Rc::new(ComplexitySummary {
-                    work: Rc::new(CostExpr::CostConst { value: 1 }),
-                    span: Rc::new(CostExpr::CostConst { value: 1 }),
-                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+            ExprData::ExprLiteral { value: _, .. } => Arc::new(SummaryResult {
+                summary: Arc::new(ComplexitySummary {
+                    work: Arc::new(CostExpr::CostConst { value: 1 }),
+                    span: Arc::new(CostExpr::CostConst { value: 1 }),
+                    output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                     certainty: Certainty::Proven,
                     peak_space: None,
                 }),
                 table: table.clone(),
             }),
-            ExprData::ExprError { .. } => Rc::new(SummaryResult {
-                summary: Rc::new(ComplexitySummary {
-                    work: Rc::new(CostExpr::CostConst { value: 0 }),
-                    span: Rc::new(CostExpr::CostConst { value: 0 }),
-                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+            ExprData::ExprError { .. } => Arc::new(SummaryResult {
+                summary: Arc::new(ComplexitySummary {
+                    work: Arc::new(CostExpr::CostConst { value: 0 }),
+                    span: Arc::new(CostExpr::CostConst { value: 0 }),
+                    output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                     certainty: Certainty::Proven,
                     peak_space: None,
                 }),
                 table: table.clone(),
             }),
-            ExprData::ExprVar { .. } => Rc::new(SummaryResult {
-                summary: Rc::new(ComplexitySummary {
-                    work: Rc::new(CostExpr::CostConst { value: 1 }),
-                    span: Rc::new(CostExpr::CostConst { value: 1 }),
-                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+            ExprData::ExprVar { .. } => Arc::new(SummaryResult {
+                summary: Arc::new(ComplexitySummary {
+                    work: Arc::new(CostExpr::CostConst { value: 1 }),
+                    span: Arc::new(CostExpr::CostConst { value: 1 }),
+                    output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                     certainty: Certainty::Proven,
                     peak_space: None,
                 }),
@@ -8928,23 +8946,23 @@ pub fn cost_of_expr(
                     recursion_ctx.clone(),
                     si.clone(),
                 );
-                Rc::new(SummaryResult {
-                    summary: Rc::new(ComplexitySummary {
+                Arc::new(SummaryResult {
+                    summary: Arc::new(ComplexitySummary {
                         work: cost_seq(
                             lr.summary.clone().work.clone(),
                             cost_seq(
-                                Rc::new(CostExpr::CostConst { value: 1 }),
+                                Arc::new(CostExpr::CostConst { value: 1 }),
                                 rr.summary.clone().work.clone(),
                             ),
                         ),
                         span: cost_seq(
                             lr.summary.clone().span.clone(),
                             cost_seq(
-                                Rc::new(CostExpr::CostConst { value: 1 }),
+                                Arc::new(CostExpr::CostConst { value: 1 }),
                                 rr.summary.clone().span.clone(),
                             ),
                         ),
-                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                        output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
@@ -8963,11 +8981,11 @@ pub fn cost_of_expr(
                         recursion_ctx.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(SummaryResult {
-                        summary: Rc::new(ComplexitySummary {
-                            work: Rc::new(CostExpr::CostConst { value: 1 }),
-                            span: Rc::new(CostExpr::CostConst { value: 1 }),
-                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                    None => Arc::new(SummaryResult {
+                        summary: Arc::new(ComplexitySummary {
+                            work: Arc::new(CostExpr::CostConst { value: 1 }),
+                            span: Arc::new(CostExpr::CostConst { value: 1 }),
+                            output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                             certainty: Certainty::Proven,
                             peak_space: None,
                         }),
@@ -8975,17 +8993,17 @@ pub fn cost_of_expr(
                     }),
                 };
                 let args_result = texpr.children.clone().iter().cloned().fold(
-                    Rc::new(SummaryResult {
-                        summary: Rc::new(ComplexitySummary {
-                            work: Rc::new(CostExpr::CostConst { value: 0 }),
-                            span: Rc::new(CostExpr::CostConst { value: 0 }),
-                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                    Arc::new(SummaryResult {
+                        summary: Arc::new(ComplexitySummary {
+                            work: Arc::new(CostExpr::CostConst { value: 0 }),
+                            span: Arc::new(CostExpr::CostConst { value: 0 }),
+                            output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                             certainty: Certainty::Proven,
                             peak_space: None,
                         }),
                         table: callee_result.table.clone(),
                     }),
-                    |acc: Rc<SummaryResult>, a: Rc<Node>| {
+                    |acc: Arc<SummaryResult>, a: Arc<Node>| {
                         let ar = cost_of_expr(
                             arg_value(a.clone()),
                             func_index.clone(),
@@ -8995,8 +9013,8 @@ pub fn cost_of_expr(
                             recursion_ctx.clone(),
                             si.clone(),
                         );
-                        Rc::new(SummaryResult {
-                            summary: Rc::new(ComplexitySummary {
+                        Arc::new(SummaryResult {
+                            summary: Arc::new(ComplexitySummary {
                                 work: cost_seq(
                                     acc.summary.clone().work.clone(),
                                     ar.summary.clone().work.clone(),
@@ -9005,7 +9023,7 @@ pub fn cost_of_expr(
                                     acc.summary.clone().span.clone(),
                                     ar.summary.clone().span.clone(),
                                 ),
-                                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                                output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                                 peak_space: None,
                             }),
@@ -9013,8 +9031,8 @@ pub fn cost_of_expr(
                         })
                     },
                 );
-                Rc::new(SummaryResult {
-                    summary: Rc::new(ComplexitySummary {
+                Arc::new(SummaryResult {
+                    summary: Arc::new(ComplexitySummary {
                         work: cost_seq(
                             args_result.summary.clone().work.clone(),
                             callee_result.summary.clone().work.clone(),
@@ -9071,17 +9089,17 @@ pub fn cost_of_expr(
                                     recursion_ctx.clone(),
                                     si.clone(),
                                 )),
-                                None => Some(Rc::new(SummaryResult {
-                                    summary: Rc::new(ComplexitySummary {
+                                None => Some(Arc::new(SummaryResult {
+                                    summary: Arc::new(ComplexitySummary {
                                         work: cost_seq(
                                             recv_r.summary.clone().work.clone(),
-                                            Rc::new(CostExpr::CostConst { value: 1 }),
+                                            Arc::new(CostExpr::CostConst { value: 1 }),
                                         ),
                                         span: cost_seq(
                                             recv_r.summary.clone().span.clone(),
-                                            Rc::new(CostExpr::CostConst { value: 1 }),
+                                            Arc::new(CostExpr::CostConst { value: 1 }),
                                         ),
-                                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                                        output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                                         certainty: recv_r.summary.clone().certainty.clone(),
                                         peak_space: None,
                                     }),
@@ -9096,17 +9114,17 @@ pub fn cost_of_expr(
                     Some(result) => result.clone(),
                     _ => {
                         let args_result = mc_args.clone().iter().cloned().fold(
-                            Rc::new(SummaryResult {
-                                summary: Rc::new(ComplexitySummary {
-                                    work: Rc::new(CostExpr::CostConst { value: 0 }),
-                                    span: Rc::new(CostExpr::CostConst { value: 0 }),
-                                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                            Arc::new(SummaryResult {
+                                summary: Arc::new(ComplexitySummary {
+                                    work: Arc::new(CostExpr::CostConst { value: 0 }),
+                                    span: Arc::new(CostExpr::CostConst { value: 0 }),
+                                    output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                                     certainty: Certainty::Proven,
                                     peak_space: None,
                                 }),
                                 table: recv_r.table.clone(),
                             }),
-                            |acc: Rc<SummaryResult>, a: Rc<Node>| {
+                            |acc: Arc<SummaryResult>, a: Arc<Node>| {
                                 let ar = cost_of_expr(
                                     arg_value(a.clone()),
                                     func_index.clone(),
@@ -9116,8 +9134,8 @@ pub fn cost_of_expr(
                                     recursion_ctx.clone(),
                                     si.clone(),
                                 );
-                                Rc::new(SummaryResult {
-                                    summary: Rc::new(ComplexitySummary {
+                                Arc::new(SummaryResult {
+                                    summary: Arc::new(ComplexitySummary {
                                         work: cost_seq(
                                             acc.summary.clone().work.clone(),
                                             ar.summary.clone().work.clone(),
@@ -9126,7 +9144,7 @@ pub fn cost_of_expr(
                                             acc.summary.clone().span.clone(),
                                             ar.summary.clone().span.clone(),
                                         ),
-                                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                                        output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                                         certainty: Certainty::Proven,
                                         peak_space: None,
                                     }),
@@ -9134,23 +9152,23 @@ pub fn cost_of_expr(
                                 })
                             },
                         );
-                        Rc::new(SummaryResult {
-                            summary: Rc::new(ComplexitySummary {
+                        Arc::new(SummaryResult {
+                            summary: Arc::new(ComplexitySummary {
                                 work: cost_seq(
                                     recv_r.summary.clone().work.clone(),
                                     cost_seq(
-                                        Rc::new(CostExpr::CostConst { value: 1 }),
+                                        Arc::new(CostExpr::CostConst { value: 1 }),
                                         args_result.summary.clone().work.clone(),
                                     ),
                                 ),
                                 span: cost_seq(
                                     recv_r.summary.clone().span.clone(),
                                     cost_seq(
-                                        Rc::new(CostExpr::CostConst { value: 1 }),
+                                        Arc::new(CostExpr::CostConst { value: 1 }),
                                         args_result.summary.clone().span.clone(),
                                     ),
                                 ),
-                                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                                output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                                 peak_space: None,
                             }),
@@ -9172,20 +9190,20 @@ pub fn cost_of_expr(
                     si.clone(),
                 );
                 let arms_accum = arm_nodes.clone().iter().cloned().fold(
-                    Rc::new(MatchCostAccum {
-                        result: Rc::new(SummaryResult {
-                            summary: Rc::new(ComplexitySummary {
-                                work: Rc::new(CostExpr::CostConst { value: 0 }),
-                                span: Rc::new(CostExpr::CostConst { value: 0 }),
-                                output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                    Arc::new(MatchCostAccum {
+                        result: Arc::new(SummaryResult {
+                            summary: Arc::new(ComplexitySummary {
+                                work: Arc::new(CostExpr::CostConst { value: 0 }),
+                                span: Arc::new(CostExpr::CostConst { value: 0 }),
+                                output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                                 peak_space: None,
                             }),
                             table: s_r.table.clone(),
                         }),
-                        branch_costs: Rc::new(vec![]),
+                        branch_costs: Arc::new(vec![]),
                     }),
-                    |acc: Rc<MatchCostAccum>, arm_node: Rc<Node>| {
+                    |acc: Arc<MatchCostAccum>, arm_node: Arc<Node>| {
                         let ar = cost_of_expr(
                             arm_body(arm_node.clone()),
                             func_index.clone(),
@@ -9195,9 +9213,9 @@ pub fn cost_of_expr(
                             recursion_ctx.clone(),
                             si.clone(),
                         );
-                        Rc::new(MatchCostAccum {
-                            result: Rc::new(SummaryResult {
-                                summary: Rc::new(ComplexitySummary {
+                        Arc::new(MatchCostAccum {
+                            result: Arc::new(SummaryResult {
+                                summary: Arc::new(ComplexitySummary {
                                     work: cost_par(
                                         acc.result.clone().summary.clone().work.clone(),
                                         ar.summary.clone().work.clone(),
@@ -9214,20 +9232,20 @@ pub fn cost_of_expr(
                             }),
                             branch_costs: v1_rt::concat(
                                 acc.branch_costs.clone(),
-                                Rc::new(vec![ar.summary.clone().work.clone()]),
+                                Arc::new(vec![ar.summary.clone().work.clone()]),
                             ),
                         })
                     },
                 );
-                Rc::new(SummaryResult {
-                    summary: Rc::new(ComplexitySummary {
+                Arc::new(SummaryResult {
+                    summary: Arc::new(ComplexitySummary {
                         work: cost_conditional(
                             s_r.summary.clone().work.clone(),
                             arms_accum.branch_costs.clone(),
                         ),
                         span: cost_conditional(
                             s_r.summary.clone().span.clone(),
-                            Rc::new(vec![arms_accum.result.clone().summary.clone().span.clone()]),
+                            Arc::new(vec![arms_accum.result.clone().summary.clone().span.clone()]),
                         ),
                         output_size: arms_accum
                             .result
@@ -9274,34 +9292,34 @@ pub fn cost_of_expr(
                             recursion_ctx.clone(),
                             si.clone(),
                         );
-                        Rc::new(SummaryResult {
+                        Arc::new(SummaryResult {
                             summary: er.summary.clone(),
                             table: er.table.clone(),
                         })
                     }
-                    None => Rc::new(SummaryResult {
-                        summary: Rc::new(ComplexitySummary {
-                            work: Rc::new(CostExpr::CostConst { value: 0 }),
-                            span: Rc::new(CostExpr::CostConst { value: 0 }),
-                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                    None => Arc::new(SummaryResult {
+                        summary: Arc::new(ComplexitySummary {
+                            work: Arc::new(CostExpr::CostConst { value: 0 }),
+                            span: Arc::new(CostExpr::CostConst { value: 0 }),
+                            output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                             certainty: Certainty::Proven,
                             peak_space: None,
                         }),
                         table: t_r.table.clone(),
                     }),
                 };
-                Rc::new(SummaryResult {
-                    summary: Rc::new(ComplexitySummary {
+                Arc::new(SummaryResult {
+                    summary: Arc::new(ComplexitySummary {
                         work: cost_conditional(
                             c_r.summary.clone().work.clone(),
-                            Rc::new(vec![
+                            Arc::new(vec![
                                 t_r.summary.clone().work.clone(),
                                 e_result.summary.clone().work.clone(),
                             ]),
                         ),
                         span: cost_conditional(
                             c_r.summary.clone().span.clone(),
-                            Rc::new(vec![
+                            Arc::new(vec![
                                 t_r.summary.clone().span.clone(),
                                 e_result.summary.clone().span.clone(),
                             ]),
@@ -9335,8 +9353,8 @@ pub fn cost_of_expr(
                             recursion_ctx.clone(),
                             si.clone(),
                         );
-                        Rc::new(SummaryResult {
-                            summary: Rc::new(ComplexitySummary {
+                        Arc::new(SummaryResult {
+                            summary: Arc::new(ComplexitySummary {
                                 work: cost_seq(
                                     v_r.summary.clone().work.clone(),
                                     b_r.summary.clone().work.clone(),
@@ -9356,17 +9374,17 @@ pub fn cost_of_expr(
                 }
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
-                Rc::new(SummaryResult {
-                    summary: Rc::new(ComplexitySummary {
-                        work: Rc::new(CostExpr::CostConst { value: 0 }),
-                        span: Rc::new(CostExpr::CostConst { value: 0 }),
-                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                Arc::new(SummaryResult {
+                    summary: Arc::new(ComplexitySummary {
+                        work: Arc::new(CostExpr::CostConst { value: 0 }),
+                        span: Arc::new(CostExpr::CostConst { value: 0 }),
+                        output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
                     table: table.clone(),
                 }),
-                |acc: Rc<SummaryResult>, s: Rc<Node>| {
+                |acc: Arc<SummaryResult>, s: Arc<Node>| {
                     let sr = cost_of_expr(
                         s.clone(),
                         func_index.clone(),
@@ -9376,8 +9394,8 @@ pub fn cost_of_expr(
                         recursion_ctx.clone(),
                         si.clone(),
                     );
-                    Rc::new(SummaryResult {
-                        summary: Rc::new(ComplexitySummary {
+                    Arc::new(SummaryResult {
+                        summary: Arc::new(ComplexitySummary {
                             work: cost_seq(
                                 acc.summary.clone().work.clone(),
                                 sr.summary.clone().work.clone(),
@@ -9422,11 +9440,11 @@ pub fn cost_of_expr(
                     size.clone(),
                     bd_r.summary.clone().work.clone(),
                 );
-                Rc::new(SummaryResult {
-                    summary: Rc::new(ComplexitySummary {
+                Arc::new(SummaryResult {
+                    summary: Arc::new(ComplexitySummary {
                         work: cost_seq(c_r.summary.clone().work.clone(), loop_work.clone()),
                         span: cost_seq(c_r.summary.clone().span.clone(), loop_work.clone()),
-                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                        output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                         certainty: bd_r.summary.clone().certainty.clone(),
                         peak_space: None,
                     }),
@@ -9434,17 +9452,17 @@ pub fn cost_of_expr(
                 })
             }
             ExprData::NoExprData => texpr.children.clone().iter().cloned().fold(
-                Rc::new(SummaryResult {
-                    summary: Rc::new(ComplexitySummary {
-                        work: Rc::new(CostExpr::CostConst { value: 0 }),
-                        span: Rc::new(CostExpr::CostConst { value: 0 }),
-                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                Arc::new(SummaryResult {
+                    summary: Arc::new(ComplexitySummary {
+                        work: Arc::new(CostExpr::CostConst { value: 0 }),
+                        span: Arc::new(CostExpr::CostConst { value: 0 }),
+                        output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
                     table: table.clone(),
                 }),
-                |acc: Rc<SummaryResult>, child: Rc<Node>| {
+                |acc: Arc<SummaryResult>, child: Arc<Node>| {
                     let cr = cost_of_expr(
                         child.clone(),
                         func_index.clone(),
@@ -9454,8 +9472,8 @@ pub fn cost_of_expr(
                         recursion_ctx.clone(),
                         si.clone(),
                     );
-                    Rc::new(SummaryResult {
-                        summary: Rc::new(ComplexitySummary {
+                    Arc::new(SummaryResult {
+                        summary: Arc::new(ComplexitySummary {
                             work: cost_seq(
                                 acc.summary.clone().work.clone(),
                                 cr.summary.clone().work.clone(),
@@ -9473,17 +9491,17 @@ pub fn cost_of_expr(
                 },
             ),
             _ => texpr.children.clone().iter().cloned().fold(
-                Rc::new(SummaryResult {
-                    summary: Rc::new(ComplexitySummary {
-                        work: Rc::new(CostExpr::CostConst { value: 1 }),
-                        span: Rc::new(CostExpr::CostConst { value: 1 }),
-                        output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                Arc::new(SummaryResult {
+                    summary: Arc::new(ComplexitySummary {
+                        work: Arc::new(CostExpr::CostConst { value: 1 }),
+                        span: Arc::new(CostExpr::CostConst { value: 1 }),
+                        output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                         certainty: Certainty::Proven,
                         peak_space: None,
                     }),
                     table: table.clone(),
                 }),
-                |acc: Rc<SummaryResult>, child: Rc<Node>| {
+                |acc: Arc<SummaryResult>, child: Arc<Node>| {
                     let cr = cost_of_expr(
                         child.clone(),
                         func_index.clone(),
@@ -9493,8 +9511,8 @@ pub fn cost_of_expr(
                         recursion_ctx.clone(),
                         si.clone(),
                     );
-                    Rc::new(SummaryResult {
-                        summary: Rc::new(ComplexitySummary {
+                    Arc::new(SummaryResult {
+                        summary: Arc::new(ComplexitySummary {
                             work: cost_seq(
                                 acc.summary.clone().work.clone(),
                                 cr.summary.clone().work.clone(),
@@ -9515,7 +9533,7 @@ pub fn cost_of_expr(
     })
 }
 
-pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
+pub fn estimate_expr_size(texpr: Arc<Node>, budget: i64) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (budget.clone() <= 0) {
             0
@@ -9525,7 +9543,7 @@ pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
                 .clone()
                 .iter()
                 .cloned()
-                .fold((budget.clone() - 1), |acc: i64, child: Rc<Node>| {
+                .fold((budget.clone() - 1), |acc: i64, child: Arc<Node>| {
                     estimate_expr_size(child.clone(), acc)
                 })
         }
@@ -9534,15 +9552,15 @@ pub fn estimate_expr_size(texpr: Rc<Node>, budget: i64) -> i64 {
 
 pub fn get_or_compute_summary(
     func_name: String,
-    func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_index: Rc<HashMap<String, Rc<SccInfo>>>,
-    table: Rc<CostInternTable>,
-    parser_always_advancing: Rc<HashMap<String, bool>>,
+    func_index: Arc<HashMap<String, Arc<FuncEntry>>>,
+    scc_index: Arc<HashMap<String, Arc<SccInfo>>>,
+    table: Arc<CostInternTable>,
+    parser_always_advancing: Arc<HashMap<String, bool>>,
     recursion_ctx: RecursionContext,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<SummaryResult> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<SummaryResult> {
     match lookup_summary(table.clone(), func_name.clone()) {
-        Some(cached) => Rc::new(SummaryResult {
+        Some(cached) => Arc::new(SummaryResult {
             summary: cached.clone(),
             table: table.clone(),
         }),
@@ -9553,10 +9571,10 @@ pub fn get_or_compute_summary(
                     None => None,
                 };
                 let is_recursive = (target.clone() != None);
-                let zero_placeholder = Rc::new(ComplexitySummary {
-                    work: Rc::new(CostExpr::CostConst { value: 0 }),
-                    span: Rc::new(CostExpr::CostConst { value: 0 }),
-                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                let zero_placeholder = Arc::new(ComplexitySummary {
+                    work: Arc::new(CostExpr::CostConst { value: 0 }),
+                    span: Arc::new(CostExpr::CostConst { value: 0 }),
+                    output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                     certainty: Certainty::Conservative,
                     peak_space: None,
                 });
@@ -9576,13 +9594,13 @@ pub fn get_or_compute_summary(
                 );
                 let scc_members = match v1_rt::map_get(&scc_index, func_name.clone()) {
                     Some(info) => info.members.clone(),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 let is_scc = ((scc_members.clone().len() as i64) > 1);
                 let bounded = match target.clone() {
                     Some(t) => {
                         if is_scc.clone() {
-                            Rc::new(ComplexitySummary {
+                            Arc::new(ComplexitySummary {
                                 work: bounded_scc_cost(
                                     t.clone(),
                                     result.summary.clone().work.clone(),
@@ -9598,7 +9616,7 @@ pub fn get_or_compute_summary(
                                 peak_space: None,
                             })
                         } else {
-                            Rc::new(ComplexitySummary {
+                            Arc::new(ComplexitySummary {
                                 work: bounded_recursive_cost(
                                     t.clone(),
                                     result.summary.clone().work.clone(),
@@ -9618,7 +9636,7 @@ pub fn get_or_compute_summary(
                     None => result.summary.clone(),
                 };
                 let simplified_work = simplify_cost(bounded.work.clone());
-                let simplified = Rc::new(ComplexitySummary {
+                let simplified = Arc::new(ComplexitySummary {
                     work: simplified_work.clone(),
                     span: simplify_cost(bounded.span.clone()),
                     output_size: bounded.output_size.clone(),
@@ -9630,7 +9648,7 @@ pub fn get_or_compute_summary(
                 });
                 let final_table =
                     cache_summary(result.table.clone(), func_name.clone(), simplified.clone());
-                Rc::new(SummaryResult {
+                Arc::new(SummaryResult {
                     summary: simplified.clone(),
                     table: final_table.clone(),
                 })
@@ -9639,42 +9657,42 @@ pub fn get_or_compute_summary(
                 let is_unexpected_miss = (v1_rt::map_get(&scc_index, func_name.clone()) != None);
                 if is_unexpected_miss.clone() {
                     {
-                        let miss_summary = Rc::new(ComplexitySummary {
-                            work: Rc::new(CostExpr::CostUnknown {
+                        let miss_summary = Arc::new(ComplexitySummary {
+                            work: Arc::new(CostExpr::CostUnknown {
                                 reason: v1_rt::concat(
                                     "internal function missing from index: ".to_string(),
                                     func_name.clone(),
                                 ),
                             }),
-                            span: Rc::new(CostExpr::CostUnknown {
+                            span: Arc::new(CostExpr::CostUnknown {
                                 reason: v1_rt::concat(
                                     "internal function missing from index: ".to_string(),
                                     func_name.clone(),
                                 ),
                             }),
-                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                            output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                             certainty: Certainty::Conservative,
                             peak_space: None,
                         });
-                        Rc::new(SummaryResult {
+                        Arc::new(SummaryResult {
                             summary: miss_summary.clone(),
                             table: table.clone(),
                         })
                     }
                 } else {
                     {
-                        let external_summary = Rc::new(ComplexitySummary {
-                            work: Rc::new(CostExpr::CostExtern {
+                        let external_summary = Arc::new(ComplexitySummary {
+                            work: Arc::new(CostExpr::CostExtern {
                                 name: func_name.clone(),
                             }),
-                            span: Rc::new(CostExpr::CostExtern {
+                            span: Arc::new(CostExpr::CostExtern {
                                 name: func_name.clone(),
                             }),
-                            output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                            output_size: v1_rt::rc_empty_map::<String, Arc<CostExpr>>(),
                             certainty: Certainty::Conservative,
                             peak_space: None,
                         });
-                        Rc::new(SummaryResult {
+                        Arc::new(SummaryResult {
                             summary: external_summary.clone(),
                             table: table.clone(),
                         })
@@ -9686,10 +9704,10 @@ pub fn get_or_compute_summary(
 }
 
 pub fn collect_call_evidence(
-    body: Rc<Node>,
-    target_set: Rc<HashMap<String, bool>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+    body: Arc<Node>,
+    target_set: Arc<HashMap<String, bool>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<Vec<Arc<SubValueRelation>>>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprCall {
@@ -9699,15 +9717,15 @@ pub fn collect_call_evidence(
                 let callee = expr_call_func_at(body.clone(), si.clone());
                 let own = if (v1_rt::map_get(&target_set, callee.clone()) != None) {
                     match de.clone() {
-                        Some(evidence) => Rc::new(vec![evidence.clone()]),
-                        None => Rc::new(vec![]),
+                        Some(evidence) => Arc::new(vec![evidence.clone()]),
+                        None => Arc::new(vec![]),
                     }
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 };
                 let from_children = body.children.clone().iter().cloned().fold(
-                    Rc::new(vec![]),
-                    |acc: _, child: Rc<Node>| {
+                    Arc::new(vec![]),
+                    |acc: _, child: Arc<Node>| {
                         v1_rt::concat(
                             acc,
                             collect_call_evidence(child.clone(), target_set.clone(), si.clone()),
@@ -9717,8 +9735,8 @@ pub fn collect_call_evidence(
                 v1_rt::concat(own.clone(), from_children.clone())
             }
             _ => body.children.clone().iter().cloned().fold(
-                Rc::new(vec![]),
-                |acc: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>, child: Rc<Node>| {
+                Arc::new(vec![]),
+                |acc: Arc<Vec<Arc<Vec<Arc<SubValueRelation>>>>>, child: Arc<Node>| {
                     v1_rt::concat(
                         acc,
                         collect_call_evidence(child.clone(), target_set.clone(), si.clone()),
@@ -9730,10 +9748,10 @@ pub fn collect_call_evidence(
 }
 
 pub fn collect_self_call_evidence(
-    body: Rc<Node>,
+    body: Arc<Node>,
     fn_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<Vec<Arc<SubValueRelation>>>>> {
     collect_call_evidence(
         body.clone(),
         v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, bool>(), fn_name.clone(), true),
@@ -9742,10 +9760,10 @@ pub fn collect_self_call_evidence(
 }
 
 pub fn collect_callee_evidence(
-    body: Rc<Node>,
+    body: Arc<Node>,
     callee_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<Vec<Arc<SubValueRelation>>>>> {
     collect_call_evidence(
         body.clone(),
         v1_rt::rc_map_insert(
@@ -9757,13 +9775,15 @@ pub fn collect_callee_evidence(
     )
 }
 
-pub fn derive_edge_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>) -> DescentEvidence {
+pub fn derive_edge_evidence(
+    all_calls: Arc<Vec<Arc<Vec<Arc<SubValueRelation>>>>>,
+) -> DescentEvidence {
     all_calls.clone().iter().cloned().fold(
         DescentEvidence::Strict,
-        |worst: DescentEvidence, call_ev: Rc<Vec<Rc<SubValueRelation>>>| {
+        |worst: DescentEvidence, call_ev: Arc<Vec<Arc<SubValueRelation>>>| {
             let call_best = call_ev.clone().iter().cloned().fold(
                 DescentEvidence::DescentUnknown,
-                |best: DescentEvidence, rel: Rc<SubValueRelation>| {
+                |best: DescentEvidence, rel: Arc<SubValueRelation>| {
                     let ev = sub_value_to_evidence(rel.clone());
                     match ev.clone() {
                         DescentEvidence::Strict => DescentEvidence::Strict,
@@ -9781,12 +9801,12 @@ pub fn derive_edge_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>) -
 }
 
 pub fn merge_param_evidence(
-    all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>,
+    all_calls: Arc<Vec<Arc<Vec<Arc<SubValueRelation>>>>>,
     param_index: i64,
 ) -> DescentEvidence {
     all_calls.clone().iter().cloned().fold(
         DescentEvidence::Strict,
-        |acc: DescentEvidence, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence
+        |acc: DescentEvidence, call_evidence: Arc<Vec<Arc<SubValueRelation>>>| match call_evidence
             .clone()
             .get(param_index.clone() as usize)
             .cloned()
@@ -9800,12 +9820,12 @@ pub fn merge_param_evidence(
 }
 
 pub fn extract_shrink_factor(
-    all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>,
+    all_calls: Arc<Vec<Arc<Vec<Arc<SubValueRelation>>>>>,
     param_index: i64,
-) -> Option<Rc<ShrinkFactor>> {
+) -> Option<Arc<ShrinkFactor>> {
     all_calls.clone().iter().cloned().fold(
-        Some(Rc::new(ShrinkFactor::UnitShrink)),
-        |acc: Option<Rc<ShrinkFactor>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match acc
+        Some(Arc::new(ShrinkFactor::UnitShrink)),
+        |acc: Option<Arc<ShrinkFactor>>, call_evidence: Arc<Vec<Arc<SubValueRelation>>>| match acc
             .clone()
         {
             None => None,
@@ -9848,10 +9868,10 @@ pub fn extract_shrink_factor(
 }
 
 pub fn max_path_descending(
-    body: Rc<Node>,
+    body: Arc<Node>,
     fn_name: String,
     param_index: i64,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
@@ -9883,7 +9903,7 @@ pub fn max_path_descending(
                         .clone()
                         .iter()
                         .cloned()
-                        .fold(0, |acc: i64, child: Rc<Node>| {
+                        .fold(0, |acc: i64, child: Arc<Node>| {
                             (acc + max_path_descending(
                                 child.clone(),
                                 fn_name.clone(),
@@ -9935,7 +9955,7 @@ pub fn max_path_descending(
                     .clone()
                     .iter()
                     .cloned()
-                    .fold(0, |acc: i64, arm: Rc<Node>| {
+                    .fold(0, |acc: i64, arm: Arc<Node>| {
                         let arm_count = max_path_descending(
                             arm_body(arm.clone()),
                             fn_name.clone(),
@@ -9955,7 +9975,7 @@ pub fn max_path_descending(
                 .clone()
                 .iter()
                 .cloned()
-                .fold(0, |acc: i64, child: Rc<Node>| {
+                .fold(0, |acc: i64, child: Arc<Node>| {
                     (acc + max_path_descending(
                         child.clone(),
                         fn_name.clone(),
@@ -9968,13 +9988,13 @@ pub fn max_path_descending(
 }
 
 pub fn distinct_descended_fields(
-    all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>,
+    all_calls: Arc<Vec<Arc<Vec<Arc<SubValueRelation>>>>>,
     param_index: i64,
 ) -> i64 {
     {
         let field_set = all_calls.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| {
+            |acc: Arc<HashMap<String, bool>>, call_evidence: Arc<Vec<Arc<SubValueRelation>>>| {
                 match call_evidence
                     .clone()
                     .get(param_index.clone() as usize)
@@ -9993,24 +10013,24 @@ pub fn distinct_descended_fields(
                 }
             },
         );
-        (Rc::new(v1_rt::map_keys(&field_set)).len() as i64)
+        (Arc::new(v1_rt::map_keys(&field_set)).len() as i64)
     }
 }
 
 pub fn analyze_structural_bounds(
-    func_entries: Rc<Vec<Rc<FuncEntry>>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<StructuralBoundResult>>> {
+    func_entries: Arc<Vec<Arc<FuncEntry>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<StructuralBoundResult>>> {
     func_entries.clone().iter().cloned().fold(
-        Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<StructuralBoundResult>>>, entry: Rc<FuncEntry>| {
+        Arc::new(vec![]),
+        |acc: Arc<Vec<Arc<StructuralBoundResult>>>, entry: Arc<FuncEntry>| {
             let all_calls =
                 collect_self_call_evidence(entry.body.clone(), entry.name.clone(), si.clone());
             if ((all_calls.clone().len() as i64) == 0) {
                 acc.clone()
             } else {
                 {
-                    let param_results = Rc::new(
+                    let param_results = Arc::new(
                         entry
                             .params
                             .clone()
@@ -10022,87 +10042,104 @@ pub fn analyze_structural_bounds(
                     )
                     .iter()
                     .cloned()
-                    .fold(Rc::new(vec![]), |pacc: _, pair: (i64, Rc<Node>)| {
-                        let param_index = pair.0.clone();
-                        let param_node = pair.1.clone();
-                        let evidence = merge_param_evidence(all_calls.clone(), param_index.clone());
-                        match evidence.clone() {
-                            DescentEvidence::Strict => {
-                                let param_name = param_node_name_at(param_node.clone(), si.clone());
-                                let factor_opt =
-                                    extract_shrink_factor(all_calls.clone(), param_index.clone());
-                                match factor_opt.clone() {
-                                    Some(factor) => {
-                                        let branches = max_path_descending(
-                                            entry.body.clone(),
-                                            entry.name.clone(),
-                                            param_index.clone(),
-                                            si.clone(),
-                                        );
-                                        let recurrence = match (*factor.clone()).clone() {
-                                            ShrinkFactor::UnitShrink => {
-                                                let distinct_fields = distinct_descended_fields(
-                                                    all_calls.clone(),
-                                                    param_index.clone(),
-                                                );
-                                                if (branches.clone() <= distinct_fields.clone()) {
-                                                    catamorphism_bound(param_name.clone(), 1)
-                                                } else {
-                                                    derive_bound(
-                                                        param_name.clone(),
-                                                        branches.clone(),
-                                                        factor.clone(),
-                                                        0,
-                                                    )
+                    .fold(
+                        Arc::new(vec![]),
+                        |pacc: _, pair: (i64, Arc<Node>)| {
+                            let param_index = pair.0.clone();
+                            let param_node = pair.1.clone();
+                            let evidence =
+                                merge_param_evidence(all_calls.clone(), param_index.clone());
+                            match evidence.clone() {
+                                DescentEvidence::Strict => {
+                                    let param_name =
+                                        param_node_name_at(param_node.clone(), si.clone());
+                                    let factor_opt = extract_shrink_factor(
+                                        all_calls.clone(),
+                                        param_index.clone(),
+                                    );
+                                    match factor_opt.clone() {
+                                        Some(factor) => {
+                                            let branches = max_path_descending(
+                                                entry.body.clone(),
+                                                entry.name.clone(),
+                                                param_index.clone(),
+                                                si.clone(),
+                                            );
+                                            let recurrence = match (*factor.clone()).clone() {
+                                                ShrinkFactor::UnitShrink => {
+                                                    let distinct_fields = distinct_descended_fields(
+                                                        all_calls.clone(),
+                                                        param_index.clone(),
+                                                    );
+                                                    if (branches.clone() <= distinct_fields.clone())
+                                                    {
+                                                        catamorphism_bound(param_name.clone(), 1)
+                                                    } else {
+                                                        derive_bound(
+                                                            param_name.clone(),
+                                                            branches.clone(),
+                                                            factor.clone(),
+                                                            0,
+                                                        )
+                                                    }
                                                 }
-                                            }
-                                            ShrinkFactor::ConstantShrink { steps: _, .. } => {
-                                                let distinct_fields = distinct_descended_fields(
-                                                    all_calls.clone(),
-                                                    param_index.clone(),
-                                                );
-                                                if (branches.clone() <= distinct_fields.clone()) {
-                                                    catamorphism_bound(param_name.clone(), 1)
-                                                } else {
-                                                    derive_bound(
-                                                        param_name.clone(),
-                                                        branches.clone(),
-                                                        factor.clone(),
-                                                        0,
-                                                    )
+                                                ShrinkFactor::ConstantShrink {
+                                                    steps: _, ..
+                                                } => {
+                                                    let distinct_fields = distinct_descended_fields(
+                                                        all_calls.clone(),
+                                                        param_index.clone(),
+                                                    );
+                                                    if (branches.clone() <= distinct_fields.clone())
+                                                    {
+                                                        catamorphism_bound(param_name.clone(), 1)
+                                                    } else {
+                                                        derive_bound(
+                                                            param_name.clone(),
+                                                            branches.clone(),
+                                                            factor.clone(),
+                                                            0,
+                                                        )
+                                                    }
                                                 }
-                                            }
-                                            ShrinkFactor::ProportionalShrink {
-                                                divisor: _, ..
-                                            } => derive_bound(
-                                                param_name.clone(),
-                                                branches.clone(),
-                                                factor.clone(),
-                                                0,
-                                            ),
-                                        };
-                                        let stack_bound = if entry.is_tail_recursive.clone() {
-                                            Rc::new(CostBound::ConstantBound)
-                                        } else {
-                                            derive_bound(param_name.clone(), 1, factor.clone(), 0)
-                                        };
-                                        v1_rt::concat(
-                                            pacc.clone(),
-                                            Rc::new(vec![Rc::new(StructuralBoundResult {
-                                                func_name: entry.name.clone(),
-                                                param: param_name.clone(),
-                                                recurrence_bound: recurrence.clone(),
-                                                stack_bound: stack_bound.clone(),
-                                                span: entry.span.clone(),
-                                            })]),
-                                        )
+                                                ShrinkFactor::ProportionalShrink {
+                                                    divisor: _,
+                                                    ..
+                                                } => derive_bound(
+                                                    param_name.clone(),
+                                                    branches.clone(),
+                                                    factor.clone(),
+                                                    0,
+                                                ),
+                                            };
+                                            let stack_bound = if entry.is_tail_recursive.clone() {
+                                                Arc::new(CostBound::ConstantBound)
+                                            } else {
+                                                derive_bound(
+                                                    param_name.clone(),
+                                                    1,
+                                                    factor.clone(),
+                                                    0,
+                                                )
+                                            };
+                                            v1_rt::concat(
+                                                pacc.clone(),
+                                                Arc::new(vec![Arc::new(StructuralBoundResult {
+                                                    func_name: entry.name.clone(),
+                                                    param: param_name.clone(),
+                                                    recurrence_bound: recurrence.clone(),
+                                                    stack_bound: stack_bound.clone(),
+                                                    span: entry.span.clone(),
+                                                })]),
+                                            )
+                                        }
+                                        None => pacc.clone(),
                                     }
-                                    None => pacc.clone(),
                                 }
+                                _ => pacc.clone(),
                             }
-                            _ => pacc.clone(),
-                        }
-                    });
+                        },
+                    );
                     v1_rt::concat(acc.clone(), param_results.clone())
                 }
             }
@@ -10111,15 +10148,15 @@ pub fn analyze_structural_bounds(
 }
 
 pub fn build_complexity_report(
-    func_entries: Rc<Vec<Rc<FuncEntry>>>,
+    func_entries: Arc<Vec<Arc<FuncEntry>>>,
     recursion_ctx: RecursionContext,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ComplexityReport> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<ComplexityReport> {
     {
         let si = source_indices.clone();
         let func_index = func_entries.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<FuncEntry>>(),
-            |acc: Rc<HashMap<String, Rc<FuncEntry>>>, entry: Rc<FuncEntry>| {
+            v1_rt::rc_empty_map::<String, Arc<FuncEntry>>(),
+            |acc: Arc<HashMap<String, Arc<FuncEntry>>>, entry: Arc<FuncEntry>| {
                 v1_rt::rc_map_insert(acc, entry.name.clone(), entry.clone())
             },
         );
@@ -10128,7 +10165,7 @@ pub fn build_complexity_report(
             infer_all_parser_always_advancing(func_index.clone(), si.clone());
         let full_scc_index = func_entries.clone().iter().cloned().fold(
             scc_result.index.clone(),
-            |acc: Rc<HashMap<String, Rc<SccInfo>>>, entry: Rc<FuncEntry>| match v1_rt::map_get(
+            |acc: Arc<HashMap<String, Arc<SccInfo>>>, entry: Arc<FuncEntry>| match v1_rt::map_get(
                 &acc,
                 entry.name.clone(),
             ) {
@@ -10144,8 +10181,8 @@ pub fn build_complexity_report(
                                 parser_always_advancing.clone(),
                                 si.clone(),
                             );
-                            let info = Rc::new(SccInfo {
-                                members: Rc::new(vec![entry.name.clone()]),
+                            let info = Arc::new(SccInfo {
+                                members: Arc::new(vec![entry.name.clone()]),
                                 member_set: v1_rt::rc_set_insert(
                                     v1_rt::rc_empty_set::<_>(),
                                     entry.name.clone(),
@@ -10161,7 +10198,7 @@ pub fn build_complexity_report(
             },
         );
         let call_forward = forward_adjacency(
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
                 for entry in func_entries.clone().iter().cloned() {
                     __result.push(entry.name.clone());
@@ -10172,20 +10209,20 @@ pub fn build_complexity_report(
         );
         let fan_in = func_entries.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, i64>(),
-            |acc: Rc<HashMap<String, i64>>, entry: Rc<FuncEntry>| {
+            |acc: Arc<HashMap<String, i64>>, entry: Arc<FuncEntry>| {
                 let callees = match v1_rt::map_get(&call_forward, entry.name.clone()) {
                     Some(cs) => cs.clone(),
-                    None => Rc::new(vec![]),
+                    None => Arc::new(vec![]),
                 };
                 let unique_set = callees.clone().iter().cloned().fold(
                     v1_rt::rc_empty_map::<String, bool>(),
-                    |s: Rc<HashMap<String, bool>>, c: String| {
+                    |s: Arc<HashMap<String, bool>>, c: String| {
                         v1_rt::rc_map_insert(s, c.clone(), true)
                     },
                 );
-                Rc::new(v1_rt::map_keys(&unique_set)).iter().cloned().fold(
+                Arc::new(v1_rt::map_keys(&unique_set)).iter().cloned().fold(
                     acc,
-                    |inner: Rc<HashMap<String, i64>>, callee: String| {
+                    |inner: Arc<HashMap<String, i64>>, callee: String| {
                         let current = match v1_rt::map_get(&inner, callee.clone()) {
                             Some(v) => v.clone(),
                             None => 0,
@@ -10196,16 +10233,16 @@ pub fn build_complexity_report(
             },
         );
         let result = scc_result.processing_order.clone().iter().cloned().fold(
-            Rc::new(TopoBuildAcc {
+            Arc::new(TopoBuildAcc {
                 table: empty_cost_intern_table(),
                 classes: v1_rt::rc_empty_map::<String, String>(),
                 space_classes: v1_rt::rc_empty_map::<String, String>(),
                 function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
-                violations: Rc::new(vec![]),
+                violations: Arc::new(vec![]),
                 fan_in: fan_in.clone(),
                 processed: v1_rt::rc_empty_map::<String, bool>(),
             }),
-            |acc: Rc<TopoBuildAcc>, func_name: String| match v1_rt::map_get(
+            |acc: Arc<TopoBuildAcc>, func_name: String| match v1_rt::map_get(
                 &func_index,
                 func_name.clone(),
             ) {
@@ -10249,7 +10286,7 @@ pub fn build_complexity_report(
                     let new_violations = if is_unknown_cost(sr.summary.clone().work.clone()) {
                         v1_rt::concat(
                             acc.violations.clone(),
-                            Rc::new(vec![Rc::new(ComplexityViolation {
+                            Arc::new(vec![Arc::new(ComplexityViolation {
                                 func_name: func_name.clone(),
                                 reason: extract_unknown_reason(sr.summary.clone().work.clone()),
                                 span: entry.span.clone(),
@@ -10260,18 +10297,18 @@ pub fn build_complexity_report(
                     };
                     let callees = match v1_rt::map_get(&call_forward, func_name.clone()) {
                         Some(cs) => cs.clone(),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     };
                     let unique_set = callees.clone().iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),
-                        |s: Rc<HashMap<String, bool>>, c: String| {
+                        |s: Arc<HashMap<String, bool>>, c: String| {
                             v1_rt::rc_map_insert(s, c.clone(), true)
                         },
                     );
-                    let unique_callees = Rc::new(v1_rt::map_keys(&unique_set));
+                    let unique_callees = Arc::new(v1_rt::map_keys(&unique_set));
                     let new_fan_in = unique_callees.clone().iter().cloned().fold(
                         acc.fan_in.clone(),
-                        |fi: Rc<HashMap<String, i64>>, callee: String| {
+                        |fi: Arc<HashMap<String, i64>>, callee: String| {
                             let current = match v1_rt::map_get(&fi, callee.clone()) {
                                 Some(v) => v.clone(),
                                 None => 0,
@@ -10281,7 +10318,7 @@ pub fn build_complexity_report(
                     );
                     let evicted_table = unique_callees.clone().iter().cloned().fold(
                         sr.table.clone(),
-                        |t: Rc<CostInternTable>, callee: String| {
+                        |t: Arc<CostInternTable>, callee: String| {
                             let remaining = match v1_rt::map_get(&new_fan_in, callee.clone()) {
                                 Some(v) => v.clone(),
                                 None => 0,
@@ -10304,7 +10341,7 @@ pub fn build_complexity_report(
                     } else {
                         evicted_table.clone()
                     };
-                    Rc::new(TopoBuildAcc {
+                    Arc::new(TopoBuildAcc {
                         table: final_table.clone(),
                         classes: new_classes.clone(),
                         space_classes: new_space_classes.clone(),
@@ -10318,7 +10355,7 @@ pub fn build_complexity_report(
             },
         );
         let structural_bounds = analyze_structural_bounds(func_entries.clone(), si.clone());
-        Rc::new(ComplexityReport {
+        Arc::new(ComplexityReport {
             function_classes: result.classes.clone(),
             space_classes: result.space_classes.clone(),
             function_space_bytes: result.function_space_bytes.clone(),

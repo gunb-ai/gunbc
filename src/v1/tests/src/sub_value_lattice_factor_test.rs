@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::std_computation::ShrinkFactor;
 use v1_compiler::std_induction::{
@@ -7,8 +7,8 @@ use v1_compiler::std_induction::{
 };
 use v1_compiler::std_termination::PositiveDescentAmount;
 
-fn dummy_field() -> Rc<InductiveField> {
-    Rc::new(InductiveField {
+fn dummy_field() -> Arc<InductiveField> {
+    Arc::new(InductiveField {
         type_name: String::from("T"),
         variant_name: String::from("V"),
         field_name: String::from("f"),
@@ -20,17 +20,17 @@ fn dummy_field() -> Rc<InductiveField> {
 #[test]
 fn meet_join_strict_same_field_mismatched_constant_shrink_lands_in_lawful_lattice() {
     let field = dummy_field();
-    let one = Rc::new(PositiveDescentAmount::OneStep);
-    let two = Rc::new(PositiveDescentAmount::AdditionalStep {
+    let one = Arc::new(PositiveDescentAmount::OneStep);
+    let two = Arc::new(PositiveDescentAmount::AdditionalStep {
         previous: one.clone(),
     });
-    let a = Rc::new(SubValueRelation::StrictSubValue {
+    let a = Arc::new(SubValueRelation::StrictSubValue {
         field: field.clone(),
-        factor: Rc::new(ShrinkFactor::ConstantShrink { steps: one }),
+        factor: Arc::new(ShrinkFactor::ConstantShrink { steps: one }),
     });
-    let b = Rc::new(SubValueRelation::StrictSubValue {
+    let b = Arc::new(SubValueRelation::StrictSubValue {
         field: field.clone(),
-        factor: Rc::new(ShrinkFactor::ConstantShrink { steps: two }),
+        factor: Arc::new(ShrinkFactor::ConstantShrink { steps: two }),
     });
     assert!(matches!(
         *meet_sub_value(a.clone(), b.clone()),
@@ -45,15 +45,15 @@ fn meet_join_strict_same_field_mismatched_constant_shrink_lands_in_lawful_lattic
 #[test]
 fn meet_join_strict_same_field_matching_factor_is_commutative() {
     let field = dummy_field();
-    let steps = Rc::new(PositiveDescentAmount::OneStep);
-    let fac = Rc::new(ShrinkFactor::ConstantShrink {
+    let steps = Arc::new(PositiveDescentAmount::OneStep);
+    let fac = Arc::new(ShrinkFactor::ConstantShrink {
         steps: steps.clone(),
     });
-    let left = Rc::new(SubValueRelation::StrictSubValue {
+    let left = Arc::new(SubValueRelation::StrictSubValue {
         field: field.clone(),
         factor: fac.clone(),
     });
-    let right = Rc::new(SubValueRelation::StrictSubValue {
+    let right = Arc::new(SubValueRelation::StrictSubValue {
         field: field.clone(),
         factor: fac,
     });
@@ -83,14 +83,14 @@ fn meet_join_strict_same_field_matching_factor_is_commutative() {
 
 #[test]
 fn meet_join_arithmetic_same_param_mismatched_factors_lands_in_lawful_lattice() {
-    let one = Rc::new(PositiveDescentAmount::OneStep);
-    let a = Rc::new(SubValueRelation::ArithmeticDescent {
+    let one = Arc::new(PositiveDescentAmount::OneStep);
+    let a = Arc::new(SubValueRelation::ArithmeticDescent {
         param: String::from("n"),
-        factor: Rc::new(ShrinkFactor::UnitShrink),
+        factor: Arc::new(ShrinkFactor::UnitShrink),
     });
-    let b = Rc::new(SubValueRelation::ArithmeticDescent {
+    let b = Arc::new(SubValueRelation::ArithmeticDescent {
         param: String::from("n"),
-        factor: Rc::new(ShrinkFactor::ConstantShrink { steps: one }),
+        factor: Arc::new(ShrinkFactor::ConstantShrink { steps: one }),
     });
     assert!(matches!(
         *meet_sub_value(a.clone(), b.clone()),
@@ -105,11 +105,11 @@ fn meet_join_arithmetic_same_param_mismatched_factors_lands_in_lawful_lattice() 
 #[test]
 fn lattice_idempotence_on_non_parameterized_variants() {
     let cases = [
-        Rc::new(SubValueRelation::PreservedValue),
-        Rc::new(SubValueRelation::NonIncreasingValue),
-        Rc::new(SubValueRelation::StrictAxisErased),
-        Rc::new(SubValueRelation::MixedTop),
-        Rc::new(SubValueRelation::SubValueUnknown),
+        Arc::new(SubValueRelation::PreservedValue),
+        Arc::new(SubValueRelation::NonIncreasingValue),
+        Arc::new(SubValueRelation::StrictAxisErased),
+        Arc::new(SubValueRelation::MixedTop),
+        Arc::new(SubValueRelation::SubValueUnknown),
     ];
     for r in cases.iter() {
         assert_eq!(*meet_sub_value(r.clone(), r.clone()), **r);
@@ -120,10 +120,10 @@ fn lattice_idempotence_on_non_parameterized_variants() {
 #[test]
 fn join_preserved_with_strict_lands_at_mixed_top() {
     let field = dummy_field();
-    let preserved = Rc::new(SubValueRelation::PreservedValue);
-    let strict = Rc::new(SubValueRelation::StrictSubValue {
+    let preserved = Arc::new(SubValueRelation::PreservedValue);
+    let strict = Arc::new(SubValueRelation::StrictSubValue {
         field: field.clone(),
-        factor: Rc::new(ShrinkFactor::UnitShrink),
+        factor: Arc::new(ShrinkFactor::UnitShrink),
     });
     assert!(matches!(
         *join_sub_value(preserved.clone(), strict.clone()),
@@ -138,10 +138,10 @@ fn join_preserved_with_strict_lands_at_mixed_top() {
 #[test]
 fn meet_strict_axis_erased_with_strict_preserves_strict() {
     let field = dummy_field();
-    let sae = Rc::new(SubValueRelation::StrictAxisErased);
-    let strict = Rc::new(SubValueRelation::StrictSubValue {
+    let sae = Arc::new(SubValueRelation::StrictAxisErased);
+    let strict = Arc::new(SubValueRelation::StrictSubValue {
         field: field.clone(),
-        factor: Rc::new(ShrinkFactor::UnitShrink),
+        factor: Arc::new(ShrinkFactor::UnitShrink),
     });
     assert!(matches!(
         *meet_sub_value(sae.clone(), strict.clone()),
@@ -155,8 +155,8 @@ fn meet_strict_axis_erased_with_strict_preserves_strict() {
 
 #[test]
 fn meet_strict_axis_erased_with_preserved_drops_to_non_increasing() {
-    let sae = Rc::new(SubValueRelation::StrictAxisErased);
-    let preserved = Rc::new(SubValueRelation::PreservedValue);
+    let sae = Arc::new(SubValueRelation::StrictAxisErased);
+    let preserved = Arc::new(SubValueRelation::PreservedValue);
     assert!(matches!(
         *meet_sub_value(sae.clone(), preserved.clone()),
         SubValueRelation::NonIncreasingValue
@@ -170,10 +170,10 @@ fn meet_strict_axis_erased_with_preserved_drops_to_non_increasing() {
 #[test]
 fn meet_mixed_top_drops_to_non_increasing() {
     let field = dummy_field();
-    let mixed = Rc::new(SubValueRelation::MixedTop);
-    let strict = Rc::new(SubValueRelation::StrictSubValue {
+    let mixed = Arc::new(SubValueRelation::MixedTop);
+    let strict = Arc::new(SubValueRelation::StrictSubValue {
         field: field.clone(),
-        factor: Rc::new(ShrinkFactor::UnitShrink),
+        factor: Arc::new(ShrinkFactor::UnitShrink),
     });
     assert!(matches!(
         *meet_sub_value(mixed.clone(), strict.clone()),

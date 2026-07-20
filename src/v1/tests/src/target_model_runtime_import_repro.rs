@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 
@@ -57,17 +57,17 @@ fn compile_claim_with_target_model_patch(patch: TargetModelPatch) -> (usize, usi
         }
     }
 
-    let sources: Vec<Rc<SourceFile>> = pairs
+    let sources: Vec<Arc<SourceFile>> = pairs
         .iter()
         .map(|(path, content)| {
-            Rc::new(SourceFile {
+            Arc::new(SourceFile {
                 path: path.clone(),
                 content: content.clone(),
             })
         })
         .collect();
     let source_count = sources.len();
-    let result = compile_to_resolved(Rc::new(sources.into()));
+    let result = compile_to_resolved(Arc::new(sources.into()));
     let msgs: Vec<String> = result
         .diagnostics
         .iter()

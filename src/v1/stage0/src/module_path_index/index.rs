@@ -1,6 +1,6 @@
 use im::HashMap;
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::v1_compiler_parse::parse;
 use crate::v1_compiler_tokenize::tokenize;
@@ -10,7 +10,7 @@ use crate::v1_std_core::{build_newline_index, diagnostic_to_message, node_name_s
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedModuleBinding {
     pub module_path: String,
-    pub ident_span: Rc<SourceSpan>,
+    pub ident_span: Arc<SourceSpan>,
 }
 
 /// Returns true when the first non-blank, non-comment line starts with `module `.
@@ -43,7 +43,7 @@ pub fn parse_module_binding(
     let source_index = build_newline_index(filename.to_string(), content.to_string());
     let mut indices = HashMap::new();
     indices.insert(filename.to_string(), source_index);
-    let source_indices = Rc::new(indices);
+    let source_indices = Arc::new(indices);
     let result = parse(tokens, source_indices);
     if let Some(err) = result.error.as_ref() {
         if module_declaration_line_present(content) {

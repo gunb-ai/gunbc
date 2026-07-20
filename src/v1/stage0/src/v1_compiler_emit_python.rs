@@ -97,22 +97,22 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
+pub fn emit_python(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
     {
         let registry = typed.item_registry.clone();
         let test_projections = extract_test_projections(typed.clone());
-        let module_files = Rc::new({
+        let module_files = Arc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
                 __result.push(emit_py_module(tm.clone(), registry.clone()));
             }
             __result
         });
-        let test_files = Rc::new({
+        let test_files = Arc::new({
             let mut __result = Vec::new();
-            for f in Rc::new({
+            for f in Arc::new({
                 let mut __result = Vec::new();
                 for tm in typed.modules.clone().iter().cloned() {
                     __result.push(emit_py_test_file(
@@ -120,7 +120,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                             tm.type_env.clone().source_indices.clone(),
                             tm.module.clone(),
                         ),
-                        Rc::new({
+                        Arc::new({
                             let mut __result = Vec::new();
                             for p in test_projections.clone().iter().cloned() {
                                 if (p.module_name.clone()
@@ -151,14 +151,14 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let requirements = emit_requirements_txt(has_service_items(typed.clone()));
         let files = v1_rt::concat(
             v1_rt::concat(
-                Rc::new(vec![requirements.clone(), init_file.clone()]),
+                Arc::new(vec![requirements.clone(), init_file.clone()]),
                 module_files.clone(),
             ),
             test_files.clone(),
         );
-        Rc::new(EmitResult {
+        Arc::new(EmitResult {
             files: files.clone(),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         })
     }
 }
@@ -183,9 +183,9 @@ pub fn py_default_value() -> String {
     }
 }
 
-pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
+pub fn emit_init_py(modules: Arc<Vec<Arc<TypedModule>>>) -> Arc<TextFile> {
     {
-        let import_lines = Rc::new({
+        let import_lines = Arc::new({
             let mut __result = Vec::new();
             for tm in modules.clone().iter().cloned() {
                 __result.push({
@@ -222,16 +222,16 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
             Some(path) => path.clone(),
             None => "__init__.py".to_string(),
         };
-        Rc::new(TextFile {
+        Arc::new(TextFile {
             path: init_path.clone(),
             content: content.clone(),
         })
     }
 }
 
-pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
+pub fn python_test_signature_comment(projection: Arc<TestProjection>) -> String {
     {
-        let params_str = Rc::new({
+        let params_str = Arc::new({
             let mut __result = Vec::new();
             for p in projection.params.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -280,16 +280,16 @@ pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
 
 pub fn emit_py_test_file(
     module_name: String,
-    projections: Rc<Vec<Rc<TestProjection>>>,
-) -> Rc<TextFile> {
+    projections: Arc<Vec<Arc<TestProjection>>>,
+) -> Arc<TextFile> {
     if ((projections.clone().len() as i64) == 0) {
-        Rc::new(TextFile {
+        Arc::new(TextFile {
             path: "".to_string(),
             content: "".to_string(),
         })
     } else {
         {
-            let tests_str = Rc::new({
+            let tests_str = Arc::new({
                 let mut __result = Vec::new();
                 for p in projections.clone().iter().cloned() {
                     __result.push(emit_py_operation_test(p.clone(), 0));
@@ -313,7 +313,7 @@ pub fn emit_py_test_file(
                 ),
                 "\n".to_string(),
             );
-            Rc::new(TextFile {
+            Arc::new(TextFile {
                 path: test_file_path(module_name.clone(), RenderTarget::Python),
                 content: content.clone(),
             })
@@ -321,11 +321,11 @@ pub fn emit_py_test_file(
     }
 }
 
-pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> String {
+pub fn emit_py_operation_test(projection: Arc<TestProjection>, depth: i64) -> String {
     {
         let test_name = test_function_name(projection.clone(), RenderTarget::Python);
         let indent = make_indent((depth.clone() + 1));
-        let mock_setup = Rc::new({
+        let mock_setup = Arc::new({
             let mut __result = Vec::new();
             for mp in projection.mock_field_inits.clone().iter().cloned() {
                 __result.push(emit_py_mock_prop_setup(
@@ -342,9 +342,9 @@ pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
 }
 
 pub fn emit_py_mock_prop_setup(
-    mock_prop: Rc<Node>,
+    mock_prop: Arc<Node>,
     depth: i64,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -363,9 +363,9 @@ pub fn emit_py_mock_prop_setup(
 }
 
 pub fn emit_py_module(
-    typed_module: Rc<TypedModule>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<TextFile> {
+    typed_module: Arc<TypedModule>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+) -> Arc<TextFile> {
     {
         let m = typed_module.module.clone();
         let scope = module_emit_scope(typed_module.clone());
@@ -378,7 +378,7 @@ pub fn emit_py_module(
         } else {
             v1_rt::concat("\n".to_string(), imports_str.clone())
         };
-        let items_str = Rc::new({
+        let items_str = Arc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
                 __result.push(emit_py_typed_item(
@@ -416,7 +416,7 @@ pub fn emit_py_module(
             ),
             "\n".to_string(),
         );
-        Rc::new(TextFile {
+        Arc::new(TextFile {
             path: v1_rt::concat(
                 filename.clone(),
                 scaffold_for_target(RenderTarget::Python)
@@ -429,14 +429,14 @@ pub fn emit_py_module(
 }
 
 pub fn emit_py_imports(
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    imports: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
     } else {
         {
-            let import_lines = Rc::new({
+            let import_lines = Arc::new({
                 let mut __result = Vec::new();
                 for imp in imports.clone().iter().cloned() {
                     __result.push({
@@ -499,7 +499,7 @@ pub fn emit_py_imports(
                 }
                 __result
             });
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
                 for line in import_lines.clone().iter().cloned() {
                     if (line.clone() != "".to_string()) {
@@ -513,7 +513,7 @@ pub fn emit_py_imports(
     }
 }
 
-pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
+pub fn emit_py_prelude(typed_module: Arc<TypedModule>) -> String {
     {
         let items = typed_module.items.clone();
         let has_structs = {
@@ -583,9 +583,9 @@ pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
 }
 
 pub fn emit_py_typed_item(
-    item: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    item: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
 ) -> String {
     {
         let env = scope.type_env.clone();
@@ -657,7 +657,7 @@ pub fn emit_py_typed_item(
     }
 }
 
-pub fn emit_py_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
+pub fn emit_py_type_def_from_connective(item: Arc<Node>, env: Arc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let is_product = (item.connective.clone() == Connective::Conj);
@@ -671,8 +671,8 @@ pub fn emit_py_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> Str
 
 pub fn emit_py_dataclass_from_children(
     name: String,
-    children: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
+    children: Arc<Vec<Arc<Node>>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     if ((children.clone().len() as i64) == 0) {
         v1_rt::concat(
@@ -684,7 +684,7 @@ pub fn emit_py_dataclass_from_children(
         )
     } else {
         {
-            let field_lines = Rc::new({
+            let field_lines = Arc::new({
                 let mut __result = Vec::new();
                 for child in children.clone().iter().cloned() {
                     __result.push(emit_py_dataclass_field_from_child(
@@ -709,7 +709,7 @@ pub fn emit_py_dataclass_from_children(
     }
 }
 
-pub fn emit_py_dataclass_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> String {
+pub fn emit_py_dataclass_field_from_child(child: Arc<Node>, env: Arc<TypeEnv>) -> String {
     {
         let ty = emit_node_type(
             resolved_type(child.clone()),
@@ -744,8 +744,8 @@ pub fn emit_py_dataclass_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> 
 
 pub fn emit_py_enum_from_children(
     name: String,
-    children: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
+    children: Arc<Vec<Arc<Node>>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let has_data = {
@@ -760,7 +760,7 @@ pub fn emit_py_enum_from_children(
         };
         if has_data.clone() {
             {
-                let variant_classes = Rc::new({
+                let variant_classes = Arc::new({
                     let mut __result = Vec::new();
                     for child in children.clone().iter().cloned() {
                         __result.push(emit_py_variant_class_from_child(
@@ -771,7 +771,7 @@ pub fn emit_py_enum_from_children(
                     }
                     __result
                 });
-                let variant_names = Rc::new({
+                let variant_names = Arc::new({
                     let mut __result = Vec::new();
                     for child in children.clone().iter().cloned() {
                         __result.push(v1_rt::concat(
@@ -799,7 +799,7 @@ pub fn emit_py_enum_from_children(
             }
         } else {
             {
-                let variant_lines = Rc::new({
+                let variant_lines = Arc::new({
                     let mut __result = Vec::new();
                     for child in children.clone().iter().cloned() {
                         __result.push(v1_rt::concat(
@@ -837,8 +837,8 @@ pub fn emit_py_enum_from_children(
 
 pub fn emit_py_variant_class_from_child(
     parent_name: String,
-    child: Rc<Node>,
-    env: Rc<TypeEnv>,
+    child: Arc<Node>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let class_name = v1_rt::concat(
@@ -855,7 +855,7 @@ pub fn emit_py_variant_class_from_child(
             )
         } else {
             {
-                let field_lines = Rc::new({
+                let field_lines = Arc::new({
                     let mut __result = Vec::new();
                     for f in child.children.clone().iter().cloned() {
                         __result.push(emit_py_dataclass_field_from_child(f.clone(), env.clone()));
@@ -880,11 +880,11 @@ pub fn emit_py_variant_class_from_child(
 
 pub fn emit_py_fn_def(
     name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    inferred: Rc<Node>,
-    body: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    params: Arc<Vec<Arc<Node>>>,
+    inferred: Arc<Node>,
+    body: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
 ) -> String {
     {
         let depth = 0;
@@ -985,18 +985,18 @@ pub fn emit_py_fn_def(
 
 pub fn emit_py_func_def(
     name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    inferred: Rc<Node>,
-    uses: Rc<Vec<Rc<Node>>>,
-    body: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    params: Arc<Vec<Arc<Node>>>,
+    inferred: Arc<Node>,
+    uses: Arc<Vec<Arc<Node>>>,
+    body: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
 ) -> String {
     {
         let depth = 0;
         let service_names = match lookup_item(registry.clone(), name.clone()) {
             Some(info) => info.service_names.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let params_str = emit_py_func_params(
             params.clone(),
@@ -1013,12 +1013,12 @@ pub fn emit_py_func_def(
         let si = scope.type_env.clone().source_indices.clone();
         let body_scope = uses.clone().iter().cloned().fold(
             body_scope.clone(),
-            |s: Rc<InferScope>, u: Rc<Node>| {
+            |s: Arc<InferScope>, u: Arc<Node>| {
                 extend_scope(
                     s,
                     resource_use_name_at(u.clone(), si.clone()),
                     resource_use_resource(u.clone()),
-                    Rc::new(SubValueRelation::SubValueUnknown),
+                    Arc::new(SubValueRelation::SubValueUnknown),
                 )
             },
         );
@@ -1065,13 +1065,13 @@ pub fn emit_py_func_def(
 }
 
 pub fn emit_py_func_params(
-    params: Rc<Vec<Rc<Node>>>,
-    uses: Rc<Vec<Rc<Node>>>,
-    service_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    params: Arc<Vec<Arc<Node>>>,
+    uses: Arc<Vec<Arc<Node>>>,
+    service_names: Arc<Vec<String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
-        let param_strs = Rc::new({
+        let param_strs = Arc::new({
             let mut __result = Vec::new();
             for p in params.clone().iter().cloned() {
                 __result.push(emit_param_shared(
@@ -1082,7 +1082,7 @@ pub fn emit_py_func_params(
             }
             __result
         });
-        let resource_strs = Rc::new({
+        let resource_strs = Arc::new({
             let mut __result = Vec::new();
             for u in uses.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -1102,7 +1102,7 @@ pub fn emit_py_func_params(
             }
             __result
         });
-        let service_strs = Rc::new({
+        let service_strs = Arc::new({
             let mut __result = Vec::new();
             for sn in service_names.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -1121,9 +1121,9 @@ pub fn emit_py_func_params(
 }
 
 pub fn emit_py_typed_expr(
-    texpr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    texpr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
     fuel: i64,
 ) -> String {
@@ -1145,9 +1145,9 @@ pub fn emit_py_typed_expr(
 }
 
 pub fn emit_py_transport_body(
-    transport: Rc<Node>,
+    transport: Arc<Node>,
     op_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     depth: i64,
 ) -> String {
     emit_unified_transport_dispatch(
@@ -1164,9 +1164,9 @@ pub fn emit_py_transport_body(
 }
 
 pub fn emit_py_service_def(
-    item: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    env: Rc<TypeEnv>,
+    item: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     emit_unified_service_def(
         item.clone(),
@@ -1186,9 +1186,9 @@ pub fn emit_py_service_def(
 }
 
 pub fn emit_py_service_init(
-    fallback_transport: Rc<Node>,
-    op_children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    fallback_transport: Arc<Node>,
+    op_children: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let fs = compute_service_fields(
@@ -1210,7 +1210,7 @@ pub fn emit_py_service_init(
             {
                 let params_str =
                     v1_rt::concat("self, ".to_string(), params.clone().join(&", ".to_string()));
-                let assigns_str = Rc::new({
+                let assigns_str = Arc::new({
                     let mut __result = Vec::new();
                     for a in assigns.clone().iter().cloned() {
                         __result.push(v1_rt::concat("    ".to_string(), a.clone()));
@@ -1232,8 +1232,8 @@ pub fn emit_py_service_init(
 
 pub fn emit_py_rest_call(
     op_name: String,
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    transport: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let self_base_url = v1_rt::concat(
@@ -1272,8 +1272,8 @@ pub fn emit_py_rest_call(
 }
 
 pub fn emit_py_headers_dict(
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    transport: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let auth_entry = if transport_has_auth(transport.clone(), source_indices.clone()) {
@@ -1292,7 +1292,7 @@ pub fn emit_py_headers_dict(
             "".to_string()
         };
         let hdrs = transport_headers(transport.clone(), source_indices.clone());
-        let header_entries = Rc::new({
+        let header_entries = Arc::new({
             let mut __result = Vec::new();
             for h in hdrs.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -1329,12 +1329,12 @@ pub fn emit_py_headers_dict(
 
 pub fn emit_py_shell_call(
     op_name: String,
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    transport: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let envs = transport_env(transport.clone(), source_indices.clone());
-        let env_dict_entries = Rc::new({
+        let env_dict_entries = Arc::new({
             let mut __result = Vec::new();
             for e in envs.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -1436,12 +1436,12 @@ pub fn emit_py_local_call(op_name: String) -> String {
     )
 }
 
-pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
+pub fn emit_py_resource_def(item: Arc<Node>, env: Arc<TypeEnv>) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
         let depth = 0;
         let cap_children = item.children.clone();
-        let methods = Rc::new({
+        let methods = Arc::new({
             let mut __result = Vec::new();
             for c in cap_children.clone().iter().cloned() {
                 __result.push(emit_py_capability_method(c.clone(), env.clone()));
@@ -1475,9 +1475,9 @@ pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     }
 }
 
-pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String {
+pub fn emit_py_capability_method(cap_node: Arc<Node>, env: Arc<TypeEnv>) -> String {
     {
-        let input_params = Rc::new({
+        let input_params = Arc::new({
             let mut __result = Vec::new();
             for p in cap_node.params.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -1555,10 +1555,10 @@ pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String
 
 pub fn emit_py_data_def(
     name: String,
-    type_node: Rc<Node>,
-    value: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    type_node: Arc<Node>,
+    value: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
 ) -> String {
     {
         let ty_str = emit_node_type(
@@ -1581,7 +1581,7 @@ pub fn emit_py_data_def(
     }
 }
 
-pub fn emit_requirements_txt(has_services: bool) -> Rc<TextFile> {
+pub fn emit_requirements_txt(has_services: bool) -> Arc<TextFile> {
     {
         let base_deps = "".to_string();
         let async_deps = if has_services.clone() {
@@ -1589,7 +1589,7 @@ pub fn emit_requirements_txt(has_services: bool) -> Rc<TextFile> {
         } else {
             "".to_string()
         };
-        Rc::new(TextFile {
+        Arc::new(TextFile {
             path: "requirements.txt".to_string(),
             content: v1_rt::concat(base_deps.clone(), async_deps.clone()),
         })

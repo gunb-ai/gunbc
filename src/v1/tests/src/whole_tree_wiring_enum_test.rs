@@ -19,7 +19,7 @@
 //! that whole-tree-resolve grounding lands; this test proves the enumeration
 //! SUBSTRATE works wherever resolve succeeds.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::cli_run::{self, whole_tree_resolved_ctx, WholeTreeCtx};
 use v1_compiler::coproduct_reflection::eval_fn_arrow_decl_facts_live;
@@ -67,12 +67,12 @@ fn enumerated_qualified_names(ctx: &InterpContext) -> Vec<String> {
 fn closure_enumerated_qualified_names(entry_rel: &str) -> Vec<String> {
     let entry_content = std::fs::read_to_string(workspace_root().join(entry_rel))
         .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
-    let sources: Vec<Rc<SourceFile>> = resolve_imports_transitively_with_source_roots(
+    let sources: Vec<Arc<SourceFile>> = resolve_imports_transitively_with_source_roots(
         entry_rel,
         &entry_content,
         &[workspace_root().join(FIXTURE_REL)],
     );
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     let graph = resolved
         .graph
         .as_ref()

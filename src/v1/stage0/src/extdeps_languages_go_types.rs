@@ -12,50 +12,50 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "go.dev/ref/spec".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
-pub fn go_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
+pub fn go_type_checkpoints() -> Arc<Vec<Arc<TypeCheckpoint>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
+        static CACHED: Arc<Vec<Arc<TypeCheckpoint>>> = {
             serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "int64", "default_expr": "0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Float", "target_type": "float64", "default_expr": "0.0", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "false", "is_copy": null, "literal_suffix": null}, {"dag_name": "Unit", "target_type": "struct{}", "default_expr": "struct{}{}", "is_copy": null, "literal_suffix": null}, {"dag_name": "String", "target_type": "string", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Bytes", "target_type": "[]byte", "default_expr": "nil", "is_copy": null, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "string", "default_expr": "\"\"", "is_copy": null, "literal_suffix": null}, {"dag_name": "Json", "target_type": "interface{}", "default_expr": "nil", "is_copy": null, "literal_suffix": null}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<TypeCheckpoint>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<TypeCheckpoint>>>| c.clone())
 }
 
-pub fn go_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
+pub fn go_algebra_inhabitants() -> Arc<Vec<Arc<InhabitantDecl>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<InhabitantDecl>>> = {
+        static CACHED: Arc<Vec<Arc<InhabitantDecl>>> = {
             serde_json::from_value(serde_json::json!([{"algebra": "FreeMonoid", "template": "[]{0}", "arity": 1, "identity_expr": "nil", "import_path": null, "is_copy": null}, {"algebra": "BooleanAlgebra", "template": "map[{0}]struct{}", "arity": 1, "identity_expr": "nil", "import_path": null, "is_copy": null}, {"algebra": "PartialFunction", "template": "map[{0}]{1}", "arity": 2, "identity_expr": "nil", "import_path": null, "is_copy": null}, {"algebra": "OrderedRing", "template": "int64", "arity": 0, "identity_expr": "0", "import_path": null, "is_copy": null}, {"algebra": "ApproximateField", "template": "float64", "arity": 0, "identity_expr": "0.0", "import_path": null, "is_copy": null}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<InhabitantDecl>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<InhabitantDecl>>>| c.clone())
 }
 
-pub fn go_callable() -> Rc<CallableRepr> {
+pub fn go_callable() -> Arc<CallableRepr> {
     thread_local! {
-        static CACHED: Rc<CallableRepr> = {
+        static CACHED: Arc<CallableRepr> = {
             serde_json::from_value(serde_json::json!({"template": "func({params}) {return}", "param_separator": ", ", "return_separator": " ", "import_path": null}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<CallableRepr>| c.clone())
+    CACHED.with(|c: &Arc<CallableRepr>| c.clone())
 }
 
 pub fn pointer_template() -> String {
@@ -134,22 +134,22 @@ pub fn interface_def_template() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn integer_types() -> Rc<Vec<String>> {
+pub fn integer_types() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string()])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec!["int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
-pub fn float_types() -> Rc<Vec<String>> {
+pub fn float_types() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["float32".to_string(), "float64".to_string()])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec!["float32".to_string(), "float64".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
 pub fn type_conversion_template() -> String {
@@ -161,12 +161,12 @@ pub fn type_conversion_template() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn go_cast_syntax() -> Rc<CastSyntax> {
+pub fn go_cast_syntax() -> Arc<CastSyntax> {
     thread_local! {
-        static CACHED: Rc<CastSyntax> = {
+        static CACHED: Arc<CastSyntax> = {
             serde_json::from_value(serde_json::json!({"template": "{type}({expr})", "cast_rules": [{"from_type": "int64", "to_type": "int64"}, {"from_type": "int64", "to_type": "float64"}, {"from_type": "float64", "to_type": "int64"}, {"from_type": "float64", "to_type": "float64"}, {"from_type": "string", "to_type": "[]byte"}, {"from_type": "[]byte", "to_type": "string"}]}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<CastSyntax>| c.clone())
+    CACHED.with(|c: &Arc<CastSyntax>| c.clone())
 }

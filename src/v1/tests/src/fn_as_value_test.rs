@@ -10,7 +10,7 @@
 //!   witness; blocked on a floor ExpectFail mechanism
 //!   (claim_witness_corpus_ci_runner.dag ExpectFail rows currently have no consumer).
 use std::fs;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run;
@@ -78,7 +78,7 @@ fn apply_rec<T>(x: T, g: fn(T) -> Int) -> Int { g(x) }
 fn use_bad() -> Int { apply_rec(x: Rec { v: 7 }, g: fn(r) { r.nope }) }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     let has_diag = resolved
         .diagnostics
         .iter()
