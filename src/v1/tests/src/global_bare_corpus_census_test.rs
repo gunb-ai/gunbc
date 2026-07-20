@@ -88,7 +88,7 @@ fn census_invariant_disposition(
 ) -> CensusInvariantDisposition {
     match census.get(name).map(|s| &**s) {
         None => CensusInvariantDisposition::Absent,
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => {
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }) => {
             CensusInvariantDisposition::Ambiguous
         }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {
@@ -269,7 +269,7 @@ fn corpus_census_state_of_failing_names() {
             Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {
                 "UNIQUE (binds)".to_string()
             }
-            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => {
+            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }) => {
                 "AMBIGUOUS (refuses — homonym)".to_string()
             }
         };
@@ -281,7 +281,7 @@ fn corpus_census_state_of_failing_names() {
     for (_k, v) in census.iter() {
         match &**v {
             GlobalBareLookupState::GlobalBareUniqueBinding { .. } => unique += 1,
-            GlobalBareLookupState::GlobalBareAmbiguousBinding => ambiguous += 1,
+            GlobalBareLookupState::GlobalBareAmbiguousBinding { .. } => ambiguous += 1,
         }
     }
     eprintln!(
@@ -317,7 +317,7 @@ fn corpus_ambiguous_roster() {
 
     let mut ambiguous: Vec<String> = census
         .iter()
-        .filter(|(_k, v)| matches!(&***v, GlobalBareLookupState::GlobalBareAmbiguousBinding))
+        .filter(|(_k, v)| matches!(&***v, GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }))
         .map(|(k, _v)| k.to_string())
         .collect();
     ambiguous.sort();

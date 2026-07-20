@@ -83,7 +83,10 @@ fn simulate_old_merge_global_bare_variant_locals(
     global_bare
         .iter()
         .fold(state, |acc, (name, lookup)| match lookup.as_ref() {
-            GlobalBareLookupState::GlobalBareUniqueBinding { binding } => {
+            GlobalBareLookupState::GlobalBareUniqueBinding {
+                module_path: _,
+                binding,
+            } => {
                 let owner = binding.resolved.clone();
                 if owner.connective == Connective::Disj
                     && has_child_named(owner.clone(), name.clone(), source_indices.clone())
@@ -103,7 +106,7 @@ fn simulate_old_merge_global_bare_variant_locals(
                     acc
                 }
             }
-            GlobalBareLookupState::GlobalBareAmbiguousBinding => acc,
+            GlobalBareLookupState::GlobalBareAmbiguousBinding { .. } => acc,
         })
 }
 
@@ -118,7 +121,6 @@ fn expected_variant_locals_old_path(
         v1_rt::rc_empty_map(),
         source_indices.clone(),
         intern_table.clone(),
-        global_bare.clone(),
         v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     );
     let env = bte.env.clone();
@@ -187,8 +189,6 @@ fn receipt1_owning_module_same_authority_variant_locals_byte_identical() {
         v1_rt::rc_empty_map(),
         source_indices.clone(),
         intern_table.clone(),
-        global_bare.clone(),
-        global_bare_variant_locals.clone(),
         v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     );
     assert!(

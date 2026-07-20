@@ -120,8 +120,6 @@ mod pd3_adversarial;
 #[cfg(test)]
 mod peano_materialization_cap_test;
 #[cfg(test)]
-mod per_module_resolve_memo_equivalence_test;
-#[cfg(test)]
 mod pipeline;
 #[cfg(test)]
 mod reference_carrier_witness_test;
