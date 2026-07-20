@@ -93,7 +93,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name
+  lookup_binding_by_name, binding_declares_name
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -3405,9 +3405,14 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
       Present { value: tn } => tn
       Absent => error_type
     }
+    let type_name_declares_own_type = match lookup_binding_by_name(env: scope.type_env, name: type_name.value) {
+      Present { value: name_binding } =>
+        binding_declares_name(binding: name_binding, name: type_name.value, source_indices: scope.type_env.source_indices)
+      Absent => false
+    }
     let raw_resolved = match local_variant_parent {
       Present { value: parent_name } =>
-        if parent_name == "Optional" { variant_lookup_resolved } else {
+        if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else {
           match lookup_type_by_name(env: scope.type_env, name: parent_name) {
             Present { value: parent_decl } => parent_decl
             Absent => variant_lookup_resolved

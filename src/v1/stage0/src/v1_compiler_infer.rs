@@ -53,15 +53,15 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    empty_symbol_index, empty_type_env_cache, env_with_type_variable_bindings,
-    global_bare_is_ambiguous, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, lookup_binding_by_name, lookup_type,
-    lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
-    merge_type_env_cache_guarded, node_with_children, node_with_inferred, put_inductive_field,
-    put_inductive_field_cross, qualified_all_but_last, qualify_borrowed_inferred,
-    qualify_borrowed_type_names, qualify_decl_reference_positions, str_bindings_from_bindings,
-    symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service,
-    symbol_index_lookup,
+    binding_declares_name, empty_symbol_index, empty_type_env_cache,
+    env_with_type_variable_bindings, global_bare_is_ambiguous, inductive_fields_for,
+    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name,
+    lookup_binding_by_name, lookup_type, lookup_type_by_name, lookup_type_for,
+    merge_inductive_fields, merge_type_env_cache, merge_type_env_cache_guarded, node_with_children,
+    node_with_inferred, put_inductive_field, put_inductive_field_cross, qualified_all_but_last,
+    qualify_borrowed_inferred, qualify_borrowed_type_names, qualify_decl_reference_positions,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
+    symbol_index_insert_service, symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, GuardedTypeEnvCacheMerge, ServiceCensusEntry,
@@ -6906,9 +6906,22 @@ pub fn infer_record_lit(
                     Some(tn) => tn.clone(),
                     None => error_type(),
                 };
+                let type_name_declares_own_type = match lookup_binding_by_name(
+                    scope.type_env.clone(),
+                    type_name.clone().unwrap(),
+                ) {
+                    Some(name_binding) => binding_declares_name(
+                        name_binding.clone(),
+                        type_name.clone().unwrap(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ),
+                    None => false,
+                };
                 let raw_resolved = match local_variant_parent.clone() {
                     Some(parent_name) => {
-                        if true {
+                        if ((parent_name.clone() == "Optional".to_string())
+                            || type_name_declares_own_type.clone())
+                        {
                             variant_lookup_resolved.clone()
                         } else {
                             match lookup_type_by_name(scope.type_env.clone(), parent_name.clone()) {
