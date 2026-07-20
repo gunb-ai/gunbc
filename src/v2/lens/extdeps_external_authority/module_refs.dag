@@ -1,8 +1,5 @@
 module v2.lens.extdeps_external_authority.module_refs
-import std.algebra { Cons, Empty }
 
-import v2.std.collection { List }
-import v2.std.qualified_name { QualifiedName }
 
 data extdeps_uri_module: QualifiedName = Cons {
   head: ^extdeps,

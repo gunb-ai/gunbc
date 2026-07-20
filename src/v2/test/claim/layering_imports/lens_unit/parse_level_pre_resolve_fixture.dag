@@ -1,12 +1,5 @@
 module v2.test.layering_imports.lens_unit.parse_level_pre_resolve_fixture
 
-import v2.lens.layering_imports {
-  LayerImportFact,
-  layering_imports_violation_count
-}
-import v2.std.collection { List }
-import v2.std.layer { LayerPrefixStd }
-import v2.std.logic { Bool }
 
 data parse_level_pre_resolve_fixture_facts: List<LayerImportFact> = [
   LayerImportFact {

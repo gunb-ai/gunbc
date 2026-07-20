@@ -34,6 +34,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, Violates }
+
 data synthesis_gap_it_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_it_atom_symbol } },
   children: [],

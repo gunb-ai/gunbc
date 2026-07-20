@@ -1,18 +1,5 @@
 module test.claim.html_emit_witness
 
-import std.markup {
-  ElementNode,
-  TextNode,
-  MarkupAttr,
-  MarkupNode,
-}
-import extdeps.languages.html {
-  EmitOk,
-  EmitRejected,
-  try_serialize_html_source,
-  serialize_markup_node,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

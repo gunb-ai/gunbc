@@ -1,23 +1,5 @@
 module v2.test.lens_cost.disj_alternative_floor
 
-import v2.lens.cost {
-  cost_lens,
-  symbolic_max,
-  unit_cost,
-  zero_cost
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Disj,
-  Edge,
-  Node,
-  Positional,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.witness { Holds }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

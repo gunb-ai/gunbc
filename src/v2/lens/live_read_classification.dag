@@ -1,65 +1,5 @@
 module v2.lens.live_read_classification
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
-import v2.lens.module_graph { path_matches_touched }
-import v2.lens.witness_cost_locality {
-  ModuleImportFact,
-  import_closure
-}
-import v2.std.algebra {
-  contains,
-  filter,
-  fold_list,
-  length,
-  any,
-  list_snoc_item,
-  list_append,
-  list_head,
-  list_tail,
-  HeadFound,
-  HeadAbsent,
-  TailFound,
-  TailAbsent
-}
-import v2.std.collection { Absent, List, Present }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
-import v2.std.grammar { node_atom_identity_optional }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  NodeFold,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode,
-  fold_node
-}
-import v2.std.live_read {
-  LiveReadCarrier,
-  LiveReadCarrierHome,
-  LiveReadCarrierKind,
-  LiveReadClassification,
-  LocalRead,
-  RuntimeRead,
-  FilesystemReadPath,
-  ModuleDeclarationFactsScan,
-  DeclFactsReflection,
-  FilesystemReadCarrier,
-  ModuleDeclarationFactsCarrier,
-  DeclFactsReflectionCarrier,
-  LiteralPath,
-  ParamRef,
-  UnknownPath,
-  PathPattern,
-  live_read_carrier_homes_v0,
-  live_read_carrier_callee_symbols_v0
-}
-import v2.std.text { String }
 
 data live_read_classification_law: String = "G2 (call-reachability) live-read classification per docs/plans/live-read-witness-classification-design.md P1: proven runtime-read closure = import-closure modules intersecting carrier homes PLUS call-reachable fn bodies from the witness entry module over fn-arrow DependencyView facts. Carrier invocations (filesystem_read, module_declaration_facts, decl_facts) are located in reachable skeletons; path patterns are LiteralPath when a string literal atom is statable, ParamRef when the filesystem_read path argument is a parameter reference, UnknownPath fail-closed otherwise."
 
@@ -136,7 +76,7 @@ fn live_read_classification_from_facts(
   carrier_homes: List<LiveReadCarrierHome>
 ) -> LiveReadClassification {
   live_read_classification_g1(
-    closure_modules: import_closure(root: entry_module, facts: facts),
+    closure_modules: witness_import_closure(root: entry_module, facts: facts),
     carrier_homes: carrier_homes
   )
 }
@@ -567,7 +507,7 @@ fn live_read_classification_g2_from_facts(
   decls: List<FnArrowDecl>,
   carrier_homes: List<LiveReadCarrierHome>
 ) -> LiveReadClassification {
-  let closure_modules = import_closure(root: entry_module, facts: facts)
+  let closure_modules = witness_import_closure(root: entry_module, facts: facts)
   let g1 = live_read_classification_g1(
     closure_modules: closure_modules,
     carrier_homes: carrier_homes

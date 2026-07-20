@@ -20,6 +20,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn content_hash_order_leaf() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^content_hash_order_leaf_sym } },

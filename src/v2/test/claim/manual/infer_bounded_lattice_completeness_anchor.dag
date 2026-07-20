@@ -30,6 +30,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },

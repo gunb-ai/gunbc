@@ -1,24 +1,5 @@
 module v2.test.parse.token_stream_cursor
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { length, skip }
-import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.compilers.lexing {
-  Token,
-  token_stream_advance,
-  token_stream_all,
-  token_stream_empty,
-  token_stream_first,
-  token_stream_get,
-  token_stream_new,
-  token_stream_position,
-  token_stream_remaining,
-  token_stream_remaining_count
-}
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.node { Symbol }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

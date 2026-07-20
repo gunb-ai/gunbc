@@ -1,18 +1,5 @@
 module gunbc.file_access
 
-import std.types { String, NonEmptyStr, Bool }
-import std.upsert_decision {
-  ObservationVerdict,
-  Converged,
-  Absent,
-  Drifted,
-  Inaccessible,
-  UpsertDecision,
-  UpsertClassification,
-  Noop,
-  Apply,
-  Refuse,
-}
 
 type FileTreeScope {
   root_path: NonEmptyStr
@@ -70,7 +57,7 @@ fn decision_for_file_access(obs: FileAccessObservation) -> UpsertDecision<FileAc
 fn classify_file_access_upsert(
   scope: FileTreeScope,
   obs: FileAccessObservation,
-) -> UpsertClassification<FileAccessPlan> {
+) -> std.upsert_decision.UpsertClassification<FileAccessPlan> {
   UpsertClassification {
     verdict: classify_file_access(obs: obs),
     decision: decision_for_file_access(obs: obs),

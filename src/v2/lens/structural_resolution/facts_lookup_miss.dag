@@ -1,30 +1,6 @@
 module v2.test.lens_structural_resolution.facts_lookup_miss
 
-import v2.compiler.infer {
-  InferredFacts,
-  InferredTree,
-  infer_facts_lookup_miss_diagnostic
-}
-import v2.test.lens_common.infer_fixture { claim_inferred_facts }
-import v2.lens.structural_resolution {
-  FactsLookupMiss,
-  StructuralResolutionFact,
-  fact_eq,
-  fact_single_dependency_projects_status
-}
-import v2.std.dependency { ClassifiedDependencyView }
-import v2.test.lens_structural_resolution.claim_carrier {
-  LensStructuralResolutionClaim,
-  lens_structural_resolution_actual
-}
-import v2.std.collection { Map }
 
-import v2.std.dependency {
-  BindsTo,
-  DependencyView
-}
-import v2.std.node { Atom, Conj, Edge, Hash, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.witness { Holds, Violates, Witness }
 data sr_lookup_claim_hash: Hash = sr_lookup_claim_hash
 
 fn sr_lookup_claim_atom(s: Symbol) -> Node {

@@ -1,11 +1,5 @@
 module v2.lens.complexity_linearity_audit
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SubstrateMandatoryTag }
-import v2.std.algebra { fold_list, length, contains }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data complexity_linearity_migration_debt_roster: List<String> = [
   "src/v2/compiler/05_eval.dag::eval_branch_node_eval",

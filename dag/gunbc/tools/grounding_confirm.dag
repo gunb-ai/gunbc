@@ -1,12 +1,10 @@
 module gunbc.tools.grounding_confirm
 
-import extdeps.llm.anthropic
-import extdeps.llm.anthropic_rest
 
 data eval_corpus_path: String = "src/v2/lens/testdata/anemia_confirm_eval_corpus.json"
 
 fn judge_model_id() -> String {
-  fold(models, init: "", f: fn(acc, spec) {
+  fold(extdeps.llm.anthropic.models, init: "", f: fn(acc, spec) {
     match spec.model { ClaudeHaiku4_5 => spec.model_id, _ => acc }
   })
 }

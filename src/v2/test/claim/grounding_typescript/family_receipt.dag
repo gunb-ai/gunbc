@@ -1,15 +1,5 @@
 module v2.test.grounding_typescript.family_receipt
 
-import v2.compiler.eval { TestClaimRun }
-import v2.std.collection { List }
-import v2.std.node { Node }
-import v2.std.runtime { RuntimeValue }
-import v2.test.grounding_typescript.sg_claims {
-  run_ts_g2_g14_fact_registry,
-  run_ts_g2_sg1_atom_realizations,
-  run_ts_g2_sg2_type_expression_projection,
-  run_ts_g2_sg5_collection_absence
-}
 
 data grounding_typescript_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>> = [
   run_ts_g2_sg1_atom_realizations,

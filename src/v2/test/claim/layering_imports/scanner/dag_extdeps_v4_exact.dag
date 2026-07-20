@@ -1,12 +1,5 @@
 module v2.test.layering_imports.scanner.dag_extdeps_v4_exact
 
-import v2.lens.layering_imports {
-  layering_imports_violation_count,
-  layering_imports_clean_holds,
-  layer_import_facts_live
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
 
 data dag_extdeps_v4_exact_std_roots: List<String> = []
 data dag_extdeps_v4_exact_extdeps_roots: List<String> = ["src/v2/test/fixture/layering_scan/dag_extdeps_v4_exact/extdeps"]

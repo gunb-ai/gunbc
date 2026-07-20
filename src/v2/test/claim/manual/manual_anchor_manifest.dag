@@ -1,25 +1,5 @@
 module v2.test.manual.manual_anchor_manifest
 
-import v2.std.verification {
-  ManualAnchorKey,
-  ManualTcConjEmpty,
-  ManualTcDisjEmpty,
-  ManualTcArrowTwoConj,
-  ManualTcCardinalityEmpty,
-  ManualTcInstantiationEmpty,
-  ManualTcArrowEmpty,
-  ManualTcTransformEmpty,
-  ManualTcBranchEmpty,
-  ManualTcLoopEmpty,
-  ManualTcBindZeroChildren,
-  ManualTcConjEqualsRefl,
-  ManualNatAddLeftIdentity,
-  ManualNatAddRightIdentity,
-  ManualNatAddAssociativity,
-  ManualNatMulLeftIdentity,
-  ManualNatMulAnnihilator,
-  ManualNatMulAssociativity
-}
 
 data manual_anchor_tc_conj: ManualAnchorKey = ManualTcConjEmpty
 
