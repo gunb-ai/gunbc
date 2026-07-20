@@ -1391,7 +1391,19 @@ fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     let index = build_multi_entry_index(std::slice::from_ref(&root));
     let good_resolve = resolve_entry_with_index(&index, &good_path);
     cleanup();
-    good_resolve.expect("good entry should resolve when only a non-imported sibling fails parse");
+    // Namespace-only resolution (wave-1): the pool census must parse every pool file
+    // before ANY entry resolves — an unparsed sibling could hide a homonym that would
+    // change bare-name resolution, so the census refuses fail-closed with a typed,
+    // located diagnostic instead of resolving against a partial name universe.
+    // (Pre-wave-1 this arm asserted the good entry resolved despite the broken
+    // non-imported sibling; that locality is unsound once resolution is census-driven.)
+    let err = good_resolve.expect_err(
+        "pool census must refuse fail-closed while any pool file fails parse",
+    );
+    assert!(
+        err.contains("broken.dag") && err.contains("parse failed"),
+        "census refusal must be typed and located at the unparsable file; got: {err}"
+    );
 
     std::fs::create_dir_all(&dir).expect("recreate temp dir");
     std::fs::write(

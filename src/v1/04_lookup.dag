@@ -22,6 +22,9 @@ import v1.std.core {
 import std.algebra {
   CollectionSizeEffect, CostShape, AlgebraFieldTemplate,
   AlgebraTypeTemplate, ReceiverSelf, ContainerOf, ContainerSource, SameAsReceiver, Named,
+  AlgebraProfile, OrderedRingProfile, ApproximateFieldProfile, BooleanAlgebraProfile,
+  BooleanAlgebraCollectionProfile, FreeMonoidScalarProfile, FreeMonoidCollectionProfile,
+  PartialFunctionProfile,
   kernel_algebra_profile, algebra_templates_for_profile
 }
 

@@ -30,7 +30,7 @@ import v1.compiler.normalize { normalize_graph, NormalizeResult }
 
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 
-import v1.compiler.infer { reconcile }
+import v1.compiler.infer { reconcile, reconcile_with_census_extra }
 
 import v1.compiler.infer_types { algebra_field_kind_name }
 
