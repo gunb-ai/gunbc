@@ -18,7 +18,7 @@ import extdeps.http.server {
   http_content_type_wire_label,
 }
 import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
-import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
+import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority, belt_dispatch_path_prefix }
 import gunbc.roadmap_static_site { roadmap_site_text_static_routes }
 import extdeps.languages.typescript.program {
   TsProgram,
@@ -534,7 +534,7 @@ fn roadmap_dashboard_node_http_static_server_spec() -> NodeHttpStaticServerSpec 
 
 fn roadmap_dashboard_dispatch_route_config() -> BeltDispatchRouteConfig {
   BeltDispatchRouteConfig {
-    path_prefix: "/dispatch/",
+    path_prefix: belt_dispatch_path_prefix,
     gunbc_bin: "/opt/gunbc/bin/gunbc",
     repo_cwd: "/opt/gunbc/gunbc",
     source_roots: ["dag", "src/v2"],

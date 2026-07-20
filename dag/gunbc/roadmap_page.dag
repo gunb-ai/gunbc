@@ -133,10 +133,20 @@ fn dispatch_button_nodes(rn: RoadmapNode, merged: List<Int>) -> List<MarkupNode>
   }
 }
 
-data dispatch_client_js: String = "document.querySelectorAll('.dispatch-btn').forEach(function(b)\{b.addEventListener('click',function()\{b.disabled=true;b.textContent='dispatching...';fetch('/dispatch/'+encodeURIComponent(b.getAttribute('data-node')),\{method:'POST'\}).then(function(r)\{return r.json();\}).then(function(j)\{b.textContent=j.ok?('dispatched: '+j.node):'failed';if(!j.ok)\{console.log('dispatch failed',j);\}b.disabled=false;\}).catch(function(e)\{b.textContent='error';b.disabled=false;\});\});\});"
+data belt_dispatch_path_prefix: String = "/dispatch/"
+
+fn dispatch_client_js() -> String {
+  concat(
+    concat(
+      "document.querySelectorAll('.dispatch-btn').forEach(function(b)\{b.addEventListener('click',function()\{b.disabled=true;b.textContent='dispatching...';fetch('",
+      belt_dispatch_path_prefix,
+    ),
+    "'+encodeURIComponent(b.getAttribute('data-node')),\{method:'POST'\}).then(function(r)\{return r.json();\}).then(function(j)\{b.textContent=j.ok?('dispatched: '+j.node):'failed';if(!j.ok)\{console.log('dispatch failed',j);\}b.disabled=false;\}).catch(function(e)\{b.textContent='error';b.disabled=false;\});\});\});",
+  )
+}
 
 fn dispatch_client_script() -> MarkupNode {
-  el("script", [ txt(dispatch_client_js) ])
+  el("script", [ txt(dispatch_client_js()) ])
 }
 
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkupNode {
