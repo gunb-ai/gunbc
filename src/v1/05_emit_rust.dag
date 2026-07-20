@@ -3243,7 +3243,7 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   } else {
     [concat(rust_visibility_prefix(), "use crate::std_types::NonEmptyStr;")]
   }
-  let int_line = if rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Int") {
+  let int_line = if local_type_names |> any(n => n == "Int") {
     []
   } else {
     [concat(rust_visibility_prefix(), "use crate::v2_std_integer::Int;")]
