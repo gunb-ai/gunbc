@@ -6,7 +6,7 @@ import extdeps.github.pulls
 import std.types { CommitSha }
 import extdeps.llm.anthropic
 import extdeps.llm.anthropic_rest
-import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: CronSchedule = CronSchedule {
@@ -73,10 +73,10 @@ func review_pr(
     pull_number: pr_number
   )
   design = shell.Exec.Run(
-    script: "cd ~/gunbc && git fetch origin {pr.pr.head.ref} 2>/dev/null; git show origin/{pr.pr.head.ref}:DESIGN.md 2>/dev/null || echo '(not found)'"
+    script: transport_script_from_body(body: "cd ~/gunbc && git fetch origin {pr.pr.head.ref} 2>/dev/null; git show origin/{pr.pr.head.ref}:DESIGN.md 2>/dev/null || echo '(not found)'")
   )
   algebra_ref = shell.Exec.Run(
-    script: "cd ~/gunbc && git show origin/{pr.pr.head.ref}:dag/std/algebra.dag 2>/dev/null || echo '(not found)'"
+    script: transport_script_from_body(body: "cd ~/gunbc && git show origin/{pr.pr.head.ref}:dag/std/algebra.dag 2>/dev/null || echo '(not found)'")
   )
 
   system_prompt = build_system_prompt(

@@ -1,0 +1,165 @@
+module v2.test.claim.shell_emission_authorization_test
+
+import v2.std.collection { List }
+import v2.std.execution_surface {
+  AutoinstallLateCommand,
+  Absent,
+  Authorized,
+  BootstrapBeforeRuntime,
+  BootstrapProvisioned,
+  ExecutorCapability,
+  ForeignExecutorMandated,
+  GitHubActionsRunStep,
+  Present,
+  Refused,
+  RosterException,
+  RuntimeAvailabilityGate,
+  RuntimePresentRequiresTypedRealization,
+  ShellEmissionAuthorization,
+  ShellEmissionRosterEntry,
+  ShellPayloadRequired,
+  SteadyState,
+  TypedArgv,
+  TypedPlanInterpretation,
+  Unknown,
+  UnknownAvailability,
+  authorize_shell_emission,
+  shell_emission_authorization_is_authorized
+}
+import v2.std.logic { Bool }
+
+fn empty_roster() -> List<ShellEmissionRosterEntry> {
+  []
+}
+
+fn all_absent_gate() -> RuntimeAvailabilityGate {
+  RuntimeAvailabilityGate {
+    gunbc_binary: Absent,
+    typed_transport: Absent,
+    plan_interpreter: Absent
+  }
+}
+
+test fn foreign_executor_authorizes_regardless_of_window() -> Bool {
+  let auth = authorize_shell_emission(
+    capability: ShellPayloadRequired { foreign: GitHubActionsRunStep },
+    window: SteadyState,
+    site: ^ci_bootstrap_shim,
+    roster: empty_roster()
+  )
+  match auth {
+    Authorized { justification: ForeignExecutorMandated { capability: _ } } => true
+    Authorized { justification: _ } => false
+    Refused { cause: _ } => false
+  }
+}
+
+test fn bootstrap_window_with_absent_gate_authorizes() -> Bool {
+  let auth = authorize_shell_emission(
+    capability: TypedArgv,
+    window: BootstrapBeforeRuntime { until: all_absent_gate() },
+    site: ^fresh_standup_shim,
+    roster: empty_roster()
+  )
+  match auth {
+    Authorized { justification: BootstrapProvisioned { window: _, site: _ } } => true
+    Authorized { justification: _ } => false
+    Refused { cause: _ } => false
+  }
+}
+
+test fn bootstrap_window_with_unknown_availability_refuses() -> Bool {
+  let gate = RuntimeAvailabilityGate {
+    gunbc_binary: Absent,
+    typed_transport: Unknown { cause: "probe not run" },
+    plan_interpreter: Absent
+  }
+  let auth = authorize_shell_emission(
+    capability: TypedArgv,
+    window: BootstrapBeforeRuntime { until: gate },
+    site: ^fresh_standup_shim,
+    roster: empty_roster()
+  )
+  match auth {
+    Refused { cause: UnknownAvailability { gate: _ } } => true
+    Refused { cause: _ } => false
+    Authorized { justification: _ } => false
+  }
+}
+
+test fn steady_state_without_roster_entry_refuses() -> Bool {
+  let auth = authorize_shell_emission(
+    capability: TypedArgv,
+    window: SteadyState,
+    site: ^live_deploy_apply,
+    roster: empty_roster()
+  )
+  match auth {
+    Refused { cause: RuntimePresentRequiresTypedRealization { capability: _ } } => true
+    Refused { cause: _ } => false
+    Authorized { justification: _ } => false
+  }
+}
+
+test fn steady_state_with_matching_roster_entry_authorizes() -> Bool {
+  let roster = [
+    ShellEmissionRosterEntry {
+      site: ^live_deploy_apply,
+      roster_key: "live_deploy_apply",
+      dissolve_trigger: "dissolve-on: live_deploy typed-effect reshape (slice 3)"
+    }
+  ]
+  let auth = authorize_shell_emission(
+    capability: TypedArgv,
+    window: SteadyState,
+    site: ^live_deploy_apply,
+    roster: roster
+  )
+  match auth {
+    Authorized { justification: RosterException { roster_key: k, dissolve_trigger: _ } } =>
+      k == "live_deploy_apply"
+    Authorized { justification: _ } => false
+    Refused { cause: _ } => false
+  }
+}
+
+test fn steady_state_roster_entry_for_other_site_still_refuses() -> Bool {
+  let roster = [
+    ShellEmissionRosterEntry {
+      site: ^live_deploy_apply,
+      roster_key: "live_deploy_apply",
+      dissolve_trigger: "dissolve-on: live_deploy typed-effect reshape (slice 3)"
+    }
+  ]
+  let auth = authorize_shell_emission(
+    capability: TypedArgv,
+    window: SteadyState,
+    site: ^srv3_install_tail,
+    roster: roster
+  )
+  match auth {
+    Refused { cause: RuntimePresentRequiresTypedRealization { capability: _ } } => true
+    Refused { cause: _ } => false
+    Authorized { justification: _ } => false
+  }
+}
+
+test fn typed_plan_interpretation_at_steady_state_still_needs_roster() -> Bool {
+  let auth = authorize_shell_emission(
+    capability: TypedPlanInterpretation,
+    window: SteadyState,
+    site: ^fleet_converge_srv1,
+    roster: empty_roster()
+  )
+  !shell_emission_authorization_is_authorized(auth: auth)
+}
+
+test fn authorization_predicate_is_bool_summarizable() -> Bool {
+  let authorized = authorize_shell_emission(
+    capability: ShellPayloadRequired { foreign: AutoinstallLateCommand },
+    window: BootstrapBeforeRuntime { until: all_absent_gate() },
+    site: ^autoinstall_late_command,
+    roster: empty_roster()
+  )
+  shell_emission_authorization_is_authorized(auth: authorized)
+}
