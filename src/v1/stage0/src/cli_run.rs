@@ -17126,7 +17126,7 @@ pub fn bare_ref_reachability_for_name(
 
 // --- Resolution divergence census (namespace-resolution-design.md §12.4) ---
 // Read-only inventory: compare `lookup_resolved_sig` (first-hit over func_env.parents)
-// against the landed SymbolIndex containment walk (lexical + global-unique).
+// against the landed SymbolIndex containment walk (lexical + global-unique only).
 // Method: direct observation of each mechanism's return value — NOT diagnostics.
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -17315,22 +17315,20 @@ pub fn symbol_index_lexical_lookup_v1(
     }
 }
 
-/// Containment walk: lexical lookup, direct-import selective binding, then global-bare.
+/// Containment walk: lexical lookup, then global-bare unique (§12.4 / `03_resolve.dag`).
 pub fn containment_resolve_fn_v1(
     index: &SymbolIndex,
     module_path: &str,
     name: &str,
 ) -> ContainmentResolve {
-    containment_resolve_fn_v1_for_module(index, module_path, name, None, None, None)
+    containment_resolve_fn_v1_for_module(index, module_path, name, None)
 }
 
-/// Containment walk with optional import-surface context (namespace §1c direct import lists).
+/// Containment walk with optional module-item index for `item_kind` classification.
 pub fn containment_resolve_fn_v1_for_module(
     index: &SymbolIndex,
     module_path: &str,
     name: &str,
-    module: Option<&Rc<Node>>,
-    source_indices: Option<Rc<HashMap<String, Rc<NewlineIndex>>>>,
     item_index: Option<&ModuleItemIndex>,
 ) -> ContainmentResolve {
     if let Some((owner, node, steps)) = symbol_index_lexical_lookup_v1(index, module_path, name) {
@@ -17342,36 +17340,6 @@ pub fn containment_resolve_fn_v1_for_module(
                 via: ContainmentResolveVia::Lexical,
                 lexical_steps: steps,
             };
-        }
-    }
-    if let (Some(module), Some(source_indices)) = (module, source_indices) {
-        let mut direct_hit: Option<ContainmentResolve> = None;
-        for imp in module_imports(module.clone()).iter() {
-            let imp_path =
-                v1_compiler_infer::import_module_path_at(imp.clone(), source_indices.clone());
-            let visible = if import_is_all(imp.clone()) {
-                continue;
-            } else {
-                import_specific_names_at(imp.clone(), source_indices.clone())
-            };
-            if !visible.iter().any(|n| n == name) {
-                continue;
-            }
-            let qn = module_path_to_qualified_path(&imp_path, name);
-            if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn.clone()) {
-                if is_fn_like_binding(&node, &imp_path, name, item_index) {
-                    direct_hit = Some(ContainmentResolve::Hit {
-                        owner_module: imp_path.clone(),
-                        qualified_path: qn,
-                        node_ptr: Rc::as_ptr(&node) as usize,
-                        via: ContainmentResolveVia::Lexical,
-                        lexical_steps: 0,
-                    });
-                }
-            }
-        }
-        if let Some(hit) = direct_hit {
-            return hit;
         }
     }
     match index.global_bare.get(name).map(|s| &**s) {
@@ -17513,8 +17481,6 @@ pub fn resolution_divergence_census_from_ctx(
                     &module_index,
                     &module_path,
                     &callee,
-                    Some(&tm.module),
-                    Some(source_indices.clone()),
                     Some(&item_index),
                 );
 
@@ -17725,43 +17691,38 @@ mod resolution_divergence_census_tests {
         let _ = std::fs::remove_dir_all(&fixture);
         write_fixture(
             &fixture,
-            "twin_p.dag",
-            r#"module test.claim.X.twin_p
+            "middle.dag",
+            r#"module test.posctl.middle
 
 import std.types { Bool }
 
-fn twin_sig(a: Bool) -> Bool {
+fn lex_target(a: Bool) -> Bool {
   return a
 }
 "#,
         );
         write_fixture(
             &fixture,
-            "twin_q.dag",
-            r#"module test.claim.X.twin_q
+            "other.dag",
+            r#"module test.posctl.other
 
 import std.types { Bool }
 
-fn twin_sig(a: Bool, b: Bool, c: Bool) -> Bool {
+fn lex_target(a: Bool, b: Bool) -> Bool {
   return a
-}
-
-fn twin_q_anchor() -> Bool {
-  return False
 }
 "#,
         );
         write_fixture(
             &fixture,
-            "planted.dag",
-            r#"module test.claim.X.planted
+            "leaf.dag",
+            r#"module test.posctl.middle.leaf
 
 import std.types { Bool }
-import test.claim.X.twin_p { twin_sig }
-import test.claim.X.twin_q { twin_q_anchor }
+import test.posctl.other { lex_target }
 
-fn planted_call() -> Bool {
-  return twin_sig(False)
+fn caller() -> Bool {
+  return lex_target(False)
 }
 "#,
         );
@@ -17771,27 +17732,36 @@ fn planted_call() -> Bool {
         ];
         let WholeTreeCtx { ctx, .. } =
             whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve ctx");
-        let planted = ctx
+        let leaf = ctx
             .modules
             .iter()
-            .find(|m| m.type_env.module_path == "test.claim.X.planted")
-            .expect("planted module must resolve");
+            .find(|m| m.type_env.module_path == "test.posctl.middle.leaf")
+            .expect("leaf module must resolve");
         let import_sig =
-            lookup_resolved_sig(planted.func_env.clone(), "twin_sig".to_string()).expect("import");
-        let import_owner = import_chain_owner(&planted.func_env, "twin_sig").expect("import owner");
+            lookup_resolved_sig(leaf.func_env.clone(), "lex_target".to_string()).expect("import");
+        let import_owner =
+            import_chain_owner(&leaf.func_env, "lex_target").expect("import owner");
         let import_arity = import_sig.params.len();
         let item_index = build_module_item_index(&ctx);
         let containment = containment_resolve_fn_v1_for_module(
-            &planted.type_env.symbol_index,
-            "test.claim.X.planted",
-            "twin_sig",
-            Some(&planted.module),
-            Some(ctx.source_indices.clone()),
+            &leaf.type_env.symbol_index,
+            "test.posctl.middle.leaf",
+            "lex_target",
             Some(&item_index),
         );
         assert_eq!(
-            import_arity, 3,
-            "lookup_resolved_sig must bind twin_q (3 params), owner={import_owner}"
+            import_arity, 2,
+            "lookup_resolved_sig must bind other.lex_target (2 params), owner={import_owner}"
+        );
+        assert!(
+            matches!(
+                containment,
+                ContainmentResolve::Hit {
+                    owner_module,
+                    ..
+                } if owner_module.contains("middle") && !owner_module.contains("leaf")
+            ),
+            "§12.4 lexical ancestor must bind middle.lex_target, got {containment:?}"
         );
         let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
         assert_eq!(
@@ -17804,33 +17774,34 @@ fn planted_call() -> Bool {
             census.neither_bound,
             census.sites_checked,
         );
-        let planted_rows: Vec<_> = census
+        let diverge_rows: Vec<_> = census
             .diverge_rows
             .iter()
-            .filter(|s| s.callee == "twin_sig" && s.calling_module.contains("planted"))
+            .filter(|s| s.callee == "lex_target" && s.calling_module.contains("middle.leaf"))
             .collect();
-        assert_eq!(planted_rows.len(), 1, "expected one planted twin_sig site");
+        assert_eq!(diverge_rows.len(), 1, "expected one leaf lex_target site");
         assert!(
             matches!(
-                planted_rows[0].bucket,
+                diverge_rows[0].bucket,
                 ResolutionDivergenceBucket::Diverge { .. }
             ),
-            "positive control must classify planted twin_sig as Diverge, got {:?}",
-            planted_rows[0].bucket
+            "positive control must classify leaf lex_target as Diverge, got {:?}",
+            diverge_rows[0].bucket
         );
         if let ResolutionDivergenceBucket::Diverge {
             import_binding,
             containment_binding,
-        } = &planted_rows[0].bucket
+        } = &diverge_rows[0].bucket
         {
             assert!(
-                import_binding.owner_module.contains("twin_q"),
-                "import chain must bind twin_q, got {}",
+                import_binding.owner_module.contains("other"),
+                "import chain must bind other, got {}",
                 import_binding.owner_module
             );
             assert!(
-                containment_binding.owner_module.contains("twin_p"),
-                "containment must bind twin_p, got {}",
+                containment_binding.owner_module.contains("middle")
+                    && !containment_binding.owner_module.contains("leaf"),
+                "containment lexical ancestor must bind middle, got {}",
                 containment_binding.owner_module
             );
         }
