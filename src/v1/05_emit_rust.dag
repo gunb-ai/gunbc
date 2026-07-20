@@ -1925,7 +1925,15 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       |> map(item => authored_name(env: scope.type_env, node: item)),
     collect_phantom_zst_marker_names(items: typed_module.items, env: scope.type_env)
   )
-  let synthesized_type_names = unique_strings(items: typed_module.items |> flat_map(item => node_tree_collect_record_lit_type_names(n: item, source_indices: scope.type_env.source_indices)))
+  let synthesized_type_names = supplement_type_names_for_imports(
+    names: unique_strings(items: typed_module.items
+      |> filter(item => is_data_def_item(item: item))
+      |> flat_map(item => match item.body {
+        Present { value: body } => node_tree_collect_record_lit_type_names(n: body, source_indices: scope.type_env.source_indices)
+        Absent => []
+      })),
+    type_summaries: emit_info.type_summaries
+  )
   let prelude = emit_prelude(imported_names: prelude_imported_names)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_names: synthesized_type_names)
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
@@ -3119,15 +3127,15 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
     let import_lines = import_modules |> flat_map(import_module =>
       let mod_imports = imports |> filter(imp => authored_name_at(source_indices: source_indices, node: imp) == import_module)
       let mod_name = module_to_filename(name: import_module)
-      let block = if mod_imports |> any(imp => import_is_all(n: imp)) {
+      let mod_has_wildcard = mod_imports |> any(imp => import_is_all(n: imp))
+      let block = if mod_has_wildcard {
         let wildcard_line = concat("use crate::", mod_name, "::*;")
         let reexport_surface = wildcard_reexport_surface_names(import_module: import_module, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
         let merged_specific = unique_strings(items: concat(
           mod_imports
             |> filter(imp => import_is_all(n: imp) == false)
             |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices)),
-          reexport_surface,
-          supplement_names
+          reexport_surface
         ))
         let specific_block = emit_specific_import_block(
           import_module: import_module,
@@ -3147,7 +3155,8 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
         }
       } else {
         let specific_names = mod_imports |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices))
-        let merged_specific = unique_strings(items: concat(specific_names, supplement_names))
+        let synth_for_module = supplement_type_names_for_import_module(names: supplement_names, import_module: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+        let merged_specific = unique_strings(items: concat(specific_names, synth_for_module))
         emit_specific_import_block(
           import_module: import_module,
           mod_name: mod_name,
@@ -3203,6 +3212,27 @@ fn node_tree_references_type_name(n: Node, type_name: String, source_indices: Ma
     }
     child_hit || annotation_hit || inferred_hit
   }
+}
+
+fn supplement_type_names_for_imports(names: List<String>, type_summaries: Map<String, TypeSummary>) -> List<String> {
+  names |> filter(n =>
+    !is_known_variant(type_summaries: type_summaries, name: n)
+    && match map_get(type_summaries, n) {
+      Present { value: summary } =>
+        match summary.repr {
+          StructRepr => true
+          _ => false
+        }
+      Absent => false
+    }
+  )
+}
+
+fn supplement_type_names_for_import_module(names: List<String>, import_module: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  let mod_name = module_to_filename(name: import_module)
+  names |> filter(n =>
+    has_physical_type_def_in_module_filename(rhs_name: n, mod_filename: mod_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+  )
 }
 
 fn node_tree_collect_record_lit_type_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
