@@ -10824,65 +10824,18 @@ pub fn run_discovery_corpus_with_options(
             // resident structure across every group it pulls — admission of a worker (not of a
             // group) is therefore the memory-relevant act the governor decides.
             let groups = entry_row_groups(&rows);
-            let spawn_target_width = governor.current_target_width();
             eprintln!(
                 "run_discovery_corpus: adaptive pool over {} entry-group(s), {} row(s) (governor target_width={})",
                 groups.len(),
                 rows.len(),
-                spawn_target_width,
+                governor.current_target_width(),
             );
-            // Width=1: drain inline on the pump thread reusing `process_shared_index` (already
-            // warmed for calibration + floor runner). Spawning a worker thread duplicates the
-            // whole-tree index on a second thread-local cache — ~2× retention that OOM'd CI
-            // batch-2 discovery (runs 29372308568 / 29373433928). Cross-worker store arms only
-            // when plural workers run (below). 🟡 dissolve-on: Rc→Arc retires the width gate.
-            if spawn_target_width <= 1 {
-                eprintln!(
-                    "run_discovery_corpus: width=1 inline drain — reusing process_shared_index (no worker duplicate index)"
-                );
-                eprintln!(
-                    "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
-                );
-                let style = ShardStyle {
-                    shard_id: 0,
-                    shard_count: 1,
-                    color: floor_color,
-                    stream: floor_stream,
-                };
-                let mut summaries = Vec::new();
-                for group_indices in groups {
-                    let group_rows: Vec<DiscoveryRow> =
-                        group_indices.iter().map(|&i| rows[i].clone()).collect();
-                    summaries.push(run_discovery_rows(
-                        &group_rows,
-                        &index,
-                        execution_mode,
-                        options.node_frontier_selection,
-                        &changed_paths,
-                        &diff_edits,
-                        floor_runner_ctx.as_ref(),
-                        whole_tree_published_keys.clone(),
-                        options.witness_budget_policy(),
-                        style,
-                    )?);
-                }
-                return Ok(attach_deferred_discovery_rows(
-                    merge_discovery_summaries(summaries),
-                    deferred_rows,
-                ));
-            }
-            // Process-scoped typed store shell — populated only when plural workers run
-            // (target_width > 1). At width=1 the serde byte store adds retention without
-            // cross-worker benefit and breaks the CI memory budget (design §7; OOM
-            // 29349125185 / 29371206526). 🟡 dissolve-on: Rc→Arc retires the gate.
+            // Process-scoped typed store shell — handed to spawned workers, which the
+            // dispatch below reaches only while the governor's window is > 1. At width 1
+            // the serde byte store adds retention without cross-worker benefit and breaks
+            // the CI memory budget (design §7; OOM 29349125185 / 29371206526).
+            // 🟡 dissolve-on: Rc→Arc retires the gate.
             let cross_worker_store = new_shared_typecheck_caches();
-            if floor_stream && spawn_target_width > 1 {
-                eprintln!(
-                    "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
-                    floor_ts(),
-                    spawn_target_width,
-                );
-            }
             let queue: std::sync::Arc<Mutex<VecDeque<Vec<DiscoveryRow>>>> =
                 std::sync::Arc::new(Mutex::new(
                     groups
@@ -10895,16 +10848,100 @@ pub fn run_discovery_corpus_with_options(
             let selection_for_workers = options.node_frontier_selection;
             let budget_policy_for_workers = options.witness_budget_policy();
             let mut handles = Vec::new();
+            let mut summaries: Vec<DiscoverySummary> = Vec::new();
+            let mut first_err: Option<String> = None;
             let mut worker_ordinal: usize = 0;
+            let mut inline_groups: usize = 0;
+            let mut announced_inline = false;
+            let mut announced_wide = false;
             loop {
                 if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
                     break;
                 }
+                // One admission poll per iteration; the granted slot is then spent either
+                // inline on this thread (window == 1) or on a spawned worker (window > 1).
                 match governor.try_admit() {
                     crate::memory_governor::AdmitDecision::Admit { .. } => {}
                     crate::memory_governor::AdmitDecision::Hold(_) => {
                         std::thread::sleep(std::time::Duration::from_millis(150));
                         continue;
+                    }
+                }
+                // Window == 1: drain ONE group inline on the pump thread reusing
+                // `process_shared_index` (already warmed for calibration + the floor runner).
+                // Spawning a worker here would duplicate the whole-tree index on a second
+                // thread-local cache — ~2× retention that OOM'd CI batch-2 discovery (runs
+                // 29372308568 / 29373433928).
+                //
+                // The width read is per GROUP, never latched for the pool: the granted slot's
+                // completion is the governor's additive-increase point, so a calm inline group
+                // is precisely what LIFTS the window off 1. Sampling it once made width 1 an
+                // ABSORBING state — the only path that could grow the window (a slot
+                // completion) lived inside the branch that only ran once the window had
+                // already grown, so the AIMD controller was unreachable for the corpus and
+                // every floor ran serially (CI run 29707161743: 621 entry-groups, 125 GB
+                // budget, max_width_reached=1, admissions=1, width_growths=1, peak 6.97 GB —
+                // 5.6% of the pipe, zero creep, zero back-offs).
+                // 🟡 dissolve-on: Rc→Arc retires the width gate and this inline lane with it.
+                if governor.current_target_width() <= 1 {
+                    // The slot was granted by try_admit above; the guard owns the release.
+                    let mut slot =
+                        crate::memory_governor::AdmittedSlot::from_admitted(governor.clone());
+                    // This lane pays NO front-loaded admission cost: the index it runs against
+                    // is this thread's, already resident. Settling the pacing debt at once
+                    // keeps the ramp honest — a debt no allocation will ever land would freeze
+                    // admissions behind a cost that is already paid.
+                    slot.note_first_cost_paid();
+                    let Some(group_rows) = queue.lock().unwrap().pop_front() else {
+                        break;
+                    };
+                    if !announced_inline {
+                        announced_inline = true;
+                        eprintln!(
+                            "run_discovery_corpus: window=1 — draining entry-groups inline on the pump thread (reusing process_shared_index, no worker duplicate index); cross_worker_store withheld until the window lifts"
+                        );
+                    }
+                    let style = ShardStyle {
+                        shard_id: 0,
+                        shard_count: 1,
+                        color: floor_color,
+                        stream: floor_stream,
+                    };
+                    match run_discovery_rows(
+                        &group_rows,
+                        &index,
+                        execution_mode,
+                        options.node_frontier_selection,
+                        &changed_paths,
+                        &diff_edits,
+                        floor_runner_ctx.as_ref(),
+                        whole_tree_published_keys.clone(),
+                        options.witness_budget_policy(),
+                        style,
+                    ) {
+                        Ok(summary) => {
+                            summaries.push(summary);
+                            inline_groups += 1;
+                            // The additive-increase point: a calm completion grows the window,
+                            // so the next iteration can dispatch wide.
+                            slot.note_unit_complete();
+                        }
+                        Err(e) => {
+                            abort.store(true, Ordering::SeqCst);
+                            first_err = Some(e);
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                if !announced_wide {
+                    announced_wide = true;
+                    if floor_stream {
+                        eprintln!(
+                            "{} [affected-set] streaming run-witnesses live across the adaptive worker pool (target width {}; ▎shard N, one color each)",
+                            floor_ts(),
+                            governor.current_target_width(),
+                        );
                     }
                 }
                 let queue_for_worker = queue.clone();
@@ -10914,17 +10951,10 @@ pub fn run_discovery_corpus_with_options(
                 let seeds = diff_edits.clone();
                 let paths = changed_paths.clone();
                 let keys = whole_tree_published_keys.clone();
-                let spawn_target_width = governor.current_target_width();
-                let cross_worker_store_for_worker = if spawn_target_width > 1 {
-                    Some(cross_worker_store.clone())
-                } else {
-                    None
-                };
-                if worker_ordinal == 0 && spawn_target_width <= 1 {
-                    eprintln!(
-                "run_discovery_corpus: cross_worker_store withheld (governor target_width={spawn_target_width}) — per-index typed cache until width > 1"
-            );
-                }
+                // Workers spawn only above window 1 (the dispatch above), so the cross-worker
+                // typed store is always live on this path — the width gate that withholds it
+                // IS the inline lane.
+                let cross_worker_store_for_worker = cross_worker_store.clone();
                 // Narration style for this worker: shard_id = spawn ordinal (a stable hue in the
                 // interleaved stream); spawn-time target width > 1 shows the ▎shard tag — a width-1
                 // admission window has no interleaving to disambiguate.
@@ -10942,14 +10972,14 @@ pub fn run_discovery_corpus_with_options(
                         let mut slot = crate::memory_governor::AdmittedSlot::from_admitted(
                             governor_for_worker.clone(),
                         );
-                        // Process-scoped typed_module_cache when governor width > 1; private cold
-                        // index at width=1 (CI budget — cross-worker-typecheck-share-design §7).
-                        let index = match cross_worker_store_for_worker {
-                            Some(store) => {
-                                build_multi_entry_index_with_shared_caches(&roots, store)
-                            }
-                            None => build_multi_entry_index(&roots),
-                        };
+                        // Process-scoped typed_module_cache: a worker exists only above window
+                        // 1, which is exactly the condition the store is gated on
+                        // (cross-worker-typecheck-share-design §7). The width=1 private-index
+                        // case is the pump's inline lane, which never reaches here.
+                        let index = build_multi_entry_index_with_shared_caches(
+                            &roots,
+                            cross_worker_store_for_worker,
+                        );
                         let runner = if selection_for_workers != NodeFrontierSelectionMode::Off {
                             match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
                                 Ok((graph, source_indices)) => {
@@ -11009,8 +11039,6 @@ pub fn run_discovery_corpus_with_options(
                     },
                 ));
             }
-            let mut summaries = Vec::new();
-            let mut first_err: Option<String> = None;
             for handle in handles {
                 match handle
                     .join()
@@ -11023,6 +11051,16 @@ pub fn run_discovery_corpus_with_options(
             if let Some(e) = first_err {
                 return Err(e);
             }
+            // The pool's own width story, counted (§5 — a degradation is observable and
+            // prioritizable, never absorbed): how much of the corpus drained serially on the
+            // pump thread because the governor's window never lifted off 1, and how many
+            // workers the window afforded.
+            eprintln!(
+                "run_discovery_corpus: adaptive pool done — {} entry-group(s) drained inline at window 1, {} worker(s) spawned, final governor target_width={}",
+                inline_groups,
+                worker_ordinal,
+                governor.current_target_width(),
+            );
             // The pump exits when the queue is empty OR on abort; with no error the queue must be
             // fully drained (workers only exit early on retire/abort, and the pump re-admits while
             // items remain), so an undrained queue here is a scheduler bug — refuse, never under-run.
