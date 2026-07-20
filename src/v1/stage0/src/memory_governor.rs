@@ -885,12 +885,14 @@ impl AdmittedSlot {
         }
     }
 
-    /// One unit of work completed under this slot: the additive-increase point. Also
-    /// settles the first cost for slots whose first unit IS their front cost (gate
-    /// resolve-groups), so no caller can grow the window while still owing pacing debt.
+    /// One unit of work completed under this slot: a signal poll, not an increase point.
+    /// It still settles the first cost for slots whose first unit IS their front cost
+    /// (gate resolve-groups) — and THAT landing is the increase point, so a slot's first
+    /// unit grows the window exactly once and its remaining units only observe. No caller
+    /// can grow the window while still owing pacing debt, and none can grow it per-unit.
     pub fn note_unit_complete(&mut self) {
         self.note_first_cost_paid();
-        self.governor.note_unit_complete_growth();
+        self.governor.note_unit_observed();
     }
 }
 
@@ -1087,10 +1089,10 @@ mod tests {
             AdmitDecision::Hold(HoldReason::WindowFull { .. })
         ));
         assert_eq!(core.creep_backoffs, 0, "window-full is not a memory hold");
-        // A calm completion grows the window; with the first worker's front cost paid,
-        // the next admission fits.
+        // The first worker's front cost lands: THAT is the increase point, and with the
+        // pacing debt settled the next admission fits.
         note_first_cost(&mut core, &calm());
-        note_completion(&mut core, &calm(), &lim);
+        note_completion(&mut core, &calm(), &lim, CompletionKind::IncreasePoint);
         assert_eq!(core.target_width, 2);
         assert_eq!(core.width_growths, 1);
         let (d3, _) = decide_admission(&mut core, &calm(), &lim);
@@ -1116,7 +1118,7 @@ mod tests {
         let mut core = GovCore::new();
         assert_eq!(core.target_width, 1, "a run starts at the width-1 floor");
         assert_eq!(core.active, 0, "the inline lane holds no admission slot");
-        note_completion(&mut core, &calm(), &lim);
+        note_completion(&mut core, &calm(), &lim, CompletionKind::IncreasePoint);
         assert_eq!(
             core.target_width, 2,
             "a calm slot-free completion must lift the window"
@@ -1129,13 +1131,87 @@ mod tests {
             current_bytes: Some(900_000), // > 800_000 high-water
             ..calm()
         };
-        note_completion(&mut hot_core, &hot, &lim);
+        note_completion(&mut hot_core, &hot, &lim, CompletionKind::IncreasePoint);
         assert_eq!(
             hot_core.target_width, 1,
             "creep is never grown through, slot or no slot"
         );
         assert_eq!(hot_core.creep_backoffs, 1);
         assert_eq!(hot_core.width_growths, 0);
+    }
+
+    #[test]
+    fn the_window_tracks_worker_cost_not_the_unit_completion_rate() {
+        // `target_width` is denominated in WORKER-SIZED residency claims. Growing it per
+        // unit of work conflated two grains and made the un-latched window unsurvivable:
+        // units are numerous and mostly cheap, so the window tracked the completion rate
+        // instead of realized affordability (CI run 29710324768 — off the floor 34ms into
+        // the corpus, then admitted against that fiction to 101.6 GB and OOM-killed).
+        let lim = limits(1_000_000, 128);
+        let mut core = GovCore::new();
+        // A worker is admitted and lands its cost: ONE growth, the real increase point.
+        let (_, _) = decide_admission(&mut core, &calm(), &lim);
+        note_first_cost(&mut core, &calm());
+        note_completion(&mut core, &calm(), &lim, CompletionKind::IncreasePoint);
+        assert_eq!(core.target_width, 2);
+        // That worker now completes a long run of cheap units under perfectly calm
+        // signals. None of them is evidence about worker-sized residency, so none of them
+        // may move the window — this is the assertion that goes RED on the grain
+        // conflation (pre-fix this reached max_width, here 128, in 100 completions).
+        for _ in 0..100 {
+            note_completion(&mut core, &calm(), &lim, CompletionKind::ObserveOnly);
+        }
+        assert_eq!(
+            core.target_width, 2,
+            "cheap unit completions must not ramp the window"
+        );
+        assert_eq!(core.width_growths, 1, "exactly one landed cost, one growth");
+        // ...and observe-only polls are still real polls: a creep edge seen at a unit
+        // completion must back the window off exactly as it would at an increase point.
+        let hot = MemorySignals {
+            current_bytes: Some(900_000), // > 800_000 high-water
+            ..calm()
+        };
+        note_completion(&mut core, &hot, &lim, CompletionKind::ObserveOnly);
+        assert_eq!(core.creep_backoffs, 1, "a unit poll still sees congestion");
+        assert!(core.target_width < 2, "and still backs the window off");
+    }
+
+    #[test]
+    fn growth_never_outruns_the_headroom_the_admission_gate_requires() {
+        // The increase arm and the admission gate must answer "does one more worker fit"
+        // from ONE authority (§3). Before this, admission predicted `current + share <=
+        // high_water` while increase predicted nothing, so the window could grow into a
+        // state admission would refuse on the very next poll — a ramp that means nothing.
+        let lim = limits(1_000_000, 128);
+        let mut core = GovCore::new();
+        let (_, _) = decide_admission(&mut core, &calm(), &lim);
+        // A worker lands, and it turns out to be expensive: 700_000 over the baseline,
+        // against a high-water of 800_000. One more of those does NOT fit.
+        let landed = MemorySignals {
+            current_bytes: Some(700_000),
+            ..calm()
+        };
+        note_first_cost(&mut core, &landed);
+        assert_eq!(core.measured_worker_share, Some(700_000 - 1_000));
+        note_completion(&mut core, &landed, &lim, CompletionKind::IncreasePoint);
+        assert_eq!(
+            core.target_width, 1,
+            "an increase point with no headroom must not grow the window"
+        );
+        assert_eq!(core.width_growths, 0);
+        // The admission gate agrees — the two arms cannot disagree, they share the fn.
+        assert!(matches!(
+            headroom_hold(&core, &landed, &lim),
+            Some(HoldReason::InsufficientHeadroom { .. })
+        ));
+        // Once the pool drains back down, the same landed share now fits and growth resumes.
+        let drained = MemorySignals {
+            current_bytes: Some(50_000),
+            ..calm()
+        };
+        note_completion(&mut core, &drained, &lim, CompletionKind::IncreasePoint);
+        assert_eq!(core.target_width, 2, "headroom recovered, the ramp resumes");
     }
 
     #[test]

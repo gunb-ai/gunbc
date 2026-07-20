@@ -10914,11 +10914,14 @@ pub fn run_discovery_corpus_with_options(
                         Ok(summary) => {
                             summaries.push(summary);
                             inline_groups += 1;
-                            // The additive-increase point: a completion observed calm grows
-                            // the window, so the next iteration dispatches wide. At most one
-                            // such growth fires per collapse-to-1 episode — the very next
-                            // iteration reads target_width > 1 and leaves this lane — so the
-                            // window cannot run away ahead of realized concurrency here.
+                            // The exploratory step off the floor — the ONLY increase point
+                            // reachable at width 1, since no worker exists here to land a
+                            // cost. A completion observed calm, with one more worker
+                            // predicted to fit, grows the window so the next iteration
+                            // dispatches wide. At most one such growth fires per
+                            // collapse-to-1 episode (the very next iteration reads
+                            // target_width > 1 and leaves this lane), and from there the
+                            // ramp is driven by landed worker costs, never by units.
                             governor.note_inline_unit_complete();
                         }
                         Err(e) => {
