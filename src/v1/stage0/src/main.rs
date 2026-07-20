@@ -451,10 +451,10 @@ fn main() {
                 std::process::exit(1);
             };
 
-            let pipeline_options = v1_compiler_compile::CompilePipelineOptions {
+            let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
                 analyze_complexity: false,
                 census_only_sources: Rc::new(census_only_sources.into()),
-            };
+            });
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources_with_options(
                     Rc::new(sources.into()),

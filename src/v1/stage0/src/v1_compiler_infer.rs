@@ -3473,16 +3473,9 @@ pub fn infer_expr(
                     expr_call_func_at(texpr.clone(), scope.type_env.clone().source_indices.clone());
                 let span = texpr.span.clone();
                 let call_args = texpr.children.clone();
-                let sig = match v1_rt::map_get(&scope.body_locals.clone(), func_name.clone()) {
-                    Some(_) => None,
-                    None => lookup_func_sig(
-                        scope.func_env.clone(),
-                        scope.type_env.clone(),
-                        func_name.clone(),
-                    ),
-                };
+                let sig = body_shadow_aware_func_sig(scope.clone(), func_name.clone());
                 let sig_params = match sig.clone() {
-                    Some(s) => panic!("error type cascade"),
+                    Some(s) => s.params.clone(),
                     None => Rc::new(vec![]),
                 };
                 let has_lambda = {
@@ -3685,7 +3678,7 @@ pub fn infer_expr(
                     {
                         let resolved_type = match sig.clone() {
                             Some(s) => substitute_generics(
-                                panic!("error type cascade"),
+                                s.inferred.clone(),
                                 call_subst.clone(),
                                 scope.type_env.clone().source_indices.clone(),
                             ),
@@ -12246,6 +12239,20 @@ pub fn type_node_label(
 pub struct SigParamSplit {
     pub value_params: Rc<Vec<Rc<Node>>>,
     pub generic_names: Rc<Vec<String>>,
+}
+
+pub fn body_shadow_aware_func_sig(
+    scope: Rc<InferScope>,
+    func_name: String,
+) -> Option<Rc<ResolvedFuncSig>> {
+    match v1_rt::map_get(&scope.body_locals.clone(), func_name.clone()) {
+        Some(_) => None,
+        None => lookup_func_sig(
+            scope.func_env.clone(),
+            scope.type_env.clone(),
+            func_name.clone(),
+        ),
+    }
 }
 
 pub fn split_sig_params(

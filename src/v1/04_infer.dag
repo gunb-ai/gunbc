@@ -1773,10 +1773,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       let call_args = texpr.children
 
-      let sig = match map_get(scope.body_locals, func_name) {
-        Present { value: _ } => Absent
-        Absent => lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
-      }
+      let sig = body_shadow_aware_func_sig(scope: scope, func_name: func_name)
       let sig_params = match sig {
         Present { value: s } => s.params
         Absent => []
@@ -5708,6 +5705,13 @@ fn type_node_label(n: Node, source_indices: Map<String, NewlineIndex>) -> String
 type SigParamSplit {
   value_params: List<Node>
   generic_names: List<String>
+}
+
+fn body_shadow_aware_func_sig(scope: InferScope, func_name: String) -> ResolvedFuncSig? {
+  match map_get(scope.body_locals, func_name) {
+    Present { value: _ } => Absent
+    Absent => lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
+  }
 }
 
 fn split_sig_params(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> SigParamSplit {
