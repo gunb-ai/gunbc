@@ -6892,9 +6892,23 @@ pub fn infer_record_lit(
                         }
                     }
                 };
-                let raw_resolved = match effective_lookup.clone() {
+                let variant_lookup_resolved = match effective_lookup.clone() {
                     Some(tn) => tn.clone(),
                     None => error_type(),
+                };
+                let raw_resolved = match local_variant_parent.clone() {
+                    Some(parent_name) => {
+                        if (parent_name.clone() == "Optional".to_string()) {
+                            variant_lookup_resolved.clone()
+                        } else {
+                            match lookup_type_by_name(scope.type_env.clone(), parent_name.clone())
+                            {
+                                Some(parent_decl) => parent_decl.clone(),
+                                None => variant_lookup_resolved.clone(),
+                            }
+                        }
+                    }
+                    None => variant_lookup_resolved.clone(),
                 };
                 let expected_optional_parent = Some("Optional".to_string());
                 let is_present_ctor = ((type_name.clone().unwrap() == "Present".to_string())
