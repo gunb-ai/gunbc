@@ -1,6 +1,6 @@
 # Rc-ownership wrap-decision predicate — design + deep-emitter gate derisk
 
-Status: design-first, 2026-07-16. Session: bold-seal-166.
+Status: LANDED (predicate + translate routing + UseSiteVerdict enrollment), 2026-07-20 verify-by-execution (valiant-dove-723). Original design: 2026-07-16 (bold-seal-166). Plan carrier (`v1_deletion_plan.dag` lane_state rows) is batched in #6909 — not this PR; the mark on the carrier is the plan file, this doc is the design receipt only.
 Parent: sharp-bee-290 (Weak → Strong Self Host, Wave 1→4).
 Displaced cost: unblocks self-emit for Rc-heavy core compiler modules (`04_infer`, `06_translate`, `05_emit*`, … — each seed-emitted with 100+ `Rc<` sites today) without the latent §5 fail-open that silently wraps every `shared_types` member in `Rc<T>`.
 
@@ -116,7 +116,7 @@ The gate does not alone flip these — Track B body emit and namespace resolutio
 
 1. **Land predicate + witnesses** — LANDED (#6776): `wrap_decision_lookup_in_catalog_node`, `wrap_decision_gate`, `wrap_decision_predicate_test.dag` green.
 2. **Rewire `06_translate`** — LANDED (#6775): inline `translate_sg_rc_bundle_apply_disposition` + lookup chains replaced with `wrap_decision_gate` (behavior-preserving refactor; `sg_rc_layering_test` stays green).
-3. **Retire v1 `shared_types` wrap for v2 emit entry** — v2 `emit` → `translate` path does not call `render_rust_shared_type_if_needed`; v1 `gunbc compile --target rust` still uses seed `shared_types` until v1 delete (S3).
+3. **Retire v1 `shared_types` wrap for v2 emit entry** — LANDED (v2 path): zero `shared_types` / `render_rust_shared_type_if_needed` references under `src/v2/`; v1 `gunbc compile --target rust` still uses seed `shared_types` until v1 delete (S3).
 4. **Enroll `UseSiteVerdict` carrier** — LANDED: `target_carrier_use_site_verdict` + owned-at-all-sites rows in `rust.dag` catalog; witnesses in `wrap_decision_predicate_test.dag`.
 5. **Frontier flip** — unblock `parse_engine_hooks`, `discovery_enumeration` per `frontier_band_a_emit_readiness` (still gated on rustc-green behavioral receipts + Track B body emit).
 
