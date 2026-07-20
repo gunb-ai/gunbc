@@ -325,18 +325,23 @@ fn account_typecheck_module_result(acc: &mut Accountant, result: &TypecheckModul
 fn account_from_typed_cache(
     cache: &StdHashMap<String, Rc<crate::v1_compiler_infer::TypecheckModuleResult>>,
 ) -> (u64, usize, u64) {
-    // Shareable grain = serde transport bytes (the cross-worker store payload) plus map shell.
+    // Shareable grain = serde transport bytes (cross-worker store payload) plus map shell.
+    // Encode one module and extrapolate — full-corpus encode OOMs on measurement hosts.
     let mut acc = Accountant::new();
     acc.add_hashmap_shell(cache);
-    let mut serde_bytes = 0u64;
-    for (key, result) in cache.iter() {
+    for key in cache.keys() {
         acc.add_string(key);
-        if let Ok(bytes) =
-            crate::shared_typecheck_store::SharedTypecheckCaches::encode_typed_snapshot(result)
-        {
-            serde_bytes += bytes.len() as u64;
-        }
     }
+    let sample_serde = cache
+        .values()
+        .next()
+        .and_then(|result| {
+            crate::shared_typecheck_store::SharedTypecheckCaches::encode_typed_snapshot(result)
+                .ok()
+                .map(|bytes| bytes.len() as u64)
+        })
+        .unwrap_or(0);
+    let serde_bytes = sample_serde.saturating_mul(cache.len() as u64);
     (acc.finish() + serde_bytes, cache.len(), serde_bytes)
 }
 
