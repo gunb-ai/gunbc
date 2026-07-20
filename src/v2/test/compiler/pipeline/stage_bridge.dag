@@ -85,7 +85,7 @@ fn pipeline_tokenize_source(source: String, file: Symbol) -> Outcome<TokenStream
 fn pipeline_parse_tree_from_tokens(tokens: TokenStream) -> Outcome<Node> {
   match parse_module(tokens: tokens, grammar: dag_language_model().grammar) {
     Accepted { value: artifact, diagnostics: d } =>
-      outcome_accepted(value: artifact.tree, diagnostics: d)
+      outcome_with_diagnostics(value: artifact.tree, diagnostics: d)
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
   }
 }
