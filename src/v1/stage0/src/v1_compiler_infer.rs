@@ -3564,33 +3564,12 @@ pub fn infer_expr(
                     })
                 } else {
                     {
-                        let value_params = sig_params.clone().fold(Rc::new(vec![]), |vp_acc, p| {
-                            if param_is_generic_decl(
-                                p.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ) {
-                                vp_acc.clone()
-                            } else {
-                                v1_rt::rc_list_push(vp_acc.clone(), p.clone())
-                            }
-                        });
-                        let generic_names =
-                            sig_params.clone().fold(Rc::new(vec![]), |gn_acc, p| {
-                                if param_is_generic_decl(
-                                    p.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ) {
-                                    v1_rt::rc_list_push(
-                                        gn_acc.clone(),
-                                        param_node_name_at(
-                                            p.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ),
-                                    )
-                                } else {
-                                    gn_acc.clone()
-                                }
-                            });
+                        let sig_split = split_sig_params(
+                            sig_params.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        );
+                        let value_params = sig_split.value_params.clone();
+                        let generic_names = sig_split.generic_names.clone();
                         let final_state = Rc::new(
                             call_args
                                 .clone()
@@ -3609,16 +3588,8 @@ pub fn infer_expr(
                             }),
                             |st: Rc<ArgGenericFoldState>, pair: (i64, Rc<Node>)| {
                                 let a = pair.1.clone();
-                                let formal_lookup = Rc::new(
-                                    value_params
-                                        .clone()
-                                        .iter()
-                                        .cloned()
-                                        .skip(pair.0.clone() as usize)
-                                        .collect::<Vec<_>>(),
-                                )
-                                .first()
-                                .cloned();
+                                let formal_lookup =
+                                    value_params.clone().get(pair.0.clone() as usize).cloned();
                                 let formal_raw = match formal_lookup.clone() {
                                     Some(p) => param_node_type_expr(p.clone()),
                                     None => type_variable_node("callable_param".to_string()),
@@ -3720,17 +3691,12 @@ pub fn infer_expr(
                             ),
                             None => error_type(),
                         };
-                        let value_params_for_check =
-                            sig_params.clone().fold(Rc::new(vec![]), |vpc_acc, p| {
-                                if param_is_generic_decl(
-                                    p.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                ) {
-                                    vpc_acc.clone()
-                                } else {
-                                    v1_rt::rc_list_push(vpc_acc.clone(), p.clone())
-                                }
-                            });
+                        let value_params_for_check = split_sig_params(
+                            sig_params.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        )
+                        .value_params
+                        .clone();
                         let arg_compat_diags =
                             if module_skips_direct_call_arg_check(scope.module_name.clone()) {
                                 Rc::new(vec![])
@@ -12276,6 +12242,47 @@ pub fn type_node_label(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SigParamSplit {
+    pub value_params: Rc<Vec<Rc<Node>>>,
+    pub generic_names: Rc<Vec<String>>,
+}
+
+pub fn split_sig_params(
+    params: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SigParamSplit> {
+    Rc::new(SigParamSplit {
+        value_params: Rc::new({
+            let mut __result = Vec::new();
+            for p in params.clone().iter().cloned() {
+                if !param_is_generic_decl(p.clone(), source_indices.clone()) {
+                    __result.push(p);
+                }
+            }
+            __result
+        }),
+        generic_names: Rc::new({
+            let mut __result = Vec::new();
+            for p in Rc::new({
+                let mut __result = Vec::new();
+                for p in params.clone().iter().cloned() {
+                    if param_is_generic_decl(p.clone(), source_indices.clone()) {
+                        __result.push(p);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(param_node_name_at(p.clone(), source_indices.clone()));
+            }
+            __result
+        }),
+    })
+}
+
 pub fn param_is_generic_decl(
     p: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -13745,7 +13752,7 @@ pub fn stamp_field_type_from_decl_params(
                     if is_param.clone() {
                         node_with_inferred(
                             field_type.clone(),
-                            Rc::new(InferredNode::TypeVariable { id: nm.clone() }),
+                            Some(Rc::new(InferredNode::TypeVariable { id: nm.clone() })),
                         )
                     } else {
                         field_type.clone()
@@ -13774,7 +13781,7 @@ pub fn stamp_type_param_occurrences(
                     match v1_rt::map_get(&param_names, nm.clone()) {
                         Some(_) => node_with_inferred(
                             n.clone(),
-                            Rc::new(InferredNode::TypeVariable { id: nm.clone() }),
+                            Some(Rc::new(InferredNode::TypeVariable { id: nm.clone() })),
                         ),
                         _ => n.clone(),
                     }
