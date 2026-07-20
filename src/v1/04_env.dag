@@ -88,22 +88,6 @@ fn empty_type_env() -> TypeEnv {
   }
 }
 
-fn empty_type_env() -> TypeEnv {
-  TypeEnv {
-    bindings: empty_map(),
-    str_bindings: empty_map(),
-    ancestry_str_bindings: empty_map(),
-    parents: [],
-    recursive_types: [],
-    recursive_type_set: empty_map(),
-    inductive_fields: empty_map(),
-    source_indices: empty_map(),
-    intern_table: empty_intern_table(),
-    source_visible_names: empty_map(),
-    symbol_index: empty_symbol_index()
-  }
-}
-
 fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
   map_get(index.entries, qualified_name)
 }
