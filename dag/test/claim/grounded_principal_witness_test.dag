@@ -135,7 +135,7 @@ fn witness_deploy_preflight_plan_first_step_reads_principal() -> Bool {
   ) {
     Present { value: effect } =>
       match effect {
-        ReadEffectivePosixPrincipal {} => true
+        ReadEffectivePosixPrincipal { read: _ } => true
         _ => false
       }
     Absent => false

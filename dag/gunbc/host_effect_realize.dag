@@ -232,12 +232,12 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
                   HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
-                ReadEffectivePosixPrincipal {} =>
-                  ShellOnHost { node: n, script: host_effect_read_effective_posix_principal_script() }
-                SudoNopasswdExecuteProbe { command_path: p, check_argv: c } =>
+                ReadEffectivePosixPrincipal { read: r } =>
+                  ShellOnHost { node: n, script: host_effect_read_effective_posix_principal_script(read: r) }
+                SudoNopasswdExecuteProbe { probe: p } =>
                   ShellOnHost {
                     node: n,
-                    script: host_effect_sudo_nopasswd_execute_probe_script(command_path: p, check_argv: c),
+                    script: host_effect_sudo_nopasswd_execute_probe_script(probe: p),
                   }
                 Srv3NbdProxyServe { intent: i, lease_key: k } =>
                   NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
@@ -293,9 +293,9 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
                   IncompatibleCell { reason: "host_effect: SetHostnameCas is in-band (shell hostnamectl) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-                ReadEffectivePosixPrincipal {} =>
+                ReadEffectivePosixPrincipal { read: _ } =>
                   IncompatibleCell { reason: "host_effect: ReadEffectivePosixPrincipal is in-band (shell whoami) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
-                SudoNopasswdExecuteProbe { command_path: _, check_argv: _ } =>
+                SudoNopasswdExecuteProbe { probe: _ } =>
                   IncompatibleCell { reason: "host_effect: SudoNopasswdExecuteProbe is in-band (shell sudo -n probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
               }
           }

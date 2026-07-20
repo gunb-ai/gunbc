@@ -1,6 +1,7 @@
 module gunbc.fleet_posix_accounts
 
 import extdeps.access.posix { PosixUser }
+import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
 import std.types { NonEmptyStr, List, String, Bool }
 import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -20,10 +21,7 @@ type PosixAccountDeclaredProbe {
   host: NonEmptyStr
 }
 
-type PosixSudoGrant {
-  command_path: NonEmptyStr
-  check_argv: NonEmptyStr
-}
+type PosixSudoGrant = SudoNopasswdExecuteProbeShape
 
 data posix_sudo_grant_materialization_note: String = "PosixSudoGrant is the fleet-domain MATERIALIZATION carrier for std.effect_grant.Grant over ExecuteEffect: posix_sudo_grant_to_effect_grant projects command_path to filesystem_position and carries verb via verb_of_effect_shape(ExecuteEffect) -- never a parallel grant vocabulary (DESIGN 3). check_argv is the deploy-preflight probe argv (transport/policy, not reach). WHO may sudo remains GroundedPosixPrincipal / std.access. dissolve-on = deploy-preflight envelope admits via admit_effect over projected grants."
 

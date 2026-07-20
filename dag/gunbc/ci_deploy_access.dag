@@ -28,6 +28,8 @@ import gunbc.host_effect {
   SshShell,
   EmitArtifactThenThinRun,
 }
+import extdeps.access.posix_effective_principal { EffectivePosixPrincipalRead }
+import extdeps.sudo.nopasswd_execute_probe { SudoNopasswdExecuteProbeShape }
 import gunbc.ci_deploy_target_host {
   DeployTargetHostProof,
   deploy_target_proof,
@@ -161,11 +163,13 @@ fn deploy_access_authorization_query(access: DeployAccess) -> DeployAuthorizatio
 }
 
 fn deploy_access_read_principal_effect() -> HostEffect {
-  ReadEffectivePosixPrincipal {}
+  ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead {} }
 }
 
 fn deploy_access_sudo_probe_effect(cmd: PrivilegedCommand) -> HostEffect {
-  SudoNopasswdExecuteProbe { command_path: cmd.path, check_argv: cmd.check }
+  SudoNopasswdExecuteProbe {
+    probe: SudoNopasswdExecuteProbeShape { command_path: cmd.path, check_argv: cmd.check }
+  }
 }
 
 fn deploy_access_grant_admits_probe(

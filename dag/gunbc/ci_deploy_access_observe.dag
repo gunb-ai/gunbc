@@ -58,8 +58,8 @@ fn deploy_access_preflight_plan_step_effect(step: EffectPlanStep<HostEffect>) ->
 
 fn deploy_access_effect_is_typed_probe(effect: HostEffect) -> Bool {
   match effect {
-    ReadEffectivePosixPrincipal {} => true
-    SudoNopasswdExecuteProbe { command_path: _, check_argv: _ } => true
+    ReadEffectivePosixPrincipal { read: _ } => true
+    SudoNopasswdExecuteProbe { probe: _ } => true
     ShellCommand { script: _ } => false
     RedfishAction { action: _ } => false
     ConvergePlan { policy: _ } => false
