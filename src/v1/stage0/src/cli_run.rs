@@ -752,9 +752,6 @@ mod cli_run_repo_grant_equivalence_tests {
         let root = process_workspace_root();
         let rel = Path::new("dag/std/effect_grant.dag");
         let abs = root.join(rel);
-        if !abs.is_file() {
-            return;
-        }
         let got = repo_relative_path(&abs).expect("contained path under workspace");
         assert_eq!(got, "dag/std/effect_grant.dag");
     }
