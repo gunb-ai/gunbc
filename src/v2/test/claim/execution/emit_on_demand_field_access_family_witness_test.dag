@@ -41,6 +41,7 @@ import v2.test.execution.emit_host_field_access_equals_eval {
   emit_field_eval_producer_tree,
   emit_field_eval_wrong_field_producer_tree,
   emit_field_eval_subject,
+  emit_field_eval_wrong_fixture_subject,
   emit_field_eval_subgraph_node,
   emit_field_eval_verdict_is_pass,
   emit_field_eval_verdict_is_semantic_mismatch,
@@ -52,8 +53,6 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_field_access_family_note: String = "Witness-realization lane 2 (witness_family_fanout): emit_host_field_access family — P3 ACCEPT witnesses mirroring emit_on_demand_kernel_witness_test.dag. Wet tests run before pure share-on-hit in the aggregate (eval-call memo ordering trap)."
-
-data field_access_wet_quarantine_admission_note: String = "Phase 0(b) QuarantineProbeExpectRed (gunbc.ci_layer_roots known_red_probe_entries): wet P3 ACCEPT subtests agreement/native-cold/native-warm/native-cold-then-warm/content-change-cold-rebuild EXPECT RED on main until emit_host_field_access transport lands — falsifier probe batch consumer, greening is counted un-quarantine. Pure subtests: OfflineLocalRecipe via test/claim/execution/ exclusion. Owner: swift-stag-662; coordinate lane 3 (jolly-dove-581) if transport defect is shared."
 
 data field_access_family_cache_root: String = "/tmp/gunbc_emit_on_demand_field_access"
 data field_access_family_emitter: String = "v2.compiler.emit"
@@ -309,11 +308,11 @@ test fn emit_on_demand_field_access_agreement_holds() -> Bool {
 }
 
 test fn emit_on_demand_field_access_wrong_fixture_refuses_holds() -> Bool {
-  match field_access_family_alt_tree() {
+  match emit_field_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
       emit_field_eval_verdict_is_semantic_mismatch(
         run: run_test_claim_emit_vs_eval(
-          subject: emit_field_eval_subject(tree: tree),
+          subject: emit_field_eval_wrong_fixture_subject(tree: tree),
           target: rust_field_access_target_model_staging()
         )
       )
