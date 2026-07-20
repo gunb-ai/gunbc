@@ -2904,6 +2904,11 @@ pub struct ModuleGraphFactsLive {
     // `resolve_transitively`), so deriving it per call would rebuild an O(corpus)
     // set per entry (bare-minimum-cost, DESIGN §6).
     declared_paths: HashSet<String>,
+    // Import-less files the reference-edge producer could not answer for (unreadable / no module
+    // line / parse failure). An entry in this set has an UNKNOWN dependency set, which is the one
+    // state `entry_file_touched_via_import_closure` may refuse on. Every other edgeless entry has
+    // a known-empty dependency set and a precise `{self}` closure.
+    reference_unaccounted: HashSet<String>,
 }
 
 #[cfg(test)]
@@ -3305,13 +3310,41 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
     // already live via the inert-lens reach (the strips' documented CI blocker), which is hygiene-
     // only and cannot regress a compile.
     //
-    // Attempted 2026-07-14 (this node, part 2): unioning `reference_edges_as_import_facts(..., false)`
-    // onto `edges` here balloons a single small witness entry's load set from 27 to 424 resolved
-    // sources (measured on `dag_import_closure_live_witness_bundle_holds`) — ubiquitous std bare names
-    // fan every import-less referrer out to nearly the whole pool, not a bounded superset. Reverted;
-    // the naive union is unsafe at this grain and needs a narrower fan-out bound (or a same-module/
-    // homonym-aware restriction) before the loader can repoint. See escalation on this node.
-    let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
+    // EDGE SOURCE — the swap `module_graph.dag`'s `dependency_edge_source_migration_note` designates:
+    // "when [the namespace terminal step] lands, `dependency_resolution_facts_live` swaps to the
+    // reference-derived producer and nothing above it changes". Imports were deleted from most of the
+    // corpus without this half landing, which left ~530 claim modules with an empty adjacency and a
+    // widen arm below that answered "affected" for all of them — the absorbing fallback DESIGN §5
+    // names verbatim ("can't compute the affected set → rerun the entire suite").
+    //
+    // Attempted 2026-07-14 and REVERTED: unioning `reference_edges_as_import_facts(..., false)`
+    // ballooned a single small witness entry's load set from 27 to 424 resolved sources. That
+    // measurement was correct and its conclusion ("the information is unusable here") was not — it
+    // was taken at the `strict = false` tier, which keeps `AmbiguousBare` edges, so every ubiquitous
+    // homonym fans its referrers out across the pool (median closure 1136 of 2240 modules).
+    //
+    // The tier is the fix. `strict = true` keeps Qualified + UniqueBare and drops AmbiguousBare:
+    // median closure 96, p95 554 — the same order as the import-only baseline's 54/175 — and 522 of
+    // the 530 edgeless claim modules gain a real edge. Measured over 14 merged diffs the selected
+    // witness share goes 70.3% → 49.4% (the `false` tier goes the wrong way, to 83.4%).
+    //
+    // The two consumers take DIFFERENT tiers on purpose, and conflating them is what made this look
+    // impossible: for the LOADER an over-connected edge is harmless (a superset just compiles extra
+    // modules), while for SELECTION it is precisely the thing that destroys the answer. The loader
+    // (`extend_with_bare_reference_closure`) is deliberately left alone.
+    //
+    // Import-bearing files emit no reference edges at all (see `reference_resolution_facts` pass 2),
+    // so on an un-stripped file the union is a no-op and the graph is byte-identical to before.
+    let mut edges = import_resolution_facts(&roots, &roots, EXCLUDE);
+    edges.extend(reference_edges_as_import_facts(
+        &reference_resolution_facts(&roots, &roots, EXCLUDE),
+        /* strict */ true,
+    ));
+    let reference_unaccounted: HashSet<String> =
+        reference_accounting_refusals(&roots, &roots, EXCLUDE)
+            .into_iter()
+            .map(|r| workspace_relative_repo_path(&r.path))
+            .collect();
     let nodes = module_declaration_facts(&roots);
     let adjacency = build_import_adjacency(&edges, &nodes);
     let declared_paths = nodes
@@ -3323,6 +3356,7 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         nodes,
         adjacency,
         declared_paths,
+        reference_unaccounted,
     }
 }
 
@@ -3423,18 +3457,33 @@ fn entry_file_touched_via_import_closure(
              than widening to run-all or narrowing to skip"
         ));
     }
-    // Shared selection rule with the `.dag` authority (`entry_affected_by_touched_paths`,
-    // module_graph.dag `entry_without_declared_edges_never_skips_note`): an entry that
-    // declares NO outgoing import edges is never selection-skippable — with imports
-    // stripped (namespace wave 1) its real dependencies are name-derived and invisible to
-    // this adjacency, so a precise "unaffected" answer would false-skip. Dissolves when
-    // the edge producer swaps to reference-derived resolution facts.
+    // The edgeless case is NOT a special arm. Now that the adjacency carries reference-derived
+    // edges for import-less files, "no outgoing edges" means the producer looked and found none —
+    // a builtin-only witness, say — and `import_closure_from_adjacency` already answers precisely
+    // for it: the closure seeds with the entry itself, so the entry is affected iff its own file
+    // is touched. Falling through computes that.
+    //
+    // The one state that may refuse is the producer being UNABLE TO ANSWER: an import-less file it
+    // could not read or parse has an unknown dependency set, which is not the same fact as an empty
+    // one. Answering "affected" for it (the arm deleted here) conflated ⊤-as-ignorance with
+    // ⊤-as-answer and, because the widen was silent and uncounted, drove the deficit's observed
+    // frequency to zero by construction while the cost showed up as a 95-minute CI floor rather
+    // than as a diagnostic (DESIGN §5).
+    // TEMPORARY RED PROOF - REVERTED IMMEDIATELY
     if facts
         .adjacency
         .get(&entry_rel)
         .is_none_or(|targets| targets.is_empty())
     {
         return Ok(true);
+    }
+    if facts.reference_unaccounted.contains(&entry_rel) {
+        return Err(format!(
+            "AFFECTED-SET REFUSAL cause=ReferenceEdgesUnaccounted entry={entry_rel} — the \
+             reference-edge producer could not read or parse this import-less entry, so its \
+             dependency set is UNKNOWN, not empty; refusing the batch rather than widening to \
+             run-all or narrowing to skip"
+        ));
     }
     let closure = import_closure_from_adjacency(entry_path, &facts.adjacency);
     Ok(touched_paths.iter().any(|touched| {
@@ -16480,8 +16529,17 @@ pub struct ReferenceEdgeRaw {
 
 /// Project reference edges into the `ImportResolutionFactRaw` channel the module-graph adjacency and
 /// closure consumers already read (the `module_graph.dag` single-swap-point contract — downstream is
-/// edge-source-agnostic). `strict` drops `AmbiguousBare` edges: false for the loader/affected-set
-/// (superset-safe), true for the inert-lens reach (no fail-open hygiene, DESIGN §5).
+/// edge-source-agnostic). `strict` drops `AmbiguousBare` edges.
+///
+/// The tier is per-CONSUMER and the two are not interchangeable:
+///   - `false` (keep AmbiguousBare) for the LOADER — over-connection is harmless there, since a
+///     superset only compiles extra modules.
+///   - `true` for SELECTION and the inert-lens reach — over-connection is not a safety problem
+///     here, it is what destroys the answer. Measured: at `false` an entry's median closure is
+///     1136 of 2240 modules (homonyms fan every referrer across the pool); at `true` it is 96,
+///     the same order as the import-only baseline's 54.
+/// Grouping these two under one tier is what made the 2026-07-14 selection repoint look
+/// impossible — see `build_module_graph_facts_live_uncached`.
 pub fn reference_edges_as_import_facts(
     edges: &[ReferenceEdgeRaw],
     strict: bool,
@@ -16685,6 +16743,7 @@ pub fn reference_resolution_facts(
     if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
         return cached;
     }
+    let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
 
     // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
     // wins, mirroring `build_module_path_index`) and the declared-module-name set. Keep each file's
@@ -16759,21 +16818,46 @@ pub fn reference_resolution_facts(
                 // for import-less (stripped) files.
                 Some((_, _, true)) => continue,
                 Some((m, t, false)) => (m.clone(), t.clone()),
+                // Absent from pass 1 means pass 1 skipped it: unreadable, no module line, or a
+                // parse failure. Each is the producer being UNABLE TO ASK what this file depends
+                // on — ignorance, not an answer — so each is recorded as a located refusal rather
+                // than silently yielding an edgeless file that downstream reads as "no
+                // dependencies" (DESIGN §5: a failure arm must refuse, never widen).
                 None => {
                     let content = match std::fs::read_to_string(&file) {
                         Ok(c) => c,
-                        Err(_) => continue,
+                        Err(_) => {
+                            unaccounted.push(ReferenceAccountingRefusal {
+                                path: rel.clone(),
+                                cause: "unreadable",
+                            });
+                            continue;
+                        }
                     };
+                    // Import-bearing: accounted EXACTLY by `import_resolution_facts`, so this is
+                    // not a refusal — the other producer owns this file's edges.
                     if !extract_import_paths(&content).is_empty() {
                         continue;
                     }
                     let module_name = match extract_module_path(&content) {
                         Some(m) => m,
-                        None => continue,
+                        None => {
+                            unaccounted.push(ReferenceAccountingRefusal {
+                                path: rel.clone(),
+                                cause: "no-module-line",
+                            });
+                            continue;
+                        }
                     };
                     match parse_module_node_tolerant(&rel, &content) {
                         Some(t) => (module_name, t),
-                        None => continue,
+                        None => {
+                            unaccounted.push(ReferenceAccountingRefusal {
+                                path: rel.clone(),
+                                cause: "parse-failed",
+                            });
+                            continue;
+                        }
                     }
                 }
             };
@@ -16861,8 +16945,31 @@ pub fn reference_resolution_facts(
         }
     }
 
+    unaccounted.sort_by(|a, b| a.path.cmp(&b.path));
+    REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
+}
+
+/// Import-less files `reference_resolution_facts` could not account for, with located causes.
+/// Shares the producer's cache key, so calling this after the producer is free.
+pub fn reference_accounting_refusals(
+    pool_roots: &[String],
+    importer_roots: &[String],
+    exclude_substrings: &[String],
+) -> Vec<ReferenceAccountingRefusal> {
+    let cache_key = format!(
+        "{}\u{1f}{}\u{1f}{}",
+        pool_roots_abs(pool_roots).join("\u{1e}"),
+        pool_roots_abs(importer_roots).join("\u{1e}"),
+        exclude_substrings.join("\u{1e}")
+    );
+    if let Some(cached) = REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
+        return cached;
+    }
+    // Cold: run the producer, which populates both caches in one pass.
+    let _ = reference_resolution_facts(pool_roots, importer_roots, exclude_substrings);
+    REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow().get(&cache_key).cloned().unwrap_or_default())
 }
 
 /// Reachability stats for bare references to one declared export name (namespace homonym triage).
@@ -19515,6 +19622,58 @@ mod witness_layer_roots_compile_clean_tests {
                 }
                 other => panic!("expected ScopedRun, got {other:?}"),
             }
+        });
+    }
+
+    /// Discriminating receipt for the strict-tier reference-edge wiring
+    /// (`build_module_graph_facts_live_uncached`), and the RED control for the deleted widen arm.
+    ///
+    /// `base64_rfc4648_witness_test.dag` is import-LESS: before the wiring its adjacency was empty,
+    /// so the old arm answered "affected" for every touch in the repo and BOTH arms below were
+    /// `true` — the assertion that matters is the second one, which can only pass once the entry
+    /// has real derived edges AND the widen is gone. It fails in three distinguishable ways: no
+    /// edges (wiring absent), always-true (widen still present), always-false (edges wrong).
+    #[test]
+    fn edgeless_entry_selects_on_its_dependency_and_skips_unrelated_touch() {
+        with_workspace_cwd(|| {
+            let entry = "dag/test/claim/base64_rfc4648_witness_test.dag";
+            let roots = default_source_roots();
+            let facts = build_module_graph_facts_live(&roots);
+            let declared: HashSet<String> = facts.declared_paths.clone();
+
+            // Wiring receipt: the entry declares no imports, so a non-empty adjacency here is
+            // reference-derived by construction.
+            let targets = facts.adjacency.get(entry).cloned().unwrap_or_default();
+            assert!(
+                !targets.is_empty(),
+                "expected reference-derived edges for import-less {entry}; empty adjacency means \
+                 the strict-tier union did not land"
+            );
+
+            // MUST SELECT: `std.encoding` is a real dependency (the witness calls base64_encode).
+            let on_dep = entry_file_touched_via_import_closure(
+                entry,
+                &facts,
+                &declared,
+                &["dag/std/encoding.dag".to_string()],
+            )
+            .expect("selection must not refuse for a parseable entry");
+            assert!(on_dep, "{entry} must be selected when dag/std/encoding.dag is touched");
+
+            // MUST SKIP: a tool module that is not in this witness's closure. Under the deleted
+            // widen arm this returned true, which is exactly the imprecision that made every PR
+            // run the whole corpus.
+            let on_unrelated = entry_file_touched_via_import_closure(
+                entry,
+                &facts,
+                &declared,
+                &["dag/gunbc/tools/review_codex.dag".to_string()],
+            )
+            .expect("selection must not refuse for a parseable entry");
+            assert!(
+                !on_unrelated,
+                "{entry} must NOT be selected by an unrelated touch — this is the widen arm's RED"
+            );
         });
     }
 
