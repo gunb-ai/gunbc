@@ -11219,7 +11219,31 @@ pub fn run_discovery_corpus_with_options(
             // warmed for calibration + floor runner). Spawning a worker thread duplicates the
             // whole-tree index on a second thread-local cache — ~2× retention that OOM'd CI
             // batch-2 discovery (runs 29372308568 / 29373433928). Cross-worker store arms only
-            // when plural workers run (below). 🟡 dissolve-on: Rc→Arc retires the width gate.
+            // when plural workers run (below).
+            //
+            // This width read is deliberately SAMPLED ONCE, and at width 1 that makes the
+            // window an absorbing state for this pool: the only path that grows it (a slot
+            // completion) lives past the branch below, so the governor's AIMD controller is
+            // not reachable from the corpus. That is a real defect in the controller — and
+            // un-latching it is nonetheless a MEASURED LOSS, so the latch stays until the
+            // cost it hides is gone. Same branch, same 621 entry-groups, same .rs-forced
+            // whole-tree path: serial 11.75min GREEN (CI 29707161743 — max_width_reached=1,
+            // admissions=1, peak 6.97 GB) vs un-latched 47min+ without finishing (CI
+            // 29714863168), vs un-latched with per-unit window growth OOM-killed at
+            // 101.6 GB in 11min (CI 29710324768).
+            //
+            // The reason is Amdahl, not a bug: a worker's front cost is its own whole-tree
+            // index build (~10.7 GB, minutes) and the entire corpus is ~12 minutes of work,
+            // so every added worker costs more setup than the parallelism it buys. Width is
+            // not worth reaching for while the index is per-worker; the governor's job here
+            // is to be correct when it IS reachable — see `CompletionKind` in
+            // `memory_governor`, where the window tracks landed worker cost and never the
+            // unit-completion rate.
+            // 🟡 dissolve-on: Rc→Arc retires the width gate — sharing the index removes the
+            // per-worker front cost, which is the thing that makes width unprofitable. Priced
+            // FIRST by the share spike (docs/plans/cross-worker-typecheck-share-design.md §9
+            // open decision 2), because that design's §7 warns a shared store also INCREASES
+            // co-resident retention: the win is a crossover in width, not a given.
             if spawn_target_width <= 1 {
                 eprintln!(
                     "run_discovery_corpus: width=1 inline drain — reusing process_shared_index (no worker duplicate index)"
