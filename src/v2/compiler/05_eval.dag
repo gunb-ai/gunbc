@@ -1222,6 +1222,8 @@ fn eval_type_node_atom(
       }
     TypeNode { connective: _ } =>
       interpretation.value.allocate_literal(node, environment)
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
