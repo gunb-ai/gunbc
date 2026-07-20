@@ -5942,8 +5942,29 @@ fn tree_bare_census_for_root(
             queue.push_back(file.clone());
         }
     }
+    // Widen along the REFERENCE-aware adjacency, not the import-only one. This
+    // BFS is what lets a root's bare census see a provider outside its own tree,
+    // and before the strip that reach existed only because some module in the
+    // tree still carried an `import`. Once a file is stripped its import
+    // adjacency is empty, so an import-only walk confines the census to the
+    // root's own files and every cross-tree bare name silently stops resolving
+    // (measured: `LiveTreeDisposition` resolves for all 474 same-tree consumers
+    // in src/v2 and fails for 275 of 282 cross-tree consumers under dag/ —
+    // one loader gap wearing the costume of 275 per-file defects).
+    //
+    // `selection_adjacency` is the import edges UNIONED with the strict-tier
+    // reference edges, so it is a superset of `adjacency` and the widening is
+    // bounded by real name references — NOT the whole pool. That bound matters:
+    // `pool_bare_census` (the unbounded cross-tree fallback below) flips
+    // corpus-unique names to ambiguous and vanishes bare variant aliases, which
+    // is why the two maps stay distinct rather than being merged at the source.
     while let Some(importer) = queue.pop_front() {
-        let Some(targets) = index.module_graph_facts.adjacency.get(&importer) else {
+        let Some(targets) = index
+            .module_graph_facts
+            .selection_adjacency
+            .get(&importer)
+            .or_else(|| index.module_graph_facts.adjacency.get(&importer))
+        else {
             continue;
         };
         for path in targets {
