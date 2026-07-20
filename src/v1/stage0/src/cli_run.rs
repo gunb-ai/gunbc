@@ -14,7 +14,11 @@ use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
-use crate::v1_compiler_infer_env::{lookup_type_by_name, symbol_index_insert, SymbolIndex};
+use crate::v1_compiler_infer_env::{
+    lookup_type_by_name, qualified_all_but_last, symbol_index_insert, symbol_index_lookup,
+    GlobalBareLookupState, SymbolIndex,
+};
+use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -17118,6 +17122,472 @@ pub fn bare_ref_reachability_for_name(
         }
     }
     stats
+}
+
+// --- Resolution divergence census (namespace-resolution-design.md §12.4) ---
+// Read-only inventory: compare `lookup_resolved_sig` (first-hit over func_env.parents)
+// against the landed SymbolIndex containment walk (lexical + global-unique).
+// Method: direct observation of each mechanism's return value — NOT diagnostics.
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ContainmentResolveVia {
+    Lexical,
+    GlobalUnique,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ContainmentResolve {
+    Hit {
+        owner_module: String,
+        qualified_path: String,
+        node_ptr: usize,
+        via: ContainmentResolveVia,
+        lexical_steps: usize,
+    },
+    Ambiguous,
+    Unresolved,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FnBindingRef {
+    pub owner_module: String,
+    pub qualified_path: String,
+    pub node_ptr: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ResolutionDivergenceBucket {
+    Agree,
+    Diverge {
+        import_binding: FnBindingRef,
+        containment_binding: FnBindingRef,
+    },
+    ContainmentAmbiguous {
+        import_binding: FnBindingRef,
+    },
+    ContainmentUnresolved {
+        import_binding: FnBindingRef,
+    },
+    ImportUnresolved {
+        containment_binding: FnBindingRef,
+    },
+    NeitherBound,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolutionDivergenceSite {
+    pub calling_module: String,
+    pub caller_fn: String,
+    pub callee: String,
+    pub call_file: String,
+    pub call_span_start: i64,
+    pub bucket: ResolutionDivergenceBucket,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ResolutionDivergenceCostShape {
+    pub containment_hits: usize,
+    pub lexical_steps_histogram: BTreeMap<usize, usize>,
+    pub global_unique_hits: usize,
+    pub lexical_only_hits: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ResolutionDivergenceCensus {
+    pub sites_checked: usize,
+    pub agree: usize,
+    pub diverge: usize,
+    pub containment_ambiguous: usize,
+    pub containment_unresolved: usize,
+    pub import_unresolved: usize,
+    pub neither_bound: usize,
+    pub diverge_rows: Vec<ResolutionDivergenceSite>,
+    pub containment_ambiguous_rows: Vec<ResolutionDivergenceSite>,
+    pub containment_unresolved_rows: Vec<ResolutionDivergenceSite>,
+    pub cost_shape: ResolutionDivergenceCostShape,
+}
+
+fn module_path_to_qualified_path(module_path: &str, name: &str) -> String {
+    if module_path.is_empty() {
+        name.to_string()
+    } else {
+        format!("{module_path}.{name}")
+    }
+}
+
+fn is_fn_decl_node(node: &Node) -> bool {
+    !node.params.is_empty() || node.inferred.is_some() || node.type_annotation.is_some()
+}
+
+fn fn_binding_from_sig(owner_module: &str, name: &str, sig: &ResolvedFuncSig) -> FnBindingRef {
+    let anchor = sig
+        .params
+        .iter()
+        .next()
+        .cloned()
+        .unwrap_or_else(|| sig.inferred.clone());
+    FnBindingRef {
+        owner_module: owner_module.to_string(),
+        qualified_path: module_path_to_qualified_path(owner_module, name),
+        node_ptr: Rc::as_ptr(&anchor) as usize,
+    }
+}
+
+fn fn_binding_from_node(owner_module: &str, name: &str, node: &Rc<Node>) -> FnBindingRef {
+    FnBindingRef {
+        owner_module: owner_module.to_string(),
+        qualified_path: module_path_to_qualified_path(owner_module, name),
+        node_ptr: Rc::as_ptr(node) as usize,
+    }
+}
+
+fn import_chain_owner(func_env: &ResolvedFuncEnv, name: &str) -> Option<String> {
+    if func_env.local.contains_key(name) {
+        return Some(func_env.name.clone());
+    }
+    for p in func_env.parents.iter() {
+        if p.local.contains_key(name) {
+            return Some(p.name.clone());
+        }
+    }
+    None
+}
+
+/// `symbol_index_lexical_lookup` from `dag/std/symbol_index.dag`, on v1 string QNs.
+pub fn symbol_index_lexical_lookup_v1(
+    index: &SymbolIndex,
+    position: &str,
+    name: &str,
+) -> Option<(String, Rc<Node>, usize)> {
+    let mut pos = position.to_string();
+    let mut steps = 0usize;
+    loop {
+        steps += 1;
+        let qn = module_path_to_qualified_path(&pos, name);
+        if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn) {
+            return Some((pos, node, steps));
+        }
+        if pos.is_empty() {
+            return None;
+        }
+        pos = qualified_all_but_last(pos);
+    }
+}
+
+/// Containment walk: lexical lookup, then `symbol_index_global_unique_lookup` equivalent.
+pub fn containment_resolve_fn_v1(
+    index: &SymbolIndex,
+    module_path: &str,
+    name: &str,
+) -> ContainmentResolve {
+    if let Some((owner, node, steps)) = symbol_index_lexical_lookup_v1(index, module_path, name) {
+        if is_fn_decl_node(&node) {
+            return ContainmentResolve::Hit {
+                owner_module: owner.clone(),
+                qualified_path: module_path_to_qualified_path(&owner, name),
+                node_ptr: Rc::as_ptr(&node) as usize,
+                via: ContainmentResolveVia::Lexical,
+                lexical_steps: steps,
+            };
+        }
+    }
+    match index
+        .global_bare
+        .get(name)
+        .map(|s| s.as_ref().clone())
+    {
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            module_path: owner,
+            binding,
+            ..
+        }) => {
+            if is_fn_decl_node(&binding.resolved) {
+                return ContainmentResolve::Hit {
+                    owner_module: owner.clone(),
+                    qualified_path: module_path_to_qualified_path(&owner, name),
+                    node_ptr: Rc::as_ptr(&binding.resolved) as usize,
+                    via: ContainmentResolveVia::GlobalUnique,
+                    lexical_steps: 0,
+                };
+            }
+            ContainmentResolve::Unresolved
+        }
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }) => {
+            ContainmentResolve::Ambiguous
+        }
+        None => ContainmentResolve::Unresolved,
+    }
+}
+
+fn collect_bare_call_sites(
+    node: &Rc<Node>,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    out: &mut Vec<(String, Rc<Node>)>,
+) {
+    match &*node.expr_data {
+        ExprData::ExprCall { .. } => {
+            let callee = expr_call_func_at(node.clone(), source_indices.clone());
+            if !callee.contains('.') {
+                out.push((callee, node.clone()));
+            }
+        }
+        _ => {}
+    }
+    for child in node.children.iter() {
+        collect_bare_call_sites(child, source_indices, out);
+    }
+    if let Some(body) = &node.body {
+        collect_bare_call_sites(body, source_indices, out);
+    }
+}
+
+fn bindings_agree(import: &FnBindingRef, containment: &FnBindingRef) -> bool {
+    import.node_ptr == containment.node_ptr
+        || import.qualified_path == containment.qualified_path
+}
+
+fn bucket_site(
+    import_binding: Option<FnBindingRef>,
+    containment: ContainmentResolve,
+) -> ResolutionDivergenceBucket {
+    match (import_binding, containment) {
+        (Some(import), ContainmentResolve::Hit {
+            owner_module,
+            qualified_path,
+            node_ptr,
+            ..
+        }) => {
+            let containment_binding = FnBindingRef {
+                owner_module,
+                qualified_path,
+                node_ptr,
+            };
+            if bindings_agree(&import, &containment_binding) {
+                ResolutionDivergenceBucket::Agree
+            } else {
+                ResolutionDivergenceBucket::Diverge {
+                    import_binding: import,
+                    containment_binding,
+                }
+            }
+        }
+        (Some(import), ContainmentResolve::Ambiguous) => {
+            ResolutionDivergenceBucket::ContainmentAmbiguous { import_binding: import }
+        }
+        (Some(import), ContainmentResolve::Unresolved) => {
+            ResolutionDivergenceBucket::ContainmentUnresolved { import_binding: import }
+        }
+        (None, ContainmentResolve::Hit {
+            owner_module,
+            qualified_path,
+            node_ptr,
+            ..
+        }) => ResolutionDivergenceBucket::ImportUnresolved {
+            containment_binding: FnBindingRef {
+                owner_module,
+                qualified_path,
+                node_ptr,
+            },
+        },
+        (None, ContainmentResolve::Ambiguous | ContainmentResolve::Unresolved) => {
+            ResolutionDivergenceBucket::NeitherBound
+        }
+    }
+}
+
+/// Whole-corpus resolution divergence census over a resolved `InterpContext`.
+pub fn resolution_divergence_census_from_ctx(
+    ctx: &v1_interpreter::InterpContext,
+) -> ResolutionDivergenceCensus {
+    let source_indices = ctx.source_indices.clone();
+    let census_index = ctx
+        .modules
+        .iter()
+        .next()
+        .map(|m| (*m.type_env.symbol_index).clone())
+        .expect("symbol index");
+
+    let mut out = ResolutionDivergenceCensus::default();
+
+    for tm in ctx.modules.iter() {
+        let module_path = tm.type_env.module_path.clone();
+        let func_env = tm.func_env.clone();
+
+        for item in tm.items.iter() {
+            let caller_fn = authored_name_at(source_indices.clone(), item.clone());
+            let mut calls = Vec::new();
+            if let Some(body) = &item.body {
+                collect_bare_call_sites(body, &source_indices, &mut calls);
+            }
+            for (callee, call_node) in calls {
+                out.sites_checked += 1;
+                let import_sig = lookup_resolved_sig(func_env.clone(), callee.clone());
+                let import_binding = import_sig.as_ref().and_then(|sig| {
+                    import_chain_owner(&func_env, &callee)
+                        .map(|owner| fn_binding_from_sig(&owner, &callee, sig))
+                });
+                let containment = containment_resolve_fn_v1(&census_index, &module_path, &callee);
+
+                if let ContainmentResolve::Hit {
+                    via,
+                    lexical_steps,
+                    ..
+                } = &containment
+                {
+                    out.cost_shape.containment_hits += 1;
+                    match via {
+                        ContainmentResolveVia::Lexical => {
+                            out.cost_shape.lexical_only_hits += 1;
+                            *out
+                                .cost_shape
+                                .lexical_steps_histogram
+                                .entry(*lexical_steps)
+                                .or_insert(0) += 1;
+                        }
+                        ContainmentResolveVia::GlobalUnique => {
+                            out.cost_shape.global_unique_hits += 1;
+                        }
+                    }
+                }
+
+                let bucket = bucket_site(import_binding, containment);
+                let site = ResolutionDivergenceSite {
+                    calling_module: module_path.clone(),
+                    caller_fn,
+                    callee: callee.clone(),
+                    call_file: call_node.span.file.clone(),
+                    call_span_start: call_node.span.start,
+                    bucket: bucket.clone(),
+                };
+                match bucket {
+                    ResolutionDivergenceBucket::Agree => out.agree += 1,
+                    ResolutionDivergenceBucket::Diverge { .. } => {
+                        out.diverge += 1;
+                        out.diverge_rows.push(site);
+                    }
+                    ResolutionDivergenceBucket::ContainmentAmbiguous { .. } => {
+                        out.containment_ambiguous += 1;
+                        out.containment_ambiguous_rows.push(site);
+                    }
+                    ResolutionDivergenceBucket::ContainmentUnresolved { .. } => {
+                        out.containment_unresolved += 1;
+                        out.containment_unresolved_rows.push(site);
+                    }
+                    ResolutionDivergenceBucket::ImportUnresolved { .. } => out.import_unresolved += 1,
+                    ResolutionDivergenceBucket::NeitherBound => out.neither_bound += 1,
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Floor source roots for the §12.4 census (dag + src/v1 + src/v2).
+pub fn resolution_divergence_census_source_roots(ws: &Path) -> Vec<String> {
+    vec![
+        ws.join("dag").to_string_lossy().into_owned(),
+        ws.join("src/v1").to_string_lossy().into_owned(),
+        ws.join("src/v2").to_string_lossy().into_owned(),
+    ]
+}
+
+/// Run the whole-tree resolution divergence census (read-only).
+pub fn resolution_divergence_census_live(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<ResolutionDivergenceCensus, String> {
+    let WholeTreeCtx { ctx, .. } = whole_tree_resolved_ctx(
+        source_roots,
+        exclude_substrings,
+        v1_interpreter::ExecutionMode::Wet,
+    )?;
+    Ok(resolution_divergence_census_from_ctx(&ctx))
+}
+
+pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) -> String {
+    let mut lines = Vec::new();
+    lines.push(format!("[resolution-divergence-census] sites_checked={}", census.sites_checked));
+    lines.push(format!("[resolution-divergence-census] agree={}", census.agree));
+    lines.push(format!("[resolution-divergence-census] diverge={}", census.diverge));
+    lines.push(format!(
+        "[resolution-divergence-census] containment_ambiguous={}",
+        census.containment_ambiguous
+    ));
+    lines.push(format!(
+        "[resolution-divergence-census] containment_unresolved={}",
+        census.containment_unresolved
+    ));
+    lines.push(format!(
+        "[resolution-divergence-census] import_unresolved={}",
+        census.import_unresolved
+    ));
+    lines.push(format!(
+        "[resolution-divergence-census] neither_bound={}",
+        census.neither_bound
+    ));
+    lines.push(format!(
+        "[resolution-divergence-census] cost_shape hits={} lexical_only={} global_unique={} lexical_steps_histogram={:?}",
+        census.cost_shape.containment_hits,
+        census.cost_shape.lexical_only_hits,
+        census.cost_shape.global_unique_hits,
+        census.cost_shape.lexical_steps_histogram,
+    ));
+    for site in &census.diverge_rows {
+        if let ResolutionDivergenceBucket::Diverge {
+            import_binding,
+            containment_binding,
+        } = &site.bucket
+        {
+            lines.push(format!(
+                "DIVERGE\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
+                 import_chain={} ({} ptr={})\tcontainment={} ({} ptr={})",
+                site.calling_module,
+                site.caller_fn,
+                site.callee,
+                site.call_file,
+                site.call_span_start,
+                import_binding.owner_module,
+                import_binding.qualified_path,
+                import_binding.node_ptr,
+                containment_binding.owner_module,
+                containment_binding.qualified_path,
+                containment_binding.node_ptr,
+            ));
+        }
+    }
+    for site in &census.containment_ambiguous_rows {
+        if let ResolutionDivergenceBucket::ContainmentAmbiguous { import_binding } = &site.bucket {
+            lines.push(format!(
+                "CONTAINMENT_AMBIGUOUS\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
+                 import_chain={} ({})",
+                site.calling_module,
+                site.caller_fn,
+                site.callee,
+                site.call_file,
+                site.call_span_start,
+                import_binding.owner_module,
+                import_binding.qualified_path,
+            ));
+        }
+    }
+    for site in &census.containment_unresolved_rows {
+        if let ResolutionDivergenceBucket::ContainmentUnresolved { import_binding } =
+            &site.bucket
+        {
+            lines.push(format!(
+                "CONTAINMENT_UNRESOLVED\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
+                 import_chain={} ({})",
+                site.calling_module,
+                site.caller_fn,
+                site.callee,
+                site.call_file,
+                site.call_span_start,
+                import_binding.owner_module,
+                import_binding.qualified_path,
+            ));
+        }
+    }
+    lines.join("\n")
 }
 
 #[cfg(test)]
