@@ -6057,7 +6057,71 @@ pub fn populate_multi_entry_index_discovery_corpus(
     Ok((index, entries.len(), rows.len().max(total_entries)))
 }
 
-pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
+pub fn populate_multi_entry_index_whole_tree_discovery(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<(MultiEntryIndex, usize, usize), String> {
+    populate_multi_entry_index_whole_tree(
+        source_roots,
+        exclude_substrings,
+        ResolveTypecheckGate::DiscoveryCorpusAdvisory,
+    )
+}
+
+/// Floor worker object: empty whole-tree shell over both roots (what adaptive workers build
+/// at thread start — `cli_run.rs` ~11191–11195).
+pub fn build_worker_index_shell(source_roots: &[String]) -> MultiEntryIndex {
+    build_multi_entry_index(source_roots)
+}
+
+/// Floor worker object after discovery-corpus warm: one index, all discovery entries resolved
+/// against it (the retention shape a worker accumulates across its entry-groups).
+pub fn populate_worker_discovery_index(
+    source_roots: &[String],
+) -> Result<(MultiEntryIndex, usize, usize), String> {
+    populate_multi_entry_index_discovery_corpus(source_roots, None)
+}
+
+/// Attach a fresh worker shell to an already-warmed cross-worker typed store.
+pub fn build_worker_index_with_warm_store(
+    source_roots: &[String],
+    store: std::sync::Arc<std::sync::RwLock<SharedTypecheckCaches>>,
+) -> MultiEntryIndex {
+    build_multi_entry_index_with_shared_caches(source_roots, store)
+}
+
+/// Host metadata for heterogeneous-box receipts (operator ruling 2026-07-20).
+pub fn spike_measurement_host_metadata() -> (String, Option<u64>, Option<u64>) {
+    let hostname = std::fs::read_to_string("/etc/hostname")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string());
+    let mem_available_kb = std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("MemAvailable:"))
+                .and_then(|l| l.split_whitespace().nth(1)?.parse::<u64>().ok())
+        });
+    let cgroup_max_bytes = std::fs::read_to_string("/sys/fs/cgroup/memory.max")
+        .ok()
+        .and_then(|s| {
+            let s = s.trim();
+            if s == "max" {
+                None
+            } else {
+                s.parse::<u64>().ok()
+            }
+        })
+        .or_else(|| {
+            std::fs::read_to_string("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+                .ok()
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .filter(|&n| n < u64::MAX / 2)
+        });
+    (hostname, mem_available_kb, cgroup_max_bytes)
+}
     let sources =
         load_sources_for_entry_with_index(&index.source_files, &index.module_graph_facts, entry)?;
     Ok(subject_digest_for_closure(&sources))
