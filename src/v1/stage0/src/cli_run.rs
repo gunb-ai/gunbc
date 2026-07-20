@@ -17206,30 +17206,51 @@ mod reference_edge_producer_tests {
         )
     }
 
-    fn dependency_edges_from_value(
+    fn edge_from_record(
+        ctx: &crate::v1_interpreter::InterpContext,
+        value: &crate::v1_interpreter::Value,
+    ) -> (String, String) {
+        let crate::v1_interpreter::Value::Record { fields, .. } = value else {
+            panic!("expected ModuleDependencyEdge record, got {value}");
+        };
+        let path = match ctx.field(fields, "path") {
+            Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
+            other => panic!("path field: {other:?}"),
+        };
+        let target = match ctx.field(fields, "target_module") {
+            Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
+            other => panic!("target_module field: {other:?}"),
+        };
+        (path, target)
+    }
+
+    fn dependency_edges_from_free_monoid(
         ctx: &crate::v1_interpreter::InterpContext,
         value: &crate::v1_interpreter::Value,
     ) -> Vec<(String, String)> {
-        let list = match value {
-            crate::v1_interpreter::Value::List(items) => items,
-            other => panic!("expected List, got {other}"),
-        };
-        list.iter()
-            .map(|item| match item {
-                crate::v1_interpreter::Value::Record { fields, .. } => {
-                    let path = match ctx.field(fields, "path") {
-                        Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
-                        other => panic!("path field: {other:?}"),
-                    };
-                    let target = match ctx.field(fields, "target_module") {
-                        Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
-                        other => panic!("target_module field: {other:?}"),
-                    };
-                    (path, target)
-                }
-                other => panic!("expected Record edge, got {other}"),
-            })
-            .collect()
+        match value {
+            crate::v1_interpreter::Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Empty") => Vec::new(),
+            crate::v1_interpreter::Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Cons") => {
+                let head = ctx
+                    .field(fields, "head")
+                    .expect("Cons.head must be present");
+                let tail = ctx
+                    .field(fields, "tail")
+                    .expect("Cons.tail must be present");
+                let mut edges = vec![edge_from_record(ctx, head)];
+                edges.extend(dependency_edges_from_free_monoid(ctx, tail));
+                edges
+            }
+            other => panic!("expected FreeMonoid Cons/Empty, got {other}"),
+        }
     }
 
     // Divergence control for the §3 producer fork dissolved in #6935: an import-less file that
@@ -17244,8 +17265,6 @@ mod reference_edge_producer_tests {
             resolve_entry_with_index_for_discovery_corpus, workspace_root,
         };
         use crate::v1_interpreter::{self, ExecutionMode};
-
-        const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 
         let root = fixture_root("divergence");
         let _ = std::fs::remove_dir_all(&root);
@@ -17284,6 +17303,11 @@ mod reference_edge_producer_tests {
         );
 
         let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let module_graph_entry = ws
+            .join("src/v2/lens/module_graph.dag")
+            .to_string_lossy()
+            .into_owned();
         let index_roots = vec![
             ws.join("dag").to_string_lossy().into_owned(),
             ws.join("src/v2").to_string_lossy().into_owned(),
@@ -17291,7 +17315,7 @@ mod reference_edge_producer_tests {
         ];
         let index = build_multi_entry_index(&index_roots);
         let (graph, indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, MODULE_GRAPH_ENTRY)
+            resolve_entry_with_index_for_discovery_corpus(&index, &module_graph_entry)
                 .expect("module_graph.dag resolves");
         let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
         let args = [
@@ -17302,7 +17326,7 @@ mod reference_edge_producer_tests {
                 str_list_value(&[] as &[String]),
             ),
         ];
-        let dag_edges = dependency_edges_from_value(
+        let dag_edges = dependency_edges_from_free_monoid(
             &ctx,
             &v1_interpreter::run_in_context_with_args(
                 &ctx,
