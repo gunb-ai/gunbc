@@ -1,6 +1,5 @@
 module test.retirement.map_lookup_dual_dispatch_retired
 
-import test.retirement.model { TestModuleRetirement, DeleteLowValue }
 
 data map_lookup_dual_dispatch_retirement: TestModuleRetirement = TestModuleRetirement {
   module: "map_lookup_dual_dispatch_test.rs",

@@ -1,26 +1,5 @@
 module v2.test.lens_cost.loop_iteration_floor
 
-import v2.lens.cost {
-  LinearCost,
-  cost_lens,
-  linear_in_node,
-  symbolic_product,
-  zero_cost
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  ComputationNode,
-  Edge,
-  Loop,
-  Named,
-  Node,
-  Positional,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.witness { Holds }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

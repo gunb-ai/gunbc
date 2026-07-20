@@ -94,6 +94,7 @@ import v2.std.witness {
   Violates,
   Witness
 }
+
 fn eval_byte() -> Byte {
   Byte { bits: [true] }
 }

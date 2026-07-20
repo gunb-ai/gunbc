@@ -1,11 +1,5 @@
 module v2.test.manual.medium_source_serializer_determinism_fidelity
 
-import extdeps.communication.fidelity_carriers { medium_section_equal }
-import extdeps.communication.medium { Lossless, Lossy, Medium }
-import v2.compiler.source_authority { deterministic_dag_source_serializer_witness }
-import v2.std.logic { Bool }
-import v2.std.witness { Holds, Violates }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

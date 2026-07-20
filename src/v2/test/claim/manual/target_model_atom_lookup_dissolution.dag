@@ -30,6 +30,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn atom_lookup_dissolution_probe_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^atom_lookup_dissolution_probe } },

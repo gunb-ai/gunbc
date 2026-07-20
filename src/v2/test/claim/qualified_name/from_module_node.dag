@@ -19,6 +19,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn fmn_sym_node(sym: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
  occurrence_id: SyntheticOccurrence

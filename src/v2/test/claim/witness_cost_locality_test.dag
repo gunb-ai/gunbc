@@ -1,29 +1,5 @@
 module v2.test.claim.witness_cost_locality_test
 
-import v2.lens.witness_cost_locality {
-  WitnessCostLocality,
-  Local,
-  CouplesToAmbient,
-  ModuleImportFact,
-  WitnessInputEnvelope,
-  DeclaredBoundedFixture,
-  DeclaredCorpusInput,
-  EnvelopeUndeclared,
-  PerPrAdmission,
-  AdmitContinuous,
-  RouteScheduledLane,
-  witness_cost_locality,
-  witness_cost_locality_from_facts,
-  import_closure,
-  per_pr_admission,
-  admission_is_continuous,
-  locality_is_local,
-  couples_on_data_breadth,
-  couples_on_layer_depth
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data fixture_carriers: List<String> = ["fix.corpus_reader"]
 

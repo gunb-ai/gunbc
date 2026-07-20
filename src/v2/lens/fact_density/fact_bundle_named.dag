@@ -23,6 +23,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data fact_bundle_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_bundle_alias_symbol } },
   children: [],

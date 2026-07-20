@@ -1,17 +1,5 @@
 module gunbc.deployed_intent_v0
 
-import std.types { String, NonEmptyStr, Bool }
-import std.disposition { Disposition, Terminal }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import gunbc.host_identity_observation {
-  HostIdentityObservation,
-  HostIdentityObservationRow,
-  gunbc_srv1_host_identity_observation_fixture_row,
-  gunbc_srv2_host_identity_observation_fixture_row,
-  host_identity_observation_typed,
-}
 
 type DeployedIntentV0 {
   fleet_slot: HostIdentity
@@ -19,7 +7,7 @@ type DeployedIntentV0 {
   observation: HostIdentityObservation
 }
 
-data gunbc_deployed_intent_v0_scope_disposition: Disposition = Terminal {
+data gunbc_deployed_intent_v0_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "ADOPT-BASE phase-0 carrier: the DeployedIntentV0 type IS the observed-base shape — records live-read hostname observation, explicitly NOT fleet design-intent identity (operator_host_srv*). Design intent is a later-phase type; no base_kind tag (§2: v0 is observed-only by construction, not by predicate over a dead coproduct arm). PERSISTED base: gunbc_srv1_deployed_intent_v0_persisted and gunbc_srv2_deployed_intent_v0_persisted are the checked-in adopt-once receipts — a committed .dag data row IS the persistence carrier (survives across runs, git-tracked, read as INPUT by converge-from-base). Closed-loop converge takes a DeployedIntentV0 as an argument; it never re-derives one from a live read (that would silently adopt drift as the new base every run, defeating the three-way conflict check)."
 }
 
@@ -61,7 +49,7 @@ data gunbc_srv1_deployed_intent_v0_persisted: DeployedIntentV0 = deployed_intent
   row: gunbc_srv1_host_identity_observation_fixture_row,
 )
 
-data gunbc_srv2_deployed_intent_v0_persisted_disposition: Disposition = Terminal {
+data gunbc_srv2_deployed_intent_v0_persisted_disposition: Disposition = std.disposition.Terminal {
   reason: "gunbc_srv2_deployed_intent_v0_persisted's row (gunbc_srv2_host_identity_observation_fixture_row, short_hostname_raw \"alstrad8d-1l2t-2\") is LIVE-VERIFIED, not a placeholder: parent session sunny-newt-884 ran the live srv2 adopt read (Arm C1, PR #6130, 2026-07-02T04:27, probed via SshShell ssh_host \"srv2\") and the returned hostname -s matched this row verbatim. This row intentionally stays the pre-mutation ADOPT-BASE record even after the parent session's subsequent Arm C2 live converge corrected srv2's hostname to \"srv2\" and independently confirmed it out-of-band (ssh srv2 'hostname -s; hostnamectl --static' -> srv2 / srv2) — a persisted base is the state observed AT ADOPTION, not a live mirror; a fresh adopt-once run would be needed to re-baseline it now that convergence has landed."
 }
 

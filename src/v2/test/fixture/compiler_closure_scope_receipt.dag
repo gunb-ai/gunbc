@@ -1,6 +1,5 @@
 module v2.test.fixture.compiler_closure_scope_receipt
 
-import v2.std.logic { Bool }
 
 data compiler_closure_scoped_module_count: Int = 65
 

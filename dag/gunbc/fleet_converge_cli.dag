@@ -1,51 +1,5 @@
 module gunbc.fleet_converge_cli
 
-import std.types { String, List, Int }
-import std.disposition { Disposition, Terminal }
-import product.placement_supply { HostIdentity }
-import gunbc.host_converge {
-  ConvergePolicyDerived,
-  ConvergePolicyUnsound,
-  HostConverge,
-  ConvergeVerdict,
-  VerdictConverged,
-  converge_verdict_label,
-  fleet_converge_policy,
-  find_by_identity,
-}
-import gunbc.host_effect {
-  LocalShell,
-  HostEffectIntent,
-  HostEffect,
-  ConvergePlan,
-  ShellCommand,
-  RedfishAction,
-  Srv3InstallDiagnosticObserve,
-  OsInstallActuatorToolchainEnsure,
-  ProvisionBuildCache,
-  Srv3InstallReconcileObserve,
-  DurableApprovalGrantRecord,
-  DurableApprovalGrantRead,
-  Srv3InstallMediaFetch,
-  Srv3SeededInstallMediaRemaster,
-  Srv3SeededInstallMediaToolchainEnsure,
-  Srv3SolConsoleCapture,
-  Srv3BmcwebSessionLogin,
-  Srv3BmcwebTokenExtract,
-  Srv3NbdProxyServe,
-  Srv3BootOnceReadBackSleep,
-  Srv3ReceiptEmit,
-  SetHostnameCas,
-}
-import gunbc.fleet_converge_apply { converge_apply_for_host }
-import gunbc.fleet_intent_network { operator_host_srv1 }
-import gunbc.host_converge_slice1 {
-  host_converge_slice1_converge_loop,
-  HostConvergeSlice1Converged,
-  HostConvergeSlice1Refused,
-  host_converge_slice1_receipt_is_valid,
-}
-import std.realization_reconcile { Converged, NotConverged }
 
 data gunbc_converge_cli_stage0_receiver_disposition: Disposition = Terminal {
   reason: "stage0's `gunbc converge --host <h>` argv dispatch (src/v1/stage0/src/cli_run.rs::handle_converge) is the CLI transport handler for this .dag interface (DESIGN §3 transport-is-a-handler): argv parse -> resolve_entry_graph_shared -> run_in_context_with_args(converge_cli_output) -> stdout/exit-code projection, nothing else. All interpretation, the byte-locked receipt grammar, and typed refusal causes are modeled here (gunbc.fleet_converge_cli) and in gunbc.host_converge/gunbc.fleet_converge_apply; the Rust side carries no converge logic and is not scaffold pending dissolution."

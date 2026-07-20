@@ -1,10 +1,4 @@
 module v2.std.artifact
-
-import v2.std.diagnostic { Accepted, Locus, Outcome, Rejected }
-import v2.std.node { Node, Symbol }
-import v2.std.refinement { Refined, Validation, refine }
-import v2.std.text { String }
-
 type ArtifactKind
   = SourceFile
   | GeneratedSource
@@ -23,7 +17,7 @@ type Artifact {
 type GeneratorId = Symbol
 
 type GeneratedArtifact {
-  refined: Refined<Artifact>
+  refined: v2.std.refinement.Refined<Artifact>
 }
 
 fn artifact_is_generated(a: Artifact) -> Bool {
@@ -38,13 +32,13 @@ fn artifact_is_generated(a: Artifact) -> Bool {
   }
 }
 
-data generated_artifact_validation: Validation<Artifact> = Validation {
+data generated_artifact_validation: v2.std.refinement.Validation<Artifact> = v2.std.refinement.Validation {
   reason: ^generator_provenance_artifact_not_generated,
   admits: artifact_is_generated
 }
 
 fn make_generated_artifact(base: Artifact, at: Locus) -> Outcome<GeneratedArtifact> {
-  match refine(base: base, by: generated_artifact_validation, at: at) {
+  match v2.std.refinement.refine(base: base, by: generated_artifact_validation, at: at) {
     Accepted { value: refined, diagnostics } =>
       Accepted { value: GeneratedArtifact { refined: refined }, diagnostics: diagnostics }
     Rejected { diagnostics } => Rejected { diagnostics: diagnostics }
@@ -53,7 +47,7 @@ fn make_generated_artifact(base: Artifact, at: Locus) -> Outcome<GeneratedArtifa
 
 fn test_claim_generated_artifact(id: Symbol, file_path: String) -> GeneratedArtifact {
   GeneratedArtifact {
-    refined: Refined {
+    refined: v2.std.refinement.Refined {
       base: Artifact { kind: TestClaimArtifact, id: id, file_path: file_path }
     }
   }

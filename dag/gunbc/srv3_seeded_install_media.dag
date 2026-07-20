@@ -1,48 +1,19 @@
 module gunbc.srv3_seeded_install_media
 
-import extdeps.os.ubuntu_seeded_install_media_toolchain {
-  install_media_remaster_toolchain_requirement,
-  install_media_remaster_toolchain_is_complete,
-}
-import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet }
-import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
-import gunbc.srv3_seeded_install_media_artifact {
-  srv3_seeded_install_media_artifact,
-  srv3_seeded_ubuntu_install_media_install_path,
-  srv3_seeded_grub_kernel_cmdline,
-  srv3_seeded_install_media_content_hash,
-  srv3_autoinstall_user_data_body,
-}
-import gunbc.srv3_host_effect_apply {
-  srv3_seeded_install_media_toolchain_ensure_apply,
-  srv3_seeded_install_media_remaster_apply,
-  srv3_reconciliation_to_process_exit,
-  srv3_seeded_install_media_toolchain_unprivileged_fixture_denied,
-}
-import gunbc.host_effect_realize {
-  srv3_seeded_install_media_toolchain_privileged_apt_install_is_gated,
-}
-import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
-import gunbc.fleet_intent { srv1_host, ComputeHost }
-import std.disposition { Disposition, RealizationDispatch, Scaffold, SingleAuthority, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr, String, Bool }
-import std.resources { Network }
 
-data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = Terminal {
+data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "srv3 seeded autoinstall ISO — remaster stock ISO with embedded nocloud user-data + GRUB autoinstall ds=nocloud; content-hash keyed on stock sha256 + autoinstall payload; dissolves NoCloudNet seed-delivery gap when proven by unattended boot execution."
 }
 
-data srv3_seeded_install_media_remaster_scaffold: Disposition = Terminal {
+data srv3_seeded_install_media_remaster_scaffold: Disposition = std.disposition.Terminal {
   reason: "srv3_seeded_install_media_remaster() routes through host_effect_apply to install_media_remaster_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
-data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = Terminal {
+data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = std.disposition.Terminal {
   reason: "srv3_seeded_install_media_toolchain_ensure routes through host_effect_apply_gated(ci_deploy_srv1_access) to realize_seeded_install_media_toolchain_ensure_on_host (SeededInstallMediaToolchainOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
-data install_media_remaster_toolchain_ensure_dissolution_trigger: Disposition = Terminal {
+data install_media_remaster_toolchain_ensure_dissolution_trigger: Disposition = std.disposition.Terminal {
   reason: "install_media_remaster_toolchain_ensure dissolved onto host_effect_apply realize_seeded_install_media_toolchain_ensure_on_host (srv3_ensure_apt_tool + xorriso version probe) - no concat-built bash script remains"
 }
 
@@ -56,7 +27,7 @@ data srv3_seeded_install_media_unattended_not_proven_marker: Disposition = Scaff
 }
 
 func srv3_seeded_install_media_toolchain_ensure() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   srv3_reconciliation_to_process_exit(
     r: srv3_seeded_install_media_toolchain_ensure_apply(),
@@ -65,7 +36,7 @@ func srv3_seeded_install_media_toolchain_ensure() -> ProcessExit
 }
 
 func srv3_seeded_install_media_remaster() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let ensure_exit = srv3_reconciliation_to_process_exit(
     r: srv3_seeded_install_media_toolchain_ensure_apply(),

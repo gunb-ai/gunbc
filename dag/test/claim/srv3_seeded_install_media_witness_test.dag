@@ -1,30 +1,5 @@
 module test.claim.srv3_seeded_install_media
 
-import gunbc.srv3_seeded_install_media {
-  srv3_seeded_install_media_artifact,
-  srv3_seeded_ubuntu_install_media_install_path,
-  srv3_seeded_install_media_actuator_host_is_srv1,
-  srv3_seeded_install_media_install_path_is_versioned,
-  srv3_seeded_autoinstall_delivery_is_on_iso,
-  srv3_seeded_grub_cmdline_names_nocloud,
-  srv3_seeded_install_media_unattended_not_proven_yet,
-  srv3_seeded_install_media_remaster_toolchain_is_modeled,
-  srv3_seeded_install_media_toolchain_ensure_is_privileged_gated,
-}
-import gunbc.srv3_seeded_install_media_artifact { srv3_autoinstall_user_data_body }
-import gunbc.srv3_host_effect_apply { srv3_seeded_install_media_toolchain_unprivileged_fixture_denied }
-import gunbc.host_effect_realize { srv3_seeded_install_media_toolchain_receipt_line }
-import extdeps.os.ubuntu_seeded_install_media_remaster {
-  install_media_remaster_bash_emit_dissolution_trigger,
-  install_media_remaster_classification_scaffold,
-  install_media_remaster_chmod_access_upsert_scaffold,
-  install_media_remaster_probe_refusal_shape_doc,
-}
-import std.disposition { Scaffold, Terminal }
-import std.types { NonEmptyStr }
-import gunbc.os_install_emit { autoinstall_user_data }
-import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

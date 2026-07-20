@@ -1,27 +1,5 @@
 module test.claim.srv3_boot_once_cd
 
-import std.logic { Bool }
-import extdeps.bmc.types {
-  BootTargetCd,
-  BootOverrideOnce,
-  BootOverrideModeUefi,
-  BootOverrideModeLegacy,
-  ResetForceRestart,
-  redfish_boot_target_wire,
-  redfish_boot_override_enabled_wire,
-  redfish_boot_override_mode_wire,
-  redfish_reset_type_wire,
-}
-import gunbc.tools.bmc_onboard { boot_override_body, reset_body }
-import gunbc.srv3_boot_once_cd {
-  srv3_boot_cd_target,
-  srv3_boot_cd_enabled,
-  srv3_boot_cd_mode,
-  srv3_boot_cd_reset_type,
-  srv3_boot_cd_override_mode_valid_for_arm64,
-  srv3_boot_cd_override_mode_refusal,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,8 +1,5 @@
 module gunbc.pr_digests
 
-import extdeps.github.pulls { PullRequest, PullReview, ReviewComment }
-import extdeps.github.errors { GitHubErrorShape }
-import std.types { NonEmptyStr }
 
 type MergeReadinessVerdict
   = Ready
@@ -31,7 +28,7 @@ type RestFallbackReason
 service gunbc.PrDigests {
   operation ExtractAttachedUrls {
     input {
-      pr: PullRequest
+      pr: extdeps.github.pulls.PullRequest
       reviews: List<PullReview>
       review_line_comments: List<ReviewComment>
     }
@@ -43,7 +40,7 @@ service gunbc.PrDigests {
 
   operation RenderPrSummaryLine {
     input {
-      pr: PullRequest
+      pr: extdeps.github.pulls.PullRequest
     }
     output {
       line: String
@@ -53,7 +50,7 @@ service gunbc.PrDigests {
 
   operation JudgeMergeReadiness {
     input {
-      pr: PullRequest
+      pr: extdeps.github.pulls.PullRequest
       reviews: List<PullReview>
     }
     output {

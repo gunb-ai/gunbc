@@ -5,7 +5,7 @@ import std.disposition { SingleAuthority }
 import v2.lens.module_graph { path_matches_touched }
 import v2.lens.witness_cost_locality {
   ModuleImportFact,
-  import_closure
+  witness_import_closure
 }
 import v2.std.algebra {
   contains,
@@ -595,7 +595,7 @@ fn effect_reach_classification_from_facts(
   decls: List<FnArrowDecl>,
   data_inits: List<DataInitDecl>
 ) -> EffectReachClassification {
-  let closure_modules = import_closure(root: entry_module, facts: facts)
+  let closure_modules = witness_import_closure(root: entry_module, facts: facts)
   let reachable = call_reachable_decls(
     entry_module: entry_module,
     closure_modules: closure_modules,

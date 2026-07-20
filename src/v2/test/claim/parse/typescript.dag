@@ -1,21 +1,5 @@
 module v2.test.parse.typescript
 
-import v2.compiler.tokenize { TokenStream, tokenize }
-import v2.compiler.parse { ParseTree, parse }
-import v2.extdeps.languages.typescript { ts_lex, ts_grammar }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  manual_claim_anchor
-}
 
 data ts_type_alias_task_source: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
 

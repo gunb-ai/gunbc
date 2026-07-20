@@ -1,27 +1,5 @@
 module test.claim.code_change_workflow_witness_test
 
-import gunbc.code_change_workflow {
-  CodeChangeFacts, CodeChangeStage, CodeChangeActiveStage, CodeChangeTerminalStage,
-  CodeChangeBinding, CodeChangeTransitionRequest, CodeChangeGithubPrContext,
-  CodeChangeEventTag, MarkReadyForReview, RecordMergeReady,
-  ChangeOpen, ChangeUnderReview, ChangeMergeReady, ChangeMerged, ChangeClosed,
-  CodeChangeActive, CodeChangeTerminal,
-  ChangeDraftBlocksReview, CodeChangeDigestNotReady, CodeChangePolicyNotPermitted,
-  CodeChangeMissingReviewTally, CodeChangeMissingDigestVerdict, CodeChangeHeadShaMismatch,
-  CodeChangeTallyRequestChanges, CodeChangeTallyBlockingFindings, CodeChangeNotMergeableClean,
-  CodeChangeAlreadyTerminal,
-  CanTransition, TransitionRefused,
-  decide_code_change_transition, classify_github_pr_terminal_anchor,
-}
-import gunbc.pr_digests { Ready, NotReady }
-import gunbc.review_verdict { MergeReadinessTally }
-import gunbc.process_algebra { ProcessNodeId }
-import extdeps.github.pulls {
-  PullRequest, PullRequestRef, PullRequestState, Open, Closed,
-}
-import extdeps.github.github { GitHubUser, User }
-import std.types { CommitSha, NonEmptyStr, Timestamp }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -32,14 +10,14 @@ data witness_merged_at: Timestamp = "2026-06-18T01:00:00Z"
 data witness_node: ProcessNodeId = "session-calm-swift-738"
 data witness_change_ref: NonEmptyStr = "change-1"
 
-fn witness_github_pr(draft: Bool, state: PullRequestState, merged_at: Timestamp?) -> PullRequest {
-  PullRequest {
+fn witness_github_pr(draft: Bool, state: PullRequestState, merged_at: Timestamp?) -> extdeps.github.pulls.PullRequest {
+  extdeps.github.pulls.PullRequest {
     number: 1,
     title: "witness",
     body: none,
     state: state,
     html_url: witness_pr_url,
-    user: GitHubUser { login: "bot", id: 1, type: User },
+    user: GitHubUser { login: "bot", id: 1, type: extdeps.github.github.User },
     head: PullRequestRef {
       ref: "feature",
       sha: witness_head_sha,

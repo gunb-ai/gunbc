@@ -1,26 +1,5 @@
 module v2.test.coercion_fold_int_rust_fixture
 
-import v2.extdeps.languages.rust { rust_inhabitant_i32_node }
-import v2.std.coercion {
-  CoercionCandidateSet,
-  CoercionResult,
-  coercion_fold
-}
-import v2.std.diagnostic { Outcome }
-import v2.std.constraints {
-  CanonicalGrounding,
-  CanonicalGroundingWitness
-}
-import v2.std.find_witness { CandidateSet, TargetDeclaredPriority }
-import v2.std.integer { Int }
-import v2.std.node {
-  Atom,
-  Node,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.witness { StructuralPropertyWitness }
 fn int_source_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^fixture_int_atom } },

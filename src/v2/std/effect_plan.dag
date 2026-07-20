@@ -39,3 +39,5 @@ type EffectPlan<E> {
 }
 
 data effect_plan_do_effect_target_band_note: String = "std.effect_plan leaves are Do-effect leaves, never a command string. v2.std.orchestration PipelineStep Do-run is the bash-emit scaffold; runtime-present sites compose EffectPlan over HostEffect and interpret via gunbc.host_effect_plan.host_effect_plan_apply routing to host_effect_apply (host-effect-orchestration.md section 1b)."
+
+data effect_plan_orchestration_succession_dissolve_on: String = "dissolve-on: v2.std.orchestration parallel — Predicate/FailurePolicy/ValueSource/EscalationLevel/Expr neighbor vocab and Pipeline/PipelineStep bash-emit scaffold remain in v2.std.orchestration until host-effect-orchestration.md Phase B rename absorbs them here; effect_plan owns generic EffectPlan<E>/Do-effect composition (#6903 Wave A2 keystone)."

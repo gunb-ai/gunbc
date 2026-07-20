@@ -1,22 +1,5 @@
 module v2.test.branch_dispatch.rung_0_to_2_three_targets
 
-import v2.std.collection { List }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  CompilesClaim,
-  manual_claim_anchor
-}
-import v2.test.computation_shapes.branch_dispatch {
-  branch_dispatch_subject,
-  claim_branch_dispatch_content_hash_stable,
-  claim_branch_dispatch_equals_refl,
-  claim_branch_dispatch_well_formed
-}
 data phase4_branch_dispatch_rung_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^phase4_branch_dispatch_rung_subject_symbol } },
   children: [],

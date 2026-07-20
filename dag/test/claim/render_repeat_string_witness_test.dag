@@ -1,16 +1,13 @@
 module test.claim.render_repeat_string_witness_test
 
-import std.render_repeat_string_bootstrap { repeat_string }
-import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn repeat_string_returns_n_copies() -> Bool {
-  repeat_string(s: "x", n: 3) == "xxx"
+  std.render_repeat_string_bootstrap.repeat_string(s: "x", n: 3) == "xxx"
 }
 
 test fn pads_then_text_like_indent() -> Bool {
-  let pad = repeat_string(s: " ", n: 2)
+  let pad = std.render_repeat_string_bootstrap.repeat_string(s: " ", n: 2)
   concat(pad, "a") == "  a"
 }

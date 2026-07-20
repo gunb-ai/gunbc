@@ -57,6 +57,7 @@ import v2.std.refinement {
   refined_vacuous_stub_pack
 }
 import v2.test.manual.connective_anchors { stub_empty_conj }
+
 fn refinement_preservation_stub_locus() -> Locus {
   port_locus(port: ^refinement_preservation_stub_locus_port)
 }

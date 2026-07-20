@@ -345,15 +345,119 @@ dependency edge (Rule-1 end-state). First concrete census rows from the PR-2 ref
 `parse_with_table`, `default_artifact_plan`, `Rust` — extend by re-running the direct-import experiment and
 collecting every unresolved-name error.
 
+**PR-5b import-line strip (interim host bridge).** Deletes `import` lines from
+`src/v2/workflow/**` and `src/v2/extdeps/**` while bare refs stay; the v1 host keeps
+compile and witness execution working via the **census bare-reference closure**
+(`extend_with_bare_reference_closure` in `src/v1/stage0/src/cli_run.rs`): an
+import-stripped module's bare names resolve through the per-tree census (own tree
+first, whole pool on miss — the same layering typecheck lookup uses), and each
+resolved name pulls its declaring module into the entry closure. Precision guards,
+both declaration-grain: names the referencing file itself binds anywhere (params,
+named-arg keys, `let`/`data` binders) never pull, and a name whose resolved
+declaration is a `test fn`/`test data` row never pulls (an execution root is not a
+dependency). A pulled module missing from module-graph-facts provenance refuses
+loudly. An earlier draft of this paragraph described a git-show import-replay
+scaffold (`CLI_RUN_NAMESPACE_IMPORT_SYNTHESIS_SCAFFOLD_MARKER`) that was never
+built — the census closure above is the mechanism that actually shipped, and the
+known residue (the reference producer over-collects; the closure is a second
+authority beside the compile-clean import closure) is tracked as the
+reference-derived dependency-edge lane, the same lane that dissolves this bridge.
+**Dissolve-on:** `^migrate_when_namespace_only_resolution_lands` (terminal step 5
+above — delete import grammar; container.member references become the sole
+dependency authority).
+
 ## 9. Open / to-verify
 
-- **Root-prefix map** (`src/v1/**` ↔ `v1.*`, `dag/**` ↔ `v2.*`) and whether the `module`
-  declaration is derivable from the path (if so, the declaration is itself a Rule-1 candidate
-  to delete). Note `04_infer.dag:718` already special-cases the `"v2."` prefix — that logic
-  folds into the root map.
+- **Root-prefix map** (`src/v1/**` ↔ `v1.*`, `dag/**` ↔ `v2.*`). ~~Whether the `module`
+  declaration is derivable from the path~~ — RESOLVED THE OTHER WAY (operator, 2026-07-19, §10
+  anti-goal): deriving the namespace position from the file path would harden the
+  storage/identity fusion the module-identity lane dissolves. The declaration stays; its
+  *extent* becomes syntactic (§10). Note `04_infer.dag:718` already special-cases the `"v2."`
+  prefix — that logic folds into the root map.
 - **Non-locality property (accepted, not a bug):** adding `v2.std.other.Symbol` later makes a
   previously-bare `Symbol` in-scope `Ambiguous` — a compile error until qualified. Loud and
   fail-closed (Rule 2), the honest cost of "no ambiguity." The alternative (narrower per-module
   scope) kills the sibling-access ergonomics the operator asked for; not taken.
+
+## 10. Namespace scope is syntactic — the header declares a position AND an extent (operator, 2026-07-19; routed from sharp-bee-290, addendum on #6848)
+
+The defect: `module examples.cost_estimate` declares WHERE the file's declarations sit but not
+HOW FAR that claim reaches — the grammar row (`dag_grammar_module_header_expr`,
+`src/v2/extdeps/languages/dag.dag`) is `kw_module × qualified_name`, no extent token; scope is
+inferred from end-of-file, i.e. from the storage medium's boundary. Operator framing verbatim:
+"there is no scoping on modules right now — we're inferring it from the file boundaries; I'd
+like to make this all very explicit up front." This is the storage/identity fusion
+(module-identity-storage-binding lane) surfacing at the naming layer. Verified downstream
+symptoms of the special-casing: 03_resolve's dedicated metadata edge
+(`dag_surface_module_header_metadata_edge`, `ctx.under_module_root`) instead of ordinary
+containment fill; SymbolIndex fill carrying the qualified name as a string prefix bolted onto
+keys (`module_qn.fn.param`) rather than literal containment nodes; "one file = one module"
+enforced as a file-grain collision key standing in for the tree-grain rule it means.
+
+The explicit form is this design's own semantics applied one level up: `module a.b.c` + body ≡
+the file's declaration forest grafted under `a { b { c { … } } }` — literal containment nodes,
+extent = the brace pair, nothing inferred from storage. In the model there is then no "module"
+concept: containers all the way down (the header is C#'s file-scoped `namespace X;` — a
+placement declaration, never a `using`; that role belongs to `import`, which §7's terminal step
+deletes).
+
+**Staged (each with its trigger):**
+1. **Header as sugar — zero surface migration.** `module a.b.c` desugars at ingest to the
+   containment graft. Frontend builds the tree from nesting (this design's "pure structure,
+   zero resolution logic"); the resolver metadata-edge special case and the SymbolIndex prefix
+   bolt-on dissolve into ordinary containment fill. Every file keeps its header; only the model
+   changes. After this step "modules have no scoping" is false in the model: the scope IS the
+   subtree extent.
+2. **Admit the explicit braced container form at the surface** — a grammar row for top-level
+   containers (a production + fold row per DESIGN.md §4 — rows, never a fold edit).
+   Composition rule (no-ambiguity, operator 2026-07-06): a header, if present, is common-prefix
+   sugar — the forest grafts under its position, explicit braces nest below it; the same
+   position declared from two storage fragments is a typed refusal. The file-grain 1:1
+   collision key becomes the tree-grain rule: one position, one authority. Multi-container
+   files and finer-than-file fragments become expressible (the many-to-many model the
+   module-identity lane stages — `ModuleStorageBinding` is the storage half; this is the naming
+   half; they meet at the binding authority, never fuse). Prefer keyword-free bare containers
+   (`a { … }`, matching `T{a}` notation) so nothing ever needs renaming — the keyword dies with
+   the sugar header (§11).
+3. **Dissolution — existing lanes, no new work.** Import deletion removes the lookup half;
+   delta-first files-as-projections removes the storage half; the header becomes one projection
+   policy's rendering convenience, then deletes. "Where does a module end" is moot: a
+   namespace's extent is its subtree.
+
+**Anti-goals:** never derive the position from the file path (hardens the fusion); never leave
+both the metadata-edge mechanism and containment nodes live past step 1 (dual representation);
+the desugar is exactly-one (header × explicit-brace composition defined; ambiguity refuses).
+
+**Sequencing vs #6848 (this lane's call):** step 1 touches exactly the resolver/SymbolIndex
+machinery the salvage stabilized — it lands as the FIRST follow-up PR on top of the merged
+#6848, not inside it. Step 2 follows once step 1's dissolves (metadata edge, prefix keys) are
+receipted.
+
+## 11. Terminology: "module" → "namespace" (operator-ruled, 2026-07-19)
+
+A namespace is pure naming — a position that qualifies names. A module is classically a
+namespace plus some subset of four extras, and here every extra is absent or deliberately homed
+elsewhere: interface/export boundary — absent (keyword set has no pub/export/private;
+reachability is lexical); dependency unit — being deleted (terminal step removes `import`);
+compilation unit — already de-fused (`CompilationUnit` is its own concept; crate layout derived
+by partition); storage/distribution unit — the fusion being dissolved (`ModuleStorageBinding`
+models it honestly). So in gunbc "module" names the fusion itself — the thing this design
+dissolves. Precedent: `ModulePath` → `QualifiedName` (§3 nickname, renamed);
+`NamespaceOnlyY` / "effect grants over namespaces" are the live vocabulary.
+
+**Ontology (three lines):**
+- **containment** — the single relation; interior nodes include types, fns, params
+  (`T{a}` → `a` is `T.a`; `.` is one projection op).
+- **namespace** — a node that is only a container (no other semantics). What the file header
+  actually declares.
+- **module** — a namespace subtree fused to one storage file. Dissolving; survives, if
+  anywhere, only as the storage-side binding's name.
+
+**Priced consequences:** adopt "namespace" in design language and NEW carriers now; reserve
+"module" strictly for the storage-side binding or retire it as carriers migrate. NO fleet-wide
+keyword rename as its own change (2,258 headers for a dying word displaces no cost, §6). NO
+alias period (two live spellings of one production is the §3 nickname the no-ambiguity rule
+forbids) — if the sugar keyword is renamed at all, it rides the import-strip terminal wave,
+which already touches every header region.
 
 Related: [type environment: single import authority + scope cursor](type-env-single-authority-design.md) — the type-env/SymbolIndex lane design this walk-rule migration rides on · [interface summaries and the declared↔use arity family](interface-summary-declared-use-arity.md) — the `std.interface_summary` carrier consumed by interface-grain resolve.

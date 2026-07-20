@@ -1,26 +1,5 @@
 module v2.test.lens_wiring_liveness.wiring_liveness_corpus_test
 
-import v2.std.algebra { length, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  SyntheticOccurrence,
-  Symbol,
-  TypeNode
-}
-import v2.std.text { String }
-import v2.std.fn_index { FnArrowDecl, FnArrowParam, fn_arrow_decl_facts_live }
-import v2.lens.wiring_liveness {
-  WiringDeadWire,
-  wiring_dead_wires_over,
-  wiring_fn_dead_wires
-}
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

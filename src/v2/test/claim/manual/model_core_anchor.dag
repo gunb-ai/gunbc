@@ -35,6 +35,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, Violates }
+
 fn model_core_payload_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^model_core_payload_fail_atom } },
