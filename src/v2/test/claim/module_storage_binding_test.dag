@@ -8,7 +8,7 @@ import v2.compiler.source_authority {
   module_storage_index_insert,
   module_storage_module_for_path,
   module_storage_produced_binding,
-  module_storage_scanned_binding,
+  module_storage_parsed_binding,
   ModuleStorageAgrees,
   ModuleStorageDivergent,
   ModuleStorageUncovered,
@@ -20,6 +20,7 @@ import v2.std.cross_tree.import_model { V2Tree }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.provenance { span_index_empty }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.text { String }
 import std.algebra { Cons, Empty }
@@ -96,55 +97,57 @@ test fn module_storage_produced_module_answers_absent_for_path_lookup() -> Bool 
   }
 }
 
-data msb_scanned_path: String = "src/v2/std/msb_scanned_fixture.dag"
+data msb_parsed_path: String = "src/v2/std/msb_parsed_fixture.dag"
 
-data msb_scanned_qn: QualifiedName = Cons {
+data msb_parsed_qn: QualifiedName = Cons {
   head: ^v2,
-  tail: Cons { head: ^std, tail: Cons { head: ^msb_scanned_fixture, tail: Empty } }
+  tail: Cons { head: ^std, tail: Cons { head: ^msb_parsed_fixture, tail: Empty } }
 }
 
-data msb_scanned_binding: ModuleStorageBinding = module_storage_scanned_binding(
-  module: msb_scanned_qn,
+data msb_parsed_binding: ModuleStorageBinding = module_storage_parsed_binding(
+  module: msb_parsed_qn,
   artifact: Artifact {
     kind: SourceFile,
-    id: ^msb_scanned_artifact,
-    file_path: msb_scanned_path
+    id: ^msb_parsed_artifact,
+    file_path: msb_parsed_path
   },
+  span_index: span_index_empty(),
   source_root: V2Tree
 )
 
-data msb_scanned_index: ModuleStorageIndex = Cons { head: msb_scanned_binding, tail: Empty }
+data msb_parsed_index: ModuleStorageIndex = Cons { head: msb_parsed_binding, tail: Empty }
 
-test fn module_storage_scanned_module_has_storage() -> Bool {
-  match module_storage_binding_file_path(binding: msb_scanned_binding) {
+test fn module_storage_parsed_module_has_storage() -> Bool {
+  match module_storage_binding_file_path(binding: msb_parsed_binding) {
     Absent => false
-    Present { value: p } => p == msb_scanned_path
+    Present { value: p } => p == msb_parsed_path
   }
 }
 
-test fn module_storage_scanned_module_resolves_path_to_module() -> Bool {
-  match module_storage_module_for_path(index: msb_scanned_index, file_path: msb_scanned_path) {
+test fn module_storage_parsed_module_resolves_path_to_module() -> Bool {
+  match module_storage_module_for_path(index: msb_parsed_index, file_path: msb_parsed_path) {
     Absent => false
     Present { value: qn } =>
-      qualified_name_to_dotted_string(qn: qn) == "v2.std.msb_scanned_fixture"
+      qualified_name_to_dotted_string(qn: qn) == "v2.std.msb_parsed_fixture"
   }
 }
 
 data msb_agreement_control_note: String = "ENROLLED discriminating control for module_storage_host_agrees_with_oracle (review 39735). The wet gate runs only GREEN claims, so a regression of the comparator to always-Agrees would still pass wherever scan and parse happen to agree — the honesty the scaffold trigger claims was verified by hand, never by a wired consumer, which is the 'enrolled, zero executions' shape one tier up. These run in per-PR discovery over hand-built indexes at ZERO parse cost, so the negative controls execute on every PR rather than only inside the wet lane: a host row carrying the WRONG module for an oracle-covered path must report Divergent, and a host index MISSING the path must report Uncovered. Divergence and coverage stay distinct because their remedies differ. Together with the agreeing case these pin all three arms, so the comparator cannot silently collapse to a constant."
 
-data msb_oracle_row: ModuleStorageBinding = module_storage_scanned_binding(
-  module: msb_scanned_qn,
+data msb_oracle_row: ModuleStorageBinding = module_storage_parsed_binding(
+  module: msb_parsed_qn,
   artifact: Artifact {
     kind: SourceFile,
     id: ^msb_oracle_artifact,
-    file_path: msb_scanned_path
+    file_path: msb_parsed_path
   },
+  span_index: span_index_empty(),
   source_root: V2Tree
 )
 
 data msb_oracle_only_index: ModuleStorageIndex = Cons { head: msb_oracle_row, tail: Empty }
 
-data msb_host_divergent_row: ModuleStorageBinding = module_storage_scanned_binding(
+data msb_host_divergent_row: ModuleStorageBinding = module_storage_parsed_binding(
   module: Cons {
     head: ^v2,
     tail: Cons { head: ^std, tail: Cons { head: ^msb_wrong_fixture, tail: Empty } }
@@ -152,8 +155,9 @@ data msb_host_divergent_row: ModuleStorageBinding = module_storage_scanned_bindi
   artifact: Artifact {
     kind: SourceFile,
     id: ^msb_divergent_artifact,
-    file_path: msb_scanned_path
+    file_path: msb_parsed_path
   },
+  span_index: span_index_empty(),
   source_root: V2Tree
 )
 
@@ -162,7 +166,7 @@ data msb_host_divergent_index: ModuleStorageIndex = Cons { head: msb_host_diverg
 test fn module_storage_agreement_holds_when_host_matches_oracle() -> Bool {
   match module_storage_host_agrees_with_oracle(
     oracle: msb_oracle_only_index,
-    host: msb_scanned_index
+    host: msb_parsed_index
   ) {
     ModuleStorageAgrees => true
     ModuleStorageDivergent { path: _ } => false
@@ -175,7 +179,7 @@ test fn module_storage_agreement_reports_divergent_on_wrong_module() -> Bool {
     oracle: msb_oracle_only_index,
     host: msb_host_divergent_index
   ) {
-    ModuleStorageDivergent { path: p } => p == msb_scanned_path
+    ModuleStorageDivergent { path: p } => p == msb_parsed_path
     ModuleStorageAgrees => false
     ModuleStorageUncovered { path: _ } => false
   }
@@ -186,7 +190,7 @@ test fn module_storage_agreement_reports_uncovered_on_missing_row() -> Bool {
     oracle: msb_oracle_only_index,
     host: Empty
   ) {
-    ModuleStorageUncovered { path: p } => p == msb_scanned_path
+    ModuleStorageUncovered { path: p } => p == msb_parsed_path
     ModuleStorageAgrees => false
     ModuleStorageDivergent { path: _ } => false
   }
