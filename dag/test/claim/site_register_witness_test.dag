@@ -2,12 +2,16 @@ module test.claim.site_register_witness
 
 import gunbc.site.tokens {
   Material, FieldArea, PointArea,
-  chroma_admissible, palette_admissible, site_palette,
-  respond_fast,
+  chroma_admissible, quiet_envelope,
+  Theme, RoleAssignment, assign,
+  site_themes, theme_roles, night_theme, day_theme,
+  themes_coherent, theme_gaps, theme_area_coherent, theme_contrast_ok,
+  CanvasRole, FigureRole, night_canvas, warm_starlight,
+  respond_fast, StaticRule, decl,
 }
 import gunbc.site.interaction {
-  BehaviorRow, InteractiveElement, CoverageGap,
-  Approach, Enter, Receipt, Brighten,
+  BehaviorRow, InteractiveElement,
+  Approach, Enter, Receipt,
   coverage_gaps, coverage_complete, verb_key,
   moodboard_elements, moodboard_behaviors,
 }
@@ -18,20 +22,53 @@ import gunbc.site.mark {
 import gunbc.site.constellation { layer_stars, brightest_is_authority }
 import gunbc.site.moodboard {
   moodboard_html, moodboard_preconditions_hold, unrealized_behaviors,
+  moodboard_rules, moodboard_nav_js,
 }
+import gunbc.site.theme_transition { reframe_css, unthemed_color_decls }
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_palette_admissible() -> Bool {
-  palette_admissible(palette: site_palette)
+fn witness_themes_coherent() -> Bool {
+  themes_coherent(themes: site_themes, roles: theme_roles)
+}
+
+fn witness_gamer_cyan_refused() -> Bool {
+  let gamer_cyan = Material { name: "gamer-cyan", hue: 194, sat_pct: 88, light_pct: 76, area: PointArea }
+  let warm_bright = Material { name: "warm-bright", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea }
+  let chromatic_dim = Material { name: "chromatic-dim", hue: 226, sat_pct: 58, light_pct: 20, area: PointArea }
+  !quiet_envelope(m: gamer_cyan)
+    && !chroma_admissible(m: gamer_cyan)
+    && chroma_admissible(m: warm_bright)
+    && chroma_admissible(m: chromatic_dim)
 }
 
 fn witness_saturated_field_refused() -> Bool {
-  let neon_field = Material { name: "neon-field", hue: 194, sat_pct: 88, light_pct: 50, area: FieldArea }
-  let same_sat_point = Material { name: "jewel-point", hue: 194, sat_pct: 88, light_pct: 50, area: PointArea }
-  !chroma_admissible(m: neon_field) && chroma_admissible(m: same_sat_point)
+  let neon_field = Material { name: "neon-field", hue: 226, sat_pct: 60, light_pct: 40, area: FieldArea }
+  !chroma_admissible(m: neon_field)
+}
+
+fn witness_theme_gap_is_located() -> Bool {
+  let partial = Theme { name: "partial", scheme: "dark", assignments: [
+    assign(role: CanvasRole, material: night_canvas),
+  ] }
+  theme_gaps(t: partial, roles: theme_roles).length() == theme_roles.length() - 1
+    && theme_gaps(t: night_theme, roles: theme_roles).length() == 0
+    && theme_gaps(t: day_theme, roles: theme_roles).length() == 0
+}
+
+fn witness_role_area_mismatch_refused() -> Bool {
+  let field_on_figure = Theme { name: "mismatched", scheme: "dark", assignments: [
+    assign(role: FigureRole, material: night_canvas),
+  ] }
+  !theme_area_coherent(t: field_on_figure)
+    && theme_area_coherent(t: night_theme)
+    && theme_area_coherent(t: day_theme)
+}
+
+fn witness_theme_contrast_holds() -> Bool {
+  theme_contrast_ok(t: night_theme) && theme_contrast_ok(t: day_theme)
 }
 
 fn witness_moodboard_coverage_complete() -> Bool {
@@ -94,8 +131,23 @@ fn witness_moodboard_emits_with_structure() -> Bool {
     && string_contains(s: h, pattern: ".hero:has(.star-std:hover) .legend-std")
     && string_contains(s: h, pattern: ".star:focus-visible")
     && string_contains(s: h, pattern: "@media (prefers-reduced-motion: reduce)")
-    && string_contains(s: h, pattern: "thesis+palette digest")
+    && string_contains(s: h, pattern: "thesis+themes digest")
     && !string_contains(s: h, pattern: "EMIT REJECTED")
+}
+
+fn witness_two_themes_one_model() -> Bool {
+  let h = moodboard_html()
+  string_contains(s: h, pattern: ":root { --canvas:")
+    && string_contains(s: h, pattern: ":root[data-theme=\"day\"]")
+    && string_contains(s: h, pattern: "@media (prefers-color-scheme: light) { :root:not([data-theme])")
+    && string_contains(s: h, pattern: "color-scheme: dark")
+    && string_contains(s: h, pattern: "color-scheme: light")
+    && string_contains(s: h, pattern: ".star { fill: var(--figure)")
+    && string_contains(s: h, pattern: ".mark-sink { fill: var(--focus) }")
+}
+
+fn witness_gamer_cyan_absent_from_page() -> Bool {
+  !string_contains(s: moodboard_html(), pattern: "hsl(194")
 }
 
 fn witness_still_until_touched_in_css() -> Bool {
@@ -105,10 +157,52 @@ fn witness_still_until_touched_in_css() -> Bool {
     && !string_contains(s: h, pattern: "animation:")
 }
 
+fn witness_reframe_derived_for_free() -> Bool {
+  let h = moodboard_html()
+  string_contains(s: h, pattern: "html.reframing body { transition: background-color 320ms ease, color 320ms ease }")
+    && string_contains(s: h, pattern: "html.reframing .star { transition: fill 320ms ease }")
+    && string_contains(s: h, pattern: "html.reframing .mark-sink")
+}
+
+fn witness_reframe_reduced_motion_guarded() -> Bool {
+  let css = reframe_css(rules: moodboard_rules())
+  string_contains(s: css, pattern: "@media (prefers-reduced-motion: reduce)")
+    && string_contains(s: css, pattern: "html.reframing body { transition: none }")
+}
+
+fn witness_unthemed_color_census_empty() -> Bool {
+  unthemed_color_decls(rules: moodboard_rules()).length() == 0
+}
+
+fn witness_unthemed_color_is_counted() -> Bool {
+  let rogue = StaticRule { selector: ".rogue", decls: [ decl(prop: "color", value: "hsl(194 88% 76%)") ] }
+  let census = unthemed_color_decls(rules: [rogue])
+  census.length() == 1
+    && all(census, c => c.selector == ".rogue" && c.prop == "color")
+}
+
+fn witness_watcher_shares_the_token_clock() -> Bool {
+  let js = moodboard_nav_js()
+  string_contains(s: js, pattern: "matchMedia('(prefers-color-scheme: light)')")
+    && string_contains(s: js, pattern: "classList.add('reframing')")
+    && string_contains(s: js, pattern: "classList.remove('reframing')")
+    && string_contains(s: js, pattern: "320")
+}
+
+fn witness_watcher_owns_applied_theme() -> Bool {
+  let js = moodboard_nav_js()
+  string_contains(s: js, pattern: "setAttribute('data-theme', mql.matches ? 'day' : 'night')")
+    && string_contains(s: js, pattern: "applyTheme();")
+}
+
 test fn site_register_keystone_holds() -> Bool {
   moodboard_preconditions_hold()
-    && witness_palette_admissible()
+    && witness_themes_coherent()
+    && witness_gamer_cyan_refused()
     && witness_saturated_field_refused()
+    && witness_theme_gap_is_located()
+    && witness_role_area_mismatch_refused()
+    && witness_theme_contrast_holds()
     && witness_moodboard_coverage_complete()
     && witness_dead_hover_is_located_gap()
     && witness_unrealized_behavior_is_counted()
@@ -117,5 +211,13 @@ test fn site_register_keystone_holds() -> Bool {
     && witness_mark_lod_monotone()
     && witness_brightest_star_is_std()
     && witness_moodboard_emits_with_structure()
+    && witness_two_themes_one_model()
+    && witness_gamer_cyan_absent_from_page()
     && witness_still_until_touched_in_css()
+    && witness_reframe_derived_for_free()
+    && witness_reframe_reduced_motion_guarded()
+    && witness_unthemed_color_census_empty()
+    && witness_unthemed_color_is_counted()
+    && witness_watcher_shares_the_token_clock()
+    && witness_watcher_owns_applied_theme()
 }

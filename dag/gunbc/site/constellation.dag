@@ -1,7 +1,6 @@
 module gunbc.site.constellation
 
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
-import gunbc.site.tokens { starlight, star_glow, paint, paint_alpha }
 
 data constellation_note: String = "Layer 5: the hero figure — candidate B Asterism (design section 4e): the layer DAG (DESIGN.md section 3: std <- extdeps <- compiler <- workflow, imports point toward std) drawn as a constellation. The stars ARE the architecture facts; the brightest star is the authority layer every import arrow points toward. DerivedTruth: nothing here is free art — delete a layer row and its star is gone. HTML owns text (frontend DESIGN rule 5): star names live in the HTML legend; hovering a star answers in the LEGEND via :has() — counterpart-highlight, proof the two surfaces render one fact row."
 
@@ -54,7 +53,7 @@ fn constellation_edge_lines(stars: List<LayerStar>, edges: List<LayerImportEdge>
       sattr(name: "y1", value: to_string(from.y)),
       sattr(name: "x2", value: to_string(to.x)),
       sattr(name: "y2", value: to_string(to.y)),
-      sattr(name: "stroke", value: paint_alpha(m: star_glow, alpha_pct: 45)),
+      sattr(name: "class", value: "sky-edge"),
       sattr(name: "stroke-width", value: "1"),
     ], children: [] }
   })
@@ -68,14 +67,12 @@ fn star_group(s: LayerStar) -> MarkupNode {
       sattr(name: "cx", value: to_string(s.x)),
       sattr(name: "cy", value: to_string(s.y)),
       sattr(name: "r", value: to_string(s.radius + 7)),
-      sattr(name: "fill", value: paint_alpha(m: starlight, alpha_pct: 10)),
       sattr(name: "class", value: "star-halo"),
     ], children: [] },
     ElementNode { tag: "circle", attrs: [
       sattr(name: "cx", value: to_string(s.x)),
       sattr(name: "cy", value: to_string(s.y)),
       sattr(name: "r", value: to_string(s.radius)),
-      sattr(name: "fill", value: paint(m: starlight)),
       sattr(name: "class", value: concat("star star-", s.key)),
       sattr(name: "tabindex", value: "0"),
     ], children: [] },

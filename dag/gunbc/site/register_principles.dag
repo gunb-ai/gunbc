@@ -9,6 +9,9 @@ type PrincipleId
   | ResponsiveDepth
   | DerivedTruth
   | ChromaByArea
+  | GlareEnvelope
+  | ThemeCoherence
+  | UniversalReframe
   | StillUntilTouched
 
 type RegisterPrinciple {
@@ -49,6 +52,21 @@ data register_principles: List<RegisterPrinciple> = [
     enforced_by: principle_ref(module_path: "gunbc.site.tokens", decl_name: "chroma_admissible"),
   },
   RegisterPrinciple {
+    id: GlareEnvelope,
+    law: "A material may be bright or chromatic, never both — the gamer register is inadmissible by row.",
+    enforced_by: principle_ref(module_path: "gunbc.site.tokens", decl_name: "quiet_envelope"),
+  },
+  RegisterPrinciple {
+    id: ThemeCoherence,
+    law: "A theme is a total role-to-material assignment at the role's area class; every color routes through a role — one model, night and day projections.",
+    enforced_by: principle_ref(module_path: "gunbc.site.tokens", decl_name: "theme_gaps"),
+  },
+  RegisterPrinciple {
+    id: UniversalReframe,
+    law: "A theme flip reframes the whole surface on one clock: themed properties cross-fade for free by derivation; an unthemed color is a counted census row, never a silent opt-out.",
+    enforced_by: principle_ref(module_path: "gunbc.site.theme_transition", decl_name: "unthemed_color_decls"),
+  },
+  RegisterPrinciple {
     id: StillUntilTouched,
     law: "Still until touched; always answers when touched. No ambient motion, ever.",
     enforced_by: principle_ref(module_path: "gunbc.site.tokens", decl_name: "BuildRule"),
@@ -61,6 +79,9 @@ fn principle_id_key(id: PrincipleId) -> String {
     ResponsiveDepth => "responsive-depth"
     DerivedTruth => "derived-truth"
     ChromaByArea => "chroma-by-area"
+    GlareEnvelope => "glare-envelope"
+    ThemeCoherence => "theme-coherence"
+    UniversalReframe => "universal-reframe"
     StillUntilTouched => "still-until-touched"
   }
 }

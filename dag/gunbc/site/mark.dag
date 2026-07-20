@@ -1,7 +1,6 @@
 module gunbc.site.mark
 
 import std.markup { MarkupNode, ElementNode, MarkupAttr }
-import gunbc.site.tokens { Material, starlight, star_glow, brass_focus, paint, paint_alpha }
 
 data mark_note: String = "Layer 4: the mark — candidate A Confluence (design section 4e) as a SPEC, not a drawing. Four nodes, fork and re-join: the smallest honest DAG, the diamond property. One authority renders every scale: favicon = render_mark(depth: 0), nav = depth 1, hero = depth 3 — the levels cannot disagree. all_forks_rejoin is the confluence theorem about the edge rows, witnessed, not assumed."
 
@@ -68,8 +67,12 @@ fn svg_el(tag: String, attrs: List<MarkupAttr>) -> MarkupNode {
   ElementNode { tag: tag, attrs: attrs, children: [] }
 }
 
-fn node_fill(n: MarkNode) -> Material {
-  if n.sink { brass_focus } else { starlight }
+fn node_class(n: MarkNode) -> String {
+  if n.sink { "mark-point mark-sink" } else { "mark-point" }
+}
+
+fn halo_class(n: MarkNode) -> String {
+  if n.sink { "mark-halo mark-halo-sink" } else { "mark-halo" }
 }
 
 fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<MarkupNode> {
@@ -81,7 +84,7 @@ fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<MarkupN
       attr(name: "y1", value: to_string(from.y)),
       attr(name: "x2", value: to_string(to.x)),
       attr(name: "y2", value: to_string(to.y)),
-      attr(name: "stroke", value: paint_alpha(m: star_glow, alpha_pct: 55)),
+      attr(name: "class", value: "mark-edge"),
       attr(name: "stroke-width", value: "1"),
     ])
   })
@@ -93,7 +96,7 @@ fn mark_node_halos(nodes: List<MarkNode>) -> List<MarkupNode> {
       attr(name: "cx", value: to_string(n.x)),
       attr(name: "cy", value: to_string(n.y)),
       attr(name: "r", value: "9"),
-      attr(name: "fill", value: paint_alpha(m: node_fill(n: n), alpha_pct: 16)),
+      attr(name: "class", value: halo_class(n: n)),
     ]))
 }
 
@@ -103,8 +106,7 @@ fn mark_node_points(nodes: List<MarkNode>) -> List<MarkupNode> {
       attr(name: "cx", value: to_string(n.x)),
       attr(name: "cy", value: to_string(n.y)),
       attr(name: "r", value: "3"),
-      attr(name: "fill", value: paint(m: node_fill(n: n))),
-      attr(name: "class", value: "mark-point"),
+      attr(name: "class", value: node_class(n: n)),
     ]))
 }
 

@@ -8,13 +8,14 @@ import gunbc.site.register_principles {
   RegisterPrinciple, register_principles, register_thesis, principle_id_key,
 }
 import gunbc.site.tokens {
-  Material, site_palette, palette_admissible, paint, paint_alpha,
-  indigo_void, indigo_panel, hairline_border, starlight, starlight_lit,
-  star_glow, stone_text, stone_dim, brass_focus, clay_boundary,
-  TimingToken, timing_scale, respond_fast, reveal_deliberate,
+  Theme, ThemeRole, RoleAssignment, site_themes, theme_roles, night_theme, day_theme,
+  themes_coherent, theme_root_css, assignment_paint, role_key, role_eq, role_var,
+  TimingToken, timing_scale,
   BuildRule, StaticRule, ResponseRule, TriggerShape, SelfResponse, WithinSubject, ContainerHas,
   MotionTrigger, OnHover, OnFocusVisible,
-  CssDecl, decl, color_decl, serialize_rules, reduced_motion_block, css_block,
+  CssDecl, decl, role_decl, serialize_rules, reduced_motion_block,
+  CanvasRole, SurfaceRole, BorderRole, TextRole, TextDimRole,
+  FigureRole, FigureLitRole, FigureEdgeRole, FocusRole, BoundaryRole,
 }
 import gunbc.site.interaction {
   BehaviorRow, moodboard_elements, moodboard_behaviors,
@@ -22,6 +23,9 @@ import gunbc.site.interaction {
 }
 import gunbc.site.mark { render_mark, mark_nodes, mark_edges, all_forks_rejoin }
 import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
+import gunbc.site.theme_transition { reframe_css, reframe_watcher_js, unthemed_color_decls }
+
+data moodboard_note: String = "Layer 6: the page. Everything visible projects from the layers below — principles (laws) -> tokens (themes/materials/timing) -> interaction (behavior rows) -> mark / constellation (figures) -> this composition. Every color routes through a theme role var: :root carries the night theme, one prefers-color-scheme media block carries the day theme, both derived from the same Theme rows (one rule set, N themes — a hardcoded hsl in a page rule is the fork this construction removes). The stylesheet is DERIVED from the behavior rows via realize_behavior, so a declared behavior with no realization is countable."
 
 fn txt(s: String) -> MarkupNode { TextNode { text: s } }
 
@@ -45,8 +49,8 @@ fn star_brighten_rules(timing: TimingToken) -> List<BuildRule> {
       trigger: t,
       transition_props: "fill",
       timing: timing,
-      base_decls: [ decl(prop: "fill", value: paint(m: starlight)), decl(prop: "cursor", value: "pointer") ],
-      response_decls: [ decl(prop: "fill", value: paint(m: starlight_lit)) ],
+      base_decls: [ role_decl(prop: "fill", r: FigureRole), decl(prop: "cursor", value: "pointer") ],
+      response_decls: [ role_decl(prop: "fill", r: FigureLitRole) ],
     })
 }
 
@@ -85,8 +89,8 @@ fn swatch_brighten_rules(timing: TimingToken) -> List<BuildRule> {
       trigger: t,
       transition_props: "border-color",
       timing: timing,
-      base_decls: [ decl(prop: "border", value: concat("1px solid ", paint_alpha(m: hairline_border, alpha_pct: 60))) ],
-      response_decls: [ decl(prop: "border-color", value: paint(m: star_glow)) ],
+      base_decls: [ decl(prop: "border", value: "1px solid var(--border)") ],
+      response_decls: [ role_decl(prop: "border-color", r: FigureEdgeRole) ],
     })
 }
 
@@ -125,11 +129,23 @@ fn behavior_rules(rows: List<BehaviorRow>) -> List<BuildRule> {
   })
 }
 
+fn figure_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: ".mark-point", decls: [ role_decl(prop: "fill", r: FigureRole) ] },
+    StaticRule { selector: ".mark-sink", decls: [ role_decl(prop: "fill", r: FocusRole) ] },
+    StaticRule { selector: ".mark-halo", decls: [ role_decl(prop: "fill", r: FigureRole), decl(prop: "opacity", value: "0.16") ] },
+    StaticRule { selector: ".mark-halo-sink", decls: [ role_decl(prop: "fill", r: FocusRole) ] },
+    StaticRule { selector: ".mark-edge", decls: [ role_decl(prop: "stroke", r: FigureEdgeRole) ] },
+    StaticRule { selector: ".sky-edge", decls: [ role_decl(prop: "stroke", r: FigureEdgeRole) ] },
+    StaticRule { selector: ".star-halo", decls: [ role_decl(prop: "fill", r: FigureRole), decl(prop: "opacity", value: "0.1") ] },
+  ]
+}
+
 fn static_rules() -> List<BuildRule> {
   [
     StaticRule { selector: "body", decls: [
-      color_decl(prop: "background", m: indigo_void),
-      color_decl(prop: "color", m: stone_text),
+      role_decl(prop: "background", r: CanvasRole),
+      role_decl(prop: "color", r: TextRole),
       decl(prop: "font-family", value: "'Noto Sans', system-ui, sans-serif"),
       decl(prop: "margin", value: "0"),
       decl(prop: "line-height", value: "1.55"),
@@ -145,7 +161,7 @@ fn static_rules() -> List<BuildRule> {
       decl(prop: "letter-spacing", value: "0.01em"),
     ] },
     StaticRule { selector: ".thesis", decls: [
-      color_decl(prop: "color", m: stone_dim),
+      role_decl(prop: "color", r: TextDimRole),
       decl(prop: "margin", value: "0.25rem 0 0"),
     ] },
     StaticRule { selector: "section", decls: [
@@ -156,11 +172,11 @@ fn static_rules() -> List<BuildRule> {
       decl(prop: "font-weight", value: "500"),
       decl(prop: "letter-spacing", value: "0.08em"),
       decl(prop: "text-transform", value: "lowercase"),
-      color_decl(prop: "color", m: stone_dim),
+      role_decl(prop: "color", r: TextDimRole),
     ] },
     StaticRule { selector: ".panel", decls: [
-      color_decl(prop: "background", m: indigo_panel),
-      decl(prop: "border", value: concat("1px solid ", paint_alpha(m: hairline_border, alpha_pct: 45))),
+      role_decl(prop: "background", r: SurfaceRole),
+      decl(prop: "border", value: "1px solid var(--border)"),
       decl(prop: "border-radius", value: "3px"),
       decl(prop: "padding", value: "1.1rem 1.25rem"),
     ] },
@@ -183,31 +199,26 @@ fn static_rules() -> List<BuildRule> {
       decl(prop: "list-style", value: "none"),
       decl(prop: "padding", value: "0"),
       decl(prop: "font-size", value: "0.85rem"),
-      color_decl(prop: "color", m: stone_dim),
+      role_decl(prop: "color", r: TextDimRole),
     ] },
     StaticRule { selector: ".legend-key", decls: [
       decl(prop: "font-family", value: "'JetBrains Mono', monospace"),
-      color_decl(prop: "color", m: stone_text),
-    ] },
-    StaticRule { selector: ".swatch-row", decls: [
-      decl(prop: "display", value: "flex"),
-      decl(prop: "flex-wrap", value: "wrap"),
-      decl(prop: "gap", value: "0.75rem"),
+      role_decl(prop: "color", r: TextRole),
     ] },
     StaticRule { selector: ".swatch", decls: [
-      decl(prop: "width", value: "7.5rem"),
+      decl(prop: "display", value: "inline-block"),
       decl(prop: "border-radius", value: "3px"),
-      decl(prop: "padding", value: "0.4rem"),
+      decl(prop: "padding", value: "0.3rem"),
+      decl(prop: "margin", value: "0 0.5rem 0.25rem 0"),
     ] },
-    StaticRule { selector: ".chip", decls: [
-      decl(prop: "height", value: "2.2rem"),
+    StaticRule { selector: ".chip-inline", decls: [
+      decl(prop: "display", value: "inline-block"),
+      decl(prop: "width", value: "2.4rem"),
+      decl(prop: "height", value: "1.2rem"),
       decl(prop: "border-radius", value: "2px"),
-      decl(prop: "border", value: concat("1px solid ", paint_alpha(m: hairline_border, alpha_pct: 35))),
-    ] },
-    StaticRule { selector: ".swatch .label", decls: [
-      decl(prop: "font-size", value: "0.72rem"),
-      color_decl(prop: "color", m: stone_dim),
-      decl(prop: "margin-top", value: "0.3rem"),
+      decl(prop: "border", value: "1px solid var(--border)"),
+      decl(prop: "vertical-align", value: "middle"),
+      decl(prop: "margin-right", value: "0.5rem"),
     ] },
     StaticRule { selector: ".ledger", decls: [
       decl(prop: "width", value: "100%"),
@@ -216,38 +227,50 @@ fn static_rules() -> List<BuildRule> {
     ] },
     StaticRule { selector: ".ledger td", decls: [
       decl(prop: "padding", value: "0.45rem 0.75rem 0.45rem 0"),
-      decl(prop: "border-bottom", value: concat("1px solid ", paint_alpha(m: hairline_border, alpha_pct: 25))),
+      decl(prop: "border-bottom", value: "1px solid var(--border)"),
       decl(prop: "vertical-align", value: "top"),
     ] },
     StaticRule { selector: ".boundary", decls: [
-      decl(prop: "border-left", value: concat("2px solid ", paint(m: clay_boundary))),
+      decl(prop: "border-left", value: "2px solid var(--boundary)"),
       decl(prop: "padding-left", value: "1rem"),
     ] },
     StaticRule { selector: ".foot", decls: [
       decl(prop: "margin-top", value: "4rem"),
       decl(prop: "font-size", value: "0.78rem"),
-      color_decl(prop: "color", m: stone_dim),
-    ] },
-    StaticRule { selector: ".brass", decls: [
-      color_decl(prop: "color", m: brass_focus),
+      role_decl(prop: "color", r: TextDimRole),
     ] },
   ]
 }
 
+fn moodboard_rules() -> List<BuildRule> {
+  concat(concat(static_rules(), figure_rules()), behavior_rules(rows: moodboard_behaviors))
+}
+
 fn moodboard_css() -> String {
-  let rules = concat(static_rules(), behavior_rules(rows: moodboard_behaviors))
   join([
-    serialize_rules(rules: rules),
+    theme_root_css(base: night_theme, alternate: day_theme),
+    serialize_rules(rules: moodboard_rules()),
+    reframe_css(rules: moodboard_rules()),
     reduced_motion_block(rules: behavior_rules(rows: moodboard_behaviors)),
   ], "\n")
 }
 
-fn palette_serialized() -> String {
-  join(map(site_palette, m => join([m.name, "=", paint(m: m)], "")), ";")
+fn moodboard_nav_js() -> String {
+  reframe_watcher_js()
+}
+
+fn theme_paint_of(t: Theme, r: ThemeRole) -> String {
+  fold(t.assignments, init: "", f: (acc, a) =>
+    if role_eq(a: a.role, b: r) { assignment_paint(a: a) } else { acc })
+}
+
+fn themes_serialized() -> String {
+  join(map(site_themes, t =>
+    join(map(t.assignments, a => join([t.name, ".", role_key(r: a.role), "=", assignment_paint(a: a)], "")), ";")), "|")
 }
 
 fn moodboard_digest() -> String {
-  content_hash_atom(value: concat(register_thesis, palette_serialized()) as NonEmptyStr) as String
+  content_hash_atom(value: concat(register_thesis, themes_serialized()) as NonEmptyStr) as String
 }
 
 fn short_digest(digest: String) -> String {
@@ -279,28 +302,53 @@ fn hero_section() -> MarkupNode {
   ])
 }
 
-fn swatch_item(m: Material) -> MarkupNode {
+fn theme_chip(paint_value: String) -> MarkupNode {
   ElementNode {
-    tag: "div",
+    tag: "span",
     attrs: [
-      MarkupAttr { name: "class", value: "swatch" },
-      MarkupAttr { name: "tabindex", value: "0" },
+      MarkupAttr { name: "class", value: "chip-inline" },
+      MarkupAttr { name: "style", value: concat("background: ", paint_value) },
     ],
+    children: [],
+  }
+}
+
+fn theme_cell(t: Theme, r: ThemeRole) -> MarkupNode {
+  let p = theme_paint_of(t: t, r: r)
+  ElementNode {
+    tag: "td",
+    attrs: [],
     children: [
       ElementNode {
-        tag: "div",
-        attrs: [ MarkupAttr { name: "class", value: "chip" }, MarkupAttr { name: "style", value: concat("background: ", paint(m: m)) } ],
-        children: [],
+        tag: "span",
+        attrs: [
+          MarkupAttr { name: "class", value: "swatch" },
+          MarkupAttr { name: "tabindex", value: "0" },
+        ],
+        children: [ theme_chip(paint_value: p), el_class("span", "mono", [ txt(p) ]) ],
       },
-      el_class("div", "label mono", [ txt(join([m.name, " · ", paint(m: m)], "")) ]),
     ],
   }
 }
 
-fn materials_section() -> MarkupNode {
+fn theme_role_row(r: ThemeRole) -> MarkupNode {
+  el("tr", [
+    el_class("td", "mono", [ txt(role_key(r: r)) ]),
+    theme_cell(t: night_theme, r: r),
+    theme_cell(t: day_theme, r: r),
+  ])
+}
+
+fn themes_section() -> MarkupNode {
   el("section", [
-    el("h2", [ txt("materials — chroma bounded by area") ]),
-    el_class("div", "swatch-row", map(site_palette, m => swatch_item(m: m))),
+    el("h2", [ txt("themes — one role model, night and day projections") ]),
+    el_class("table", "ledger", concat(
+      [ el("tr", [
+          el_class("td", "mono", [ txt("role") ]),
+          el_class("td", "mono", [ txt("night") ]),
+          el_class("td", "mono", [ txt("day") ]),
+        ]) ],
+      map(theme_roles, r => theme_role_row(r: r)))),
   ])
 }
 
@@ -338,7 +386,7 @@ fn boundary_section() -> MarkupNode {
     el("h2", [ txt("a boundary — refusal does not glow") ]),
     el_class("div", "panel boundary", [
       el_class("p", "mono", [
-        txt("invariant — an inadmissible material (saturated field) has no paint projection; the row is refused at the palette witness, no artifact emitted"),
+        txt("invariant — a bright saturated material fails the glare envelope; the row is inadmissible at the theme witness, no artifact emitted"),
       ]),
     ]),
   ])
@@ -353,7 +401,7 @@ fn hallmark() -> MarkupNode {
       MarkupAttr { name: "tabindex", value: "0" },
     ],
     children: [
-      el_class("span", "mono", [ txt(concat("emitted from gunbc.site.moodboard · thesis+palette digest ", short_digest(digest: digest))) ]),
+      el_class("span", "mono", [ txt(concat("emitted from gunbc.site.moodboard · thesis+themes digest ", short_digest(digest: digest))) ]),
       el_class("span", "mono hash-full", [ txt(concat(" · full ", digest)) ]),
     ],
   }
@@ -369,13 +417,17 @@ fn moodboard_page() -> MarkupNode {
       ], children: [] },
       el("title", [ txt("gunb.ai — register moodboard (phase 0)") ]),
       el("style", [ txt(moodboard_css()) ]),
+      ElementNode { tag: "script", attrs: [
+        MarkupAttr { name: "src", value: "assets/nav.js" },
+        MarkupAttr { name: "defer", value: "" },
+      ], children: [] },
     ]),
     el("body", [
       el("main", [
         masthead(),
         mark_section(),
         hero_section(),
-        materials_section(),
+        themes_section(),
         timing_section(),
         principles_section(),
         boundary_section(),
@@ -393,8 +445,9 @@ fn moodboard_html() -> String {
 }
 
 fn moodboard_preconditions_hold() -> Bool {
-  palette_admissible(palette: site_palette)
+  themes_coherent(themes: site_themes, roles: theme_roles)
     && coverage_gaps(elements: moodboard_elements, rows: moodboard_behaviors).length() == 0
     && unrealized_behaviors(rows: moodboard_behaviors).length() == 0
+    && unthemed_color_decls(rules: moodboard_rules()).length() == 0
     && all_forks_rejoin(nodes: mark_nodes, edges: mark_edges, source: "a")
 }
