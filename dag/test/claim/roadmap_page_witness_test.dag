@@ -46,6 +46,7 @@ fn witness_authority_shows_three_gate_progress() -> Bool {
     && string_contains(s: authority, pattern: "Gate 1 — the emitter re-emits itself")
     && string_contains(s: authority, pattern: "Gate 3 — verification ledger green by execution")
     && !string_contains(s: authority, pattern: "Cutover and delete")
+    && !string_contains(s: authority, pattern: "std_dup-gated modules")
 }
 
 fn depth_chain_html(fuel: Int) -> String {

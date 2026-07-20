@@ -21,6 +21,7 @@ import gunbc.v1_deletion_plan {
   v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
   PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
   BrickState, Placed, InFlight, Gated,
+  BrickRole, BarBrick, SeedShrink,
 }
 
 fn roadmap_page_max_depth() -> Int { 8 }
@@ -68,8 +69,15 @@ fn tg_brick_state_label(bs: BrickState) -> String {
   }
 }
 
+fn tg_is_bar_brick(m: PlanMilestone) -> Bool {
+  match m.role {
+    BarBrick => true
+    SeedShrink => false
+  }
+}
+
 fn tg_gate_bricks(g: PlanGate) -> List<PlanMilestone> {
-  filter(v1_deletion_milestones, m => tg_gate_eq(a: m.gate, b: g))
+  filter(v1_deletion_milestones, m => tg_gate_eq(a: m.gate, b: g) && tg_is_bar_brick(m: m))
 }
 
 fn tg_gate_total(g: PlanGate) -> Int { count(tg_gate_bricks(g: g)) }
