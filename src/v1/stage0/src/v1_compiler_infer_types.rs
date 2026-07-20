@@ -51,46 +51,46 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
+pub fn is_type_variable(inferred: Arc<InferredNode>) -> bool {
     match (*inferred.clone()).clone() {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
 }
 
-pub fn type_variable_node(id: String) -> Rc<Node> {
-    Rc::new(Node {
+pub fn type_variable_node(id: String) -> Arc<Node> {
+    Arc::new(Node {
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
-        children: Rc::new(vec![]),
+        children: Arc::new(vec![]),
         connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
+        params: Arc::new(vec![]),
+        inferred: Some(Arc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
         ident: None,
     })
 }
 
-pub fn resolved_type(n: Rc<Node>) -> Rc<Node> {
+pub fn resolved_type(n: Arc<Node>) -> Arc<Node> {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
         _ => error_type(),
     }
 }
 
-pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
+pub fn child_type_node(ch: Arc<Node>) -> Arc<Node> {
     if (ch.inferred.clone() != None) {
         resolved_type(ch.clone())
     } else {
@@ -98,14 +98,14 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
+pub fn is_type_expr_annotation(n: Arc<Node>) -> bool {
     match (*n.expr_data.clone()).clone() {
         ExprData::NoExprData => true,
         _ => false,
     }
 }
 
-pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
+pub fn child_type_at(n: Arc<Node>, index: i64) -> Option<Arc<Node>> {
     match n.children.clone().get(index.clone() as usize).cloned() {
         Some(ch) => Some(child_type_node(ch.clone())),
         None => None,
@@ -113,8 +113,8 @@ pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
 }
 
 pub fn node_is_collection(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     ((((n.children.clone().len() as i64) > 0)
         && (n.connective.clone() == Connective::NoConnective))
@@ -125,24 +125,24 @@ pub fn node_is_collection(
 }
 
 pub fn node_is_keyed_collection(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (node_is_collection(n.clone(), source_indices.clone())
         && ((n.children.clone().len() as i64) == 2))
 }
 
 pub fn node_is_element_collection(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (node_is_collection(n.clone(), source_indices.clone())
         && ((n.children.clone().len() as i64) == 1))
 }
 
 pub fn node_is_set_collection(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (node_is_element_collection(n.clone(), source_indices.clone())
         && (qualified_last_segment(authored_name_at(source_indices.clone(), n.clone()))
@@ -150,8 +150,8 @@ pub fn node_is_set_collection(
 }
 
 pub fn canonical_template_name(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let nm = authored_name_at(source_indices.clone(), n.clone());
@@ -170,7 +170,7 @@ pub fn is_declared_container_alias_spelling(name: String) -> bool {
 }
 
 pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
-    Rc::new(v1_rt::sorted_map_keys(&container_template_alias_rows()))
+    Arc::new(v1_rt::sorted_map_keys(&container_template_alias_rows()))
         .iter()
         .cloned()
         .fold(None, |acc: _, k: String| match acc.clone() {
@@ -212,14 +212,14 @@ pub fn kernel_profile_lookup(name: String) -> Option<AlgebraProfile> {
 }
 
 pub fn reground_alias_carrier_identity(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Node> {
     if (((n.name.clone() != "".to_string())
         && (n.name.clone() != authored_name_at(source_indices.clone(), n.clone())))
         && is_declared_container_alias_spelling(n.name.clone()))
     {
-        Rc::new(Node {
+        Arc::new(Node {
             name: n.name.clone(),
             span: n.span.clone(),
             ident_span: Some(kernel_span(n.name.clone())),
@@ -245,12 +245,12 @@ pub fn reground_alias_carrier_identity(
 }
 
 pub fn structural_carrier_template_name(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     if (n.name.clone() != "".to_string()) {
         canonical_template_name(
-            Rc::new(Node {
+            Arc::new(Node {
                 name: n.name.clone(),
                 span: n.span.clone(),
                 ident_span: Some(kernel_span(n.name.clone())),
@@ -277,25 +277,25 @@ pub fn structural_carrier_template_name(
     }
 }
 
-pub fn is_product_type(n: Rc<Node>) -> bool {
+pub fn is_product_type(n: Arc<Node>) -> bool {
     (n.connective.clone() == Connective::Conj)
 }
 
-pub fn is_coproduct_type(n: Rc<Node>) -> bool {
+pub fn is_coproduct_type(n: Arc<Node>) -> bool {
     (n.connective.clone() == Connective::Disj)
 }
 
-pub fn is_leaf_type(n: Rc<Node>) -> bool {
+pub fn is_leaf_type(n: Arc<Node>) -> bool {
     (n.connective.clone() == Connective::NoConnective)
 }
 
-pub fn is_unit_like(n: Rc<Node>) -> bool {
+pub fn is_unit_like(n: Arc<Node>) -> bool {
     ((n.connective.clone() == Connective::Conj) && ((n.children.clone().len() as i64) == 0))
 }
 
 pub fn is_fully_resolved(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_is_type_var = match n.inferred.clone() {
@@ -335,72 +335,72 @@ pub fn is_fully_resolved(
     })
 }
 
-pub fn bare_map_node() -> Option<Rc<Node>> {
+pub fn bare_map_node() -> Option<Arc<Node>> {
     match container_param_name("Map".to_string(), 0) {
         Some(key_id) => match container_param_name("Map".to_string(), 1) {
-            Some(val_id) => Some(Rc::new(Node {
+            Some(val_id) => Some(Arc::new(Node {
                 name: "Map".to_string(),
                 span: make_span(0, 0),
                 ident_span: Some(make_span(0, 0)),
-                children: Rc::new(vec![
-                    Rc::new(Node {
+                children: Arc::new(vec![
+                    Arc::new(Node {
                         name: key_id.clone(),
                         span: make_span(0, 0),
                         ident_span: Some(make_span(0, 0)),
-                        children: Rc::new(vec![]),
+                        children: Arc::new(vec![]),
                         connective: Connective::NoConnective,
-                        params: Rc::new(vec![]),
-                        inferred: Some(Rc::new(InferredNode::Resolved {
+                        params: Arc::new(vec![]),
+                        inferred: Some(Arc::new(InferredNode::Resolved {
                             node: type_variable_node(key_id.clone()),
                         })),
                         return_cardinality: Cardinality::Required,
-                        uses: Rc::new(vec![]),
+                        uses: Arc::new(vec![]),
                         body: None,
                         transport: None,
-                        properties: Rc::new(vec![]),
+                        properties: Arc::new(vec![]),
                         type_annotation: None,
                         is_self_recursive: false,
                         has_non_tail_self_call: false,
                         match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
+                        expr_data: Arc::new(ExprData::NoExprData),
                         ident: None,
                     }),
-                    Rc::new(Node {
+                    Arc::new(Node {
                         name: val_id.clone(),
                         span: make_span(0, 0),
                         ident_span: Some(make_span(0, 0)),
-                        children: Rc::new(vec![]),
+                        children: Arc::new(vec![]),
                         connective: Connective::NoConnective,
-                        params: Rc::new(vec![]),
-                        inferred: Some(Rc::new(InferredNode::Resolved {
+                        params: Arc::new(vec![]),
+                        inferred: Some(Arc::new(InferredNode::Resolved {
                             node: type_variable_node(val_id.clone()),
                         })),
                         return_cardinality: Cardinality::Required,
-                        uses: Rc::new(vec![]),
+                        uses: Arc::new(vec![]),
                         body: None,
                         transport: None,
-                        properties: Rc::new(vec![]),
+                        properties: Arc::new(vec![]),
                         type_annotation: None,
                         is_self_recursive: false,
                         has_non_tail_self_call: false,
                         match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
+                        expr_data: Arc::new(ExprData::NoExprData),
                         ident: None,
                     }),
                 ]),
                 connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
+                params: Arc::new(vec![]),
                 inferred: None,
                 return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
+                uses: Arc::new(vec![]),
                 body: None,
                 transport: None,
-                properties: Rc::new(vec![]),
+                properties: Arc::new(vec![]),
                 type_annotation: None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
+                expr_data: Arc::new(ExprData::NoExprData),
                 ident: None,
             })),
             None => None,
@@ -409,61 +409,61 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
     }
 }
 
-pub fn bare_set_node() -> Option<Rc<Node>> {
+pub fn bare_set_node() -> Option<Arc<Node>> {
     match container_param_name("Set".to_string(), 0) {
-        Some(elem_id) => Some(Rc::new(Node {
+        Some(elem_id) => Some(Arc::new(Node {
             name: "Set".to_string(),
             span: make_span(0, 0),
             ident_span: Some(make_span(0, 0)),
-            children: Rc::new(vec![Rc::new(Node {
+            children: Arc::new(vec![Arc::new(Node {
                 name: elem_id.clone(),
                 span: make_span(0, 0),
                 ident_span: Some(make_span(0, 0)),
-                children: Rc::new(vec![]),
+                children: Arc::new(vec![]),
                 connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: Some(Rc::new(InferredNode::Resolved {
+                params: Arc::new(vec![]),
+                inferred: Some(Arc::new(InferredNode::Resolved {
                     node: type_variable_node(elem_id.clone()),
                 })),
                 return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
+                uses: Arc::new(vec![]),
                 body: None,
                 transport: None,
-                properties: Rc::new(vec![]),
+                properties: Arc::new(vec![]),
                 type_annotation: None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
+                expr_data: Arc::new(ExprData::NoExprData),
                 ident: None,
             })]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: Arc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
             ident: None,
         })),
         None => None,
     }
 }
 
-pub fn kernel_container_profile_miss_diagnostic(kind_name: String) -> Rc<ErrorNode> {
+pub fn kernel_container_profile_miss_diagnostic(kind_name: String) -> Arc<ErrorNode> {
     {
         let msg = v1_rt::concat(
             "missing kernel container profile: ".to_string(),
             kind_name.clone(),
         );
         make_error_node(
-            Rc::new(CompilerDiagnostic::InternalError {
+            Arc::new(CompilerDiagnostic::InternalError {
                 message: msg.clone(),
                 span: make_span(0, 0),
             }),
@@ -472,33 +472,33 @@ pub fn kernel_container_profile_miss_diagnostic(kind_name: String) -> Rc<ErrorNo
     }
 }
 
-pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
+pub fn missing_kernel_container_profile_type(kind_name: String) -> Arc<Node> {
     {
         let msg = v1_rt::concat(
             "missing kernel container profile: ".to_string(),
             kind_name.clone(),
         );
-        Rc::new(Node {
+        Arc::new(Node {
             name: "".to_string(),
             span: make_span(0, 0),
             ident_span: None,
-            children: Rc::new(vec![]),
+            children: Arc::new(vec![]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::CompilerError {
+            params: Arc::new(vec![]),
+            inferred: Some(Arc::new(InferredNode::CompilerError {
                 message: msg.clone(),
                 span: make_span(0, 0),
             })),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::ExprError {
+            expr_data: Arc::new(ExprData::ExprError {
                 kind: ExprErrorKind::InternalExprError,
                 message: msg.clone(),
             }),
@@ -509,273 +509,273 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KernelTypeBuild {
-    pub ty: Rc<Node>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub ty: Arc<Node>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
-pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
+pub fn make_container_type(kind_name: String, element: Arc<Node>) -> Arc<KernelTypeBuild> {
     match container_param_name(kind_name.clone(), 0) {
-        Some(param_name) => Rc::new(KernelTypeBuild {
-            ty: Rc::new(Node {
+        Some(param_name) => Arc::new(KernelTypeBuild {
+            ty: Arc::new(Node {
                 name: kind_name.clone(),
                 span: kernel_span(kind_name.clone()),
                 ident_span: Some(kernel_span(kind_name.clone())),
-                children: Rc::new(vec![Rc::new(Node {
+                children: Arc::new(vec![Arc::new(Node {
                     name: param_name.clone(),
                     span: kernel_span(param_name.clone()),
                     ident_span: Some(kernel_span(param_name.clone())),
-                    children: Rc::new(vec![]),
+                    children: Arc::new(vec![]),
                     connective: Connective::NoConnective,
-                    params: Rc::new(vec![]),
-                    inferred: Some(Rc::new(InferredNode::Resolved {
+                    params: Arc::new(vec![]),
+                    inferred: Some(Arc::new(InferredNode::Resolved {
                         node: element.clone(),
                     })),
                     return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
+                    uses: Arc::new(vec![]),
                     body: None,
                     transport: None,
-                    properties: Rc::new(vec![]),
+                    properties: Arc::new(vec![]),
                     type_annotation: None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: None,
-                    expr_data: Rc::new(ExprData::NoExprData),
+                    expr_data: Arc::new(ExprData::NoExprData),
                     ident: None,
                 })]),
                 connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
+                params: Arc::new(vec![]),
                 inferred: None,
                 return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
+                uses: Arc::new(vec![]),
                 body: None,
                 transport: None,
-                properties: Rc::new(vec![]),
+                properties: Arc::new(vec![]),
                 type_annotation: None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
+                expr_data: Arc::new(ExprData::NoExprData),
                 ident: None,
             }),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         }),
-        None => Rc::new(KernelTypeBuild {
+        None => Arc::new(KernelTypeBuild {
             ty: missing_kernel_container_profile_type(kind_name.clone()),
-            diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
+            diagnostics: Arc::new(vec![kernel_container_profile_miss_diagnostic(
                 kind_name.clone(),
             )]),
         }),
     }
 }
 
-pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
+pub fn make_map_type(key: Arc<Node>, value: Arc<Node>) -> Arc<KernelTypeBuild> {
     match container_param_name("Map".to_string(), 0) {
         Some(key_name) => match container_param_name("Map".to_string(), 1) {
-            Some(val_name) => Rc::new(KernelTypeBuild {
-                ty: Rc::new(Node {
+            Some(val_name) => Arc::new(KernelTypeBuild {
+                ty: Arc::new(Node {
                     name: "Map".to_string(),
                     span: kernel_span("Map".to_string()),
                     ident_span: Some(kernel_span("Map".to_string())),
-                    children: Rc::new(vec![
-                        Rc::new(Node {
+                    children: Arc::new(vec![
+                        Arc::new(Node {
                             name: key_name.clone(),
                             span: kernel_span(key_name.clone()),
                             ident_span: Some(kernel_span(key_name.clone())),
-                            children: Rc::new(vec![]),
+                            children: Arc::new(vec![]),
                             connective: Connective::NoConnective,
-                            params: Rc::new(vec![]),
-                            inferred: Some(Rc::new(InferredNode::Resolved { node: key.clone() })),
+                            params: Arc::new(vec![]),
+                            inferred: Some(Arc::new(InferredNode::Resolved { node: key.clone() })),
                             return_cardinality: Cardinality::Required,
-                            uses: Rc::new(vec![]),
+                            uses: Arc::new(vec![]),
                             body: None,
                             transport: None,
-                            properties: Rc::new(vec![]),
+                            properties: Arc::new(vec![]),
                             type_annotation: None,
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
                             match_pattern: None,
-                            expr_data: Rc::new(ExprData::NoExprData),
+                            expr_data: Arc::new(ExprData::NoExprData),
                             ident: None,
                         }),
-                        Rc::new(Node {
+                        Arc::new(Node {
                             name: val_name.clone(),
                             span: kernel_span(val_name.clone()),
                             ident_span: Some(kernel_span(val_name.clone())),
-                            children: Rc::new(vec![]),
+                            children: Arc::new(vec![]),
                             connective: Connective::NoConnective,
-                            params: Rc::new(vec![]),
-                            inferred: Some(Rc::new(InferredNode::Resolved {
+                            params: Arc::new(vec![]),
+                            inferred: Some(Arc::new(InferredNode::Resolved {
                                 node: value.clone(),
                             })),
                             return_cardinality: Cardinality::Required,
-                            uses: Rc::new(vec![]),
+                            uses: Arc::new(vec![]),
                             body: None,
                             transport: None,
-                            properties: Rc::new(vec![]),
+                            properties: Arc::new(vec![]),
                             type_annotation: None,
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
                             match_pattern: None,
-                            expr_data: Rc::new(ExprData::NoExprData),
+                            expr_data: Arc::new(ExprData::NoExprData),
                             ident: None,
                         }),
                     ]),
                     connective: Connective::NoConnective,
-                    params: Rc::new(vec![]),
+                    params: Arc::new(vec![]),
                     inferred: None,
                     return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
+                    uses: Arc::new(vec![]),
                     body: None,
                     transport: None,
-                    properties: Rc::new(vec![]),
+                    properties: Arc::new(vec![]),
                     type_annotation: None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: None,
-                    expr_data: Rc::new(ExprData::NoExprData),
+                    expr_data: Arc::new(ExprData::NoExprData),
                     ident: None,
                 }),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
-            None => Rc::new(KernelTypeBuild {
+            None => Arc::new(KernelTypeBuild {
                 ty: missing_kernel_container_profile_type("Map".to_string()),
-                diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
+                diagnostics: Arc::new(vec![kernel_container_profile_miss_diagnostic(
                     "Map".to_string(),
                 )]),
             }),
         },
-        None => Rc::new(KernelTypeBuild {
+        None => Arc::new(KernelTypeBuild {
             ty: missing_kernel_container_profile_type("Map".to_string()),
-            diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
+            diagnostics: Arc::new(vec![kernel_container_profile_miss_diagnostic(
                 "Map".to_string(),
             )]),
         }),
     }
 }
 
-pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
+pub fn make_callable_type(func_params: Arc<Vec<Arc<Node>>>, ret: Arc<Node>) -> Arc<Node> {
+    Arc::new(Node {
         name: "Callable".to_string(),
         span: kernel_span("Callable".to_string()),
         ident_span: Some(kernel_span("Callable".to_string())),
-        children: Rc::new(vec![]),
+        children: Arc::new(vec![]),
         connective: Connective::Arrow,
         params: func_params.clone(),
-        inferred: Some(Rc::new(InferredNode::Resolved { node: ret.clone() })),
+        inferred: Some(Arc::new(InferredNode::Resolved { node: ret.clone() })),
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
         ident: None,
     })
 }
 
-pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
+pub fn make_tuple_type(first: Arc<Node>, second: Arc<Node>) -> Arc<Node> {
+    Arc::new(Node {
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
-        children: Rc::new(vec![
-            Rc::new(Node {
+        children: Arc::new(vec![
+            Arc::new(Node {
                 name: "first".to_string(),
                 span: kernel_span("first".to_string()),
                 ident_span: Some(kernel_span("first".to_string())),
-                children: Rc::new(vec![]),
+                children: Arc::new(vec![]),
                 connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: Some(Rc::new(InferredNode::Resolved {
+                params: Arc::new(vec![]),
+                inferred: Some(Arc::new(InferredNode::Resolved {
                     node: first.clone(),
                 })),
                 return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
+                uses: Arc::new(vec![]),
                 body: None,
                 transport: None,
-                properties: Rc::new(vec![]),
+                properties: Arc::new(vec![]),
                 type_annotation: None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
+                expr_data: Arc::new(ExprData::NoExprData),
                 ident: None,
             }),
-            Rc::new(Node {
+            Arc::new(Node {
                 name: "second".to_string(),
                 span: kernel_span("second".to_string()),
                 ident_span: Some(kernel_span("second".to_string())),
-                children: Rc::new(vec![]),
+                children: Arc::new(vec![]),
                 connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: Some(Rc::new(InferredNode::Resolved {
+                params: Arc::new(vec![]),
+                inferred: Some(Arc::new(InferredNode::Resolved {
                     node: second.clone(),
                 })),
                 return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
+                uses: Arc::new(vec![]),
                 body: None,
                 transport: None,
-                properties: Rc::new(vec![]),
+                properties: Arc::new(vec![]),
                 type_annotation: None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
+                expr_data: Arc::new(ExprData::NoExprData),
                 ident: None,
             }),
         ]),
         connective: Connective::Conj,
-        params: Rc::new(vec![]),
+        params: Arc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
         ident: None,
     })
 }
 
-pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
+pub fn algebra_value_field(name: String, type_node: Arc<Node>) -> Arc<Node> {
+    Arc::new(Node {
         name: name.clone(),
         span: kernel_span(name.clone()),
         ident_span: Some(kernel_span(name.clone())),
-        children: Rc::new(vec![]),
+        children: Arc::new(vec![]),
         connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::Resolved {
+        params: Arc::new(vec![]),
+        inferred: Some(Arc::new(InferredNode::Resolved {
             node: type_node.clone(),
         })),
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
         ident: None,
     })
 }
 
 pub fn algebra_method_field(
     name: String,
-    param_types: Rc<Vec<Rc<Node>>>,
-    return_type: Rc<Node>,
-) -> Rc<Node> {
+    param_types: Arc<Vec<Arc<Node>>>,
+    return_type: Arc<Node>,
+) -> Arc<Node> {
     {
-        let params = Rc::new({
+        let params = Arc::new({
             let mut __result = Vec::new();
             for t in param_types.clone().iter().cloned() {
                 __result.push(make_param_node(
@@ -789,26 +789,26 @@ pub fn algebra_method_field(
             __result
         });
         let callable = make_callable_type(params.clone(), return_type.clone());
-        Rc::new(Node {
+        Arc::new(Node {
             name: name.clone(),
             span: kernel_span(name.clone()),
             ident_span: Some(kernel_span(name.clone())),
-            children: Rc::new(vec![]),
+            children: Arc::new(vec![]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved {
+            params: Arc::new(vec![]),
+            inferred: Some(Arc::new(InferredNode::Resolved {
                 node: callable.clone(),
             })),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
             ident: None,
         })
     }
@@ -816,10 +816,10 @@ pub fn algebra_method_field(
 
 pub fn enrich_base_with_fields(
     name: String,
-    base: Rc<Node>,
-    fields: Rc<Vec<Rc<Node>>>,
-) -> Rc<Node> {
-    Rc::new(Node {
+    base: Arc<Node>,
+    fields: Arc<Vec<Arc<Node>>>,
+) -> Arc<Node> {
+    Arc::new(Node {
         name: name.clone(),
         span: base.span.clone(),
         ident_span: base.ident_span.clone(),
@@ -841,24 +841,24 @@ pub fn enrich_base_with_fields(
     })
 }
 
-pub fn placeholder_type_node(name: String) -> Rc<Node> {
+pub fn placeholder_type_node(name: String) -> Arc<Node> {
     nominal_type_ref(name.clone())
 }
 
-pub fn nominal_type_ref(name: String) -> Rc<Node> {
+pub fn nominal_type_ref(name: String) -> Arc<Node> {
     leaf_node_with_span(name.clone(), kernel_span(name.clone()))
 }
 
 pub fn algebra_child_or_placeholder(
-    base: Rc<Node>,
+    base: Arc<Node>,
     child_index: i64,
     placeholder: String,
-) -> Rc<Node> {
-    match Rc::new({
+) -> Arc<Node> {
+    match Arc::new({
         let mut __result = Vec::new();
-        for pair in Rc::new({
+        for pair in Arc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new(
+            for pair in Arc::new(
                 base.children
                     .clone()
                     .iter()
@@ -892,39 +892,39 @@ pub fn algebra_child_or_placeholder(
 }
 
 pub fn instantiate_algebra_type(
-    template: Rc<AlgebraTypeTemplate>,
-    base: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<KernelTypeBuild> {
+    template: Arc<AlgebraTypeTemplate>,
+    base: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<KernelTypeBuild> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let elem = algebra_child_or_placeholder(base.clone(), 0, "T".to_string());
         let key_node = algebra_child_or_placeholder(base.clone(), 0, "K".to_string());
         let val_node = algebra_child_or_placeholder(base.clone(), 1, "V".to_string());
         match (*template.clone()).clone() {
-            AlgebraTypeTemplate::ReceiverSelf => Rc::new(KernelTypeBuild {
+            AlgebraTypeTemplate::ReceiverSelf => Arc::new(KernelTypeBuild {
                 ty: base.clone(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
-            AlgebraTypeTemplate::ReceiverElement => Rc::new(KernelTypeBuild {
+            AlgebraTypeTemplate::ReceiverElement => Arc::new(KernelTypeBuild {
                 ty: elem.clone(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
-            AlgebraTypeTemplate::ReceiverKey => Rc::new(KernelTypeBuild {
+            AlgebraTypeTemplate::ReceiverKey => Arc::new(KernelTypeBuild {
                 ty: key_node.clone(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
-            AlgebraTypeTemplate::ReceiverValue => Rc::new(KernelTypeBuild {
+            AlgebraTypeTemplate::ReceiverValue => Arc::new(KernelTypeBuild {
                 ty: val_node.clone(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
-            AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Rc::new(KernelTypeBuild {
+            AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Arc::new(KernelTypeBuild {
                 ty: nominal_type_ref(n.clone()),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
             AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => {
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: type_variable_node(var_id.clone()),
-                    diagnostics: Rc::new(vec![]),
+                    diagnostics: Arc::new(vec![]),
                 })
             }
             AlgebraTypeTemplate::ContainerOf {
@@ -942,7 +942,7 @@ pub fn instantiate_algebra_type(
                 let inner_b =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
                 let built = make_container_type(kind_name.clone(), inner_b.ty.clone());
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(
                         inner_b.diagnostics.clone(),
@@ -953,7 +953,7 @@ pub fn instantiate_algebra_type(
             AlgebraTypeTemplate::OptionalOf { inner: inner, .. } => {
                 let ib =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: with_optional_cardinality(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
@@ -962,7 +962,7 @@ pub fn instantiate_algebra_type(
                 let ib =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
                 let built = make_container_type("Witness".to_string(), ib.ty.clone());
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(ib.diagnostics.clone(), built.diagnostics.clone()),
                 })
@@ -972,7 +972,7 @@ pub fn instantiate_algebra_type(
                     instantiate_algebra_type(first.clone(), base.clone(), source_indices.clone());
                 let sb =
                     instantiate_algebra_type(second.clone(), base.clone(), source_indices.clone());
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: make_tuple_type(fb.ty.clone(), sb.ty.clone()),
                     diagnostics: v1_rt::concat(fb.diagnostics.clone(), sb.diagnostics.clone()),
                 })
@@ -982,7 +982,7 @@ pub fn instantiate_algebra_type(
                 return_type: r,
                 ..
             } => {
-                let param_bs = Rc::new({
+                let param_bs = Arc::new({
                     let mut __result = Vec::new();
                     for tp in p.clone().iter().cloned() {
                         __result.push(instantiate_algebra_type(
@@ -993,14 +993,14 @@ pub fn instantiate_algebra_type(
                     }
                     __result
                 });
-                let param_diags = Rc::new({
+                let param_diags = Arc::new({
                     let mut __result = Vec::new();
                     for b in param_bs.clone().iter().cloned() {
                         __result.extend((*b.diagnostics.clone()).iter().cloned());
                     }
                     __result
                 });
-                let param_nodes = Rc::new({
+                let param_nodes = Arc::new({
                     let mut __result = Vec::new();
                     for b in param_bs.clone().iter().cloned() {
                         __result.push(b.ty.clone());
@@ -1008,7 +1008,7 @@ pub fn instantiate_algebra_type(
                     __result
                 });
                 let rb = instantiate_algebra_type(r.clone(), base.clone(), source_indices.clone());
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: make_callable_type(param_nodes.clone(), rb.ty.clone()),
                     diagnostics: v1_rt::concat(param_diags.clone(), rb.diagnostics.clone()),
                 })
@@ -1018,12 +1018,12 @@ pub fn instantiate_algebra_type(
 }
 
 pub fn instantiate_algebra_field(
-    template: Rc<AlgebraFieldTemplate>,
-    base: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<KernelTypeBuild> {
+    template: Arc<AlgebraFieldTemplate>,
+    base: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<KernelTypeBuild> {
     {
-        let param_bs = Rc::new({
+        let param_bs = Arc::new({
             let mut __result = Vec::new();
             for tp in template.param_types.clone().iter().cloned() {
                 __result.push(instantiate_algebra_type(
@@ -1034,14 +1034,14 @@ pub fn instantiate_algebra_field(
             }
             __result
         });
-        let param_types = Rc::new({
+        let param_types = Arc::new({
             let mut __result = Vec::new();
             for b in param_bs.clone().iter().cloned() {
                 __result.push(b.ty.clone());
             }
             __result
         });
-        let param_diags = Rc::new({
+        let param_diags = Arc::new({
             let mut __result = Vec::new();
             for b in param_bs.clone().iter().cloned() {
                 __result.extend((*b.diagnostics.clone()).iter().cloned());
@@ -1062,7 +1062,7 @@ pub fn instantiate_algebra_field(
         } else {
             algebra_value_field(template.name.clone(), return_b.ty.clone())
         };
-        Rc::new(KernelTypeBuild {
+        Arc::new(KernelTypeBuild {
             ty: field_ty.clone(),
             diagnostics: v1_rt::concat(param_diags.clone(), return_b.diagnostics.clone()),
         })
@@ -1071,14 +1071,14 @@ pub fn instantiate_algebra_field(
 
 pub fn enrich_kernel_type(
     name: String,
-    base: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<KernelTypeBuild> {
+    base: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<KernelTypeBuild> {
     {
         let profile = kernel_profile_lookup(name.clone());
         match profile.clone() {
             Some(p) => {
-                let field_bs = Rc::new({
+                let field_bs = Arc::new({
                     let mut __result = Vec::new();
                     for template in algebra_templates_for_profile(p.clone()).iter().cloned() {
                         __result.push(instantiate_algebra_field(
@@ -1089,40 +1089,40 @@ pub fn enrich_kernel_type(
                     }
                     __result
                 });
-                let fields = Rc::new({
+                let fields = Arc::new({
                     let mut __result = Vec::new();
                     for b in field_bs.clone().iter().cloned() {
                         __result.push(b.ty.clone());
                     }
                     __result
                 });
-                let field_diags = Rc::new({
+                let field_diags = Arc::new({
                     let mut __result = Vec::new();
                     for b in field_bs.clone().iter().cloned() {
                         __result.extend((*b.diagnostics.clone()).iter().cloned());
                     }
                     __result
                 });
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: enrich_base_with_fields(name.clone(), base.clone(), fields.clone()),
                     diagnostics: field_diags.clone(),
                 })
             }
-            None => Rc::new(KernelTypeBuild {
+            None => Arc::new(KernelTypeBuild {
                 ty: base.clone(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
         }
     }
 }
 
 pub fn unify_template(
-    template: Rc<AlgebraTypeTemplate>,
-    concrete: Rc<Node>,
-    receiver: Rc<Node>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<Node>>> {
+    template: Arc<AlgebraTypeTemplate>,
+    concrete: Arc<Node>,
+    receiver: Arc<Node>,
+    subst: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, Arc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*template.clone()).clone() {
             AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => {
@@ -1268,7 +1268,7 @@ pub fn unify_template(
     })
 }
 
-pub fn is_receiver_self(t: Rc<AlgebraTypeTemplate>) -> bool {
+pub fn is_receiver_self(t: Arc<AlgebraTypeTemplate>) -> bool {
     match (*t.clone()).clone() {
         AlgebraTypeTemplate::ReceiverSelf => true,
         _ => false,
@@ -1276,19 +1276,19 @@ pub fn is_receiver_self(t: Rc<AlgebraTypeTemplate>) -> bool {
 }
 
 pub fn build_type_substitution(
-    param_templates: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
-    arg_types: Rc<Vec<Rc<Node>>>,
-    receiver: Rc<Node>,
-    base_subst: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<Node>>> {
+    param_templates: Arc<Vec<Arc<AlgebraTypeTemplate>>>,
+    arg_types: Arc<Vec<Arc<Node>>>,
+    receiver: Arc<Node>,
+    base_subst: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<HashMap<String, Arc<Node>>> {
     {
         let first_is_self = match param_templates.clone().first().cloned() {
             Some(t) => is_receiver_self(t.clone()),
             None => false,
         };
         let non_receiver_templates = if first_is_self.clone() {
-            Rc::new(
+            Arc::new(
                 param_templates
                     .clone()
                     .iter()
@@ -1299,9 +1299,9 @@ pub fn build_type_substitution(
         } else {
             param_templates.clone()
         };
-        let pairs = Rc::new({
+        let pairs = Arc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new(
+            for pair in Arc::new(
                 non_receiver_templates
                     .clone()
                     .iter()
@@ -1321,12 +1321,12 @@ pub fn build_type_substitution(
         });
         pairs.clone().iter().cloned().fold(
             base_subst.clone(),
-            |subst: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<AlgebraTypeTemplate>)| {
-                let arg_type = match Rc::new({
+            |subst: Arc<HashMap<String, Arc<Node>>>, pair: (i64, Arc<AlgebraTypeTemplate>)| {
+                let arg_type = match Arc::new({
                     let mut __result = Vec::new();
-                    for ap in Rc::new({
+                    for ap in Arc::new({
                         let mut __result = Vec::new();
-                        for ap in Rc::new(
+                        for ap in Arc::new(
                             arg_types
                                 .clone()
                                 .iter()
@@ -1370,22 +1370,22 @@ pub fn build_type_substitution(
 }
 
 pub fn apply_type_substitution(
-    template: Rc<AlgebraTypeTemplate>,
-    subst: Rc<HashMap<String, Rc<Node>>>,
-    receiver: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<KernelTypeBuild> {
+    template: Arc<AlgebraTypeTemplate>,
+    subst: Arc<HashMap<String, Arc<Node>>>,
+    receiver: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<KernelTypeBuild> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*template.clone()).clone() {
             AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => {
                 match v1_rt::map_get(&subst, var_id.clone()) {
-                    Some(resolved) => Rc::new(KernelTypeBuild {
+                    Some(resolved) => Arc::new(KernelTypeBuild {
                         ty: resolved.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
-                    None => Rc::new(KernelTypeBuild {
+                    None => Arc::new(KernelTypeBuild {
                         ty: type_variable_node(var_id.clone()),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                 }
             }
@@ -1428,9 +1428,9 @@ pub fn apply_type_substitution(
                                     };
                                     make_map_type(key.clone(), val.clone())
                                 }
-                                None => Rc::new(KernelTypeBuild {
+                                None => Arc::new(KernelTypeBuild {
                                     ty: receiver.clone(),
-                                    diagnostics: Rc::new(vec![]),
+                                    diagnostics: Arc::new(vec![]),
                                 }),
                             }
                         } else {
@@ -1440,36 +1440,36 @@ pub fn apply_type_substitution(
                                         container_kind_canonical(receiver_name_str.clone()),
                                         elem.clone(),
                                     ),
-                                    None => Rc::new(KernelTypeBuild {
+                                    None => Arc::new(KernelTypeBuild {
                                         ty: receiver.clone(),
-                                        diagnostics: Rc::new(vec![]),
+                                        diagnostics: Arc::new(vec![]),
                                     }),
                                 }
                             } else {
-                                Rc::new(KernelTypeBuild {
+                                Arc::new(KernelTypeBuild {
                                     ty: receiver.clone(),
-                                    diagnostics: Rc::new(vec![]),
+                                    diagnostics: Arc::new(vec![]),
                                 })
                             }
                         }
                     }
                 } else {
-                    Rc::new(KernelTypeBuild {
+                    Arc::new(KernelTypeBuild {
                         ty: receiver.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     })
                 }
             }
             AlgebraTypeTemplate::ReceiverElement => {
                 match receiver.children.clone().first().cloned() {
-                    Some(child) => Rc::new(KernelTypeBuild {
+                    Some(child) => Arc::new(KernelTypeBuild {
                         ty: child_type_node(child.clone()),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                     None => match v1_rt::map_get(&subst, "__element__".to_string()) {
-                        Some(elem) => Rc::new(KernelTypeBuild {
+                        Some(elem) => Arc::new(KernelTypeBuild {
                             ty: elem.clone(),
-                            diagnostics: Rc::new(vec![]),
+                            diagnostics: Arc::new(vec![]),
                         }),
                         None => {
                             let rname = container_kind_canonical(authored_name_at(
@@ -1477,13 +1477,13 @@ pub fn apply_type_substitution(
                                 receiver.clone(),
                             ));
                             match container_param_name(rname.clone(), 0) {
-                                Some(n) => Rc::new(KernelTypeBuild {
+                                Some(n) => Arc::new(KernelTypeBuild {
                                     ty: type_variable_node(n.clone()),
-                                    diagnostics: Rc::new(vec![]),
+                                    diagnostics: Arc::new(vec![]),
                                 }),
-                                None => Rc::new(KernelTypeBuild {
+                                None => Arc::new(KernelTypeBuild {
                                     ty: missing_kernel_container_profile_type(rname.clone()),
-                                    diagnostics: Rc::new(vec![
+                                    diagnostics: Arc::new(vec![
                                         kernel_container_profile_miss_diagnostic(rname.clone()),
                                     ]),
                                 }),
@@ -1493,14 +1493,14 @@ pub fn apply_type_substitution(
                 }
             }
             AlgebraTypeTemplate::ReceiverKey => match receiver.children.clone().first().cloned() {
-                Some(child) => Rc::new(KernelTypeBuild {
+                Some(child) => Arc::new(KernelTypeBuild {
                     ty: child_type_node(child.clone()),
-                    diagnostics: Rc::new(vec![]),
+                    diagnostics: Arc::new(vec![]),
                 }),
                 None => match v1_rt::map_get(&subst, "__key__".to_string()) {
-                    Some(key) => Rc::new(KernelTypeBuild {
+                    Some(key) => Arc::new(KernelTypeBuild {
                         ty: key.clone(),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                     None => {
                         let rname = container_kind_canonical(authored_name_at(
@@ -1508,13 +1508,13 @@ pub fn apply_type_substitution(
                             receiver.clone(),
                         ));
                         match container_param_name(rname.clone(), 0) {
-                            Some(n) => Rc::new(KernelTypeBuild {
+                            Some(n) => Arc::new(KernelTypeBuild {
                                 ty: type_variable_node(n.clone()),
-                                diagnostics: Rc::new(vec![]),
+                                diagnostics: Arc::new(vec![]),
                             }),
-                            None => Rc::new(KernelTypeBuild {
+                            None => Arc::new(KernelTypeBuild {
                                 ty: missing_kernel_container_profile_type(rname.clone()),
-                                diagnostics: Rc::new(vec![
+                                diagnostics: Arc::new(vec![
                                     kernel_container_profile_miss_diagnostic(rname.clone()),
                                 ]),
                             }),
@@ -1524,14 +1524,14 @@ pub fn apply_type_substitution(
             },
             AlgebraTypeTemplate::ReceiverValue => {
                 match receiver.children.clone().get(1 as usize).cloned() {
-                    Some(child) => Rc::new(KernelTypeBuild {
+                    Some(child) => Arc::new(KernelTypeBuild {
                         ty: child_type_node(child.clone()),
-                        diagnostics: Rc::new(vec![]),
+                        diagnostics: Arc::new(vec![]),
                     }),
                     None => match v1_rt::map_get(&subst, "__value__".to_string()) {
-                        Some(val) => Rc::new(KernelTypeBuild {
+                        Some(val) => Arc::new(KernelTypeBuild {
                             ty: val.clone(),
-                            diagnostics: Rc::new(vec![]),
+                            diagnostics: Arc::new(vec![]),
                         }),
                         None => {
                             let rname = container_kind_canonical(authored_name_at(
@@ -1539,13 +1539,13 @@ pub fn apply_type_substitution(
                                 receiver.clone(),
                             ));
                             match container_param_name(rname.clone(), 1) {
-                                Some(n) => Rc::new(KernelTypeBuild {
+                                Some(n) => Arc::new(KernelTypeBuild {
                                     ty: type_variable_node(n.clone()),
-                                    diagnostics: Rc::new(vec![]),
+                                    diagnostics: Arc::new(vec![]),
                                 }),
-                                None => Rc::new(KernelTypeBuild {
+                                None => Arc::new(KernelTypeBuild {
                                     ty: missing_kernel_container_profile_type(rname.clone()),
-                                    diagnostics: Rc::new(vec![
+                                    diagnostics: Arc::new(vec![
                                         kernel_container_profile_miss_diagnostic(rname.clone()),
                                     ]),
                                 }),
@@ -1554,9 +1554,9 @@ pub fn apply_type_substitution(
                     },
                 }
             }
-            AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Rc::new(KernelTypeBuild {
+            AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Arc::new(KernelTypeBuild {
                 ty: nominal_type_ref(n.clone()),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
             AlgebraTypeTemplate::ContainerOf {
                 source: src,
@@ -1577,7 +1577,7 @@ pub fn apply_type_substitution(
                     source_indices.clone(),
                 );
                 let built = make_container_type(kind_name.clone(), inner_applied.ty.clone());
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(
                         inner_applied.diagnostics.clone(),
@@ -1592,7 +1592,7 @@ pub fn apply_type_substitution(
                     receiver.clone(),
                     source_indices.clone(),
                 );
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: with_optional_cardinality(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
@@ -1605,7 +1605,7 @@ pub fn apply_type_substitution(
                     source_indices.clone(),
                 );
                 let built = make_container_type("Witness".to_string(), ib.ty.clone());
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(ib.diagnostics.clone(), built.diagnostics.clone()),
                 })
@@ -1627,7 +1627,7 @@ pub fn apply_type_substitution(
                     receiver.clone(),
                     source_indices.clone(),
                 );
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: make_tuple_type(fb.ty.clone(), sb.ty.clone()),
                     diagnostics: v1_rt::concat(fb.diagnostics.clone(), sb.diagnostics.clone()),
                 })
@@ -1637,7 +1637,7 @@ pub fn apply_type_substitution(
                 return_type: r,
                 ..
             } => {
-                let param_bs = Rc::new({
+                let param_bs = Arc::new({
                     let mut __result = Vec::new();
                     for tp in p.clone().iter().cloned() {
                         __result.push(apply_type_substitution(
@@ -1649,14 +1649,14 @@ pub fn apply_type_substitution(
                     }
                     __result
                 });
-                let param_nodes = Rc::new({
+                let param_nodes = Arc::new({
                     let mut __result = Vec::new();
                     for b in param_bs.clone().iter().cloned() {
                         __result.push(b.ty.clone());
                     }
                     __result
                 });
-                let param_diags = Rc::new({
+                let param_diags = Arc::new({
                     let mut __result = Vec::new();
                     for b in param_bs.clone().iter().cloned() {
                         __result.extend((*b.diagnostics.clone()).iter().cloned());
@@ -1669,9 +1669,9 @@ pub fn apply_type_substitution(
                     receiver.clone(),
                     source_indices.clone(),
                 );
-                Rc::new(KernelTypeBuild {
+                Arc::new(KernelTypeBuild {
                     ty: make_callable_type(
-                        Rc::new({
+                        Arc::new({
                             let mut __result = Vec::new();
                             for pn in param_nodes.clone().iter().cloned() {
                                 __result.push(make_param_node(
@@ -1693,15 +1693,15 @@ pub fn apply_type_substitution(
     })
 }
 
-pub fn template_return_is_receiver_self(template: Rc<AlgebraFieldTemplate>) -> bool {
+pub fn template_return_is_receiver_self(template: Arc<AlgebraFieldTemplate>) -> bool {
     is_receiver_self(template.return_type.clone())
 }
 
-pub fn template_return_has_variables(template: Rc<AlgebraFieldTemplate>) -> bool {
+pub fn template_return_has_variables(template: Arc<AlgebraFieldTemplate>) -> bool {
     has_type_variable(template.return_type.clone())
 }
 
-pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
+pub fn has_type_variable(t: Arc<AlgebraTypeTemplate>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*t.clone()).clone() {
         AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => true,
         AlgebraTypeTemplate::ContainerOf { element: inner, .. } => has_type_variable(inner.clone()),
@@ -1718,12 +1718,12 @@ pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
 }
 
 pub fn resolve_type_variables_from_template(
-    template: Rc<AlgebraFieldTemplate>,
-    arg_types: Rc<Vec<Rc<Node>>>,
-    receiver_type: Rc<Node>,
-    overrides: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<KernelTypeBuild> {
+    template: Arc<AlgebraFieldTemplate>,
+    arg_types: Arc<Vec<Arc<Node>>>,
+    receiver_type: Arc<Node>,
+    overrides: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<KernelTypeBuild> {
     {
         let subst = build_type_substitution(
             template.param_types.clone(),
@@ -1741,7 +1741,7 @@ pub fn resolve_type_variables_from_template(
     }
 }
 
-pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
+pub fn callable_inferred(n: Arc<Node>) -> Arc<Node> {
     {
         let is_callable = ((n.params.clone().len() as i64) > 0);
         if is_callable.clone() {
@@ -1762,7 +1762,7 @@ pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
+pub fn callable_return_type(n: Arc<Node>) -> Arc<Node> {
     if ((n.params.clone().len() as i64) == 0) {
         match n.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
@@ -1786,23 +1786,23 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn global_bare_callable_binding(binding: Rc<TypeBinding>) -> bool {
+pub fn global_bare_callable_binding(binding: Arc<TypeBinding>) -> bool {
     ((((((binding.resolved.clone().transport.clone() == None)
-        && (binding.resolved.clone().expr_data.clone() == Rc::new(ExprData::NoExprData)))
+        && (binding.resolved.clone().expr_data.clone() == Arc::new(ExprData::NoExprData)))
         && (binding.resolved.clone().connective.clone() == Connective::NoConnective))
         && (binding.resolved.clone().inferred.clone() != None))
         && ((binding.resolved.clone().properties.clone().len() as i64) == 0))
         && (binding.resolved.clone().type_annotation.clone() == None))
 }
 
-pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
+pub fn value_binding_expr_type_node(resolved: Arc<Node>) -> Arc<Node> {
     match resolved.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: ty, .. }) => ty.clone(),
         _ => resolved,
     }
 }
 
-pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
+pub fn normalize_access_type_node(mut n: Arc<Node>) -> Arc<Node> {
     loop {
         let has_structure = (n.connective.clone() != Connective::NoConnective);
         let unwrapped = if ((n.type_annotation.clone() != None) && has_structure.clone()) {
@@ -1824,8 +1824,8 @@ pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn node_type_shape(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let __is_leaf = (((n.connective.clone() == Connective::NoConnective)
@@ -1949,9 +1949,9 @@ pub fn node_type_shape(
 }
 
 pub fn node_type_compatible(
-    mut left: Rc<Node>,
-    mut right: Rc<Node>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut left: Arc<Node>,
+    mut right: Arc<Node>,
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     loop {
         let left_err = if (left.inferred.clone() != None) {
@@ -2122,10 +2122,10 @@ pub fn node_type_compatible(
 }
 
 pub fn prefer_specific_type(
-    left: Rc<Node>,
-    right: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+    left: Arc<Node>,
+    right: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Node> {
     {
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
         let left_is_optional = (left.return_cardinality.clone() == Cardinality::CardOptional);
@@ -2188,9 +2188,9 @@ pub fn prefer_specific_type(
 }
 
 pub fn node_type_equals(
-    left: Rc<Node>,
-    right: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    left: Arc<Node>,
+    right: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let left_err = if (left.inferred.clone() != None) {
@@ -2254,9 +2254,9 @@ pub fn node_type_equals(
 }
 
 pub fn node_type_equals_core(
-    left: Rc<Node>,
-    right: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    left: Arc<Node>,
+    right: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let left_leaf = (((left.connective.clone() == Connective::NoConnective)
@@ -2288,7 +2288,7 @@ pub fn node_type_equals_core(
                         } else {
                             {
                                 let mut __all = true;
-                                for pair in Rc::new(
+                                for pair in Arc::new(
                                     left.children
                                         .clone()
                                         .iter()
@@ -2423,7 +2423,7 @@ pub fn node_type_equals_core(
                                                 {
                                                     let params_eq = {
                                                         let mut __all = true;
-                                                        for pair in Rc::new(
+                                                        for pair in Arc::new(
                                                             left.params
                                                                 .clone()
                                                                 .iter()
@@ -2512,9 +2512,9 @@ pub fn node_type_equals_core(
 }
 
 pub fn node_type_deps(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let n_is_type_var = if (n.inferred.clone() != None) {
             is_type_variable(n.inferred.clone().clone().unwrap())
@@ -2522,7 +2522,7 @@ pub fn node_type_deps(
             false
         };
         if n_is_type_var.clone() {
-            return Rc::new(vec![]);
+            return Arc::new(vec![]);
         }
         let __is_named_ref = if (n.inferred.clone() == None) {
             false
@@ -2545,13 +2545,13 @@ pub fn node_type_deps(
         if __is_named_ref.clone() {
             match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
-                    Rc::new(vec![authored_name_at(source_indices.clone(), rt.clone())])
+                    Arc::new(vec![authored_name_at(source_indices.clone(), rt.clone())])
                 }
-                _ => Rc::new(vec![]),
+                _ => Arc::new(vec![]),
             }
         } else {
             if has_structure.clone() {
-                Rc::new({
+                Arc::new({
                     let mut __result = Vec::new();
                     for child in n.children.clone().iter().cloned() {
                         __result.extend(
@@ -2563,7 +2563,7 @@ pub fn node_type_deps(
                                     if (child.inferred.clone() == None) {
                                         node_type_deps(child.clone(), source_indices.clone())
                                     } else {
-                                        Rc::new(vec![])
+                                        Arc::new(vec![])
                                     }
                                 }
                             })
@@ -2579,12 +2579,12 @@ pub fn node_type_deps(
                         Some(InferredNode::Resolved { node: rt, .. }) => {
                             node_type_deps(rt.clone(), source_indices.clone())
                         }
-                        _ => Rc::new(vec![]),
+                        _ => Arc::new(vec![]),
                     }
                 } else {
                     if ((n.children.clone().len() as i64) > 0) {
                         {
-                            let child_deps = Rc::new({
+                            let child_deps = Arc::new({
                                 let mut __result = Vec::new();
                                 for child in n.children.clone().iter().cloned() {
                                     __result.extend(
@@ -2598,7 +2598,7 @@ pub fn node_type_deps(
                             if ((n.ident_span.clone() != None)
                                 && (is_kernel_type(n_name.clone()) == false))
                             {
-                                v1_rt::concat(Rc::new(vec![n_name.clone()]), child_deps.clone())
+                                v1_rt::concat(Arc::new(vec![n_name.clone()]), child_deps.clone())
                             } else {
                                 child_deps.clone()
                             }
@@ -2608,9 +2608,9 @@ pub fn node_type_deps(
                             || (n_name.clone() == "None".to_string()))
                             || (n.ident_span.clone() == None))
                         {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         } else {
-                            Rc::new(vec![n_name.clone()])
+                            Arc::new(vec![n_name.clone()])
                         }
                     }
                 }
@@ -2619,7 +2619,7 @@ pub fn node_type_deps(
     })
 }
 
-pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
+pub fn infer_literal_node(lit: Arc<LiteralValue>) -> Arc<Node> {
     match (*lit.clone()).clone() {
         LiteralValue::LitStr { value: _, .. } => string_type(),
         LiteralValue::LitInt { value: _, .. } => int_type(),
@@ -2631,9 +2631,9 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
 }
 
 pub fn method_receiver_element_node(
-    receiver_type: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+    receiver_type: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Node> {
     {
         let normed = normalize_access_type_node(receiver_type.clone());
         let maybe_element = if node_is_keyed_collection(normed.clone(), source_indices.clone()) {
@@ -2660,7 +2660,7 @@ pub fn method_receiver_element_node(
     }
 }
 
-pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
+pub fn extract_optional_inner_node(n: Arc<Node>) -> Arc<Node> {
     {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional.clone() {
@@ -2693,39 +2693,39 @@ pub fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {
     }
 }
 
-pub fn binop_algebra_fields(op: BinOp) -> Rc<Vec<AlgebraFieldKind>> {
+pub fn binop_algebra_fields(op: BinOp) -> Arc<Vec<AlgebraFieldKind>> {
     match op.clone() {
-        BinOp::Add => Rc::new(vec![AlgebraFieldKind::AlgAdd]),
-        BinOp::Sub => Rc::new(vec![AlgebraFieldKind::AlgAdd]),
-        BinOp::Mul => Rc::new(vec![AlgebraFieldKind::AlgMul]),
-        BinOp::Div => Rc::new(vec![
+        BinOp::Add => Arc::new(vec![AlgebraFieldKind::AlgAdd]),
+        BinOp::Sub => Arc::new(vec![AlgebraFieldKind::AlgAdd]),
+        BinOp::Mul => Arc::new(vec![AlgebraFieldKind::AlgMul]),
+        BinOp::Div => Arc::new(vec![
             AlgebraFieldKind::AlgReciprocal,
             AlgebraFieldKind::AlgQuotient,
         ]),
-        BinOp::Mod => Rc::new(vec![AlgebraFieldKind::AlgRemainder]),
-        BinOp::Eq => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
-        BinOp::Ne => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
-        BinOp::Lt => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
-        BinOp::Gt => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
-        BinOp::Le => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
-        BinOp::Ge => Rc::new(vec![AlgebraFieldKind::AlgCompare]),
-        BinOp::And => Rc::new(vec![AlgebraFieldKind::AlgMeet]),
-        BinOp::Or => Rc::new(vec![AlgebraFieldKind::AlgJoin]),
-        BinOp::NullCoalesce => Rc::new(vec![]),
+        BinOp::Mod => Arc::new(vec![AlgebraFieldKind::AlgRemainder]),
+        BinOp::Eq => Arc::new(vec![AlgebraFieldKind::AlgCompare]),
+        BinOp::Ne => Arc::new(vec![AlgebraFieldKind::AlgCompare]),
+        BinOp::Lt => Arc::new(vec![AlgebraFieldKind::AlgCompare]),
+        BinOp::Gt => Arc::new(vec![AlgebraFieldKind::AlgCompare]),
+        BinOp::Le => Arc::new(vec![AlgebraFieldKind::AlgCompare]),
+        BinOp::Ge => Arc::new(vec![AlgebraFieldKind::AlgCompare]),
+        BinOp::And => Arc::new(vec![AlgebraFieldKind::AlgMeet]),
+        BinOp::Or => Arc::new(vec![AlgebraFieldKind::AlgJoin]),
+        BinOp::NullCoalesce => Arc::new(vec![]),
     }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldMatch {
     pub field_kind: AlgebraFieldKind,
-    pub field_node: Rc<Node>,
+    pub field_node: Arc<Node>,
 }
 
 pub fn first_matching_algebra_field(
-    mut n: Rc<Node>,
-    mut candidates: Rc<Vec<AlgebraFieldKind>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<AlgebraFieldMatch>> {
+    mut n: Arc<Node>,
+    mut candidates: Arc<Vec<AlgebraFieldKind>>,
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<AlgebraFieldMatch>> {
     loop {
         match candidates.clone().first().cloned() {
             None => {
@@ -2738,13 +2738,13 @@ pub fn first_matching_algebra_field(
                     source_indices.clone(),
                 ) {
                     Some(f) => {
-                        break Some(Rc::new(AlgebraFieldMatch {
+                        break Some(Arc::new(AlgebraFieldMatch {
                             field_kind: kind.clone(),
                             field_node: f.clone(),
                         }));
                     }
                     None => {
-                        let __tco_0 = Rc::new(
+                        let __tco_0 = Arc::new(
                             candidates
                                 .iter()
                                 .cloned()
@@ -2762,49 +2762,49 @@ pub fn first_matching_algebra_field(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BinOpInferred {
-    pub result_type: Rc<Node>,
+    pub result_type: Arc<Node>,
     pub algebra_field: Option<AlgebraFieldKind>,
 }
 
 pub fn infer_binop_type_node(
     op: BinOp,
-    left_type: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<BinOpInferred> {
+    left_type: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<BinOpInferred> {
     match op.clone() {
-        BinOp::Eq => Rc::new(BinOpInferred {
+        BinOp::Eq => Arc::new(BinOpInferred {
             result_type: bool_type(),
             algebra_field: None,
         }),
-        BinOp::Ne => Rc::new(BinOpInferred {
+        BinOp::Ne => Arc::new(BinOpInferred {
             result_type: bool_type(),
             algebra_field: None,
         }),
-        BinOp::Lt => Rc::new(BinOpInferred {
+        BinOp::Lt => Arc::new(BinOpInferred {
             result_type: bool_type(),
             algebra_field: None,
         }),
-        BinOp::Gt => Rc::new(BinOpInferred {
+        BinOp::Gt => Arc::new(BinOpInferred {
             result_type: bool_type(),
             algebra_field: None,
         }),
-        BinOp::Le => Rc::new(BinOpInferred {
+        BinOp::Le => Arc::new(BinOpInferred {
             result_type: bool_type(),
             algebra_field: None,
         }),
-        BinOp::Ge => Rc::new(BinOpInferred {
+        BinOp::Ge => Arc::new(BinOpInferred {
             result_type: bool_type(),
             algebra_field: None,
         }),
-        BinOp::And => Rc::new(BinOpInferred {
+        BinOp::And => Arc::new(BinOpInferred {
             result_type: bool_type(),
             algebra_field: None,
         }),
-        BinOp::Or => Rc::new(BinOpInferred {
+        BinOp::Or => Arc::new(BinOpInferred {
             result_type: bool_type(),
             algebra_field: None,
         }),
-        BinOp::NullCoalesce => Rc::new(BinOpInferred {
+        BinOp::NullCoalesce => Arc::new(BinOpInferred {
             result_type: extract_optional_inner_node(left_type.clone()),
             algebra_field: None,
         }),
@@ -2823,34 +2823,34 @@ pub fn infer_binop_type_node(
                                 match rt.inferred.clone().as_deref().cloned() {
                                     Some(InferredNode::Resolved {
                                         node: return_type, ..
-                                    }) => Rc::new(BinOpInferred {
+                                    }) => Arc::new(BinOpInferred {
                                         result_type: return_type.clone(),
                                         algebra_field: Some(m.field_kind.clone()),
                                     }),
-                                    _ => Rc::new(BinOpInferred {
+                                    _ => Arc::new(BinOpInferred {
                                         result_type: left_type.clone(),
                                         algebra_field: Some(m.field_kind.clone()),
                                     }),
                                 }
                             } else {
-                                Rc::new(BinOpInferred {
+                                Arc::new(BinOpInferred {
                                     result_type: rt.clone(),
                                     algebra_field: Some(m.field_kind.clone()),
                                 })
                             }
                         }
-                        _ => Rc::new(BinOpInferred {
+                        _ => Arc::new(BinOpInferred {
                             result_type: left_type.clone(),
                             algebra_field: None,
                         }),
                     },
-                    None => Rc::new(BinOpInferred {
+                    None => Arc::new(BinOpInferred {
                         result_type: left_type.clone(),
                         algebra_field: None,
                     }),
                 }
             } else {
-                Rc::new(BinOpInferred {
+                Arc::new(BinOpInferred {
                     result_type: left_type.clone(),
                     algebra_field: None,
                 })
@@ -2860,9 +2860,9 @@ pub fn infer_binop_type_node(
 }
 
 pub fn for_each_element_type_node(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Node> {
     {
         let normed = normalize_access_type_node(n.clone());
         let is_single_child = ((normed.connective.clone() == Connective::NoConnective)
@@ -2893,7 +2893,7 @@ pub fn for_each_element_type_node(
     }
 }
 
-pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
+pub fn emit_map_has(m: Arc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
         None => false,
