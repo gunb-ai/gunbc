@@ -91,7 +91,7 @@ mod tests {
     #[test]
     fn parse_orchestration_dag_binding() {
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let path = manifest_dir.join("../../src/v2/std/orchestration.dag");
+        let path = manifest_dir.join("../../../src/v2/std/orchestration.dag");
         let content = std::fs::read_to_string(&path).expect("read orchestration.dag");
         let result = parse_module_binding(&path, &content);
         match &result {
