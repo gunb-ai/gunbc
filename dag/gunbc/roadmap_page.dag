@@ -379,12 +379,8 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
         el("header", [ el("h1", [ txt("gunbc — daily workspace") ]) ]),
         el_class("main", "daily-workspace", concat(main_prefix, [
           roadmap_frontier_markup(frontier: frontier, merged: merged),
-<<<<<<< HEAD
         ])),
-=======
-        ]),
         dispatch_client_script(),
->>>>>>> origin/main
       ]),
     ],
   }
@@ -393,10 +389,7 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
 fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<MarkupNode>) -> MarkupNode {
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
-<<<<<<< HEAD
   let main_children = concat(main_prefix, concat(lead, secs))
-=======
-  let main_children = concat(lead, secs)
   let body_base = [
     el("header", [ el("h1", [ txt("gunbc — roadmap") ]) ]),
     el_class("main", "roadmap", main_children),
@@ -406,7 +399,6 @@ fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<
   } else {
     concat(body_base, [ dispatch_client_script() ])
   }
->>>>>>> origin/main
   ElementNode {
     tag: "html",
     attrs: [],
