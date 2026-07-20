@@ -5,7 +5,7 @@ import std.access { AccessDecision, Permit, Deny }
 import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.materialization_ladder { Frame, SharedStateFrame }
-import std.effect_grant { Grant, Envelope, Execute, verb_of_effect_shape, admit_effect, EffectAdmission, Admitted, EffectOutsideGrant }
+import std.effect_grant { Grant, Envelope, verb_of_effect_shape, admit_effect, EffectAdmission, Admitted, EffectOutsideGrant }
 import std.effects { ExecuteEffect }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
 import gunbc.fleet_intent_network { operator_host_srv1 }
