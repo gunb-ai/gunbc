@@ -217,17 +217,26 @@ fn probe_red_entry_touches_family_slug(entry: String, slug: String) -> Bool {
 }
 
 fn family_slug_for_id(id: Symbol) -> String {
-  match id {
-    ^family_equals_add => "add"
-    ^family_equals_match => "match"
-    ^family_equals_loop => "loop"
-    ^family_equals_classical_not_ingested => "classical_not_ingested"
-    ^family_equals_field_access => "field_access"
-    ^family_equals_complement => "complement"
-    ^family_equals_meet_join => "meet_join"
-    ^family_equals_variant_construct => "variant_construct"
-    ^family_equals_fold_closure => "fold_closure"
-    _ => ""
+  if id == ^family_equals_add {
+    "add"
+  } else if id == ^family_equals_match {
+    "match"
+  } else if id == ^family_equals_loop {
+    "loop"
+  } else if id == ^family_equals_classical_not_ingested {
+    "classical_not_ingested"
+  } else if id == ^family_equals_field_access {
+    "field_access"
+  } else if id == ^family_equals_complement {
+    "complement"
+  } else if id == ^family_equals_meet_join {
+    "meet_join"
+  } else if id == ^family_equals_variant_construct {
+    "variant_construct"
+  } else if id == ^family_equals_fold_closure {
+    "fold_closure"
+  } else {
+    ""
   }
 }
 
