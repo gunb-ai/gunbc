@@ -3379,7 +3379,14 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
-    let local_variant_parent = lookup_variant_parent_enum(scope: scope, name: type_name.value)
+    let local_variant_parent = match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
+      Present { value: p } => Present { value: p }
+      Absent =>
+        match variant_owner_node(scope: scope, name: type_name.value) {
+          Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
+          Absent => none
+        }
+    }
     let effective_lookup = match type_lookup {
       Present { value: _ } => type_lookup
       Absent =>

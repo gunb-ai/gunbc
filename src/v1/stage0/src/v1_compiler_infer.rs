@@ -6869,7 +6869,17 @@ pub fn infer_record_lit(
                 let type_lookup =
                     lookup_type_by_name(scope.type_env.clone(), type_name.clone().unwrap());
                 let local_variant_parent =
-                    lookup_variant_parent_enum(scope.clone(), type_name.clone().unwrap());
+                    match lookup_variant_parent_enum(scope.clone(), type_name.clone().unwrap()) {
+                        Some(p) => Some(p.clone()),
+                        None => match variant_owner_node(scope.clone(), type_name.clone().unwrap())
+                        {
+                            Some(owner) => Some(authored_name_at(
+                                scope.type_env.clone().source_indices.clone(),
+                                owner.clone(),
+                            )),
+                            None => None,
+                        },
+                    };
                 let effective_lookup = match type_lookup.clone() {
                     Some(_) => type_lookup.clone(),
                     None => {
