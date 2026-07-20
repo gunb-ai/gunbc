@@ -1,11 +1,20 @@
 module gunbc.ci_deploy_access_observe
 
-import std.types { NonEmptyStr, String, Bool }
+import std.types { NonEmptyStr, String, Bool, List }
 import std.access { AccessDecision, Permit, Deny, decision_meet }
 import extdeps.shell
 import extdeps.shell.exec { transport_script_from_body }
 import extdeps.diagnostic.ssh { ssh_session_exec_script }
-import gunbc.host_effect { LocalShell, SshShell, EmitArtifactThenThinRun }
+import gunbc.host_effect {
+  HostEffect,
+  ShellCommand,
+  LocalShell,
+  SshShell,
+  EmitArtifactThenThinRun,
+}
+import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
+import v2.std.orchestration { FailFast }
+import v2.std.algebra { list_snoc_item }
 import gunbc.ci_deploy_access {
   DeployAccess,
   DeployAccessActor,
@@ -21,6 +30,27 @@ import gunbc.ci_deploy_target_host {
   DeployTargetHostObservation,
   deploy_target_host_check,
   deploy_target_host_check_observed,
+}
+
+fn deploy_access_privileged_probe_step(cmd: PrivilegedCommand) -> EffectPlanStep<HostEffect> {
+  Do { effect: ShellCommand { script: deploy_access_sudo_probe_script(cmd: cmd) } }
+}
+
+fn deploy_access_preflight_probe_steps(access: DeployAccess) -> List<EffectPlanStep<HostEffect>> {
+  let whoami_step = Do { effect: ShellCommand { script: deploy_access_whoami_probe_script() } }
+  let with_whoami = list_snoc_item(xs: [], item: whoami_step)
+  fold(
+    access.privileged_commands,
+    init: with_whoami,
+    f: (acc, cmd) => list_snoc_item(xs: acc, item: deploy_access_privileged_probe_step(cmd: cmd))
+  )
+}
+
+fn deploy_access_preflight_plan(access: DeployAccess) -> EffectPlan<HostEffect> {
+  EffectPlan {
+    steps: deploy_access_preflight_probe_steps(access: access),
+    on_failure: FailFast,
+  }
 }
 
 type DeployAccessShellProbe {

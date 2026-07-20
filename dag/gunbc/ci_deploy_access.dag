@@ -20,9 +20,7 @@ import gunbc.fleet_posix_accounts {
   posix_sudo_grant_to_effect_grant,
 }
 import gunbc.host_effect {
-  HostEffect,
   HostEffectTransport,
-  ShellCommand,
   LocalShell,
   SshShell,
   EmitArtifactThenThinRun,
@@ -32,9 +30,6 @@ import gunbc.ci_deploy_target_host {
   deploy_target_proof,
   deploy_target_host_preflight_block,
 }
-import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
-import v2.std.orchestration { FailFast }
-import v2.std.algebra { list_snoc_item }
 
 type PrivilegedCommand {
   path: NonEmptyStr
@@ -170,27 +165,6 @@ fn deploy_access_sudo_probe_script(cmd: PrivilegedCommand) -> String {
   concat(concat(concat("sudo -n ", cmd.path as String), " "), cmd.check as String)
 }
 
-fn deploy_access_privileged_probe_step(cmd: PrivilegedCommand) -> EffectPlanStep<HostEffect> {
-  Do { effect: ShellCommand { script: deploy_access_sudo_probe_script(cmd: cmd) } }
-}
-
-fn deploy_access_preflight_probe_steps(access: DeployAccess) -> List<EffectPlanStep<HostEffect>> {
-  let whoami_step = Do { effect: ShellCommand { script: deploy_access_whoami_probe_script() } }
-  let with_whoami = list_snoc_item(xs: [], item: whoami_step)
-  fold(
-    access.privileged_commands,
-    init: with_whoami,
-    f: (acc, cmd) => list_snoc_item(xs: acc, item: deploy_access_privileged_probe_step(cmd: cmd))
-  )
-}
-
-fn deploy_access_preflight_plan(access: DeployAccess) -> EffectPlan<HostEffect> {
-  EffectPlan {
-    steps: deploy_access_preflight_probe_steps(access: access),
-    on_failure: FailFast,
-  }
-}
-
 fn deploy_access_grant_admits_probe(
   access: DeployAccess,
   cmd: PrivilegedCommand
@@ -213,7 +187,7 @@ data deploy_access_preflight_plan_disposition: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
     module_path: "gunbc.ci_deploy_access_observe",
-    decl_name: "deploy_access_check_observed",
+    decl_name: "deploy_access_preflight_plan",
     field: WholeDeclaration
   }
 }
