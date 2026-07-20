@@ -367,10 +367,18 @@ fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<
   }
 }
 
+fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [])
+}
+
 fn roadmap_page_for_authority() -> MarkupNode {
-  roadmap_page(doc: roadmap_authority(), merged: authored_merged_prs())
+  roadmap_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
+}
+
+fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [])
 }
 
 fn roadmap_daily_workspace_page_for_authority() -> MarkupNode {
-  roadmap_daily_workspace_page(doc: roadmap_authority(), merged: authored_merged_prs())
+  roadmap_daily_workspace_page_impl(doc: roadmap_authority(), merged: authored_merged_prs(), main_prefix: [ three_gate_progress_markup() ])
 }
