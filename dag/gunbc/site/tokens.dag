@@ -1,0 +1,216 @@
+module gunbc.site.tokens
+
+data tokens_note: String = "Layer 2 of the site stack: materials + scales, consumed by every layer above. Two register laws live here as CONSTRUCTION, not review. ChromaByArea: a Material carries its AreaClass; saturation ceilings are per-area, so a saturated field is an inadmissible row (palette witness holds the wall). StillUntilTouched: the only constructor that can emit a transition declaration takes a MotionTrigger, and MotionTrigger has NO ambient variant — no animation/keyframes constructor exists in this vocabulary at all. reduced_motion_block derives the prefers-reduced-motion projection from the same rows: responses become instant state changes, never removed."
+
+type AreaClass
+  = PointArea
+  | HairlineArea
+  | TextArea
+  | FieldArea
+
+type Material {
+  name: String
+  hue: Int
+  sat_pct: Int
+  light_pct: Int
+  area: AreaClass
+}
+
+fn area_max_sat(area: AreaClass) -> Int {
+  match area {
+    PointArea => 100
+    HairlineArea => 80
+    TextArea => 25
+    FieldArea => 40
+  }
+}
+
+fn area_key(area: AreaClass) -> String {
+  match area {
+    PointArea => "point"
+    HairlineArea => "hairline"
+    TextArea => "text"
+    FieldArea => "field"
+  }
+}
+
+fn chroma_admissible(m: Material) -> Bool {
+  m.sat_pct <= area_max_sat(area: m.area)
+    && m.sat_pct >= 0
+    && m.light_pct >= 0
+    && m.light_pct <= 100
+}
+
+data indigo_void: Material = Material { name: "indigo-void", hue: 226, sat_pct: 32, light_pct: 6, area: FieldArea }
+
+data indigo_panel: Material = Material { name: "indigo-panel", hue: 226, sat_pct: 26, light_pct: 9, area: FieldArea }
+
+data hairline_border: Material = Material { name: "hairline-border", hue: 224, sat_pct: 28, light_pct: 26, area: HairlineArea }
+
+data starlight: Material = Material { name: "starlight", hue: 194, sat_pct: 88, light_pct: 76, area: PointArea }
+
+data starlight_lit: Material = Material { name: "starlight-lit", hue: 194, sat_pct: 92, light_pct: 90, area: PointArea }
+
+data star_glow: Material = Material { name: "star-glow", hue: 194, sat_pct: 70, light_pct: 62, area: HairlineArea }
+
+data stone_text: Material = Material { name: "stone-text", hue: 35, sat_pct: 14, light_pct: 78, area: TextArea }
+
+data stone_dim: Material = Material { name: "stone-dim", hue: 35, sat_pct: 9, light_pct: 55, area: TextArea }
+
+data brass_focus: Material = Material { name: "brass-focus", hue: 42, sat_pct: 48, light_pct: 62, area: PointArea }
+
+data clay_boundary: Material = Material { name: "clay-boundary", hue: 8, sat_pct: 52, light_pct: 56, area: HairlineArea }
+
+data site_palette: List<Material> = [
+  indigo_void,
+  indigo_panel,
+  hairline_border,
+  starlight,
+  starlight_lit,
+  star_glow,
+  stone_text,
+  stone_dim,
+  brass_focus,
+  clay_boundary,
+]
+
+fn palette_admissible(palette: List<Material>) -> Bool {
+  all(palette, m => chroma_admissible(m: m))
+}
+
+fn paint(m: Material) -> String {
+  join(["hsl(", to_string(m.hue), " ", to_string(m.sat_pct), "% ", to_string(m.light_pct), "%)"], "")
+}
+
+fn paint_alpha(m: Material, alpha_pct: Int) -> String {
+  join([
+    "hsl(", to_string(m.hue), " ", to_string(m.sat_pct), "% ", to_string(m.light_pct),
+    "% / ", to_string(alpha_pct), "%)",
+  ], "")
+}
+
+type TimingToken {
+  name: String
+  duration_ms: Int
+  easing: String
+}
+
+data respond_fast: TimingToken = TimingToken { name: "respond", duration_ms: 90, easing: "ease-out" }
+
+data reveal_deliberate: TimingToken = TimingToken { name: "reveal", duration_ms: 160, easing: "ease-out" }
+
+data restore_gentle: TimingToken = TimingToken { name: "restore", duration_ms: 240, easing: "ease" }
+
+data timing_scale: List<TimingToken> = [respond_fast, reveal_deliberate, restore_gentle]
+
+type MotionTrigger
+  = OnHover
+  | OnFocusVisible
+  | OnActive
+
+fn trigger_pseudo(t: MotionTrigger) -> String {
+  match t {
+    OnHover => ":hover"
+    OnFocusVisible => ":focus-visible"
+    OnActive => ":active"
+  }
+}
+
+type CssDecl {
+  prop: String
+  value: String
+}
+
+fn decl(prop: String, value: String) -> CssDecl {
+  CssDecl { prop: prop, value: value }
+}
+
+fn color_decl(prop: String, m: Material) -> CssDecl {
+  CssDecl { prop: prop, value: paint(m: m) }
+}
+
+fn transition_decl(props: String, t: TimingToken) -> CssDecl {
+  CssDecl {
+    prop: "transition",
+    value: join([props, " ", to_string(t.duration_ms), "ms ", t.easing], ""),
+  }
+}
+
+type TriggerShape
+  = SelfResponse
+  | WithinSubject { target: String }
+  | ContainerHas { container: String, target: String }
+
+type BuildRule
+  = StaticRule { selector: String, decls: List<CssDecl> }
+  | ResponseRule {
+      subject: String,
+      shape: TriggerShape,
+      trigger: MotionTrigger,
+      transition_props: String,
+      timing: TimingToken,
+      base_decls: List<CssDecl>,
+      response_decls: List<CssDecl>,
+    }
+
+fn response_base_selector(subject: String, shape: TriggerShape) -> String {
+  match shape {
+    SelfResponse => subject
+    WithinSubject { target } => join([subject, " ", target], "")
+    ContainerHas { container: _, target } => target
+  }
+}
+
+fn response_hot_selector(subject: String, shape: TriggerShape, trigger: MotionTrigger) -> String {
+  let pseudo = trigger_pseudo(t: trigger)
+  match shape {
+    SelfResponse => concat(subject, pseudo)
+    WithinSubject { target } => join([subject, pseudo, " ", target], "")
+    ContainerHas { container, target } =>
+      join([container, ":has(", subject, pseudo, ") ", target], "")
+  }
+}
+
+fn serialize_decls(decls: List<CssDecl>) -> String {
+  join(map(decls, d => join([d.prop, ": ", d.value], "")), "; ")
+}
+
+fn css_block(selector: String, decls: List<CssDecl>) -> String {
+  join([selector, " { ", serialize_decls(decls: decls), " }"], "")
+}
+
+fn serialize_rule(rule: BuildRule) -> String {
+  match rule {
+    StaticRule { selector, decls } => css_block(selector: selector, decls: decls)
+    ResponseRule { subject, shape, trigger, transition_props, timing, base_decls, response_decls } =>
+      join([
+        css_block(
+          selector: response_base_selector(subject: subject, shape: shape),
+          decls: concat(base_decls, [transition_decl(props: transition_props, t: timing)])),
+        css_block(
+          selector: response_hot_selector(subject: subject, shape: shape, trigger: trigger),
+          decls: response_decls),
+      ], "\n")
+  }
+}
+
+fn serialize_rules(rules: List<BuildRule>) -> String {
+  join(map(rules, r => serialize_rule(rule: r)), "\n")
+}
+
+fn reduced_motion_block(rules: List<BuildRule>) -> String {
+  let selectors = fold(rules, init: [], f: (acc, r) => match r {
+    StaticRule { selector: _, decls: _ } => acc
+    ResponseRule { subject, shape, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } =>
+      concat(acc, [response_base_selector(subject: subject, shape: shape)])
+  })
+  if selectors.length() == 0 {
+    ""
+  } else {
+    join([
+      "@media (prefers-reduced-motion: reduce) { ",
+      join(map(selectors, s => css_block(selector: s, decls: [decl(prop: "transition", value: "none")])), " "),
+      " }",
+    ], "")
+  }
+}

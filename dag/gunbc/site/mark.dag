@@ -1,0 +1,124 @@
+module gunbc.site.mark
+
+import std.markup { MarkupNode, ElementNode, MarkupAttr }
+import gunbc.site.tokens { Material, starlight, star_glow, brass_focus, paint, paint_alpha }
+
+data mark_note: String = "Layer 4: the mark — candidate A Confluence (design section 4e) as a SPEC, not a drawing. Four nodes, fork and re-join: the smallest honest DAG, the diamond property. One authority renders every scale: favicon = render_mark(depth: 0), nav = depth 1, hero = depth 3 — the levels cannot disagree. all_forks_rejoin is the confluence theorem about the edge rows, witnessed, not assumed."
+
+type MarkNode {
+  key: String
+  x: Int
+  y: Int
+  sink: Bool
+}
+
+type MarkEdge {
+  from_key: String
+  to_key: String
+}
+
+data mark_grid_unit: Int = 6
+
+data mark_nodes: List<MarkNode> = [
+  MarkNode { key: "a", x: 12, y: 36, sink: false },
+  MarkNode { key: "b", x: 60, y: 12, sink: false },
+  MarkNode { key: "c", x: 60, y: 60, sink: false },
+  MarkNode { key: "d", x: 108, y: 36, sink: true },
+]
+
+data mark_edges: List<MarkEdge> = [
+  MarkEdge { from_key: "a", to_key: "b" },
+  MarkEdge { from_key: "a", to_key: "c" },
+  MarkEdge { from_key: "b", to_key: "d" },
+  MarkEdge { from_key: "c", to_key: "d" },
+]
+
+fn on_grid(v: Int, unit: Int) -> Bool {
+  v % unit == 0
+}
+
+fn mark_nodes_on_grid(nodes: List<MarkNode>, unit: Int) -> Bool {
+  all(nodes, n => on_grid(v: n.x, unit: unit) && on_grid(v: n.y, unit: unit))
+}
+
+fn node_by_key(nodes: List<MarkNode>, key: String) -> MarkNode {
+  fold(nodes, init: MarkNode { key: "", x: 0, y: 0, sink: false },
+    f: (acc, n) => if n.key == key { n } else { acc })
+}
+
+fn edges_from(edges: List<MarkEdge>, key: String) -> List<MarkEdge> {
+  fold(edges, init: [], f: (acc, e) => if e.from_key == key { concat(acc, [e]) } else { acc })
+}
+
+fn all_forks_rejoin(nodes: List<MarkNode>, edges: List<MarkEdge>, source: String) -> Bool {
+  let first_hops = edges_from(edges: edges, key: source)
+  first_hops.length() > 1
+    && all(first_hops, hop => {
+        let onward = edges_from(edges: edges, key: hop.to_key)
+        onward.length() > 0
+          && all(onward, o => node_by_key(nodes: nodes, key: o.to_key).sink)
+      })
+}
+
+fn attr(name: String, value: String) -> MarkupAttr {
+  MarkupAttr { name: name, value: value }
+}
+
+fn svg_el(tag: String, attrs: List<MarkupAttr>) -> MarkupNode {
+  ElementNode { tag: tag, attrs: attrs, children: [] }
+}
+
+fn node_fill(n: MarkNode) -> Material {
+  if n.sink { brass_focus } else { starlight }
+}
+
+fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<MarkupNode> {
+  map(edges, e => {
+    let from = node_by_key(nodes: nodes, key: e.from_key)
+    let to = node_by_key(nodes: nodes, key: e.to_key)
+    svg_el(tag: "line", attrs: [
+      attr(name: "x1", value: to_string(from.x)),
+      attr(name: "y1", value: to_string(from.y)),
+      attr(name: "x2", value: to_string(to.x)),
+      attr(name: "y2", value: to_string(to.y)),
+      attr(name: "stroke", value: paint_alpha(m: star_glow, alpha_pct: 55)),
+      attr(name: "stroke-width", value: "1"),
+    ])
+  })
+}
+
+fn mark_node_halos(nodes: List<MarkNode>) -> List<MarkupNode> {
+  map(nodes, n =>
+    svg_el(tag: "circle", attrs: [
+      attr(name: "cx", value: to_string(n.x)),
+      attr(name: "cy", value: to_string(n.y)),
+      attr(name: "r", value: "9"),
+      attr(name: "fill", value: paint_alpha(m: node_fill(n: n), alpha_pct: 16)),
+    ]))
+}
+
+fn mark_node_points(nodes: List<MarkNode>) -> List<MarkupNode> {
+  map(nodes, n =>
+    svg_el(tag: "circle", attrs: [
+      attr(name: "cx", value: to_string(n.x)),
+      attr(name: "cy", value: to_string(n.y)),
+      attr(name: "r", value: "3"),
+      attr(name: "fill", value: paint(m: node_fill(n: n))),
+      attr(name: "class", value: "mark-point"),
+    ]))
+}
+
+fn render_mark(depth: Int) -> MarkupNode {
+  let edges = if depth >= 1 { mark_edge_lines(nodes: mark_nodes, edges: mark_edges) } else { [] }
+  let halos = if depth >= 3 { mark_node_halos(nodes: mark_nodes) } else { [] }
+  ElementNode {
+    tag: "svg",
+    attrs: [
+      attr(name: "viewBox", value: "0 0 120 72"),
+      attr(name: "class", value: concat("mark mark-d", to_string(depth))),
+      attr(name: "aria-label", value: "gunb.ai mark: confluence"),
+      attr(name: "role", value: "img"),
+    ],
+    children: concat(halos, concat(edges, mark_node_points(nodes: mark_nodes))),
+  }
+}

@@ -1,0 +1,121 @@
+module test.claim.site_register_witness
+
+import gunbc.site.tokens {
+  Material, FieldArea, PointArea,
+  chroma_admissible, palette_admissible, site_palette,
+  respond_fast,
+}
+import gunbc.site.interaction {
+  BehaviorRow, InteractiveElement, CoverageGap,
+  Approach, Enter, Receipt, Brighten,
+  coverage_gaps, coverage_complete, verb_key,
+  moodboard_elements, moodboard_behaviors,
+}
+import gunbc.site.mark {
+  mark_nodes, mark_edges, mark_grid_unit, MarkEdge,
+  mark_nodes_on_grid, all_forks_rejoin, render_mark,
+}
+import gunbc.site.constellation { layer_stars, brightest_is_authority }
+import gunbc.site.moodboard {
+  moodboard_html, moodboard_preconditions_hold, unrealized_behaviors,
+}
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_palette_admissible() -> Bool {
+  palette_admissible(palette: site_palette)
+}
+
+fn witness_saturated_field_refused() -> Bool {
+  let neon_field = Material { name: "neon-field", hue: 194, sat_pct: 88, light_pct: 50, area: FieldArea }
+  let same_sat_point = Material { name: "jewel-point", hue: 194, sat_pct: 88, light_pct: 50, area: PointArea }
+  !chroma_admissible(m: neon_field) && chroma_admissible(m: same_sat_point)
+}
+
+fn witness_moodboard_coverage_complete() -> Bool {
+  coverage_complete(elements: moodboard_elements, rows: moodboard_behaviors)
+}
+
+fn witness_dead_hover_is_located_gap() -> Bool {
+  let elements = [ InteractiveElement { element: "orphan", verbs: [Approach] } ]
+  let gaps = coverage_gaps(elements: elements, rows: moodboard_behaviors)
+  gaps.length() == 1
+    && all(gaps, g => g.element == "orphan" && verb_key(v: g.verb) == "approach")
+}
+
+fn witness_unrealized_behavior_is_counted() -> Bool {
+  let ghost = BehaviorRow { element: "star", verb: Enter, response: Receipt, timing: respond_fast }
+  unrealized_behaviors(rows: [ghost]).length() == 1
+    && unrealized_behaviors(rows: moodboard_behaviors).length() == 0
+}
+
+fn witness_mark_on_grid_and_confluent() -> Bool {
+  mark_nodes_on_grid(nodes: mark_nodes, unit: mark_grid_unit)
+    && all_forks_rejoin(nodes: mark_nodes, edges: mark_edges, source: "a")
+}
+
+fn witness_broken_fork_refutes_confluence() -> Bool {
+  let severed = [
+    MarkEdge { from_key: "a", to_key: "b" },
+    MarkEdge { from_key: "a", to_key: "c" },
+    MarkEdge { from_key: "c", to_key: "d" },
+  ]
+  !all_forks_rejoin(nodes: mark_nodes, edges: severed, source: "a")
+}
+
+fn mark_svg_at(depth: Int) -> String {
+  match try_serialize_html_source(node: render_mark(depth: depth)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn witness_mark_lod_monotone() -> Bool {
+  let d0 = mark_svg_at(depth: 0)
+  let d1 = mark_svg_at(depth: 1)
+  let d3 = mark_svg_at(depth: 3)
+  !string_contains(s: d0, pattern: "<line")
+    && string_contains(s: d1, pattern: "<line")
+    && !string_contains(s: d1, pattern: "r=\"9\"")
+    && string_contains(s: d3, pattern: "r=\"9\"")
+}
+
+fn witness_brightest_star_is_std() -> Bool {
+  brightest_is_authority(stars: layer_stars, authority_key: "std")
+    && !brightest_is_authority(stars: layer_stars, authority_key: "workflow")
+}
+
+fn witness_moodboard_emits_with_structure() -> Bool {
+  let h = moodboard_html()
+  starts_with(s: h, prefix: "<!DOCTYPE html>")
+    && string_contains(s: h, pattern: "class=\"constellation\"")
+    && string_contains(s: h, pattern: ".hero:has(.star-std:hover) .legend-std")
+    && string_contains(s: h, pattern: ".star:focus-visible")
+    && string_contains(s: h, pattern: "@media (prefers-reduced-motion: reduce)")
+    && string_contains(s: h, pattern: "thesis+palette digest")
+    && !string_contains(s: h, pattern: "EMIT REJECTED")
+}
+
+fn witness_still_until_touched_in_css() -> Bool {
+  let h = moodboard_html()
+  string_contains(s: h, pattern: "transition: fill 90ms ease-out")
+    && !string_contains(s: h, pattern: "@keyframes")
+    && !string_contains(s: h, pattern: "animation:")
+}
+
+test fn site_register_keystone_holds() -> Bool {
+  moodboard_preconditions_hold()
+    && witness_palette_admissible()
+    && witness_saturated_field_refused()
+    && witness_moodboard_coverage_complete()
+    && witness_dead_hover_is_located_gap()
+    && witness_unrealized_behavior_is_counted()
+    && witness_mark_on_grid_and_confluent()
+    && witness_broken_fork_refutes_confluence()
+    && witness_mark_lod_monotone()
+    && witness_brightest_star_is_std()
+    && witness_moodboard_emits_with_structure()
+    && witness_still_until_touched_in_css()
+}

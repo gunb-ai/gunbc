@@ -1,0 +1,400 @@
+module gunbc.site.moodboard
+
+import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+import std.types { NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import extdeps.languages.html { try_serialize_html_source, EmitOk, EmitRejected }
+import gunbc.site.register_principles {
+  RegisterPrinciple, register_principles, register_thesis, principle_id_key,
+}
+import gunbc.site.tokens {
+  Material, site_palette, palette_admissible, paint, paint_alpha,
+  indigo_void, indigo_panel, hairline_border, starlight, starlight_lit,
+  star_glow, stone_text, stone_dim, brass_focus, clay_boundary,
+  TimingToken, timing_scale, respond_fast, reveal_deliberate,
+  BuildRule, StaticRule, ResponseRule, TriggerShape, SelfResponse, WithinSubject, ContainerHas,
+  MotionTrigger, OnHover, OnFocusVisible,
+  CssDecl, decl, color_decl, serialize_rules, reduced_motion_block, css_block,
+}
+import gunbc.site.interaction {
+  BehaviorRow, moodboard_elements, moodboard_behaviors,
+  coverage_gaps, verb_key, response_key,
+}
+import gunbc.site.mark { render_mark, mark_nodes, mark_edges, all_forks_rejoin }
+import gunbc.site.constellation { constellation_figure, layer_stars, LayerStar }
+
+fn txt(s: String) -> MarkupNode { TextNode { text: s } }
+
+fn el(tag: String, children: List<MarkupNode>) -> MarkupNode {
+  ElementNode { tag: tag, attrs: [], children: children }
+}
+
+fn el_class(tag: String, cls: String, children: List<MarkupNode>) -> MarkupNode {
+  ElementNode { tag: tag, attrs: [ MarkupAttr { name: "class", value: cls } ], children: children }
+}
+
+fn approach_triggers() -> List<MotionTrigger> {
+  [OnHover, OnFocusVisible]
+}
+
+fn star_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+  map(approach_triggers(), t =>
+    ResponseRule {
+      subject: ".star",
+      shape: SelfResponse,
+      trigger: t,
+      transition_props: "fill",
+      timing: timing,
+      base_decls: [ decl(prop: "fill", value: paint(m: starlight)), decl(prop: "cursor", value: "pointer") ],
+      response_decls: [ decl(prop: "fill", value: paint(m: starlight_lit)) ],
+    })
+}
+
+fn star_legend_reveal_rules(timing: TimingToken) -> List<BuildRule> {
+  fold(layer_stars, init: [], f: (acc, s) =>
+    concat(acc, map(approach_triggers(), t =>
+      ResponseRule {
+        subject: concat(".star-", s.key),
+        shape: ContainerHas { container: ".hero", target: concat(".legend-", s.key) },
+        trigger: t,
+        transition_props: "opacity",
+        timing: timing,
+        base_decls: [ decl(prop: "opacity", value: "0.5") ],
+        response_decls: [ decl(prop: "opacity", value: "1") ],
+      })))
+}
+
+fn hash_reveal_rules(timing: TimingToken) -> List<BuildRule> {
+  map(approach_triggers(), t =>
+    ResponseRule {
+      subject: ".hash",
+      shape: WithinSubject { target: ".hash-full" },
+      trigger: t,
+      transition_props: "opacity",
+      timing: timing,
+      base_decls: [ decl(prop: "opacity", value: "0") ],
+      response_decls: [ decl(prop: "opacity", value: "1") ],
+    })
+}
+
+fn swatch_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+  map(approach_triggers(), t =>
+    ResponseRule {
+      subject: ".swatch",
+      shape: SelfResponse,
+      trigger: t,
+      transition_props: "border-color",
+      timing: timing,
+      base_decls: [ decl(prop: "border", value: concat("1px solid ", paint_alpha(m: hairline_border, alpha_pct: 60))) ],
+      response_decls: [ decl(prop: "border-color", value: paint(m: star_glow)) ],
+    })
+}
+
+type RealizedBehavior
+  = RealizedRules { rules: List<BuildRule> }
+  | UnrealizedBehavior { element: String, verb: String, response: String }
+
+fn realize_behavior(row: BehaviorRow) -> RealizedBehavior {
+  let e = row.element
+  let r = response_key(r: row.response)
+  if e == "star" && r == "brighten" {
+    RealizedRules { rules: star_brighten_rules(timing: row.timing) }
+  } else if e == "star" && r == "reveal" {
+    RealizedRules { rules: star_legend_reveal_rules(timing: row.timing) }
+  } else if e == "hash" && r == "reveal" {
+    RealizedRules { rules: hash_reveal_rules(timing: row.timing) }
+  } else if e == "swatch" && r == "brighten" {
+    RealizedRules { rules: swatch_brighten_rules(timing: row.timing) }
+  } else {
+    UnrealizedBehavior { element: e, verb: verb_key(v: row.verb), response: r }
+  }
+}
+
+fn unrealized_behaviors(rows: List<BehaviorRow>) -> List<RealizedBehavior> {
+  fold(rows, init: [], f: (acc, row) => match realize_behavior(row: row) {
+    RealizedRules { rules: _ } => acc
+    UnrealizedBehavior { element, verb, response } =>
+      concat(acc, [UnrealizedBehavior { element: element, verb: verb, response: response }])
+  })
+}
+
+fn behavior_rules(rows: List<BehaviorRow>) -> List<BuildRule> {
+  fold(rows, init: [], f: (acc, row) => match realize_behavior(row: row) {
+    RealizedRules { rules } => concat(acc, rules)
+    UnrealizedBehavior { element: _, verb: _, response: _ } => acc
+  })
+}
+
+fn static_rules() -> List<BuildRule> {
+  [
+    StaticRule { selector: "body", decls: [
+      color_decl(prop: "background", m: indigo_void),
+      color_decl(prop: "color", m: stone_text),
+      decl(prop: "font-family", value: "'Noto Sans', system-ui, sans-serif"),
+      decl(prop: "margin", value: "0"),
+      decl(prop: "line-height", value: "1.55"),
+    ] },
+    StaticRule { selector: "main", decls: [
+      decl(prop: "max-width", value: "54rem"),
+      decl(prop: "margin", value: "0 auto"),
+      decl(prop: "padding", value: "3rem 1.5rem 4rem"),
+    ] },
+    StaticRule { selector: ".wordmark", decls: [
+      decl(prop: "font-size", value: "1.4rem"),
+      decl(prop: "font-weight", value: "500"),
+      decl(prop: "letter-spacing", value: "0.01em"),
+    ] },
+    StaticRule { selector: ".thesis", decls: [
+      color_decl(prop: "color", m: stone_dim),
+      decl(prop: "margin", value: "0.25rem 0 0"),
+    ] },
+    StaticRule { selector: "section", decls: [
+      decl(prop: "margin-top", value: "3rem"),
+    ] },
+    StaticRule { selector: "h2", decls: [
+      decl(prop: "font-size", value: "0.85rem"),
+      decl(prop: "font-weight", value: "500"),
+      decl(prop: "letter-spacing", value: "0.08em"),
+      decl(prop: "text-transform", value: "lowercase"),
+      color_decl(prop: "color", m: stone_dim),
+    ] },
+    StaticRule { selector: ".panel", decls: [
+      color_decl(prop: "background", m: indigo_panel),
+      decl(prop: "border", value: concat("1px solid ", paint_alpha(m: hairline_border, alpha_pct: 45))),
+      decl(prop: "border-radius", value: "3px"),
+      decl(prop: "padding", value: "1.1rem 1.25rem"),
+    ] },
+    StaticRule { selector: ".mono", decls: [
+      decl(prop: "font-family", value: "'JetBrains Mono', monospace"),
+      decl(prop: "font-size", value: "0.82em"),
+    ] },
+    StaticRule { selector: ".mark", decls: [
+      decl(prop: "height", value: "3rem"),
+      decl(prop: "margin-right", value: "1.5rem"),
+    ] },
+    StaticRule { selector: ".constellation", decls: [
+      decl(prop: "width", value: "100%"),
+      decl(prop: "height", value: "auto"),
+    ] },
+    StaticRule { selector: ".hero", decls: [
+      decl(prop: "margin", value: "0"),
+    ] },
+    StaticRule { selector: ".legend", decls: [
+      decl(prop: "list-style", value: "none"),
+      decl(prop: "padding", value: "0"),
+      decl(prop: "font-size", value: "0.85rem"),
+      color_decl(prop: "color", m: stone_dim),
+    ] },
+    StaticRule { selector: ".legend-key", decls: [
+      decl(prop: "font-family", value: "'JetBrains Mono', monospace"),
+      color_decl(prop: "color", m: stone_text),
+    ] },
+    StaticRule { selector: ".swatch-row", decls: [
+      decl(prop: "display", value: "flex"),
+      decl(prop: "flex-wrap", value: "wrap"),
+      decl(prop: "gap", value: "0.75rem"),
+    ] },
+    StaticRule { selector: ".swatch", decls: [
+      decl(prop: "width", value: "7.5rem"),
+      decl(prop: "border-radius", value: "3px"),
+      decl(prop: "padding", value: "0.4rem"),
+    ] },
+    StaticRule { selector: ".chip", decls: [
+      decl(prop: "height", value: "2.2rem"),
+      decl(prop: "border-radius", value: "2px"),
+      decl(prop: "border", value: concat("1px solid ", paint_alpha(m: hairline_border, alpha_pct: 35))),
+    ] },
+    StaticRule { selector: ".swatch .label", decls: [
+      decl(prop: "font-size", value: "0.72rem"),
+      color_decl(prop: "color", m: stone_dim),
+      decl(prop: "margin-top", value: "0.3rem"),
+    ] },
+    StaticRule { selector: ".ledger", decls: [
+      decl(prop: "width", value: "100%"),
+      decl(prop: "border-collapse", value: "collapse"),
+      decl(prop: "font-size", value: "0.85rem"),
+    ] },
+    StaticRule { selector: ".ledger td", decls: [
+      decl(prop: "padding", value: "0.45rem 0.75rem 0.45rem 0"),
+      decl(prop: "border-bottom", value: concat("1px solid ", paint_alpha(m: hairline_border, alpha_pct: 25))),
+      decl(prop: "vertical-align", value: "top"),
+    ] },
+    StaticRule { selector: ".boundary", decls: [
+      decl(prop: "border-left", value: concat("2px solid ", paint(m: clay_boundary))),
+      decl(prop: "padding-left", value: "1rem"),
+    ] },
+    StaticRule { selector: ".foot", decls: [
+      decl(prop: "margin-top", value: "4rem"),
+      decl(prop: "font-size", value: "0.78rem"),
+      color_decl(prop: "color", m: stone_dim),
+    ] },
+    StaticRule { selector: ".brass", decls: [
+      color_decl(prop: "color", m: brass_focus),
+    ] },
+  ]
+}
+
+fn moodboard_css() -> String {
+  let rules = concat(static_rules(), behavior_rules(rows: moodboard_behaviors))
+  join([
+    serialize_rules(rules: rules),
+    reduced_motion_block(rules: behavior_rules(rows: moodboard_behaviors)),
+  ], "\n")
+}
+
+fn palette_serialized() -> String {
+  join(map(site_palette, m => join([m.name, "=", paint(m: m)], "")), ";")
+}
+
+fn moodboard_digest() -> String {
+  content_hash_atom(value: concat(register_thesis, palette_serialized()) as NonEmptyStr) as String
+}
+
+fn short_digest(digest: String) -> String {
+  substring(s: digest, start: 0, end: 8)
+}
+
+fn masthead() -> MarkupNode {
+  el_class("header", "masthead", [
+    el_class("p", "wordmark", [ txt("gunb.ai") ]),
+    el_class("p", "thesis", [ txt(register_thesis) ]),
+  ])
+}
+
+fn mark_section() -> MarkupNode {
+  el("section", [
+    el("h2", [ txt("the mark — one spec, three depths") ]),
+    el_class("div", "panel", [
+      render_mark(depth: 0),
+      render_mark(depth: 1),
+      render_mark(depth: 3),
+    ]),
+  ])
+}
+
+fn hero_section() -> MarkupNode {
+  el("section", [
+    el("h2", [ txt("the layer dag as an asterism — touch a star") ]),
+    el_class("div", "panel", [ constellation_figure() ]),
+  ])
+}
+
+fn swatch_item(m: Material) -> MarkupNode {
+  ElementNode {
+    tag: "div",
+    attrs: [
+      MarkupAttr { name: "class", value: "swatch" },
+      MarkupAttr { name: "tabindex", value: "0" },
+    ],
+    children: [
+      ElementNode {
+        tag: "div",
+        attrs: [ MarkupAttr { name: "class", value: "chip" }, MarkupAttr { name: "style", value: concat("background: ", paint(m: m)) } ],
+        children: [],
+      },
+      el_class("div", "label mono", [ txt(join([m.name, " · ", paint(m: m)], "")) ]),
+    ],
+  }
+}
+
+fn materials_section() -> MarkupNode {
+  el("section", [
+    el("h2", [ txt("materials — chroma bounded by area") ]),
+    el_class("div", "swatch-row", map(site_palette, m => swatch_item(m: m))),
+  ])
+}
+
+fn timing_row(t: TimingToken) -> MarkupNode {
+  el("tr", [
+    el_class("td", "mono", [ txt(t.name) ]),
+    el_class("td", "mono", [ txt(join([to_string(t.duration_ms), "ms ", t.easing], "")) ]),
+  ])
+}
+
+fn timing_section() -> MarkupNode {
+  el("section", [
+    el("h2", [ txt("the timing scale — three tokens, no other durations exist") ]),
+    el_class("table", "ledger", map(timing_scale, t => timing_row(t: t))),
+  ])
+}
+
+fn principle_row(p: RegisterPrinciple) -> MarkupNode {
+  el("tr", [
+    el_class("td", "mono", [ txt(principle_id_key(id: p.id)) ]),
+    el("td", [ txt(p.law) ]),
+    el_class("td", "mono", [ txt(join([p.enforced_by.module_path, ".", p.enforced_by.decl_name], "")) ]),
+  ])
+}
+
+fn principles_section() -> MarkupNode {
+  el("section", [
+    el("h2", [ txt("base principles — each law names its enforcing carrier") ]),
+    el_class("table", "ledger", map(register_principles, p => principle_row(p: p))),
+  ])
+}
+
+fn boundary_section() -> MarkupNode {
+  el("section", [
+    el("h2", [ txt("a boundary — refusal does not glow") ]),
+    el_class("div", "panel boundary", [
+      el_class("p", "mono", [
+        txt("invariant — an inadmissible material (saturated field) has no paint projection; the row is refused at the palette witness, no artifact emitted"),
+      ]),
+    ]),
+  ])
+}
+
+fn hallmark() -> MarkupNode {
+  let digest = moodboard_digest()
+  ElementNode {
+    tag: "footer",
+    attrs: [
+      MarkupAttr { name: "class", value: "foot hash" },
+      MarkupAttr { name: "tabindex", value: "0" },
+    ],
+    children: [
+      el_class("span", "mono", [ txt(concat("emitted from gunbc.site.moodboard · thesis+palette digest ", short_digest(digest: digest))) ]),
+      el_class("span", "mono hash-full", [ txt(concat(" · full ", digest)) ]),
+    ],
+  }
+}
+
+fn moodboard_page() -> MarkupNode {
+  ElementNode { tag: "html", attrs: [ MarkupAttr { name: "lang", value: "en" } ], children: [
+    el("head", [
+      ElementNode { tag: "meta", attrs: [ MarkupAttr { name: "charset", value: "utf-8" } ], children: [] },
+      ElementNode { tag: "meta", attrs: [
+        MarkupAttr { name: "name", value: "viewport" },
+        MarkupAttr { name: "content", value: "width=device-width, initial-scale=1" },
+      ], children: [] },
+      el("title", [ txt("gunb.ai — register moodboard (phase 0)") ]),
+      el("style", [ txt(moodboard_css()) ]),
+    ]),
+    el("body", [
+      el("main", [
+        masthead(),
+        mark_section(),
+        hero_section(),
+        materials_section(),
+        timing_section(),
+        principles_section(),
+        boundary_section(),
+        hallmark(),
+      ]),
+    ]),
+  ] }
+}
+
+fn moodboard_html() -> String {
+  match try_serialize_html_source(node: moodboard_page()) {
+    EmitOk { html: h } => concat("<!DOCTYPE html>\n", h)
+    EmitRejected { reason: r } => concat("EMIT REJECTED: ", r)
+  }
+}
+
+fn moodboard_preconditions_hold() -> Bool {
+  palette_admissible(palette: site_palette)
+    && coverage_gaps(elements: moodboard_elements, rows: moodboard_behaviors).length() == 0
+    && unrealized_behaviors(rows: moodboard_behaviors).length() == 0
+    && all_forks_rejoin(nodes: mark_nodes, edges: mark_edges, source: "a")
+}
