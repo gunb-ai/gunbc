@@ -2,13 +2,28 @@ module gunbc.roadmap_belt_actuate
 
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath }
 import gunbc.roadmap_model { RoadmapNode }
-import gunbc.roadmap_spawner { SpawnFrontier }
+import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_belt {
   BeltRunState, Running, Paused,
   BeltCapacity,
   BeltReconcile,
   belt_reconcile,
+  belt_run_state_label,
+  belt_reconcile_refusal_count,
+  roadmap_belt_default_capacity,
+  roadmap_belt_default_run_state,
   DispatchMember, DesiredMember, ObservedMember,
+}
+import extdeps.languages.json.emit {
+  JsonValue,
+  serialize_json,
+  json_string,
+  json_int,
+  json_bool,
+  json_array,
+  json_object,
+  json_kv,
 }
 import gunbc.roadmap_dispatch_actuator {
   HostExecArgv,
@@ -22,6 +37,8 @@ import gunbc.roadmap_dispatch_actuator {
 }
 import extdeps.gunbc
 import extdeps.shell
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { content_hash_atom, content_hash_combine }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -45,7 +62,11 @@ data belt_actuate_fingerprint_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
+data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). belt_actuate_workdir is the SPAWN root: `git worktree add` must run inside the gunbc repo, so spawn's argv fold runs from /opt/gunbc/gunbc. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
+
 data belt_actuate_workdir: FilePath = "/opt/gunbc/gunbc" as FilePath
+
+data belt_observe_workdir: FilePath = "/" as FilePath
 
 type BeltExecOutcome
   = ExecOk { stdout: String }
@@ -113,8 +134,8 @@ type BeltTeardownOutcome
   = ReapedSession { session_name: String }
   | TeardownFailed { session_name: String, detail: String }
 
-fn belt_actuate_teardown(session_name: String, workdir: String) -> BeltTeardownOutcome {
-  match belt_exec(cmd: tmux_kill_session_argv(session_name: session_name), workdir: workdir) {
+fn belt_actuate_teardown(session_name: String) -> BeltTeardownOutcome {
+  match belt_exec(cmd: tmux_kill_session_argv(session_name: session_name), workdir: belt_observe_workdir as String) {
     ExecOk { stdout: _ } => ReapedSession { session_name: session_name }
     ExecFailed { program: _, exit_code: _, stderr: e } =>
       TeardownFailed { session_name: session_name, detail: e }
@@ -125,8 +146,42 @@ fn belt_actuate_teardown(session_name: String, workdir: String) -> BeltTeardownO
 
 data belt_actuate_member_shape_note: String = "The reconcile guarantees spawns are DesiredMembers (carry the RoadmapNode for the brief) and teardowns are ObservedMembers (carry the live session). The cross arms are unreachable by construction; if ever reached they REFUSE (typed SpawnFailed/TeardownFailed), never a fabricated action — DESIGN §5 (no spawn without a node model, no teardown without an observed session)."
 
+data belt_session_uuid_salt: NonEmptyStr = "belt-session-uuid-v1" as NonEmptyStr
+
+data belt_spawn_session_uuid_note: String = "The spawned session name is claude's --session-id, which claude REQUIRES to be a syntactically valid UUID (claude --help; a `belt-<node_id>` placeholder is rejected). So we derive a DETERMINISTIC UUID from the node_id: two fnv1a64 content hashes (the bare node_id, and node_id combined with belt_session_uuid_salt) give 16 + 16 = 32 lowercase hex chars (content_hash_atom renders {:016x}), reshaped to RFC-4122 v4 (version nibble at index 12 -> '4', variant nibble at index 16 -> '8') and dashed 8-4-4-4-12. Deterministic = the SAME node re-derives the SAME session-id, so an observe/reconcile that keys sessions by name stays idempotent across ticks and process restarts (no random uuidgen, which would spawn a fresh session every tick). Grounded on std.content_hash — the single hashing authority (DESIGN §3 fnv1a64 dual-surface) — not a hand-rolled hash."
+
+fn belt_uuid_hex32(node_id: String) -> String {
+  concat(
+    content_hash_atom(value: node_id as NonEmptyStr) as String,
+    content_hash_combine(
+      left: content_hash_atom(value: node_id as NonEmptyStr),
+      right: content_hash_atom(value: belt_session_uuid_salt),
+    ) as String,
+  )
+}
+
+fn belt_uuid_rfc4122(hex: String) -> String {
+  concat(substring(s: hex, start: 0, end: 12),
+  concat("4",
+  concat(substring(s: hex, start: 13, end: 16),
+  concat("8",
+  substring(s: hex, start: 17, end: 32)))))
+}
+
+fn belt_uuid_dash(v: String) -> String {
+  concat(substring(s: v, start: 0, end: 8),
+  concat("-",
+  concat(substring(s: v, start: 8, end: 12),
+  concat("-",
+  concat(substring(s: v, start: 12, end: 16),
+  concat("-",
+  concat(substring(s: v, start: 16, end: 20),
+  concat("-",
+  substring(s: v, start: 20, end: 32)))))))))
+}
+
 fn belt_spawn_session_uuid(node_id: String) -> String {
-  concat("belt-", node_id)
+  belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id)))
 }
 
 fn belt_actuate_spawn_member(m: DispatchMember, workdir: String) -> BeltSpawnOutcome {
@@ -146,10 +201,10 @@ fn belt_actuate_spawn_member(m: DispatchMember, workdir: String) -> BeltSpawnOut
   }
 }
 
-fn belt_actuate_teardown_member(m: DispatchMember, workdir: String) -> BeltTeardownOutcome {
+fn belt_actuate_teardown_member(m: DispatchMember) -> BeltTeardownOutcome {
   match m {
     ObservedMember { node_id: _, session: session } =>
-      belt_actuate_teardown(session_name: session.session_name, workdir: workdir)
+      belt_actuate_teardown(session_name: session.session_name)
     DesiredMember { node_id: nid, node: _ } =>
       TeardownFailed {
         session_name: nid,
@@ -190,11 +245,11 @@ fn belt_observe_from_result(
   }
 }
 
-fn belt_observe(workdir: String) -> BeltObserve {
+fn belt_observe() -> BeltObserve {
   let ls = tmux_ls_argv()
   if belt_program_available(program: ls.program) {
     let result = gunbc.WitnessBin.Run(
-      workdir: workdir as FilePath,
+      workdir: belt_observe_workdir,
       bin_path: ls.program as FilePath,
       args: ls.args,
     )
@@ -236,9 +291,9 @@ fn belt_tick(
   state: BeltRunState,
   frontier: SpawnFrontier,
   cap: BeltCapacity,
-  workdir: String,
+  spawn_workdir: String,
 ) -> BeltTickResult {
-  match belt_observe(workdir: workdir) {
+  match belt_observe() {
     ObserveRefused { reason: r } =>
       BeltTickResult {
         observe_refused: true,
@@ -253,8 +308,8 @@ fn belt_tick(
         observe_refused: false,
         observe_refusal_reason: "",
         reconcile: r,
-        spawn_outcomes: r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: workdir)),
-        teardown_outcomes: r.teardowns |> map(m => belt_actuate_teardown_member(m: m, workdir: workdir)),
+        spawn_outcomes: r.spawns |> map(m => belt_actuate_spawn_member(m: m, workdir: spawn_workdir)),
+        teardown_outcomes: r.teardowns |> map(m => belt_actuate_teardown_member(m: m)),
       }
     }
   }
@@ -265,7 +320,7 @@ fn belt_tick_default_workdir(
   frontier: SpawnFrontier,
   cap: BeltCapacity,
 ) -> BeltTickResult {
-  belt_tick(state: state, frontier: frontier, cap: cap, workdir: belt_actuate_workdir as String)
+  belt_tick(state: state, frontier: frontier, cap: cap, spawn_workdir: belt_actuate_workdir as String)
 }
 
 fn belt_spawn_ok(o: BeltSpawnOutcome) -> Bool {
@@ -292,4 +347,86 @@ fn belt_tick_spawn_failed_count(t: BeltTickResult) -> Int {
 
 fn belt_tick_teardown_ok_count(t: BeltTickResult) -> Int {
   count(t.teardown_outcomes |> filter(o => belt_teardown_ok(o: o)))
+}
+
+data belt_run_once_note: String = "The runnable belt entrypoint: one tick against the LIVE roadmap. Reads the roadmap authority + merged PRs, builds the ready frontier, and runs belt_tick_default_workdir (Running, default capacity, belt_actuate_workdir). Zero-arg so it is invokable directly (gunbc run --function belt_run_once_json, wet), spawning real Claude tmux sessions on the host it runs on. belt_run_once returns the typed BeltTickResult; belt_run_once_json projects it to a receipt (observe verdict, occupied/free/deferred, per-node spawn/teardown outcomes, refusal count) so the operator sees exactly what one tick did — no fabricated summary. Idempotent: a spawned session is observed live next tick and reconciles to noop."
+
+fn belt_run_once() -> BeltTickResult {
+  belt_tick_default_workdir(
+    state: roadmap_belt_default_run_state,
+    frontier: spawn_frontier(doc: roadmap_authority(), merged: authored_merged_prs()),
+    cap: roadmap_belt_default_capacity,
+  )
+}
+
+fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> JsonValue {
+  match o {
+    Spawned { node_id: nid, session_name: sn } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "spawned")),
+        json_kv(key: "session_name", value: json_string(s: sn)),
+      ])
+    SpawnFailed { node_id: nid, step: st, detail: d } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "spawn_failed")),
+        json_kv(key: "step", value: json_string(s: st)),
+        json_kv(key: "detail", value: json_string(s: d)),
+      ])
+  }
+}
+
+fn belt_teardown_outcome_json(o: BeltTeardownOutcome) -> JsonValue {
+  match o {
+    ReapedSession { session_name: sn } =>
+      json_object(members: [
+        json_kv(key: "session_name", value: json_string(s: sn)),
+        json_kv(key: "status", value: json_string(s: "reaped")),
+      ])
+    TeardownFailed { session_name: sn, detail: d } =>
+      json_object(members: [
+        json_kv(key: "session_name", value: json_string(s: sn)),
+        json_kv(key: "status", value: json_string(s: "teardown_failed")),
+        json_kv(key: "detail", value: json_string(s: d)),
+      ])
+  }
+}
+
+fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-belt-tick/v1")),
+    json_kv(key: "observe_refused", value: json_bool(b: t.observe_refused)),
+    json_kv(key: "observe_refusal_reason", value: json_string(s: t.observe_refusal_reason)),
+    json_kv(key: "run_state", value: json_string(s: belt_run_state_label(s: t.reconcile.run_state))),
+    json_kv(key: "occupied", value: json_int(n: t.reconcile.occupied)),
+    json_kv(key: "free", value: json_int(n: t.reconcile.free)),
+    json_kv(key: "deferred", value: json_int(n: t.reconcile.deferred)),
+    json_kv(key: "refusal_count", value: json_int(n: belt_reconcile_refusal_count(r: t.reconcile))),
+    json_kv(key: "spawned", value: json_int(n: belt_tick_spawn_ok_count(t: t))),
+    json_kv(key: "spawn_failed", value: json_int(n: belt_tick_spawn_failed_count(t: t))),
+    json_kv(key: "reaped", value: json_int(n: belt_tick_teardown_ok_count(t: t))),
+    json_kv(key: "spawn_outcomes", value: json_array(elements: t.spawn_outcomes |> map(o => belt_spawn_outcome_json(o: o)))),
+    json_kv(key: "teardown_outcomes", value: json_array(elements: t.teardown_outcomes |> map(o => belt_teardown_outcome_json(o: o)))),
+  ])
+}
+
+fn belt_run_once_json() -> String {
+  serialize_json(v: belt_tick_result_json_value(t: belt_run_once()))
+}
+
+data belt_run_once_cli_note: String = "The ProcessExit entrypoint — this is what `gunbc run --function belt_run_once_cli` invokes (belt_run_once_json returns String, which `gunbc run` rejects; belt_run_once_cli is its runnable wrapper). Fail-closed exit mapping, idiomatic per srv3_boot_once_cd / host_build_cache_provision: a clean idempotent tick -> ExitSuccess (exit 0, silent). ANY problem surfaces the FULL JSON receipt loudly on stderr via exit_failure(reason): observe_refused (the live session set was unknowable, so no actions were taken) -> exit_failure(receipt); or one-or-more spawn_failed outcomes (a git-worktree/tmux/which failure) -> exit_failure(receipt). The receipt is the whole BeltTickResult projection, so the operator reads exactly which node failed at which step. Teardown failures are surfaced in the receipt but do NOT flip the exit — a reap that could not complete is not a reason to fail the tick (the session is still tracked and retried next tick); only a spawn failure or an unknowable observation is a hard stop. For always-on observation of a SUCCESSFUL tick's receipt, belt_run_once_json is the string form (witness/inspection)."
+
+fn belt_run_once_cli() -> ProcessExit {
+  let t = belt_run_once()
+  let receipt = serialize_json(v: belt_tick_result_json_value(t: t))
+  if t.observe_refused {
+    exit_failure(reason: receipt)
+  } else {
+    if belt_tick_spawn_failed_count(t: t) > 0 {
+      exit_failure(reason: receipt)
+    } else {
+      ExitSuccess
+    }
+  }
 }

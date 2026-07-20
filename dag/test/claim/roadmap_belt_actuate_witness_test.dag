@@ -26,6 +26,7 @@ import gunbc.roadmap_belt_actuate {
   belt_actuate_teardown_member,
   BeltObserve, Observed, ObserveRefused,
   belt_observe_from_result,
+  belt_spawn_session_uuid,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -157,7 +158,7 @@ fn witness_spawn_member_refuses_observed_shape() -> Bool {
 
 fn witness_teardown_member_refuses_desired_shape() -> Bool {
   let m = DesiredMember { node_id: "a", node: ready_node(id: "a") }
-  is_teardown_failed(o: belt_actuate_teardown_member(m: m, workdir: "/"))
+  is_teardown_failed(o: belt_actuate_teardown_member(m: m))
 }
 
 fn observe_live_count(o: BeltObserve) -> Int {
@@ -214,6 +215,33 @@ fn witness_observe_refuses_empty_stderr_failure() -> Bool {
   ))
 }
 
+fn uuid_char(u: String, i: Int) -> String {
+  substring(s: u, start: i, end: i + 1)
+}
+
+fn witness_uuid_deterministic() -> Bool {
+  let a = belt_spawn_session_uuid(node_id: "5-regen-cutover")
+  let b = belt_spawn_session_uuid(node_id: "5-regen-cutover")
+  a == b
+}
+
+fn witness_uuid_distinct_nodes() -> Bool {
+  let a = belt_spawn_session_uuid(node_id: "node-a")
+  let b = belt_spawn_session_uuid(node_id: "node-b")
+  !(a == b)
+}
+
+fn witness_uuid_rfc4122_shape() -> Bool {
+  let u = belt_spawn_session_uuid(node_id: "5-regen-cutover")
+  string_length(s: u) == 36
+    && uuid_char(u: u, i: 8) == "-"
+    && uuid_char(u: u, i: 13) == "-"
+    && uuid_char(u: u, i: 18) == "-"
+    && uuid_char(u: u, i: 23) == "-"
+    && uuid_char(u: u, i: 14) == "4"
+    && uuid_char(u: u, i: 19) == "8"
+}
+
 test fn roadmap_belt_actuate_witnesses() -> Bool {
   witness_exec_ok_runs_echo()
     && witness_exec_refuses_missing_program()
@@ -228,4 +256,7 @@ test fn roadmap_belt_actuate_witnesses() -> Bool {
     && witness_observe_empty_on_no_sessions()
     && witness_observe_refuses_permission_error()
     && witness_observe_refuses_empty_stderr_failure()
+    && witness_uuid_deterministic()
+    && witness_uuid_distinct_nodes()
+    && witness_uuid_rfc4122_shape()
 }
