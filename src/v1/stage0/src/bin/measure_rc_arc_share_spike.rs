@@ -18,8 +18,9 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 
 use v1_compiler::cli_run::{
-    peak_rss_vhwm_bytes, populate_multi_entry_index_entry, populate_multi_entry_index_whole_tree,
-    ResolveTypecheckGate, whole_tree_resolve_exclusion_substrings, workspace_root,
+    peak_rss_vhwm_bytes, populate_multi_entry_index_discovery_corpus,
+    populate_multi_entry_index_entry, populate_multi_entry_index_representative_entries,
+    whole_tree_resolve_exclusion_substrings, workspace_root,
 };
 use v1_compiler::index_memory_receipt::{
     emit_im_rc_census, emit_index_memory_receipt, emit_net_win_point, emit_width_scaling_point,
@@ -51,58 +52,71 @@ fn default_source_roots() -> Vec<String> {
         .collect()
 }
 
-fn run_index_fields(source_roots: &[String], exclude: &[String]) -> Result<ExitCode, ExitCode> {
+fn populate_for_corpus(
+    source_roots: &[String],
+    corpus: &str,
+) -> Result<(v1_compiler::cli_run::MultiEntryIndex, usize, usize), String> {
+    match corpus {
+        "representative" => populate_multi_entry_index_representative_entries(source_roots)
+            .map(|(index, n)| (index, n, n)),
+        "discovery-full" => populate_multi_entry_index_discovery_corpus(source_roots, None),
+        other => {
+            if let Some(n) = other.strip_prefix("discovery:") {
+                let limit = n
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid discovery corpus limit `{other}`"))?;
+                populate_multi_entry_index_discovery_corpus(source_roots, Some(limit))
+            } else {
+                Err(format!("unknown corpus `{other}`"))
+            }
+        }
+    }
+}
+
+fn run_index_fields(source_roots: &[String], corpus: &str) -> Result<ExitCode, ExitCode> {
     eprintln!(
-        "measure_rc_arc_share_spike: index-fields over {} root(s)",
+        "measure_rc_arc_share_spike: index-fields corpus={corpus} roots={}",
         source_roots.len()
     );
-    let (index, modules_resolved, modules_excluded) =
-        populate_multi_entry_index_whole_tree(
-            source_roots,
-            exclude,
-            ResolveTypecheckGate::DiscoveryCorpusAdvisory,
-        )
-        .map_err(|e| {
-            eprintln!("measure_rc_arc_share_spike: whole-tree populate failed:\n{e}");
+    let (index, entry_count, row_count) =
+        populate_for_corpus(source_roots, corpus).map_err(|e| {
+            eprintln!("measure_rc_arc_share_spike: populate failed:\n{e}");
             ExitCode::from(2)
         })?;
     let peak = peak_rss_vhwm_bytes();
     let receipt = multi_entry_index_memory_receipt(&index, peak);
     eprintln!(
-        "[rc-arc-spike] kind=corpus modules_resolved={modules_resolved} modules_excluded={modules_excluded} typecheck_gate=DiscoveryCorpusAdvisory"
+        "[rc-arc-spike] kind=corpus corpus={corpus} discovery_entries={entry_count} discovery_rows={row_count}"
     );
     emit_index_memory_receipt(&receipt);
     Ok(ExitCode::SUCCESS)
 }
 
-fn run_width_point(source_roots: &[String], exclude: &[String], width: usize) -> Result<ExitCode, ExitCode> {
+fn run_width_point(
+    source_roots: &[String],
+    corpus: &str,
+    width: usize,
+) -> Result<ExitCode, ExitCode> {
     if width == 0 {
         eprintln!("measure_rc_arc_share_spike: --width must be >= 1");
         return Err(ExitCode::from(2));
     }
-    eprintln!("measure_rc_arc_share_spike: width-point width={width}");
+    eprintln!("measure_rc_arc_share_spike: width-point width={width} corpus={corpus}");
     let roots = Arc::new(source_roots.to_vec());
-    let exclude = Arc::new(exclude.to_vec());
     let errors: Arc<std::sync::Mutex<Vec<String>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
     let barrier = Arc::new(Barrier::new(width));
+    let corpus = Arc::new(corpus.to_string());
     let mut handles = Vec::new();
     for worker in 0..width {
         let roots = Arc::clone(&roots);
-        let exclude = Arc::clone(&exclude);
         let errors = Arc::clone(&errors);
         let barrier = Arc::clone(&barrier);
+        let corpus = Arc::clone(&corpus);
         handles.push(thread::spawn(move || {
             barrier.wait();
-            let result = populate_multi_entry_index_whole_tree(
-                roots.as_ref(),
-                exclude.as_ref(),
-                ResolveTypecheckGate::DiscoveryCorpusAdvisory,
-            );
+            let result = populate_for_corpus(roots.as_ref(), corpus.as_str()).map(|_| ());
             if let Err(e) = result {
-                errors
-                    .lock()
-                    .unwrap()
-                    .push(format!("worker {worker}: {e}"));
+                errors.lock().unwrap().push(format!("worker {worker}: {e}"));
             }
         }));
     }
@@ -122,12 +136,12 @@ fn run_width_point(source_roots: &[String], exclude: &[String], width: usize) ->
 
 fn run_width_scaling(
     source_roots: &[String],
-    exclude: &[String],
+    corpus: &str,
     max_width: usize,
 ) -> Result<ExitCode, ExitCode> {
-    eprintln!("measure_rc_arc_share_spike: width-scaling 1..={max_width}");
+    eprintln!("measure_rc_arc_share_spike: width-scaling 1..={max_width} corpus={corpus}");
     for width in 1..=max_width {
-        run_width_point(source_roots, exclude, width)?;
+        run_width_point(source_roots, corpus, width)?;
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -136,8 +150,7 @@ fn sample_witness_entries(source_roots: &[String], sample_count: usize) -> Vec<S
     use v1_compiler::cli_run::discover_floor_corpus_rows;
     let scan_dirs = vec!["dag".to_string(), "src/v2".to_string()];
     let excludes = whole_tree_resolve_exclusion_substrings();
-    let rows = discover_floor_corpus_rows(source_roots, &scan_dirs, &excludes)
-        .unwrap_or_default();
+    let rows = discover_floor_corpus_rows(source_roots, &scan_dirs, &excludes).unwrap_or_default();
     let mut entries: Vec<String> = rows
         .iter()
         .map(|r| r.entry.clone())
@@ -150,7 +163,13 @@ fn sample_witness_entries(source_roots: &[String], sample_count: usize) -> Vec<S
         entries = entries
             .into_iter()
             .enumerate()
-            .filter_map(|(i, e)| if i % stride.max(1) == 0 { Some(e) } else { None })
+            .filter_map(|(i, e)| {
+                if i % stride.max(1) == 0 {
+                    Some(e)
+                } else {
+                    None
+                }
+            })
             .take(sample_count)
             .collect();
     }
@@ -179,14 +198,18 @@ fn run_union_sample(
         eprintln!("measure_rc_arc_share_spike: union-sample found zero entries");
         return Err(ExitCode::from(2));
     }
-    let shareable_per_worker = receipts.iter().map(|r| r.shareable_bytes).sum::<u64>()
-        / receipts.len() as u64;
-    let residue_per_worker = receipts.iter().map(|r| r.residue_bytes).sum::<u64>()
-        / receipts.len() as u64;
+    let shareable_per_worker =
+        receipts.iter().map(|r| r.shareable_bytes).sum::<u64>() / receipts.len() as u64;
+    let residue_per_worker =
+        receipts.iter().map(|r| r.residue_bytes).sum::<u64>() / receipts.len() as u64;
     // Union shareable: walk is expensive; upper bound = sum of per-entry shareable (private W×),
     // lower bound = max (identical prefix). Report both + max for crossover model.
     let union_shareable_sum: u64 = receipts.iter().map(|r| r.shareable_bytes).sum();
-    let union_shareable_max = receipts.iter().map(|r| r.shareable_bytes).max().unwrap_or(0);
+    let union_shareable_max = receipts
+        .iter()
+        .map(|r| r.shareable_bytes)
+        .max()
+        .unwrap_or(0);
     eprintln!(
         "[rc-arc-spike] kind=union-sample entries={} shareable_per_worker_avg={} residue_per_worker_avg={} union_shareable_sum={} union_shareable_max={}",
         receipts.len(),
@@ -223,6 +246,7 @@ fn run_union_sample(
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut mode = String::from("index-fields");
+    let mut corpus = String::from("representative");
     let mut source_roots: Vec<String> = Vec::new();
     let mut exclude_subpaths = whole_tree_resolve_exclusion_substrings();
     let mut max_width = 4usize;
@@ -252,10 +276,16 @@ fn run() -> Result<ExitCode, ExitCode> {
                 i += 1;
                 width = parse_usize("--width", &require_value(&args, i, "--width")?)?;
             }
+            "--corpus" => {
+                i += 1;
+                corpus = require_value(&args, i, "--corpus")?;
+            }
             "--sample-entries" => {
                 i += 1;
-                sample_count =
-                    parse_usize("--sample-entries", &require_value(&args, i, "--sample-entries")?)?;
+                sample_count = parse_usize(
+                    "--sample-entries",
+                    &require_value(&args, i, "--sample-entries")?,
+                )?;
             }
             other => {
                 eprintln!("measure_rc_arc_share_spike: unknown argument: {other}");
@@ -270,9 +300,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     match mode.as_str() {
-        "index-fields" => run_index_fields(&source_roots, &exclude_subpaths),
-        "width-point" => run_width_point(&source_roots, &exclude_subpaths, width),
-        "width-scaling" => run_width_scaling(&source_roots, &exclude_subpaths, max_width),
+        "index-fields" => run_index_fields(&source_roots, &corpus),
+        "width-point" => run_width_point(&source_roots, &corpus, width),
+        "width-scaling" => run_width_scaling(&source_roots, &corpus, max_width),
         "union-sample" => run_union_sample(&source_roots, sample_count, max_width),
         "im-rc-census" => {
             emit_im_rc_census();

@@ -4,14 +4,14 @@
 //! (parse_cache, resolved_graph_memo, intern_table, normalize/ownership diag caches).
 //! Used by `measure_rc_arc_share_spike` and future migration oracles.
 
-use std::collections::{HashMap as StdHashMap, HashSet};
-use std::rc::Rc;
 use crate::cli_run::MultiEntryIndex;
 use crate::v1_compiler_infer::TypecheckModuleResult;
 use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, TypeEnvCache};
 use crate::v1_compiler_infer_items::{ItemInfo, ResolvedFuncEnv, TypedModule};
 use crate::v1_compiler_parse::ParseResult;
-use crate::v1_std_core::{InferredNode, InternTable, Node, NewlineIndex};
+use crate::v1_std_core::{InferredNode, InternTable, NewlineIndex, Node};
+use std::collections::{HashMap as StdHashMap, HashSet};
+use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndexMemoryBucket {
@@ -87,14 +87,13 @@ impl Accountant {
     }
 
     fn add_hashmap_shell<K, V>(&mut self, map: &StdHashMap<K, V>) {
-        self.bytes +=
-            (std::mem::size_of::<StdHashMap<K, V>>() + map.capacity() * std::mem::size_of::<(K, V)>())
-                as u64;
+        self.bytes += (std::mem::size_of::<StdHashMap<K, V>>()
+            + map.capacity() * std::mem::size_of::<(K, V)>()) as u64;
     }
 
     fn add_im_hashmap_shell<K, V>(&mut self, map: &im_rc::HashMap<K, V>) {
-        self.bytes += (std::mem::size_of::<im_rc::HashMap<K, V>>() + map.len() * std::mem::size_of::<(K, V)>())
-            as u64;
+        self.bytes += (std::mem::size_of::<im_rc::HashMap<K, V>>()
+            + map.len() * std::mem::size_of::<(K, V)>()) as u64;
     }
 
     fn finish(self) -> u64 {
@@ -390,7 +389,8 @@ fn account_diag_cache_map(
         acc.add_string(key);
         let vptr = Rc::as_ptr(diags) as *const im_rc::Vector<Rc<crate::v1_std_core::ErrorNode>>;
         if acc.first_visit(vptr) {
-            acc.bytes += std::mem::size_of::<im_rc::Vector<Rc<crate::v1_std_core::ErrorNode>>>() as u64;
+            acc.bytes +=
+                std::mem::size_of::<im_rc::Vector<Rc<crate::v1_std_core::ErrorNode>>>() as u64;
             for diag in diags.iter() {
                 let dptr = diag.as_ref() as *const crate::v1_std_core::ErrorNode;
                 if acc.first_visit(dptr) {
@@ -557,7 +557,7 @@ pub fn im_rc_blocker_census() -> (usize, usize, &'static str) {
                         the Arc-backed sibling crate is `im`. Collections remain !Send even if \
                         outer Rc→Arc lands — swapping im-rc→im touches every persistent map/list \
                         in the 122/154 stage0 .rs files plus serde feature parity.";
-  (123, 154, NOTE)
+    (123, 154, NOTE)
 }
 
 pub fn emit_im_rc_census() {

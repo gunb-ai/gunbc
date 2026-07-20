@@ -4061,9 +4061,27 @@ impl MultiEntryIndex {
     pub(crate) fn memory_receipt_snapshot(
         &self,
     ) -> (
-        std::cell::Ref<'_, std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
-        std::cell::Ref<'_, std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>>,
-        std::cell::Ref<'_, im_rc::HashMap<String, (Rc<v1_compiler_compile::ResolvedGraph>, Rc<im_rc::HashMap<String, Rc<NewlineIndex>>>)>>,
+        std::cell::Ref<
+            '_,
+            std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>,
+        >,
+        std::cell::Ref<
+            '_,
+            std::collections::HashMap<
+                String,
+                (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>),
+            >,
+        >,
+        std::cell::Ref<
+            '_,
+            im_rc::HashMap<
+                String,
+                (
+                    Rc<v1_compiler_compile::ResolvedGraph>,
+                    Rc<im_rc::HashMap<String, Rc<NewlineIndex>>>,
+                ),
+            >,
+        >,
         std::cell::Ref<'_, Rc<InternTable>>,
         std::cell::Ref<'_, std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
         std::cell::Ref<'_, std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
@@ -5978,6 +5996,65 @@ pub fn populate_multi_entry_index_entry(
     let index = build_multi_entry_index(source_roots);
     resolve_entry_with_index(&index, entry_file)?;
     Ok(index)
+}
+
+/// Curated large-closure discovery entries for memory spike receipts (resolver-graph-major
+/// design §1 census: 163–188 module closures). Used when full discovery union OOMs the host.
+pub fn discovery_corpus_representative_entries() -> Vec<String> {
+    let ws = workspace_root();
+    [
+        "src/v2/workflow/ci_floor_plan.dag",
+        "src/v2/workflow/affected_set_floor_runner.dag",
+        "src/v2/lens/affected_set/entry_selection.dag",
+        "dag/gunbc/commit_workflow.dag",
+        "src/v2/test/claim/realization_schedule_witness.dag",
+        "src/v2/workflow/floor_diff_observe.dag",
+        "src/v2/workflow/module_resolution_plan.dag",
+        "dag/gunbc/ci_spec.dag",
+        "src/v2/workflow/enforcement_live.dag",
+    ]
+    .iter()
+    .map(|e| ws.join(e).to_string_lossy().into_owned())
+    .collect()
+}
+
+pub fn populate_multi_entry_index_representative_entries(
+    source_roots: &[String],
+) -> Result<(MultiEntryIndex, usize), String> {
+    let entries = discovery_corpus_representative_entries();
+    let index = build_multi_entry_index(source_roots);
+    for entry in &entries {
+        resolve_entry_with_index(&index, entry)?;
+    }
+    Ok((index, entries.len()))
+}
+
+/// Populate one `MultiEntryIndex` by resolving floor discovery entries against it.
+/// When `max_entries` is `Some(n)`, only the first `n` sorted unique entries are resolved
+/// (measurement hosts with tight memory); `None` resolves the full discovery roster.
+pub fn populate_multi_entry_index_discovery_corpus(
+    source_roots: &[String],
+    max_entries: Option<usize>,
+) -> Result<(MultiEntryIndex, usize, usize), String> {
+    let scan_dirs = witness_discovery_scan_dirs();
+    let excludes = whole_tree_resolve_exclusion_substrings();
+    let rows = discover_floor_corpus_rows(source_roots, &scan_dirs, &excludes)?;
+    let mut entries: Vec<String> = rows
+        .iter()
+        .map(|r| r.entry.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    entries.sort();
+    let total_entries = entries.len();
+    if let Some(limit) = max_entries {
+        entries.truncate(limit);
+    }
+    let index = build_multi_entry_index(source_roots);
+    for entry in &entries {
+        resolve_entry_with_index(&index, entry)?;
+    }
+    Ok((index, entries.len(), rows.len().max(total_entries)))
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
