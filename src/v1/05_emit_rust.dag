@@ -1801,31 +1801,29 @@ fn module_files_include_v2_std_text(files: List<TextFile>) -> Bool {
 fn emit_v2_std_text_closure_stub_module() -> TextFile {
   TextFile {
     path: concat(rust_source_root(), "v2_std_text", rust_source_ext()),
-    content: v2_std_text_closure_stub_source()
+    content: concat(
+      "// Generated closure stub — dissolve-on: derive from emitted ref set\n",
+      "// Source module: v2.std.text (closure stub; std_algebra + std_types only)\n\n",
+      "use std::rc::Rc;\n",
+      "use crate::std_algebra::FreeMonoid::", "{", "Cons, Empty", "}", ";\n",
+      "use crate::std_types::Char;\n\n",
+      "pub type String = Rc<crate::std_algebra::FreeMonoid<Char>>;\n\n",
+      "pub fn host_string_text_from_rust_host(host: std::string::String) -> String ", "{\n",
+      "    host.chars().fold(Rc::new(Empty), |acc, ch| Rc::new(Cons ", "{", " head: Rc::new(ch as i64), tail: acc ", "}", "))\n",
+      "}\n\n",
+      "pub fn host_string_text_to_rust_host(text: String) -> std::string::String ", "{\n",
+      "    match &*text ", "{\n",
+      "        Empty => std::string::String::new(),\n",
+      "        Cons ", "{", " head, tail ", "}", " => ", "{\n",
+      "            let mut s = host_string_text_to_rust_host(tail.clone());\n",
+      "            s.insert(0, char::from_u32(**head as u32).unwrap_or(char::from_u32(0).unwrap()));\n",
+      "            s\n",
+      "        ", "}\n",
+      "    ", "}\n",
+      "}\n"
+    )
   }
 }
-
-data v2_std_text_closure_stub_source: String = concat(
-  "// Generated closure stub — dissolve-on: derive from emitted ref set\n",
-  "// Source module: v2.std.text (closure stub; std_algebra + std_types only)\n\n",
-  "use std::rc::Rc;\n",
-  "use crate::std_algebra::FreeMonoid::{Cons, Empty};\n",
-  "use crate::std_types::Char;\n\n",
-  "pub type String = Rc<crate::std_algebra::FreeMonoid<Char>>;\n\n",
-  "pub fn host_string_text_from_rust_host(host: std::string::String) -> String {\n",
-  "    host.chars().fold(Rc::new(Empty), |acc, ch| Rc::new(Cons { head: Rc::new(ch as i64), tail: acc }))\n",
-  "}\n\n",
-  "pub fn host_string_text_to_rust_host(text: String) -> std::string::String {\n",
-  "    match &*text {\n",
-  "        Empty => std::string::String::new(),\n",
-  "        Cons { head, tail } => {\n",
-  "            let mut s = host_string_text_to_rust_host(tail.clone());\n",
-  "            s.insert(0, char::from_u32(**head as u32).unwrap_or(char::from_u32(0).unwrap()));\n",
-  "            s\n",
-  "        }\n",
-  "    }\n",
-  "}\n"
-)
 
 fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
   let src_prefix_len = string_length(s: rust_source_root())
