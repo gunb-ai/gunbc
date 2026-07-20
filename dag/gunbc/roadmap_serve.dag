@@ -229,9 +229,9 @@ fn roadmap_serve_respond(method_label: String, path: String, body: String) -> Se
   match parse_http_method_label(label: method_label) {
     UnknownMethod { label: l } =>
       serve_text_response(
-        status: 405,
+        status: 501,
         content_type: TextPlainUtf8,
-        body: join(["unknown method: ", l, "\n"], ""),
+        body: join(["unrecognized method: ", l, "\n"], ""),
       )
     KnownMethod { method: m } =>
       match roadmap_serve_route_table_build() {

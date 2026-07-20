@@ -9,6 +9,7 @@ import gunbc.roadmap_serve {
   roadmap_serve_route_table_build,
   roadmap_serve_build_from_specs,
   roadmap_serve_selection_response,
+  roadmap_serve_respond,
   belt_dispatch_status,
 }
 import gunbc.roadmap_belt_actuate {
@@ -125,6 +126,13 @@ fn witness_unknown_method_refuses() -> Bool {
   }
 }
 
+data unknown_method_501_note: String = "review 40359: an unrecognized method label is 501 Not Implemented (RFC 9110 section 15.6.2 — the server does not implement the method at all), NEVER 405 (405 means the ROUTE exists but this method is not in its allowed set, and carries the allowed set — the MethodNotAllowed arm). The two arms must stay distinct statuses; collapsing them reds this row."
+
+fn witness_unknown_method_folds_501_response() -> Bool {
+  let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "")
+  r.status == 501 && string_contains(s: r.body, pattern: "BREW")
+}
+
 fn witness_known_methods_parse() -> Bool {
   match parse_http_method_label(label: "GET") {
     KnownMethod { method: m } => m == GET
@@ -146,5 +154,6 @@ test fn roadmap_serve_witnesses() -> Bool {
     && witness_live_table_builds_ready_six_routes()
     && witness_malformed_route_literal_refuses_table()
     && witness_unknown_method_refuses()
+    && witness_unknown_method_folds_501_response()
     && witness_known_methods_parse()
 }
