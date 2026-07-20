@@ -1040,6 +1040,40 @@ mod tests {
     }
 
     #[test]
+    fn slotless_inline_completion_lifts_the_window_off_one() {
+        // The discovery pump's width-1 lane holds NO slot (it claims no worker-sized
+        // residency), but its calm completion must still be an additive-increase point.
+        // Otherwise width 1 is an ABSORBING state: the lane is reached only while the
+        // window is 1, and nothing inside it can lift the window off 1 — which is what
+        // ran a whole 621-entry-group floor serially on a 125 GB budget (CI run
+        // 29707161743: max_width_reached=1, admissions=1, peak 6.97 GB, zero creep).
+        let lim = limits(1_000_000, 8);
+        let mut core = GovCore::new();
+        assert_eq!(core.target_width, 1, "a run starts at the width-1 floor");
+        assert_eq!(core.active, 0, "the inline lane holds no admission slot");
+        note_completion(&mut core, &calm(), &lim);
+        assert_eq!(
+            core.target_width, 2,
+            "a calm slot-free completion must lift the window"
+        );
+        assert_eq!(core.width_growths, 1);
+        // RED control: the lane's bytes are visible in `memory.current` whether or not it
+        // held a slot, so a completion observed under creep must NOT be grown through.
+        let mut hot_core = GovCore::new();
+        let hot = MemorySignals {
+            current_bytes: Some(900_000), // > 800_000 high-water
+            ..calm()
+        };
+        note_completion(&mut hot_core, &hot, &lim);
+        assert_eq!(
+            hot_core.target_width, 1,
+            "creep is never grown through, slot or no slot"
+        );
+        assert_eq!(hot_core.creep_backoffs, 1);
+        assert_eq!(hot_core.width_growths, 0);
+    }
+
+    #[test]
     fn pacing_holds_admissions_until_first_cost_paid() {
         let lim = limits(1_000_000, 8);
         let mut core = GovCore::new();
