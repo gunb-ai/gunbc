@@ -7646,9 +7646,8 @@ pub fn type_node_is_faithful_string_leaf(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
-    (((authored_name_at(source_indices.clone(), n.clone()) == "String".to_string())
-        && ((n.children.clone().len() as i64) == 0))
-        && corpus_repr_is_faithful(corpus_repr.clone()))
+    (corpus_repr_is_faithful(corpus_repr.clone())
+        && is_rust_string_like(n.clone(), source_indices.clone()))
 }
 
 pub fn node_tree_has_faithful_string_leaf(
@@ -7684,7 +7683,17 @@ pub fn node_tree_has_faithful_string_leaf(
                     ),
                     None => false,
                 };
-                (child_hit.clone() || annotation_hit.clone())
+                let inferred_hit = match n.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        node_tree_has_faithful_string_leaf(
+                            rt.clone(),
+                            source_indices.clone(),
+                            corpus_repr.clone(),
+                        )
+                    }
+                    _ => false,
+                };
+                ((child_hit.clone() || annotation_hit.clone()) || inferred_hit.clone())
             }
         }
     })
@@ -7722,7 +7731,17 @@ pub fn node_tree_references_type_name(
                     ),
                     None => false,
                 };
-                (child_hit.clone() || annotation_hit.clone())
+                let inferred_hit = match n.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        node_tree_references_type_name(
+                            rt.clone(),
+                            type_name.clone(),
+                            source_indices.clone(),
+                        )
+                    }
+                    _ => false,
+                };
+                ((child_hit.clone() || annotation_hit.clone()) || inferred_hit.clone())
             }
         }
     })

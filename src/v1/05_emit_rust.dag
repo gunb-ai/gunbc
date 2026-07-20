@@ -3174,7 +3174,11 @@ fn node_tree_has_faithful_string_leaf(n: Node, source_indices: Map<String, Newli
       Present { value: ta } => node_tree_has_faithful_string_leaf(n: ta, source_indices: source_indices, corpus_repr: corpus_repr)
       Absent => false
     }
-    child_hit || annotation_hit
+    let inferred_hit = match n.inferred {
+      Present { value: Resolved { node: rt } } => node_tree_has_faithful_string_leaf(n: rt, source_indices: source_indices, corpus_repr: corpus_repr)
+      _ => false
+    }
+    child_hit || annotation_hit || inferred_hit
   }
 }
 
@@ -3187,7 +3191,11 @@ fn node_tree_references_type_name(n: Node, type_name: String, source_indices: Ma
       Present { value: ta } => node_tree_references_type_name(n: ta, type_name: type_name, source_indices: source_indices)
       Absent => false
     }
-    child_hit || annotation_hit
+    let inferred_hit = match n.inferred {
+      Present { value: Resolved { node: rt } } => node_tree_references_type_name(n: rt, type_name: type_name, source_indices: source_indices)
+      _ => false
+    }
+    child_hit || annotation_hit || inferred_hit
   }
 }
 
