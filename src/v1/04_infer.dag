@@ -1806,10 +1806,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         } }
       } else {
 
-        let value_params = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-        let generic_names = sig_params
-          |> filter(p => param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
-          |> map(p => param_node_name_at(n: p, source_indices: scope.type_env.source_indices))
+        let value_params = fold(sig_params, init: [], f: (vp_acc, p) =>
+          if param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices) { vp_acc } else { list_push(vp_acc, p) })
+        let generic_names = fold(sig_params, init: [], f: (gn_acc, p) =>
+          if param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices) { list_push(gn_acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices)) } else { gn_acc })
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
           let formal_lookup = value_params |> skip(pair.first) |> first
@@ -1846,7 +1846,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Present { value: s } => substitute_generics(n: s.inferred, subst: call_subst, source_indices: scope.type_env.source_indices)
           Absent => error_type
         }
-        let value_params_for_check = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
+        let value_params_for_check = fold(sig_params, init: [], f: (vpc_acc, p) =>
+          if param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices) { vpc_acc } else { list_push(vpc_acc, p) })
         let arg_compat_diags = if module_skips_direct_call_arg_check(module_name: scope.module_name) { [] } else {
           direct_call_arg_mismatch_diags(
             value_params: value_params_for_check,
