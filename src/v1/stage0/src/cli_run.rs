@@ -17614,6 +17614,41 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
 }
 
 #[cfg(test)]
+mod resolution_divergence_census_tests {
+    use super::{
+        format_resolution_divergence_census, resolution_divergence_census_live,
+        ResolutionDivergenceBucket,
+    };
+
+    #[test]
+    fn resolution_divergence_positive_control_planted_site() {
+        let ws = super::process_workspace_root();
+        let roots = vec![
+            ws.join("dag/test/claim/X")
+                .to_string_lossy()
+                .into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+        ];
+        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
+        for site in census
+            .diverge_rows
+            .iter()
+            .chain(census.containment_ambiguous_rows.iter())
+            .chain(census.containment_unresolved_rows.iter())
+        {
+            if site.callee == "twin_sig" && site.calling_module.contains("planted") {
+                eprintln!("planted twin_sig site: {:?}", site.bucket);
+            }
+        }
+        eprintln!("{}", format_resolution_divergence_census(&census));
+        assert_eq!(
+            census.diverge, 1,
+            "positive control must classify planted twin_sig as Diverge"
+        );
+    }
+}
+
+#[cfg(test)]
 mod reference_edge_producer_tests {
     use super::reference_resolution_facts;
 

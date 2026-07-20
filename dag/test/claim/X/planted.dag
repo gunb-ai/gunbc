@@ -1,0 +1,9 @@
+module test.claim.X.planted
+
+import std.logic { Bool }
+import test.claim.X.twin_p { twin_sig }
+import test.claim.X.twin_q { twin_q_anchor }
+
+fn planted_call() -> Bool {
+  return twin_sig(True)
+}

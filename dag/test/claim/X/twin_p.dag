@@ -1,0 +1,7 @@
+module test.claim.X.twin_p
+
+import std.logic { Bool }
+
+fn twin_sig(a: Bool) -> Bool {
+  return a
+}
