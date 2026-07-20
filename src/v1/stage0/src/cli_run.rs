@@ -17668,7 +17668,7 @@ mod resolution_divergence_census_tests {
     use super::{
         build_module_item_index, containment_resolve_fn_v1, containment_resolve_fn_v1_for_module,
         import_chain_owner, lookup_resolved_sig, resolution_divergence_census_live,
-        whole_tree_resolved_ctx, ResolutionDivergenceBucket, WholeTreeCtx,
+        whole_tree_resolved_ctx, ContainmentResolve, ResolutionDivergenceBucket, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
 
@@ -17739,8 +17739,7 @@ fn caller() -> Bool {
             .expect("leaf module must resolve");
         let import_sig =
             lookup_resolved_sig(leaf.func_env.clone(), "lex_target".to_string()).expect("import");
-        let import_owner =
-            import_chain_owner(&leaf.func_env, "lex_target").expect("import owner");
+        let import_owner = import_chain_owner(&leaf.func_env, "lex_target").expect("import owner");
         let import_arity = import_sig.params.len();
         let item_index = build_module_item_index(&ctx);
         let containment = containment_resolve_fn_v1_for_module(
