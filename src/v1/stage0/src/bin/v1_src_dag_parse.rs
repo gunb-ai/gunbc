@@ -7,9 +7,9 @@ const SCAFFOLD_NOTE: &str = "SCAFFOLD \u{2014} dissolve-on: when src/v1 .dag is 
 
 use im::HashMap;
 use std::process::ExitCode;
-use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 fn main() -> ExitCode {
     let cwd = match std::env::current_dir() {
@@ -51,7 +51,7 @@ fn main() -> ExitCode {
     let errors: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let count = Arc::new(AtomicUsize::new(0));
 
-    // Each file gets its own Rc<HashMap> — no shared parse state — so parsing is
+    // Each file gets its own Arc<HashMap> — no shared parse state — so parsing is
     // embarrassingly parallel. Thread panics propagate via scope and exit non-zero (fail-closed).
     std::thread::scope(|s| {
         for path in &dag_paths {
@@ -74,7 +74,7 @@ fn main() -> ExitCode {
                         content,
                         path.to_string_lossy().to_string(),
                     ),
-                    Rc::new(HashMap::new()),
+                    Arc::new(HashMap::new()),
                 );
                 if let Some(ref err) = result.error {
                     errors.lock().unwrap().push(format!(

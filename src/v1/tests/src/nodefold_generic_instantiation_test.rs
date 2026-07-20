@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::OnceLock;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
@@ -13,7 +13,7 @@ fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
 }
 
-fn cert_sources(entry: &str) -> Vec<Rc<SourceFile>> {
+fn cert_sources(entry: &str) -> Vec<Arc<SourceFile>> {
     static NODEFOLD_CACHE: OnceLock<Vec<(String, String)>> = OnceLock::new();
     static CHAINED_CACHE: OnceLock<Vec<(String, String)>> = OnceLock::new();
     let cache = if entry == NODEFOLD_CERT {
@@ -24,7 +24,7 @@ fn cert_sources(entry: &str) -> Vec<Rc<SourceFile>> {
     cache
         .iter()
         .map(|(path, content)| {
-            Rc::new(SourceFile {
+            Arc::new(SourceFile {
                 path: path.clone(),
                 content: content.clone(),
             })
@@ -57,7 +57,7 @@ fn assert_resolved_ok(result: &ResolvedPipelineResult, label: &str) {
 
 #[test]
 fn v2_nodefold_topdown_inline_algebra_compiles_and_runs() {
-    let resolved = compile_to_resolved(Rc::new(cert_sources(NODEFOLD_CERT).into()));
+    let resolved = compile_to_resolved(Arc::new(cert_sources(NODEFOLD_CERT).into()));
     assert_resolved_ok(&resolved, NODEFOLD_CERT);
     let graph = resolved
         .graph
@@ -73,13 +73,13 @@ fn v2_nodefold_topdown_inline_algebra_compiles_and_runs() {
 
 #[test]
 fn v2_chained_generic_field_access_compiles() {
-    let resolved = compile_to_resolved(Rc::new(cert_sources(CHAINED_CERT).into()));
+    let resolved = compile_to_resolved(Arc::new(cert_sources(CHAINED_CERT).into()));
     assert_resolved_ok(&resolved, CHAINED_CERT);
 }
 
 #[test]
 fn v2_chained_generic_field_access_runs() {
-    let resolved = compile_to_resolved(Rc::new(cert_sources(CHAINED_CERT).into()));
+    let resolved = compile_to_resolved(Arc::new(cert_sources(CHAINED_CERT).into()));
     assert_resolved_ok(&resolved, CHAINED_CERT);
     let graph = resolved
         .graph

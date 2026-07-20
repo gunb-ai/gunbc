@@ -37,15 +37,15 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn generic_use_slot_bindings(
-    scrut_node: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> Rc<HashMap<String, Rc<Node>>> {
+    scrut_node: Arc<Node>,
+    env: Arc<TypeEnv>,
+) -> Arc<HashMap<String, Arc<Node>>> {
     {
         let decl = resolve_generic_use_decl(env.clone(), scrut_node.clone());
-        Rc::new(
+        Arc::new(
             decl.params
                 .clone()
                 .iter()
@@ -57,8 +57,8 @@ pub fn generic_use_slot_bindings(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
+            v1_rt::rc_empty_map::<String, Arc<Node>>(),
+            |acc: Arc<HashMap<String, Arc<Node>>>, pair: (i64, Arc<Node>)| {
                 let slot = generic_param_name_at(pair.1.clone(), env.source_indices.clone());
                 match scrut_node
                     .children
@@ -75,11 +75,11 @@ pub fn generic_use_slot_bindings(
 }
 
 pub fn expand_scrut_from_decl(
-    decl: Rc<Node>,
-    scrut_node: Rc<Node>,
+    decl: Arc<Node>,
+    scrut_node: Arc<Node>,
     name: String,
-    env: Rc<TypeEnv>,
-) -> Rc<Node> {
+    env: Arc<TypeEnv>,
+) -> Arc<Node> {
     {
         let decl_is_disj = (decl.connective.clone() == Connective::Disj);
         let has_inferred_alias = (((decl.inferred.clone() != None)
@@ -141,7 +141,7 @@ pub fn expand_scrut_from_decl(
     }
 }
 
-pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+pub fn expand_scrut_from_type_name(scrut_node: Arc<Node>, env: Arc<TypeEnv>) -> Arc<Node> {
     {
         let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
         let is_generic_use = (((scrut_node.connective.clone() == Connective::NoConnective)
@@ -213,9 +213,9 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
 }
 
 pub fn expand_scrut_type_for_variant_lookup(
-    mut scrut_node: Rc<Node>,
-    mut env: Rc<TypeEnv>,
-) -> Rc<Node> {
+    mut scrut_node: Arc<Node>,
+    mut env: Arc<TypeEnv>,
+) -> Arc<Node> {
     loop {
         let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
         let is_disj = (scrut_node.connective.clone() == Connective::Disj);
@@ -244,18 +244,18 @@ pub fn is_witness_type_name(name: String) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeLookupResult {
-    pub status: Rc<NodeLookupStatus>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub status: Arc<NodeLookupStatus>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NodeLookupStatus {
-    LookupResolved { node: Rc<Node> },
+    LookupResolved { node: Arc<Node> },
     LookupFailed,
 }
 impl NodeLookupStatus {
-    pub fn node(&self) -> Rc<Node> {
+    pub fn node(&self) -> Arc<Node> {
         match self {
             NodeLookupStatus::LookupResolved { node: __val, .. } => __val.clone(),
             NodeLookupStatus::LookupFailed => panic!("no node on unit variant"),
@@ -266,186 +266,186 @@ impl NodeLookupStatus {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PatternSubject {
-    PatternResolved { node: Rc<Node> },
-    PatternDynamic { span: Rc<SourceSpan> },
+    PatternResolved { node: Arc<Node> },
+    PatternDynamic { span: Arc<SourceSpan> },
     PatternLookupBlocked,
 }
 
-pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
+pub fn is_type_variable(inferred: Arc<InferredNode>) -> bool {
     match (*inferred.clone()).clone() {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
     }
 }
 
-pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
+pub fn synthesize_optional_present_variant(scrut: Arc<Node>) -> Arc<Node> {
     {
         let inner = extract_optional_inner_node(scrut.clone());
-        let value_field = Rc::new(Node {
+        let value_field = Arc::new(Node {
             name: "value".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("value".to_string())),
-            children: Rc::new(vec![]),
+            children: Arc::new(vec![]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved {
+            params: Arc::new(vec![]),
+            inferred: Some(Arc::new(InferredNode::Resolved {
                 node: inner.clone(),
             })),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
             ident: None,
         });
-        let present_node = Rc::new(Node {
+        let present_node = Arc::new(Node {
             name: "Present".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Present".to_string())),
-            children: Rc::new(vec![value_field.clone()]),
+            children: Arc::new(vec![value_field.clone()]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: Arc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
             ident: None,
         });
         present_node
     }
 }
 
-pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
+pub fn synthesize_witness_holds_variant(scrut: Arc<Node>) -> Arc<Node> {
     {
         let inner = match scrut.children.clone().first().cloned() {
             Some(child) => child_type_node(child.clone()),
             None => error_type(),
         };
-        let value_field = Rc::new(Node {
+        let value_field = Arc::new(Node {
             name: "value".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("value".to_string())),
-            children: Rc::new(vec![]),
+            children: Arc::new(vec![]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved {
+            params: Arc::new(vec![]),
+            inferred: Some(Arc::new(InferredNode::Resolved {
                 node: inner.clone(),
             })),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
             ident: None,
         });
-        Rc::new(Node {
+        Arc::new(Node {
             name: "Holds".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Holds".to_string())),
-            children: Rc::new(vec![value_field.clone()]),
+            children: Arc::new(vec![value_field.clone()]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: Arc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
             ident: None,
         })
     }
 }
 
-pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
+pub fn synthesize_witness_violates_variant(scrut: Arc<Node>) -> Arc<Node> {
     {
-        let diagnostic_type = Rc::new(Node {
+        let diagnostic_type = Arc::new(Node {
             name: "Diagnostic".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Diagnostic".to_string())),
-            children: Rc::new(vec![]),
+            children: Arc::new(vec![]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: Arc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
             ident: None,
         });
-        let diagnostic_field = Rc::new(Node {
+        let diagnostic_field = Arc::new(Node {
             name: "diagnostic".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("diagnostic".to_string())),
-            children: Rc::new(vec![]),
+            children: Arc::new(vec![]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved {
+            params: Arc::new(vec![]),
+            inferred: Some(Arc::new(InferredNode::Resolved {
                 node: diagnostic_type.clone(),
             })),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
             ident: None,
         });
-        Rc::new(Node {
+        Arc::new(Node {
             name: "Violates".to_string(),
             span: scrut.span.clone(),
             ident_span: Some(kernel_span("Violates".to_string())),
-            children: Rc::new(vec![diagnostic_field.clone()]),
+            children: Arc::new(vec![diagnostic_field.clone()]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
+            params: Arc::new(vec![]),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
             ident: None,
         })
     }
 }
 
-pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
+pub fn pattern_subject_from_node(mut n: Arc<Node>) -> Arc<PatternSubject> {
     loop {
         let is_error = if (n.inferred.clone() != None) {
             is_compiler_error(n.inferred.clone().clone().unwrap())
@@ -453,7 +453,7 @@ pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
             false
         };
         if is_error.clone() {
-            break Rc::new(PatternSubject::PatternLookupBlocked);
+            break Arc::new(PatternSubject::PatternLookupBlocked);
         } else {
             if (((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
@@ -466,49 +466,49 @@ pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
                         continue;
                     }
                     _ => {
-                        break Rc::new(PatternSubject::PatternResolved { node: n.clone() });
+                        break Arc::new(PatternSubject::PatternResolved { node: n.clone() });
                     }
                 }
             } else {
-                break Rc::new(PatternSubject::PatternResolved { node: n.clone() });
+                break Arc::new(PatternSubject::PatternResolved { node: n.clone() });
             }
         }
     }
 }
 
-pub fn pattern_subject_from_inferred(n: Option<Rc<InferredNode>>) -> Rc<PatternSubject> {
+pub fn pattern_subject_from_inferred(n: Option<Arc<InferredNode>>) -> Arc<PatternSubject> {
     match n.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: resolved, .. }) => {
             pattern_subject_from_node(resolved.clone())
         }
-        _ => Rc::new(PatternSubject::PatternLookupBlocked),
+        _ => Arc::new(PatternSubject::PatternLookupBlocked),
     }
 }
 
-pub fn node_lookup_resolved(node: Rc<Node>) -> Rc<NodeLookupResult> {
-    Rc::new(NodeLookupResult {
-        status: Rc::new(NodeLookupStatus::LookupResolved { node: node.clone() }),
-        diagnostics: Rc::new(vec![]),
+pub fn node_lookup_resolved(node: Arc<Node>) -> Arc<NodeLookupResult> {
+    Arc::new(NodeLookupResult {
+        status: Arc::new(NodeLookupStatus::LookupResolved { node: node.clone() }),
+        diagnostics: Arc::new(vec![]),
     })
 }
 
-pub fn node_lookup_failed(diagnostics: Rc<Vec<Rc<ErrorNode>>>) -> Rc<NodeLookupResult> {
-    Rc::new(NodeLookupResult {
-        status: Rc::new(NodeLookupStatus::LookupFailed),
+pub fn node_lookup_failed(diagnostics: Arc<Vec<Arc<ErrorNode>>>) -> Arc<NodeLookupResult> {
+    Arc::new(NodeLookupResult {
+        status: Arc::new(NodeLookupStatus::LookupFailed),
         diagnostics: diagnostics.clone(),
     })
 }
 
-pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject> {
+pub fn lookup_result_subject(result: Arc<NodeLookupResult>) -> Arc<PatternSubject> {
     match (*result.status.clone()).clone() {
         NodeLookupStatus::LookupResolved { node: resolved, .. } => {
             pattern_subject_from_node(resolved.clone())
         }
-        NodeLookupStatus::LookupFailed => Rc::new(PatternSubject::PatternLookupBlocked),
+        NodeLookupStatus::LookupFailed => Arc::new(PatternSubject::PatternLookupBlocked),
     }
 }
 
-pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
+pub fn pattern_binding_type(subject: Arc<PatternSubject>) -> Arc<Node> {
     match (*subject.clone()).clone() {
         PatternSubject::PatternResolved { node: resolved, .. } => resolved.clone(),
         PatternSubject::PatternDynamic { span: _, .. } => error_type(),
@@ -517,13 +517,13 @@ pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
 }
 
 pub fn variant_not_found_result(
-    scrut: Rc<Node>,
+    scrut: Arc<Node>,
     variant_name: String,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<NodeLookupResult> {
-    node_lookup_failed(Rc::new(vec![make_error_node(
-        Rc::new(CompilerDiagnostic::VariantNotFound {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<NodeLookupResult> {
+    node_lookup_failed(Arc::new(vec![make_error_node(
+        Arc::new(CompilerDiagnostic::VariantNotFound {
             variant: variant_name.clone(),
             type_name: authored_name_at(source_indices.clone(), scrut.clone()),
             span: scrut.span.clone(),
@@ -533,18 +533,18 @@ pub fn variant_not_found_result(
 }
 
 pub fn lookup_variant_in_type(
-    scrut: Rc<PatternSubject>,
+    scrut: Arc<PatternSubject>,
     variant_name: String,
     module_name: String,
-    env: Rc<TypeEnv>,
+    env: Arc<TypeEnv>,
     field_binding_count: i64,
-) -> Rc<NodeLookupResult> {
+) -> Arc<NodeLookupResult> {
     match (*scrut.clone()).clone() {
-        PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
+        PatternSubject::PatternLookupBlocked => node_lookup_failed(Arc::new(vec![])),
         PatternSubject::PatternDynamic {
             span: dynamic_span, ..
-        } => node_lookup_failed(Rc::new(vec![make_error_node(
-            Rc::new(CompilerDiagnostic::VariantNotFound {
+        } => node_lookup_failed(Arc::new(vec![make_error_node(
+            Arc::new(CompilerDiagnostic::VariantNotFound {
                 variant: variant_name.clone(),
                 type_name: "unresolved".to_string(),
                 span: dynamic_span.clone(),
@@ -593,7 +593,7 @@ pub fn lookup_variant_in_type(
                         && ((scrut_node.children.clone().len() as i64) == 0))
                         && (scrut_opt.clone() == false))
                     {
-                        node_lookup_failed(Rc::new(vec![]))
+                        node_lookup_failed(Arc::new(vec![]))
                     } else {
                         {
                             let optional_cardinality_subject = (scrut_opt.clone()
@@ -702,17 +702,17 @@ pub fn lookup_variant_in_type(
 }
 
 pub fn lookup_field_in_variant(
-    variant: Rc<PatternSubject>,
+    variant: Arc<PatternSubject>,
     field_name: String,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<NodeLookupResult> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<NodeLookupResult> {
     match (*variant.clone()).clone() {
-        PatternSubject::PatternLookupBlocked => node_lookup_failed(Rc::new(vec![])),
+        PatternSubject::PatternLookupBlocked => node_lookup_failed(Arc::new(vec![])),
         PatternSubject::PatternDynamic {
             span: dynamic_span, ..
-        } => node_lookup_failed(Rc::new(vec![make_error_node(
-            Rc::new(CompilerDiagnostic::FieldNotFound {
+        } => node_lookup_failed(Arc::new(vec![make_error_node(
+            Arc::new(CompilerDiagnostic::FieldNotFound {
                 field: field_name.clone(),
                 type_name: "unresolved".to_string(),
                 span: dynamic_span.clone(),
@@ -730,8 +730,8 @@ pub fn lookup_field_in_variant(
                 let resolved = child_type_node(field_child.clone());
                 node_lookup_resolved(resolved.clone())
             }
-            None => node_lookup_failed(Rc::new(vec![make_error_node(
-                Rc::new(CompilerDiagnostic::FieldNotFound {
+            None => node_lookup_failed(Arc::new(vec![make_error_node(
+                Arc::new(CompilerDiagnostic::FieldNotFound {
                     field: field_name.clone(),
                     type_name: authored_name_at(source_indices.clone(), variant_node.clone()),
                     span: variant_node.span.clone(),
@@ -744,7 +744,7 @@ pub fn lookup_field_in_variant(
 
 pub fn variant_pattern_coverage_key(name: String) -> String {
     {
-        let segs = Rc::new(
+        let segs = Arc::new(
             name.clone()
                 .split(&".".to_string())
                 .map(|s| s.to_string())
@@ -762,12 +762,12 @@ pub fn variant_pattern_coverage_key(name: String) -> String {
 }
 
 pub fn check_match_exhaustiveness(
-    scrutinee_type: Rc<Node>,
-    arms: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
-    span: Rc<SourceSpan>,
+    scrutinee_type: Arc<Node>,
+    arms: Arc<Vec<Arc<Node>>>,
+    env: Arc<TypeEnv>,
+    span: Arc<SourceSpan>,
     module_name: String,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+) -> Arc<Vec<Arc<ErrorNode>>> {
     {
         let scrut_is_optional =
             (scrutinee_type.return_cardinality.clone() == Cardinality::CardOptional);
@@ -798,12 +798,12 @@ pub fn check_match_exhaustiveness(
         if ((is_coproduct.clone() || resolved_is_optional.clone()) || resolved_is_witness.clone()) {
             {
                 let variant_names = if resolved_is_optional.clone() {
-                    Rc::new(vec!["Present".to_string(), "Absent".to_string()])
+                    Arc::new(vec!["Present".to_string(), "Absent".to_string()])
                 } else {
                     if resolved_is_witness.clone() {
-                        Rc::new(vec!["Holds".to_string(), "Violates".to_string()])
+                        Arc::new(vec!["Holds".to_string(), "Violates".to_string()])
                     } else {
-                        Rc::new({
+                        Arc::new({
                             let mut __result = Vec::new();
                             for c in resolved.children.clone().iter().cloned() {
                                 __result
@@ -828,52 +828,51 @@ pub fn check_match_exhaustiveness(
                     __found
                 };
                 if has_catch_all.clone() {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 } else {
                     {
-                        let covered_set = arms.clone().iter().cloned().fold(
-                            v1_rt::rc_empty_map::<String, bool>(),
-                            |acc: Rc<HashMap<String, bool>>, arm: Rc<Node>| match (*arm_pattern(
-                                arm.clone(),
-                            ))
-                            .clone()
-                            {
-                                MatchPattern::VariantPattern { name: n, .. } => {
-                                    v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        variant_pattern_coverage_key(n.clone()),
-                                        true,
-                                    )
-                                }
-                                MatchPattern::LitPattern { value: v, .. } => {
-                                    match (*v.clone()).clone() {
-                                        LiteralValue::LitBool { value: b, .. } => {
-                                            if b.clone() {
-                                                v1_rt::rc_map_insert(
+                        let covered_set =
+                            arms.clone().iter().cloned().fold(
+                                v1_rt::rc_empty_map::<String, bool>(),
+                                |acc: Arc<HashMap<String, bool>>, arm: Arc<Node>| {
+                                    match (*arm_pattern(arm.clone())).clone() {
+                                        MatchPattern::VariantPattern { name: n, .. } => {
+                                            v1_rt::rc_map_insert(
+                                                acc.clone(),
+                                                variant_pattern_coverage_key(n.clone()),
+                                                true,
+                                            )
+                                        }
+                                        MatchPattern::LitPattern { value: v, .. } => {
+                                            match (*v.clone()).clone() {
+                                                LiteralValue::LitBool { value: b, .. } => {
+                                                    if b.clone() {
+                                                        v1_rt::rc_map_insert(
+                                                            acc.clone(),
+                                                            "True".to_string(),
+                                                            true,
+                                                        )
+                                                    } else {
+                                                        v1_rt::rc_map_insert(
+                                                            acc.clone(),
+                                                            "False".to_string(),
+                                                            true,
+                                                        )
+                                                    }
+                                                }
+                                                LiteralValue::LitNull => v1_rt::rc_map_insert(
                                                     acc.clone(),
-                                                    "True".to_string(),
+                                                    "Absent".to_string(),
                                                     true,
-                                                )
-                                            } else {
-                                                v1_rt::rc_map_insert(
-                                                    acc.clone(),
-                                                    "False".to_string(),
-                                                    true,
-                                                )
+                                                ),
+                                                _ => acc.clone(),
                                             }
                                         }
-                                        LiteralValue::LitNull => v1_rt::rc_map_insert(
-                                            acc.clone(),
-                                            "Absent".to_string(),
-                                            true,
-                                        ),
                                         _ => acc.clone(),
                                     }
-                                }
-                                _ => acc.clone(),
-                            },
-                        );
-                        let uncovered = Rc::new({
+                                },
+                            );
+                        let uncovered = Arc::new({
                             let mut __result = Vec::new();
                             for v in variant_names.clone().iter().cloned() {
                                 if (emit_map_has(covered_set.clone(), v.clone()) == false) {
@@ -883,21 +882,21 @@ pub fn check_match_exhaustiveness(
                             __result
                         });
                         if ((uncovered.clone().len() as i64) > 0) {
-                            Rc::new(vec![make_error_node(
-                                Rc::new(CompilerDiagnostic::NonExhaustiveMatch {
+                            Arc::new(vec![make_error_node(
+                                Arc::new(CompilerDiagnostic::NonExhaustiveMatch {
                                     missing: uncovered.clone(),
                                     span: span.clone(),
                                 }),
                                 module_name.clone(),
                             )])
                         } else {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         }
                     }
                 }
             }
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         }
     }
 }

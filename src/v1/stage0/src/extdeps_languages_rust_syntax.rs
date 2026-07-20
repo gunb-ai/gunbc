@@ -20,26 +20,26 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/reference/".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
-pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
+pub fn rust_item_forms() -> Arc<Vec<Arc<ItemForm>>> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<ItemForm>>> = {
-                Rc::new(vec![Rc::new(ItemForm {
+            static CACHED: Arc<Vec<Arc<ItemForm>>> = {
+                Arc::new(vec![Arc::new(ItemForm {
         kind: ItemFormKind::FuncForm,
         keyword: "fn".to_string(),
         has_type_params: true,
@@ -48,7 +48,7 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::BlockBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::StructForm,
         keyword: "struct".to_string(),
         has_type_params: true,
@@ -57,7 +57,7 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::TypeBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::EnumForm,
         keyword: "enum".to_string(),
         has_type_params: true,
@@ -66,7 +66,7 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::TypeBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::TypeAliasForm,
         keyword: "type".to_string(),
         has_type_params: true,
@@ -75,7 +75,7 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::NoBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "trait".to_string(),
         has_type_params: true,
@@ -84,7 +84,7 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::BlockBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "impl".to_string(),
         has_type_params: true,
@@ -93,7 +93,7 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::BlockBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "const".to_string(),
         has_type_params: false,
@@ -102,7 +102,7 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: true,
         has_uses: false,
         body_kind: BodyKind::ExprBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "static".to_string(),
         has_type_params: false,
@@ -111,7 +111,7 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: true,
         has_uses: false,
         body_kind: BodyKind::ExprBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::ModuleForm,
         keyword: "mod".to_string(),
         has_type_params: false,
@@ -123,28 +123,28 @@ pub fn rust_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<ItemForm>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<ItemForm>>>| c.clone())
 }
 
-pub fn rust_keyword_literals() -> Rc<HashMap<String, Rc<LiteralValue>>> {
+pub fn rust_keyword_literals() -> Arc<HashMap<String, Arc<LiteralValue>>> {
     thread_local! {
-            static CACHED: Rc<HashMap<String, Rc<LiteralValue>>> = {
+            static CACHED: Arc<HashMap<String, Arc<LiteralValue>>> = {
                 let mut __m = HashMap::new();
-                __m.insert("true".to_string(), Rc::new(LiteralValue::LitBool {
+                __m.insert("true".to_string(), Arc::new(LiteralValue::LitBool {
         value: true,
     }));
-                __m.insert("false".to_string(), Rc::new(LiteralValue::LitBool {
+                __m.insert("false".to_string(), Arc::new(LiteralValue::LitBool {
         value: false,
     }));
-                Rc::new(__m)
+                Arc::new(__m)
             };
         }
-    CACHED.with(|c: &Rc<HashMap<String, Rc<LiteralValue>>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, Arc<LiteralValue>>>| c.clone())
 }
 
-pub fn rust_keyword_set() -> Rc<HashMap<String, bool>> {
+pub fn rust_keyword_set() -> Arc<HashMap<String, bool>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, bool>> = {
+        static CACHED: Arc<HashMap<String, bool>> = {
             let mut __m = HashMap::new();
             __m.insert("fn".to_string(), true);
             __m.insert("struct".to_string(), true);
@@ -183,94 +183,94 @@ pub fn rust_keyword_set() -> Rc<HashMap<String, bool>> {
             __m.insert("extern".to_string(), true);
             __m.insert("true".to_string(), true);
             __m.insert("false".to_string(), true);
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, bool>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, bool>>| c.clone())
 }
 
-pub fn rust_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
+pub fn rust_operators() -> Arc<Vec<Arc<OperatorSpec>>> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {
-                Rc::new(vec![Rc::new(OperatorSpec {
+            static CACHED: Arc<Vec<Arc<OperatorSpec>>> = {
+                Arc::new(vec![Arc::new(OperatorSpec {
         symbol: "||".to_string(),
         left_bp: 5,
         right_bp: 6,
         binop: Some(BinOp::Or),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "&&".to_string(),
         left_bp: 7,
         right_bp: 8,
         binop: Some(BinOp::And),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "==".to_string(),
         left_bp: 9,
         right_bp: 10,
         binop: Some(BinOp::Eq),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "!=".to_string(),
         left_bp: 9,
         right_bp: 10,
         binop: Some(BinOp::Ne),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "<".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Lt),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: ">".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Gt),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "<=".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Le),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: ">=".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Ge),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "+".to_string(),
         left_bp: 13,
         right_bp: 14,
         binop: Some(BinOp::Add),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "-".to_string(),
         left_bp: 13,
         right_bp: 14,
         binop: Some(BinOp::Sub),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "*".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Mul),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "/".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Div),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "%".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Mod),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: ".".to_string(),
         left_bp: 19,
         right_bp: 20,
@@ -279,13 +279,13 @@ pub fn rust_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<OperatorSpec>>>| c.clone())
 }
 
-pub fn rust_syntax_spec() -> Rc<SyntaxSpec> {
+pub fn rust_syntax_spec() -> Arc<SyntaxSpec> {
     thread_local! {
-            static CACHED: Rc<SyntaxSpec> = {
-                Rc::new(SyntaxSpec {
+            static CACHED: Arc<SyntaxSpec> = {
+                Arc::new(SyntaxSpec {
         item_forms: rust_item_forms(),
         operators: rust_operators(),
         keyword_literals: rust_keyword_literals(),
@@ -293,5 +293,5 @@ pub fn rust_syntax_spec() -> Rc<SyntaxSpec> {
     })
             };
         }
-    CACHED.with(|c: &Rc<SyntaxSpec>| c.clone())
+    CACHED.with(|c: &Arc<SyntaxSpec>| c.clone())
 }

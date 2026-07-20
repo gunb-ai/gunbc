@@ -72,7 +72,7 @@ fn numeric_plus_not_borrowed() {
 
 // ===================== Family Box/Rc: BoundedLattice bare top/bottom =====================
 // `BoundedLattice<T>` has `top: T, bottom: T` (bare generic T), so the data-def emission
-// must NOT `Box::new` them. The `meet`/`join` fn fields still get `Rc::new` (Rc<dyn Fn>) —
+// must NOT `Box::new` them. The `meet`/`join` fn fields still get `Arc::new` (Arc<dyn Fn>) —
 // proving the fix removed only the wrong Box-wrap, not all field wrapping.
 
 #[test]
@@ -91,15 +91,15 @@ fn bounded_lattice_top_bottom_are_bare_not_boxed() {
         "BoundedLattice top/bottom (bare T) must NOT be Box::new'd, got:\n{emitted}"
     );
     assert!(
-        emitted.contains("meet: Rc::new("),
-        "BoundedLattice meet (Rc<dyn Fn>) must still be Rc::new'd — fix removed only the Box, not fn-Rc:\n{emitted}"
+        emitted.contains("meet: Arc::new("),
+        "BoundedLattice meet (Arc<dyn Fn>) must still be Arc::new'd — fix removed only the Box, not fn-Rc:\n{emitted}"
     );
 }
 
 // ===================== Family fn-item: single-field record un-collapse =====================
 // A single-field product whose field is fn-typed (Arrow) must un-collapse to
-// `Rc::new(R { field: Rc::new(fn) })` — the bare collapse would drop the nominal type +
-// the fn->Rc coercion (a fn-item where `Rc<dyn Fn>` is wanted). Three evidences:
+// `Arc::new(R { field: Arc::new(fn) })` — the bare collapse would drop the nominal type +
+// the fn->Rc coercion (a fn-item where `Arc<dyn Fn>` is wanted). Three evidences:
 
 #[test]
 fn fn_field_single_record_uncollapses_with_rc_wrap() {
@@ -118,8 +118,8 @@ fn fn_field_single_record_uncollapses_with_rc_wrap() {
     );
     let body = fn_body_no_sig(&emit(source), "s");
     assert!(
-        body.contains("Scheme {") && body.contains("Rc::new(cmp)"),
-        "a single fn-field record must un-collapse to `Scheme {{ pick: Rc::new(cmp) }}`, got:\n{body}"
+        body.contains("Scheme {") && body.contains("Arc::new(cmp)"),
+        "a single fn-field record must un-collapse to `Scheme {{ pick: Arc::new(cmp) }}`, got:\n{body}"
     );
 }
 
@@ -160,7 +160,7 @@ fn ambiguous_single_field_name_fails_closed_to_collapse() {
     // Fail-closed on ambiguity: two fn-field structs share the single field name `pick`, so
     // find_unique_struct_name_by_fields([pick]) is ambiguous (count == 2) -> None -> the fix
     // must FALL BACK to bare collapse and NEVER guess a nominal R. Falling back emits the
-    // bare `Rc::new(cmp)` (a fn-item) where `AScheme` was wanted — a LOUD typed E0308 at the
+    // bare `Arc::new(cmp)` (a fn-item) where `AScheme` was wanted — a LOUD typed E0308 at the
     // consumer, not a silent wrong nominal type. "Pick the first candidate to make it
     // compile" is exactly the forbidden silent-wrong behavior. The field is fn-typed so it
     // reaches the collapse branch (a plain field would serde out and never test recovery).

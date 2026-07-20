@@ -19,12 +19,12 @@ pub use crate::v1_std_core::{Connective, ErrorNode, NewlineIndex, Node, TextFile
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitResult {
-    pub files: Rc<Vec<Rc<TextFile>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub files: Arc<Vec<Arc<TextFile>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -32,17 +32,17 @@ pub struct TestProjection {
     pub module_name: String,
     pub service_name: String,
     pub operation_name: String,
-    pub inferred: Rc<Node>,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub mock_field_inits: Rc<Vec<Rc<Node>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub inferred: Arc<Node>,
+    pub params: Arc<Vec<Arc<Node>>>,
+    pub mock_field_inits: Arc<Vec<Arc<Node>>>,
+    pub source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 }
 
 pub fn escape_json_string(s: String) -> String {
-    Rc::new(
-        Rc::new(
-            Rc::new(
-                Rc::new(
+    Arc::new(
+        Arc::new(
+            Arc::new(
+                Arc::new(
                     s.clone()
                         .split(&"\\".to_string())
                         .map(|s| s.to_string())
@@ -67,7 +67,7 @@ pub fn escape_json_string(s: String) -> String {
 }
 
 pub fn module_to_filename(name: String) -> String {
-    Rc::new(
+    Arc::new(
         name.clone()
             .split(&".".to_string())
             .map(|s| s.to_string())
@@ -86,18 +86,18 @@ pub fn make_indent(level: i64) -> String {
     })
 }
 
-pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
+pub fn unique_strings(items: Arc<Vec<String>>) -> Arc<Vec<String>> {
     {
         let result = items.clone().iter().cloned().fold(
-            Rc::new(UniqueAccum {
+            Arc::new(UniqueAccum {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
-                result: Rc::new(vec![]),
+                result: Arc::new(vec![]),
             }),
-            |acc: Rc<UniqueAccum>, item: String| {
+            |acc: Arc<UniqueAccum>, item: String| {
                 if emit_map_has(acc.seen.clone(), item.clone()) {
                     acc.clone()
                 } else {
-                    Rc::new(UniqueAccum {
+                    Arc::new(UniqueAccum {
                         seen: v1_rt::rc_map_insert(acc.seen.clone(), item.clone(), true),
                         result: v1_rt::rc_list_push(acc.result.clone(), item.clone()),
                     })
@@ -117,7 +117,7 @@ pub fn to_string(value: i64) -> String {
                 "0".to_string()
             } else {
                 {
-                    let digit_chars = Rc::new(vec![
+                    let digit_chars = Arc::new(vec![
                         "0".to_string(),
                         "1".to_string(),
                         "2".to_string(),
@@ -129,21 +129,21 @@ pub fn to_string(value: i64) -> String {
                         "8".to_string(),
                         "9".to_string(),
                     ]);
-                    to_string_helper(value.clone(), Rc::new(vec![])).join(&"".to_string())
+                    to_string_helper(value.clone(), Arc::new(vec![])).join(&"".to_string())
                 }
             }
         }
     })
 }
 
-pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<String>> {
+pub fn to_string_helper(mut value: i64, mut acc: Arc<Vec<String>>) -> Arc<Vec<String>> {
     loop {
         if (value.clone() == 0) {
             break acc;
         } else {
             let rest = (value.clone() / 10);
             let digit = (value.clone() - (rest.clone() * 10));
-            let digit_chars = Rc::new(vec![
+            let digit_chars = Arc::new(vec![
                 "0".to_string(),
                 "1".to_string(),
                 "2".to_string(),
@@ -155,9 +155,9 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
                 "8".to_string(),
                 "9".to_string(),
             ]);
-            let ch = match Rc::new({
+            let ch = match Arc::new({
                 let mut __result = Vec::new();
-                for p in Rc::new(
+                for p in Arc::new(
                     digit_chars
                         .clone()
                         .iter()
@@ -183,7 +183,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
             };
             {
                 let __tco_0 = rest.clone();
-                let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
+                let __tco_1 = v1_rt::concat(Arc::new(vec![ch.clone()]), acc);
                 value = __tco_0;
                 acc = __tco_1;
                 continue;
@@ -194,10 +194,10 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
 
 pub fn to_snake(name: String) -> String {
     {
-        let chars_list = Rc::new(name.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
-        let result = Rc::new({
+        let chars_list = Arc::new(name.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
+        let result = Arc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new(
+            for pair in Arc::new(
                 chars_list
                     .clone()
                     .iter()
@@ -232,9 +232,9 @@ pub fn to_snake(name: String) -> String {
 pub fn to_screaming_snake(name: String) -> String {
     {
         let snake = to_snake(name.clone());
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
-            for ch in Rc::new(snake.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+            for ch in Arc::new(snake.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
                 .iter()
                 .cloned()
             {
@@ -280,13 +280,13 @@ pub fn to_upper_char(ch: i64) -> String {
 
 pub fn sanitize_service_name(name: String) -> String {
     {
-        let parts = Rc::new(
+        let parts = Arc::new(
             name.clone()
                 .split(&".".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         );
-        let pascal_parts = Rc::new({
+        let pascal_parts = Arc::new({
             let mut __result = Vec::new();
             for p in parts.clone().iter().cloned() {
                 __result.push(capitalize_first(p.clone()));
@@ -299,13 +299,13 @@ pub fn sanitize_service_name(name: String) -> String {
 
 pub fn capitalize_first(s: String) -> String {
     {
-        let chars_list = Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
+        let chars_list = Arc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         if ((chars_list.clone().len() as i64) == 0) {
             "".to_string()
         } else {
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
-                for pair in Rc::new(
+                for pair in Arc::new(
                     chars_list
                         .clone()
                         .iter()
@@ -337,14 +337,14 @@ pub fn service_var_name(service_name: String) -> String {
 pub fn to_pascal(name: String) -> String {
     {
         let snake = to_snake(name.clone());
-        let parts = Rc::new(
+        let parts = Arc::new(
             snake
                 .clone()
                 .split(&"_".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         );
-        let pascal_parts = Rc::new({
+        let pascal_parts = Arc::new({
             let mut __result = Vec::new();
             for p in parts.clone().iter().cloned() {
                 __result.push(capitalize_first(p.clone()));
@@ -355,7 +355,7 @@ pub fn to_pascal(name: String) -> String {
     }
 }
 
-pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) -> String {
+pub fn test_function_name(projection: Arc<TestProjection>, target: RenderTarget) -> String {
     {
         let conventions = test_conventions_for_target(target.clone());
         let formatted = match conventions.name_style.clone() {
@@ -376,7 +376,7 @@ pub fn test_function_name(projection: Rc<TestProjection>, target: RenderTarget) 
 }
 
 pub fn apply_type_template1(template: String, arg0: String) -> String {
-    Rc::new(
+    Arc::new(
         template
             .clone()
             .split(&"{0}".to_string())
@@ -388,18 +388,18 @@ pub fn apply_type_template1(template: String, arg0: String) -> String {
 
 pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> String {
     {
-        let parts = Rc::new(
+        let parts = Arc::new(
             template
                 .clone()
                 .split(&"{0}".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         );
-        let replaced = Rc::new({
+        let replaced = Arc::new({
             let mut __result = Vec::new();
             for p in parts.clone().iter().cloned() {
                 __result.push(
-                    Rc::new(
+                    Arc::new(
                         p.clone()
                             .split(&"{1}".to_string())
                             .map(|s| s.to_string())
@@ -416,28 +416,28 @@ pub fn apply_type_template2(template: String, arg0: String, arg1: String) -> Str
 
 pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: String) -> String {
     {
-        let parts0 = Rc::new(
+        let parts0 = Arc::new(
             template
                 .clone()
                 .split(&"{0}".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         );
-        let replaced = Rc::new({
+        let replaced = Arc::new({
             let mut __result = Vec::new();
             for p0 in parts0.clone().iter().cloned() {
                 __result.push({
-                    let parts1 = Rc::new(
+                    let parts1 = Arc::new(
                         p0.clone()
                             .split(&"{1}".to_string())
                             .map(|s| s.to_string())
                             .collect::<Vec<_>>(),
                     );
-                    let inner = Rc::new({
+                    let inner = Arc::new({
                         let mut __result = Vec::new();
                         for p1 in parts1.clone().iter().cloned() {
                             __result.push(
-                                Rc::new(
+                                Arc::new(
                                     p1.clone()
                                         .split(&"{2}".to_string())
                                         .map(|s| s.to_string())
@@ -457,24 +457,24 @@ pub fn apply_type_template3(template: String, arg0: String, arg1: String, arg2: 
     }
 }
 
-pub fn apply_named_template(template: String, bindings: Rc<HashMap<String, String>>) -> String {
+pub fn apply_named_template(template: String, bindings: Arc<HashMap<String, String>>) -> String {
     apply_named_template_nested(
         template.clone(),
         bindings.clone(),
-        Rc::new(v1_rt::map_keys(&bindings)),
+        Arc::new(v1_rt::map_keys(&bindings)),
     )
 }
 
 pub fn apply_named_template_nested(
     template: String,
-    bindings: Rc<HashMap<String, String>>,
-    keys: Rc<Vec<String>>,
+    bindings: Arc<HashMap<String, String>>,
+    keys: Arc<Vec<String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match keys.clone().first().cloned() {
             None => template,
             Some(key) => {
-                let rest = Rc::new(
+                let rest = Arc::new(
                     keys.clone()
                         .iter()
                         .cloned()
@@ -485,13 +485,13 @@ pub fn apply_named_template_nested(
                     v1_rt::concat(v1_rt::concat("{".to_string(), key.clone()), "}".to_string());
                 match v1_rt::map_get(&bindings, key.clone()) {
                     Some(val) => {
-                        let parts = Rc::new(
+                        let parts = Arc::new(
                             template
                                 .split(&placeholder.clone())
                                 .map(|s| s.to_string())
                                 .collect::<Vec<_>>(),
                         );
-                        let processed = Rc::new({
+                        let processed = Arc::new({
                             let mut __result = Vec::new();
                             for part in parts.clone().iter().cloned() {
                                 __result.push(apply_named_template_nested(
@@ -513,20 +513,20 @@ pub fn apply_named_template_nested(
     })
 }
 
-pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
+pub fn language_spec(target: RenderTarget) -> Arc<LanguageSpec> {
     language_spec_for_target(target.clone())
 }
 
 pub fn escape_string_literal_body(s: String) -> String {
     {
-        let escaped_backslash = Rc::new(
+        let escaped_backslash = Arc::new(
             s.clone()
                 .split(&"\\".to_string())
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>(),
         )
         .join(&"\\\\".to_string());
-        let escaped_quote = Rc::new(
+        let escaped_quote = Arc::new(
             escaped_backslash
                 .clone()
                 .split(&"\"".to_string())
@@ -534,7 +534,7 @@ pub fn escape_string_literal_body(s: String) -> String {
                 .collect::<Vec<_>>(),
         )
         .join(&"\\\"".to_string());
-        let escaped_newline = Rc::new(
+        let escaped_newline = Arc::new(
             escaped_quote
                 .clone()
                 .split(&"\n".to_string())
@@ -542,7 +542,7 @@ pub fn escape_string_literal_body(s: String) -> String {
                 .collect::<Vec<_>>(),
         )
         .join(&"\\n".to_string());
-        let escaped_return = Rc::new(
+        let escaped_return = Arc::new(
             escaped_newline
                 .clone()
                 .split(&"\\r".to_string())
@@ -550,7 +550,7 @@ pub fn escape_string_literal_body(s: String) -> String {
                 .collect::<Vec<_>>(),
         )
         .join(&"\\r".to_string());
-        Rc::new(
+        Arc::new(
             escaped_return
                 .clone()
                 .split(&"\t".to_string())
@@ -569,14 +569,14 @@ pub fn has_mock_prefix(name: String) -> bool {
     }
 }
 
-pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProjection>>> {
-    Rc::new({
+pub fn extract_test_projections(typed: Arc<ResolvedGraph>) -> Arc<Vec<Arc<TestProjection>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for tm in typed.modules.clone().iter().cloned() {
             __result.extend(
-                (*Rc::new({
+                (*Arc::new({
                     let mut __result = Vec::new();
-                    for item in Rc::new({
+                    for item in Arc::new({
                         let mut __result = Vec::new();
                         for item in tm.items.clone().iter().cloned() {
                             if is_service_item(item.clone()) {
@@ -589,9 +589,9 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                     .cloned()
                     {
                         __result.extend(
-                            (*Rc::new({
+                            (*Arc::new({
                                 let mut __result = Vec::new();
-                                for c in Rc::new({
+                                for c in Arc::new({
                                     let mut __result = Vec::new();
                                     for c in item.children.clone().iter().cloned() {
                                         if {
@@ -615,7 +615,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                 .iter()
                                 .cloned()
                                 {
-                                    __result.push(Rc::new(TestProjection {
+                                    __result.push(Arc::new(TestProjection {
                                         module_name: authored_name_at(
                                             tm.type_env.clone().source_indices.clone(),
                                             tm.module.clone(),
@@ -630,7 +630,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                         ),
                                         inferred: resolved_type(c.clone()),
                                         params: c.params.clone(),
-                                        mock_field_inits: Rc::new({
+                                        mock_field_inits: Arc::new({
                                             let mut __result = Vec::new();
                                             for p in c.properties.clone().iter().cloned() {
                                                 if has_mock_prefix(field_init_node_name_at(
@@ -662,21 +662,21 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
 }
 
 pub fn is_type_alias_return_node(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (authored_name_at(source_indices.clone(), n.clone()) != "Unit".to_string())
 }
 
-pub fn is_service_item(item: Rc<Node>) -> bool {
+pub fn is_service_item(item: Arc<Node>) -> bool {
     ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
 }
 
-pub fn is_type_def_item(item: Rc<Node>) -> bool {
+pub fn is_type_def_item(item: Arc<Node>) -> bool {
     ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None))
 }
 
-pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
+pub fn is_bare_leaf_item(item: Arc<Node>) -> bool {
     (((((item.connective.clone() == Connective::NoConnective) && (item.body.clone() == None))
         && ((item.params.clone().len() as i64) == 0))
         && (item.transport.clone() == None))
@@ -684,16 +684,16 @@ pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
 }
 
 pub fn is_type_alias_item(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (is_bare_leaf_item(item.clone())
         && is_type_alias_return_node(resolved_type(item.clone()), source_indices.clone()))
 }
 
 pub fn is_type_decl_item(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     ((is_bare_leaf_item(item.clone())
         && !is_type_alias_return_node(resolved_type(item.clone()), source_indices.clone()))
@@ -702,19 +702,19 @@ pub fn is_type_decl_item(
             && ((item.children.clone().len() as i64) == 0)))
 }
 
-pub fn is_function_item(item: Rc<Node>) -> bool {
+pub fn is_function_item(item: Arc<Node>) -> bool {
     ((item.body.clone() != None) && (item.type_annotation.clone() == None))
 }
 
-pub fn is_data_def_item(item: Rc<Node>) -> bool {
+pub fn is_data_def_item(item: Arc<Node>) -> bool {
     ((item.body.clone() != None) && (item.type_annotation.clone() != None))
 }
 
-pub fn is_service_def_item(item: Rc<Node>) -> bool {
+pub fn is_service_def_item(item: Arc<Node>) -> bool {
     ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
 }
 
-pub fn is_resource_def_item(item: Rc<Node>) -> bool {
+pub fn is_resource_def_item(item: Arc<Node>) -> bool {
     (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0))
         || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0))
             && ((item.properties.clone().len() as i64) > 0))

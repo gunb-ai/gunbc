@@ -8,7 +8,7 @@ use crate::usv_pilot_v2_std_node::{
     Node, NodeKind,
 };
 use im::{vector as vec, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -25,14 +25,14 @@ pub struct Medium<T> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TargetModel {
-    pub bundle: Rc<Node>,
+    pub bundle: Arc<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum OptionalNode {
     Absent,
-    Present { value: Rc<Node> },
+    Present { value: Arc<Node> },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -60,14 +60,14 @@ fn decode_fidelity_merge(left: DecodeFidelity, right: DecodeFidelity) -> DecodeF
     }
 }
 
-fn fidelity_disposition_node_has_named_kind(root: Rc<Node>, name: String) -> bool {
+fn fidelity_disposition_node_has_named_kind(root: Arc<Node>, name: String) -> bool {
     match &*named_edge_target_lookup(root.children.clone(), name) {
         NamedEdgeTargetLookup::Found { .. } => true,
         _ => false,
     }
 }
 
-fn fidelity_disposition_node_decode_fidelity(node: Rc<Node>) -> Outcome<DecodeFidelity> {
+fn fidelity_disposition_node_decode_fidelity(node: Arc<Node>) -> Outcome<DecodeFidelity> {
     match &*node.kind {
         NodeKind::TypeNode { connective } => match &**connective {
             Connective::Atom { identity }
@@ -104,7 +104,7 @@ fn fidelity_disposition_node_decode_fidelity(node: Rc<Node>) -> Outcome<DecodeFi
     }
 }
 
-fn fidelity_quotient_decode_fidelity(quotient: Rc<Node>) -> Outcome<DecodeFidelity> {
+fn fidelity_quotient_decode_fidelity(quotient: Arc<Node>) -> Outcome<DecodeFidelity> {
     match &*quotient.kind {
         NodeKind::TypeNode { connective } => match &**connective {
             Connective::Conj => quotient.children.iter().fold(
@@ -135,7 +135,7 @@ fn fidelity_quotient_decode_fidelity(quotient: Rc<Node>) -> Outcome<DecodeFideli
     }
 }
 
-fn target_fidelity_quotient_optional(target: Rc<TargetModel>) -> Outcome<OptionalNode> {
+fn target_fidelity_quotient_optional(target: Arc<TargetModel>) -> Outcome<OptionalNode> {
     match &*named_edge_target_lookup(
         target.bundle.children.clone(),
         "target_model_edge_fidelity_quotient".to_string(),
@@ -151,7 +151,7 @@ fn target_fidelity_quotient_optional(target: Rc<TargetModel>) -> Outcome<Optiona
     }
 }
 
-pub fn decode_fidelity_from_target(target: Rc<TargetModel>) -> Outcome<DecodeFidelity> {
+pub fn decode_fidelity_from_target(target: Arc<TargetModel>) -> Outcome<DecodeFidelity> {
     match target_fidelity_quotient_optional(target) {
         Outcome::Rejected { reason } => Outcome::Rejected { reason },
         Outcome::Accepted { value: opt } => match opt {
@@ -165,7 +165,7 @@ pub fn decode_fidelity_from_target(target: Rc<TargetModel>) -> Outcome<DecodeFid
     }
 }
 
-pub fn target_source_medium(text: String, target: Rc<TargetModel>) -> Outcome<Medium<String>> {
+pub fn target_source_medium(text: String, target: Arc<TargetModel>) -> Outcome<Medium<String>> {
     match decode_fidelity_from_target(target) {
         Outcome::Rejected { reason } => Outcome::Rejected { reason },
         Outcome::Accepted { value: fidelity } => Outcome::Accepted {
@@ -174,32 +174,32 @@ pub fn target_source_medium(text: String, target: Rc<TargetModel>) -> Outcome<Me
     }
 }
 
-pub fn fidelity_disposition_modeled_node() -> Rc<Node> {
+pub fn fidelity_disposition_modeled_node() -> Arc<Node> {
     node_synthetic(
-        Rc::new(NodeKind::TypeNode {
-            connective: Rc::new(Connective::Atom {
+        Arc::new(NodeKind::TypeNode {
+            connective: Arc::new(Connective::Atom {
                 identity: "dag_fidelity_disposition_kind_modeled".to_string(),
             }),
         }),
-        Rc::new(vec![]),
+        Arc::new(vec![]),
     )
 }
 
-pub fn fidelity_disposition_declared_loss_node() -> Rc<Node> {
+pub fn fidelity_disposition_declared_loss_node() -> Arc<Node> {
     let child = node_synthetic(
-        Rc::new(NodeKind::TypeNode {
-            connective: Rc::new(Connective::Atom {
+        Arc::new(NodeKind::TypeNode {
+            connective: Arc::new(Connective::Atom {
                 identity: "dag_fidelity_disposition_kind_declared_normalized".to_string(),
             }),
         }),
-        Rc::new(vec![]),
+        Arc::new(vec![]),
     );
     node_synthetic(
-        Rc::new(NodeKind::TypeNode {
-            connective: Rc::new(Connective::Conj),
+        Arc::new(NodeKind::TypeNode {
+            connective: Arc::new(Connective::Conj),
         }),
-        Rc::new(vec![Rc::new(Edge {
-            label: Rc::new(EdgeLabel::Named {
+        Arc::new(vec![Arc::new(Edge {
+            label: Arc::new(EdgeLabel::Named {
                 name: "child".to_string(),
             }),
             target: child,

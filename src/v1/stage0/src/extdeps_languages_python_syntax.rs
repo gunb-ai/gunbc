@@ -22,26 +22,26 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "docs.python.org/3/reference/expressions.html".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
-pub fn python_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
+pub fn python_item_forms() -> Arc<Vec<Arc<ItemForm>>> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<ItemForm>>> = {
-                Rc::new(vec![Rc::new(ItemForm {
+            static CACHED: Arc<Vec<Arc<ItemForm>>> = {
+                Arc::new(vec![Arc::new(ItemForm {
         kind: ItemFormKind::FuncForm,
         keyword: "def".to_string(),
         has_type_params: false,
@@ -50,7 +50,7 @@ pub fn python_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::BlockBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::StructForm,
         keyword: "class".to_string(),
         has_type_params: false,
@@ -59,7 +59,7 @@ pub fn python_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::BlockBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::EnumForm,
         keyword: "class".to_string(),
         has_type_params: false,
@@ -68,7 +68,7 @@ pub fn python_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::BlockBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::TypeAliasForm,
         keyword: "".to_string(),
         has_type_params: false,
@@ -77,7 +77,7 @@ pub fn python_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::NoBody,
-    }), Rc::new(ItemForm {
+    }), Arc::new(ItemForm {
         kind: ItemFormKind::ModuleForm,
         keyword: "".to_string(),
         has_type_params: false,
@@ -89,91 +89,91 @@ pub fn python_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<ItemForm>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<ItemForm>>>| c.clone())
 }
 
-pub fn python_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
+pub fn python_operators() -> Arc<Vec<Arc<OperatorSpec>>> {
     thread_local! {
-            static CACHED: Rc<Vec<Rc<OperatorSpec>>> = {
-                Rc::new(vec![Rc::new(OperatorSpec {
+            static CACHED: Arc<Vec<Arc<OperatorSpec>>> = {
+                Arc::new(vec![Arc::new(OperatorSpec {
         symbol: "or".to_string(),
         left_bp: 5,
         right_bp: 6,
         binop: Some(BinOp::Or),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "and".to_string(),
         left_bp: 7,
         right_bp: 8,
         binop: Some(BinOp::And),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "==".to_string(),
         left_bp: 9,
         right_bp: 10,
         binop: Some(BinOp::Eq),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "!=".to_string(),
         left_bp: 9,
         right_bp: 10,
         binop: Some(BinOp::Ne),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "<".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Lt),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: ">".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Gt),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "<=".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Le),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: ">=".to_string(),
         left_bp: 11,
         right_bp: 12,
         binop: Some(BinOp::Ge),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "+".to_string(),
         left_bp: 13,
         right_bp: 14,
         binop: Some(BinOp::Add),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "-".to_string(),
         left_bp: 13,
         right_bp: 14,
         binop: Some(BinOp::Sub),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "*".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Mul),
         algebra_field: None,
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "/".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Div),
         algebra_field: Some(AlgebraFieldKind::AlgReciprocal),
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "//".to_string(),
         left_bp: 15,
         right_bp: 16,
         binop: Some(BinOp::Div),
         algebra_field: Some(AlgebraFieldKind::AlgQuotient),
-    }), Rc::new(OperatorSpec {
+    }), Arc::new(OperatorSpec {
         symbol: "%".to_string(),
         left_bp: 15,
         right_bp: 16,
@@ -182,5 +182,5 @@ pub fn python_operators() -> Rc<Vec<Rc<OperatorSpec>>> {
     })])
             };
         }
-    CACHED.with(|c: &Rc<Vec<Rc<OperatorSpec>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<OperatorSpec>>>| c.clone())
 }

@@ -1,9 +1,9 @@
 //! Discriminating witness for deref-side boxing consolidation (#6243 / §7b item 4).
 //!
 //! `field_access_field_is_boxed` used to OR in `is_recursive_type_by_name`, which fired for
-//! every recursive leaf — including types already rendered as `Rc<T>` via `shared_types`.
+//! every recursive leaf — including types already rendered as `Arc<T>` via `shared_types`.
 //! That made field access emit `(*x.field).clone()` on an `Rc` field, which is ill-typed
-//! (`Option<Rc<…>> cannot be dereferenced` class). `needs_box_wrapping` already returns
+//! (`Option<Arc<…>> cannot be dereferenced` class). `needs_box_wrapping` already returns
 //! `false` when `shared_types` dominates; the redundant disjunct was the bug.
 //!
 //! `Link` is recursive (so it lands in `recursive_type_set`) and Rc-shared under HostNative.

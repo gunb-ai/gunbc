@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 
 use im::HashMap as HamtMap;
@@ -392,11 +393,11 @@ pub enum Value {
     },
     Closure {
         params: Vec<Symbol>,
-        body: Rc<Node>,
+        body: Arc<Node>,
         env: Rc<Env>,
     },
     Fn {
-        node: Rc<Node>,
+        node: Arc<Node>,
     },
     Unit,
 }
@@ -563,7 +564,7 @@ impl PartialEq for Value {
                 },
             ) => a == b && af == bf,
             (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
-            (Value::Fn { node: a }, Value::Fn { node: b }) => Rc::ptr_eq(a, b),
+            (Value::Fn { node: a }, Value::Fn { node: b }) => Arc::ptr_eq(a, b),
             (Value::List(_), Value::Variant { .. }) | (Value::Variant { .. }, Value::List(_)) => {
                 match (free_monoid_to_vec(self), free_monoid_to_vec(other)) {
                     (Some(a), Some(b)) => a == b,
@@ -781,13 +782,13 @@ pub enum AuthResolution {
 
 pub type InterpResult<T> = Result<T, InterpError>;
 
-type ServiceOp = (Rc<Node>, Rc<Node>);
+type ServiceOp = (Arc<Node>, Arc<Node>);
 
 #[derive(Default)]
 struct PureCallMemo {
     map: HashMap<(usize, Vec<usize>), Value>,
     keepalive: Vec<Value>,
-    keepalive_fns: Vec<Rc<Node>>,
+    keepalive_fns: Vec<Arc<Node>>,
 }
 
 #[derive(Default)]
@@ -818,7 +819,7 @@ struct EvalRecomputeTrace {
     unkeyed_by_fn: std::collections::HashMap<String, u64>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
     // (same discipline as PureCallMemo.keepalive_fns).
-    keepalive_fns: Vec<Rc<Node>>,
+    keepalive_fns: Vec<Arc<Node>>,
     // fn_ptr -> interned display name, so millions of ledger entries share
     // one allocation per function instead of a String clone per key.
     fn_names: std::collections::HashMap<usize, Rc<str>>,
@@ -917,7 +918,7 @@ struct EvalCallMemo {
     map: std::collections::HashMap<EvalRecomputeKey, Vec<(Vec<(Option<String>, Value)>, Value)>>,
     // fn-node Rcs kept alive so fn_ptr keys stay valid for the ctx lifetime
     // (same discipline as EvalRecomputeTrace.keepalive_fns).
-    keepalive_fns: Vec<Rc<Node>>,
+    keepalive_fns: Vec<Arc<Node>>,
     hits: u64,
     misses: u64,
     overflow: u64,
@@ -1232,13 +1233,13 @@ impl ExecutionMode {
 }
 
 pub struct InterpContext {
-    pub modules: Rc<im::Vector<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    fn_nodes: HashMap<String, Rc<Node>>,
+    pub modules: Arc<im::Vector<Arc<TypedModule>>>,
+    pub item_registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    pub source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    fn_nodes: HashMap<String, Arc<Node>>,
     service_ops: HashMap<String, ServiceOp>,
     pub execution_mode: ExecutionMode,
-    pub fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+    pub fixture_store: Option<Arc<crate::recorded_fixture::RecordedFixtureStore>>,
     data_cache: std::cell::RefCell<HashMap<usize, Value>>,
     // Per-call parameter-name derivation is invariant per fn_node but was re-sliced from
     // source spans on every call (authored_name_at). Memoize it per ctx, keyed by fn_node
@@ -1355,7 +1356,7 @@ impl InterpContext {
 
     pub fn new(
         graph: &ResolvedGraph,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
     ) -> Self {
         Self::with_runtime_options(graph, source_indices, execution_mode, None, None)
@@ -1363,18 +1364,18 @@ impl InterpContext {
 
     pub fn with_fixture_store(
         graph: &ResolvedGraph,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
-        fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+        fixture_store: Option<Arc<crate::recorded_fixture::RecordedFixtureStore>>,
     ) -> Self {
         Self::with_runtime_options(graph, source_indices, execution_mode, fixture_store, None)
     }
 
     pub fn with_runtime_options(
         graph: &ResolvedGraph,
-        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
         execution_mode: ExecutionMode,
-        fixture_store: Option<Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+        fixture_store: Option<Arc<crate::recorded_fixture::RecordedFixtureStore>>,
         whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     ) -> Self {
         let mut fn_nodes = HashMap::new();
@@ -1507,22 +1508,22 @@ impl InterpContext {
         Ok(services)
     }
 
-    fn si(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+    fn si(&self) -> Arc<HashMap<String, Arc<NewlineIndex>>> {
         self.source_indices.clone()
     }
 
-    pub(crate) fn source_indices(&self) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+    pub(crate) fn source_indices(&self) -> Arc<HashMap<String, Arc<NewlineIndex>>> {
         self.si()
     }
 
-    fn lookup_fn(&self, name: &str) -> Option<&Rc<Node>> {
+    fn lookup_fn(&self, name: &str) -> Option<&Arc<Node>> {
         self.fn_nodes.get(name)
     }
 }
 
 pub fn run(
     graph: &ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     entry_fn: &str,
 ) -> InterpResult<Value> {
     run_with_options(graph, source_indices, entry_fn, ExecutionMode::Wet, true)
@@ -1530,7 +1531,7 @@ pub fn run(
 
 pub fn run_with_options(
     graph: &ResolvedGraph,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     entry_fn: &str,
     execution_mode: ExecutionMode,
     eager_data_env: bool,
@@ -1647,7 +1648,7 @@ const CALL_DEPTH_LIMIT: u32 = 100_000;
 
 fn call_function(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
@@ -1663,7 +1664,7 @@ fn call_function(
 
 fn call_function_guarded(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
     depth: u32,
@@ -1687,7 +1688,7 @@ fn call_function_guarded(
 
 fn call_function_dispatch(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
@@ -1710,7 +1711,7 @@ fn call_function_dispatch(
 
 fn call_function_inner(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
@@ -1728,7 +1729,7 @@ fn call_function_inner(
     let _dag_fn_guard = DagFnGuard::enter(fn_node.name.as_str());
 
     let cached_params = {
-        let key = Rc::as_ptr(fn_node) as usize;
+        let key = Arc::as_ptr(fn_node) as usize;
         // Bind the lookup to a local so the immutable borrow is released before the
         // None branch takes a mutable borrow (an `if let ...borrow()` would hold it through `else`).
         let hit = ctx.param_name_cache.borrow().get(&key).cloned();
@@ -1867,7 +1868,7 @@ pub fn thread_cpu_nanos() -> u128 {
     }
 }
 
-fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_expr(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     if let Some((cpu_baseline_nanos, budget_ms)) = ctx.eval_deadline.get() {
         let stride = ctx.eval_deadline_stride.get().wrapping_add(1);
         ctx.eval_deadline_stride.set(stride);
@@ -1908,7 +1909,7 @@ fn eval_expr(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     result
 }
 
-fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_expr_inner(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let si = ctx.si();
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
@@ -2006,14 +2007,14 @@ fn eval_literal(lit: &LiteralValue) -> InterpResult<Value> {
 }
 
 fn eval_var(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     binding_kind: Option<&VarBindingKind>,
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     // Resolve and intern this ExprVar's name once, then reuse the Symbol on every eval
     // (skips the per-eval source-span slice in expr_var_name_at and the ctx.sym re-intern).
-    let key = Rc::as_ptr(node) as usize;
+    let key = Arc::as_ptr(node) as usize;
     let sym = {
         let hit = ctx.var_sym_cache.borrow().get(&key).copied();
         match hit {
@@ -2064,7 +2065,7 @@ fn eval_var(
                             return Ok(Value::Str(name));
                         }
                     }
-                    let key = Rc::as_ptr(fn_node) as usize;
+                    let key = Arc::as_ptr(fn_node) as usize;
                     if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                         return Ok(v);
                     }
@@ -2091,7 +2092,7 @@ fn eval_var(
             match item_kind(fn_node.clone()) {
                 ItemKind::DataItem => {
                     if let Some(ref body) = fn_node.body {
-                        let key = Rc::as_ptr(fn_node) as usize;
+                        let key = Arc::as_ptr(fn_node) as usize;
                         if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                             return Ok(v);
                         }
@@ -2423,7 +2424,7 @@ fn eval_unaryop(op: &UnaryOpKind, val: Value) -> InterpResult<Value> {
     }
 }
 
-fn eval_if(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_if(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let cond = eval_expr(&if_condition(node.clone()), env, ctx)?;
     if cond.is_truthy() {
         eval_expr(&if_then_branch(node.clone()), env, ctx)
@@ -2435,7 +2436,7 @@ fn eval_if(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<
     }
 }
 
-fn eval_let(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_let(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let name = let_binding_name_at(node.clone(), ctx.si());
     let val = eval_expr(&let_value(node.clone()), env, ctx)?;
     let new_env = Env::with_binding(env, ctx.sym(&name), val);
@@ -2445,7 +2446,7 @@ fn eval_let(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult
     }
 }
 
-fn eval_block(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_block(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let stmts = block_stmts(node.clone());
     let mut current_env = env.clone();
     let mut last_val = Value::Unit;
@@ -2467,7 +2468,7 @@ fn eval_block(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     Ok(last_val)
 }
 
-fn eval_match(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_match(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let scrutinee_val = eval_expr(&match_scrutinee(node.clone()), env, ctx)?;
     let arms = match_arm_nodes(node.clone());
 
@@ -2949,7 +2950,7 @@ fn is_v4_inert_lens_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
         .is_some_and(|info| info.module_name == "v2.lens.inert_lens")
 }
 
-fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>) -> bool {
+fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Arc<Node>) -> bool {
     if !STD_COLLECTION_MAP_GROUNDED_FNS.contains(&fn_node.name.as_str()) {
         return false;
     }
@@ -2960,7 +2961,7 @@ fn is_v2_std_collection_map_grounded_fn(ctx: &InterpContext, fn_node: &Rc<Node>)
 
 fn try_v2_std_collection_map_primitive_grounding(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
 ) -> Option<InterpResult<Value>> {
     if !is_v2_std_collection_map_grounded_fn(ctx, fn_node) {
@@ -2984,9 +2985,9 @@ fn try_v2_std_collection_map_primitive_grounding(
     }
 }
 
-fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_call(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let func_name = {
-        let key = Rc::as_ptr(node) as usize;
+        let key = Arc::as_ptr(node) as usize;
         let hit = ctx.call_func_name_cache.borrow().get(&key).cloned();
         match hit {
             Some(s) => s,
@@ -3156,8 +3157,8 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 /// value. Unkeyed calls (closure args) stay unmemoized and are counted.
 fn eval_pure_named_call(
     ctx: &InterpContext,
-    call_node: &Rc<Node>,
-    fn_node: &Rc<Node>,
+    call_node: &Arc<Node>,
+    fn_node: &Arc<Node>,
     func_name: &str,
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
@@ -3350,7 +3351,7 @@ fn parse_table_memo_scope_and_key(
 fn try_parse_table_memo_dispatch(
     ctx: &InterpContext,
     func_name: &str,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Option<Value>> {
@@ -3566,7 +3567,7 @@ fn eval_recompute_value_hash(memo: &mut EvalRecomputeHashMemo, root: &Value) -> 
                 )),
                 Value::Fn { node } => EvalRecomputeStep::Have(eval_recompute_mix(
                     0xA5A5_0050,
-                    Rc::as_ptr(node) as u64,
+                    Arc::as_ptr(node) as u64,
                 )),
                 Value::Closure { .. } => EvalRecomputeStep::Bail,
                 Value::Set(s) => {
@@ -3737,7 +3738,7 @@ fn eval_recompute_arg_key(
 
 fn eval_recompute_key(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
 ) -> Option<EvalRecomputeKey> {
     let mut memo = ctx.eval_recompute_hash_memo.borrow_mut();
@@ -3746,15 +3747,15 @@ fn eval_recompute_key(
         keys.push(eval_recompute_arg_key(&mut memo, v)?);
     }
     Some(EvalRecomputeKey {
-        fn_ptr: Rc::as_ptr(fn_node) as usize,
+        fn_ptr: Arc::as_ptr(fn_node) as usize,
         args: keys,
     })
 }
 
 fn eval_recompute_record(
     ctx: &InterpContext,
-    call_node: &Rc<Node>,
-    fn_node: &Rc<Node>,
+    call_node: &Arc<Node>,
+    fn_node: &Arc<Node>,
     func_name: &str,
     key: EvalRecomputeKey,
     elapsed_ns: u128,
@@ -3769,7 +3770,7 @@ fn eval_recompute_record(
         }
         tr.keepalive_fns.push(fn_node.clone());
     }
-    let fn_ptr = Rc::as_ptr(fn_node) as usize;
+    let fn_ptr = Arc::as_ptr(fn_node) as usize;
     let interned_name = tr
         .fn_names
         .entry(fn_ptr)
@@ -3783,7 +3784,7 @@ fn eval_recompute_record(
     });
     entry.count += 1;
     entry.total_ns += elapsed_ns;
-    let site_ptr = Rc::as_ptr(call_node) as usize;
+    let site_ptr = Arc::as_ptr(call_node) as usize;
     if entry.sites.len() < EVAL_RECOMPUTE_SITE_CAP
         && !entry.sites.iter().any(|(p, _)| *p == site_ptr)
     {
@@ -4043,7 +4044,7 @@ fn eval_call_memo_get(
 
 fn eval_call_memo_put(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     key: EvalRecomputeKey,
     args: &[(Option<String>, Value)],
     value: Value,
@@ -4070,14 +4071,14 @@ pub fn eval_call_memo_counters(ctx: &InterpContext) -> (u64, u64, u64) {
     (m.hits, m.misses, m.overflow)
 }
 fn pure_call_memo_key(
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     func_name: &str,
     args: &[(Option<String>, Value)],
 ) -> Option<(usize, Vec<usize>)> {
     if !is_structural_pure_fn(func_name) {
         return None;
     }
-    let fid = Rc::as_ptr(fn_node) as usize;
+    let fid = Arc::as_ptr(fn_node) as usize;
     let mut ids = Vec::with_capacity(args.len());
     for (_, v) in args {
         ids.push(value_rc_identity(v)?);
@@ -4089,7 +4090,7 @@ fn pure_call_memo_get(ctx: &InterpContext, key: &(usize, Vec<usize>)) -> Option<
 }
 fn pure_call_memo_put(
     ctx: &InterpContext,
-    fn_node: &Rc<Node>,
+    fn_node: &Arc<Node>,
     key: (usize, Vec<usize>),
     args: &[(Option<String>, Value)],
     result: Value,
@@ -4102,7 +4103,7 @@ fn pure_call_memo_put(
     st.map.insert(key, result);
 }
 
-fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_method_call(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let method_name = expr_method_name_at(node.clone(), ctx.si());
     let semantics = expr_method_call_semantics(node.clone());
 
@@ -4162,7 +4163,7 @@ fn eval_method_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inte
 }
 
 fn eval_field_access(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     summary: Option<&FieldSummary>,
     env: &Rc<Env>,
     ctx: &InterpContext,
@@ -4222,7 +4223,7 @@ fn extract_field(
 }
 
 fn eval_record_lit(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     parent_enum: Option<&str>,
     env: &Rc<Env>,
     ctx: &InterpContext,
@@ -4258,7 +4259,7 @@ fn eval_record_lit(
     }
 }
 
-fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_string_interp(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let parts = extract_string_interp_parts(node.clone());
     let mut result = String::new();
     for part in parts.iter() {
@@ -4274,7 +4275,7 @@ fn eval_string_interp(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> In
     Ok(Value::Str(result))
 }
 
-fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Rc<Node>> {
+fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Option<Arc<Node>> {
     for module in ctx.modules.iter() {
         for item in module.items.iter() {
             if authored_name_at(ctx.si(), item.clone()) == type_name {
@@ -4285,7 +4286,7 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
     None
 }
 
-fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
+fn alias_rhs_next_name(ctx: &InterpContext, rhs: Arc<Node>) -> Option<String> {
     let direct = authored_name_at(ctx.si(), rhs.clone());
     if !direct.is_empty() {
         return Some(direct);
@@ -4311,7 +4312,7 @@ fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
     }
 }
 
-fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<String> {
+fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Arc<Node>) -> Option<String> {
     let rhs = match item.inferred.as_deref()? {
         InferredNode::Resolved { node } => node.clone(),
         _ => return None,
@@ -4319,7 +4320,7 @@ fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<Stri
     alias_rhs_next_name(ctx, rhs)
 }
 
-fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
+fn cast_target_seed_name(ctx: &InterpContext, target: Arc<Node>) -> String {
     let from_span = authored_name_at(ctx.si(), target.clone());
     if !from_span.is_empty() {
         return from_span;
@@ -4345,7 +4346,7 @@ fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
     String::new()
 }
 
-fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
+fn cast_target_underlying_kernel(ctx: &InterpContext, target: Arc<Node>) -> String {
     let mut current = cast_target_seed_name(ctx, target);
     let mut seen = BTreeSet::new();
 
@@ -4380,7 +4381,7 @@ fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> Strin
 fn str_identity_cast_if_string_family(
     val: &Value,
     ctx: &InterpContext,
-    target: Rc<Node>,
+    target: Arc<Node>,
 ) -> Option<Value> {
     let Value::Str(s) = val else {
         return None;
@@ -4393,7 +4394,7 @@ fn str_identity_cast_if_string_family(
     }
 }
 
-fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_cast(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
     let target_name = cast_target_seed_name(ctx, target_node.clone());
@@ -4415,7 +4416,7 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     }
 }
 
-fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_for_each(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let var_name = foreach_variable_at(node.clone(), ctx.si());
     let collection = eval_expr(&foreach_collection(node.clone()), env, ctx)?;
     let body_node = foreach_body(node.clone());
@@ -4429,7 +4430,7 @@ fn eval_for_each(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpR
     Ok(list_value((results)))
 }
 
-fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_index(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let base = eval_expr(&index_base(node.clone()), env, ctx)?;
     let idx = eval_expr(&index_expr(node.clone()), env, ctx)?;
 
@@ -4459,7 +4460,7 @@ fn eval_index(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResu
     }
 }
 
-fn eval_slice(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_slice(node: &Arc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let base = eval_expr(&slice_base(node.clone()), env, ctx)?;
     let start = eval_expr(&slice_start(node.clone()), env, ctx)?;
     let end = eval_expr(&slice_end(node.clone()), env, ctx)?;
@@ -5306,9 +5307,9 @@ fn eval_service_call(
 }
 
 fn dispatch_service_wet(
-    service_node: &Rc<Node>,
-    op_node: &Rc<Node>,
-    transport: &Rc<Node>,
+    service_node: &Arc<Node>,
+    op_node: &Arc<Node>,
+    transport: &Arc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
@@ -5326,7 +5327,7 @@ fn dispatch_service_wet(
 }
 
 fn build_service_param_env(
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
     ctx: &InterpContext,
@@ -5431,9 +5432,9 @@ fn value_to_host_string(val: &Value) -> String {
 }
 
 fn materialize_argv_expr_for_bindings(
-    node: &Rc<Node>,
+    node: &Arc<Node>,
     bindings: &HashMap<String, Value>,
-    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+    source_indices: &Arc<HashMap<String, Arc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Result<Value, String> {
     match node.expr_data.as_ref() {
         ExprData::ExprLiteral { value } => match value.as_ref() {
@@ -5814,7 +5815,7 @@ fn argv_arg_limit_refusal(argv: &[String], limit_bytes: usize) -> Option<InterpE
 }
 
 fn dispatch_shell(
-    transport: &Rc<Node>,
+    transport: &Arc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<ShellResult> {
@@ -5920,7 +5921,7 @@ fn dispatch_shell(
 
 fn map_shell_outputs(
     result: &ShellResult,
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
@@ -5974,7 +5975,7 @@ fn map_shell_outputs(
     })
 }
 
-fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
+fn extract_from_key(field_node: &Arc<Node>, ctx: &InterpContext) -> Option<String> {
     for prop in field_node.properties.iter() {
         let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
         if prop_name == "from_key" || prop_name == "from" {
@@ -5998,8 +5999,8 @@ struct FileResult {
 }
 
 fn dispatch_file(
-    op_node: &Rc<Node>,
-    transport: &Rc<Node>,
+    op_node: &Arc<Node>,
+    transport: &Arc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<FileResult> {
@@ -6162,7 +6163,7 @@ fn dispatch_file(
 
 fn map_file_outputs(
     result: &FileResult,
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
@@ -6268,9 +6269,9 @@ fn rest_auth_authority_conflict(config_auth_resolved: bool, has_auth_basic: bool
 }
 
 fn dispatch_rest(
-    service_node: &Rc<Node>,
-    op_node: &Rc<Node>,
-    transport: &Rc<Node>,
+    service_node: &Arc<Node>,
+    op_node: &Arc<Node>,
+    transport: &Arc<Node>,
     param_env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
@@ -6528,10 +6529,10 @@ fn dispatch_rest(
 }
 
 pub fn resolve_auth(
-    service_node: &Rc<Node>,
-    _transport: &Rc<Node>,
+    service_node: &Arc<Node>,
+    _transport: &Arc<Node>,
     param_env: &Rc<Env>,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     ctx: &InterpContext,
 ) -> AuthResolution {
     let mut header_name = "Authorization".to_string();
@@ -6626,7 +6627,7 @@ pub fn resolve_auth(
     }
 }
 
-fn extract_string_value(node: &Rc<Node>) -> Option<String> {
+fn extract_string_value(node: &Arc<Node>) -> Option<String> {
     if let ExprData::ExprLiteral { ref value } = *node.expr_data {
         if let LiteralValue::LitStr { value: s } = value.as_ref() {
             return Some(s.clone());
@@ -6636,9 +6637,9 @@ fn extract_string_value(node: &Rc<Node>) -> Option<String> {
 }
 
 fn find_service_config_string(
-    service_node: &Rc<Node>,
+    service_node: &Arc<Node>,
     key: &str,
-    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     for prop in service_node.properties.iter() {
         let name = field_init_node_name_at(prop.clone(), si.clone());
@@ -6755,7 +6756,7 @@ fn value_to_json(val: &Value) -> InterpResult<serde_json::Value> {
 fn map_response_to_value(
     text: &str,
     _json: Option<&serde_json::Value>,
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
@@ -6783,7 +6784,7 @@ fn map_response_to_value(
 
 fn map_response_to_value_json(
     json: &serde_json::Value,
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     let return_type = match op_node.inferred.as_deref() {
@@ -6868,7 +6869,7 @@ fn json_to_value(json: &serde_json::Value) -> Value {
     }
 }
 
-fn type_annotation_names(ctx: &InterpContext, ty: &Rc<Node>, target: &str) -> bool {
+fn type_annotation_names(ctx: &InterpContext, ty: &Arc<Node>, target: &str) -> bool {
     if ty.name == target || authored_name_at(ctx.si(), ty.clone()) == target {
         return true;
     }
@@ -6932,7 +6933,7 @@ fn published_case_operation_key(ctx: &InterpContext, fields: &[(Symbol, Value)])
     })
 }
 
-fn eval_mock_response(op_node: &Rc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
+fn eval_mock_response(op_node: &Arc<Node>, ctx: &InterpContext) -> InterpResult<Value> {
     for prop in op_node.properties.iter() {
         let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
         if has_mock_prefix(prop_name) {
@@ -9926,6 +9927,7 @@ mod shell_completion_trace_tests {
 #[cfg(test)]
 mod argv_arg_limit_test {
     use std::rc::Rc;
+    use std::sync::Arc;
 
     use im::{vector as im_vec, HashMap};
 
@@ -9949,7 +9951,7 @@ mod argv_arg_limit_test {
     }
 
     /// `shell.Exec.Check`-shaped argv: `sh -c "<command>"` as three literal tokens.
-    fn shell_check_style_transport(command: &str) -> Rc<Node> {
+    fn shell_check_style_transport(command: &str) -> Arc<Node> {
         let span = make_span(0, 0);
         shell_transport_node(
             Rc::new(im_vec![

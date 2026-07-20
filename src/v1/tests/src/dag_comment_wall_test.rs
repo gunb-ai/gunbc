@@ -1,5 +1,5 @@
 use im::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_parse::parse_with_table;
 use v1_compiler::v1_compiler_tokenize::tokenize;
@@ -10,7 +10,7 @@ fn try_parse(source: &str) -> bool {
     let nl = build_newline_index("<wall-test>".to_string(), source.to_string());
     let mut si = HashMap::new();
     si.insert(nl.file.clone(), nl.clone());
-    let parsed = parse_with_table(tokens, Rc::new(si), empty_intern_table());
+    let parsed = parse_with_table(tokens, Arc::new(si), empty_intern_table());
     parsed.result.module.is_some()
 }
 

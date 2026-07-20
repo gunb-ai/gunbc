@@ -7,7 +7,7 @@
 //! `SUB_QUADRATIC_DOUBLING_BUDGET`). It is a discriminating proxy for §6 baseline measurement
 //! on synthetic chains; the whole-corpus `dag_compile_clean_gate` wall-clock is tracked separately.
 
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
@@ -16,7 +16,7 @@ use v1_compiler::v1_std_core::{empty_intern_table, intern, intern_str, InternTab
 /// O(M²) shows ~4× wall-clock per module-count doubling; linear stays sub-4×.
 const SUB_QUADRATIC_DOUBLING_BUDGET: f64 = 4.0;
 
-fn build_intern_table(count: usize) -> Rc<InternTable> {
+fn build_intern_table(count: usize) -> Arc<InternTable> {
     let mut table = empty_intern_table();
     for i in 0..count {
         table = intern(table, format!("sym_{i}")).table.clone();
@@ -40,7 +40,7 @@ fn assert_resolved_no_hard_errors(
     );
 }
 
-fn synthetic_import_chain_sources(depth: usize) -> Vec<Rc<SourceFile>> {
+fn synthetic_import_chain_sources(depth: usize) -> Vec<Arc<SourceFile>> {
     (0..depth)
         .map(|i| {
             let content = if i == 0 {
@@ -52,7 +52,7 @@ fn synthetic_import_chain_sources(depth: usize) -> Vec<Rc<SourceFile>> {
                     i - 1
                 )
             };
-            Rc::new(SourceFile {
+            Arc::new(SourceFile {
                 path: format!("chain_{i}.dag"),
                 content,
             })
@@ -60,8 +60,8 @@ fn synthetic_import_chain_sources(depth: usize) -> Vec<Rc<SourceFile>> {
         .collect()
 }
 
-fn compile_modules(sources: Vec<Rc<SourceFile>>) {
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+fn compile_modules(sources: Vec<Arc<SourceFile>>) {
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
 }
 
@@ -97,7 +97,7 @@ fn intern_str_lookup_stays_linear_not_quadratic() {
     let small = build_intern_table(SMALL);
     let large = build_intern_table(LARGE);
 
-    let time_table = |table: Rc<InternTable>, lookups: usize| -> Duration {
+    let time_table = |table: Arc<InternTable>, lookups: usize| -> Duration {
         let len = table.strings.len().max(1);
         let mut sink = String::new();
         let start = Instant::now();

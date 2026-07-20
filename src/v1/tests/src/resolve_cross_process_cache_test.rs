@@ -481,7 +481,7 @@ fn same_subject_resolves_share_one_graph_store_fills_share() {
         let (g1, _) = resolve_entry_with_index(&index, &a).expect("build resolve");
         let (g2, _) = resolve_entry_with_index(&index, &a).expect("repeat resolve");
         assert!(
-            std::rc::Rc::ptr_eq(&g1, &g2),
+            std::sync::Arc::ptr_eq(&g1, &g2),
             "repeat resolve must serve the shared reference, not a rebuild"
         );
         assert_eq!(
@@ -497,7 +497,7 @@ fn same_subject_resolves_share_one_graph_store_fills_share() {
         let (h1, _) = resolve_entry_with_index(&index2, &a).expect("store-hit resolve");
         let (h2, _) = resolve_entry_with_index(&index2, &a).expect("repeat resolve");
         assert!(
-            std::rc::Rc::ptr_eq(&h1, &h2),
+            std::sync::Arc::ptr_eq(&h1, &h2),
             "repeat after a store hit must serve the installed reference, not a second decode"
         );
         assert_eq!(
@@ -506,7 +506,7 @@ fn same_subject_resolves_share_one_graph_store_fills_share() {
             "store serves the first touch: exactly one decode per subject per process"
         );
         assert!(
-            !std::rc::Rc::ptr_eq(&g1, &h1),
+            !std::sync::Arc::ptr_eq(&g1, &h1),
             "the share is per-process: a fresh index decodes its own reference"
         );
     });

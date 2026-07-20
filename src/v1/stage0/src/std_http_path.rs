@@ -9,7 +9,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -20,10 +20,10 @@ pub enum UrlPathToken {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PathTemplate {
-    pub tokens: Rc<Vec<Rc<UrlPathToken>>>,
+    pub tokens: Arc<Vec<Arc<UrlPathToken>>>,
 }
 
-pub fn has_path_params(template: Rc<PathTemplate>) -> bool {
+pub fn has_path_params(template: Arc<PathTemplate>) -> bool {
     {
         let mut __found = false;
         for t in template.tokens.clone().iter().cloned() {
@@ -39,9 +39,9 @@ pub fn has_path_params(template: Rc<PathTemplate>) -> bool {
     }
 }
 
-pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
+pub fn last_path_param(template: Arc<PathTemplate>) -> Option<String> {
     {
-        let params = Rc::new({
+        let params = Arc::new({
             let mut __result = Vec::new();
             for t in template.tokens.clone().iter().cloned() {
                 if match (*t.clone()).clone() {
@@ -69,10 +69,10 @@ pub struct PathParamBinding {
     pub value: String,
 }
 
-pub fn path_param_value(params: Rc<Vec<Rc<PathParamBinding>>>, name: String) -> String {
+pub fn path_param_value(params: Arc<Vec<Arc<PathParamBinding>>>, name: String) -> String {
     params.clone().iter().cloned().fold(
         "".to_string(),
-        |acc: String, binding: Rc<PathParamBinding>| {
+        |acc: String, binding: Arc<PathParamBinding>| {
             if (acc.clone() != "".to_string()) {
                 acc.clone()
             } else {
@@ -87,12 +87,12 @@ pub fn path_param_value(params: Rc<Vec<Rc<PathParamBinding>>>, name: String) -> 
 }
 
 pub fn render_path_template(
-    template: Rc<PathTemplate>,
-    params: Rc<Vec<Rc<PathParamBinding>>>,
+    template: Arc<PathTemplate>,
+    params: Arc<Vec<Arc<PathParamBinding>>>,
 ) -> String {
     template.tokens.clone().iter().cloned().fold(
         "".to_string(),
-        |acc: String, tok: Rc<UrlPathToken>| match (*tok.clone()).clone() {
+        |acc: String, tok: Arc<UrlPathToken>| match (*tok.clone()).clone() {
             UrlPathToken::LiteralToken { text: t, .. } => v1_rt::concat(acc.clone(), t.clone()),
             UrlPathToken::ParamToken { name: n, .. } => {
                 v1_rt::concat(acc.clone(), path_param_value(params.clone(), n.clone()))

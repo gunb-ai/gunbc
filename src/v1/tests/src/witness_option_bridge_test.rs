@@ -9,7 +9,7 @@
 //! - rust_emitter_lowers_*: unit tests of the v1 Rust emitter's variant-pattern
 //!   lowering — v1-EMITTER-coupled (lane ruling): they die with the Route-A
 //!   emitter retirement, not before; migrating them would cement the v1 emitter.
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v1_compiler::v1_compiler_emit_rust::emit_variant_pattern;
@@ -38,9 +38,9 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 }
 
 fn run_v4_module(entry: &str, content: &str, witness_fn: &str) -> Value {
-    let sources: Vec<Rc<SourceFile>> =
+    let sources: Vec<Arc<SourceFile>> =
         resolve_imports_transitively_with_source_roots(entry, content, &v2_source_roots());
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph
@@ -70,10 +70,10 @@ fn match_pattern_does_not_bridge_witness_to_some_none() {
 #[test]
 fn rust_emitter_lowers_present_absent_only_for_optional_parent() {
     let info = empty_emit_graph_info();
-    let empty_bindings = Rc::new(im::vector![]);
-    let empty_path = Rc::new(im::vector![]);
-    let empty_shared = Rc::new(im::OrdSet::new());
-    let empty_indices = Rc::new(im::HashMap::new());
+    let empty_bindings = Arc::new(im::vector![]);
+    let empty_path = Arc::new(im::vector![]);
+    let empty_shared = Arc::new(im::OrdSet::new());
+    let empty_indices = Arc::new(im::HashMap::new());
 
     let non_optional = emit_variant_pattern(
         "Absent".to_string(),
@@ -109,10 +109,10 @@ fn rust_emitter_lowers_present_absent_only_for_optional_parent() {
 #[test]
 fn rust_emitter_lowers_holds_violates_only_for_witness_parent() {
     let info = empty_emit_graph_info();
-    let empty_bindings = Rc::new(im::vector![]);
-    let empty_path = Rc::new(im::vector![]);
-    let empty_shared = Rc::new(im::OrdSet::new());
-    let empty_indices = Rc::new(im::HashMap::new());
+    let empty_bindings = Arc::new(im::vector![]);
+    let empty_path = Arc::new(im::vector![]);
+    let empty_shared = Arc::new(im::OrdSet::new());
+    let empty_indices = Arc::new(im::HashMap::new());
 
     let non_witness = emit_variant_pattern(
         "Holds".to_string(),

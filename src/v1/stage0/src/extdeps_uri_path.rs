@@ -15,26 +15,26 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "www.rfc-editor.org/rfc/rfc3986#section-3.3".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PathSegmentTokensResult {
-    ParsedSegmentTokens { tokens: Rc<Vec<Rc<UrlPathToken>>> },
+    ParsedSegmentTokens { tokens: Arc<Vec<Arc<UrlPathToken>>> },
     MalformedPathSegment { segment: String, reason: String },
 }
 
@@ -42,7 +42,7 @@ pub enum PathSegmentTokensResult {
 #[serde(tag = "_variant")]
 pub enum PathTemplateParseResult {
     ParsedPathTemplate {
-        template: Rc<PathTemplate>,
+        template: Arc<PathTemplate>,
     },
     MalformedPathTemplate {
         raw: String,
@@ -51,30 +51,30 @@ pub enum PathTemplateParseResult {
     },
 }
 
-pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
+pub fn parse_segment_tokens(seg: String) -> Arc<PathSegmentTokensResult> {
     if !v1_rt::contains(seg.clone(), "{".to_string()) {
         if v1_rt::contains(seg.clone(), "}".to_string()) {
-            Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+            Arc::new(PathSegmentTokensResult::MalformedPathSegment {
                 segment: seg.clone(),
                 reason: "stray closing brace".to_string(),
             })
         } else {
-            Rc::new(PathSegmentTokensResult::ParsedSegmentTokens {
-                tokens: Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
+            Arc::new(PathSegmentTokensResult::ParsedSegmentTokens {
+                tokens: Arc::new(vec![Arc::new(UrlPathToken::LiteralToken {
                     text: seg.clone(),
                 })]),
             })
         }
     } else {
         {
-            let before_and_rest = Rc::new(
+            let before_and_rest = Arc::new(
                 seg.clone()
                     .split(&"{".to_string())
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>(),
             );
             if ((before_and_rest.clone().len() as i64) != 2) {
-                return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                return Arc::new(PathSegmentTokensResult::MalformedPathSegment {
                     segment: seg.clone(),
                     reason: "multiple opening braces in one segment".to_string(),
                 });
@@ -82,7 +82,7 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             let prefix = match before_and_rest.clone().first().cloned() {
                 Some(p) => p.clone(),
                 None => {
-                    return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                    return Arc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
                         reason: "internal: missing prefix after opening-brace split".to_string(),
                     })
@@ -91,13 +91,13 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             let after_open = match before_and_rest.clone().get(1 as usize).cloned() {
                 Some(r) => r.clone(),
                 None => {
-                    return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                    return Arc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
                         reason: "internal: missing tail after opening-brace split".to_string(),
                     })
                 }
             };
-            let name_and_suffix = Rc::new(
+            let name_and_suffix = Arc::new(
                 after_open
                     .clone()
                     .split(&"}".to_string())
@@ -107,7 +107,7 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             if (v1_rt::contains(prefix.clone(), "}".to_string())
                 || ((name_and_suffix.clone().len() as i64) != 2))
             {
-                return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                return Arc::new(PathSegmentTokensResult::MalformedPathSegment {
                     segment: seg.clone(),
                     reason: "missing closing brace or extra closing brace".to_string(),
                 });
@@ -115,7 +115,7 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             let param_name = match name_and_suffix.clone().first().cloned() {
                 Some(p) => p.clone(),
                 None => {
-                    return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                    return Arc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
                         reason: "internal: missing parameter name after closing-brace split"
                             .to_string(),
@@ -125,43 +125,43 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             let suffix = match name_and_suffix.clone().get(1 as usize).cloned() {
                 Some(s) => s.clone(),
                 None => {
-                    return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                    return Arc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
                         reason: "internal: missing suffix after closing-brace split".to_string(),
                     })
                 }
             };
             let prefix_tokens = if (prefix.clone() != "".to_string()) {
-                Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
+                Arc::new(vec![Arc::new(UrlPathToken::LiteralToken {
                     text: prefix.clone(),
                 })])
             } else {
-                Rc::new(vec![])
+                Arc::new(vec![])
             };
             let param_tokens = if (param_name.clone() != "".to_string()) {
-                Rc::new(vec![Rc::new(UrlPathToken::ParamToken {
+                Arc::new(vec![Arc::new(UrlPathToken::ParamToken {
                     name: param_name.clone(),
                 })])
             } else {
-                Rc::new(vec![])
+                Arc::new(vec![])
             };
             let suffix_tokens = if (suffix.clone() != "".to_string()) {
-                Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
+                Arc::new(vec![Arc::new(UrlPathToken::LiteralToken {
                     text: suffix.clone(),
                 })])
             } else {
-                Rc::new(vec![])
+                Arc::new(vec![])
             };
             if (((param_name.clone() == "".to_string())
                 || v1_rt::contains(suffix.clone(), "{".to_string()))
                 || v1_rt::contains(suffix.clone(), "}".to_string()))
             {
-                Rc::new(PathSegmentTokensResult::MalformedPathSegment {
+                Arc::new(PathSegmentTokensResult::MalformedPathSegment {
                     segment: seg.clone(),
                     reason: "invalid parameter segment structure".to_string(),
                 })
             } else {
-                Rc::new(PathSegmentTokensResult::ParsedSegmentTokens {
+                Arc::new(PathSegmentTokensResult::ParsedSegmentTokens {
                     tokens: v1_rt::concat(
                         v1_rt::concat(prefix_tokens.clone(), param_tokens.clone()),
                         suffix_tokens.clone(),
@@ -172,9 +172,9 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
     }
 }
 
-pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
+pub fn parse_path_template(raw: String) -> Arc<PathTemplateParseResult> {
     {
-        let path_only = match Rc::new(
+        let path_only = match Arc::new(
             raw.clone()
                 .split(&"?".to_string())
                 .map(|s| s.to_string())
@@ -186,9 +186,9 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
             Some(p) => p.clone(),
             None => raw.clone(),
         };
-        let segments = Rc::new({
+        let segments = Arc::new({
             let mut __result = Vec::new();
-            for s in Rc::new(
+            for s in Arc::new(
                 path_only
                     .clone()
                     .split(&"/".to_string())
@@ -205,9 +205,9 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
             __result
         });
         match segments.clone().first().cloned() {
-            None => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
-                template: Rc::new(PathTemplate {
-                    tokens: Rc::new(vec![]),
+            None => Arc::new(PathTemplateParseResult::ParsedPathTemplate {
+                template: Arc::new(PathTemplate {
+                    tokens: Arc::new(vec![]),
                 }),
             }),
             Some(first_seg) => match (*parse_segment_tokens(first_seg.clone())).clone() {
@@ -215,7 +215,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                     segment: s,
                     reason: r,
                     ..
-                } => Rc::new(PathTemplateParseResult::MalformedPathTemplate {
+                } => Arc::new(PathTemplateParseResult::MalformedPathTemplate {
                     raw: raw.clone(),
                     segment: s.clone(),
                     reason: r.clone(),
@@ -224,7 +224,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                     tokens: first_tokens,
                     ..
                 } => {
-                    let parsed = Rc::new(
+                    let parsed = Arc::new(
                         segments
                             .clone()
                             .iter()
@@ -235,12 +235,13 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                     .iter()
                     .cloned()
                     .fold(
-                        Rc::new(PathTemplateParseResult::ParsedPathTemplate {
-                            template: Rc::new(PathTemplate {
+                        Arc::new(PathTemplateParseResult::ParsedPathTemplate {
+                            template: Arc::new(PathTemplate {
                                 tokens: first_tokens.clone(),
                             }),
                         }),
-                        |acc: Rc<PathTemplateParseResult>, seg: String| match (*acc.clone()).clone()
+                        |acc: Arc<PathTemplateParseResult>, seg: String| match (*acc.clone())
+                            .clone()
                         {
                             PathTemplateParseResult::MalformedPathTemplate { .. } => acc.clone(),
                             PathTemplateParseResult::ParsedPathTemplate {
@@ -250,7 +251,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                                     segment: s,
                                     reason: r,
                                     ..
-                                } => Rc::new(PathTemplateParseResult::MalformedPathTemplate {
+                                } => Arc::new(PathTemplateParseResult::MalformedPathTemplate {
                                     raw: raw.clone(),
                                     segment: s.clone(),
                                     reason: r.clone(),
@@ -258,8 +259,8 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                                 PathSegmentTokensResult::ParsedSegmentTokens {
                                     tokens: seg_tokens,
                                     ..
-                                } => Rc::new(PathTemplateParseResult::ParsedPathTemplate {
-                                    template: Rc::new(PathTemplate {
+                                } => Arc::new(PathTemplateParseResult::ParsedPathTemplate {
+                                    template: Arc::new(PathTemplate {
                                         tokens: v1_rt::concat(
                                             path.tokens.clone(),
                                             seg_tokens.clone(),

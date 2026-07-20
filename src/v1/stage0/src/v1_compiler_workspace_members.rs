@@ -16,7 +16,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn workspace_members_region_begin_marker() -> String {
     "    # BEGIN generated stage0 crate members -- regen_stage0 writes this region (authority: v1.compiler.workspace_members)".to_string()
@@ -26,7 +26,7 @@ pub fn workspace_members_region_end_marker() -> String {
     "    # END generated stage0 crate members".to_string()
 }
 
-pub fn stage0_member_entry(spec: Rc<Stage0CrateSpec>) -> String {
+pub fn stage0_member_entry(spec: Arc<Stage0CrateSpec>) -> String {
     v1_rt::concat(
         v1_rt::concat("    \"".to_string(), spec.crate_dir.clone()),
         "\",".to_string(),
@@ -35,7 +35,7 @@ pub fn stage0_member_entry(spec: Rc<Stage0CrateSpec>) -> String {
 
 pub fn stage0_workspace_member_region() -> String {
     match (*stage0_crate_plan_outcome()).clone() {
-        Stage0CratePlanOutcome::Stage0CratePlanOk { plan: plan, .. } => Rc::new(
+        Stage0CratePlanOutcome::Stage0CratePlanOk { plan: plan, .. } => Arc::new(
             plan.crates
                 .clone()
                 .iter()

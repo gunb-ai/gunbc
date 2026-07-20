@@ -17,7 +17,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub type InterfaceHash = NonEmptyStr;
 
@@ -59,40 +59,40 @@ pub enum ExportKind {
 pub struct ExportEntry {
     pub name: NonEmptyStr,
     pub kind: ExportKind,
-    pub contract: Rc<InterfaceContract>,
+    pub contract: Arc<InterfaceContract>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InterfaceSummary {
     pub module_path: NonEmptyStr,
-    pub exports: Rc<Vec<Rc<ExportEntry>>>,
+    pub exports: Arc<Vec<Arc<ExportEntry>>>,
     pub interface_hash: InterfaceHash,
 }
 
-pub fn interface_summary_v0_dissolution_trigger() -> Rc<Disposition> {
+pub fn interface_summary_v0_dissolution_trigger() -> Arc<Disposition> {
     thread_local! {
-            static CACHED: Rc<Disposition> = {
-                Rc::new(Disposition::Scaffold {
+            static CACHED: Arc<Disposition> = {
+                Arc::new(Disposition::Scaffold {
         dissolves_to: ConstructionMechanism::SingleAuthority,
-        bind: Rc::new(DeclarationRef {
+        bind: Arc::new(DeclarationRef {
         module_path: "std.interface_summary".to_string(),
         decl_name: "export_entry_fingerprint".to_string(),
-        field: Rc::new(DeclField::WholeDeclaration),
+        field: Arc::new(DeclField::WholeDeclaration),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<Disposition>| c.clone())
+    CACHED.with(|c: &Arc<Disposition>| c.clone())
 }
 
-pub fn signature_contract(signature: ContentHash) -> Rc<InterfaceContract> {
-    Rc::new(InterfaceContract::SignatureContract {
+pub fn signature_contract(signature: ContentHash) -> Arc<InterfaceContract> {
+    Arc::new(InterfaceContract::SignatureContract {
         signature: signature.clone(),
     })
 }
 
-pub fn contract_absent() -> Rc<InterfaceContract> {
-    Rc::new(InterfaceContract::ContractAbsent)
+pub fn contract_absent() -> Arc<InterfaceContract> {
+    Arc::new(InterfaceContract::ContractAbsent)
 }
 
 pub fn export_kind_tag(kind: ExportKind) -> String {
@@ -104,7 +104,7 @@ pub fn export_kind_tag(kind: ExportKind) -> String {
     }
 }
 
-pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> NonEmptyStr {
+pub fn export_entry_fingerprint(entry: Arc<ExportEntry>) -> NonEmptyStr {
     match (*entry.contract.clone()).clone() {
         InterfaceContract::ContractAbsent => content_hash_tagged(
             "export".to_string(),
@@ -129,10 +129,10 @@ pub fn export_entry_fingerprint(entry: Rc<ExportEntry>) -> NonEmptyStr {
     }
 }
 
-pub fn interface_summary_rollup(exports: Rc<Vec<Rc<ExportEntry>>>) -> ContentHash {
+pub fn interface_summary_rollup(exports: Arc<Vec<Arc<ExportEntry>>>) -> ContentHash {
     exports.clone().iter().cloned().fold(
         content_hash_atom("interface-summary-v0".to_string()),
-        |acc: NonEmptyStr, entry: Rc<ExportEntry>| {
+        |acc: NonEmptyStr, entry: Arc<ExportEntry>| {
             content_hash_combine(acc, export_entry_fingerprint(entry.clone()))
         },
     )
@@ -140,7 +140,7 @@ pub fn interface_summary_rollup(exports: Rc<Vec<Rc<ExportEntry>>>) -> ContentHas
 
 pub fn module_key(
     source_hash: NonEmptyStr,
-    direct_import_interface_hashes: Rc<Vec<ContentHash>>,
+    direct_import_interface_hashes: Arc<Vec<ContentHash>>,
 ) -> ContentHash {
     direct_import_interface_hashes.clone().iter().cloned().fold(
         content_hash_tagged("module-key-source".to_string(), source_hash.clone()),
