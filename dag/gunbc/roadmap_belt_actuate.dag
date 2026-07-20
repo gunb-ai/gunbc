@@ -2,7 +2,8 @@ module gunbc.roadmap_belt_actuate
 
 import std.types { String, Int, Bool, List, NonEmptyStr, FilePath }
 import gunbc.roadmap_model { RoadmapNode }
-import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
+import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier, doc_all_nodes }
+import gunbc.roadmap_status { signoff_accepts }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_belt {
   BeltRunState, Running, Paused,
@@ -428,5 +429,140 @@ fn belt_run_once_cli() -> ProcessExit {
     } else {
       ExitSuccess
     }
+  }
+}
+
+data belt_dispatch_node_note: String = "Per-node MANUAL dispatch — the click path (operator 2026-07-20: 'i should just manually click/dispatch'). belt_run_once ticks the WHOLE ready frontier; belt_dispatch_node spawns exactly ONE node by id, operator-selected from the roadmap UI, NOT frontier-gated (the operator's click IS the selection). DONE = the operator's SIGNOFF, never a merged PR (operator: 'PR merged not necessarily mean item == done — they may not be 1:1'): a signoff-accepted node refuses dispatch (DispatchNodeAlreadyDone); a node whose PRs merged but is unsigned is still 'in review' and remains dispatchable (more work). Idempotent by the same observe-before-spawn the tick uses: if the node's session is already live, DispatchAlreadyLive (noop), so a double-click never double-spawns. Fail-closed: unknown node id -> DispatchNodeNotFound; unknowable observed set -> DispatchObserveRefused; spawn failure -> DispatchSpawnFailed (never a fabricated success). Reuses belt_lookup_node (pure roadmap read), belt_observe, and belt_actuate_spawn — no forked spawn path."
+
+type BeltNodeLookup
+  = NodeFound { node: RoadmapNode }
+  | NodeMissing
+
+fn belt_find_node_in(nodes: List<RoadmapNode>, node_id: String) -> BeltNodeLookup {
+  let matches = nodes |> filter(n => n.node == node_id)
+  fold(matches, init: NodeMissing, f: fn(acc, n) {
+    NodeFound { node: n }
+  })
+}
+
+fn belt_lookup_node(node_id: String) -> BeltNodeLookup {
+  belt_find_node_in(nodes: doc_all_nodes(doc: roadmap_authority()), node_id: node_id)
+}
+
+fn belt_node_session_live(live: List<DispatchLiveSession>, node_id: String) -> Bool {
+  any(live, s => s.node_id == node_id)
+}
+
+type BeltDispatchResult
+  = DispatchSpawned { node_id: String, session_name: String }
+  | DispatchAlreadyLive { node_id: String, session_name: String }
+  | DispatchNodeNotFound { node_id: String }
+  | DispatchNodeAlreadyDone { node_id: String }
+  | DispatchObserveRefused { node_id: String, reason: String }
+  | DispatchSpawnFailed { node_id: String, step: String, detail: String }
+
+fn belt_dispatch_node(node_id: String) -> BeltDispatchResult {
+  match belt_lookup_node(node_id: node_id) {
+    NodeMissing => DispatchNodeNotFound { node_id: node_id }
+    NodeFound { node: node } =>
+      if signoff_accepts(s: node.signoff) {
+        DispatchNodeAlreadyDone { node_id: node_id }
+      } else {
+        match belt_observe() {
+          ObserveRefused { reason: r } =>
+            DispatchObserveRefused { node_id: node_id, reason: r }
+          Observed { live: live } =>
+            if belt_node_session_live(live: live, node_id: node_id) {
+              DispatchAlreadyLive {
+                node_id: node_id,
+                session_name: dispatch_tmux_session_name(node_id: node.node),
+              }
+            } else {
+              match belt_actuate_spawn(
+                node: node,
+                session_uuid: belt_spawn_session_uuid(node_id: node_id),
+                workdir: belt_actuate_workdir as String,
+              ) {
+                Spawned { node_id: sid, session_name: sn } =>
+                  DispatchSpawned { node_id: sid, session_name: sn }
+                SpawnFailed { node_id: sid, step: st, detail: d } =>
+                  DispatchSpawnFailed { node_id: sid, step: st, detail: d }
+              }
+            }
+        }
+      }
+  }
+}
+
+fn belt_dispatch_result_ok(r: BeltDispatchResult) -> Bool {
+  match r {
+    DispatchSpawned { node_id: _, session_name: _ } => true
+    DispatchAlreadyLive { node_id: _, session_name: _ } => true
+    DispatchNodeNotFound { node_id: _ } => false
+    DispatchNodeAlreadyDone { node_id: _ } => false
+    DispatchObserveRefused { node_id: _, reason: _ } => false
+    DispatchSpawnFailed { node_id: _, step: _, detail: _ } => false
+  }
+}
+
+fn belt_dispatch_result_json_value(r: BeltDispatchResult) -> JsonValue {
+  match r {
+    DispatchSpawned { node_id: nid, session_name: sn } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "spawned")),
+        json_kv(key: "session_name", value: json_string(s: sn)),
+      ])
+    DispatchAlreadyLive { node_id: nid, session_name: sn } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "already_live")),
+        json_kv(key: "session_name", value: json_string(s: sn)),
+      ])
+    DispatchNodeNotFound { node_id: nid } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "node_not_found")),
+      ])
+    DispatchNodeAlreadyDone { node_id: nid } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "already_done_signed_off")),
+      ])
+    DispatchObserveRefused { node_id: nid, reason: r } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "observe_refused")),
+        json_kv(key: "reason", value: json_string(s: r)),
+      ])
+    DispatchSpawnFailed { node_id: nid, step: st, detail: d } =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: nid)),
+        json_kv(key: "status", value: json_string(s: "spawn_failed")),
+        json_kv(key: "step", value: json_string(s: st)),
+        json_kv(key: "detail", value: json_string(s: d)),
+      ])
+  }
+}
+
+data belt_dispatch_env_var: NonEmptyStr = "GUNBC_BELT_NODE_ID" as NonEmptyStr
+
+data belt_dispatch_node_cli_note: String = "The ProcessExit entrypoint the roadmap-UI launch button drives. gunbc run --function cannot pass an argument (there is no --arg flag), so the node id enters through the environment: the Node HTTP server on srv1 shells env GUNBC_BELT_NODE_ID=NODE gunbc run --function belt_dispatch_node_cli, and this reads it via shell.Env.Get (the same env-read authority github.auth uses for its token). Fail-closed on the channel: a missing OR empty GUNBC_BELT_NODE_ID refuses — shell.Env.Get returns a Present-but-empty value for an unset var wet, so empty is folded into the same refusal as Absent. Exit map: DispatchSpawned or DispatchAlreadyLive -> ExitSuccess (the click achieved or already holds the desired state, the node is being worked); every refusal or failure (node_not_found, already_done, observe_refused, spawn_failed) -> exit_failure with the JSON receipt on stderr, so the server relays the exact cause back to the operator."
+
+fn belt_dispatch_node_cli() -> ProcessExit {
+  match shell.Env.Get(name: belt_dispatch_env_var).value {
+    Absent =>
+      exit_failure(reason: "belt_dispatch_node_cli: GUNBC_BELT_NODE_ID not set — no node id to dispatch (fail-closed)")
+    Present { value: v } =>
+      if string_length(s: v) == 0 {
+        exit_failure(reason: "belt_dispatch_node_cli: GUNBC_BELT_NODE_ID is empty — no node id to dispatch (fail-closed)")
+      } else {
+        let r = belt_dispatch_node(node_id: v)
+        if belt_dispatch_result_ok(r: r) {
+          ExitSuccess
+        } else {
+          exit_failure(reason: serialize_json(v: belt_dispatch_result_json_value(r: r)))
+        }
+      }
   }
 }

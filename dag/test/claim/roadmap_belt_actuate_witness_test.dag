@@ -27,6 +27,12 @@ import gunbc.roadmap_belt_actuate {
   BeltObserve, Observed, ObserveRefused,
   belt_observe_from_result,
   belt_spawn_session_uuid,
+  BeltNodeLookup, NodeFound, NodeMissing,
+  belt_find_node_in,
+  belt_node_session_live,
+  BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
+  DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
+  belt_dispatch_result_ok,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -242,6 +248,41 @@ fn witness_uuid_rfc4122_shape() -> Bool {
     && uuid_char(u: u, i: 19) == "8"
 }
 
+fn is_node_found(l: BeltNodeLookup) -> Bool {
+  match l {
+    NodeFound { node: _ } => true
+    NodeMissing => false
+  }
+}
+
+fn witness_find_node_hits() -> Bool {
+  is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "b"))
+}
+
+fn witness_find_node_misses() -> Bool {
+  !is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "z"))
+}
+
+fn witness_node_session_live_true() -> Bool {
+  belt_node_session_live(live: [live_session(node_id: "a", verdict: Converged)], node_id: "a")
+}
+
+fn witness_node_session_live_false() -> Bool {
+  !belt_node_session_live(live: [live_session(node_id: "a", verdict: Converged)], node_id: "b")
+}
+
+fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
+  belt_dispatch_result_ok(r: DispatchSpawned { node_id: "a", session_name: "gunbc-dispatch-a" })
+    && belt_dispatch_result_ok(r: DispatchAlreadyLive { node_id: "a", session_name: "gunbc-dispatch-a" })
+}
+
+fn witness_dispatch_result_refusals_not_ok() -> Bool {
+  !belt_dispatch_result_ok(r: DispatchNodeNotFound { node_id: "a" })
+    && !belt_dispatch_result_ok(r: DispatchNodeAlreadyDone { node_id: "a" })
+    && !belt_dispatch_result_ok(r: DispatchObserveRefused { node_id: "a", reason: "x" })
+    && !belt_dispatch_result_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" })
+}
+
 test fn roadmap_belt_actuate_witnesses() -> Bool {
   witness_exec_ok_runs_echo()
     && witness_exec_refuses_missing_program()
@@ -259,4 +300,10 @@ test fn roadmap_belt_actuate_witnesses() -> Bool {
     && witness_uuid_deterministic()
     && witness_uuid_distinct_nodes()
     && witness_uuid_rfc4122_shape()
+    && witness_find_node_hits()
+    && witness_find_node_misses()
+    && witness_node_session_live_true()
+    && witness_node_session_live_false()
+    && witness_dispatch_result_ok_spawned_and_live()
+    && witness_dispatch_result_refusals_not_ok()
 }
