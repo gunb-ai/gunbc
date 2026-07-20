@@ -60,16 +60,14 @@ The anemic `String` leaves are **more than one**: `host_effect.ShellCommand{scri
 Two enforcement milestones, kept distinct — my earlier draft conflated them:
 
 - **LANDED — bash-AST-vocab containment (#6854).** `realization_vocabulary_containment` reds any intent-layer import of `bash_build` / `ShellStmt` / `serialize_bash`. This confines the *language-AST vocabulary* only; it does **not** recognize `extdeps.shell` or forbid `shell.Exec`.
-- **OPEN — meta-exec confinement.** `shell.Exec.Run/.Check` is **not** walled today; the `host_language_transport_script` lens is **inert** (`fail_closed_lockdown.dag` — "no gate asserts it RED; a `shell.Exec.Run` can regress to a bare string"), and direct intent-layer `shell.Exec.Run` calls remain (`ci_deploy_access.dag:219`, `tools/review.dag`, `host_converge_slice1.dag`). Wiring this into a construction wall is arc work — precisely what the provisioning-window authority exists to make constructible.
+- **LANDED — meta-exec confinement (Wave A1, #6900).** `shell.Exec` isolated into `extdeps/shell/exec.dag`; `TransportScript` brands the Run/Check input; `v2.lens.meta_exec_confinement` enforces a module-granular import wall (realization-edge prefixes + shrinking exception roster with stale-roster RED); `host_language_transport_script` is live and enrolled in `commit_workflow.dag` (bare-string literal detection peels through `transport_script_from_body`). Seven rostered intent-layer consumers remain until Wave A2 migration; new `extdeps.shell.exec` imports outside the edge or roster are a typed leak.
 
-### Import-visibility for meta-exec confinement (operator, 2026-07-19)
+### Import-visibility for meta-exec confinement (operator, 2026-07-19; Wave A1 landed option (a))
 
 `shell.Exec.Run` is the honest bottom bash transport — kept, not deleted — but it must be **heavily sequestered** so its only caller is realization (its input always `emit`'s output). The wall is real import-graph analysis (`LayerImportFact`) but **module-granular**, and `shell.Exec.Run` shares `extdeps.shell.shell` with legitimate ops (`shell.Test`, `shell.Mkdir`). Two ways to sequester one operation:
 
-- **(a) Isolate the bottom transport into its own module** (`extdeps/shell/exec.dag`) → the existing module-granular wall confines it, no new language feature. Recommended.
-- **(b) Add symbol-level import visibility** to `LayerImportFact` (reference granularity) — the general feature, converging with the namespace-only-resolution lane (references become `container.member`).
-
-Per the operator's condition, whichever is chosen **lands with the meta-exec-confinement milestone**, not deferred.
+- **(a) Isolate the bottom transport into its own module** (`extdeps/shell/exec.dag`) → the existing module-granular wall confines it, no new language feature. **Landed (Wave A1).**
+- **(b) Add symbol-level import visibility** to `LayerImportFact` (reference granularity) — the general feature, converging with the namespace-only-resolution lane (references become `container.member`). Deferred unless module isolation proves insufficient.
 
 ## The access/auth exemplar (deploy-preflight) — a grant-model consumer, contributed to its lane
 
