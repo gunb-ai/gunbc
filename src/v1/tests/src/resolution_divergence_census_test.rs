@@ -18,7 +18,7 @@ fn workspace_root() -> std::path::PathBuf {
 }
 
 #[test]
-#[ignore = "CI witness opt-in inversion: whole-tree resolve over dag+src/v1+src/v2 exceeds per-PR floor budget. Run explicitly: cargo nextest run -p v1-compiler-tests -- --ignored resolution_divergence_census_whole_tree --nocapture. Re-enroll when affected-set selection lands (namespace lane §12.4 census)."]
+#[ignore = "CI witness opt-in inversion: whole-tree resolve over dag+src/v2 (floor corpus) exceeds per-PR floor budget. Run explicitly: cargo test -p v1-compiler-tests resolution_divergence_census_whole_tree -- --ignored --nocapture. Re-enroll when affected-set selection lands (namespace lane §12.4 census)."]
 fn resolution_divergence_census_whole_tree() {
     let ws = workspace_root();
     let roots = resolution_divergence_census_source_roots(&ws);

@@ -17194,6 +17194,8 @@ pub struct ResolutionDivergenceCostShape {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResolutionDivergenceCensus {
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
     pub sites_checked: usize,
     pub agree: usize,
     pub diverge: usize,
@@ -17485,11 +17487,10 @@ pub fn resolution_divergence_census_from_ctx(
     out
 }
 
-/// Floor source roots for the §12.4 census (dag + src/v1 + src/v2).
+/// Floor corpus source roots for the §12.4 census (`gunbc.ci_layer_roots.witness_layer_roots`).
 pub fn resolution_divergence_census_source_roots(ws: &Path) -> Vec<String> {
     vec![
         ws.join("dag").to_string_lossy().into_owned(),
-        ws.join("src/v1").to_string_lossy().into_owned(),
         ws.join("src/v2").to_string_lossy().into_owned(),
     ]
 }
@@ -17499,16 +17500,28 @@ pub fn resolution_divergence_census_live(
     source_roots: &[String],
     exclude_substrings: &[String],
 ) -> Result<ResolutionDivergenceCensus, String> {
-    let WholeTreeCtx { ctx, .. } = whole_tree_resolved_ctx(
+    let WholeTreeCtx {
+        ctx,
+        modules_resolved,
+        modules_excluded,
+        ..
+    } = whole_tree_resolved_ctx(
         source_roots,
         exclude_substrings,
         v1_interpreter::ExecutionMode::Wet,
     )?;
-    Ok(resolution_divergence_census_from_ctx(&ctx))
+    let mut census = resolution_divergence_census_from_ctx(&ctx);
+    census.modules_resolved = modules_resolved;
+    census.modules_excluded = modules_excluded;
+    Ok(census)
 }
 
 pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) -> String {
     let mut lines = Vec::new();
+    lines.push(format!(
+        "[resolution-divergence-census] scope=dag+src/v2 modules_resolved={} modules_excluded={}",
+        census.modules_resolved, census.modules_excluded
+    ));
     lines.push(format!(
         "[resolution-divergence-census] sites_checked={}",
         census.sites_checked
