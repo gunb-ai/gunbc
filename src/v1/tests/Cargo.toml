@@ -7,7 +7,7 @@ publish = false
 description = "Integration tests for the v2 self-hosted compiler"
 
 [dependencies]
-im-rc = { version = "15.1", features = ["serde"] }
+im = { version = "15.1", features = ["serde"] }
 v1-compiler = { path = "../stage0", features = ["text_lookup_work_counter", "interp_test_witness"] }
 
 [dev-dependencies]

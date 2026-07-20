@@ -3,7 +3,7 @@
 // Dissolve-on: self-emit cutover retires this module when v2.compiler.normalize
 // is emitted-only and the behavioral harness is modeled (sn_scaffold_dissolution_trigger).
 
-use im_rc::{vector as vec, Vector as Vec};
+use im::{vector as vec, Vector as Vec};
 use std::rc::Rc;
 
 use crate::usv_pilot_v2_std_algebra::list_snoc_item;

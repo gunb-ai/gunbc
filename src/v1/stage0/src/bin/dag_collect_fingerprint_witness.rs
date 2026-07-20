@@ -24,7 +24,7 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::from(1)
 }
 
-fn hashes(labels: Vec<&str>) -> Rc<im_rc::Vector<String>> {
+fn hashes(labels: Vec<&str>) -> Rc<im::Vector<String>> {
     Rc::new(
         labels
             .into_iter()
