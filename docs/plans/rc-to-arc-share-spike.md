@@ -1,6 +1,6 @@
 # Rc→Arc share spike — memory pricing report
 
-> **Status:** measurement receipt, session smart-lark-630, 2026-07-20. **No migration landed** — harness + report only.
+> **Status:** measurement receipt, session smart-lark-630, 2026-07-20. **Docs-only landing** — harness ran session-local (branch history); not shipped in seed.
 >
 > Answers open decision **2** in [cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) §9 (`Arc migration depth: store-path-only vs whole-seed`).
 >
