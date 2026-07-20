@@ -11,7 +11,13 @@ import gunbc.host_effect_plan {
   host_effect_plan_apply,
 }
 import v2.std.effect_plan { EffectPlan, If }
-import v2.std.orchestration { FailFast, ExitZero, Run }
+import v2.std.orchestration {
+  FailFast,
+  ExitZero,
+  Run,
+  orchestration_to_effect_plan_dissolve_on,
+}
+import v2.std.effect_plan { effect_plan_orchestration_succession_dissolve_on }
 import v2.std.collection { Absent }
 import std.realization_reconcile { reconciliation_converged }
 import gunbc.fleet_intent { srv1_host }
@@ -66,7 +72,23 @@ fn witness_control_flow_step_refuses_fail_closed() -> Bool {
   ))
 }
 
+fn witness_orchestration_to_effect_plan_dissolve_on_present() -> Bool {
+  string_contains(
+    s: orchestration_to_effect_plan_dissolve_on,
+    pattern: "dissolve-on: v2.std.orchestration",
+  )
+}
+
+fn witness_effect_plan_orchestration_succession_dissolve_on_present() -> Bool {
+  string_contains(
+    s: effect_plan_orchestration_succession_dissolve_on,
+    pattern: "dissolve-on: v2.std.orchestration parallel",
+  )
+}
+
 test fn host_effect_plan_witness_holds() -> Bool {
   witness_empty_plan_refuses_fail_closed()
     && witness_control_flow_step_refuses_fail_closed()
+    && witness_orchestration_to_effect_plan_dissolve_on_present()
+    && witness_effect_plan_orchestration_succession_dissolve_on_present()
 }
