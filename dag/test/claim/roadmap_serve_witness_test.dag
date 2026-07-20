@@ -4,7 +4,10 @@ import gunbc.roadmap_serve {
   RoadmapServeHandler,
   RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
   DispatchJsonHandler, HealthzHandler, BeltDispatchHandler,
-  roadmap_serve_route_table,
+  RoadmapServeRouteSpec,
+  RoadmapServeTableBuild, RoadmapServeTable, RoadmapServeTableRefused,
+  roadmap_serve_route_table_build,
+  roadmap_serve_build_from_specs,
   roadmap_serve_selection_response,
   belt_dispatch_status,
 }
@@ -15,6 +18,7 @@ import gunbc.roadmap_belt_actuate {
 }
 import extdeps.http.server {
   ServeHttpResponse,
+  ServedRouteTable,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
   serve_select_route,
   HttpMethodParse, KnownMethod, UnknownMethod,
@@ -23,8 +27,17 @@ import extdeps.http.server {
 import std.http_path { PathParamBinding, path_param_value }
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
 
+data live_table_or_empty_note: String = "Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below goes RED (nothing selects) — the discriminating direction; the production path never does this (roadmap_serve_respond answers 500 on Refused)."
+
+fn live_table_or_empty() -> ServedRouteTable<RoadmapServeHandler> {
+  match roadmap_serve_route_table_build() {
+    RoadmapServeTable { table: t } => t
+    RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => ServedRouteTable { routes: [] }
+  }
+}
+
 fn selects(method: HttpMethod, path: String, want: RoadmapServeHandler) -> Bool {
-  match serve_select_route(table: roadmap_serve_route_table(), method: method, path: path) {
+  match serve_select_route(table: live_table_or_empty(), method: method, path: path) {
     SelectedDynamic { handler: h, params: _ } => h == want
     SelectedStatic { route: _ } => false
     MethodNotAllowed { allowed: _ } => false
@@ -42,7 +55,7 @@ fn witness_serve_table_selection() -> Bool {
 }
 
 fn witness_dispatch_param_bound() -> Bool {
-  match serve_select_route(table: roadmap_serve_route_table(), method: POST, path: "/dispatch/2-cd-transport") {
+  match serve_select_route(table: live_table_or_empty(), method: POST, path: "/dispatch/2-cd-transport") {
     SelectedDynamic { handler: _, params: ps } =>
       path_param_value(params: ps, name: "node_id") == "2-cd-transport"
     SelectedStatic { route: _ } => false
@@ -52,7 +65,7 @@ fn witness_dispatch_param_bound() -> Bool {
 }
 
 fn witness_dispatch_get_folds_405() -> Bool {
-  match serve_select_route(table: roadmap_serve_route_table(), method: GET, path: "/dispatch/x") {
+  match serve_select_route(table: live_table_or_empty(), method: GET, path: "/dispatch/x") {
     MethodNotAllowed { allowed: ms } => count(ms) == 1 && any(ms, m => m == POST)
     SelectedStatic { route: _ } => false
     SelectedDynamic { handler: _, params: _ } => false
@@ -81,6 +94,26 @@ fn witness_dispatch_status_total() -> Bool {
     && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d" }) == 502
 }
 
+fn witness_live_table_builds_ready_six_routes() -> Bool {
+  match roadmap_serve_route_table_build() {
+    RoadmapServeTable { table: t } => count(t.routes) == 6
+    RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => false
+  }
+}
+
+data malformed_literal_red_note: String = "The RED control for review 40286's section-5 catch: a malformed route literal through the SAME build fold must REFUSE the whole table (typed, carrying the broken raw), never fabricate an empty template that would silently match '/'."
+
+fn witness_malformed_route_literal_refuses_table() -> Bool {
+  let specs = [
+    RoadmapServeRouteSpec { method: GET, raw: "/ok", handler: HealthzHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/dispatch/\{node_id", handler: BeltDispatchHandler },
+  ]
+  match roadmap_serve_build_from_specs(specs: specs) {
+    RoadmapServeTableRefused { raw: r, segment: _, reason: _ } => r == "/dispatch/\{node_id"
+    RoadmapServeTable { table: _ } => false
+  }
+}
+
 fn witness_unknown_method_refuses() -> Bool {
   match parse_http_method_label(label: "BREW") {
     UnknownMethod { label: l } => l == "BREW"
@@ -106,6 +139,8 @@ test fn roadmap_serve_witnesses() -> Bool {
     && witness_unknown_path_folds_404_response()
     && witness_405_response_carries_allowed()
     && witness_dispatch_status_total()
+    && witness_live_table_builds_ready_six_routes()
+    && witness_malformed_route_literal_refuses_table()
     && witness_unknown_method_refuses()
     && witness_known_methods_parse()
 }

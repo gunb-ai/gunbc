@@ -1,7 +1,7 @@
 module gunbc.roadmap_serve
 
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST }
-import std.http_path { PathTemplate, PathParamBinding, path_param_value }
+import std.http_path { PathParamBinding, path_param_value }
 import std.markup { MarkupNode }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -59,24 +59,52 @@ type RoadmapServeHandler
   | HealthzHandler
   | BeltDispatchHandler
 
-fn serve_tpl(raw: String) -> PathTemplate {
-  match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: t } => t
-    MalformedPathTemplate { raw: _, segment: _, reason: _ } => PathTemplate { tokens: [] }
-  }
+data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
+
+type RoadmapServeRouteSpec {
+  method: HttpMethod
+  raw: String
+  handler: RoadmapServeHandler
 }
 
-fn roadmap_serve_route_table() -> ServedRouteTable<RoadmapServeHandler> {
-  ServedRouteTable {
-    routes: [
-      DynamicRoute { method: GET, path_pattern: serve_tpl(raw: "/"), handler: RoadmapDailyPageHandler },
-      DynamicRoute { method: GET, path_pattern: serve_tpl(raw: "/roadmap"), handler: RoadmapFullPageHandler },
-      DynamicRoute { method: GET, path_pattern: serve_tpl(raw: "/ROADMAP.md"), handler: RoadmapMdHandler },
-      DynamicRoute { method: GET, path_pattern: serve_tpl(raw: "/target/roadmap-dispatch.json"), handler: DispatchJsonHandler },
-      DynamicRoute { method: GET, path_pattern: serve_tpl(raw: "/healthz"), handler: HealthzHandler },
-      DynamicRoute { method: POST, path_pattern: serve_tpl(raw: "/dispatch/\{node_id\}"), handler: BeltDispatchHandler },
-    ]
-  }
+type RoadmapServeTableBuild
+  = RoadmapServeTable { table: ServedRouteTable<RoadmapServeHandler> }
+  | RoadmapServeTableRefused { raw: String, segment: String, reason: String }
+
+fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
+  [
+    RoadmapServeRouteSpec { method: GET, raw: "/", handler: RoadmapDailyPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/roadmap", handler: RoadmapFullPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/ROADMAP.md", handler: RoadmapMdHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/target/roadmap-dispatch.json", handler: DispatchJsonHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/healthz", handler: HealthzHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+  ]
+}
+
+fn roadmap_serve_build_from_specs(specs: List<RoadmapServeRouteSpec>) -> RoadmapServeTableBuild {
+  fold(specs, init: RoadmapServeTable { table: ServedRouteTable { routes: [] } }, f: (acc, spec) =>
+    match acc {
+      RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => acc
+      RoadmapServeTable { table: t } =>
+        match parse_path_template(raw: spec.raw) {
+          MalformedPathTemplate { raw: r, segment: s, reason: why } =>
+            RoadmapServeTableRefused { raw: r, segment: s, reason: why }
+          ParsedPathTemplate { template: tpl } =>
+            RoadmapServeTable {
+              table: ServedRouteTable {
+                routes: concat(t.routes, [
+                  DynamicRoute { method: spec.method, path_pattern: tpl, handler: spec.handler },
+                ])
+              }
+            }
+        }
+    }
+  )
+}
+
+fn roadmap_serve_route_table_build() -> RoadmapServeTableBuild {
+  roadmap_serve_build_from_specs(specs: roadmap_serve_route_specs())
 }
 
 fn serve_text_response(status: Int, content_type: HttpContentType, body: String) -> ServeHttpResponse {
@@ -182,9 +210,23 @@ fn roadmap_serve_respond(method_label: String, path: String) -> ServeHttpRespons
         body: join(["unknown method: ", l, "\n"], ""),
       )
     KnownMethod { method: m } =>
-      roadmap_serve_selection_response(
-        sel: serve_select_route(table: roadmap_serve_route_table(), method: m, path: path)
-      )
+      match roadmap_serve_route_table_build() {
+        RoadmapServeTableRefused { raw: r, segment: s, reason: why } =>
+          serve_text_response(
+            status: 500,
+            content_type: TextPlainUtf8,
+            body: join([
+              "route table refused: malformed route literal raw=", r,
+              " segment=", s,
+              " reason=", why,
+              " (fail-closed — fix the literal in gunbc.roadmap_serve.roadmap_serve_route_specs)\n",
+            ], ""),
+          )
+        RoadmapServeTable { table: t } =>
+          roadmap_serve_selection_response(
+            sel: serve_select_route(table: t, method: m, path: path)
+          )
+      }
   }
 }
 
