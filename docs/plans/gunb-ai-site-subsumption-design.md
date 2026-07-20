@@ -3,9 +3,9 @@
 Status: **scoping proposal** (no code lands from this doc). Two coupled asks, one lane:
 
 1. **Subsume `gunb-ai/frontend`** — the public site's hosting and its HTML/CSS/JS become artifacts *emitted by gunbc from `.dag`*, committed and drift-gated in this repo, published to GitHub Pages at `gunb.ai`. The `frontend` repo archives.
-2. **Redesign** — replace the current austere register with a **futuristic, intricately-detailed** one (operator brief: "NYC high-rises with stone gargoyles" — the Woolworth/Chrysler Deco-Gothic register), *without* abandoning the structural discipline that the frontend repo's `DESIGN.md` codified.
+2. **Redesign** — replace the current austere register with a **futuristic, intricately-detailed, fractal** one (operator brief: "NYC high-rises with stone gargoyles"; refined 2026-07-20: components should be *slightly more complex at deeper levels* — a video-game LOD discipline over the Woolworth/Chrysler Deco-Gothic register), *without* abandoning the structural discipline that the frontend repo's `DESIGN.md` codified.
 
-The two asks reinforce each other: intricate ornament is unaffordable in a hand-maintained site (§1 complexity — every carved detail is a maintenance liability) and nearly free in a generated one. **Derived ornament is the pitch**: the intricacy is computed from real repo facts, so the site's density is itself a demo of the compiler. A gargoyle is the right emblem — it is *functional* ornament (a drain spout that happens to be carved), which preserves the frontend `DESIGN.md` thesis ("every visible element is a fact, relation, boundary, or receipt") while overturning its minimalism.
+The two asks reinforce each other: intricate ornament is unaffordable in a hand-maintained site (§1 complexity — every carved detail is a maintenance liability) and nearly free in a generated one. **Derived ornament is the pitch**: the intricacy is computed from real repo facts, so the site's density is itself a demo of the compiler. A gargoyle is the right emblem — it is *functional* ornament (a drain spout that happens to be carved), which preserves the frontend `DESIGN.md` thesis ("every visible element is a fact, relation, boundary, or receipt") while overturning its minimalism. The economics run the same direction: now that a clean minimal landing page costs one prompt, minimalism has stopped signaling care — the scarce signal is **unfakeable detail**, and derived detail is unfakeable in the strong sense (you cannot render it without actually having the structure; a banknote's guilloché is beautiful because it encodes anti-counterfeit function).
 
 ---
 
@@ -68,7 +68,7 @@ Rollback at every step is the inverse config edit; nothing is destructive.
 The instinct "generate the JS via `.dag`" has a sharper answer than compiling 1,029 lines of renderer: **most of `cards.js` should not exist at runtime.** It is a *renderer over static card specs* — code-panel lines, graph nodes/edges, roles, receipt rows — i.e. data plus layout math, all knowable at emit time. gunbc's whole thesis is to run that fold at compile time. So, mirroring the self-host frontier pattern (each module `SelfEmitted | SeedRetained{reason, trigger}`), every site asset gets a typed disposition `DagEmitted | SeedRetained{reason, migration_trigger}` and the JS splits in three:
 
 - **Stage-D (deck → emit-time):** model the deck as `.dag` facts (`StoryCard { code_panel, graph, receipt, pivot }` etc.) and render each card to **static HTML+SVG at emit time** — the layout math (`columnXs`, elbow routing, label widths) becomes ordinary `.dag` fns, executed once in CI instead of on every visitor's CPU. This deletes ~90% of `cards.js` and is *better* than compiling it: zero client JS to keep correct, and the card content joins the drift-gated single authority. Bonus wall (§5): the `.dag` code shown in the cards and the diagnostic shown in the invariant panel become **witnessed samples** — CI compiles the displayed sample and asserts it produces exactly the displayed output/diagnostic. The marketing site cannot lie about the compiler; a sample that drifts reds the build.
-- **Stage-N (nav residue):** the genuinely-runtime remainder (prev/next buttons, ←/→ keys, `aria` state) is ~50 lines. Author it as a hand-built `TsProgram` AST serialized by the **existing, proven** `serialize_typescript_program` path (same mechanism as the srv1 `server.js`) → `site/assets/nav.js`. No new compiler surface; the asset is `DagEmitted` from day one.
+- **Stage-N (nav residue):** the genuinely-runtime remainder (deck prev/next, ←/→ keys and elevator floors, `aria` state) is ~50–150 lines. Author it as a hand-built `TsProgram` AST serialized by the **existing, proven** `serialize_typescript_program` path (same mechanism as the srv1 `server.js`) → `site/assets/nav.js`. No new compiler surface; the asset is `DagEmitted` from day one. The §4d depth-reveal interactions add **no** JS by construction: every depth ships in the emitted DOM and is revealed by CSS interaction states and `<details>` — never fetched, never computed client-side.
 - **Stage-J (compile-path trigger):** re-author Stage-N behaviors as ordinary `.dag` fns emitted through the ECMAScript/TypeScript TargetModel **when** the TS target's bar (c) greens (`typescript-gap-census.md`); that event is this frontier row's named migration trigger. Explicitly **not** a dependency of shipping the site — sequencing the public site behind the TS self-host lane would be the purity trap (§6). Stage-J is also the natural first *external* consumer of the JS target, which gives that shelved lane its displaced-cost pricing when it wakes.
 
 ## 4. The redesign: Deco-Gothic, with derived ornament
@@ -98,14 +98,69 @@ Intricacy is admitted **only if computed from a real repo fact** — the design-
 
 Every generator lands with the same honesty as any emitter: deterministic (same facts → same bytes; the drift gate enforces this for free), and refused-not-faked when a fact it needs is unavailable.
 
-### 4d. Process (unchanged from the frontend repo's own law)
+### 4d. The fractal depth grammar (LOD — the axis the old system lacked)
 
-Primitives before pages: the Deco-Gothic register lands first as a **moodboard/workpad** (authored in `dag/gunbc/site/`, emitted to a non-linked path), then `primitives.html` (every material, type role, panel, SVG primitive, ornament generator shown in isolation — the design system's witness page), then the production `index.html` composed only of primitives that survived there. Operator reviews the register at the moodboard gate before any production page is built — the aesthetic call stays a human sign-off; the plan only guarantees that whatever is signed becomes construction, not convention.
+The frontend `DESIGN.md` already declares fractal repetition **across scale** (fact block → panel → section → page → site). The operator's refinement adds the orthogonal axis it lacked: **depth of engagement** — the same grammar repeats as attention closes in, so looking closer always resolves more *structure*, never more decoration. This is the video-game level-of-detail discipline (the quality that makes Discord feel "like a game," decomposed: (a) a world with consistent materials, (b) exploration rewarded, (c) juice/feedback — we import (a) and (b) whole and ration (c) to depth transitions so the stone register survives). The depth ladder, fixed site-wide:
+
+```text
+D0  glance   (~3s)      silhouette — one claim, the skyline
+D1  scan     (~30s)     facades — sections and panels
+D2  read     (~3min)    engravings — code, labels, receipt rows
+D3  approach (interact) hover/expand — names, types, hashes; the gargoyle up close
+D4  inspect  (source)   the maker's-mark layer — emission receipt in the document itself
+```
+
+Two construction rules make depth cheap and honest (§2/§3/§5):
+
+- **One authority per component, all depths derived.** `render(fact, depth)` is one fold with a depth budget — a component's D0 and D3 are projections of the *same* fact rows, so levels cannot disagree. (The failure this kills is exactly why hand-built sites cannot afford density: the tooltip drifts from the diagram it annotates, and every added level multiplies the drift surface. Here N levels cost one generator.)
+- **All depths ship in the emitted DOM; interaction only reveals.** Hover/expand are CSS states and `<details>` elements — never a fetch, never client-side computation. D0–D2 are fully static; D3 has keyboard parity (`:focus-visible` twins; `<details>` is keyboard-native); JS stays the Stage-N residue. D4 is deliberate, not an easter egg: the audience is compiler engineers, for whom view-source is a second front door — the document leads with a composed comment carrying the emission receipt and a verify command.
+
+### 4e. Component vocabulary (first cut, for the moodboard)
+
+Eight components; each must exhibit its **full depth ladder** on `primitives.html` before production use (the frontend repo's primitives-before-pages law, now enforced per-depth). All are compositions of the four panel types plus the §4c ornament generators.
+
+| Component | Building role | D0 → D3 |
+|---|---|---|
+| **Crown** | hero / masthead | wordmark under the radiating cap generated from the layer DAG → segments name the layers (`std ← extdeps ← compiler ← workflow`) → hover: per-layer module counts → expand: module lists with real content hashes |
+| **Cornerstone** | identity / install | the install command, engraved → version · commit · date beneath → build-receipt digest → a copyable `verify` command that recomputes it |
+| **Frieze** | section separator | tracery band computed from the module graph of the section's subject → hover names the modules and edges → click-through to the real source |
+| **Specimen** | fact / code panel | a witnessed `.dag` sample beside its graph, both rendered from the same fact rows → hover a symbol: its type appears and its node/edges highlight in *both* surfaces at once |
+| **Gargoyle** | boundary marker | carved creature at Invariant-panel corners, the 404, the footer cap — generated from the content hash of the diagnostic it channels, so **no two are identical** → hover: what drains here ("non-exhaustive `match` exits through this spout") → expand: the full refusal receipt |
+| **Ledger** | receipt panel | aligned proof rows → digests are real → per-row copyable re-verification command |
+| **Elevator** | nav / scroll spine | floor indicator bound to the setback sections; ↑/↓ keyboard floors — the one component where game-feel is explicit |
+| **Hallmark** | footer + D4 | maker's mark — "emitted from `dag/gunbc/site` @ hash · gunbc version" — rendered in the footer *and* as the document's leading comment |
+
+The gargoyle family is the procedural-creature move the game register does best: uniqueness is *derived* (diagnostic hash → silhouette parameters), so delight and honesty coincide — a collectible that cannot be minted without a real diagnostic behind it.
+
+### 4f. Page flow (one page; depth is the z-axis, not page count)
+
+The building supplies the flow — the site gets **deeper, never longer**:
+
+```text
+street         D0 skyline: crown + one sentence
+lobby          the argument: drift → duplication → one structural description
+               (the card deck reframed as lobby murals)
+floors         one claim per setback floor: CHECK · EMIT · FAIL-CLOSED —
+               each floor = specimen + ledger (+ gargoyle where a boundary exists)
+machine room   the receipts: build/CI/roadmap digests, re-verification commands
+observation    where it is headed: self-hosting; language design opened up
+street exit    cornerstone repeated · hallmark
+```
+
+Interaction grammar, closed: **hover = approach · click/focus = enter · Esc = step back**. Every hover reveal has a focus twin; motion is permitted only as a depth transition (the rule-6 amendment candidate: detail resolving on approach clarifies *containment* — a structural transition, not decoration).
+
+### 4g. Two audiences, one authority
+
+A growing share of visits are agents, not humans. The same `site_content.dag` facts emit an **agent surface** (`llms.txt` + a JSON facts file with digests) beside the human page — one model, two realizations (§2), landed as ordinary `SiteArtifact` rows. The human gets the engraving; the agent gets the ledger. No claim ever has a second copy.
+
+### 4h. Process (unchanged from the frontend repo's own law)
+
+Primitives before pages: the Deco-Gothic register lands first as a **moodboard/workpad** (authored in `dag/gunbc/site/`, emitted to a non-linked path), then `primitives.html` (every material, type role, panel, SVG primitive, ornament generator — each shown at every depth of its ladder — the design system's witness page), then the production `index.html` composed only of primitives that survived there. Operator reviews the register at the moodboard gate before any production page is built — the aesthetic call stays a human sign-off; the plan only guarantees that whatever is signed becomes construction, not convention.
 
 ## 5. Phases (each independently landable; triggers named)
 
-- **Phase 0 — model + moodboard.** `dag/gunbc/site/` module home; `Material` tokens + derivation fns; panel/type/SVG/ornament typed vocabulary; first ornament generators (frieze-from-module-graph, hash-coffering); emit `moodboard.html` + `primitives.html` as committed, drift-gated artifacts (published at non-linked paths once Phase 2 lands; reviewable on the srv1/tailnet path before that). **Gate: operator sign-off on the register.** No public-site change.
-- **Phase 1 — the page.** `site_content.dag` (copy, install command, deck card facts with witnessed samples per §3 Stage-D); static card rendering at emit time; Stage-N `nav.js` via `TsProgram`; emit `site/index.html` + `site/assets/site.css` + `mark.svg` + `CNAME`; icons as digest-pinned seed-retained rows; all on the generated-artifact gate. Site is fully reviewable at the Pages preview URL and on srv1. **Gate: DESIGN-rules lens/review pass + witnessed-sample witnesses green.**
+- **Phase 0 — model + moodboard.** `dag/gunbc/site/` module home; `Material` tokens + derivation fns; panel/type/SVG/ornament typed vocabulary; the §4e component rows with their depth ladders (`render(fact, depth)` fold shape); first ornament generators (frieze-from-module-graph, hash-coffering, hash-gargoyle); emit `moodboard.html` + `primitives.html` (every primitive at every depth D0–D3; D4 = its emitted source form) as committed, drift-gated artifacts (published at non-linked paths once Phase 2 lands; reviewable on the srv1/tailnet path before that). **Gate: operator sign-off on the register.** No public-site change.
+- **Phase 1 — the page.** `site_content.dag` (copy, install command, deck card facts with witnessed samples per §3 Stage-D); static card rendering at emit time; all depths shipped in the DOM with CSS-state reveals + focus parity; Stage-N `nav.js` via `TsProgram`; emit `site/index.html` + `site/assets/site.css` + `mark.svg` + `CNAME` + the §4g agent surface; icons as digest-pinned seed-retained rows; a declared page-weight budget row (the all-depths DOM is bounded by a committed byte budget, drift-visible, not a vibe); all on the generated-artifact gate. Site is fully reviewable at the Pages preview URL and on srv1. **Gate: DESIGN-rules lens/review pass + witnessed-sample witnesses green.**
 - **Phase 2 — hosting subsumption.** `site_workflow.dag` → generated `pages.yml` (drift + parse gate); enable Pages on gunbc; §2c read-back receipt wired (post-deploy + scheduled); §2d cutover runbook executed (org domain verification → detach/attach → receipt green at `https://gunb.ai/`); archive `gunb-ai/frontend`. **This discharges the `2-stateless-frontend` milestone-A receipt shape on the public domain** (the srv1 path stays as the tailnet staging realization of the same allocation spec).
 - **Phase 3 — dissolutions (each on its own trigger).** Stage-J: nav behaviors re-authored as `.dag` fns through the JS/TS TargetModel when bar (c) greens. `css_rule` scaffold: dissolve remaining raw-string props into the typed surface as the site's usage covers them (counted residue, never a blanket rewrite). Icon rasterization: derive PNGs from `mark.svg` if/when a raster handler exists for another consumer. `roadmap_static_site.HtmlIndex`: constructed or deleted once the site artifacts land (it stops being a scaffold either way).
 
@@ -116,6 +171,10 @@ Primitives before pages: the Deco-Gothic register lands first as a **moodboard/w
 - **Cert gap at cutover:** minutes-scale HTTPS interruption while the cert re-issues on the new repo. Accepted; step 2's org-level domain verification closes the security half of the window.
 - **workpad/legacy content:** `workpad.html` (125 KB of design exploration) and `legacy/` do not migrate — they remain in the archived repo's history. Only `legacy/moodboard.html`'s *palette reasons* port (as `Material` row commentary).
 - **Repo size/na noise:** the site adds committed HTML/CSS artifacts to a compiler repo. Contained under `site/` with `linguist-generated` attributes; the drift gate already governs bigger artifacts (`ROADMAP.md`).
+- **Accessibility of depth:** hover-only reveals are invisible to keyboard and touch users — every D3 reveal needs a `:focus-visible` twin or a `<details>` carrier (keyboard-native), and `prefers-reduced-motion` collapses depth transitions to instant. This is a Phase-1 gate criterion, not a polish item.
+- **Page weight:** shipping all depths in the DOM grows `index.html`; governed by the Phase-1 byte-budget row. If a component's full D3 payload breaks the budget (e.g. per-module hash lists), its D3 truncates with a typed "continued at GitHub" boundary — never a client-side fetch.
+- **Machine-room freshness:** receipts are **as-of-emit** (committed digests, "as of build \<hash\>") — honest and static. Live telemetry would need a service behind Pages; out of scope, noted as a possible later srv1-backed enhancement on the same fact rows.
+- **Sound:** default **no** — one register break and the stone goes plastic. Recorded as a moodboard-gate decision so it is decided, not drifted into.
 - **Design taste is not automatable:** the plan makes the *signed* register enforceable; it cannot generate the sign-off. Phase 0's moodboard gate is deliberately a human decision point, and the Deco-Gothic direction in §4 is a proposal to react to, not a settled spec.
 
 ## Dissolution trigger (DESIGN §6)
