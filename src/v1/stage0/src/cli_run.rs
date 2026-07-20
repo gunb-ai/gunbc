@@ -4056,47 +4056,6 @@ pub struct MultiEntryIndex {
     >,
 }
 
-impl MultiEntryIndex {
-    /// Borrow every cache field for structural memory receipts (rc-arc share spike).
-    pub(crate) fn memory_receipt_snapshot(
-        &self,
-    ) -> (
-        std::cell::Ref<
-            '_,
-            std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>,
-        >,
-        std::cell::Ref<
-            '_,
-            std::collections::HashMap<
-                String,
-                (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>),
-            >,
-        >,
-        std::cell::Ref<
-            '_,
-            im_rc::HashMap<
-                String,
-                (
-                    Rc<v1_compiler_compile::ResolvedGraph>,
-                    Rc<im_rc::HashMap<String, Rc<NewlineIndex>>>,
-                ),
-            >,
-        >,
-        std::cell::Ref<'_, Rc<InternTable>>,
-        std::cell::Ref<'_, std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
-        std::cell::Ref<'_, std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
-    ) {
-        (
-            self.typed_module_cache.borrow(),
-            self.parse_cache.borrow(),
-            self.resolved_graph_memo.borrow(),
-            self.intern_table.borrow(),
-            self.normalize_diag_cache.borrow(),
-            self.ownership_diag_cache.borrow(),
-        )
-    }
-}
-
 pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
     shared_typecheck_store::new_shared_typecheck_caches()
 }
@@ -4141,9 +4100,6 @@ fn new_multi_entry_index_shell(
 // the process shares one typed_module_cache, this stays ≤ the distinct module count of
 // the process union.
 static TYPECHECK_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
-// rc-arc spike: per-module cold typecheck timings on cache-miss path only.
-static SPIKE_MODULE_TYPECHECK_RECORDING: AtomicBool = AtomicBool::new(false);
-static SPIKE_MODULE_TYPECHECK_RECORDS: Mutex<Vec<(String, String, u64)>> = Mutex::new(Vec::new());
 
 // Union-resolve receipt tests reset/read the process-wide counter; `cargo test` runs
 // `#[test]` fns in parallel by default — serialize those oracles (not production use).
@@ -4163,47 +4119,6 @@ pub fn typecheck_compute_count() -> usize {
 
 pub fn reset_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.store(0, Ordering::SeqCst);
-}
-
-/// Enable per-module typecheck miss recording for the rc-arc spike harness.
-pub fn spike_set_module_typecheck_recording(on: bool) {
-    SPIKE_MODULE_TYPECHECK_RECORDING.store(on, Ordering::SeqCst);
-    if on {
-        SPIKE_MODULE_TYPECHECK_RECORDS
-            .lock()
-            .expect("spike module typecheck records lock poisoned")
-            .clear();
-    }
-}
-
-/// Take recorded per-module cold typecheck durations (module name, typed key, nanoseconds).
-pub fn spike_take_module_typecheck_records() -> Vec<(String, String, u64)> {
-    std::mem::take(
-        &mut *SPIKE_MODULE_TYPECHECK_RECORDS
-            .lock()
-            .expect("spike module typecheck records lock poisoned"),
-    )
-}
-
-fn spike_maybe_record_module_typecheck(mod_name: &str, typed_key: &str, elapsed_ns: u64) {
-    if SPIKE_MODULE_TYPECHECK_RECORDING.load(Ordering::SeqCst) {
-        SPIKE_MODULE_TYPECHECK_RECORDS
-            .lock()
-            .expect("spike module typecheck records lock poisoned")
-            .push((mod_name.to_string(), typed_key.to_string(), elapsed_ns));
-    }
-}
-
-/// Export typed cache rows for module-grain spike receipts (private index only).
-pub fn export_typed_cache_for_spike(
-    index: &MultiEntryIndex,
-) -> Vec<(String, Rc<v1_compiler_infer::TypecheckModuleResult>)> {
-    index
-        .typed_module_cache
-        .borrow()
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect()
 }
 
 fn bump_typecheck_compute_count() {
@@ -5383,11 +5298,6 @@ fn reconcile_with_typed_cache(
                     // parse+resolve+normalize). Threshold keeps the floor log quiet;
                     // anything over it is a pathology-lane candidate by name.
                     let module_tc_elapsed = module_tc_started.elapsed();
-                    spike_maybe_record_module_typecheck(
-                        &mod_name,
-                        &typed_key,
-                        module_tc_elapsed.as_nanos() as u64,
-                    );
                     resolve_stage_slot_add(|s| s.typecheck_compute += module_tc_elapsed.as_nanos());
                     let module_tc_ms = module_tc_elapsed.as_millis();
                     if module_tc_ms >= 2_000 {
@@ -6015,186 +5925,6 @@ pub fn whole_tree_resolved_ctx(
         modules_resolved,
         modules_excluded,
     })
-}
-
-/// Strict whole-tree resolve through a fresh `MultiEntryIndex` — populates every cache
-/// field the adaptive worker pool retains per shard (rc-arc share spike receipts).
-pub fn populate_multi_entry_index_whole_tree(
-    source_roots: &[String],
-    exclude_substrings: &[String],
-    typecheck_gate: ResolveTypecheckGate,
-) -> Result<(MultiEntryIndex, usize, usize), String> {
-    let index = build_multi_entry_index(source_roots);
-    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
-    let modules_resolved = picked.modules_resolved;
-    let modules_excluded = picked.modules_excluded;
-    resolved_graph_from_sources_with_index(
-        &index,
-        picked.sources,
-        typecheck_gate,
-        "rc-arc-spike-whole-tree",
-    )?;
-    Ok((index, modules_resolved, modules_excluded))
-}
-
-/// Resolve one entry's import closure through a fresh index (per-shard closure shape).
-pub fn populate_multi_entry_index_entry(
-    source_roots: &[String],
-    entry_file: &str,
-) -> Result<MultiEntryIndex, String> {
-    let index = build_multi_entry_index(source_roots);
-    resolve_entry_with_index_for_discovery_corpus(&index, entry_file)?;
-    Ok(index)
-}
-
-/// Curated large-closure discovery entries for memory spike receipts (resolver-graph-major
-/// design §1 census: 163–188 module closures). Used when full discovery union OOMs the host.
-pub fn discovery_corpus_representative_entries() -> Vec<String> {
-    let ws = workspace_root();
-    [
-        "src/v2/workflow/ci_floor_plan.dag",
-        "src/v2/workflow/affected_set_floor_runner.dag",
-        "src/v2/lens/affected_set/entry_selection.dag",
-        "dag/gunbc/commit_workflow.dag",
-        "src/v2/test/claim/realization_schedule_witness.dag",
-        "src/v2/workflow/floor_diff_observe.dag",
-        "src/v2/workflow/module_resolution_plan.dag",
-        "dag/gunbc/ci_spec.dag",
-        "src/v2/workflow/enforcement_live.dag",
-    ]
-    .iter()
-    .map(|e| ws.join(e).to_string_lossy().into_owned())
-    .collect()
-}
-
-pub fn populate_multi_entry_index_representative_entries(
-    source_roots: &[String],
-) -> Result<(MultiEntryIndex, usize), String> {
-    let entries = discovery_corpus_representative_entries();
-    let index = build_multi_entry_index(source_roots);
-    for entry in &entries {
-        resolve_entry_with_index_for_discovery_corpus(&index, entry)?;
-    }
-    Ok((index, entries.len()))
-}
-
-/// Populate one `MultiEntryIndex` by resolving floor discovery entries against it.
-/// When `max_entries` is `Some(n)`, only the first `n` sorted unique entries are resolved
-/// (measurement hosts with tight memory); `None` resolves the full discovery roster.
-pub fn populate_multi_entry_index_discovery_corpus(
-    source_roots: &[String],
-    max_entries: Option<usize>,
-) -> Result<(MultiEntryIndex, usize, usize), String> {
-    let scan_dirs = witness_discovery_scan_dirs();
-    let excludes = whole_tree_resolve_exclusion_substrings();
-    let rows = discover_floor_corpus_rows(source_roots, &scan_dirs, &excludes)?;
-    let mut entries: Vec<String> = rows
-        .iter()
-        .map(|r| r.entry.clone())
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-    entries.sort();
-    let total_entries = entries.len();
-    if let Some(limit) = max_entries {
-        entries.truncate(limit);
-    }
-    let index = build_multi_entry_index(source_roots);
-    for entry in &entries {
-        resolve_entry_with_index_for_discovery_corpus(&index, entry)?;
-    }
-    Ok((index, entries.len(), rows.len().max(total_entries)))
-}
-
-pub fn populate_multi_entry_index_whole_tree_discovery(
-    source_roots: &[String],
-    exclude_substrings: &[String],
-) -> Result<(MultiEntryIndex, usize, usize), String> {
-    populate_multi_entry_index_whole_tree(
-        source_roots,
-        exclude_substrings,
-        ResolveTypecheckGate::DiscoveryCorpusAdvisory,
-    )
-}
-
-/// Floor worker object: empty whole-tree shell over both roots (what adaptive workers build
-/// at thread start — `cli_run.rs` ~11191–11195).
-pub fn build_worker_index_shell(source_roots: &[String]) -> MultiEntryIndex {
-    build_multi_entry_index(source_roots)
-}
-
-/// Floor worker object after discovery-corpus warm: one index, all discovery entries resolved
-/// against it (the retention shape a worker accumulates across its entry-groups).
-pub fn populate_worker_discovery_index(
-    source_roots: &[String],
-) -> Result<(MultiEntryIndex, usize, usize), String> {
-    populate_multi_entry_index_discovery_corpus(source_roots, None)
-}
-
-/// Attach a fresh worker shell to an already-warmed cross-worker typed store.
-pub fn build_worker_index_with_warm_store(
-    source_roots: &[String],
-    store: std::sync::Arc<std::sync::RwLock<SharedTypecheckCaches>>,
-) -> MultiEntryIndex {
-    build_multi_entry_index_with_shared_caches(source_roots, store)
-}
-
-/// Host metadata for heterogeneous-box receipts (operator ruling 2026-07-20).
-pub fn spike_measurement_host_metadata() -> (String, Option<u64>, Option<u64>) {
-    let hostname = std::fs::read_to_string("/etc/hostname")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "unknown".to_string());
-    let mem_available_kb = std::fs::read_to_string("/proc/meminfo").ok().and_then(|s| {
-        s.lines()
-            .find(|l| l.starts_with("MemAvailable:"))
-            .and_then(|l| l.split_whitespace().nth(1)?.parse::<u64>().ok())
-    });
-    let cgroup_max_bytes = std::fs::read_to_string("/sys/fs/cgroup/memory.max")
-        .ok()
-        .and_then(|s| {
-            let s = s.trim();
-            if s == "max" {
-                None
-            } else {
-                s.parse::<u64>().ok()
-            }
-        })
-        .or_else(|| {
-            std::fs::read_to_string("/sys/fs/cgroup/memory/memory.limit_in_bytes")
-                .ok()
-                .and_then(|s| s.trim().parse::<u64>().ok())
-                .filter(|&n| n < u64::MAX / 2)
-        });
-    (hostname, mem_available_kb, cgroup_max_bytes)
-}
-
-pub fn discovery_corpus_entry_roster(
-    source_roots: &[String],
-) -> Result<(Vec<String>, usize), String> {
-    let scan_dirs = witness_discovery_scan_dirs();
-    let excludes = whole_tree_resolve_exclusion_substrings();
-    let rows = discover_floor_corpus_rows(source_roots, &scan_dirs, &excludes)?;
-    let mut entries: Vec<String> = rows
-        .iter()
-        .map(|r| r.entry.clone())
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-    entries.sort();
-    Ok((entries, rows.len()))
-}
-
-pub fn warm_discovery_on_index(
-    index: &MultiEntryIndex,
-    source_roots: &[String],
-) -> Result<(usize, usize), String> {
-    let (entries, rows) = discovery_corpus_entry_roster(source_roots)?;
-    for entry in &entries {
-        resolve_entry_with_index_for_discovery_corpus(index, entry)?;
-    }
-    Ok((entries.len(), rows))
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {

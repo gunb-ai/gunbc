@@ -23,7 +23,7 @@ stacker = "0.1"
 clap = { version = "4", features = ["derive"] }
 lazy_static = "1"
 serde = { version = "1", features = ["derive", "rc"] }
-serde_json = { version = "1", features = ["unbounded_depth"] }
+serde_json = "1"
 sha2 = "0.10"
 ureq = { version = "2", features = ["json"] }
 # Thread CPU-time clock (CLOCK_THREAD_CPUTIME_ID) for the fast-lane eval budget: the
@@ -122,10 +122,6 @@ path = "src/bin/measure_whole_tree_resolve.rs"
 [[bin]]
 name = "measure_dependency_view_build"
 path = "src/bin/measure_dependency_view_build.rs"
-
-[[bin]]
-name = "measure_rc_arc_share_spike"
-path = "src/bin/measure_rc_arc_share_spike.rs"
 
 [[bin]]
 name = "capture_func_env_semantic_oracle"
