@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
@@ -107,7 +108,7 @@ fn build() -> List<Int> {{ concat([{nums}], [0]) }}
         v1_interpreter::run(graph, resolved.source_indices.clone(), "build").expect("second build");
     match (&first, &second) {
         (Value::List(a), Value::List(b)) => {
-            assert!(!Arc::ptr_eq(a, b), "two runs must build distinct handles");
+            assert!(!Rc::ptr_eq(a, b), "two runs must build distinct handles");
             assert_eq!(a.len(), SCALE + 1);
         }
         other => panic!("expected two Lists, got {other:?}"),

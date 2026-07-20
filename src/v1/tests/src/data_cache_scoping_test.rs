@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::sync::Arc;
 
 use v1_compiler::cli_run;
@@ -70,7 +71,7 @@ fn read_xs() -> List<Int> { xs }
     match (&first, &second) {
         (Value::List(a), Value::List(b)) => {
             assert!(
-                Arc::ptr_eq(a, b),
+                Rc::ptr_eq(a, b),
                 "data value must be cached and shared within one context"
             );
         }
