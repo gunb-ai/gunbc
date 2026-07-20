@@ -1,22 +1,5 @@
 module v2.test.manual.manual_corpus_roster
 
-import v2.compiler.eval { TestClaimEvalSubject }
-import v2.std.collection { List }
-import v2.std.node { Node }
-import v2.test.lens_idempotency.write_effect {
-  subject_idempotency_write_effect_receipt
-}
-import v2.test.lens_parallelism.data_dependency {
-  subject_parallelism_data_dependency_receipt
-}
-import v2.test.manual.dissolution_subsumption_reverification {
-  subject_rust_language_model_emit_mechanical_reverification_claim,
-  subject_rust_language_model_emit_subsumption_reverifies
-}
-import v2.test.manual.eval_runtime { subject_eval_test_claim_route }
-import v2.test.lens_effect.effect_depends_on {
-  subject_lens_effect_depends_on_runtime_verdict
-}
 
 data manual_corpus_node_subject_rows: List<TestClaimEvalSubject<Node>> = [
   subject_eval_test_claim_route,

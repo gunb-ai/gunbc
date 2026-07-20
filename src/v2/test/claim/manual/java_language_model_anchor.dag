@@ -1,13 +1,5 @@
 module v2.test.manual.java_language_model_anchor
-import v2.std.language_model { LanguageModel }
 
-import v2.extdeps.languages.java {
-  java_inhabitant_int_node,
-  java_method_add_language_model,
-  java_language_model,
-  java_target_model_node
-}
-import v2.std.node { Node }
 
 type java_anchor_language_model = LanguageModel
 

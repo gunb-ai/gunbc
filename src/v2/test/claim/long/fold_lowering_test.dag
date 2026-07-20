@@ -1,39 +1,5 @@
 module v2.test.long.fold_lowering
 
-import std.algebra { Cons, Empty }
-import v2.compiler.fold_lowering { fold_call_to_loop }
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  ParseSubtreeAbsent,
-  ParseSubtreeFound,
-  dag_language_model,
-  parse_subtree_find_production_captured
-}
-import v2.std.algebra { list_snoc_item }
-import v2.std.cardinality {
-  Bounded,
-  Multiplicity,
-  ProvenTermination,
-  RequiresTerminationProof,
-  loop_multiplicity
-}
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.grammar { node_atom_identity_optional }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  loop_carrier_binder_target,
-  node_rebuild,
-  well_formed
-}
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

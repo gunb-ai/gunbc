@@ -1,8 +1,8 @@
 #![allow(clippy::disallowed_macros)]
 
 use crate::helpers::*;
-use im_rc::HashMap;
-use im_rc::OrdSet as BTreeSet;
+use im::HashMap;
+use im::OrdSet as BTreeSet;
 use serde_json::Value;
 use std::rc::Rc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
@@ -1391,7 +1391,18 @@ fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     let index = build_multi_entry_index(std::slice::from_ref(&root));
     let good_resolve = resolve_entry_with_index(&index, &good_path);
     cleanup();
-    good_resolve.expect("good entry should resolve when only a non-imported sibling fails parse");
+    // Namespace-only resolution (wave-1): the pool census must parse every pool file
+    // before ANY entry resolves — an unparsed sibling could hide a homonym that would
+    // change bare-name resolution, so the census refuses fail-closed with a typed,
+    // located diagnostic instead of resolving against a partial name universe.
+    // (Pre-wave-1 this arm asserted the good entry resolved despite the broken
+    // non-imported sibling; that locality is unsound once resolution is census-driven.)
+    let err = good_resolve
+        .expect_err("pool census must refuse fail-closed while any pool file fails parse");
+    assert!(
+        err.contains("broken.dag") && err.contains("parse failed"),
+        "census refusal must be typed and located at the unparsable file; got: {err}"
+    );
 
     std::fs::create_dir_all(&dir).expect("recreate temp dir");
     std::fs::write(
@@ -1929,7 +1940,7 @@ fn dag_artifact_deref_node<'a>(artifact: &'a Value, node_ref: &'a Value) -> &'a 
         .unwrap_or_else(|| panic!("missing node {id} in nodes table"))
 }
 
-fn normalize_typed_graph(value: &Value, name_map: &im_rc::HashMap<&str, String>) -> Value {
+fn normalize_typed_graph(value: &Value, name_map: &im::HashMap<&str, String>) -> Value {
     match value {
         Value::Object(map) => {
             let mut out = serde_json::Map::new();
@@ -1999,8 +2010,8 @@ fn assert_scrambled_name_structural_eq(
     let graph_a = typed_graph_json(source_a);
     let graph_b = typed_graph_json(source_b);
 
-    let mut map_a = im_rc::HashMap::new();
-    let mut map_b = im_rc::HashMap::new();
+    let mut map_a = im::HashMap::new();
+    let mut map_b = im::HashMap::new();
     for (i, (na, nb)) in names_a.iter().zip(names_b.iter()).enumerate() {
         let ordinal = format!("__T{}", i);
         map_a.insert(*na, ordinal.clone());
@@ -5939,7 +5950,7 @@ fn review_dag_compiles_to_rust() {
         .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
         .count();
 
-    let mut categories: im_rc::HashMap<String, usize> = im_rc::HashMap::new();
+    let mut categories: im::HashMap<String, usize> = im::HashMap::new();
     for line in check_stderr.lines() {
         if line.starts_with("error[") {
             let code = line.split(']').next().unwrap_or("unknown").to_string() + "]";
@@ -6705,12 +6716,17 @@ type RealEnum
         source,
         RenderTarget::Rust,
     );
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/malformed_internal_coproduct_wire_contract.rs");
+    // The missing-field presence wall now stops the line at TYPECHECK (the
+    // census-ambiguity skip that used to let this literal through was an
+    // absorbing arm, closed on #6848) — strictly earlier than the decode-time
+    // compile_error! backstop this test previously pinned. The malformed
+    // contract must refuse loudly, naming the omitted field.
+    let msgs = diagnostic_messages(&result);
     assert!(
-        content.contains("compile_error!")
-            && content.contains("InternallyTaggedObject requires a literal tag_field"),
-        "malformed InternallyTaggedObject contracts must fail closed; got:\n{content}"
+        msgs.iter()
+            .any(|m| m.contains("missing required field 'tag_field'")
+                && m.contains("InternallyTaggedObject")),
+        "malformed InternallyTaggedObject contracts must refuse at typecheck; got: {msgs:?}"
     );
 }
 
@@ -6741,13 +6757,17 @@ type MissingPrefixEnum
         source,
         RenderTarget::Rust,
     );
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/malformed_naming_coproduct_wire_contract.rs");
+    // Same wall-promotion as the tag_field twin above: the omitted `naming`
+    // field refuses at typecheck now. The bare `StripPrefixAndSnakeCase`
+    // (missing `prefix`) is an ExprVar, not a record literal, so it stays
+    // decode-time enforced — that compile_error! arm remains the backstop for
+    // shapes the literal wall cannot see.
+    let msgs = diagnostic_messages(&result);
     assert!(
-        content.contains("compile_error!")
-            && content.contains("InternallyTaggedObject requires a naming policy")
-            && content.contains("StripPrefixAndSnakeCase requires a literal prefix"),
-        "malformed naming policies must fail closed at decode time; got:\n{content}"
+        msgs.iter()
+            .any(|m| m.contains("missing required field 'naming'")
+                && m.contains("InternallyTaggedObject")),
+        "malformed naming policies must refuse at typecheck; got: {msgs:?}"
     );
 }
 
@@ -7902,7 +7922,7 @@ data tool_results: List<AnthropicChatMessage> = [
     content: [
       UserToolResultBlock {
         tool_use_id: "toolu_text",
-        content: ToolResultText { text: "15 degrees" },
+        content: ToolResultText("15 degrees"),
         is_error: none
       },
       UserToolResultBlock {
@@ -9450,9 +9470,10 @@ fn dump_complexity_report() {
     let result = v1_compiler::v1_compiler_compile::compile_sources_with_options(
         Rc::new(all_sources.into()),
         RenderTarget::Rust,
-        v1_compiler::v1_compiler_compile::CompilePipelineOptions {
+        Rc::new(v1_compiler::v1_compiler_compile::CompilePipelineOptions {
             analyze_complexity: true,
-        },
+            census_only_sources: Rc::new(im::Vector::new()),
+        }),
     );
 
     let cx = &result.complexity;

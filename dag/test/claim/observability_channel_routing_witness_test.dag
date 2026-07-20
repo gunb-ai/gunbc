@@ -1,18 +1,5 @@
 module test.claim.observability_channel_routing
 
-import std.logic { Bool }
-import std.bmc { OpenBmc }
-import extdeps.bmc.openbmc { bmc_firmware_host_storage_visibility }
-import extdeps.observability {
-  InBand,
-  OutOfBand,
-  StorageInventory,
-  NetworkInventory,
-  PowerDraw,
-  ProcessorInventory,
-  route_observation,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,13 +1,5 @@
 module v2.test.lens_grounding_ledger.grounding_ledger_test
 
-import v2.lens.grounding_ledger {
-  GroundingVerdict, Reference, ReferenceUri, ReferencePath, Role, StayString, GenuineProse, PendingJudge,
-  ResidueReason, DecodeReturnedNone, UnrecognizedSiblingArm,
-  DecidedBy, StructuralRule, Judge, OperatorReview,
-  residue_forced_verdict, structural_ledger_entry
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

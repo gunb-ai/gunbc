@@ -1,30 +1,6 @@
 module v2.test.lens_application.sg_claims
 
-import v2.lens.application {
-  DeclarationId,
-  DeclarationScope,
-  LensEnforce,
-  apply_advisory_lens
-}
-import v2.lens.synthesis { decision_tree_synthesis_advisory_lens }
-import v2.std.diagnostic { Accepted, Rejected, node_locus }
-import v2.std.logic { Bool }
-import v2.std.node { Path }
-import v2.std.report { Report, SynthesisGapDecisionTree, report_reason_to_diagnostic_reason }
-import v2.test.lens_application.apply_lens_introspect_rejection_is_advisory {
-  apply_lens_introspect_rejection_is_advisory_claim_holds
-}
-import v2.test.lens_synthesis.synthesis_gap_polynomial {
-  synthesis_gap_poly_input,
-  synthesis_gap_poly_lens_non_empty
-}
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data lens_application_synthesis_root_path: Path = Path { steps: [] }

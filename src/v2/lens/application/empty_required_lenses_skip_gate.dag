@@ -25,6 +25,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
+
 data empty_lenses_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },

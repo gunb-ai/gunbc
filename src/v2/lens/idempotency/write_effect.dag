@@ -45,6 +45,7 @@ import v2.test.manual.eval_runtime {
   eval_context,
   eval_inferred_tree
 }
+
 data idempotency_child: Node = claim_atom_node(s: ^idempotency_child_symbol)
 
 data idempotency_root: Node = Node {

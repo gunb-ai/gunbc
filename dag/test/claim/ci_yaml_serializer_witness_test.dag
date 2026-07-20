@@ -1,26 +1,5 @@
 module test.claim.ci_yaml_serializer_witness
 
-import extdeps.languages.yaml.types {
-  YamlValue, YamlKeyValue, YamlString, YamlInt, YamlMapping, YamlSequence,
-  yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
-  empty_yaml_values
-}
-import extdeps.languages.yaml.emit { serialize_yaml }
-import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml, steps_yaml, jobs_yaml, step_yaml }
-import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
-import gunbc.ci_workflow {
-  ci_workflow, ci_cargo_build_jobs_count
-}
-import gunbc.ci_workflow_expressions { ci_workflow_expression_templates, ci_cache_path_template }
-import extdeps.github.actions { RunStep, UsesStep }
-import extdeps.github.expressions {
-  ExpressionTemplate, TemplateSegment, LiteralText, Interpolation,
-  ContextAccess, Env, Runner,
-  any_template_accesses_runner_var_via_env, template_uses_context
-}
-import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_run }
-import v2.workflow.ci_release_build_emit { ci_release_build_script }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -208,7 +187,7 @@ fn witness_cache_uses_runner_context_not_env() -> Bool {
 fn witness_cache_runner_env_scope_red_control() -> Bool {
 
   let bad = ExpressionTemplate { segments: [
-    Interpolation { expression: ContextAccess { context: Env, path: ["CARGO_HOME"] } },
+    Interpolation { expression: ContextAccess { context: extdeps.github.expressions.Env, path: ["CARGO_HOME"] } },
     LiteralText { text: "/registry/index/" }
   ] }
   !(template_uses_context(template: bad, target: Runner) &&
@@ -223,7 +202,7 @@ fn witness_no_runner_env_context_red_control() -> Bool {
 
   let bad = concat(ci_workflow_expression_templates, [
     ExpressionTemplate { segments: [
-      Interpolation { expression: ContextAccess { context: Env, path: ["RUNNER_TEMP"] } }
+      Interpolation { expression: ContextAccess { context: extdeps.github.expressions.Env, path: ["RUNNER_TEMP"] } }
     ] }
   ])
   any_template_accesses_runner_var_via_env(templates: bad)

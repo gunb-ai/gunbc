@@ -55,20 +55,18 @@ fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Rc<Sourc
     }
 }
 
-fn load_floor_census(
-    ws: &std::path::Path,
-) -> Rc<im_rc::HashMap<String, Rc<GlobalBareLookupState>>> {
+fn load_floor_census(ws: &std::path::Path) -> Rc<im::HashMap<String, Rc<GlobalBareLookupState>>> {
     let mut sources: Vec<Rc<SourceFile>> = Vec::new();
     collect(ws, &ws.join("dag"), &mut sources);
     collect(ws, &ws.join("src/v2"), &mut sources);
     assert!(!sources.is_empty(), "no dag sources found");
-    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im_rc::Vector<_>>()));
+    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im::Vector<_>>()));
     let graph = frontend.graph.as_ref().expect("graph");
     let source_indices = frontend
         .newline_indices
         .iter()
         .cloned()
-        .fold(im_rc::HashMap::new(), |acc, si| {
+        .fold(im::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
     build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
@@ -83,12 +81,12 @@ enum CensusInvariantDisposition {
 }
 
 fn census_invariant_disposition(
-    census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
+    census: &im::HashMap<String, Rc<GlobalBareLookupState>>,
     name: &str,
 ) -> CensusInvariantDisposition {
     match census.get(name).map(|s| &**s) {
         None => CensusInvariantDisposition::Absent,
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => {
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }) => {
             CensusInvariantDisposition::Ambiguous
         }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {
@@ -97,6 +95,7 @@ fn census_invariant_disposition(
     }
 }
 
+#[derive(Debug)]
 enum CensusAmbiguityLeg {
     /// Name is in census with exactly one binding shape — ambiguity leg evaluable.
     KnownUnique,
@@ -107,43 +106,13 @@ enum CensusAmbiguityLeg {
 }
 
 fn census_ambiguity_leg(
-    census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
+    census: &im::HashMap<String, Rc<GlobalBareLookupState>>,
     name: &str,
 ) -> CensusAmbiguityLeg {
     match census_invariant_disposition(census, name) {
         CensusInvariantDisposition::Absent => CensusAmbiguityLeg::RefusedAbsent,
         CensusInvariantDisposition::Ambiguous => CensusAmbiguityLeg::KnownAmbiguous,
         CensusInvariantDisposition::Unique => CensusAmbiguityLeg::KnownUnique,
-    }
-}
-
-fn emit_census_ambiguity_leg_refusal(
-    census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
-    name: &str,
-) {
-    let key_count = census.len();
-    eprintln!(
-        "[tier2-census] REFUSED {name}: not in global_bare census ({key_count} keys); \
-         ambiguity leg cannot be evaluated; census shape-coverage gap, precedent fold"
-    );
-}
-
-/// Census ambiguity leg: UNIQUE proceeds, AMBIGUOUS reds, ABSENT refuses with a counted
-/// diagnostic (reachability leg still runs separately). Returns true when refused.
-fn assert_census_ambiguity_leg_or_reachability_only(
-    census: &im_rc::HashMap<String, Rc<GlobalBareLookupState>>,
-    name: &str,
-) -> bool {
-    match census_ambiguity_leg(census, name) {
-        CensusAmbiguityLeg::RefusedAbsent => {
-            emit_census_ambiguity_leg_refusal(census, name);
-            true
-        }
-        CensusAmbiguityLeg::KnownAmbiguous => panic!(
-            "{name}: global bare census is AMBIGUOUS — this was construction protocol / \
-             subtree-local resolution; a new homonym authority now exists; triage before consolidating"
-        ),
-        CensusAmbiguityLeg::KnownUnique => false,
     }
 }
 
@@ -177,20 +146,25 @@ fn tier2_census_disposition_snapshot() {
         "extdeps_external_authority_anchor",
         "emit",
     ];
-    let mut refused = 0usize;
+    // Dissolve trigger FIRED (2026-07-20): census coverage widened to data decls, so the
+    // tier-2 names are now PRESENT — and correctly AMBIGUOUS (per-file construction-protocol
+    // markers / the known triple-defined `emit`), each with its full candidate list. The new
+    // pin: KnownAmbiguous. A regression to ABSENT means coverage narrowed again; a flip to
+    // UNIQUE means candidates were destroyed (consolidation without triage) — both red here.
+    let mut ambiguous = 0usize;
     for name in names {
         let leg = census_ambiguity_leg(&census, name);
         assert!(
-            matches!(leg, CensusAmbiguityLeg::RefusedAbsent),
-            "{name}: expected ABSENT from global bare census ({} keys) — census shape-coverage \
-             gap; when coverage lands and name becomes UNIQUE, update this dissolve trigger",
+            matches!(leg, CensusAmbiguityLeg::KnownAmbiguous),
+            "{name}: expected AMBIGUOUS (protocol marker / known homonym, full candidate list) \
+             in global bare census ({} keys); got {leg:?} — ABSENT = coverage narrowed, UNIQUE = \
+             candidates destroyed; triage before changing this pin",
             census.len()
         );
-        emit_census_ambiguity_leg_refusal(&census, name);
-        refused += 1;
+        ambiguous += 1;
     }
     eprintln!(
-        "[tier2-census] census leg refused {refused}/{} names",
+        "[tier2-census] census leg ambiguous {ambiguous}/{} names",
         names.len()
     );
 }
@@ -208,14 +182,22 @@ fn tier2_namespace_homonym_invariants() {
         "extdeps_external_authority_anchor",
         "emit",
     ];
-    let mut census_refused = 0usize;
+    // Triage (2026-07-20): all three are ambiguous-by-design — live_tree_disposition and
+    // extdeps_external_authority_anchor are per-file construction-protocol markers (hundreds
+    // of per-module rows, never referenced bare cross-module); emit is the known homonym
+    // owned by the operator's consolidation lane. KnownAmbiguous with candidates preserved
+    // IS the invariant; the reachability legs below still prove no bare ref depends on them.
     for name in tier2_names {
-        if assert_census_ambiguity_leg_or_reachability_only(&census, name) {
-            census_refused += 1;
-        }
+        let leg = census_ambiguity_leg(&census, name);
+        assert!(
+            matches!(leg, CensusAmbiguityLeg::KnownAmbiguous),
+            "{name}: tier-2 triage expects KnownAmbiguous (protocol marker / owned homonym); \
+             got {leg:?} — re-triage before consolidating"
+        );
     }
     eprintln!(
-        "[tier2-census] census leg refused {census_refused}/{} names",
+        "[tier2-census] census leg ambiguous {}/{} names",
+        tier2_names.len(),
         tier2_names.len()
     );
 
@@ -240,13 +222,13 @@ fn corpus_census_state_of_failing_names() {
     );
     assert!(!sources.is_empty(), "no dag sources found");
 
-    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im_rc::Vector<_>>()));
+    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im::Vector<_>>()));
     let graph = frontend.graph.as_ref().expect("graph");
     let source_indices = frontend
         .newline_indices
         .iter()
         .cloned()
-        .fold(im_rc::HashMap::new(), |acc, si| {
+        .fold(im::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
     let census = build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
@@ -269,7 +251,7 @@ fn corpus_census_state_of_failing_names() {
             Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {
                 "UNIQUE (binds)".to_string()
             }
-            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding) => {
+            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }) => {
                 "AMBIGUOUS (refuses — homonym)".to_string()
             }
         };
@@ -281,7 +263,7 @@ fn corpus_census_state_of_failing_names() {
     for (_k, v) in census.iter() {
         match &**v {
             GlobalBareLookupState::GlobalBareUniqueBinding { .. } => unique += 1,
-            GlobalBareLookupState::GlobalBareAmbiguousBinding => ambiguous += 1,
+            GlobalBareLookupState::GlobalBareAmbiguousBinding { .. } => ambiguous += 1,
         }
     }
     eprintln!(
@@ -302,13 +284,13 @@ fn corpus_ambiguous_roster() {
         sources.len()
     );
 
-    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im_rc::Vector<_>>()));
+    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im::Vector<_>>()));
     let graph = frontend.graph.as_ref().expect("graph");
     let source_indices = frontend
         .newline_indices
         .iter()
         .cloned()
-        .fold(im_rc::HashMap::new(), |acc, si| {
+        .fold(im::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
     let census = build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
@@ -317,7 +299,12 @@ fn corpus_ambiguous_roster() {
 
     let mut ambiguous: Vec<String> = census
         .iter()
-        .filter(|(_k, v)| matches!(&***v, GlobalBareLookupState::GlobalBareAmbiguousBinding))
+        .filter(|(_k, v)| {
+            matches!(
+                &***v,
+                GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }
+            )
+        })
         .map(|(k, _v)| k.to_string())
         .collect();
     ambiguous.sort();

@@ -15,6 +15,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data sibling_degenerate_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^sibling_degenerate_symbol } },
   children: [],

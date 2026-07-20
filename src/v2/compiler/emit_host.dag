@@ -78,7 +78,6 @@ import v2.std.verdict {
   Verdict,
   Pass,
   Deferred,
-  SemanticMismatch,
   verdict_build_failed,
   verdict_run_failed,
   verdict_semantic_mismatch

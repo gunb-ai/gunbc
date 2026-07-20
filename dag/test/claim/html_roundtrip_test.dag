@@ -1,22 +1,5 @@
 module test.claim.html_roundtrip
 
-import std.markup {
-  MarkupNode, MarkupAttr, ElementNode, TextNode,
-  MarkupBracket,
-}
-import extdeps.languages.html {
-  HtmlIngestResult,
-  IngestedNode,
-  IngestRejected,
-  canonical_html_spellings,
-  serialize_html_source,
-  serialize_html_source_with,
-  ingest_html_source,
-  ingest_html_source_with,
-  html_medium_lossless,
-}
-import extdeps.communication.medium { Lossless, Lossy }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -4,7 +4,7 @@
 //! RED control: `typecheck_module_isolated` (empty surfaces) must fail on a
 //! re-export chain where the consumer imports a coproduct arm through a proxy.
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
@@ -28,7 +28,7 @@ const REEXPORT: &str = "module test.reexport\nimport test.provider { B }\n";
 const CONSUMER: &str = "module test.consumer\nimport test.reexport { B }\nfn f() -> E { B }\n";
 
 type ResolvedGraphFixture = (
-    Rc<im_rc::Vector<Rc<ResolvedModule>>>,
+    Rc<im::Vector<Rc<ResolvedModule>>>,
     Rc<HashMap<String, Rc<NewlineIndex>>>,
     Rc<InternTable>,
 );
@@ -47,7 +47,7 @@ fn fixture_sources() -> Vec<Rc<SourceFile>> {
         .collect()
 }
 
-fn resolved_module_graph(sources: Rc<im_rc::Vector<Rc<SourceFile>>>) -> ResolvedGraphFixture {
+fn resolved_module_graph(sources: Rc<im::Vector<Rc<SourceFile>>>) -> ResolvedGraphFixture {
     let frontend = front_end_sources(sources);
     let graph = frontend.graph.clone().expect("resolved module graph");
     let source_indices = frontend.newline_indices.iter().cloned().fold(
@@ -72,7 +72,7 @@ fn hard_diagnostic_messages(result: &TypecheckModuleResult) -> Vec<String> {
 }
 
 fn typecheck_resolved_incremental(
-    modules: &im_rc::Vector<Rc<ResolvedModule>>,
+    modules: &im::Vector<Rc<ResolvedModule>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Vec<Rc<TypecheckModuleResult>> {
@@ -106,7 +106,7 @@ fn typecheck_resolved_incremental(
 }
 
 fn consumer_resolved<'a>(
-    modules: &'a im_rc::Vector<Rc<ResolvedModule>>,
+    modules: &'a im::Vector<Rc<ResolvedModule>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> &'a Rc<ResolvedModule> {
     modules
@@ -179,18 +179,30 @@ fn variant_reexport_empty_surfaces_red_control() {
         });
 
     let consumer = consumer_resolved(&modules, &source_indices);
+    // Namespace wave-1 dissolved the original perturbation: with variant_surfaces
+    // AND the symbol index both empty, the re-export arm still resolves through
+    // the ancestry global_bare merge built from the typed parent index — the
+    // census layering is the naming authority now, so the full-index isolated
+    // path must be CLEAN (a purity witness, matching pipeline/incremental).
     let isolated = typecheck_module_isolated(
         consumer.clone(),
-        module_index,
+        module_index.clone(),
         source_indices.clone(),
-        intern_table,
+        intern_table.clone(),
     );
     let isolated_msgs = hard_diagnostic_messages(&isolated);
     assert!(
-        isolated_msgs
-            .iter()
-            .any(|m| m.contains("'B'") || m.contains("unresolved type 'B'")),
-        "isolated typecheck (empty variant_surfaces) must RED on re-export arm import, got:\n{}",
+        isolated_msgs.is_empty(),
+        "isolated typecheck with the full parent index must resolve the re-export arm \
+         via the global_bare merge (wave-1 naming authority), got:\n{}",
         isolated_msgs.join("\n")
     );
+    // RED-control debt (2026-07-20): no cheap perturbation reds this shape
+    // anymore. Dropping the PROVIDER from the parent index still typechecks
+    // clean — imported names bind declared-weak (a type variable, no refusal)
+    // when their declaring module is absent, the same L1 unchecked-access
+    // deferral tracked in the typed-debt burndown. A discriminating control
+    // returns when the strict missing-name wall lands; until then the two
+    // asserts above (pipeline/incremental/isolated all clean via the
+    // global_bare merge) are the load-bearing purity witnesses.
 }

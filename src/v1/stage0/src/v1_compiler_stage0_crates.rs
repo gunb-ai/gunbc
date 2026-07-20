@@ -32,7 +32,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(
@@ -448,7 +448,7 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
             }),
         }),
         Rc::new(CargoDependency {
-            name: "im-rc".to_string(),
+            name: "im".to_string(),
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "15.1".to_string(),
                 features: Rc::new(vec!["serde".to_string()]),
@@ -495,7 +495,7 @@ pub fn stage0_emit_shell_registry_dependencies() -> Rc<Vec<Rc<CargoDependency>>>
             }),
         }),
         Rc::new(CargoDependency {
-            name: "im-rc".to_string(),
+            name: "im".to_string(),
             source: Rc::new(CargoDepSource::RegistryDep {
                 version: "15.1".to_string(),
                 features: Rc::new(vec!["serde".to_string()]),

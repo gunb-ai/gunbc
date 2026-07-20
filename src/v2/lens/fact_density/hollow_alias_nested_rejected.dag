@@ -18,6 +18,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.test.lens_common.infer_fixture { claim_atom_node }
+
 data hollow_alias_nested_child: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_alias_nested_el_subject } },
   children: [],

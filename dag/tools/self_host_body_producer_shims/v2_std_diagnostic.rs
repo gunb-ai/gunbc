@@ -1,4 +1,4 @@
-use im_rc::Vector as Vec;
+use im::Vector as Vec;
 use std::rc::Rc;
 
 use crate::v2_std_node::{Node, Symbol};

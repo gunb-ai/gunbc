@@ -47,23 +47,34 @@ import v1.std.core {
 }
 
 import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, GlobalBareLookupState, empty_symbol_index }
+
 import std.induction { InductiveField, SubValueUnknown }
+
 import v1.compiler.infer_types { resolved_type, child_type_node, emit_map_has, node_is_collection, node_is_keyed_collection, node_is_element_collection, normalize_access_type_node, for_each_element_type_node, is_unit_like, is_declared_container_alias_spelling }
+
 import std.types { is_container_type, container_template_algebra }
+
 import v1.compiler.coercion { coerce_primitive_type, coerce_container_template, target_optional_template, target_callable, can_cast, render_cast, literal_suffix }
+
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
+
 import v1.compiler.infer_items {
   TypedModule, ResolvedGraph, ItemInfo
 }
+
 import v1.compiler.infer_service { UniqueAccum, OpEntry, is_typed_service_call_receiver, extract_typed_service_name }
+
 import v1.compiler.infer_lookup { lookup_func_sig }
+
 import v1.compiler.infer {
   InferScope,
   build_params_scope, extend_scope
 }
+
 import v1.compiler.infer_emit_info { TypeSummary, EmitGraphInfo }
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
+
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
   escape_json_string, module_to_filename, make_indent,
@@ -80,6 +91,7 @@ import v1.compiler.emit_core_support {
   is_function_item, is_data_def_item, is_service_def_item,
   is_resource_def_item
 }
+
 import v1.compiler.languages {
   SnakeCaseTestNames, PascalCaseTestNames,
   LanguageSpec, TestConventions, ServiceFieldTemplates,
@@ -106,6 +118,7 @@ import v1.compiler.languages {
 import extdeps.languages.rust.emit { rust_method_templates }
 
 import extdeps.languages.python.emit { python_method_templates_flat }
+
 import extdeps.languages.go.emit { go_method_templates_flat }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
@@ -270,9 +283,10 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() },
+    type_env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() },
     func_env: ResolvedFuncEnv { name: "", local: empty_map(), parents: [] },
     locals: empty_map(),
+    body_locals: empty_map(),
     match_bound_names: empty_map(),
     module_name: "",
     service_registry: empty_map(),
@@ -286,6 +300,7 @@ fn module_emit_scope(typed_module: TypedModule) -> InferScope {
     type_env: typed_module.type_env,
     func_env: typed_module.func_env,
     locals: empty_map(),
+    body_locals: empty_map(),
     match_bound_names: empty_map(),
     module_name: authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module),
     service_registry: empty_map(),
@@ -314,7 +329,7 @@ fn lookup_item(registry: Map<String, ItemInfo>, name: String) -> ItemInfo? {
 }
 
 fn lookup_func_sig_in_scope(scope: InferScope, name: String) -> ResolvedFuncSig? {
-  lookup_func_sig(func_env: scope.func_env, name: name)
+  lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name)
 }
 
 fn typed_named_arg_matches(arg: Node, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {

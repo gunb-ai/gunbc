@@ -1,14 +1,10 @@
 module v2.std.determinism
-
-import std.determinism { Determinism }
-import v2.std.node { Symbol }
-
 type DeterminismFact {
   signature: Symbol,
-  classification: Determinism
+  classification: std.determinism.Determinism
 }
 
-fn determinism_fact_classification(fact: DeterminismFact) -> Determinism {
+fn determinism_fact_classification(fact: DeterminismFact) -> std.determinism.Determinism {
   fact.classification
 }
 

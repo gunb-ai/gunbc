@@ -52,10 +52,10 @@ import v2.std.verification {
   UnifiedTestClaim,
   manual_claim_anchor
 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.effects { atom_node }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 type ParseTreeToTargetModelBridge {
   source_parse_tree: Symbol

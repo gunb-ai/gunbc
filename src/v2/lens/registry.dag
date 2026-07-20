@@ -1,11 +1,5 @@
 module v2.lens.registry
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.std.algebra { count_where, for_all }
-import v2.std.collection { List }
-import v2.std.node { Symbol }
-import v2.std.text { String }
 
 type LensIdV0
   = Complexity
