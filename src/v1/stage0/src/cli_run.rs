@@ -31,12 +31,12 @@ use crate::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
     expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
-    inferred_to_node, intern, is_discovery_corpus_advisory_typecheck_diagnostic,
-    is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
-    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, match_arm_nodes,
-    match_scrutinee, method_arg_nodes, method_receiver, module_items, param_node_name_at,
-    param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData, InferredNode, InternTable,
-    MatchPattern, NewlineIndex, Node,
+    import_is_all, import_specific_names_at, inferred_to_node, intern,
+    is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, param_node_name_at, param_node_type_expr, CompilerDiagnostic, ErrorNode,
+    ExprData, InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -17276,11 +17276,22 @@ pub fn symbol_index_lexical_lookup_v1(
     }
 }
 
-/// Containment walk: lexical lookup, then `symbol_index_global_unique_lookup` equivalent.
+/// Containment walk: lexical lookup, direct-import selective binding, then global-bare.
 pub fn containment_resolve_fn_v1(
     index: &SymbolIndex,
     module_path: &str,
     name: &str,
+) -> ContainmentResolve {
+    containment_resolve_fn_v1_for_module(index, module_path, name, None, None)
+}
+
+/// Containment walk with optional import-surface context (namespace §1c direct import lists).
+pub fn containment_resolve_fn_v1_for_module(
+    index: &SymbolIndex,
+    module_path: &str,
+    name: &str,
+    module: Option<&Rc<Node>>,
+    source_indices: Option<Rc<HashMap<String, Rc<NewlineIndex>>>>,
 ) -> ContainmentResolve {
     if let Some((owner, node, steps)) = symbol_index_lexical_lookup_v1(index, module_path, name) {
         if is_fn_decl_node(&node) {
@@ -17291,6 +17302,36 @@ pub fn containment_resolve_fn_v1(
                 via: ContainmentResolveVia::Lexical,
                 lexical_steps: steps,
             };
+        }
+    }
+    if let (Some(module), Some(source_indices)) = (module, source_indices) {
+        let mut direct_hit: Option<ContainmentResolve> = None;
+        for imp in module_imports(module.clone()).iter() {
+            let imp_path =
+                v1_compiler_infer::import_module_path_at(imp.clone(), source_indices.clone());
+            let visible = if import_is_all(imp.clone()) {
+                continue;
+            } else {
+                import_specific_names_at(imp.clone(), source_indices.clone())
+            };
+            if !visible.iter().any(|n| n == name) {
+                continue;
+            }
+            let qn = module_path_to_qualified_path(&imp_path, name);
+            if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn) {
+                if is_fn_decl_node(&node) {
+                    direct_hit = Some(ContainmentResolve::Hit {
+                        owner_module: imp_path.clone(),
+                        qualified_path: qn,
+                        node_ptr: Rc::as_ptr(&node) as usize,
+                        via: ContainmentResolveVia::Lexical,
+                        lexical_steps: 0,
+                    });
+                }
+            }
+        }
+        if let Some(hit) = direct_hit {
+            return hit;
         }
     }
     match index.global_bare.get(name).map(|s| &**s) {
@@ -17406,18 +17447,13 @@ pub fn resolution_divergence_census_from_ctx(
     ctx: &v1_interpreter::InterpContext,
 ) -> ResolutionDivergenceCensus {
     let source_indices = ctx.source_indices.clone();
-    let census_index = ctx
-        .modules
-        .iter()
-        .next()
-        .map(|m| (*m.type_env.symbol_index).clone())
-        .expect("symbol index");
 
     let mut out = ResolutionDivergenceCensus::default();
 
     for tm in ctx.modules.iter() {
         let module_path = tm.type_env.module_path.clone();
         let func_env = tm.func_env.clone();
+        let module_index = (*tm.type_env.symbol_index).clone();
 
         for item in tm.items.iter() {
             let caller_fn = authored_name_at(source_indices.clone(), item.clone());
@@ -17432,7 +17468,13 @@ pub fn resolution_divergence_census_from_ctx(
                     import_chain_owner(&func_env, &callee)
                         .map(|owner| fn_binding_from_sig(&owner, &callee, sig))
                 });
-                let containment = containment_resolve_fn_v1(&census_index, &module_path, &callee);
+                let containment = containment_resolve_fn_v1_for_module(
+                    &module_index,
+                    &module_path,
+                    &callee,
+                    Some(&tm.module),
+                    Some(source_indices.clone()),
+                );
 
                 if let ContainmentResolve::Hit {
                     via, lexical_steps, ..
@@ -17616,35 +17658,139 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
 #[cfg(test)]
 mod resolution_divergence_census_tests {
     use super::{
-        format_resolution_divergence_census, resolution_divergence_census_live,
-        ResolutionDivergenceBucket,
+        containment_resolve_fn_v1, import_chain_owner, lookup_resolved_sig,
+        resolution_divergence_census_live, whole_tree_resolved_ctx, ResolutionDivergenceBucket,
+        WholeTreeCtx,
     };
+    use crate::v1_interpreter::ExecutionMode::Wet;
+
+    fn write_fixture(root: &std::path::Path, rel: &str, content: &str) {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).expect("mkdir");
+        std::fs::write(&path, content).expect("write dag");
+    }
+
+    fn positive_control_fixture_root() -> std::path::PathBuf {
+        super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-resdiv-posctl-{}", std::process::id()))
+    }
 
     #[test]
     fn resolution_divergence_positive_control_planted_site() {
         let ws = super::process_workspace_root();
+        let fixture = positive_control_fixture_root();
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "twin_p.dag",
+            r#"module test.claim.X.twin_p
+
+import std.types { Bool }
+
+fn twin_sig(a: Bool) -> Bool {
+  return a
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "twin_q.dag",
+            r#"module test.claim.X.twin_q
+
+import std.types { Bool }
+
+fn twin_sig(a: Bool, b: Bool, c: Bool) -> Bool {
+  return a
+}
+
+fn twin_q_anchor() -> Bool {
+  return False
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "planted.dag",
+            r#"module test.claim.X.planted
+
+import std.types { Bool }
+import test.claim.X.twin_p { twin_sig }
+import test.claim.X.twin_q { twin_q_anchor }
+
+fn planted_call() -> Bool {
+  return twin_sig(False)
+}
+"#,
+        );
         let roots = vec![
-            ws.join("dag/test/claim/X")
-                .to_string_lossy()
-                .into_owned(),
+            fixture.to_string_lossy().into_owned(),
             ws.join("dag/std").to_string_lossy().into_owned(),
         ];
-        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
-        for site in census
-            .diverge_rows
+        let WholeTreeCtx { ctx, .. } =
+            whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve ctx");
+        let planted = ctx
+            .modules
             .iter()
-            .chain(census.containment_ambiguous_rows.iter())
-            .chain(census.containment_unresolved_rows.iter())
-        {
-            if site.callee == "twin_sig" && site.calling_module.contains("planted") {
-                eprintln!("planted twin_sig site: {:?}", site.bucket);
-            }
-        }
-        eprintln!("{}", format_resolution_divergence_census(&census));
+            .find(|m| m.type_env.module_path == "test.claim.X.planted")
+            .expect("planted module must resolve");
+        let import_sig =
+            lookup_resolved_sig(planted.func_env.clone(), "twin_sig".to_string()).expect("import");
+        let import_owner = import_chain_owner(&planted.func_env, "twin_sig").expect("import owner");
+        let import_arity = import_sig.params.len();
+        let containment = containment_resolve_fn_v1_for_module(
+            &planted.type_env.symbol_index,
+            "test.claim.X.planted",
+            "twin_sig",
+            Some(&planted.module),
+            Some(ctx.source_indices.clone()),
+        );
+        assert_eq!(
+            import_arity, 3,
+            "lookup_resolved_sig must bind twin_q (3 params), owner={import_owner}"
+        );
+        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
         assert_eq!(
             census.diverge, 1,
-            "positive control must classify planted twin_sig as Diverge"
+            "positive control: expected Diverge=1, got diverge={} agree={} ambiguous={} import_unresolved={} neither_bound={} sites={} import_owner={import_owner} import_arity={import_arity} containment={containment:?}",
+            census.diverge,
+            census.agree,
+            census.containment_ambiguous,
+            census.import_unresolved,
+            census.neither_bound,
+            census.sites_checked,
         );
+        let planted_rows: Vec<_> = census
+            .diverge_rows
+            .iter()
+            .filter(|s| s.callee == "twin_sig" && s.calling_module.contains("planted"))
+            .collect();
+        assert_eq!(planted_rows.len(), 1, "expected one planted twin_sig site");
+        assert!(
+            matches!(
+                planted_rows[0].bucket,
+                ResolutionDivergenceBucket::Diverge { .. }
+            ),
+            "positive control must classify planted twin_sig as Diverge, got {:?}",
+            planted_rows[0].bucket
+        );
+        if let ResolutionDivergenceBucket::Diverge {
+            import_binding,
+            containment_binding,
+        } = &planted_rows[0].bucket
+        {
+            assert!(
+                import_binding.owner_module.contains("twin_q"),
+                "import chain must bind twin_q, got {}",
+                import_binding.owner_module
+            );
+            assert!(
+                containment_binding.owner_module.contains("twin_p"),
+                "containment must bind twin_p, got {}",
+                containment_binding.owner_module
+            );
+        }
+        let _ = std::fs::remove_dir_all(&fixture);
     }
 }
 

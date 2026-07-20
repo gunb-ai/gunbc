@@ -124,7 +124,6 @@ mod pipeline;
 #[cfg(test)]
 mod reference_carrier_witness_test;
 #[cfg(test)]
-#[cfg(test)]
 mod resolve_cross_process_cache_test;
 #[cfg(test)]
 mod resolve_expr_types_retraversal_guard_test;
