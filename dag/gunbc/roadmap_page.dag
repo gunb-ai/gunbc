@@ -325,7 +325,7 @@ fn roadmap_frontier_markup(frontier: SpawnFrontier, merged: List<Int>) -> Markup
   ])
 }
 
-fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<MarkupNode>) -> MarkupNode {
   let frontier = spawn_frontier(doc: doc, merged: merged)
   ElementNode {
     tag: "html",
@@ -338,19 +338,18 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Mark
       ]),
       el("body", [
         el("header", [ el("h1", [ txt("gunbc — daily workspace") ]) ]),
-        el_class("main", "daily-workspace", [
-          three_gate_progress_markup(),
+        el_class("main", "daily-workspace", concat(main_prefix, [
           roadmap_frontier_markup(frontier: frontier, merged: merged),
-        ]),
+        ])),
       ]),
     ],
   }
 }
 
-fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<MarkupNode>) -> MarkupNode {
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
-  let main_children = concat([ three_gate_progress_markup() ], concat(lead, secs))
+  let main_children = concat(main_prefix, concat(lead, secs))
   ElementNode {
     tag: "html",
     attrs: [],
