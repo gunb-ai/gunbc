@@ -1925,8 +1925,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       |> map(item => authored_name(env: scope.type_env, node: item)),
     collect_phantom_zst_marker_names(items: typed_module.items, env: scope.type_env)
   )
+  let synthesized_type_names = unique_strings(items: typed_module.items |> flat_map(item => node_tree_collect_record_lit_type_names(n: item, source_indices: scope.type_env.source_indices)))
   let prelude = emit_prelude(imported_names: prelude_imported_names)
-  let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
+  let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_names: synthesized_type_names)
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let carrier_import_lines = if module_needs_faithful_carrier_imports(
     items: typed_module.items,
@@ -1939,7 +1940,8 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       items: typed_module.items,
       source_indices: scope.type_env.source_indices,
       corpus_repr: emit_info.corpus_repr,
-      shared_types: shared_types
+      shared_types: shared_types,
+      typed_modules: typed_modules
     )
   } else {
     []
@@ -3109,7 +3111,7 @@ fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
   )
 }
 
-fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
+fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_names: List<String>) -> String {
   if imports |> count == 0 {
     ""
   } else {
@@ -3124,7 +3126,8 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
           mod_imports
             |> filter(imp => import_is_all(n: imp) == false)
             |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices)),
-          reexport_surface
+          reexport_surface,
+          supplement_names
         ))
         let specific_block = emit_specific_import_block(
           import_module: import_module,
@@ -3144,7 +3147,7 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
         }
       } else {
         let specific_names = mod_imports |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices))
-        let merged_specific = unique_strings(items: specific_names)
+        let merged_specific = unique_strings(items: concat(specific_names, supplement_names))
         emit_specific_import_block(
           import_module: import_module,
           mod_name: mod_name,
