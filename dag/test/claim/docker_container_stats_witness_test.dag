@@ -1,9 +1,5 @@
 module test.claim.docker_container_stats_witness
 
-import extdeps.docker.container_stats { CpuStats, CpuUsage, MemoryStats, ContainerStats, PidStats, NetworkStats, NetworkInterface, Networks, container_stats_memory_usage, container_stats_cpu_usage_total, container_stats_online_cpus }
-import extdeps.docker.container_inspect { ContainerState, ContainerStateDetail, HostConfig, ContainerConfig, ContainerInspect, NetworkSettings, container_inspect_memory_limit, container_inspect_cpu_quota, container_inspect_cpu_period, parse_container_state, container_state_wire_label, Running, Exited, Paused, Dead, Restarting }
-import std.measure { byte_size, nanosecond, microsecond }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -14,7 +10,7 @@ data sample_cpu_usage: CpuUsage = CpuUsage {
   usage_in_usermode: nanosecond(1134567890)
 }
 
-data sample_memory_stats: MemoryStats = MemoryStats {
+data sample_memory_stats: extdeps.docker.container_stats.MemoryStats = extdeps.docker.container_stats.MemoryStats {
   usage: byte_size(536870912)
   max_usage: byte_size(1073741824)
   limit: byte_size(2147483648)
@@ -44,7 +40,7 @@ data sample_network_stats: NetworkStats = NetworkStats {
 }
 
 data sample_networks: Networks = Networks {
-  interfaces: [NetworkInterface { name: "eth0", stats: sample_network_stats }]
+  interfaces: [extdeps.docker.container_stats.NetworkInterface { name: "eth0", stats: sample_network_stats }]
 }
 
 data sample_container_stats: ContainerStats = ContainerStats {
@@ -208,7 +204,7 @@ test fn sample_stats_has_realistic_timestamp() -> Bool {
 }
 
 test fn sample_inspect_has_running_state() -> Bool {
-  sample_container_inspect.state.status == Running
+  sample_container_inspect.state.status == extdeps.docker.container_inspect.Running
 }
 
 test fn parse_container_state_running() -> Bool {
@@ -269,8 +265,8 @@ test fn container_state_wire_label_exited() -> Bool {
 }
 
 test fn container_state_roundtrip_preserves_value() -> Bool {
-  let roundtrip_running = (parse_container_state(container_state_wire_label(Running))) == Present { value: Running }
-  let roundtrip_paused = (parse_container_state(container_state_wire_label(Paused))) == Present { value: Paused }
+  let roundtrip_running = (parse_container_state(container_state_wire_label(Running))) == Present { value: extdeps.docker.container_inspect.Running }
+  let roundtrip_paused = (parse_container_state(container_state_wire_label(Paused))) == Present { value: extdeps.docker.container_inspect.Paused }
   let roundtrip_exited = (parse_container_state(container_state_wire_label(Exited))) == Present { value: Exited }
   let roundtrip_dead = (parse_container_state(container_state_wire_label(Dead))) == Present { value: Dead }
   let roundtrip_restarting = (parse_container_state(container_state_wire_label(Restarting))) == Present { value: Restarting }

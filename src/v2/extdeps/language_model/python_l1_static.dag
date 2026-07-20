@@ -1,37 +1,5 @@
 module v2.test.language_model.python_l1_static
 
-import v2.lens.leaf_model_verification {
-  python_l1_static_fixture,
-  python_l1_static_undefined_variable_fixture_pair,
-  python_l1_static_missing_import_fixture_pair,
-  python_l1_static_mypy_fixture
-}
-import v2.std.leaf_model_verification {
-  LeafModelPythonStaticFixturePair,
-  leaf_model_claim_python_l1_static_return_type,
-  leaf_model_claim_python_l1_static_undefined_variable,
-  leaf_model_claim_python_l1_static_missing_import,
-  StaticAnalysisAccepted,
-  StaticAnalysisRejected,
-  StaticAnalysisAdvisory,
-  Advisory,
-  BlockingForRung,
-  leaf_model_python_static_happy_invocation,
-  leaf_model_python_static_falsification_invocation,
-  leaf_model_python_static_happy_verdict,
-  leaf_model_python_static_falsification_verdict
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Boundary,
-  manual_claim_anchor
-}
 fn python_l1_static_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^python_l1_static_claim_bool_true } }, children: [],

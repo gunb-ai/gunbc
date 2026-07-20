@@ -1,24 +1,5 @@
 module v2.test.lens_unused_parameters.rollup_unused_declaration
 
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.lens.unused_parameters {
-  UnusedParameterFact,
-  UnusedParametersFact,
-  unused_parameters_fact_eq,
-  unused_parameters_witness
-}
-import v2.std.dependency {
-  Contains,
-  DependencyView
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.witness { Holds, Witness }
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts,
-  claim_inferred_tree
-}
 data rollup_parameter: Node = claim_atom_node(s: ^rollup_parameter_symbol)
 
 data rollup_function: Node = Node {

@@ -225,7 +225,7 @@ fn lazy_arm_int_from_runtime(value: RuntimeValue) -> Int {
 }
 
 fn lazy_arm_touch_from_env(env: EvaluationEnvironment) -> Int {
-  match map_get(m: env.bindings, key: lazy_arm_touch_key()) {
+  match v2.std.collection.map_get(m: env.bindings, key: lazy_arm_touch_key()) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: v } => lazy_arm_int_from_runtime(value: v)

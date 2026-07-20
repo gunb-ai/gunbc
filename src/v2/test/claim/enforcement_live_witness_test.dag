@@ -1,36 +1,5 @@
 module v2.test.claim.enforcement_live_witness
 
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.node { Node }
-import v2.std.decl_index { DeclFact, FnItem, TypeItem }
-import v2.lens.enforcement.vocab {
-  ConsumerKind, FloorGate, WitnessOnly, NoConsumer, consumer_kind_eq,
-  ConsumerWitnessBinding, BoundConsumerWitness, NoConsumerWitness,
-  RedControlStatus, RedControlPassed, RedControlFailedToFlip,
-  SelfApplicationStatus, SelfAppliesObserved, SelfApplicationAbsent
-}
-import v2.lens.enforcement.contract { lens_contract_cost }
-import v2.lens.enforcement.receipts {
-  derive_receipt, cost_red_control_probe, cost_well_formed_probe,
-  red_control_status_for, self_application_for, consumer_observed_for,
-  subject_is_body_unavailable, judge_subject_node, node_contains_computation,
-  fn_item_count_of, body_unavailable_count_of, body_judged_count_of,
-  enforcement_red_probe_body_leaf
-}
-import v2.lens.enforcement.gate {
-  leg_holds, leg_fails, intent_family_verdict, all_intents_admissible
-}
-import v2.lens.enforcement.standing_intent {
-  standing_intent_registry, standing_intent_complexity_repo_wide, whole_corpus_scope
-}
-import v2.workflow.enforcement_live {
-  enforcement_consistency_live, complexity_repo_wide_verdict_live,
-  enforcement_corpus_facts
-}
-import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

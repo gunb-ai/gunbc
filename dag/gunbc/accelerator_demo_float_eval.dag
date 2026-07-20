@@ -1,14 +1,5 @@
 module gunbc.accelerator_demo_float_eval
 
-import std.types { Float, List }
-import gunbc.accelerator_demo_program {
-  AcceleratorDemoProgram,
-  PureElementwiseMap,
-  EffectfulElementwiseMap,
-  DataDependentGatherMap,
-  ElementwiseArrayOp,
-  pure_elementwise_ops_shape_recognizable,
-}
 
 fn float_relu(x: Float) -> Float {
   if x > 0.0 {
@@ -18,7 +9,7 @@ fn float_relu(x: Float) -> Float {
   }
 }
 
-fn eval_relu_mul_add_elem_at_index(ai: Float, bi: Float, ci: Float) -> Float {
+fn eval_float_relu_mul_add_elem_at_index(ai: Float, bi: Float, ci: Float) -> Float {
   float_relu(x: ai * bi + ci)
 }
 
@@ -48,7 +39,7 @@ fn eval_float_pure_map_at_indices(
                   c: c.skip(n: 1),
                   acc: concat(
                     acc,
-                    [eval_relu_mul_add_elem_at_index(ai: ai, bi: bi, ci: ci)]
+                    [eval_float_relu_mul_add_elem_at_index(ai: ai, bi: bi, ci: ci)]
                   )
                 )
             }

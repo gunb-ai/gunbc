@@ -32,7 +32,7 @@ fn orch_if_streq_empty_then_golden() -> String {
 }
 
 fn orch_if_streq_empty_then_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: StrEmpty { operand: "\"$1\"" },
     then_: Pipeline {
       steps: [
@@ -52,7 +52,7 @@ fn orch_if_streq_empty_then_intent() -> PipelineStep {
 }
 
 fn orch_if_streq_empty_then_perturbed_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: StrEmpty { operand: "\"$2\"" },
     then_: Pipeline {
       steps: [
@@ -76,7 +76,7 @@ fn orch_if_streq_else_golden() -> String {
 }
 
 fn orch_if_streq_else_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: StrEq { lhs: "\"$1\"", rhs: "\"$2\"" },
     then_: Pipeline {
       steps: [
@@ -114,7 +114,7 @@ fn orch_if_exit_zero_negated_golden() -> String {
 }
 
 fn orch_if_exit_zero_negated_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: Not {
       inner: ExitZero {
         run: Run {
@@ -147,7 +147,7 @@ fn orch_if_run_redirect_ignore_fail_golden() -> String {
 }
 
 fn orch_if_run_redirect_ignore_fail_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: ExitZero {
       run: Run {
         command: "(cd \"$checkout\" && git fetch --prune origin)",
@@ -178,7 +178,7 @@ fn orch_if_log_matches_golden() -> String {
 }
 
 fn orch_if_log_matches_intent() -> PipelineStep {
-  If {
+  v2.std.orchestration.If {
     cond: LogMatches {
       source: "\"$BUILD_LOG\"",
       pattern: "EAGAIN|Resource temporarily unavailable"
@@ -205,8 +205,8 @@ fn orch_if_and_tests_golden() -> String {
 }
 
 fn orch_if_and_tests_intent() -> PipelineStep {
-  If {
-    cond: And {
+  v2.std.orchestration.If {
+    cond: v2.std.orchestration.And {
       lhs: StrNonempty { operand: "\"$ctrl_pin\"" },
       rhs: StrNonempty { operand: "\"$dag_pin\"" }
     },
@@ -292,3 +292,4 @@ test fn orch_if_band_holds() -> Bool {
     && orch_if_log_matches_holds()
     && orch_if_and_tests_holds()
 }
+

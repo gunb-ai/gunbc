@@ -1,8 +1,5 @@
 module gunbc.plans.branch_merge_admission_model
 
-import gunbc.plan { Plan, HasTrigger }
-import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
 
 fn status_block() -> MarkdownBlock {
   quote(blocks: [

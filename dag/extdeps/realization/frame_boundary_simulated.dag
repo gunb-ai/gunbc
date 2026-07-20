@@ -1,0 +1,27 @@
+module extdeps.realization.frame_boundary_simulated
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import std.types { List }
+import std.effect_grant { NamespaceTree, LifecycleByConvention }
+import std.frame_boundary { BoundaryClosure, BoundaryMaterialization }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
+  }
+}
+
+data frame_boundary_simulated_note: String = "The Simulated boundary MATERIALIZATION handler (realization side of std.frame_boundary, docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): the always-available baseline that closes a frame's layers by CONVENTION -- 'everything outside the layer is assumed-absent / offline-configured', with nothing to provision. It is one of N boundary handlers (netns/container/seccomp are the ByConstruction siblings that spawn a real boundary); §3 keeps the mechanism HERE in extdeps and the agnostic spec in std.frame_boundary. Every closure it produces is honestly LifecycleByConvention -- an offline flag / vendored deps, not a kernel wall (a build subprocess is not structurally prevented from reaching the layer, only configured not to). A consumer that requires LifecycleByConstruction (a real enforced native run) will REFUSE a Simulated boundary via std.frame_boundary.boundary_admits grade-meet, never silently accept it. dissolve-on: netns/container handlers land as the ByConstruction upgrade (boundary PROVISIONING through the realization kernel), constructing a stronger-graded BoundaryMaterialization over the same spec."
+
+fn simulated_close(tree: NamespaceTree) -> BoundaryClosure {
+  BoundaryClosure { tree: tree, grade: LifecycleByConvention }
+}
+
+fn simulated_boundary(trees: List<NamespaceTree>) -> BoundaryMaterialization {
+  BoundaryMaterialization {
+    closures: trees |> map(t => simulated_close(tree: t))
+  }
+}

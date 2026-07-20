@@ -1,32 +1,5 @@
 module v2.test.claim.body_lowering.wave1_gate1_b1_bare_call_helpers
 
-import v2.compiler.name_resolve {
-  Admission,
-  ResolutionSubject,
-  resolve_with_admission
-}
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  dag_language_model,
-  qualified_name_from_module_node
-}
-import std.algebra { Cons, Empty }
-import v2.std.collection { Absent, Optional, Present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.compilers.lexing { symbol_lexeme }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Arrow,
-  ComputationNode,
-  Conj,
-  Named,
-  Node,
-  Positional,
-  Transform,
-  TypeNode
-}
 
 data wave1_gate1_b1_bare_call_module_source: String = "module wave1_gate1_b1_bare_call\n\nfn helper(x: Int) -> Int { x + x }\n\nfn caller(x: Int) -> Int { helper(x) }\n"
 

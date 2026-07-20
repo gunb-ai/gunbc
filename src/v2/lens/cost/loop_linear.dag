@@ -26,6 +26,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds }
+
 data loop_linear_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_linear_body_atom } },
   children: [],

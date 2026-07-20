@@ -1,20 +1,8 @@
 module v2.lens.enforcement.standing_intent
 
-import v2.std.logic { Bool }
-import v2.std.collection { List }
-import v2.std.text { String }
-import v2.std.qualified_name { qualified_name_from_dotted_string }
-import v2.lens.registry { LensIdV0, Cost }
-import v2.lens.enforcement.vocab {
-  SubjectRoster, ScopeRoster,
-  EnforcementMode, Advisory, AuditOnly, Blocking,
-  ConsumerRequirement, AnyLiveConsumer, OneOf, Exact,
-  ConsumerKind, FloorGate, MergeAdmission, PrePushHook, RoadmapDriftGate,
-  NarrowingReason, BootstrapBlocked, TypeReflectionUnavailable
-}
 
 type IntentProperty
-  = LensFamily { lens: LensIdV0 }
+  = LensFamily { lens: v2.lens.registry.LensIdV0 }
   | LensHygieneLiveness
   | LensHygieneSelfApply
   | LensClosureQuestionZero
@@ -33,16 +21,16 @@ type StandingIntent {
   mechanism_class: String
   recurring: Bool
   receiptable: Bool
-  desired_scope: ScopeRoster
-  required_subjects: SubjectRoster
-  default_mode: EnforcementMode
-  required_consumer: ConsumerRequirement
+  desired_scope: v2.lens.enforcement.vocab.ScopeRoster
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster
+  default_mode: v2.lens.enforcement.vocab.EnforcementMode
+  required_consumer: v2.lens.enforcement.vocab.ConsumerRequirement
   self_application_required: Bool
-  allowed_narrowing: List<NarrowingReason>
+  allowed_narrowing: List<v2.lens.enforcement.vocab.NarrowingReason>
   fallback_when_unavailable: IntentFallback
 }
 
-data whole_corpus_scope: ScopeRoster = { roots: ["dag", "src/v1", "src/v2"] }
+data whole_corpus_scope: v2.lens.enforcement.vocab.ScopeRoster = { roots: ["dag", "src/v1", "src/v2"] }
 
 data standing_intent_complexity_repo_wide: StandingIntent = {
   id: "complexity.repo-wide",
@@ -52,9 +40,9 @@ data standing_intent_complexity_repo_wide: StandingIntent = {
   recurring: true,
   receiptable: true,
   desired_scope: whole_corpus_scope,
-  required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "v1.compiler.infer.build_type_env")] },
-  default_mode: Blocking,
-  required_consumer: Exact { kind: FloorGate },
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "v1.compiler.infer.build_type_env")] },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
+  required_consumer: v2.lens.enforcement.vocab.Exact { kind: FloorGate },
   self_application_required: true,
   allowed_narrowing: [],
   fallback_when_unavailable: Refuse
@@ -64,12 +52,12 @@ data standing_intent_lenses_must_be_live: StandingIntent = {
   id: "lenses.must-be-live",
   property: LensHygieneLiveness,
   displaced_cost: "an inert lens (machinery present, nothing gates on it) is coverage-by-illusion; someone re-audits wired-vs-declared by hand",
-  mechanism_class: "lens registry liveness (a Blocking claim must have a live consumer)",
+  mechanism_class: "lens registry liveness (a v2.lens.enforcement.vocab.Blocking claim must have a live consumer)",
   recurring: true,
   receiptable: true,
   desired_scope: whole_corpus_scope,
-  required_subjects: SubjectRoster { entries: [] },
-  default_mode: Blocking,
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
   required_consumer: AnyLiveConsumer,
   self_application_required: false,
   allowed_narrowing: [],
@@ -84,9 +72,9 @@ data standing_intent_lens_closure_question_zero: StandingIntent = {
   recurring: true,
   receiptable: true,
   desired_scope: whole_corpus_scope,
-  required_subjects: SubjectRoster { entries: [] },
-  default_mode: Blocking,
-  required_consumer: Exact { kind: FloorGate },
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
+  required_consumer: v2.lens.enforcement.vocab.Exact { kind: FloorGate },
   self_application_required: false,
   allowed_narrowing: [],
   fallback_when_unavailable: Refuse
@@ -100,8 +88,8 @@ data standing_intent_lenses_self_apply_or_exempt: StandingIntent = {
   recurring: true,
   receiptable: true,
   desired_scope: whole_corpus_scope,
-  required_subjects: SubjectRoster { entries: [] },
-  default_mode: Blocking,
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
+  default_mode: v2.lens.enforcement.vocab.Blocking,
   required_consumer: AnyLiveConsumer,
   self_application_required: false,
   allowed_narrowing: [],
@@ -116,7 +104,7 @@ data standing_intent_model_anemia_repo_wide: StandingIntent = {
   recurring: true,
   receiptable: true,
   desired_scope: whole_corpus_scope,
-  required_subjects: SubjectRoster { entries: [] },
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
   default_mode: AuditOnly,
   required_consumer: AnyLiveConsumer,
   self_application_required: false,
@@ -132,7 +120,7 @@ data standing_intent_single_authority_consolidation: StandingIntent = {
   recurring: true,
   receiptable: true,
   desired_scope: whole_corpus_scope,
-  required_subjects: SubjectRoster { entries: [] },
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
   default_mode: AuditOnly,
   required_consumer: AnyLiveConsumer,
   self_application_required: false,

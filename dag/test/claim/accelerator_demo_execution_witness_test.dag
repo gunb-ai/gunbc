@@ -1,51 +1,11 @@
 module test.claim.accelerator_demo_execution_witness
 
-import gunbc.accelerator_demo_realize {
-  witness_single_source_program_fixture_authority,
-  witness_integer_differential_bit_exact_on_fixture,
-  witness_oracle_matches_expected_fixture,
-  witness_kernel_matches_expected_fixture,
-  witness_differential_would_red_on_wrong_golden,
-  witness_oracle_empty_on_noncanonical_ops_shape,
-  witness_float_oracle_empty_on_noncanonical_ops_shape,
-  witness_program_and_simd_wire_op_codes_single_authority,
-  witness_pure_program_executes_bit_exact,
-  witness_effectful_program_execution_refused,
-  witness_gather_program_execution_refused,
-  witness_structural_recognition_refusal_arms,
-  witness_float_fma_refused_bit_exact_on_fixture,
-  witness_float_fma_refused_recognition_is_lossless,
-  witness_float_fma_permitted_is_declared_lossy_not_bit_exact,
-  witness_float_fma_fused_kernel_refused_when_contract_refuses,
-}
-import gunbc.accelerator_demo_render {
-  witness_render_refused_carries_effects,
-  witness_render_recognized_integer_plan_line,
-  witness_triptych_pure_program_projects_recognized_plan,
-  witness_triptych_effectful_program_projects_located_refusal,
-  witness_triptych_float_permitted_projects_lossy_plan,
-  witness_triptych_render_contains_three_panels,
-  witness_triptych_effectful_render_shows_refusal_panel,
-  project_outcome_view,
-  DemoRecognized,
-  DemoRefused,
-}
-import gunbc.accelerator_demo_recognizer { recognize_accelerator_program }
-import gunbc.accelerator_demo_program {
-  relu_mul_add_pure_program,
-  witness_relu_mul_add_program_op_codes_are_authority,
-}
-import extdeps.languages.simd.kernel {
-  witness_relu_mul_add_wire_op_codes_are_locked_triplet,
-}
-import gunbc.accelerator_demo_plan { Recognized, Refused }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
-  match project_outcome_view(
-    outcome: recognize_accelerator_program(program: relu_mul_add_pure_program)
+  match gunbc.accelerator_demo_render.project_outcome_view(
+    outcome: gunbc.accelerator_demo_recognizer.recognize_accelerator_program(program: gunbc.accelerator_demo_program.relu_mul_add_pure_program)
   ) {
     DemoRecognized { plan: view } =>
       view.fused_op_count == 3
@@ -56,38 +16,38 @@ fn witness_projected_integer_outcome_is_recognized_lossless() -> Bool {
 }
 
 fn witness_pure_program_structurally_recognized() -> Bool {
-  match recognize_accelerator_program(program: relu_mul_add_pure_program) {
+  match gunbc.accelerator_demo_recognizer.recognize_accelerator_program(program: gunbc.accelerator_demo_program.relu_mul_add_pure_program) {
     Recognized { plan: _, kernel_step: _, contract: _, fidelity: _, target_medium: _ } => true
     Refused { reason: _ } => false
   }
 }
 
 test fn accelerator_demo_execution_lane_witnesses() -> Bool {
-  witness_single_source_program_fixture_authority()
-    && witness_integer_differential_bit_exact_on_fixture()
-    && witness_oracle_matches_expected_fixture()
-    && witness_kernel_matches_expected_fixture()
-    && witness_differential_would_red_on_wrong_golden()
-    && witness_oracle_empty_on_noncanonical_ops_shape()
-    && witness_float_oracle_empty_on_noncanonical_ops_shape()
-    && witness_pure_program_executes_bit_exact()
-    && witness_effectful_program_execution_refused()
-    && witness_gather_program_execution_refused()
-    && witness_structural_recognition_refusal_arms()
-    && witness_float_fma_refused_bit_exact_on_fixture()
-    && witness_float_fma_refused_recognition_is_lossless()
-    && witness_float_fma_permitted_is_declared_lossy_not_bit_exact()
-    && witness_float_fma_fused_kernel_refused_when_contract_refuses()
-    && witness_render_refused_carries_effects()
-    && witness_render_recognized_integer_plan_line()
-    && witness_triptych_pure_program_projects_recognized_plan()
-    && witness_triptych_effectful_program_projects_located_refusal()
-    && witness_triptych_float_permitted_projects_lossy_plan()
-    && witness_triptych_render_contains_three_panels()
-    && witness_triptych_effectful_render_shows_refusal_panel()
+  gunbc.accelerator_demo_realize.witness_single_source_program_fixture_authority()
+    && gunbc.accelerator_demo_realize.witness_integer_differential_bit_exact_on_fixture()
+    && gunbc.accelerator_demo_realize.witness_oracle_matches_expected_fixture()
+    && gunbc.accelerator_demo_realize.witness_kernel_matches_expected_fixture()
+    && gunbc.accelerator_demo_realize.witness_differential_would_red_on_wrong_golden()
+    && gunbc.accelerator_demo_realize.witness_oracle_empty_on_noncanonical_ops_shape()
+    && gunbc.accelerator_demo_realize.witness_float_oracle_empty_on_noncanonical_ops_shape()
+    && gunbc.accelerator_demo_realize.witness_pure_program_executes_bit_exact()
+    && gunbc.accelerator_demo_realize.witness_effectful_program_execution_refused()
+    && gunbc.accelerator_demo_realize.witness_gather_program_execution_refused()
+    && gunbc.accelerator_demo_realize.witness_structural_recognition_refusal_arms()
+    && gunbc.accelerator_demo_realize.witness_float_fma_refused_bit_exact_on_fixture()
+    && gunbc.accelerator_demo_realize.witness_float_fma_refused_recognition_is_lossless()
+    && gunbc.accelerator_demo_realize.witness_float_fma_permitted_is_declared_lossy_not_bit_exact()
+    && gunbc.accelerator_demo_realize.witness_float_fma_fused_kernel_refused_when_contract_refuses()
+    && gunbc.accelerator_demo_render.witness_render_refused_carries_effects()
+    && gunbc.accelerator_demo_render.witness_render_recognized_integer_plan_line()
+    && gunbc.accelerator_demo_render.witness_triptych_pure_program_projects_recognized_plan()
+    && gunbc.accelerator_demo_render.witness_triptych_effectful_program_projects_located_refusal()
+    && gunbc.accelerator_demo_render.witness_triptych_float_permitted_projects_lossy_plan()
+    && gunbc.accelerator_demo_render.witness_triptych_render_contains_three_panels()
+    && gunbc.accelerator_demo_render.witness_triptych_effectful_render_shows_refusal_panel()
     && witness_projected_integer_outcome_is_recognized_lossless()
     && witness_pure_program_structurally_recognized()
-    && witness_relu_mul_add_program_op_codes_are_authority()
-    && witness_relu_mul_add_wire_op_codes_are_locked_triplet()
-    && witness_program_and_simd_wire_op_codes_single_authority()
+    && gunbc.accelerator_demo_program.witness_relu_mul_add_program_op_codes_are_authority()
+    && extdeps.languages.simd.kernel.witness_relu_mul_add_wire_op_codes_are_locked_triplet()
+    && gunbc.accelerator_demo_realize.witness_program_and_simd_wire_op_codes_single_authority()
 }

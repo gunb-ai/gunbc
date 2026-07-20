@@ -1,13 +1,5 @@
 module v2.lens.table_decision_tree
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
 
-import v2.std.lens_verdict {
-  LensVerdict,
-  lens_verdict_module_unrealized,
-  Unrealized,
-}
-import v2.std.node { Node }
 
 data table_decision_tree_module: String = "v2.lens.table_decision_tree"
 

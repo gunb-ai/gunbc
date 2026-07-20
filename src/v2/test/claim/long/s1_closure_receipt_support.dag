@@ -1,18 +1,5 @@
 module v2.test.long.s1_closure_receipt_support
 
-import extdeps.filesystem.filesystem_io
-import std.algebra { Cons, Empty }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
-import v2.compiler.normalize { normalize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.compilers.lexing { LexRules, token_stream_remaining }
-import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.grammar { ModeledGrammar, ParseGrammar, VoidGrammar }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data s1_closure_paths: List<String> = [
   "dag/std/algebra.dag",

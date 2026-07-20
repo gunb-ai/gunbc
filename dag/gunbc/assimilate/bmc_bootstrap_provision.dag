@@ -1,30 +1,5 @@
 module gunbc.assimilate.bmc_bootstrap_provision
 
-import std.resources { Network }
-import std.types { NonEmptyStr, Secret, String, List, Map, Bool }
-import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail, GcpService, gcp_service_api_id }
-import extdeps.cloud.gcp.serviceusage
-import extdeps.cloud.gcp.iam_admin
-import extdeps.cloud.gcp.secret_manager
-import extdeps.cloud.gcp.iam {
-  GcpBinding,
-  role_secretmanager_secret_accessor,
-  role_secretmanager_secret_version_adder
-}
-import gunbc.assimilate.bmc_token_federation {
-  bmc_secrets_project_id,
-  bmc_srv3_secret_name,
-  bmc_assimilator_sa_member,
-  bmc_assimilator_account_id,
-  bmc_assimilator_display_name,
-  bmc_wif_pool_id,
-  bmc_wif_pool_display_name,
-  bmc_wif_provider_id,
-  bmc_wif_issuer_uri,
-  bmc_wif_attribute_mapping,
-  bmc_wif_attribute_condition
-}
-
 
 data bmc_assimilate_service_deps: List<GcpService> = [
   GcpServiceUsage,
@@ -55,7 +30,7 @@ pattern bmc_bootstrap_provision_srv3() -> {
   pool_op: String,
   provider_op: String
 }
-  uses net: Network
+  uses net: std.resources.Network
 {
   node auth: shell.GCloud.AuthPrintAccessToken()
 

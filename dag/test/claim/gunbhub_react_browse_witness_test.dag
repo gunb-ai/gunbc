@@ -1,12 +1,5 @@
 module test.claim.gunbhub_react_browse_witness
 
-import gunbc.gunbhub_serve { gunbhub_browse_page }
-import extdeps.languages.html {
-  EmitOk,
-  EmitRejected,
-  try_serialize_html_source,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

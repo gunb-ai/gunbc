@@ -16,6 +16,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
+
 data spine_translate_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_translate_module } },
   children: [],

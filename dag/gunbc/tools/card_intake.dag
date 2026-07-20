@@ -1,31 +1,11 @@
 module gunbc.tools.card_intake
 
-import std.types { FilePath, NonEmptyStr }
-import std.credentials { CredentialSource, EnvVar }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.llm.anthropic {
-  AnthropicChatMessage,
-  UserMessage,
-  UserTextBlock,
-  AnthropicImageBlock,
-  ImageSource,
-  Base64Image,
-  AnthropicImageMediaType,
-  ImageJpeg
-}
-import extdeps.llm.anthropic_rest
-import extdeps.filesystem.filesystem_io
-import extdeps.tcgplayer.tcgplayer
-import extdeps.tcgplayer.catalog
-import extdeps.tcgplayer.pricing
-import extdeps.tcgplayer.store
 
-data tcgplayer_client_id_source: CredentialSource = EnvVar { name: "TCGPLAYER_CLIENT_ID" }
+data tcgplayer_client_id_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_ID" }
 
-data tcgplayer_client_secret_source: CredentialSource = EnvVar { name: "TCGPLAYER_CLIENT_SECRET" }
+data tcgplayer_client_secret_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_SECRET" }
 
-data tcgplayer_store_key_source: CredentialSource = EnvVar { name: "TCGPLAYER_STORE_KEY" }
+data tcgplayer_store_key_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_STORE_KEY" }
 
 data default_recognition_model: String = "claude-sonnet-4-6-20250929"
 
@@ -114,7 +94,7 @@ fn count_flagged(
 }
 
 func recognize_binder_photo(
-  photo_path: FilePath,
+  photo_path: std.types.FilePath,
   model: String = default_recognition_model
 ) -> { card_name: String } {
 
@@ -140,7 +120,7 @@ func recognize_binder_photo(
 }
 
 func intake_binder_photo(
-  photo_path: FilePath,
+  photo_path: std.types.FilePath,
   bearer_token: Secret,
   category_id: Int,
   high_value_threshold: Float = default_high_value_threshold_usd
@@ -179,7 +159,7 @@ func intake_binder_photo(
 }
 
 func intake_binder(
-  photo_paths: List<FilePath>,
+  photo_paths: List<std.types.FilePath>,
   client_id: String,
   client_secret: Secret,
   category_id: Int,

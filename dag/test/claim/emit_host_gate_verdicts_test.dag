@@ -1,7 +1,5 @@
 module test.claim.emit_host_gate_verdicts_test
 
-import std.process { ProcessExit }
-import tools.emit_host_gate { smoke_verdict_line, gate_failure_exit }
 
 data emit_host_gate_verdicts_red_doc: String = "Discriminating controls for the per-smoke verdict line (tools.emit_host_gate.per_smoke_verdict_note): the refusal reason must NAME each failing smoke — the defect this dissolves is a five-smokes-into-one-Bool fold whose failure was unnameable from the receipt (2026-07-13 srv3 forensics receipt). A regression that drops a smoke from the line, swaps pass/FAIL polarity, or degenerates the join to empty goes RED on the exact-string pins below."
 

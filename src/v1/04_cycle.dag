@@ -2,6 +2,7 @@ module v1.compiler.infer_cycle
 
 import v1.compiler.infer_env { TypeBinding }
 
+
 fn compute_in_graph_deps(
     all_names: List<String>,
     deps_map: Map<String, List<String>>,

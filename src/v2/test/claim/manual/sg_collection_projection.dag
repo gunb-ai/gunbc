@@ -1,30 +1,5 @@
 module v2.test.manual.sg_collection_projection
 
-import v2.compiler.translate {
-  translate_type_expression_project,
-  target_serialize_source_from_model
-}
-import v2.extdeps.languages.rust {
-  rust_sg2_type_expr_target_model,
-  rust_type_expression_projection
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Instantiation, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.compilers.target_model {
-  target_carrier_free_monoid_node,
-  target_carrier_node_node
-}
-import v2.std.text { String }
-import v2.std.verification {
-  Boundary,
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  manual_claim_anchor
-}
 data sg_collection_expected_vec_rc_node: String = "Vec<Rc<Node>>"
 
 fn sg_collection_pass_node() -> Node {

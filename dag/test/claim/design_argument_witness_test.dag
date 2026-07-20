@@ -1,12 +1,5 @@
 module test.claim.design_argument_witness
 
-import gunbc.design_argument { design_section_1_argument, design_argument, design_axioms }
-import std.syllogism {
-  Axiom, NonLogicalAxiom, Proposition, Argument,
-  argument_has_no_orphan, argument_is_acyclic,
-  argument_axiom_set_is_closed, argument_form_is_valid, argument_is_non_vacuous
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
