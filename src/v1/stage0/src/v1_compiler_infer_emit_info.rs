@@ -820,7 +820,7 @@ pub fn add_emit_item_summary(
 pub fn emit_dependency_registration_dissolve_on_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_files from that set. Instance-patch interim: module_needs_freemonoid_import widens faithful FreeMonoid/Char use-line emission; compile closure injects v2.std.text when absent so crate::v2_std_text:: refs resolve (membership grain).".to_string()
+            "dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_files from that set. Instance-patch interim: module_needs_freemonoid_import walks full item subtree for faithful String leaves and explicit FreeMonoid refs.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())

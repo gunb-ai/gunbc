@@ -3134,15 +3134,8 @@ fn module_needs_freemonoid_import(items: List<Node>, corpus_repr: RustCorpusRepr
     false
   } else {
     items |> any(item =>
-      match item.type_annotation {
-        Present { value: ta } => node_tree_references_type_name(n: ta, type_name: "FreeMonoid", source_indices: source_indices)
-        Absent => false
-      }
-      || item.params |> any(p => node_tree_references_type_name(n: p, type_name: "FreeMonoid", source_indices: source_indices))
-      || match item.body {
-        Present { value: body } => node_tree_references_type_name(n: body, type_name: "FreeMonoid", source_indices: source_indices)
-        Absent => false
-      }
+      node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
+      || node_tree_references_type_name(n: item, type_name: "FreeMonoid", source_indices: source_indices)
     )
   }
 }

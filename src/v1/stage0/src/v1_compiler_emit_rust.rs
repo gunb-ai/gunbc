@@ -7608,34 +7608,15 @@ pub fn module_needs_freemonoid_import(
         {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if ((match item.type_annotation.clone() {
-                    Some(ta) => node_tree_references_type_name(
-                        ta.clone(),
-                        "FreeMonoid".to_string(),
-                        source_indices.clone(),
-                    ),
-                    None => false,
-                } || {
-                    let mut __found = false;
-                    for p in item.params.clone().iter().cloned() {
-                        if node_tree_references_type_name(
-                            p.clone(),
-                            "FreeMonoid".to_string(),
-                            source_indices.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }) || match item.body.clone() {
-                    Some(body) => node_tree_references_type_name(
-                        body.clone(),
-                        "FreeMonoid".to_string(),
-                        source_indices.clone(),
-                    ),
-                    None => false,
-                }) {
+                if (node_tree_has_faithful_string_leaf(
+                    item.clone(),
+                    source_indices.clone(),
+                    corpus_repr.clone(),
+                ) || node_tree_references_type_name(
+                    item.clone(),
+                    "FreeMonoid".to_string(),
+                    source_indices.clone(),
+                )) {
                     __found = true;
                     break;
                 }
