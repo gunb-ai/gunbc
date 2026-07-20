@@ -1,8 +1,9 @@
 module v2.test.fixture.transport_script_scan.let_bound_literal_plant
 
+import extdeps.shell.exec { transport_script_from_body }
 
 fn run_let_bound_literal_violation() -> Bool {
   let s = "echo hello"
-  let result = shell.Exec.Run(script: s)
+  let result = shell.Exec.Run(script: transport_script_from_body(body: s))
   result.success
 }

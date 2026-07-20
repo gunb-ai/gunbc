@@ -56,8 +56,10 @@ import v2.test.execution.emit_host_loop_equals_eval {
   emit_loop_eval_subgraph_node,
 }
 import v2.test.execution.emit_host_fold_closure_equals_eval {
+  emit_fold_eval_run,
   emit_fold_eval_subgraph_node,
   emit_fold_eval_tree_for,
+  emit_fold_eval_verdict_is_pass,
 }
 import v2.test.emit.fold_call_closure_fixture {
   fold_fixture_param_canonical_arrow,
@@ -72,7 +74,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_match_loop_fold_note: String = "Witness-realization fan-out lane 3 (#6879 kernel extension): emit_host match + loop + fold_closure families end-to-end. P3 per family: (a) interpreted==native agreement via emit_host_*_equals_eval — match + loop green; fold equals_eval quarantined on known-red probe cadence (eval cannot evaluate closure arrow args in fold_fixture_param_call_body yet; native cached-path coverage carries fold); (b) native cached-path octet discrimination; (c) native cold-then-warm with compile_skipped; (d) distinct inferred_tree_digest -> new key -> cold rebuild; (e) wrong-oracle RED via discriminating native octets. Shared pure: store Share/Recompute, realize_pack refusal, interpreter roles bounded."
+data emit_on_demand_match_loop_fold_note: String = "Witness-realization fan-out lane 3 (#6879 kernel extension): emit_host match + loop + fold_closure families end-to-end. P3 per family: (a) interpreted==native agreement via emit_host_*_equals_eval — match, loop, and fold all green (fold un-quarantined 2026-07-20 once the eval walk gained structural closure-arg support: an Arrow TypeNode in runtime-argument position materializes RuntimeClosure instead of refusing, so the closure at transform child 3 of fold_fixture_param_call_body evaluates; the native cached-path witnesses remain a separate leg and are not the agreement oracle); (b) native cached-path octet discrimination; (c) native cold-then-warm with compile_skipped; (d) distinct inferred_tree_digest -> new key -> cold rebuild; (e) wrong-oracle RED via discriminating native octets. Shared pure: store Share/Recompute, realize_pack refusal, interpreter roles bounded."
 
 data family_cache_root: String = "/tmp/gunbc_emit_on_demand_match_loop_fold_family"
 data family_emitter: String = "v2.compiler.emit"
@@ -512,6 +514,14 @@ fn fold_alt_tree() -> InferredTree {
   emit_fold_eval_tree_for(root: fold_fixture_param_wrong_arrow)
 }
 
+data emit_on_demand_fold_agreement_note: String = "The (a) leg for fold, restored on un-quarantine (2026-07-20) once eval gained structural closure-arg support. Like the match and loop agreement witnesses it routes through emit_fold_eval_run -> run_test_claim_emit_vs_eval, so the verdict is a comparison of BOTH legs: emit()-to-native host run versus eval() of the same subgraph. It is deliberately NOT a native-cached-path assertion — the cached-octets witnesses below cover that, and an agreement fn that read the native path as its own oracle would be checking the native leg against itself."
+
+test fn emit_on_demand_fold_closure_agreement_holds() -> Bool {
+  emit_fold_eval_verdict_is_pass(
+    run: emit_fold_eval_run(root: fold_fixture_param_canonical_arrow)
+  )
+}
+
 test fn emit_on_demand_fold_closure_native_cached_octets_holds() -> Bool {
   let tree = fold_primary_tree()
   let key = family_native_key_for(tree: tree)
@@ -708,6 +718,7 @@ test fn emit_on_demand_match_loop_fold_family_witnesses() -> Bool {
     && emit_on_demand_loop_native_cold_holds()
     && emit_on_demand_loop_native_cold_then_warm_holds()
     && emit_on_demand_loop_content_change_cold_rebuild_holds()
+    && emit_on_demand_fold_closure_agreement_holds()
     && emit_on_demand_fold_closure_native_cached_octets_holds()
     && emit_on_demand_fold_closure_wrong_fixture_refuses_holds()
     && emit_on_demand_fold_closure_native_cold_holds()

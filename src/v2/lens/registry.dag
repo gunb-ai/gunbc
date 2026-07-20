@@ -40,6 +40,7 @@ type LensIdV0
   | LiveReadClassification
   | MachineShape
   | MockTotality
+  | MetaExecConfinement
   | MutationAdequacy
   | NonFoldResidue
   | RealizationVocabularyContainment
@@ -260,6 +261,11 @@ data lens_registry_v0_machine_shape: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.machine_shape" }
 }
 
+data lens_registry_v0_meta_exec_confinement: LensRegistryEntryV0 = {
+  lens_id: MetaExecConfinement
+  module_path: Bound { path: "v2.lens.meta_exec_confinement" }
+}
+
 data lens_registry_v0_mock_totality: LensRegistryEntryV0 = {
   lens_id: MockTotality
   module_path: Bound { path: "v2.lens.mock_totality" }
@@ -373,6 +379,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_leaf_model_verification,
   lens_registry_v0_live_read_classification,
   lens_registry_v0_machine_shape,
+  lens_registry_v0_meta_exec_confinement,
   lens_registry_v0_mock_totality,
   lens_registry_v0_mutation_adequacy,
   lens_registry_v0_non_fold_residue,
@@ -538,6 +545,10 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     MachineShape => match right {
       MachineShape => true
+      _ => false
+    }
+    MetaExecConfinement => match right {
+      MetaExecConfinement => true
       _ => false
     }
     MockTotality => match right {

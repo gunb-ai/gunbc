@@ -25,13 +25,14 @@ use crate::v1_rt;
 use crate::v1_std_core::{
     arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
-    expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
-    field_init_node_name_at, field_init_node_value, has_child_named, inferred_to_node, intern,
-    is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_items,
-    param_node_name_at, param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData,
-    InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
+    expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
+    field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
+    inferred_to_node, intern, is_discovery_corpus_advisory_typecheck_diagnostic,
+    is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
+    is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, match_arm_nodes,
+    match_scrutinee, method_arg_nodes, method_receiver, module_items, param_node_name_at,
+    param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData, InferredNode, InternTable,
+    MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -20095,6 +20096,34 @@ fn is_shell_exec_run_transport_script(
     }
 }
 
+fn is_transport_script_from_body_call(
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    matches!(node.expr_data.as_ref(), ExprData::ExprCall { .. })
+        && expr_call_func_at(node.clone(), source_indices.clone()) == "transport_script_from_body"
+}
+
+fn transport_script_body_arg_node(
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    let args = crate::v1_compiler_infer::call_args_by_name(node.clone(), source_indices.clone());
+    v1_rt::map_get(&args, "body".to_string())
+}
+
+fn effective_transport_script_source(
+    script_node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Node> {
+    if is_transport_script_from_body_call(script_node, source_indices) {
+        transport_script_body_arg_node(script_node, source_indices)
+            .unwrap_or_else(|| script_node.clone())
+    } else {
+        script_node.clone()
+    }
+}
+
 fn transport_script_arg_node(
     node: &Rc<Node>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -20147,8 +20176,9 @@ fn walk_transport_script_expr(
 ) {
     if is_shell_exec_run_transport_script(node, source_indices) {
         if let Some(script_node) = transport_script_arg_node(node, source_indices) {
+            let source = effective_transport_script_source(&script_node, source_indices);
             on_run(classify_transport_script_arg(
-                &script_node,
+                &source,
                 let_bindings,
                 source_indices,
             ));
@@ -20201,6 +20231,29 @@ pub fn transport_script_position_facts_for_path(
         ));
     }
     facts
+}
+
+#[cfg(test)]
+mod transport_script_peel_tests {
+    use super::*;
+
+    #[test]
+    fn bare_literal_plant_detects_one_violation_through_transport_script_from_body() {
+        let facts = transport_script_position_facts_for_path(
+            "src/v2/test/fixture/transport_script_scan/bare_string_literal/plant.dag".to_string(),
+        );
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].shape, "BareStringLiteral");
+    }
+
+    #[test]
+    fn let_bound_literal_plant_detects_one_violation_through_transport_script_from_body() {
+        let facts = transport_script_position_facts_for_path(
+            "src/v2/test/fixture/transport_script_scan/let_bound_literal/plant.dag".to_string(),
+        );
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].shape, "LetBoundStringLiteral");
+    }
 }
 
 #[cfg(test)]

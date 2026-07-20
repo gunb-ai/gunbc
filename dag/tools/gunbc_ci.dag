@@ -2,7 +2,7 @@ module tools.gunbc_ci
 
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
 import gunbc.ci_spec { gunbc_ci_spec }
 import v2.workflow.ci_release_build_emit { gunbc_ci_run_script }
 
@@ -10,7 +10,7 @@ import v2.workflow.ci_release_build_emit { gunbc_ci_run_script }
 
 func main() -> ProcessExit {
   let script = gunbc_ci_run_script(spec: gunbc_ci_spec)
-  let result = shell.Exec.Run(script: script)
+  let result = shell.Exec.Run(script: transport_script_from_body(body: script))
   return if result.success {
     ExitSuccess
   } else {

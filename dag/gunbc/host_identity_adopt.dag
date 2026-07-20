@@ -56,7 +56,7 @@ fn host_identity_adopt_model_hash() -> ContentHash {
 }
 
 fn host_identity_observed_probed_at() -> NonEmptyStr {
-  let result = shell.Exec.Run(script: "date -Iseconds")
+  let result = shell.Exec.Run(script: transport_script_from_body(body: "date -Iseconds"))
   if result.success {
     let line = trim(result.stdout)
     if line == "" { "unknown" as NonEmptyStr } else { line as NonEmptyStr }
@@ -147,7 +147,7 @@ fn host_identity_adopt_receipt_message(receipt: HostIdentityAdoptReceipt) -> Str
 
 fn host_identity_adopt_exit(receipt: HostIdentityAdoptReceipt) -> ProcessExit {
   if host_identity_adopt_receipt_is_valid(receipt: receipt) {
-    let announced = shell.Exec.Run(script: concat("echo ", host_identity_adopt_receipt_message(receipt: receipt)))
+    let announced = shell.Exec.Run(script: transport_script_from_body(body: concat("echo ", host_identity_adopt_receipt_message(receipt: receipt))))
     ExitSuccess
   } else {
     exit_failure(
