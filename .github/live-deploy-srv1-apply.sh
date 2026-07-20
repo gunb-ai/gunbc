@@ -8,7 +8,8 @@ trap 'rm -rf "$_gunbc_stage"' EXIT
 if ! dpkg -s tailscale >/dev/null 2>&1; then sudo -n apt-get install --yes tailscale; fi
 if ! dpkg -s tmux >/dev/null 2>&1; then sudo -n apt-get install --yes tmux; fi
 sudo -n install -d -m 0755 /opt/gunbc
-rsync -a --delete --exclude /target ./ /opt/gunbc/gunbc/
+rsync -a --delete --exclude /target --exclude /.git ./ /opt/gunbc/gunbc/
+rsync -a ./.git/ /opt/gunbc/gunbc/.git/
 chown -R briansrls:briansrls /opt/gunbc/gunbc
 sudo -n install -d -m 0755 /opt/gunbc/bin
 sudo -n install -m 0755 target/release/gunbc /opt/gunbc/bin/gunbc
