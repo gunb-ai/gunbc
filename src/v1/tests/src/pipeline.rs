@@ -6716,12 +6716,16 @@ type RealEnum
         source,
         RenderTarget::Rust,
     );
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/malformed_internal_coproduct_wire_contract.rs");
+    // The missing-field presence wall now stops the line at TYPECHECK (the
+    // census-ambiguity skip that used to let this literal through was an
+    // absorbing arm, closed on #6848) — strictly earlier than the decode-time
+    // compile_error! backstop this test previously pinned. The malformed
+    // contract must refuse loudly, naming the omitted field.
+    let msgs = diagnostic_messages(&result);
     assert!(
-        content.contains("compile_error!")
-            && content.contains("InternallyTaggedObject requires a literal tag_field"),
-        "malformed InternallyTaggedObject contracts must fail closed; got:\n{content}"
+        msgs.iter().any(|m| m.contains("missing required field 'tag_field'")
+            && m.contains("InternallyTaggedObject")),
+        "malformed InternallyTaggedObject contracts must refuse at typecheck; got: {msgs:?}"
     );
 }
 
@@ -6752,13 +6756,16 @@ type MissingPrefixEnum
         source,
         RenderTarget::Rust,
     );
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/malformed_naming_coproduct_wire_contract.rs");
+    // Same wall-promotion as the tag_field twin above: the omitted `naming`
+    // field refuses at typecheck now. The bare `StripPrefixAndSnakeCase`
+    // (missing `prefix`) is an ExprVar, not a record literal, so it stays
+    // decode-time enforced — that compile_error! arm remains the backstop for
+    // shapes the literal wall cannot see.
+    let msgs = diagnostic_messages(&result);
     assert!(
-        content.contains("compile_error!")
-            && content.contains("InternallyTaggedObject requires a naming policy")
-            && content.contains("StripPrefixAndSnakeCase requires a literal prefix"),
-        "malformed naming policies must fail closed at decode time; got:\n{content}"
+        msgs.iter().any(|m| m.contains("missing required field 'naming'")
+            && m.contains("InternallyTaggedObject")),
+        "malformed naming policies must refuse at typecheck; got: {msgs:?}"
     );
 }
 
