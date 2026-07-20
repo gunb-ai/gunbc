@@ -5660,12 +5660,40 @@ fn module_schedule_batches(
             .module_graph_facts
             .reference_only_direct_import_modules(&decl_file)
         {
+            if std::env::var("GUNBC_DEBUG_SCHED").is_ok()
+                && (module_names[i] == "std.access" || dep_name == "std.effects")
+            {
+                eprintln!(
+                    "SCHED-REF dependent={} ({i}) dep_name={dep_name} found={}",
+                    module_names[i],
+                    position.contains_key(dep_name.as_str())
+                );
+            }
             if let Some(&src) = position.get(dep_name.as_str()) {
                 edges.push((src, i));
             }
         }
     }
-    schedule_batches_from_edges(modules.len(), &edges)
+    if std::env::var("GUNBC_DEBUG_SCHED").is_ok() {
+        if let Some(ai) = position.get("std.access") {
+            eprintln!("SCHED-POS std.access = {ai}");
+        }
+        if let Some(ei) = position.get("std.effects") {
+            eprintln!("SCHED-POS std.effects = {ei}");
+        }
+    }
+    let batches = schedule_batches_from_edges(modules.len(), &edges);
+    if std::env::var("GUNBC_DEBUG_SCHED").is_ok() {
+        if let Some(ai) = position.get("std.access") {
+            let b = batches.iter().position(|b| b.contains(ai));
+            eprintln!("SCHED-BATCH std.access batch={b:?}");
+        }
+        if let Some(ei) = position.get("std.effects") {
+            let b = batches.iter().position(|b| b.contains(ei));
+            eprintln!("SCHED-BATCH std.effects batch={b:?}");
+        }
+    }
+    batches
 }
 
 /// The pure batching core of `module_schedule_batches`: nodes are `0..n` in dependency-view
@@ -17311,6 +17339,23 @@ pub fn bare_ref_reachability_for_name(
 #[cfg(test)]
 mod reference_edge_producer_tests {
     use super::reference_resolution_facts;
+
+    #[test]
+    fn debug_repro_ci_plan_resolve() {
+        let root = super::process_workspace_root();
+        let roots = vec![
+            root.join("dag").to_string_lossy().to_string(),
+            root.join("src/v2").to_string_lossy().to_string(),
+        ];
+        let entry = root
+            .join("src/v2/workflow/ci_floor_plan.dag")
+            .to_string_lossy()
+            .to_string();
+        match super::resolve_entry_graph(&roots, &entry) {
+            Ok(_) => eprintln!("REPRO-RESULT: ok"),
+            Err(e) => eprintln!("REPRO-RESULT: err: {e}"),
+        }
+    }
 
     #[test]
     fn debug_dump_access_effects_edges() {
