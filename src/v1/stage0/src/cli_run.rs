@@ -4056,6 +4056,29 @@ pub struct MultiEntryIndex {
     >,
 }
 
+impl MultiEntryIndex {
+    /// Borrow every cache field for structural memory receipts (rc-arc share spike).
+    pub(crate) fn memory_receipt_snapshot(
+        &self,
+    ) -> (
+        std::cell::Ref<'_, std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+        std::cell::Ref<'_, std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>>,
+        std::cell::Ref<'_, im_rc::HashMap<String, (Rc<v1_compiler_compile::ResolvedGraph>, Rc<im_rc::HashMap<String, Rc<NewlineIndex>>>)>>,
+        std::cell::Ref<'_, Rc<InternTable>>,
+        std::cell::Ref<'_, std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+        std::cell::Ref<'_, std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+    ) {
+        (
+            self.typed_module_cache.borrow(),
+            self.parse_cache.borrow(),
+            self.resolved_graph_memo.borrow(),
+            self.intern_table.borrow(),
+            self.normalize_diag_cache.borrow(),
+            self.ownership_diag_cache.borrow(),
+        )
+    }
+}
+
 pub fn new_shared_typecheck_caches() -> Arc<RwLock<SharedTypecheckCaches>> {
     shared_typecheck_store::new_shared_typecheck_caches()
 }
@@ -5925,6 +5948,36 @@ pub fn whole_tree_resolved_ctx(
         modules_resolved,
         modules_excluded,
     })
+}
+
+/// Strict whole-tree resolve through a fresh `MultiEntryIndex` — populates every cache
+/// field the adaptive worker pool retains per shard (rc-arc share spike receipts).
+pub fn populate_multi_entry_index_whole_tree(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+    typecheck_gate: ResolveTypecheckGate,
+) -> Result<(MultiEntryIndex, usize, usize), String> {
+    let index = build_multi_entry_index(source_roots);
+    let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
+    let modules_resolved = picked.modules_resolved;
+    let modules_excluded = picked.modules_excluded;
+    resolved_graph_from_sources_with_index(
+        &index,
+        picked.sources,
+        typecheck_gate,
+        "rc-arc-spike-whole-tree",
+    )?;
+    Ok((index, modules_resolved, modules_excluded))
+}
+
+/// Resolve one entry's import closure through a fresh index (per-shard closure shape).
+pub fn populate_multi_entry_index_entry(
+    source_roots: &[String],
+    entry_file: &str,
+) -> Result<MultiEntryIndex, String> {
+    let index = build_multi_entry_index(source_roots);
+    resolve_entry_with_index(&index, entry_file)?;
+    Ok(index)
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {

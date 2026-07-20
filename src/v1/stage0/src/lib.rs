@@ -38,6 +38,7 @@ pub mod extdeps_version;
 pub mod extdeps_version_semver;
 pub mod gunbc_stage0_crate_layout_generated;
 pub mod gunbc_stage0_crate_partition_generated;
+pub mod index_memory_receipt;
 pub mod memory_governor;
 pub mod module_path_index;
 pub mod recorded_fixture;
