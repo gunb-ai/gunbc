@@ -20,6 +20,8 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+data real_execution_home_doc: String = "Wave A2 host_effect_plan_apply witness drives real shell.Exec.Run effects (LocalShell true/exit-1) through Do-effect leaves; the hermetic discovery corpus cannot discriminate exit codes under mock_response, so this file is excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled as a declared Wet explicit entry (bin_witness_wet_entries), same lane as host_build_cache_provision_real_execution_witness_test.dag."
+
 fn witness_host_os_target() -> NodeControlPlane {
   HostOs { node: srv1_host }
 }
