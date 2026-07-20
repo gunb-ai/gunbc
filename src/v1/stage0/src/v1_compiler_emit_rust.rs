@@ -7733,39 +7733,31 @@ pub fn module_item_has_faithful_string_leaf(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
-    {
-        let annotation_hit = match item.type_annotation.clone() {
-            Some(ta) => node_tree_has_faithful_string_leaf(
-                ta.clone(),
+    ((node_tree_has_faithful_string_leaf(
+        item.clone(),
+        source_indices.clone(),
+        corpus_repr.clone(),
+    ) || {
+        let mut __found = false;
+        for p in item.params.clone().iter().cloned() {
+            if node_tree_has_faithful_string_leaf(
+                p.clone(),
                 source_indices.clone(),
                 corpus_repr.clone(),
-            ),
-            None => false,
-        };
-        let params_hit = {
-            let mut __found = false;
-            for p in item.params.clone().iter().cloned() {
-                if node_tree_has_faithful_string_leaf(
-                    p.clone(),
-                    source_indices.clone(),
-                    corpus_repr.clone(),
-                ) {
-                    __found = true;
-                    break;
-                }
+            ) {
+                __found = true;
+                break;
             }
-            __found
-        };
-        let body_hit = match item.body.clone() {
-            Some(body) => node_tree_has_faithful_string_leaf(
-                body.clone(),
-                source_indices.clone(),
-                corpus_repr.clone(),
-            ),
-            None => false,
-        };
-        ((annotation_hit.clone() || params_hit.clone()) || body_hit.clone())
-    }
+        }
+        __found
+    }) || match item.body.clone() {
+        Some(body) => node_tree_has_faithful_string_leaf(
+            body.clone(),
+            source_indices.clone(),
+            corpus_repr.clone(),
+        ),
+        None => false,
+    })
 }
 
 pub fn module_item_references_type_name(
