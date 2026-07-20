@@ -14682,7 +14682,9 @@ pub fn build_type_env(
                     Some(_) => true,
                     None => false,
                 };
-                if (((item.params.clone().len() as i64) > 0) && is_type_decl.clone()) {
+                if ((((item.params.clone().len() as i64) > 0) && is_type_decl.clone())
+                    && (item.body.clone() == None))
+                {
                     {
                         let result = item.params.clone().iter().cloned().fold(
                             acc.clone(),

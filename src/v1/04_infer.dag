@@ -6745,7 +6745,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 
   let param_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
     let is_type_decl = match map_get(local_bindings, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id) { Present { value: _ } => true  Absent => false }
-    if item.params |> count > 0 && is_type_decl {
+    if item.params |> count > 0 && is_type_decl && item.body == none {
       let result = fold(item.params, init: acc, f: (pacc, p) =>
         map_insert(pacc, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: p)).id, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: p)))
       )
