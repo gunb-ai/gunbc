@@ -3,7 +3,7 @@
 use im::HashMap;
 use im::{vector as vec, Vector as Vec};
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc;
 use v1_compiler::v1_rt::VecCompat;
 
 use v1_compiler::cli_run::workspace_root;
@@ -91,7 +91,7 @@ fn extract_imports(source: &str) -> Vec<String> {
         v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert("test.dag".to_string(), source_index);
-    let result = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
+    let result = v1_compiler::v1_compiler_parse::parse(tokens, Arc::new(source_indices));
     match &result.module {
         Some(module) => v1_compiler::v1_std_core::module_imports(module.clone())
             .iter()
@@ -105,9 +105,9 @@ fn resolve_imports_transitively(
     entry_path: &str,
     entry_content: &str,
     module_index: &HashMap<String, std::path::PathBuf>,
-) -> Vec<Rc<SourceFile>> {
+) -> Vec<Arc<SourceFile>> {
     let ws = workspace_root();
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    let mut seen: HashMap<String, Arc<SourceFile>> = HashMap::new();
     let mut queue = vec![(entry_path.to_string(), entry_content.to_string())];
 
     while let Some((_path, content)) = queue.pop_back() {
@@ -124,7 +124,7 @@ fn resolve_imports_transitively(
                         .to_string();
                     seen.insert(
                         module_path.clone(),
-                        Rc::new(SourceFile {
+                        Arc::new(SourceFile {
                             path: rel_path.clone(),
                             content: file_content.clone(),
                         }),
@@ -135,24 +135,24 @@ fn resolve_imports_transitively(
         }
     }
 
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    sources.push(Rc::new(SourceFile {
+    let mut sources: Vec<Arc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
+    sources.push(Arc::new(SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
     }));
     sources
 }
 
-fn compile_dag(source: &str) -> Rc<PipelineResult> {
+fn compile_dag(source: &str) -> Arc<PipelineResult> {
     let module_index = build_module_index();
     let sources = resolve_imports_transitively("test.dag", source, &module_index);
-    compile_sources(Rc::new(sources), RenderTarget::Rust)
+    compile_sources(Arc::new(sources), RenderTarget::Rust)
 }
 
-fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
+fn compile_dag_resolved(source: &str) -> Arc<ResolvedPipelineResult> {
     let module_index = build_module_index();
     let sources = resolve_imports_transitively("test.dag", source, &module_index);
-    compile_to_resolved(Rc::new(sources))
+    compile_to_resolved(Arc::new(sources))
 }
 
 fn assert_no_diagnostics(result: &PipelineResult) {
@@ -174,207 +174,207 @@ fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
         .collect()
 }
 
-fn empty_source_indices() -> Rc<HashMap<String, Rc<NewlineIndex>>> {
-    Rc::new(im::HashMap::new())
+fn empty_source_indices() -> Arc<HashMap<String, Arc<NewlineIndex>>> {
+    Arc::new(im::HashMap::new())
 }
 
-fn leaf_node(name: String) -> Rc<Node> {
+fn leaf_node(name: String) -> Arc<Node> {
     leaf_node_with_span(name, make_span(0, 0))
 }
 
-fn container_node(kind_name: String, element: Rc<Node>) -> Rc<Node> {
+fn container_node(kind_name: String, element: Arc<Node>) -> Arc<Node> {
     let param_name = match container_param_name(kind_name.clone(), 0) {
         Some(n) => n,
         None => kind_name.clone(),
     };
     let sp = make_span(0, 0);
-    Rc::new(Node {
+    Arc::new(Node {
         name: kind_name.clone(),
         ident: None,
         span: sp.clone(),
         ident_span: default_ident_span(kind_name, sp.clone()),
-        children: Rc::new(vec![Rc::new(Node {
+        children: Arc::new(vec![Arc::new(Node {
             name: param_name.clone(),
             ident: None,
             span: sp.clone(),
             ident_span: default_ident_span(param_name, sp.clone()),
-            children: Rc::new(vec![]),
+            children: Arc::new(vec![]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved { node: element })),
+            params: Arc::new(vec![]),
+            inferred: Some(Arc::new(InferredNode::Resolved { node: element })),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
         })]),
         connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
+        params: Arc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
     })
 }
 
-fn map_node(key: Rc<Node>, value: Rc<Node>) -> Rc<Node> {
+fn map_node(key: Arc<Node>, value: Arc<Node>) -> Arc<Node> {
     let key_name = container_param_name("Map".to_string(), 0)
         .expect("kernel Map should resolve K from PartialFunction profile");
     let val_name = container_param_name("Map".to_string(), 1)
         .expect("kernel Map should resolve V from PartialFunction profile");
     let sp = make_span(0, 0);
-    Rc::new(Node {
+    Arc::new(Node {
         name: "Map".to_string(),
         ident: None,
         span: sp.clone(),
         ident_span: Some(sp.clone()),
-        children: Rc::new(vec![
-            Rc::new(Node {
+        children: Arc::new(vec![
+            Arc::new(Node {
                 name: key_name,
                 ident: None,
                 span: sp.clone(),
                 ident_span: Some(sp.clone()),
-                children: Rc::new(vec![]),
+                children: Arc::new(vec![]),
                 connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: Some(Rc::new(InferredNode::Resolved { node: key })),
+                params: Arc::new(vec![]),
+                inferred: Some(Arc::new(InferredNode::Resolved { node: key })),
                 return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
+                uses: Arc::new(vec![]),
                 body: None,
                 transport: None,
-                properties: Rc::new(vec![]),
+                properties: Arc::new(vec![]),
                 type_annotation: None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
+                expr_data: Arc::new(ExprData::NoExprData),
             }),
-            Rc::new(Node {
+            Arc::new(Node {
                 name: val_name,
                 ident: None,
                 span: sp.clone(),
                 ident_span: Some(sp.clone()),
-                children: Rc::new(vec![]),
+                children: Arc::new(vec![]),
                 connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: Some(Rc::new(InferredNode::Resolved { node: value })),
+                params: Arc::new(vec![]),
+                inferred: Some(Arc::new(InferredNode::Resolved { node: value })),
                 return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
+                uses: Arc::new(vec![]),
                 body: None,
                 transport: None,
-                properties: Rc::new(vec![]),
+                properties: Arc::new(vec![]),
                 type_annotation: None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
                 match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
+                expr_data: Arc::new(ExprData::NoExprData),
             }),
         ]),
         connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
+        params: Arc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
     })
 }
 
-fn zero_span() -> Rc<SourceSpan> {
-    Rc::new(SourceSpan {
+fn zero_span() -> Arc<SourceSpan> {
+    Arc::new(SourceSpan {
         file: String::new(),
         start: 0,
         end: 0,
     })
 }
 
-fn unit_expr() -> Rc<Node> {
+fn unit_expr() -> Arc<Node> {
     leaf_node("Unit".to_string())
 }
 
-fn empty_type_env() -> Rc<TypeEnv> {
-    Rc::new(TypeEnv {
+fn empty_type_env() -> Arc<TypeEnv> {
+    Arc::new(TypeEnv {
         module_path: "".to_string(),
-        bindings: Rc::new(im::HashMap::new()),
-        str_bindings: Rc::new(im::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im::HashMap::new()),
-        parents: Rc::new(vec![]),
-        recursive_types: Rc::new(vec![]),
-        recursive_type_set: Rc::new(im::HashMap::new()),
-        inductive_fields: Rc::new(im::HashMap::new()),
-        source_indices: Rc::new(im::HashMap::new()),
+        bindings: Arc::new(im::HashMap::new()),
+        str_bindings: Arc::new(im::HashMap::new()),
+        ancestry_str_bindings: Arc::new(im::HashMap::new()),
+        parents: Arc::new(vec![]),
+        recursive_types: Arc::new(vec![]),
+        recursive_type_set: Arc::new(im::HashMap::new()),
+        inductive_fields: Arc::new(im::HashMap::new()),
+        source_indices: Arc::new(im::HashMap::new()),
         intern_table: v1_compiler::v1_std_core::empty_intern_table(),
-        source_visible_names: Rc::new(im::HashMap::new()),
+        source_visible_names: Arc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     })
 }
 
-fn empty_infer_scope() -> Rc<InferScope> {
-    Rc::new(InferScope {
+fn empty_infer_scope() -> Arc<InferScope> {
+    Arc::new(InferScope {
         type_env: empty_type_env(),
-        func_env: Rc::new(ResolvedFuncEnv {
+        func_env: Arc::new(ResolvedFuncEnv {
             name: "test".to_string(),
-            local: Rc::new(im::HashMap::new()),
-            parents: Rc::new(vec![]),
+            local: Arc::new(im::HashMap::new()),
+            parents: Arc::new(vec![]),
         }),
-        locals: Rc::new(im::HashMap::new()),
-        body_locals: Rc::new(im::HashMap::new()),
-        match_bound_names: Rc::new(im::HashMap::new()),
+        locals: Arc::new(im::HashMap::new()),
+        body_locals: Arc::new(im::HashMap::new()),
+        match_bound_names: Arc::new(im::HashMap::new()),
         module_name: "test".to_string(),
-        service_registry: Rc::new(im::HashMap::new()),
-        item_registry: Rc::new(im::HashMap::new()),
-        lambda_param_provenance: Rc::new(im::HashMap::new()),
+        service_registry: Arc::new(im::HashMap::new()),
+        item_registry: Arc::new(im::HashMap::new()),
+        lambda_param_provenance: Arc::new(im::HashMap::new()),
     })
 }
 
-fn sum_node(name: &str, variants: Vec<Rc<Node>>, cardinality: Cardinality) -> Rc<Node> {
+fn sum_node(name: &str, variants: Vec<Arc<Node>>, cardinality: Cardinality) -> Arc<Node> {
     let sp = make_span(0, 0);
-    Rc::new(Node {
+    Arc::new(Node {
         name: name.to_string(),
         ident: None,
         span: sp.clone(),
         ident_span: default_ident_span(name.to_string(), sp),
-        children: Rc::new(variants),
+        children: Arc::new(variants),
         connective: Connective::Disj,
-        params: Rc::new(vec![]),
+        params: Arc::new(vec![]),
         inferred: None,
         return_cardinality: cardinality,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
     })
 }
 
-fn variant_arm(name: &str) -> Rc<Node> {
+fn variant_arm(name: &str) -> Arc<Node> {
     make_arm_node(
-        Rc::new(MatchPattern::VariantPattern {
+        Arc::new(MatchPattern::VariantPattern {
             name: name.to_string(),
             parent_enum: None,
-            field_bindings: Rc::new(vec![]),
+            field_bindings: Arc::new(vec![]),
         }),
         None,
         unit_expr(),
@@ -382,7 +382,7 @@ fn variant_arm(name: &str) -> Rc<Node> {
     )
 }
 
-fn assert_compiler_error(inferred: &Option<Rc<InferredNode>>, message_fragment: &str) {
+fn assert_compiler_error(inferred: &Option<Arc<InferredNode>>, message_fragment: &str) {
     match inferred.as_ref().expect("expected inferred").as_ref() {
         InferredNode::CompilerError { message, .. } => {
             assert!(
@@ -657,7 +657,7 @@ fn valid_map_index_preserves_optional_value_type() {
 }
 
 fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
-    let subject = v1_compiler_infer_patterns::pattern_subject_from_inferred(Some(Rc::new(
+    let subject = v1_compiler_infer_patterns::pattern_subject_from_inferred(Some(Arc::new(
         InferredNode::CompilerError {
             message: "upstream failure".to_string(),
             span: zero_span(),
@@ -741,66 +741,66 @@ fn optional_pattern_lookup_resolves_present_variant() {
 
 fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant() {
     let sp = make_span(0, 0);
-    let inner_present = Rc::new(Node {
+    let inner_present = Arc::new(Node {
         name: "Present".to_string(),
         ident: None,
         span: sp.clone(),
         ident_span: default_ident_span("Present".to_string(), sp.clone()),
-        children: Rc::new(vec![Rc::new(Node {
+        children: Arc::new(vec![Arc::new(Node {
             name: "inner".to_string(),
             ident: None,
             span: sp.clone(),
             ident_span: default_ident_span("inner".to_string(), sp.clone()),
-            children: Rc::new(vec![]),
+            children: Arc::new(vec![]),
             connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::Resolved {
+            params: Arc::new(vec![]),
+            inferred: Some(Arc::new(InferredNode::Resolved {
                 node: leaf_node("Int".to_string()),
             })),
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: Arc::new(vec![]),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: Arc::new(vec![]),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
+            expr_data: Arc::new(ExprData::NoExprData),
         })]),
         connective: Connective::Conj,
-        params: Rc::new(vec![]),
+        params: Arc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
     });
-    let optional_inner_sum = Rc::new(Node {
+    let optional_inner_sum = Arc::new(Node {
         name: "Inner".to_string(),
         ident: None,
         span: sp.clone(),
         ident_span: default_ident_span("Inner".to_string(), sp.clone()),
-        children: Rc::new(vec![inner_present]),
+        children: Arc::new(vec![inner_present]),
         connective: Connective::Disj,
-        params: Rc::new(vec![]),
+        params: Arc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::CardOptional,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
     });
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_inner_sum);
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
@@ -830,19 +830,19 @@ fn optional_present_absent_patterns_keep_canonical_names() {
     ));
 
     let present = v1_compiler::v1_compiler_infer::annotate_pattern_parent_enums(
-        Rc::new(MatchPattern::VariantPattern {
+        Arc::new(MatchPattern::VariantPattern {
             name: "Present".to_string(),
             parent_enum: None,
-            field_bindings: Rc::new(vec![]),
+            field_bindings: Arc::new(vec![]),
         }),
         subject.clone(),
         scope.clone(),
     );
     let absent = v1_compiler::v1_compiler_infer::annotate_pattern_parent_enums(
-        Rc::new(MatchPattern::VariantPattern {
+        Arc::new(MatchPattern::VariantPattern {
             name: "Absent".to_string(),
             parent_enum: None,
-            field_bindings: Rc::new(vec![]),
+            field_bindings: Arc::new(vec![]),
         }),
         subject,
         scope,
@@ -860,26 +860,26 @@ fn optional_present_absent_patterns_keep_canonical_names() {
     ));
 }
 
-fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
-    Rc::new(Node {
+fn applied_generic_type_node(type_name: &str, type_arg: Arc<Node>) -> Arc<Node> {
+    Arc::new(Node {
         name: type_name.to_string(),
         ident: None,
         span: make_span(0, 0),
         ident_span: default_ident_span(type_name.to_string(), make_span(0, 0)),
-        children: Rc::new(vec![type_arg]),
+        children: Arc::new(vec![type_arg]),
         connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
+        params: Arc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
     })
 }
 
@@ -976,10 +976,10 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(optional_sum);
 
     let present = v1_compiler::v1_compiler_infer::annotate_pattern_parent_enums(
-        Rc::new(MatchPattern::VariantPattern {
+        Arc::new(MatchPattern::VariantPattern {
             name: "Present".to_string(),
             parent_enum: None,
-            field_bindings: Rc::new(vec![]),
+            field_bindings: Arc::new(vec![]),
         }),
         subject,
         scope,
@@ -995,19 +995,19 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
 fn optional_match_exhaustiveness_reports_missing_absent() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
-        Rc::new(vec![variant_arm("Present")]),
-        Rc::new(TypeEnv {
+        Arc::new(vec![variant_arm("Present")]),
+        Arc::new(TypeEnv {
             module_path: "".to_string(),
-            bindings: Rc::new(im::HashMap::new()),
-            str_bindings: Rc::new(im::HashMap::new()),
-            ancestry_str_bindings: Rc::new(im::HashMap::new()),
-            parents: Rc::new(vec![]),
-            recursive_types: Rc::new(vec![]),
-            recursive_type_set: Rc::new(im::HashMap::new()),
-            inductive_fields: Rc::new(im::HashMap::new()),
-            source_indices: Rc::new(im::HashMap::new()),
+            bindings: Arc::new(im::HashMap::new()),
+            str_bindings: Arc::new(im::HashMap::new()),
+            ancestry_str_bindings: Arc::new(im::HashMap::new()),
+            parents: Arc::new(vec![]),
+            recursive_types: Arc::new(vec![]),
+            recursive_type_set: Arc::new(im::HashMap::new()),
+            inductive_fields: Arc::new(im::HashMap::new()),
+            source_indices: Arc::new(im::HashMap::new()),
             intern_table: v1_compiler::v1_std_core::empty_intern_table(),
-            source_visible_names: Rc::new(im::HashMap::new()),
+            source_visible_names: Arc::new(im::HashMap::new()),
             symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         }),
         zero_span(),
@@ -1023,19 +1023,19 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
 fn optional_match_exhaustiveness_rejects_some_and_none() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
-        Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
-        Rc::new(TypeEnv {
+        Arc::new(vec![variant_arm("Some"), variant_arm("None")]),
+        Arc::new(TypeEnv {
             module_path: "".to_string(),
-            bindings: Rc::new(im::HashMap::new()),
-            str_bindings: Rc::new(im::HashMap::new()),
-            ancestry_str_bindings: Rc::new(im::HashMap::new()),
-            parents: Rc::new(vec![]),
-            recursive_types: Rc::new(vec![]),
-            recursive_type_set: Rc::new(im::HashMap::new()),
-            inductive_fields: Rc::new(im::HashMap::new()),
-            source_indices: Rc::new(im::HashMap::new()),
+            bindings: Arc::new(im::HashMap::new()),
+            str_bindings: Arc::new(im::HashMap::new()),
+            ancestry_str_bindings: Arc::new(im::HashMap::new()),
+            parents: Arc::new(vec![]),
+            recursive_types: Arc::new(vec![]),
+            recursive_type_set: Arc::new(im::HashMap::new()),
+            inductive_fields: Arc::new(im::HashMap::new()),
+            source_indices: Arc::new(im::HashMap::new()),
             intern_table: v1_compiler::v1_std_core::empty_intern_table(),
-            source_visible_names: Rc::new(im::HashMap::new()),
+            source_visible_names: Arc::new(im::HashMap::new()),
             symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         }),
         zero_span(),
@@ -1051,19 +1051,19 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
 fn optional_match_exhaustiveness_accepts_present_and_absent() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
-        Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
-        Rc::new(TypeEnv {
+        Arc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
+        Arc::new(TypeEnv {
             module_path: "".to_string(),
-            bindings: Rc::new(im::HashMap::new()),
-            str_bindings: Rc::new(im::HashMap::new()),
-            ancestry_str_bindings: Rc::new(im::HashMap::new()),
-            parents: Rc::new(vec![]),
-            recursive_types: Rc::new(vec![]),
-            recursive_type_set: Rc::new(im::HashMap::new()),
-            inductive_fields: Rc::new(im::HashMap::new()),
-            source_indices: Rc::new(im::HashMap::new()),
+            bindings: Arc::new(im::HashMap::new()),
+            str_bindings: Arc::new(im::HashMap::new()),
+            ancestry_str_bindings: Arc::new(im::HashMap::new()),
+            parents: Arc::new(vec![]),
+            recursive_types: Arc::new(vec![]),
+            recursive_type_set: Arc::new(im::HashMap::new()),
+            inductive_fields: Arc::new(im::HashMap::new()),
+            source_indices: Arc::new(im::HashMap::new()),
             intern_table: v1_compiler::v1_std_core::empty_intern_table(),
-            source_visible_names: Rc::new(im::HashMap::new()),
+            source_visible_names: Arc::new(im::HashMap::new()),
             symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         }),
         zero_span(),
@@ -1078,54 +1078,54 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
 }
 
 fn resolve_node_uses_node_name_for_lookup() {
-    let node_ref = Rc::new(Node {
+    let node_ref = Arc::new(Node {
         name: "User".to_string(),
         ident: None,
         span: zero_span(),
-        ident_span: Some(Rc::new(v1_compiler::v1_std_core::SourceSpan {
+        ident_span: Some(Arc::new(v1_compiler::v1_std_core::SourceSpan {
             file: "".to_string(),
             start: 0,
             end: 0,
         })),
-        children: Rc::new(vec![]),
+        children: Arc::new(vec![]),
         connective: v1_compiler::v1_std_core::Connective::NoConnective,
-        params: Rc::new(vec![]),
+        params: Arc::new(vec![]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
     });
     let user_intern = v1_compiler::v1_std_core::intern(
         v1_compiler::v1_std_core::empty_intern_table(),
         "User".to_string(),
     );
-    let user_binding = Rc::new(TypeBinding {
+    let user_binding = Arc::new(TypeBinding {
         name: "User".to_string(),
         resolved: leaf_node("User".to_string()),
-        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        provenance: Arc::new(SubValueRelation::SubValueUnknown),
     });
-    let env = Rc::new(TypeEnv {
+    let env = Arc::new(TypeEnv {
         module_path: "".to_string(),
-        bindings: Rc::new(im::HashMap::from_iter([(
+        bindings: Arc::new(im::HashMap::from_iter([(
             user_intern.id,
             user_binding.clone(),
         )])),
-        str_bindings: Rc::new(im::HashMap::from_iter([("User".to_string(), user_binding)])),
-        ancestry_str_bindings: Rc::new(im::HashMap::new()),
-        parents: Rc::new(vec![]),
-        recursive_types: Rc::new(vec![]),
-        recursive_type_set: Rc::new(im::HashMap::new()),
-        inductive_fields: Rc::new(im::HashMap::new()),
-        source_indices: Rc::new(im::HashMap::new()),
+        str_bindings: Arc::new(im::HashMap::from_iter([("User".to_string(), user_binding)])),
+        ancestry_str_bindings: Arc::new(im::HashMap::new()),
+        parents: Arc::new(vec![]),
+        recursive_types: Arc::new(vec![]),
+        recursive_type_set: Arc::new(im::HashMap::new()),
+        inductive_fields: Arc::new(im::HashMap::new()),
+        source_indices: Arc::new(im::HashMap::new()),
         intern_table: user_intern.table.clone(),
-        source_visible_names: Rc::new(im::HashMap::new()),
+        source_visible_names: Arc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
 
@@ -1505,35 +1505,35 @@ fn map_index_with_wrong_key_type_reports_error() {
 }
 
 fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
-    let syn_span = Some(Rc::new(v1_compiler::v1_std_core::SourceSpan {
+    let syn_span = Some(Arc::new(v1_compiler::v1_std_core::SourceSpan {
         file: "".to_string(),
         start: 0,
         end: 0,
     }));
-    let typed_child = Rc::new(Node {
+    let typed_child = Arc::new(Node {
         name: "x".to_string(),
         ident_span: syn_span.clone(),
-        inferred: Some(Rc::new(InferredNode::Resolved {
+        inferred: Some(Arc::new(InferredNode::Resolved {
             node: leaf_node("Int".to_string()),
         })),
         connective: Connective::NoConnective,
         ..(*leaf_node("".to_string())).clone()
     });
-    let error_child = Rc::new(Node {
+    let error_child = Arc::new(Node {
         name: "y".to_string(),
         ident_span: syn_span.clone(),
-        inferred: Some(Rc::new(InferredNode::CompilerError {
+        inferred: Some(Arc::new(InferredNode::CompilerError {
             message: "upstream failure".to_string(),
             span: zero_span(),
         })),
         connective: Connective::NoConnective,
         ..(*leaf_node("".to_string())).clone()
     });
-    let conj_node = Rc::new(Node {
+    let conj_node = Arc::new(Node {
         name: "Result".to_string(),
         ident_span: syn_span.clone(),
         connective: Connective::Conj,
-        children: Rc::new(vec![typed_child, error_child]),
+        children: Arc::new(vec![typed_child, error_child]),
         ..(*leaf_node("".to_string())).clone()
     });
 
@@ -1580,69 +1580,69 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
     use v1_compiler::v1_std_core::{empty_intern_table, intern};
 
     let t_param = leaf_node("T".to_string());
-    let value_field = Rc::new(Node {
+    let value_field = Arc::new(Node {
         name: "value".to_string(),
         ident: None,
         span: make_span(0, 0),
         ident_span: default_ident_span("value".to_string(), make_span(0, 0)),
-        children: Rc::new(vec![]),
+        children: Arc::new(vec![]),
         connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::Resolved {
+        params: Arc::new(vec![]),
+        inferred: Some(Arc::new(InferredNode::Resolved {
             node: t_param.clone(),
         })),
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
     });
-    let box_decl = Rc::new(Node {
+    let box_decl = Arc::new(Node {
         name: "Box".to_string(),
         ident: None,
         span: make_span(0, 0),
         ident_span: default_ident_span("Box".to_string(), make_span(0, 0)),
-        children: Rc::new(vec![value_field]),
+        children: Arc::new(vec![value_field]),
         connective: Connective::Conj,
-        params: Rc::new(vec![t_param]),
+        params: Arc::new(vec![t_param]),
         inferred: None,
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
     });
     let box_intern = intern(empty_intern_table(), "Box".to_string());
-    let box_binding = Rc::new(TypeBinding {
+    let box_binding = Arc::new(TypeBinding {
         name: "Box".to_string(),
         resolved: box_decl.clone(),
-        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        provenance: Arc::new(SubValueRelation::SubValueUnknown),
     });
-    let env = Rc::new(TypeEnv {
+    let env = Arc::new(TypeEnv {
         module_path: "".to_string(),
-        bindings: Rc::new(im::HashMap::from_iter([(
+        bindings: Arc::new(im::HashMap::from_iter([(
             box_intern.id,
             box_binding.clone(),
         )])),
-        str_bindings: Rc::new(im::HashMap::from_iter([("Box".to_string(), box_binding)])),
-        ancestry_str_bindings: Rc::new(im::HashMap::new()),
-        parents: Rc::new(vec![]),
-        recursive_types: Rc::new(vec![]),
-        recursive_type_set: Rc::new(im::HashMap::new()),
-        inductive_fields: Rc::new(im::HashMap::new()),
+        str_bindings: Arc::new(im::HashMap::from_iter([("Box".to_string(), box_binding)])),
+        ancestry_str_bindings: Arc::new(im::HashMap::new()),
+        parents: Arc::new(vec![]),
+        recursive_types: Arc::new(vec![]),
+        recursive_type_set: Arc::new(im::HashMap::new()),
+        inductive_fields: Arc::new(im::HashMap::new()),
         source_indices: empty_source_indices(),
         intern_table: box_intern.table.clone(),
-        source_visible_names: Rc::new(im::HashMap::new()),
+        source_visible_names: Arc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
     });
 

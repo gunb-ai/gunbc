@@ -18,19 +18,19 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizeResult {
-    pub graph: Rc<ModuleGraph>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub graph: Arc<ModuleGraph>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 pub fn check_bare_containers(
-    n: Rc<Node>,
+    n: Arc<Node>,
     module_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let has_structure = ((match n.body.clone() {
             Some(_) => true,
@@ -43,7 +43,7 @@ pub fn check_bare_containers(
         };
         let nname = authored_name_at(source_indices.clone(), n.clone());
         let self_diags = if is_expr.clone() {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             match container_expected_arity(nname.clone()) {
                 Some(expected) => {
@@ -52,8 +52,8 @@ pub fn check_bare_containers(
                         && (n.connective.clone() == Connective::NoConnective))
                         && !has_structure.clone())
                     {
-                        Rc::new(vec![make_error_node(
-                            Rc::new(CompilerDiagnostic::ArityMismatch {
+                        Arc::new(vec![make_error_node(
+                            Arc::new(CompilerDiagnostic::ArityMismatch {
                                 name: nname.clone(),
                                 expected: expected.clone(),
                                 got: 0,
@@ -62,13 +62,13 @@ pub fn check_bare_containers(
                             module_name.clone(),
                         )])
                     } else {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     }
                 }
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             }
         };
-        let child_diags = Rc::new({
+        let child_diags = Arc::new({
             let mut __result = Vec::new();
             for c in n.children.clone().iter().cloned() {
                 __result.extend(
@@ -83,7 +83,7 @@ pub fn check_bare_containers(
             }
             __result
         });
-        let param_diags = Rc::new({
+        let param_diags = Arc::new({
             let mut __result = Vec::new();
             for p in n.params.clone().iter().cloned() {
                 __result.extend(
@@ -102,16 +102,16 @@ pub fn check_bare_containers(
             Some(ta) => {
                 check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone())
             }
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let body_diags = match n.body.clone() {
             Some(b) => {
                 check_bare_containers(b.clone(), module_name.clone(), source_indices.clone())
             }
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             match n.inferred.clone() {
                 Some(inf) => match (*inf.clone()).clone() {
@@ -120,12 +120,12 @@ pub fn check_bare_containers(
                         module_name.clone(),
                         source_indices.clone(),
                     ),
-                    _ => Rc::new(vec![]),
+                    _ => Arc::new(vec![]),
                 },
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             }
         };
-        let uses_diags = Rc::new({
+        let uses_diags = Arc::new({
             let mut __result = Vec::new();
             for u in n.uses.clone().iter().cloned() {
                 __result.extend(
@@ -140,7 +140,7 @@ pub fn check_bare_containers(
             }
             __result
         });
-        let prop_diags = Rc::new({
+        let prop_diags = Arc::new({
             let mut __result = Vec::new();
             for p in n.properties.clone().iter().cloned() {
                 __result.extend(
@@ -155,9 +155,9 @@ pub fn check_bare_containers(
             }
             __result
         });
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
-            for d in Rc::new(vec![
+            for d in Arc::new(vec![
                 self_diags.clone(),
                 child_diags.clone(),
                 param_diags.clone(),
@@ -178,12 +178,12 @@ pub fn check_bare_containers(
 }
 
 pub fn normalize_module_diagnostics(
-    m: Rc<ResolvedModule>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+    m: Arc<ResolvedModule>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ErrorNode>>> {
     {
         let items = module_items(m.module.clone());
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for item in items.clone().iter().cloned() {
                 __result.extend(
@@ -202,11 +202,11 @@ pub fn normalize_module_diagnostics(
 }
 
 pub fn normalize_graph(
-    graph: Rc<ModuleGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<NormalizeResult> {
+    graph: Arc<ModuleGraph>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<NormalizeResult> {
     {
-        let diags = Rc::new({
+        let diags = Arc::new({
             let mut __result = Vec::new();
             for m in graph.modules.clone().iter().cloned() {
                 __result.extend(
@@ -217,7 +217,7 @@ pub fn normalize_graph(
             }
             __result
         });
-        Rc::new(NormalizeResult {
+        Arc::new(NormalizeResult {
             graph: graph.clone(),
             diagnostics: diags.clone(),
         })

@@ -25,9 +25,9 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
+pub fn target_checkpoints(target: RenderTarget) -> Arc<Vec<Arc<TypeCheckpoint>>> {
     match target.clone() {
         RenderTarget::Rust => rust_type_checkpoints(),
         RenderTarget::Python => python_type_checkpoints(),
@@ -36,21 +36,21 @@ pub fn target_checkpoints(target: RenderTarget) -> Rc<Vec<Rc<TypeCheckpoint>>> {
     }
 }
 
-pub fn target_inhabitants(target: RenderTarget) -> Rc<Vec<Rc<InhabitantDecl>>> {
+pub fn target_inhabitants(target: RenderTarget) -> Arc<Vec<Arc<InhabitantDecl>>> {
     match target.clone() {
         RenderTarget::Rust => rust_algebra_inhabitants(),
         RenderTarget::Python => python_algebra_inhabitants(),
         RenderTarget::Go => go_algebra_inhabitants(),
-        RenderTarget::Dag => Rc::new(vec![]),
+        RenderTarget::Dag => Arc::new(vec![]),
     }
 }
 
-pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
+pub fn target_callable(target: RenderTarget) -> Arc<CallableRepr> {
     match target.clone() {
         RenderTarget::Rust => rust_callable(),
         RenderTarget::Python => python_callable(),
         RenderTarget::Go => go_callable(),
-        RenderTarget::Dag => Rc::new(CallableRepr {
+        RenderTarget::Dag => Arc::new(CallableRepr {
             template: "fn({params}) -> {return}".to_string(),
             param_separator: ", ".to_string(),
             return_separator: " -> ".to_string(),
@@ -68,7 +68,7 @@ pub fn target_optional_template(target: RenderTarget) -> String {
     }
 }
 
-pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
+pub fn target_cast_syntax(target: RenderTarget) -> Option<Arc<CastSyntax>> {
     match target.clone() {
         RenderTarget::Rust => Some(rust_cast_syntax()),
         RenderTarget::Python => Some(python_cast_syntax()),
@@ -99,9 +99,9 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
     {
         let syntax = match target_cast_syntax(target.clone()) {
             Some(s) => s.clone(),
-            None => Rc::new(CastSyntax {
+            None => Arc::new(CastSyntax {
                 template: "{expr}".to_string(),
-                cast_rules: Rc::new(vec![]),
+                cast_rules: Arc::new(vec![]),
             }),
         };
         v1_rt::replace(
@@ -116,8 +116,8 @@ pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> 
     }
 }
 
-pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<TypeCheckpoint>> {
-    Rc::new({
+pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Arc<TypeCheckpoint>> {
+    Arc::new({
         let mut __result = Vec::new();
         for cp in target_checkpoints(target.clone()).iter().cloned() {
             if (cp.dag_name.clone() == dag_name.clone()) {
@@ -154,8 +154,8 @@ pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> 
     }
 }
 
-pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<InhabitantDecl>> {
-    Rc::new({
+pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Arc<InhabitantDecl>> {
+    Arc::new({
         let mut __result = Vec::new();
         for inh in target_inhabitants(target.clone()).iter().cloned() {
             if (inh.algebra.clone() == algebra.clone()) {
@@ -210,7 +210,7 @@ pub enum CoercionAssertion {
     },
     TemplateAssertion {
         template: String,
-        args: Rc<Vec<String>>,
+        args: Arc<Vec<String>>,
         expected: String,
     },
 }
@@ -218,7 +218,7 @@ pub enum CoercionAssertion {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoercionTestEntry {
     pub test_name: String,
-    pub assertions: Rc<Vec<Rc<CoercionAssertion>>>,
+    pub assertions: Arc<Vec<Arc<CoercionAssertion>>>,
 }
 
 pub fn target_label(target: RenderTarget) -> String {
@@ -230,22 +230,22 @@ pub fn target_label(target: RenderTarget) -> String {
     }
 }
 
-pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn checkpoint_tests(target: RenderTarget) -> Arc<Vec<Arc<CoercionTestEntry>>> {
     {
         let label = target_label(target.clone());
         let cps = target_checkpoints(target.clone());
         if ((cps.clone().len() as i64) == 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![Rc::new(CoercionTestEntry {
+            Arc::new(vec![Arc::new(CoercionTestEntry {
                 test_name: v1_rt::concat(
                     v1_rt::concat("coercion_".to_string(), label.clone()),
                     "_checkpoint_resolves_primitives".to_string(),
                 ),
-                assertions: Rc::new({
+                assertions: Arc::new({
                     let mut __result = Vec::new();
                     for cp in cps.clone().iter().cloned() {
-                        __result.push(Rc::new(CoercionAssertion::CheckpointAssertion {
+                        __result.push(Arc::new(CoercionAssertion::CheckpointAssertion {
                             target: target.clone(),
                             dag_name: cp.dag_name.clone(),
                             expected_type: cp.target_type.clone(),
@@ -258,26 +258,26 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
     }
 }
 
-pub fn inhabitant_test_names() -> Rc<Vec<String>> {
+pub fn inhabitant_test_names() -> Arc<Vec<String>> {
     canonical_container_names()
 }
 
-pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn inhabitant_tests(target: RenderTarget) -> Arc<Vec<Arc<CoercionTestEntry>>> {
     {
         let label = target_label(target.clone());
-        let assertions = Rc::new({
+        let assertions = Arc::new({
             let mut __result = Vec::new();
             for name in inhabitant_test_names().iter().cloned() {
                 __result.extend(
                     (*match coerce_container_template(target.clone(), name.clone()) {
                         Some(tmpl) => {
-                            Rc::new(vec![Rc::new(CoercionAssertion::ContainerAssertion {
+                            Arc::new(vec![Arc::new(CoercionAssertion::ContainerAssertion {
                                 target: target.clone(),
                                 container_name: name.clone(),
                                 expected_template: tmpl.clone(),
                             })])
                         }
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -286,9 +286,9 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
             __result
         });
         if ((assertions.clone().len() as i64) == 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![Rc::new(CoercionTestEntry {
+            Arc::new(vec![Arc::new(CoercionTestEntry {
                 test_name: v1_rt::concat(
                     v1_rt::concat("coercion_".to_string(), label.clone()),
                     "_inhabitant_resolves_containers".to_string(),
@@ -299,20 +299,20 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
     }
 }
 
-pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn copy_tests() -> Arc<Vec<Arc<CoercionTestEntry>>> {
     {
         let cps = target_checkpoints(RenderTarget::Rust);
-        let copy_assertions = Rc::new({
+        let copy_assertions = Arc::new({
             let mut __result = Vec::new();
             for cp in cps.clone().iter().cloned() {
                 __result.extend(
                     (*match cp.is_copy.clone() {
-                        Some(v) => Rc::new(vec![Rc::new(CoercionAssertion::CopyAssertion {
+                        Some(v) => Arc::new(vec![Arc::new(CoercionAssertion::CopyAssertion {
                             target: RenderTarget::Rust,
                             dag_name: cp.dag_name.clone(),
                             expected_copy: v.clone(),
                         })]),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -321,9 +321,9 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
             __result
         });
         if ((copy_assertions.clone().len() as i64) == 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![Rc::new(CoercionTestEntry {
+            Arc::new(vec![Arc::new(CoercionTestEntry {
                 test_name: "coercion_is_copy_from_checkpoint".to_string(),
                 assertions: copy_assertions.clone(),
             })])
@@ -331,14 +331,14 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     }
 }
 
-pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn template_application_tests() -> Arc<Vec<Arc<CoercionTestEntry>>> {
     {
-        let targets = Rc::new(vec![
+        let targets = Arc::new(vec![
             RenderTarget::Rust,
             RenderTarget::Python,
             RenderTarget::Go,
         ]);
-        let assertions = Rc::new({
+        let assertions = Arc::new({
             let mut __result = Vec::new();
             for t in targets.clone().iter().cloned() {
                 __result.extend(
@@ -346,7 +346,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                         let inhs = target_inhabitants(t.clone());
                         let int_target = coerce_primitive_type(t.clone(), "Int".to_string());
                         let str_target = coerce_primitive_type(t.clone(), "String".to_string());
-                        Rc::new({
+                        Arc::new({
                             let mut __result = Vec::new();
                             for inh in inhs.clone().iter().cloned() {
                                 __result.extend(
@@ -356,10 +356,10 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                                                 inh.template.clone(),
                                                 int_target.clone(),
                                             );
-                                            Rc::new(vec![Rc::new(
+                                            Arc::new(vec![Arc::new(
                                                 CoercionAssertion::TemplateAssertion {
                                                     template: inh.template.clone(),
-                                                    args: Rc::new(vec![int_target.clone()]),
+                                                    args: Arc::new(vec![int_target.clone()]),
                                                     expected: expected.clone(),
                                                 },
                                             )])
@@ -372,10 +372,10 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                                                     str_target.clone(),
                                                     int_target.clone(),
                                                 );
-                                                Rc::new(vec![Rc::new(
+                                                Arc::new(vec![Arc::new(
                                                     CoercionAssertion::TemplateAssertion {
                                                         template: inh.template.clone(),
-                                                        args: Rc::new(vec![
+                                                        args: Arc::new(vec![
                                                             str_target.clone(),
                                                             int_target.clone(),
                                                         ]),
@@ -384,7 +384,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
                                                 )])
                                             }
                                         } else {
-                                            Rc::new(vec![])
+                                            Arc::new(vec![])
                                         }
                                     })
                                     .iter()
@@ -401,9 +401,9 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
             __result
         });
         if ((assertions.clone().len() as i64) == 0) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![Rc::new(CoercionTestEntry {
+            Arc::new(vec![Arc::new(CoercionTestEntry {
                 test_name: "coercion_template_application".to_string(),
                 assertions: assertions.clone(),
             })])
@@ -411,7 +411,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
     }
 }
 
-pub fn extract_coercion_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
+pub fn extract_coercion_tests() -> Arc<Vec<Arc<CoercionTestEntry>>> {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(

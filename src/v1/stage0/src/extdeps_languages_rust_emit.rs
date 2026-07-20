@@ -12,25 +12,25 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/reference/".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
-pub fn rust_keywords() -> Rc<HashMap<String, String>> {
+pub fn rust_keywords() -> Arc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Arc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
@@ -39,15 +39,15 @@ pub fn rust_keywords() -> Rc<HashMap<String, String>> {
             __m.insert("or".to_string(), "||".to_string());
             __m.insert("not".to_string(), "!".to_string());
             __m.insert("div".to_string(), "/".to_string());
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, String>>| c.clone())
 }
 
-pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
+pub fn rust_container_templates() -> Arc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Arc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "Vec<{0}>".to_string());
             __m.insert("set".to_string(), "BTreeSet<{0}>".to_string());
@@ -56,33 +56,33 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
             __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());
             __m.insert("partial_function".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("boolean_algebra".to_string(), "bool".to_string());
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, String>>| c.clone())
 }
 
-pub fn rust_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
+pub fn rust_simple_method_specs() -> Arc<Vec<Arc<SimpleMethodSpec>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<SimpleMethodSpec>>> = {
+        static CACHED: Arc<Vec<Arc<SimpleMethodSpec>>> = {
             serde_json::from_value(serde_json::json!([{"method_name": "count", "template": "({recv}.len() as i64)", "wraps_result": false}, {"method_name": "join", "template": "{recv}.join(&{arg})", "wraps_result": false}, {"method_name": "split", "template": "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "last", "template": "{recv}.last().cloned()", "wraps_result": false}, {"method_name": "first", "template": "{recv}.first().cloned()", "wraps_result": false}, {"method_name": "enumerate", "template": "{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "chars", "template": "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "skip", "template": "{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()", "wraps_result": true}, {"method_name": "take", "template": "{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()", "wraps_result": true}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<SimpleMethodSpec>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<SimpleMethodSpec>>>| c.clone())
 }
 
-pub fn rust_method_templates() -> Rc<HashMap<String, String>> {
+pub fn rust_method_templates() -> Arc<HashMap<String, String>> {
     rust_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Arc<HashMap<String, String>>, spec: Arc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )
 }
 
-pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
-    Rc::new({
+pub fn rust_method_wraps_result() -> Arc<HashMap<String, bool>> {
+    Arc::new({
         let mut __result = Vec::new();
         for s in rust_simple_method_specs().iter().cloned() {
             if s.wraps_result.clone() {
@@ -95,19 +95,19 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Arc<HashMap<String, bool>>, spec: Arc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
         },
     )
 }
 
-pub fn rust_reserved() -> Rc<Vec<String>> {
+pub fn rust_reserved() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["as".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "const".to_string(), "continue".to_string(), "crate".to_string(), "dyn".to_string(), "else".to_string(), "enum".to_string(), "extern".to_string(), "false".to_string(), "fn".to_string(), "for".to_string(), "if".to_string(), "impl".to_string(), "in".to_string(), "let".to_string(), "loop".to_string(), "match".to_string(), "mod".to_string(), "move".to_string(), "mut".to_string(), "pub".to_string(), "ref".to_string(), "return".to_string(), "self".to_string(), "Self".to_string(), "static".to_string(), "struct".to_string(), "super".to_string(), "trait".to_string(), "true".to_string(), "type".to_string(), "unsafe".to_string(), "use".to_string(), "where".to_string(), "while".to_string(), "yield".to_string(), "abstract".to_string(), "become".to_string(), "box".to_string(), "do".to_string(), "final".to_string(), "macro".to_string(), "override".to_string(), "priv".to_string(), "try".to_string(), "typeof".to_string(), "unsized".to_string(), "virtual".to_string()])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec!["as".to_string(), "async".to_string(), "await".to_string(), "break".to_string(), "const".to_string(), "continue".to_string(), "crate".to_string(), "dyn".to_string(), "else".to_string(), "enum".to_string(), "extern".to_string(), "false".to_string(), "fn".to_string(), "for".to_string(), "if".to_string(), "impl".to_string(), "in".to_string(), "let".to_string(), "loop".to_string(), "match".to_string(), "mod".to_string(), "move".to_string(), "mut".to_string(), "pub".to_string(), "ref".to_string(), "return".to_string(), "self".to_string(), "Self".to_string(), "static".to_string(), "struct".to_string(), "super".to_string(), "trait".to_string(), "true".to_string(), "type".to_string(), "unsafe".to_string(), "use".to_string(), "where".to_string(), "while".to_string(), "yield".to_string(), "abstract".to_string(), "become".to_string(), "box".to_string(), "do".to_string(), "final".to_string(), "macro".to_string(), "override".to_string(), "priv".to_string(), "try".to_string(), "typeof".to_string(), "unsized".to_string(), "virtual".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
 pub fn rust_reserved_escape_suffix() -> String {
@@ -119,13 +119,13 @@ pub fn rust_reserved_escape_suffix() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_string_types() -> Rc<Vec<String>> {
+pub fn rust_string_types() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["String".to_string(), "Secret".to_string()])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
 pub fn rust_struct_derives() -> String {
@@ -320,7 +320,7 @@ pub fn rust_error_expr_template() -> String {
 pub fn rust_list_literal_empty() -> String {
     thread_local! {
         static CACHED: String = {
-            "Rc::new(vec![])".to_string()
+            "Arc::new(vec![])".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -329,7 +329,7 @@ pub fn rust_list_literal_empty() -> String {
 pub fn rust_list_literal_template() -> String {
     thread_local! {
         static CACHED: String = {
-            "Rc::new(vec![{0}])".to_string()
+            "Arc::new(vec![{0}])".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -451,27 +451,27 @@ pub struct RuntimeFunction {
     pub wraps_result: bool,
 }
 
-pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
+pub fn rt_function_registry() -> Arc<Vec<Arc<RuntimeFunction>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<RuntimeFunction>>> = {
+        static CACHED: Arc<Vec<Arc<RuntimeFunction>>> = {
             serde_json::from_value(serde_json::json!([{"name": "concat", "bridge_name": "concat", "passes_by_ref": false, "wraps_result": false}, {"name": "char_at", "bridge_name": "char_at", "passes_by_ref": true, "wraps_result": false}, {"name": "string_length", "bridge_name": "string_length", "passes_by_ref": true, "wraps_result": false}, {"name": "substring", "bridge_name": "substring", "passes_by_ref": true, "wraps_result": false}, {"name": "string_contains", "bridge_name": "string_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_while", "bridge_name": "scan_while", "passes_by_ref": true, "wraps_result": false}, {"name": "skip_horizontal_ws", "bridge_name": "skip_horizontal_ws", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_to_eol", "bridge_name": "scan_to_eol", "passes_by_ref": true, "wraps_result": false}, {"name": "scan_string_end", "bridge_name": "scan_string_end", "passes_by_ref": true, "wraps_result": false}, {"name": "code_point", "bridge_name": "code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "from_code_point", "bridge_name": "from_code_point", "passes_by_ref": false, "wraps_result": false}, {"name": "lookup", "bridge_name": "lookup", "passes_by_ref": true, "wraps_result": false}, {"name": "index_by", "bridge_name": "rc_index_by", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_map", "bridge_name": "rc_empty_map", "passes_by_ref": false, "wraps_result": false}, {"name": "empty_set", "bridge_name": "rc_empty_set", "passes_by_ref": false, "wraps_result": false}, {"name": "set_insert", "bridge_name": "rc_set_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "set_union", "bridge_name": "rc_set_union", "passes_by_ref": false, "wraps_result": false}, {"name": "set_contains", "bridge_name": "set_contains", "passes_by_ref": true, "wraps_result": false}, {"name": "map_insert", "bridge_name": "rc_map_insert", "passes_by_ref": false, "wraps_result": false}, {"name": "map_merge", "bridge_name": "rc_map_merge", "passes_by_ref": false, "wraps_result": false}, {"name": "list_concat", "bridge_name": "rc_list_concat", "passes_by_ref": false, "wraps_result": false}, {"name": "str_eq", "bridge_name": "str_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "filesystem_read", "bridge_name": "filesystem_read", "passes_by_ref": false, "wraps_result": false}, {"name": "list_push", "bridge_name": "rc_list_push", "passes_by_ref": false, "wraps_result": false}, {"name": "map_get", "bridge_name": "map_get", "passes_by_ref": true, "wraps_result": false}, {"name": "map_keys", "bridge_name": "map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "sorted_map_keys", "bridge_name": "sorted_map_keys", "passes_by_ref": true, "wraps_result": true}, {"name": "map_values", "bridge_name": "map_values", "passes_by_ref": true, "wraps_result": true}, {"name": "parse_int", "bridge_name": "parse_int", "passes_by_ref": false, "wraps_result": false}, {"name": "map_contains_key", "bridge_name": "map_contains_key", "passes_by_ref": true, "wraps_result": false}, {"name": "map_has", "bridge_name": "map_has", "passes_by_ref": true, "wraps_result": false}, {"name": "map_is_empty", "bridge_name": "map_is_empty", "passes_by_ref": true, "wraps_result": false}, {"name": "reverse", "bridge_name": "reverse", "passes_by_ref": false, "wraps_result": false}, {"name": "replace", "bridge_name": "replace", "passes_by_ref": false, "wraps_result": false}, {"name": "chars_to_string", "bridge_name": "chars_to_string", "passes_by_ref": true, "wraps_result": false}, {"name": "record_source_chars_index_lookup", "bridge_name": "record_source_chars_index_lookup", "passes_by_ref": false, "wraps_result": false}, {"name": "append", "bridge_name": "append", "passes_by_ref": false, "wraps_result": true}, {"name": "contains", "bridge_name": "contains", "passes_by_ref": false, "wraps_result": false}, {"name": "starts_with", "bridge_name": "starts_with", "passes_by_ref": false, "wraps_result": false}, {"name": "ends_with", "bridge_name": "ends_with", "passes_by_ref": false, "wraps_result": false}, {"name": "trim", "bridge_name": "trim", "passes_by_ref": false, "wraps_result": false}, {"name": "count", "bridge_name": "count", "passes_by_ref": false, "wraps_result": false}, {"name": "clamp", "bridge_name": "clamp", "passes_by_ref": false, "wraps_result": false}, {"name": "atom_identity_hash", "bridge_name": "atom_identity_hash", "passes_by_ref": false, "wraps_result": false}, {"name": "hash_combine", "bridge_name": "hash_combine", "passes_by_ref": false, "wraps_result": false}, {"name": "trace_mark", "bridge_name": "trace_mark", "passes_by_ref": false, "wraps_result": false}, {"name": "rc_ptr_eq", "bridge_name": "rc_ptr_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "rc_vec_ptr_eq", "bridge_name": "rc_vec_ptr_eq", "passes_by_ref": false, "wraps_result": false}, {"name": "is_xid_start", "bridge_name": "is_xid_start", "passes_by_ref": false, "wraps_result": false}, {"name": "is_xid_continue", "bridge_name": "is_xid_continue", "passes_by_ref": false, "wraps_result": false}, {"name": "is_emoji_ident", "bridge_name": "is_emoji_ident", "passes_by_ref": false, "wraps_result": false}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<RuntimeFunction>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<RuntimeFunction>>>| c.clone())
 }
 
-pub fn rt_functions() -> Rc<HashMap<String, bool>> {
+pub fn rt_functions() -> Arc<HashMap<String, bool>> {
     rt_function_registry().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+        |acc: Arc<HashMap<String, bool>>, entry: Arc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
     )
 }
 
-pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
-    Rc::new({
+pub fn rt_ref_map_functions() -> Arc<HashMap<String, bool>> {
+    Arc::new({
         let mut __result = Vec::new();
         for f in rt_function_registry().iter().cloned() {
             if f.passes_by_ref.clone() {
@@ -484,14 +484,14 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+        |acc: Arc<HashMap<String, bool>>, entry: Arc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
     )
 }
 
-pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
-    Rc::new({
+pub fn rt_wraps_result() -> Arc<HashMap<String, bool>> {
+    Arc::new({
         let mut __result = Vec::new();
         for f in rt_function_registry().iter().cloned() {
             if f.wraps_result.clone() {
@@ -504,14 +504,14 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+        |acc: Arc<HashMap<String, bool>>, entry: Arc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
         },
     )
 }
 
-pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
-    Rc::new({
+pub fn rt_bridge_function_names() -> Arc<HashMap<String, String>> {
+    Arc::new({
         let mut __result = Vec::new();
         for f in rt_function_registry().iter().cloned() {
             if (f.name.clone() != f.bridge_name.clone()) {
@@ -524,7 +524,7 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| {
+        |acc: Arc<HashMap<String, String>>, entry: Arc<RuntimeFunction>| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), entry.bridge_name.clone())
         },
     )
@@ -553,18 +553,18 @@ pub struct HigherOrderMethodSpec {
     pub wraps_in_sharing: bool,
 }
 
-pub fn rust_higher_order_methods() -> Rc<Vec<Rc<HigherOrderMethodSpec>>> {
+pub fn rust_higher_order_methods() -> Arc<Vec<Arc<HigherOrderMethodSpec>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<HigherOrderMethodSpec>>> = {
+        static CACHED: Arc<Vec<Arc<HigherOrderMethodSpec>>> = {
             serde_json::from_value(serde_json::json!([{"method_name": "filter", "inline_template": "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }", "fn_ref_template": "{iter}.filter({arg}).collect::<Vec<_>>()", "wraps_in_sharing": true}, {"method_name": "any", "inline_template": "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }", "fn_ref_template": "{iter}.any({arg})", "wraps_in_sharing": false}, {"method_name": "all", "inline_template": "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }", "fn_ref_template": "{iter}.all({arg})", "wraps_in_sharing": false}, {"method_name": "flat_map", "inline_template": "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }", "fn_ref_template": "{iter}.flat_map({arg}).collect::<Vec<_>>()", "wraps_in_sharing": true}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<HigherOrderMethodSpec>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<HigherOrderMethodSpec>>>| c.clone())
 }
 
 pub fn rust_qualified_module_mod_basename(qualified_module: String) -> String {
-    Rc::new(
+    Arc::new(
         qualified_module
             .clone()
             .split(&".".to_string())

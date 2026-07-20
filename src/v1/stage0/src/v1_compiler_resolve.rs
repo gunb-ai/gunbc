@@ -18,18 +18,18 @@ pub use crate::v1_std_core::{CompilerDiagnostic, Connective, ErrorNode, NewlineI
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleGraph {
-    pub modules: Rc<Vec<Rc<ResolvedModule>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub modules: Arc<Vec<Arc<ResolvedModule>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedModule {
-    pub module: Rc<Node>,
-    pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    pub module: Arc<Node>,
+    pub resolved_imports: Arc<Vec<Arc<ResolvedImport>>>,
     pub dep_order: i64,
 }
 
@@ -37,8 +37,8 @@ pub struct ResolvedModule {
 pub struct ResolvedImport {
     pub module_path: String,
     pub is_all: bool,
-    pub specific_names: Rc<Vec<String>>,
-    pub target_module: Option<Rc<Node>>,
+    pub specific_names: Arc<Vec<String>>,
+    pub target_module: Option<Arc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -49,11 +49,11 @@ pub struct DepEdge {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolveAccum {
-    pub imports_by_name: Rc<HashMap<String, Rc<Vec<Rc<ResolvedImport>>>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub imports_by_name: Arc<HashMap<String, Arc<Vec<Arc<ResolvedImport>>>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
-pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
+pub fn map_has(m: Arc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
         None => false,
@@ -61,14 +61,14 @@ pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
 }
 
 pub fn resolve_modules(
-    modules: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ModuleGraph> {
+    modules: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<ModuleGraph> {
     {
         let dup_diags = check_duplicate_modules(modules.clone(), source_indices.clone());
         let module_index = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            |acc: Rc<HashMap<String, Rc<Node>>>, m: Rc<Node>| {
+            v1_rt::rc_empty_map::<String, Arc<Node>>(),
+            |acc: Arc<HashMap<String, Arc<Node>>>, m: Arc<Node>| {
                 v1_rt::rc_map_insert(
                     acc,
                     authored_name_at(source_indices.clone(), m.clone()),
@@ -77,12 +77,12 @@ pub fn resolve_modules(
             },
         );
         let export_sets = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-            |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, m: Rc<Node>| {
+            v1_rt::rc_empty_map::<String, Arc<HashMap<String, bool>>>(),
+            |acc: Arc<HashMap<String, Arc<HashMap<String, bool>>>>, m: Arc<Node>| {
                 let exported = get_exported_names(m.clone(), source_indices.clone());
                 let exported_set = exported.clone().iter().cloned().fold(
                     v1_rt::rc_empty_map::<String, bool>(),
-                    |inner_acc: Rc<HashMap<String, bool>>, name: String| {
+                    |inner_acc: Arc<HashMap<String, bool>>, name: String| {
                         v1_rt::rc_map_insert(inner_acc, name.clone(), true)
                     },
                 );
@@ -94,11 +94,11 @@ pub fn resolve_modules(
             },
         );
         let resolve_accum = modules.clone().iter().cloned().fold(
-            Rc::new(ResolveAccum {
-                imports_by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ResolvedImport>>>>(),
-                diagnostics: Rc::new(vec![]),
+            Arc::new(ResolveAccum {
+                imports_by_name: v1_rt::rc_empty_map::<String, Arc<Vec<Arc<ResolvedImport>>>>(),
+                diagnostics: Arc::new(vec![]),
             }),
-            |acc: Rc<ResolveAccum>, m: Rc<Node>| {
+            |acc: Arc<ResolveAccum>, m: Arc<Node>| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let result = resolve_module_imports(
@@ -107,7 +107,7 @@ pub fn resolve_modules(
                         export_sets.clone(),
                         source_indices.clone(),
                     );
-                    Rc::new(ResolveAccum {
+                    Arc::new(ResolveAccum {
                         imports_by_name: v1_rt::rc_map_insert(
                             acc.imports_by_name,
                             authored_name_at(source_indices.clone(), m.clone()),
@@ -122,11 +122,11 @@ pub fn resolve_modules(
         let import_diags = resolve_accum.diagnostics.clone();
         let topo_result = topological_sort(modules.clone(), source_indices.clone());
         let topo_diags = match topo_result.cycle_error.clone() {
-            Some(diag) => Rc::new(vec![diag.clone()]),
-            None => Rc::new(vec![]),
+            Some(diag) => Arc::new(vec![diag.clone()]),
+            None => Arc::new(vec![]),
         };
         let sorted_names = topo_result.sorted.clone();
-        let sorted_order_map = Rc::new(
+        let sorted_order_map = Arc::new(
             sorted_names
                 .clone()
                 .iter()
@@ -139,11 +139,11 @@ pub fn resolve_modules(
         .cloned()
         .fold(
             v1_rt::rc_empty_map::<String, i64>(),
-            |acc: Rc<HashMap<String, i64>>, pair: (i64, String)| {
+            |acc: Arc<HashMap<String, i64>>, pair: (i64, String)| {
                 v1_rt::rc_map_insert(acc, pair.1.clone(), pair.0.clone())
             },
         );
-        let acyclic_resolved = Rc::new({
+        let acyclic_resolved = Arc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
                 __result.extend(
@@ -155,14 +155,14 @@ pub fn resolve_modules(
                             &imports_by_name,
                             authored_name_at(source_indices.clone(), m.clone()),
                         ) {
-                            Some(imps) => Rc::new(vec![Rc::new(ResolvedModule {
+                            Some(imps) => Arc::new(vec![Arc::new(ResolvedModule {
                                 module: m.clone(),
                                 resolved_imports: imps.clone(),
                                 dep_order: order.clone(),
                             })]),
-                            None => Rc::new(vec![]),
+                            None => Arc::new(vec![]),
                         },
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -170,16 +170,16 @@ pub fn resolve_modules(
             }
             __result
         });
-        let sorted_resolved = Rc::new({
+        let sorted_resolved = Arc::new({
             let mut __sorted: Vec<_> = acyclic_resolved.clone().iter().cloned().collect();
-            __sorted.sort_by(|a: &Rc<ResolvedModule>, b: &Rc<ResolvedModule>| {
-                let __ka = (|m: Rc<ResolvedModule>| m.dep_order.clone())(a.clone());
-                let __kb = (|m: Rc<ResolvedModule>| m.dep_order.clone())(b.clone());
+            __sorted.sort_by(|a: &Arc<ResolvedModule>, b: &Arc<ResolvedModule>| {
+                let __ka = (|m: Arc<ResolvedModule>| m.dep_order.clone())(a.clone());
+                let __kb = (|m: Arc<ResolvedModule>| m.dep_order.clone())(b.clone());
                 __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
             });
             __sorted
         });
-        Rc::new(ModuleGraph {
+        Arc::new(ModuleGraph {
             modules: sorted_resolved.clone(),
             diagnostics: v1_rt::concat(
                 v1_rt::concat(dup_diags.clone(), import_diags.clone()),
@@ -189,24 +189,27 @@ pub fn resolve_modules(
     }
 }
 
-pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) -> Option<Rc<Node>> {
+pub fn find_module(
+    module_index: Arc<HashMap<String, Arc<Node>>>,
+    path: String,
+) -> Option<Arc<Node>> {
     v1_rt::map_get(&module_index, path.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleResolveResult {
-    pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub resolved_imports: Arc<Vec<Arc<ResolvedImport>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 pub fn resolve_module_imports(
-    module: Rc<Node>,
-    module_index: Rc<HashMap<String, Rc<Node>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ModuleResolveResult> {
+    module: Arc<Node>,
+    module_index: Arc<HashMap<String, Arc<Node>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<ModuleResolveResult> {
     {
-        let results = Rc::new({
+        let results = Arc::new({
             let mut __result = Vec::new();
             for imp in module_imports(module.clone()).iter().cloned() {
                 __result.push(resolve_import(
@@ -219,9 +222,9 @@ pub fn resolve_module_imports(
             }
             __result
         });
-        let resolved = Rc::new({
+        let resolved = Arc::new({
             let mut __result = Vec::new();
-            for r in Rc::new({
+            for r in Arc::new({
                 let mut __result = Vec::new();
                 for r in results.clone().iter().cloned() {
                     if ((r.resolved.clone().target_module.clone() != None)
@@ -239,14 +242,14 @@ pub fn resolve_module_imports(
             }
             __result
         });
-        let diags = Rc::new({
+        let diags = Arc::new({
             let mut __result = Vec::new();
             for r in results.clone().iter().cloned() {
                 __result.extend((*r.diagnostics.clone()).iter().cloned());
             }
             __result
         });
-        Rc::new(ModuleResolveResult {
+        Arc::new(ModuleResolveResult {
             resolved_imports: resolved.clone(),
             diagnostics: diags.clone(),
         })
@@ -255,32 +258,32 @@ pub fn resolve_module_imports(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportResolveResult {
-    pub resolved: Rc<ResolvedImport>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub resolved: Arc<ResolvedImport>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 pub fn resolve_import(
-    import: Rc<Node>,
-    module_index: Rc<HashMap<String, Rc<Node>>>,
+    import: Arc<Node>,
+    module_index: Arc<HashMap<String, Arc<Node>>>,
     importing_module: String,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ImportResolveResult> {
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<ImportResolveResult> {
     {
         let import_path = authored_name_at(source_indices.clone(), import.clone());
         let target = find_module(module_index.clone(), import_path.clone());
         match target.clone() {
             None => {
                 let diag = make_error_node(
-                    Rc::new(CompilerDiagnostic::UnresolvedImport {
+                    Arc::new(CompilerDiagnostic::UnresolvedImport {
                         module_path: import_path.clone(),
                         importing_module: importing_module.clone(),
                         span: import.span.clone(),
                     }),
                     importing_module.clone(),
                 );
-                Rc::new(ImportResolveResult {
-                    resolved: Rc::new(ResolvedImport {
+                Arc::new(ImportResolveResult {
+                    resolved: Arc::new(ResolvedImport {
                         module_path: import_path.clone(),
                         is_all: import_is_all(import.clone()),
                         specific_names: import_specific_names_at(
@@ -289,7 +292,7 @@ pub fn resolve_import(
                         ),
                         target_module: None,
                     }),
-                    diagnostics: Rc::new(vec![diag.clone()]),
+                    diagnostics: Arc::new(vec![diag.clone()]),
                 })
             }
             Some(target_mod) => {
@@ -298,11 +301,11 @@ pub fn resolve_import(
                     None => v1_rt::rc_empty_map::<String, bool>(),
                 };
                 let name_diags = if import_is_all(import.clone()) {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 } else {
-                    Rc::new({
+                    Arc::new({
                         let mut __result = Vec::new();
-                        for child in Rc::new({
+                        for child in Arc::new({
                             let mut __result = Vec::new();
                             for child in import.children.clone().iter().cloned() {
                                 if (v1_rt::map_has(
@@ -319,7 +322,7 @@ pub fn resolve_import(
                         .cloned()
                         {
                             __result.push(make_error_node(
-                                Rc::new(CompilerDiagnostic::MissingExport {
+                                Arc::new(CompilerDiagnostic::MissingExport {
                                     name: authored_name_at(source_indices.clone(), child.clone()),
                                     module_path: import_path.clone(),
                                     importing_module: importing_module.clone(),
@@ -331,8 +334,8 @@ pub fn resolve_import(
                         __result
                     })
                 };
-                Rc::new(ImportResolveResult {
-                    resolved: Rc::new(ResolvedImport {
+                Arc::new(ImportResolveResult {
+                    resolved: Arc::new(ResolvedImport {
                         module_path: import_path.clone(),
                         is_all: import_is_all(import.clone()),
                         specific_names: import_specific_names_at(
@@ -349,18 +352,18 @@ pub fn resolve_import(
 }
 
 pub fn get_exported_names(
-    module: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    module: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
     {
-        let item_names = Rc::new({
+        let item_names = Arc::new({
             let mut __result = Vec::new();
             for item in module_items(module.clone()).iter().cloned() {
                 __result.push(get_item_name(item.clone(), source_indices.clone()));
             }
             __result
         });
-        let variant_names = Rc::new({
+        let variant_names = Arc::new({
             let mut __result = Vec::new();
             for item in module_items(module.clone()).iter().cloned() {
                 __result.extend(
@@ -371,12 +374,12 @@ pub fn get_exported_names(
             }
             __result
         });
-        let imported_names = Rc::new({
+        let imported_names = Arc::new({
             let mut __result = Vec::new();
             for imp in module_imports(module.clone()).iter().cloned() {
                 __result.extend(
                     (*if import_is_all(imp.clone()) {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     } else {
                         import_specific_names_at(imp.clone(), source_indices.clone())
                     })
@@ -391,26 +394,26 @@ pub fn get_exported_names(
                 v1_rt::concat(item_names.clone(), variant_names.clone()),
                 imported_names.clone(),
             ),
-            Rc::new(v1_rt::map_keys(&kernel_type_set())),
+            Arc::new(v1_rt::map_keys(&kernel_type_set())),
         )
     }
 }
 
 pub fn get_item_name(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     authored_name_at(source_indices.clone(), item.clone())
 }
 
 pub fn get_variant_names(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
     {
         let is_coproduct = (item.connective.clone() == Connective::Disj);
         if is_coproduct.clone() {
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
                 for c in item.children.clone().iter().cloned() {
                     __result.push(authored_name_at(source_indices.clone(), c.clone()));
@@ -418,37 +421,37 @@ pub fn get_variant_names(
                 __result
             })
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DuplicateCheckState {
-    pub seen_names: Rc<HashMap<String, bool>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub seen_names: Arc<HashMap<String, bool>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 pub fn check_duplicate_modules(
-    modules: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+    modules: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<ErrorNode>>> {
     {
         let result = modules.clone().iter().cloned().fold(
-            Rc::new(DuplicateCheckState {
+            Arc::new(DuplicateCheckState {
                 seen_names: v1_rt::rc_empty_map::<String, bool>(),
-                diagnostics: Rc::new(vec![]),
+                diagnostics: Arc::new(vec![]),
             }),
-            |state: Rc<DuplicateCheckState>, m: Rc<Node>| {
+            |state: Arc<DuplicateCheckState>, m: Arc<Node>| {
                 let m_name = authored_name_at(source_indices.clone(), m.clone());
                 let is_dup = v1_rt::map_has(&state.seen_names.clone(), m_name.clone());
                 if is_dup.clone() {
-                    Rc::new(DuplicateCheckState {
+                    Arc::new(DuplicateCheckState {
                         seen_names: state.seen_names.clone(),
                         diagnostics: v1_rt::concat(
                             state.diagnostics.clone(),
-                            Rc::new(vec![make_error_node(
-                                Rc::new(CompilerDiagnostic::DuplicateModule {
+                            Arc::new(vec![make_error_node(
+                                Arc::new(CompilerDiagnostic::DuplicateModule {
                                     name: m_name.clone(),
                                     span: m.span.clone(),
                                 }),
@@ -457,7 +460,7 @@ pub fn check_duplicate_modules(
                         ),
                     })
                 } else {
-                    Rc::new(DuplicateCheckState {
+                    Arc::new(DuplicateCheckState {
                         seen_names: v1_rt::rc_map_insert(
                             state.seen_names.clone(),
                             m_name.clone(),
@@ -474,19 +477,19 @@ pub fn check_duplicate_modules(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopoResult {
-    pub sorted: Rc<Vec<String>>,
-    pub cycle_error: Option<Rc<ErrorNode>>,
+    pub sorted: Arc<Vec<String>>,
+    pub cycle_error: Option<Arc<ErrorNode>>,
 }
 
 pub fn adjacency_add_edge(
-    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
+    adjacency: Arc<HashMap<String, Arc<Vec<String>>>>,
     from_module: String,
     to_module: String,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+) -> Arc<HashMap<String, Arc<Vec<String>>>> {
     {
         let existing = match v1_rt::map_get(&adjacency, from_module.clone()) {
             Some(lst) => lst.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         v1_rt::rc_map_insert(
             adjacency.clone(),
@@ -505,11 +508,11 @@ pub fn topo_sort_key(name: String) -> String {
 }
 
 pub fn topological_sort(
-    modules: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<TopoResult> {
+    modules: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<TopoResult> {
     {
-        let module_names = Rc::new({
+        let module_names = Arc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
                 __result.push(authored_name_at(source_indices.clone(), m.clone()));
@@ -518,17 +521,17 @@ pub fn topological_sort(
         });
         let module_name_set = module_names.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
+            |acc: Arc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
         );
-        let explicit_edges = Rc::new({
+        let explicit_edges = Arc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
                 __result.extend(
-                    (*Rc::new({
+                    (*Arc::new({
                         let mut __result = Vec::new();
-                        for imp in Rc::new({
+                        for imp in Arc::new({
                             let mut __result = Vec::new();
                             for imp in module_imports(m.clone()).iter().cloned() {
                                 if v1_rt::map_has(
@@ -543,7 +546,7 @@ pub fn topological_sort(
                         .iter()
                         .cloned()
                         {
-                            __result.push(Rc::new(DepEdge {
+                            __result.push(Arc::new(DepEdge {
                                 from_module: authored_name_at(source_indices.clone(), imp.clone()),
                                 to_module: authored_name_at(source_indices.clone(), m.clone()),
                             }));
@@ -557,19 +560,19 @@ pub fn topological_sort(
             __result
         });
         let adjacency = explicit_edges.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
+            v1_rt::rc_empty_map::<String, Arc<Vec<String>>>(),
+            |acc: Arc<HashMap<String, Arc<Vec<String>>>>, edge: Arc<DepEdge>| {
                 adjacency_add_edge(acc, edge.from_module.clone(), edge.to_module.clone())
             },
         );
         let in_degree_map = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, i64>(),
-            |acc: Rc<HashMap<String, i64>>, m: Rc<Node>| {
+            |acc: Arc<HashMap<String, i64>>, m: Arc<Node>| {
                 let m_name = authored_name_at(source_indices.clone(), m.clone());
                 v1_rt::rc_map_insert(
                     acc,
                     m_name.clone(),
-                    (Rc::new({
+                    (Arc::new({
                         let mut __result = Vec::new();
                         for imp in module_imports(m.clone()).iter().cloned() {
                             if v1_rt::map_has(
@@ -585,8 +588,8 @@ pub fn topological_sort(
                 )
             },
         );
-        let initial_queue = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new({
+        let initial_queue = Arc::new({
+            let mut __sorted: Vec<_> = Arc::new({
                 let mut __result = Vec::new();
                 for name in module_names.clone().iter().cloned() {
                     if match v1_rt::map_get(&in_degree_map, name.clone()) {
@@ -611,13 +614,13 @@ pub fn topological_sort(
         let module_count = (modules.clone().len() as i64);
         let result = kahn_drain(
             initial_queue.clone(),
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             in_degree_map.clone(),
             adjacency.clone(),
             module_count.clone(),
         );
         if ((result.sorted.clone().len() as i64) == module_count.clone()) {
-            Rc::new(TopoResult {
+            Arc::new(TopoResult {
                 sorted: result.sorted.clone(),
                 cycle_error: None,
             })
@@ -625,11 +628,11 @@ pub fn topological_sort(
             {
                 let sorted_set = result.sorted.clone().iter().cloned().fold(
                     v1_rt::rc_empty_map::<String, bool>(),
-                    |acc: Rc<HashMap<String, bool>>, name: String| {
+                    |acc: Arc<HashMap<String, bool>>, name: String| {
                         v1_rt::rc_map_insert(acc, name.clone(), true)
                     },
                 );
-                let cycle_members = Rc::new({
+                let cycle_members = Arc::new({
                     let mut __result = Vec::new();
                     for name in module_names.clone().iter().cloned() {
                         if (v1_rt::map_has(&sorted_set, name.clone()) == false) {
@@ -639,10 +642,10 @@ pub fn topological_sort(
                     __result
                 });
                 let cycle_desc = cycle_members.clone().join(&" -> ".to_string());
-                Rc::new(TopoResult {
+                Arc::new(TopoResult {
                     sorted: result.sorted.clone(),
                     cycle_error: Some(make_error_node(
-                        Rc::new(CompilerDiagnostic::CircularDependency {
+                        Arc::new(CompilerDiagnostic::CircularDependency {
                             modules: cycle_members.clone(),
                             span: no_span(),
                         }),
@@ -656,40 +659,40 @@ pub fn topological_sort(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KahnDrainState {
-    pub sorted: Rc<Vec<String>>,
-    pub in_degree_map: Rc<HashMap<String, i64>>,
+    pub sorted: Arc<Vec<String>>,
+    pub in_degree_map: Arc<HashMap<String, i64>>,
 }
 
 pub fn kahn_drain(
-    mut queue: Rc<Vec<String>>,
-    mut sorted: Rc<Vec<String>>,
-    mut in_degree_map: Rc<HashMap<String, i64>>,
-    mut adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut queue: Arc<Vec<String>>,
+    mut sorted: Arc<Vec<String>>,
+    mut in_degree_map: Arc<HashMap<String, i64>>,
+    mut adjacency: Arc<HashMap<String, Arc<Vec<String>>>>,
     mut fuel: i64,
-) -> Rc<KahnDrainState> {
+) -> Arc<KahnDrainState> {
     loop {
         if ((queue.clone().len() as i64) == 0) {
-            return Rc::new(KahnDrainState {
+            return Arc::new(KahnDrainState {
                 sorted: sorted.clone(),
                 in_degree_map: in_degree_map.clone(),
             });
         }
         let batch_result = queue.clone().iter().cloned().fold(
-            Rc::new(KahnDrainState {
+            Arc::new(KahnDrainState {
                 sorted: sorted.clone(),
                 in_degree_map: in_degree_map.clone(),
             }),
-            |state: Rc<KahnDrainState>, node: String| {
+            |state: Arc<KahnDrainState>, node: String| {
                 let state = v1_rt::take_owned(state);
                 {
                     let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
                     let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
                         Some(ns) => ns.clone(),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     };
                     let new_degrees = neighbors.clone().iter().cloned().fold(
                         state.in_degree_map,
-                        |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
+                        |deg_map: Arc<HashMap<String, i64>>, neighbor: String| {
                             let current = match v1_rt::map_get(&deg_map, neighbor.clone()) {
                                 Some(d) => d.clone(),
                                 None => 0,
@@ -701,22 +704,22 @@ pub fn kahn_drain(
                             )
                         },
                     );
-                    Rc::new(KahnDrainState {
+                    Arc::new(KahnDrainState {
                         sorted: new_sorted.clone(),
                         in_degree_map: new_degrees.clone(),
                     })
                 }
             },
         );
-        let new_zero_set = Rc::new({
+        let new_zero_set = Arc::new({
             let mut __result = Vec::new();
-            for neighbor in Rc::new({
+            for neighbor in Arc::new({
                 let mut __result = Vec::new();
                 for node in queue.clone().iter().cloned() {
                     __result.extend(
                         (*match v1_rt::map_get(&adjacency, node.clone()) {
                             Some(ns) => ns.clone(),
-                            None => Rc::new(vec![]),
+                            None => Arc::new(vec![]),
                         })
                         .iter()
                         .cloned(),
@@ -740,12 +743,12 @@ pub fn kahn_drain(
         .cloned()
         .fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, name: String| {
+            |acc: Arc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
         );
-        let new_zero = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_keys(&new_zero_set))
+        let new_zero = Arc::new({
+            let mut __sorted: Vec<_> = Arc::new(v1_rt::map_keys(&new_zero_set))
                 .iter()
                 .cloned()
                 .collect();

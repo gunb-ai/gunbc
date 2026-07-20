@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::{
     compile_sources_with_options, compile_to_resolved, CompilePipelineOptions, PipelineResult,
@@ -32,22 +32,22 @@ pub fn v2_layer_roots() -> Vec<std::path::PathBuf> {
     vec![ws.join("src/v2"), ws.join("dag")]
 }
 
-pub fn tokenize(source: &str) -> Rc<im::Vector<Rc<Token>>> {
+pub fn tokenize(source: &str) -> Arc<im::Vector<Arc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 
-pub fn parse_source(source: &str) -> Rc<ParseResult> {
+pub fn parse_source(source: &str) -> Arc<ParseResult> {
     parse_source_named("test.dag", source)
 }
 
-pub fn parse_source_named(filename: &str, source: &str) -> Rc<ParseResult> {
+pub fn parse_source_named(filename: &str, source: &str) -> Arc<ParseResult> {
     let tokens =
         v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), filename.to_string());
     let source_index =
         v1_compiler::v1_std_core::build_newline_index(filename.to_string(), source.to_string());
     let mut source_indices = im::HashMap::new();
     source_indices.insert(filename.to_string(), source_index);
-    v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices))
+    v1_compiler::v1_compiler_parse::parse(tokens, Arc::new(source_indices))
 }
 
 pub fn assert_parses(source: &str, label: &str) {
@@ -161,7 +161,7 @@ fn extract_imports(source: &str) -> Vec<String> {
     }
 }
 
-pub fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc<SourceFile>> {
+pub fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Arc<SourceFile>> {
     resolve_imports_transitively_with_index(entry_path, entry_content, module_index())
 }
 
@@ -169,7 +169,7 @@ pub fn resolve_imports_transitively_with_source_roots(
     entry_path: &str,
     entry_content: &str,
     source_roots: &[std::path::PathBuf],
-) -> Vec<Rc<SourceFile>> {
+) -> Vec<Arc<SourceFile>> {
     let index = build_module_index_for_roots(source_roots);
     resolve_imports_transitively_with_index(entry_path, entry_content, &index)
 }
@@ -185,9 +185,9 @@ fn resolve_imports_transitively_with_index(
     entry_path: &str,
     entry_content: &str,
     module_index: &std::collections::HashMap<String, std::path::PathBuf>,
-) -> Vec<Rc<SourceFile>> {
+) -> Vec<Arc<SourceFile>> {
     let ws = workspace_root();
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    let mut seen: HashMap<String, Arc<SourceFile>> = HashMap::new();
     let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)
 
     queue.push((entry_path.to_string(), entry_content.to_string()));
@@ -201,7 +201,7 @@ fn resolve_imports_transitively_with_index(
             if let Some(file_path) = module_index.get(&module_path) {
                 if let Ok(file_content) = std::fs::read_to_string(file_path) {
                     let rel_path = display_source_path(file_path, &ws);
-                    let source = Rc::new(SourceFile {
+                    let source = Arc::new(SourceFile {
                         path: rel_path.clone(),
                         content: file_content.clone(),
                     });
@@ -212,62 +212,66 @@ fn resolve_imports_transitively_with_index(
         }
     }
 
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    sources.push(Rc::new(SourceFile {
+    let mut sources: Vec<Arc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
+    sources.push(Arc::new(SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
     }));
     sources
 }
 
-fn analyze_complexity_options() -> Rc<CompilePipelineOptions> {
-    Rc::new(CompilePipelineOptions {
+fn analyze_complexity_options() -> Arc<CompilePipelineOptions> {
+    Arc::new(CompilePipelineOptions {
         analyze_complexity: true,
         ..(*v1_compiler::v1_compiler_compile::default_compile_pipeline_options()).clone()
     })
 }
 
-pub fn compile_dag_analyze_complexity(source: &str) -> Rc<PipelineResult> {
+pub fn compile_dag_analyze_complexity(source: &str) -> Arc<PipelineResult> {
     let sources = resolve_imports_transitively("test.dag", source);
     compile_sources_with_options(
-        Rc::new(sources.into()),
+        Arc::new(sources.into()),
         RenderTarget::Rust,
         analyze_complexity_options(),
     )
 }
 
-pub fn compile_multi_analyze_complexity(files: &[(&str, &str)]) -> Rc<PipelineResult> {
-    let mut all_sources: HashMap<String, Rc<SourceFile>> = HashMap::new();
+pub fn compile_multi_analyze_complexity(files: &[(&str, &str)]) -> Arc<PipelineResult> {
+    let mut all_sources: HashMap<String, Arc<SourceFile>> = HashMap::new();
     for (path, content) in files {
         let resolved = resolve_imports_transitively(path, content);
         for src in resolved {
             all_sources.entry(src.path.clone()).or_insert(src);
         }
     }
-    let sources: Vec<Rc<SourceFile>> = all_sources.into_iter().map(|(_, v)| v).collect();
+    let sources: Vec<Arc<SourceFile>> = all_sources.into_iter().map(|(_, v)| v).collect();
     compile_sources_with_options(
-        Rc::new(sources.into()),
+        Arc::new(sources.into()),
         RenderTarget::Rust,
         analyze_complexity_options(),
     )
 }
 
-pub fn compile_dag(source: &str) -> Rc<PipelineResult> {
+pub fn compile_dag(source: &str) -> Arc<PipelineResult> {
     compile_dag_named("test.dag", source, RenderTarget::Rust)
 }
 
-pub fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
+pub fn compile_dag_resolved(source: &str) -> Arc<ResolvedPipelineResult> {
     let sources = resolve_imports_transitively("test.dag", source);
-    compile_to_resolved(Rc::new(sources.into()))
+    compile_to_resolved(Arc::new(sources.into()))
 }
 
-pub fn compile_dag_target(source: &str, target: RenderTarget) -> Rc<PipelineResult> {
+pub fn compile_dag_target(source: &str, target: RenderTarget) -> Arc<PipelineResult> {
     compile_dag_named("test.dag", source, target)
 }
 
-pub fn compile_dag_named(filename: &str, source: &str, target: RenderTarget) -> Rc<PipelineResult> {
+pub fn compile_dag_named(
+    filename: &str,
+    source: &str,
+    target: RenderTarget,
+) -> Arc<PipelineResult> {
     let sources = resolve_imports_transitively(filename, source);
-    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources.into()), target)
+    v1_compiler::v1_compiler_compile::compile_sources(Arc::new(sources.into()), target)
 }
 
 pub fn compile_dag_named_with_source_roots(
@@ -275,25 +279,25 @@ pub fn compile_dag_named_with_source_roots(
     source: &str,
     target: RenderTarget,
     source_roots: &[std::path::PathBuf],
-) -> Rc<PipelineResult> {
+) -> Arc<PipelineResult> {
     let sources = resolve_imports_transitively_with_source_roots(filename, source, source_roots);
-    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources.into()), target)
+    v1_compiler::v1_compiler_compile::compile_sources(Arc::new(sources.into()), target)
 }
 
-pub fn compile_multi(files: &[(&str, &str)]) -> Rc<PipelineResult> {
+pub fn compile_multi(files: &[(&str, &str)]) -> Arc<PipelineResult> {
     compile_multi_target(files, RenderTarget::Rust)
 }
 
-pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<PipelineResult> {
-    let mut all_sources: HashMap<String, Rc<SourceFile>> = HashMap::new();
+pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Arc<PipelineResult> {
+    let mut all_sources: HashMap<String, Arc<SourceFile>> = HashMap::new();
     for (path, content) in files {
         let resolved = resolve_imports_transitively(path, content);
         for src in resolved {
             all_sources.entry(src.path.clone()).or_insert(src);
         }
     }
-    let sources: Vec<Rc<SourceFile>> = all_sources.into_iter().map(|(_, v)| v).collect();
-    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources.into()), target)
+    let sources: Vec<Arc<SourceFile>> = all_sources.into_iter().map(|(_, v)| v).collect();
+    v1_compiler::v1_compiler_compile::compile_sources(Arc::new(sources.into()), target)
 }
 
 pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
