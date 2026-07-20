@@ -17286,6 +17286,19 @@ pub fn bare_ref_reachability_for_name(
 mod reference_edge_producer_tests {
     use super::reference_resolution_facts;
 
+    #[test]
+    fn debug_dump_std_logic_edges() {
+        let edges = reference_resolution_facts(
+            &["dag".to_string(), "src/v2".to_string()],
+            &["dag".to_string(), "src/v2".to_string()],
+            &[],
+        );
+        for e in edges.iter().filter(|e| e.path.contains("std/logic.dag")) {
+            eprintln!("EDGE {:?} -> {} ({:?})", e.path, e.target_module, e.resolution);
+        }
+        panic!("dump complete");
+    }
+
     fn fixture_root(tag: &str) -> std::path::PathBuf {
         // Under the workspace `target/` (gitignored): `rel_path_for_layer_import` fail-closes on
         // paths outside the workspace root, and `target/` keeps the fixture out of version control.
