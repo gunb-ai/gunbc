@@ -3,6 +3,8 @@ module v2.compiler.emit_host
 import v2.compiler.emit { emit }
 import v2.compiler.emit_module { emit_module }
 import v2.compiler.infer { InferredTree }
+import v2.compiler.build_transport_admission { build_transport_admissible }
+import std.effect_grant { Admitted, EffectOutsideGrant }
 import v2.compiler.eval {
   Inputs,
   TestClaimEvalSubject,
@@ -21,6 +23,7 @@ import v2.std.collection { List, optional_present }
 import v2.std.host_transport {
   ByteString,
   EmitHostRuntimeRow,
+  HostTransportDescriptor,
   EmittedSource,
   EmittedWithSuffix,
   FixedText,
@@ -106,6 +109,14 @@ fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
 fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_exit_not_ok,
+    at: port_locus(port: ^emit_host_transport_port),
+    correction: None
+  }
+}
+
+fn emit_host_transport_outside_grant_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_host_transport_outside_grant,
     at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
@@ -308,6 +319,27 @@ fn run_host_process_with_cache(
 ) -> Outcome<EmitHostRunReceipt> {
   let _inputs = fixture_inputs
   let transport = row.transport
+  match build_transport_admissible(transport: transport) {
+    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+      outcome_rejected(d: emit_host_transport_outside_grant_diagnostic())
+    Admitted { via_root: r } =>
+      run_host_process_admitted(
+        workspace_dir: workspace_dir,
+        transport: transport,
+        target: target,
+        source: source,
+        use_cache: use_cache
+      )
+  }
+}
+
+fn run_host_process_admitted(
+  workspace_dir: String,
+  transport: HostTransportDescriptor,
+  target: TargetModel,
+  source: Medium<String>,
+  use_cache: Bool
+) -> Outcome<EmitHostRunReceipt> {
   bind_outcome(
     o: build_invocation_argvs(builds: transport.build),
     f: fn(builds) {
