@@ -817,6 +817,15 @@ pub fn add_emit_item_summary(
     }
 }
 
+pub fn emit_dependency_registration_dissolve_on_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_files from that set. Instance-patch interim: faithful corpus emits carrier import lines per module unless locally defined (FreeMonoid/Char/NonEmptyStr/Int); closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HostNative;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
