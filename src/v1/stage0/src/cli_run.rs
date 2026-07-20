@@ -32,7 +32,7 @@ use crate::v1_std_core::{
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span, param_node_name_at,
     param_node_type_expr, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
-    InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
+    ExprErrorKind, InferredNode, InternTable, MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -4813,11 +4813,15 @@ struct PoolParse {
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-// Shared per-thread marker so every stripped fn decl keeps `body.is_some()` for
-// `local_binding_for_item`'s fn discriminator without retaining real bodies.
+// Shared per-thread stand-in so stripped fn decls keep `body.is_some()` for
+// `local_binding_for_item`'s fn discriminator. The stand-in is deliberately
+// uninterpretable (ExprError + stable name) so any consumer that walks body
+// CONTENT refuses instead of silently succeeding on emptiness.
+const CENSUS_HEADS_FN_STAND_IN_NAME: &str = "^census_heads_fn_stand_in";
+
 thread_local! {
     static STRIPPED_FN_BODY_MARKER: Rc<Node> = Rc::new(Node {
-        name: String::new(),
+        name: CENSUS_HEADS_FN_STAND_IN_NAME.to_string(),
         span: no_span(),
         ident_span: None,
         children: empty_node_list(),
@@ -4833,13 +4837,23 @@ thread_local! {
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Rc::new(ExprData::ExprError {
+            kind: ExprErrorKind::InternalExprError,
+            message: "pool census heads-only: function body stripped — refuse to interpret"
+                .to_string(),
+        }),
         ident: None,
     });
 }
 
 fn stripped_fn_body_marker() -> Rc<Node> {
     STRIPPED_FN_BODY_MARKER.with(Rc::clone)
+}
+
+#[cfg(test)]
+pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
+    node.name == CENSUS_HEADS_FN_STAND_IN_NAME
+        || Rc::ptr_eq(node, &STRIPPED_FN_BODY_MARKER.with(Rc::clone))
 }
 
 fn census_heads_children(children: &Rc<im::Vector<Rc<Node>>>) -> Rc<im::Vector<Rc<Node>>> {
