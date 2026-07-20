@@ -9452,6 +9452,7 @@ fn dump_complexity_report() {
         RenderTarget::Rust,
         v1_compiler::v1_compiler_compile::CompilePipelineOptions {
             analyze_complexity: true,
+            census_only_sources: Rc::new(im_rc::Vector::new()),
         },
     );
 

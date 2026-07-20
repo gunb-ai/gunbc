@@ -317,7 +317,12 @@ fn corpus_ambiguous_roster() {
 
     let mut ambiguous: Vec<String> = census
         .iter()
-        .filter(|(_k, v)| matches!(&***v, GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }))
+        .filter(|(_k, v)| {
+            matches!(
+                &***v,
+                GlobalBareLookupState::GlobalBareAmbiguousBinding { .. }
+            )
+        })
         .map(|(k, _v)| k.to_string())
         .collect();
     ambiguous.sort();
