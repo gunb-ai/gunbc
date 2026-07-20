@@ -17217,8 +17217,49 @@ fn module_path_to_qualified_path(module_path: &str, name: &str) -> String {
     }
 }
 
-fn is_fn_decl_node(node: &Node) -> bool {
-    !node.params.is_empty() || node.inferred.is_some() || node.type_annotation.is_some()
+type ModuleItemIndex = HashMap<(String, String), Rc<Node>>;
+
+fn build_module_item_index(
+    modules: &im_rc::Vector<Rc<TypedModule>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> ModuleItemIndex {
+    let mut index = HashMap::new();
+    for tm in modules.iter() {
+        let module_path = tm.type_env.module_path.clone();
+        for item in tm.items.iter() {
+            let name = authored_name_at(source_indices.clone(), item.clone());
+            index.insert((module_path.clone(), name), item.clone());
+        }
+    }
+    index
+}
+
+/// True when `owner_module.name` is a fn/func decl — routes through `item_kind` (same
+/// classifier as `local_binding_for_item` / resolver item census) when the module item is
+/// available; otherwise falls back to the SymbolIndex stub shape from `local_binding_for_item`.
+fn is_fn_like_binding(
+    node: &Node,
+    owner_module: &str,
+    name: &str,
+    item_index: Option<&ModuleItemIndex>,
+) -> bool {
+    if let Some(index) = item_index {
+        if let Some(item) = index.get(&(owner_module.to_string(), name.to_string())) {
+            return matches!(
+                item_kind(item.clone()),
+                ItemKind::FnItem | ItemKind::FuncItem
+            );
+        }
+    }
+    is_fn_decl_symbol_index_stub(node)
+}
+
+fn is_fn_decl_symbol_index_stub(node: &Node) -> bool {
+    use crate::v1_std_core::Connective;
+    node.connective == Connective::NoConnective
+        && node.transport.is_none()
+        && node.body.is_none()
+        && !(node.inferred.is_some() && node.params.is_empty() && node.type_annotation.is_none())
 }
 
 fn fn_binding_from_sig(owner_module: &str, name: &str, sig: &ResolvedFuncSig) -> FnBindingRef {
@@ -17282,7 +17323,7 @@ pub fn containment_resolve_fn_v1(
     module_path: &str,
     name: &str,
 ) -> ContainmentResolve {
-    containment_resolve_fn_v1_for_module(index, module_path, name, None, None)
+    containment_resolve_fn_v1_for_module(index, module_path, name, None, None, None)
 }
 
 /// Containment walk with optional import-surface context (namespace §1c direct import lists).
@@ -17292,9 +17333,10 @@ pub fn containment_resolve_fn_v1_for_module(
     name: &str,
     module: Option<&Rc<Node>>,
     source_indices: Option<Rc<HashMap<String, Rc<NewlineIndex>>>>,
+    item_index: Option<&ModuleItemIndex>,
 ) -> ContainmentResolve {
     if let Some((owner, node, steps)) = symbol_index_lexical_lookup_v1(index, module_path, name) {
-        if is_fn_decl_node(&node) {
+        if is_fn_like_binding(&node, &owner, name, item_index) {
             return ContainmentResolve::Hit {
                 owner_module: owner.clone(),
                 qualified_path: module_path_to_qualified_path(&owner, name),
@@ -17319,7 +17361,7 @@ pub fn containment_resolve_fn_v1_for_module(
             }
             let qn = module_path_to_qualified_path(&imp_path, name);
             if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn.clone()) {
-                if is_fn_decl_node(&node) {
+                if is_fn_like_binding(&node, &imp_path, name, item_index) {
                     direct_hit = Some(ContainmentResolve::Hit {
                         owner_module: imp_path.clone(),
                         qualified_path: qn,
@@ -17339,7 +17381,7 @@ pub fn containment_resolve_fn_v1_for_module(
             module_path: owner,
             binding,
         }) => {
-            if is_fn_decl_node(&binding.resolved) {
+            if is_fn_like_binding(&binding.resolved, owner, name, item_index) {
                 return ContainmentResolve::Hit {
                     owner_module: owner.clone(),
                     qualified_path: module_path_to_qualified_path(&owner, name),
@@ -17447,6 +17489,7 @@ pub fn resolution_divergence_census_from_ctx(
     ctx: &v1_interpreter::InterpContext,
 ) -> ResolutionDivergenceCensus {
     let source_indices = ctx.source_indices.clone();
+    let item_index = build_module_item_index(&ctx.modules, source_indices.clone());
 
     let mut out = ResolutionDivergenceCensus::default();
 
@@ -17474,6 +17517,7 @@ pub fn resolution_divergence_census_from_ctx(
                     &callee,
                     Some(&tm.module),
                     Some(source_indices.clone()),
+                    Some(&item_index),
                 );
 
                 if let ContainmentResolve::Hit {
@@ -17658,9 +17702,9 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
 #[cfg(test)]
 mod resolution_divergence_census_tests {
     use super::{
-        containment_resolve_fn_v1, containment_resolve_fn_v1_for_module, import_chain_owner,
-        lookup_resolved_sig, resolution_divergence_census_live, whole_tree_resolved_ctx,
-        ResolutionDivergenceBucket, WholeTreeCtx,
+        build_module_item_index, containment_resolve_fn_v1, containment_resolve_fn_v1_for_module,
+        import_chain_owner, lookup_resolved_sig, resolution_divergence_census_live,
+        whole_tree_resolved_ctx, ResolutionDivergenceBucket, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
 
@@ -17738,12 +17782,14 @@ fn planted_call() -> Bool {
             lookup_resolved_sig(planted.func_env.clone(), "twin_sig".to_string()).expect("import");
         let import_owner = import_chain_owner(&planted.func_env, "twin_sig").expect("import owner");
         let import_arity = import_sig.params.len();
+        let item_index = build_module_item_index(&ctx.modules, ctx.source_indices.clone());
         let containment = containment_resolve_fn_v1_for_module(
             &planted.type_env.symbol_index,
             "test.claim.X.planted",
             "twin_sig",
             Some(&planted.module),
             Some(ctx.source_indices.clone()),
+            Some(&item_index),
         );
         assert_eq!(
             import_arity, 3,
