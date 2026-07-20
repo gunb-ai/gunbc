@@ -1,11 +1,11 @@
 #![allow(clippy::disallowed_macros)]
 
 //! Namespace-resolution-design §12.4 census — read-only comparison of
-//! `lookup_resolved_sig` vs SymbolIndex containment walk over the floor corpus.
+//! `lookup_resolved_sig` vs SymbolIndex containment walk.
 //!
-//! Run:
 //! ```text
 //! cargo run -p v1-compiler --bin resolution_divergence_census
+//! cargo run -p v1-compiler --bin resolution_divergence_census -- --source-root dag
 //! ```
 
 use std::path::PathBuf;
@@ -23,12 +23,48 @@ fn workspace_root() -> PathBuf {
         .expect("workspace root")
 }
 
+fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
+    match args.get(idx) {
+        Some(v) => Ok(v.clone()),
+        None => {
+            eprintln!("resolution_divergence_census: {flag} requires a value");
+            Err(ExitCode::from(2))
+        }
+    }
+}
+
 fn run() -> Result<ExitCode, ExitCode> {
     let ws = workspace_root();
-    let roots = resolution_divergence_census_source_roots(&ws);
-    let exclude = whole_tree_resolve_exclusion_substrings();
-    let census = resolution_divergence_census_live(&roots, &exclude).map_err(|e| {
-        eprintln!("resolution_divergence_census: whole-tree resolve failed:\n{e}");
+    let args: Vec<String> = std::env::args().collect();
+    let mut source_roots: Vec<String> = Vec::new();
+    let mut exclude = whole_tree_resolve_exclusion_substrings();
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--source-root" => {
+                i += 1;
+                let rel = require_value(&args, i, "--source-root")?;
+                source_roots.push(ws.join(&rel).to_string_lossy().into_owned());
+            }
+            "--exclude-subpath" => {
+                i += 1;
+                exclude.push(require_value(&args, i, "--exclude-subpath")?);
+            }
+            other => {
+                eprintln!("resolution_divergence_census: unknown argument: {other}");
+                return Err(ExitCode::from(2));
+            }
+        }
+        i += 1;
+    }
+
+    if source_roots.is_empty() {
+        source_roots = resolution_divergence_census_source_roots(&ws);
+    }
+
+    let census = resolution_divergence_census_live(&source_roots, &exclude).map_err(|e| {
+        eprintln!("resolution_divergence_census: resolve failed:\n{e}");
         ExitCode::from(2)
     })?;
     let report = format_resolution_divergence_census(&census);
