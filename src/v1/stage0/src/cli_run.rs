@@ -4974,6 +4974,7 @@ fn typed_module_content_key(
     resolved: &Rc<v1_compiler_resolve::ResolvedModule>,
     mod_name: &str,
     interface_hash_by_name: &std::collections::HashMap<String, String>,
+    closure_names: &std::collections::HashSet<&str>,
 ) -> Result<String, String> {
     let file = &resolved.module.span.file;
     let source_hash = index
@@ -5016,6 +5017,17 @@ fn typed_module_content_key(
         .module_graph_facts
         .reference_only_direct_import_modules(&file_rel)
     {
+        // The loader is deliberately import-only (build_module_graph_facts_live_uncached):
+        // selection_adjacency's reference-derived edges are census-wide and tuned for the
+        // affected-set consumer's tolerance of an over-connected false positive, not as a
+        // hard dependency authority. A target this resolve's closure never loaded cannot
+        // have influenced this compile's typed result, so it is not a term in this key —
+        // mirroring module_schedule_batches's existing dangling-edge tolerance, not an
+        // absorbing fallback (DESIGN §5): the exclusion is structurally forced, not a
+        // substitute for a precision we failed to compute.
+        if !closure_names.contains(ref_mod.as_str()) {
+            continue;
+        }
         let hash = interface_hash_by_name
             .get(&ref_mod)
             .cloned()
@@ -5824,6 +5836,8 @@ fn try_reconcile_all_cache_hits(
     // closed (return `Ok(None)`) on a genuine store miss.
     let mut interface_hash_by_name: std::collections::HashMap<String, String> =
         std::collections::HashMap::with_capacity(closure_modules.len());
+    let closure_name_set: std::collections::HashSet<&str> =
+        closure_names.iter().map(|s| s.as_str()).collect();
     let mut results: Vec<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>> =
         vec![None; closure_modules.len()];
     for &slot in schedule.iter().flatten() {
@@ -5831,8 +5845,13 @@ fn try_reconcile_all_cache_hits(
         let mod_name = &closure_names[slot];
         let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
         check_index_module_source_identity(index, mod_name, &decl_file)?;
-        let typed_key =
-            typed_module_content_key(index, resolved, mod_name, &interface_hash_by_name)?;
+        let typed_key = typed_module_content_key(
+            index,
+            resolved,
+            mod_name,
+            &interface_hash_by_name,
+            &closure_name_set,
+        )?;
         let Some(tc_result) = index_get_typed(index, &typed_key)? else {
             return Ok(None);
         };
@@ -6215,6 +6234,8 @@ fn reconcile_with_typed_cache(
     // `typed_module_content_key` at each module's store lookup.
     let mut interface_hash_by_name: std::collections::HashMap<String, String> =
         std::collections::HashMap::with_capacity(closure_modules.len());
+    let closure_name_set: std::collections::HashSet<&str> =
+        closure_names.iter().map(|s| s.as_str()).collect();
     let mut dispatched: Vec<
         Option<(
             Rc<im_rc::Vector<Rc<ErrorNode>>>,
@@ -6241,8 +6262,13 @@ fn reconcile_with_typed_cache(
             {
                 check_index_module_source_identity(index, &mod_name, &decl_file)?;
             }
-            let typed_key =
-                typed_module_content_key(index, &resolved, &mod_name, &interface_hash_by_name)?;
+            let typed_key = typed_module_content_key(
+                index,
+                &resolved,
+                &mod_name,
+                &interface_hash_by_name,
+                &closure_name_set,
+            )?;
             let cached = index_get_typed(index, &typed_key)?;
             let was_cache_hit = cached.is_some();
             let parent_diags = if was_cache_hit {
@@ -17285,19 +17311,6 @@ pub fn bare_ref_reachability_for_name(
 #[cfg(test)]
 mod reference_edge_producer_tests {
     use super::reference_resolution_facts;
-
-    #[test]
-    fn debug_dump_std_logic_edges() {
-        let edges = reference_resolution_facts(
-            &["dag".to_string(), "src/v2".to_string()],
-            &["dag".to_string(), "src/v2".to_string()],
-            &[],
-        );
-        for e in edges.iter().filter(|e| e.path.contains("std/logic.dag")) {
-            eprintln!("EDGE {:?} -> {} ({:?})", e.path, e.target_module, e.resolution);
-        }
-        panic!("dump complete");
-    }
 
     fn fixture_root(tag: &str) -> std::path::PathBuf {
         // Under the workspace `target/` (gitignored): `rel_path_for_layer_import` fail-closes on
