@@ -1,40 +1,5 @@
 module v2.test.emit.semantic_decl_serialize_parity
 
-import v2.compiler.translate {
-  grammar_relation_row_for_emitted,
-  grammar_relation_row_tokens_root,
-  serialize_concrete_syntax_tokens_to_source
-}
-import v2.extdeps.languages.rust {
-  rust_decl_derive_binding_spellings,
-  rust_decl_general_lex,
-  rust_enum_general_decl_productions_only_translation_rules,
-  rust_enum_general_decl_structural_target_model,
-  rust_target_model
-}
-import extdeps.languages.rust.emit { rust_enum_derives_copy }
-import v2.std.compilers.semantic_decl_emission {
-  semantic_decl_emission_from_target,
-  semantic_decl_profile_binding_spellings,
-  semantic_decl_profile_lex_rules,
-  semantic_decl_serialize_target,
-  target_semantic_enum_surface_from_coproduct
-}
-import v2.std.compilers.lexing { LexRules }
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.std.compilers.target_model {
-  TargetModel,
-  concrete_syntax_token_list_from_node,
-  target_model_emit_transforms_empty,
-  target_model_named_edge,
-  target_model_type_conj_node
-}
-import v2.std.collection { Map }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
-import v2.std.logic { Bool }
-import v2.std.node { Conj, Disj, Edge, Named, Node, SyntheticOccurrence, Symbol, TypeNode }
-import v2.std.text { String }
-import std.algebra { Empty }
 
 data bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
 

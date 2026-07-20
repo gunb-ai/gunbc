@@ -1,33 +1,5 @@
 module v2.test.emit.rust_record_construct_emit
 
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.extdeps.languages.dag {
-  dag_fixture_emitted_rec_fn
-}
-import v2.extdeps.languages.rust_test {
-  rust_rec_source_text,
-  rust_rec_target_model_staging,
-  rust_rec_wrong_field_target_model_staging,
-  rust_rec_wrong_value_source_text
-}
-import extdeps.communication.medium { Medium }
-import v2.std.collection { Map }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.witness { Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

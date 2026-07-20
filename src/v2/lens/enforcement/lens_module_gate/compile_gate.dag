@@ -1,21 +1,5 @@
 module v2.lens.enforcement.lens_module_gate.compile_gate
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.lens.enforcement.lens_module_gate { lens_module_gate_blocking_holds }
-import std.disposition { RealizationDispatch }
-import std.algebra { Empty }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  NonEmptyDiagnostics,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus,
-  outcome_accepted
-}
-import v2.std.node { Node, Symbol }
-import v2.std.witness { Holds, Witness }
 
 data lens_module_gate_blocking_refused: Symbol = ^lens_module_gate_blocking_refused
 

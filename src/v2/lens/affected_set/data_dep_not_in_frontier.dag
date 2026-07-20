@@ -1,18 +1,5 @@
 module v2.test.lens_affected_set.data_dep_not_in_frontier
 
-import v2.lens.affected_set { dependency_in_lens_frontier }
-import v2.std.dependency { DataDependsOn, DependencyView }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 fn data_dep_node(s: Symbol) -> Node {
   Node {

@@ -1,12 +1,5 @@
 module v2.test.emit.rust_produced_decl_emit
 
-import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
-import v2.compiler.emit_produced { emit_produced_decl_rust }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

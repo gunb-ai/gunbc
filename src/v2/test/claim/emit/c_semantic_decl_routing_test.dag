@@ -1,14 +1,5 @@
 module v2.test.emit.c_semantic_decl_routing
 
-import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
-import v2.extdeps.languages.c { c_target_model }
-import v2.extdeps.languages.c_decl { c_stage1_type_decl_frontier_deferred_count }
-import std.algebra { Empty }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

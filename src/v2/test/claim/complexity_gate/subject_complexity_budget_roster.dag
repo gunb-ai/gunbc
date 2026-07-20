@@ -1,29 +1,5 @@
 module v2.test.complexity_gate.subject_complexity_budget_roster
 
-import v2.lens.complexity {
-  ComplexityBound,
-  ConstantComplexity,
-  linear_complexity,
-  unknown_complexity
-}
-import v2.lens.cost { SizeVariable }
-import v2.std.cardinality { loop_bound_measure, loop_bound_witness_for_node }
-import v2.std.collection { List }
-import v2.std.diagnostic { Outcome }
-import v2.std.node { Node }
-import v2.std.witness { Holds, Violates }
-import v2.test.complexity_gate.table_fixture_add_subject_producer {
-  table_fixture_add_arrow_with_body
-}
-import v2.test.complexity_gate.table_fixture_bind_subject_producer {
-  table_fixture_bind_arrow_with_body
-}
-import v2.test.complexity_gate.table_fixture_branch_subject_producer {
-  table_fixture_pick_if_arrow_with_body
-}
-import v2.test.complexity_gate.table_fixture_loop_subject_producer {
-  table_fixture_loop_arrow_with_body
-}
 
 type LensSubjectComplexityBudgetRow {
   subject_producer: fn() -> Outcome<Node>

@@ -1,25 +1,5 @@
 module v2.test.lens_application.introspect_clean_tree_passes
 
-import v2.compiler.compile { CompileLens, CompileLensIntrospect, apply_compile_lens }
-import v2.compiler.infer { InferredTree }
-import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.std.witness { Holds, Witness }
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts,
-  claim_inferred_tree
-}
 
 data introspect_root: Node = claim_atom_node(s: ^introspect_claim_symbol)
 

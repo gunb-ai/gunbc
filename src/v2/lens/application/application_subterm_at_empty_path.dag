@@ -1,18 +1,5 @@
 module v2.test.lens_application.application_subterm_at_empty_path
 
-import v2.lens.application { subterm_at }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data application_subterm_root: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^application_subterm_symbol } },

@@ -1,8 +1,5 @@
 module v2.test.claim.complexity.accumulator_copy_roster_gate_lean_bash
 
-import v2.lens.complexity_accumulator_copy.roster_gate { file_gate }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
