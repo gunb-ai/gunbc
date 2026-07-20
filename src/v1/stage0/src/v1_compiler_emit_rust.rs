@@ -3898,8 +3898,19 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         } else {
             Rc::new(vec![])
         };
+        let v2_std_text_stub = if ((corpus_repr_is_faithful(emit_info.corpus_repr.clone())
+            && module_files_reference_v2_std_text(module_files.clone()))
+            && !module_files_include_v2_std_text(module_files.clone()))
+        {
+            Rc::new(vec![emit_v2_std_text_closure_stub_module()])
+        } else {
+            Rc::new(vec![])
+        };
         let all_mod_files = v1_rt::concat(
-            v1_rt::concat(module_files.clone(), Rc::new(vec![rt_file.clone()])),
+            v1_rt::concat(
+                v1_rt::concat(module_files.clone(), v2_std_text_stub.clone()),
+                Rc::new(vec![rt_file.clone()]),
+            ),
             dry_run_file.clone(),
         );
         let lib_file = emit_lib_rs_from_files(all_mod_files.clone(), has_pipeline.clone());
@@ -3938,6 +3949,51 @@ pub fn emit_compiler_tests_module() -> Rc<TextFile> {
         ),
         content: compiler_tests_source(),
     })
+}
+
+pub fn module_files_reference_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+    {
+        let mut __found = false;
+        for f in files.clone().iter().cloned() {
+            if v1_rt::string_contains(&f.content.clone(), "crate::v2_std_text::".to_string()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+    {
+        let mut __found = false;
+        for f in files.clone().iter().cloned() {
+            if v1_rt::string_contains(&f.path.clone(), "v2_std_text".to_string()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn emit_v2_std_text_closure_stub_module() -> Rc<TextFile> {
+    {
+        let from_host =
+            match rust_host_string_seam_fn_emit("host_string_text_from_rust_host".to_string()) {
+                Some(v) => v.clone(),
+                None => "".to_string(),
+            };
+        let to_host =
+            match rust_host_string_seam_fn_emit("host_string_text_to_rust_host".to_string()) {
+                Some(v) => v.clone(),
+                None => "".to_string(),
+            };
+        Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "v2_std_text".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated closure stub — dissolve-on: derive from emitted ref set\n".to_string(), "// Source module: v2.std.text (closure stub)\n\n".to_string()), from_host.clone()), "\n".to_string()), to_host.clone()), "\n".to_string()),
+})
+    }
 }
 
 pub fn emit_lib_rs_from_files(
@@ -4156,16 +4212,7 @@ pub fn emit_module_full(
                     .collect::<Vec<_>>(),
             )
         };
-        let carrier_import_lines = if (module_renders_faithful_text_carrier(
-            typed_module.items.clone(),
-            emit_info.corpus_repr.clone(),
-            shared_types.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        ) || module_needs_freemonoid_import(
-            typed_module.items.clone(),
-            emit_info.corpus_repr.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        )) {
+        let carrier_import_lines = if corpus_repr_is_faithful(emit_info.corpus_repr.clone()) {
             emit_faithful_text_carrier_import_lines(
                 prelude_imported_names.clone(),
                 local_type_names.clone(),

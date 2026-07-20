@@ -1769,7 +1769,14 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     []
   }
 
-  let all_mod_files = concat(module_files, [rt_file], dry_run_file)
+  let v2_std_text_stub = if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr)
+    && module_files_reference_v2_std_text(files: module_files)
+    && !module_files_include_v2_std_text(files: module_files) {
+    [emit_v2_std_text_closure_stub_module()]
+  } else {
+    []
+  }
+  let all_mod_files = concat(module_files, v2_std_text_stub, [rt_file], dry_run_file)
   let lib_file = emit_lib_rs_from_files(all_module_files: all_mod_files, has_compiler_tests: has_pipeline)
   let files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   EmitResult { files: files, diagnostics: [] }
@@ -1781,6 +1788,33 @@ fn emit_v2_rt_module() -> TextFile {
 
 fn emit_compiler_tests_module() -> TextFile {
   TextFile { path: concat(rust_source_root(), "compiler_tests", rust_source_ext()), content: compiler_tests_source() }
+}
+
+fn module_files_reference_v2_std_text(files: List<TextFile>) -> Bool {
+  files |> any(f => string_contains(s: f.content, pattern: "crate::v2_std_text::"))
+}
+
+fn module_files_include_v2_std_text(files: List<TextFile>) -> Bool {
+  files |> any(f => string_contains(s: f.path, pattern: "v2_std_text"))
+}
+
+fn emit_v2_std_text_closure_stub_module() -> TextFile {
+  let from_host = match rust_host_string_seam_fn_emit(name: "host_string_text_from_rust_host") {
+    Present { value: v } => v
+    Absent => ""
+  }
+  let to_host = match rust_host_string_seam_fn_emit(name: "host_string_text_to_rust_host") {
+    Present { value: v } => v
+    Absent => ""
+  }
+  TextFile {
+    path: concat(rust_source_root(), "v2_std_text", rust_source_ext()),
+    content: concat(
+      "// Generated closure stub — dissolve-on: derive from emitted ref set\n",
+      "// Source module: v2.std.text (closure stub)\n\n",
+      from_host, "\n", to_host, "\n"
+    )
+  }
 }
 
 fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
