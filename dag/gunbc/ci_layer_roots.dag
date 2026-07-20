@@ -36,6 +36,7 @@ data witness_exclusion_substrings: List<String> = [
   "enforcement_live_witness_test.dag",
   "lever_a_local_receipt_witness",
   "host_effect_apply_witness_test.dag",
+  "host_effect_plan_real_execution_witness_test.dag",
   "deploy_access_privilege_witness_test.dag",
   "ci_deploy_observed_wet_test.dag",
   "random_bytes_csprng_witness_test.dag",
@@ -90,6 +91,7 @@ data witness_admission_offline_exclusion_substrings: List<String> = [
   "enforcement_live_witness_test.dag",
   "lever_a_local_receipt_witness",
   "host_effect_apply_witness_test.dag",
+  "host_effect_plan_real_execution_witness_test.dag",
   "deploy_access_privilege_witness_test.dag",
   "ci_deploy_observed_wet_test.dag",
   "random_bytes_csprng_witness_test.dag",
@@ -217,7 +219,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/srv3_seeded_install_media_real_execution_witness_test.dag", f: "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_roundtrip_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution")
+  bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution")
 ]
 
 data floor_skip_control_fixture_exclusion_note: String = "test/fixture/floor_skip/ is excluded from tree-wide discovery at DIR grain (parent ruling 2026-07-11: a fixture that WANTS witness enrollment is mis-homed by definition, and file-grain exclusion invites the next control fixture to repeat the landmine). These fixtures exist to be driven by floor_skip_discovery_witness's explicit rosters, not as corpus witnesses: falsifier_divergence_control_test.dag carries a BY-DESIGN red row (falsifier_red_control_holds returns false to prove the divergence attribution channel), so any completed full-corpus run - the nightly falsifier, or a PR whose diff touches its import closure - would red on a row whose red is the control's specification, and a permanent by-design divergence would also make the falsifier's 8-clean-window retirement criterion unsatisfiable; live_tree_declared_test.dag declares ReadsLiveTree as a control, so as a corpus row it would be a permanent never-skip cost with no enforcement value. Genuine corpus witnesses that were mis-homed here have been re-homed under test/claim/ (provenance_fail_closed_contract_test, live_tree_collision_test). Explicit-roster runs (the floor_skip bin) are unaffected: witness exclusions apply to discovery only."

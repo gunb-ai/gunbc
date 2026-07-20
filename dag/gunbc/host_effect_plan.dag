@@ -1,0 +1,135 @@
+module gunbc.host_effect_plan
+
+import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
+import v2.std.algebra {
+  FreeMonoid,
+  freemonoid_empty,
+  list_head, list_tail,
+  HeadFound, HeadAbsent,
+  TailFound, TailAbsent,
+}
+import gunbc.host_effect {
+  HostEffect, ShellCommand,
+  HostEffectIntent,
+  HostEffectEvidence,
+  NodeControlPlane,
+  HostEffectTransport,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import std.effects { IdempotencyEvidence }
+import std.realization_reconcile {
+  Reconciliation,
+  Converged,
+  NotConverged,
+  reconciliation_converged,
+}
+import std.types { String }
+
+type HostEffectPlan = EffectPlan<HostEffect>
+
+type HostEffectPlanContext {
+  target: NodeControlPlane
+  evidence: IdempotencyEvidence
+  transport: HostEffectTransport
+}
+
+data host_effect_plan_unsupported_step_reason: String = "host_effect_plan_apply: control-flow step refuses on the typed host_effect_apply spine until predicate interpretation lands; only Do-effect leaves are supported (Wave A2 keystone, host-effect-orchestration.md std.effect_plan band)"
+
+fn host_effect_plan_placeholder_effect() -> HostEffect {
+  ShellCommand { script: "" }
+}
+
+fn host_effect_plan_unsupported_step_refusal(
+  ctx: HostEffectPlanContext,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  NotConverged {
+    reason: host_effect_plan_unsupported_step_reason,
+    applied: HostEffectIntent {
+      target: ctx.target,
+      effect: host_effect_plan_placeholder_effect(),
+      evidence: ctx.evidence,
+      transport: ctx.transport,
+      privilege_denial: none,
+    },
+  }
+}
+
+fn host_effect_plan_apply_step(
+  step: EffectPlanStep<HostEffect>,
+  ctx: HostEffectPlanContext,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match step {
+    Do { effect: e } =>
+      host_effect_apply(
+        target: ctx.target,
+        effect: e,
+        evidence: ctx.evidence,
+        transport: ctx.transport,
+      )
+    If { cond: _, then_: _, else_: _ } =>
+      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+    For { binder: _, over: _, body: _ } =>
+      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+    While { cond: _, body: _ } =>
+      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+    BoundedPoll { max_attempts: _, body: _, success: _ } =>
+      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+    Retry { body: _, escalations: _, on_exhausted: _ } =>
+      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+    Let { name: _, value: _ } =>
+      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+    Call { callee: _, args: _ } =>
+      host_effect_plan_unsupported_step_refusal(ctx: ctx)
+  }
+}
+
+fn host_effect_plan_apply_rest(
+  head_result: Reconciliation<HostEffectIntent, HostEffectEvidence>,
+  rest: FreeMonoid<EffectPlanStep<HostEffect>>,
+  ctx: HostEffectPlanContext,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  if !reconciliation_converged(r: head_result) {
+    head_result
+  } else {
+    match list_head(xs: rest) {
+      HeadAbsent => head_result
+      HeadFound { value: next } =>
+        host_effect_plan_apply_rest(
+          head_result: host_effect_plan_apply_step(step: next, ctx: ctx),
+          rest: match list_tail(xs: rest) {
+            TailFound { tail: t } => t
+            TailAbsent => freemonoid_empty()
+          },
+          ctx: ctx,
+        )
+    }
+  }
+}
+
+fn host_effect_plan_apply(
+  plan: HostEffectPlan,
+  ctx: HostEffectPlanContext,
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  match list_head(xs: plan.steps) {
+    HeadAbsent =>
+      NotConverged {
+        reason: "host_effect_plan_apply: empty plan has no effect to apply",
+        applied: HostEffectIntent {
+          target: ctx.target,
+          effect: host_effect_plan_placeholder_effect(),
+          evidence: ctx.evidence,
+          transport: ctx.transport,
+          privilege_denial: none,
+        },
+      }
+    HeadFound { value: first } =>
+      host_effect_plan_apply_rest(
+        head_result: host_effect_plan_apply_step(step: first, ctx: ctx),
+        rest: match list_tail(xs: plan.steps) {
+          TailFound { tail: t } => t
+          TailAbsent => freemonoid_empty()
+        },
+        ctx: ctx,
+      )
+  }
+}
