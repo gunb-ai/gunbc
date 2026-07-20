@@ -7,7 +7,7 @@ use crate::extdeps_uri_path::PathTemplateParseResult::{MalformedPathTemplate, Pa
 use crate::std_effects::CompositionVerdict::{BrokenBy, IdempotentComposition};
 use crate::std_effects::DeriveOpEffectResult::{DerivedEffect, MalformedPathInput};
 use crate::std_effects::EffectShape::{
-    AppendEffect, CreateEffect, DeleteEffect, ReadEffect, UpsertEffect,
+    AppendEffect, CreateEffect, DeleteEffect, ExecuteEffect, ReadEffect, UpsertEffect,
 };
 use crate::std_effects::IdempotencyEvidence::{IdentityEffect, LatticeEffect, NonIdempotent};
 use crate::std_effects::KeySource::{CompositeKey, InputField, PathParam};
