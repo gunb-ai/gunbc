@@ -17196,6 +17196,140 @@ mod reference_edge_producer_tests {
         );
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    fn str_list_value(items: &[String]) -> crate::v1_interpreter::Value {
+        super::list_value_from_vec(
+            items
+                .iter()
+                .map(|s| crate::v1_interpreter::Value::Str(s.clone()))
+                .collect(),
+        )
+    }
+
+    fn dependency_edges_from_value(
+        value: &crate::v1_interpreter::Value,
+    ) -> Vec<(String, String)> {
+        let list = match value {
+            crate::v1_interpreter::Value::List(items) => items,
+            other => panic!("expected List, got {other}"),
+        };
+        list.iter()
+            .map(|item| match item {
+                crate::v1_interpreter::Value::Record { fields, .. } => {
+                    let path = fields
+                        .iter()
+                        .find(|(k, _)| k.as_ref() == "path")
+                        .map(|(_, v)| match v {
+                            crate::v1_interpreter::Value::Str(s) => s.clone(),
+                            other => panic!("path field: {other}"),
+                        })
+                        .expect("path");
+                    let target = fields
+                        .iter()
+                        .find(|(k, _)| k.as_ref() == "target_module")
+                        .map(|(_, v)| match v {
+                            crate::v1_interpreter::Value::Str(s) => s.clone(),
+                            other => panic!("target_module field: {other}"),
+                        })
+                        .expect("target_module");
+                    (path, target)
+                }
+                other => panic!("expected Record edge, got {other}"),
+            })
+            .collect()
+    }
+
+    // Divergence control for the §3 producer fork dissolved in #6935: an import-less file that
+    // references another module by bare name is invisible to import_resolution_facts but visible to
+    // reference_resolution_facts (strict tier). Before the builtin registration the .dag lens
+    // under-selected; after, dependency_resolution_facts_live and the host agree.
+    #[test]
+    fn reference_edge_dag_host_producer_divergence_control() {
+        use super::{
+            build_multi_entry_index, import_resolution_facts, make_eval_context,
+            reference_edges_as_import_facts, reference_resolution_facts,
+            resolve_entry_with_index_for_discovery_corpus, workspace_root,
+        };
+        use crate::v1_interpreter::{self, ExecutionMode};
+
+        const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
+
+        let root = fixture_root("divergence");
+        let _ = std::fs::remove_dir_all(&root);
+        write(
+            &root,
+            "decl.dag",
+            "module test.decl\n\nfn shared_fn() -> Bool {\n  true\n}\n",
+        );
+        write(
+            &root,
+            "refless.dag",
+            "module test.refless\n\nfn use_it() -> Bool {\n  shared_fn()\n}\n",
+        );
+
+        let pool = vec![root.to_string_lossy().into_owned()];
+        let has_import_edge = |from_sub: &str, to_mod: &str| {
+            import_resolution_facts(&pool, &pool, &[])
+                .iter()
+                .any(|e| e.path.contains(from_sub) && e.import_module == to_mod)
+        };
+        let has_host_ref_edge = |from_sub: &str, to_mod: &str| {
+            reference_edges_as_import_facts(
+                &reference_resolution_facts(&pool, &pool, &[]),
+                true,
+            )
+            .iter()
+            .any(|e| e.path.contains(from_sub) && e.import_module == to_mod)
+        };
+
+        // RED control: import-only producer cannot see a reference-only dependency.
+        assert!(
+            !has_import_edge("refless.dag", "test.decl"),
+            "import_resolution_facts must miss a reference-only edge — otherwise this test is not discriminating"
+        );
+        // Host selection-tier producer finds it (the fork surface we are dissolving).
+        assert!(
+            has_host_ref_edge("refless.dag", "test.decl"),
+            "host reference_resolution_facts (strict) must find the reference-only edge"
+        );
+
+        let ws = workspace_root();
+        let index_roots = vec![
+            ws.join("dag").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            pool[0].clone(),
+        ];
+        let index = build_multi_entry_index(&index_roots);
+        let (graph, indices) =
+            resolve_entry_with_index_for_discovery_corpus(&index, MODULE_GRAPH_ENTRY)
+                .expect("module_graph.dag resolves");
+        let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+        let args = [
+            (Some("pool_roots".to_string()), str_list_value(&pool)),
+            (Some("importer_roots".to_string()), str_list_value(&pool)),
+            (
+                Some("exclude_substrings".to_string()),
+                str_list_value(&[] as &[String]),
+            ),
+        ];
+        let dag_edges = dependency_edges_from_value(
+            &interp::run_in_context_with_args(
+                &ctx,
+                "dependency_resolution_facts_live",
+                &args,
+                false,
+            )
+            .expect("dependency_resolution_facts_live eval"),
+        );
+        assert!(
+            dag_edges
+                .iter()
+                .any(|(path, target)| path.contains("refless.dag") && target == "test.decl"),
+            ".dag dependency_resolution_facts_live must find the reference-only edge after builtin registration"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
 
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
