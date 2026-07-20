@@ -5,18 +5,19 @@
 //! Measures the **floor worker object**: `build_multi_entry_index` over both roots (`dag`, `src/v2`),
 //! then discovery-corpus warm — not per-entry import closures.
 
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    build_worker_index_shell, build_worker_index_with_warm_store, new_shared_typecheck_caches,
-    peak_rss_vhwm_bytes, populate_multi_entry_index_whole_tree_discovery,
-    populate_worker_discovery_index, resolve_entry_with_index_for_discovery_corpus,
-    spike_measurement_host_metadata, warm_discovery_on_index,
-    whole_tree_resolve_exclusion_substrings, workspace_root,
+    build_worker_index_shell, build_worker_index_with_warm_store, export_typed_cache_for_spike,
+    new_shared_typecheck_caches, peak_rss_vhwm_bytes,
+    populate_multi_entry_index_whole_tree_discovery, populate_worker_discovery_index,
+    resolve_entry_with_index_for_discovery_corpus, spike_measurement_host_metadata,
+    spike_set_module_typecheck_recording, spike_take_module_typecheck_records,
+    warm_discovery_on_index, whole_tree_resolve_exclusion_substrings, workspace_root,
 };
 use v1_compiler::index_memory_receipt::{
     emit_host_metadata, emit_im_rc_census, emit_index_memory_receipt, emit_timing_point,
@@ -237,12 +238,173 @@ fn run_width_scaling_worker(
     Ok(ExitCode::SUCCESS)
 }
 
+use v1_compiler::shared_typecheck_store::SharedTypecheckCaches;
+
+fn module_grain_out_dir() -> std::path::PathBuf {
+    workspace_root().join("target/rc-arc-spike-module-grain")
+}
+
+fn run_module_grain_produce(
+    source_roots: &[String],
+    sample_size: usize,
+) -> Result<ExitCode, ExitCode> {
+    eprintln!("measure_rc_arc_share_spike: module-grain-produce sample_size={sample_size}");
+    spike_set_module_typecheck_recording(true);
+    let warm_start = Instant::now();
+    let (index, entries, rows) = populate_worker_discovery_index(source_roots).map_err(|e| {
+        eprintln!("[rc-arc-spike] kind=blocked measurement=module-grain-produce error={e}");
+        ExitCode::from(2)
+    })?;
+    let warm_ms = warm_start.elapsed().as_millis();
+    emit_timing_point("module-grain-warm", warm_ms, peak_rss_vhwm_bytes());
+
+    let records = spike_take_module_typecheck_records();
+    let cache = export_typed_cache_for_spike(&index);
+    drop(index);
+
+    let mut tc_by_mod: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    for (mod_name, ns) in records {
+        tc_by_mod.insert(mod_name, ns);
+    }
+
+    let out_dir = module_grain_out_dir();
+    let _ = std::fs::remove_dir_all(&out_dir);
+    std::fs::create_dir_all(&out_dir).map_err(|e| {
+        eprintln!("measure_rc_arc_share_spike: cannot create {out_dir:?}: {e}");
+        ExitCode::from(2)
+    })?;
+
+    let mut rows_out: Vec<String> = Vec::new();
+    let take = sample_size.min(cache.len());
+    for (i, (typed_key, result)) in cache.into_iter().take(take).enumerate() {
+        let mod_name = result.typed.module.name.clone();
+        let typecheck_ns = tc_by_mod.get(&mod_name).copied().unwrap_or(0);
+        let bytes = SharedTypecheckCaches::encode_typed_snapshot(result.as_ref()).map_err(|e| {
+            eprintln!("measure_rc_arc_share_spike: encode failed for {mod_name}: {e}");
+            ExitCode::from(2)
+        })?;
+        let snap_path = out_dir.join(format!("{i}.bin"));
+        std::fs::write(&snap_path, bytes.as_slice()).map_err(|e| {
+            eprintln!("measure_rc_arc_share_spike: write {:?}: {e}", snap_path);
+            ExitCode::from(2)
+        })?;
+        rows_out.push(format!(
+            "{{\"typed_key\":{},\"mod_name\":{},\"typecheck_ns\":{typecheck_ns},\"snapshot_path\":{}}}",
+            serde_json::to_string(&typed_key).unwrap(),
+            serde_json::to_string(&mod_name).unwrap(),
+            serde_json::to_string(snap_path.to_string_lossy().as_ref()).unwrap(),
+        ));
+    }
+
+    let manifest_path = out_dir.join("manifest.jsonl");
+    std::fs::write(&manifest_path, rows_out.join("\n")).map_err(|e| {
+        eprintln!("measure_rc_arc_share_spike: write manifest: {e}");
+        ExitCode::from(2)
+    })?;
+
+    eprintln!(
+        "[rc-arc-spike] kind=module-grain-produce discovery_entries={entries} discovery_rows={rows} sampled_modules={take} manifest={}",
+        manifest_path.display()
+    );
+
+    let exe = std::env::current_exe().map_err(|_| ExitCode::from(2))?;
+    let decode_out = Command::new(exe)
+        .args([
+            "--mode",
+            "module-grain-decode",
+            "--manifest",
+            &manifest_path.to_string_lossy(),
+        ])
+        .output()
+        .map_err(|e| {
+            eprintln!("measure_rc_arc_share_spike: decode subprocess failed: {e}");
+            ExitCode::from(2)
+        })?;
+    let stderr = String::from_utf8_lossy(&decode_out.stderr);
+    print!("{stderr}");
+    if !decode_out.status.success() {
+        eprintln!(
+            "[rc-arc-spike] kind=blocked measurement=module-grain-decode exit={}",
+            decode_out.status
+        );
+        return Err(ExitCode::from(2));
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn run_module_grain_decode(manifest_path: &str) -> Result<ExitCode, ExitCode> {
+    eprintln!("measure_rc_arc_share_spike: module-grain-decode manifest={manifest_path}");
+    let content = std::fs::read_to_string(manifest_path).map_err(|e| {
+        eprintln!("measure_rc_arc_share_spike: read manifest: {e}");
+        ExitCode::from(2)
+    })?;
+
+    let mut typecheck_total_ns = 0u64;
+    let mut decode_total_ns = 0u64;
+    let mut modules = 0usize;
+    let mut missing_typecheck = 0usize;
+
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let row: serde_json::Value = serde_json::from_str(line).map_err(|e| {
+            eprintln!("measure_rc_arc_share_spike: bad manifest line: {e}");
+            ExitCode::from(2)
+        })?;
+        let mod_name = row["mod_name"].as_str().unwrap_or("?");
+        let typecheck_ns = row["typecheck_ns"].as_u64().unwrap_or(0);
+        let snap_path = row["snapshot_path"].as_str().ok_or_else(|| {
+            eprintln!("measure_rc_arc_share_spike: manifest missing snapshot_path");
+            ExitCode::from(2)
+        })?;
+        let bytes = std::fs::read(snap_path).map_err(|e| {
+            eprintln!("measure_rc_arc_share_spike: read snapshot {snap_path}: {e}");
+            ExitCode::from(2)
+        })?;
+        let decode_start = Instant::now();
+        SharedTypecheckCaches::decode_typed_snapshot(&bytes).map_err(|e| {
+            eprintln!("measure_rc_arc_share_spike: decode {mod_name}: {e}");
+            ExitCode::from(2)
+        })?;
+        let decode_ns = decode_start.elapsed().as_nanos() as u64;
+        eprintln!(
+            "[rc-arc-spike] kind=module-grain-row mod_name={mod_name} typecheck_ns={typecheck_ns} decode_ns={decode_ns}"
+        );
+        if typecheck_ns == 0 {
+            missing_typecheck += 1;
+        }
+        typecheck_total_ns += typecheck_ns;
+        decode_total_ns += decode_ns;
+        modules += 1;
+    }
+
+    if modules == 0 {
+        eprintln!("[rc-arc-spike] kind=blocked measurement=module-grain-decode modules=0");
+        return Err(ExitCode::from(2));
+    }
+
+    let typecheck_ms_per_module = (typecheck_total_ns as f64) / (modules as f64) / 1_000_000.0;
+    let decode_ms_per_module = (decode_total_ns as f64) / (modules as f64) / 1_000_000.0;
+    let ratio = if decode_total_ns > 0 {
+        typecheck_total_ns as f64 / decode_total_ns as f64
+    } else {
+        0.0
+    };
+    eprintln!(
+        "[rc-arc-spike] kind=module-grain-summary modules={modules} missing_typecheck_ns={missing_typecheck} typecheck_ms_per_module={typecheck_ms_per_module:.3} decode_ms_per_module={decode_ms_per_module:.3} typecheck_to_decode_ratio={ratio:.2}"
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut mode = String::from("worker-discovery-warm");
     let mut source_roots: Vec<String> = Vec::new();
     let mut exclude_subpaths = whole_tree_resolve_exclusion_substrings();
     let mut max_width = 3usize;
+    let mut sample_size = 200usize;
+    let mut manifest_path = String::new();
 
     let mut i = 1;
     while i < args.len() {
@@ -262,6 +424,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--max-width" => {
                 i += 1;
                 max_width = parse_usize("--max-width", &require_value(&args, i, "--max-width")?)?;
+            }
+            "--sample-size" => {
+                i += 1;
+                sample_size =
+                    parse_usize("--sample-size", &require_value(&args, i, "--sample-size")?)?;
+            }
+            "--manifest" => {
+                i += 1;
+                manifest_path = require_value(&args, i, "--manifest")?;
             }
             other => {
                 eprintln!("measure_rc_arc_share_spike: unknown argument: {other}");
@@ -284,13 +455,23 @@ fn run() -> Result<ExitCode, ExitCode> {
         "whole-tree-fields" => run_whole_tree_fields(&source_roots, &exclude_subpaths),
         "build-vs-attach" => run_build_vs_attach(&source_roots),
         "width-scaling-worker" => run_width_scaling_worker(&source_roots, max_width),
+        "module-grain-produce" => run_module_grain_produce(&source_roots, sample_size),
+        "module-grain-decode" => {
+            if manifest_path.is_empty() {
+                eprintln!(
+                    "measure_rc_arc_share_spike: --manifest required for module-grain-decode"
+                );
+                return Err(ExitCode::from(2));
+            }
+            run_module_grain_decode(&manifest_path)
+        }
         "im-rc-census" => {
             emit_im_rc_census();
             Ok(ExitCode::SUCCESS)
         }
         other => {
             eprintln!(
-                "measure_rc_arc_share_spike: unknown --mode {other} (expected worker-shell-build|worker-discovery-warm|whole-tree-fields|build-vs-attach|width-scaling-worker|im-rc-census)"
+                "measure_rc_arc_share_spike: unknown --mode {other} (expected worker-shell-build|worker-discovery-warm|whole-tree-fields|build-vs-attach|width-scaling-worker|module-grain-produce|module-grain-decode|im-rc-census)"
             );
             Err(ExitCode::from(2))
         }

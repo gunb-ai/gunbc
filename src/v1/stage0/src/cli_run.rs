@@ -4141,6 +4141,9 @@ fn new_multi_entry_index_shell(
 // the process shares one typed_module_cache, this stays ≤ the distinct module count of
 // the process union.
 static TYPECHECK_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
+// rc-arc spike: per-module cold typecheck timings on cache-miss path only.
+static SPIKE_MODULE_TYPECHECK_RECORDING: AtomicBool = AtomicBool::new(false);
+static SPIKE_MODULE_TYPECHECK_RECORDS: Mutex<Vec<(String, u64)>> = Mutex::new(Vec::new());
 
 // Union-resolve receipt tests reset/read the process-wide counter; `cargo test` runs
 // `#[test]` fns in parallel by default — serialize those oracles (not production use).
@@ -4160,6 +4163,47 @@ pub fn typecheck_compute_count() -> usize {
 
 pub fn reset_typecheck_compute_count() {
     TYPECHECK_COMPUTE_COUNT.store(0, Ordering::SeqCst);
+}
+
+/// Enable per-module typecheck miss recording for the rc-arc spike harness.
+pub fn spike_set_module_typecheck_recording(on: bool) {
+    SPIKE_MODULE_TYPECHECK_RECORDING.store(on, Ordering::SeqCst);
+    if on {
+        SPIKE_MODULE_TYPECHECK_RECORDS
+            .lock()
+            .expect("spike module typecheck records lock poisoned")
+            .clear();
+    }
+}
+
+/// Take recorded per-module cold typecheck durations (module name, nanoseconds).
+pub fn spike_take_module_typecheck_records() -> Vec<(String, u64)> {
+    std::mem::take(
+        &mut *SPIKE_MODULE_TYPECHECK_RECORDS
+            .lock()
+            .expect("spike module typecheck records lock poisoned"),
+    )
+}
+
+fn spike_maybe_record_module_typecheck(mod_name: &str, elapsed_ns: u64) {
+    if SPIKE_MODULE_TYPECHECK_RECORDING.load(Ordering::SeqCst) {
+        SPIKE_MODULE_TYPECHECK_RECORDS
+            .lock()
+            .expect("spike module typecheck records lock poisoned")
+            .push((mod_name.to_string(), elapsed_ns));
+    }
+}
+
+/// Export typed cache rows for module-grain spike receipts (private index only).
+pub fn export_typed_cache_for_spike(
+    index: &MultiEntryIndex,
+) -> Vec<(String, Rc<v1_compiler_infer::TypecheckModuleResult>)> {
+    index
+        .typed_module_cache
+        .borrow()
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
 }
 
 fn bump_typecheck_compute_count() {
@@ -5339,6 +5383,10 @@ fn reconcile_with_typed_cache(
                     // parse+resolve+normalize). Threshold keeps the floor log quiet;
                     // anything over it is a pathology-lane candidate by name.
                     let module_tc_elapsed = module_tc_started.elapsed();
+                    spike_maybe_record_module_typecheck(
+                        &mod_name,
+                        module_tc_elapsed.as_nanos() as u64,
+                    );
                     resolve_stage_slot_add(|s| s.typecheck_compute += module_tc_elapsed.as_nanos());
                     let module_tc_ms = module_tc_elapsed.as_millis();
                     if module_tc_ms >= 2_000 {
