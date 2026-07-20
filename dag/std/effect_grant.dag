@@ -100,13 +100,6 @@ fn filesystem_position(path: List<String>) -> NamespacePosition {
   }
 }
 
-fn filesystem_position(path: List<String>) -> NamespacePosition {
-  NamespacePosition {
-    tree: FilesystemPathTree,
-    path: path
-  }
-}
-
 type EffectAdmission
   = Admitted { via_root: NamespacePosition }
   | EffectOutsideGrant { verb: Verb, target: NamespacePosition, frame: Frame }
