@@ -140,7 +140,7 @@ pub fn interface_summary_rollup(exports: Rc<Vec<Rc<ExportEntry>>>) -> ContentHas
 
 pub fn module_key(
     source_hash: NonEmptyStr,
-    direct_import_interface_hashes: Rc<Vec<ContentHash>>,
+    direct_import_interface_hashes: Rc<Vec<InterfaceHash>>,
 ) -> ContentHash {
     direct_import_interface_hashes.clone().iter().cloned().fold(
         content_hash_tagged("module-key-source".to_string(), source_hash.clone()),

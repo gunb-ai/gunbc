@@ -252,7 +252,7 @@ pub fn infer_block_stmts(
     mut remaining_count: i64,
     mut scope: Rc<InferScope>,
     mut typed_stmts: Rc<Vec<Rc<Node>>>,
-    mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+    mut diag_chunks: Rc<Vec<Rc<List>>>,
     mut last_type: Rc<Node>,
     mut expected: Option<Rc<Node>>,
 ) -> Rc<BlockInferState> {
@@ -392,7 +392,7 @@ pub fn merge_scope_from_imports(
     mut remaining: Rc<Vec<Rc<ResolvedImport>>>,
     mut parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
     mut env: Rc<TypeEnv>,
-    mut svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    mut svc_registry: Rc<HashMap<String, Rc<List>>>,
     mut svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<InferScopeComponents> {
     loop {
@@ -631,9 +631,9 @@ pub fn collect_fields_inductive(
     parent_name: String,
     variant_name: String,
     recursive_type_set: Rc<BTreeSet<String>>,
-    acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+    acc: Rc<HashMap<String, Rc<List>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+) -> Rc<HashMap<String, Rc<List>>> {
     fields.clone().iter().cloned().fold(
         acc.clone(),
         |field_acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field_node: Rc<Node>| {
@@ -661,7 +661,7 @@ pub fn collect_item_inductive_fields(
     item: Rc<Node>,
     recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+) -> Rc<HashMap<String, Rc<List>>> {
     {
         let item_name = authored_name_at(source_indices.clone(), item.clone());
         match item.connective.clone() {
@@ -696,7 +696,7 @@ pub fn build_item_inductive_fields(
     items: Rc<Vec<Rc<Node>>>,
     recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+) -> Rc<HashMap<String, Rc<List>>> {
     items.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, item: Rc<Node>| {
@@ -6938,7 +6938,7 @@ pub fn build_per_field_for_let(
     val: Rc<Node>,
     binding_name: String,
     ctx: Rc<DescentContext>,
-) -> Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>> {
+) -> Rc<HashMap<String, Rc<Map>>> {
     match (*val.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let callee =
@@ -9501,7 +9501,7 @@ pub fn infer_output_provenance(
     type_env: Rc<TypeEnv>,
     scope_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     func_env: Rc<ResolvedFuncEnv>,
-) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
+) -> Rc<Vec<Rc<Map>>> {
     {
         let param_names = Rc::new({
             let mut __result = Vec::new();
@@ -9570,7 +9570,7 @@ pub fn classify_body_provenance(
     param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
     func_env: Rc<ResolvedFuncEnv>,
-    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    let_prov: Rc<HashMap<String, Rc<Map>>>,
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
@@ -10025,7 +10025,7 @@ pub fn compose_callee_provenance(
     param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
     func_env: Rc<ResolvedFuncEnv>,
-    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    let_prov: Rc<HashMap<String, Rc<Map>>>,
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     match lookup_func_sig(func_env.clone(), callee.clone()) {
         Some(sig) => match sig.output_provenance.clone().first().cloned() {
@@ -10102,8 +10102,8 @@ pub fn classify_body_per_field(
     param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
     func_env: Rc<ResolvedFuncEnv>,
-    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
+    let_prov: Rc<HashMap<String, Rc<Map>>>,
+) -> Rc<Vec<Rc<Map>>> {
     {
         let unwrapped = unwrap_body_terminal(expr.clone(), let_prov.clone(), type_env.clone());
         let terminal = unwrapped.expr.clone();
@@ -10125,8 +10125,8 @@ pub fn classify_terminal_per_field(
     param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
     func_env: Rc<ResolvedFuncEnv>,
-    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
+    let_prov: Rc<HashMap<String, Rc<Map>>>,
+) -> Rc<Vec<Rc<Map>>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new({
             let mut __result = Vec::new();
@@ -10239,7 +10239,7 @@ pub struct BodyTerminal {
 
 pub fn unwrap_body_terminal(
     expr: Rc<Node>,
-    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    let_prov: Rc<HashMap<String, Rc<Map>>>,
     type_env: Rc<TypeEnv>,
 ) -> Rc<BodyTerminal> {
     match (*expr.expr_data.clone()).clone() {
@@ -10260,9 +10260,7 @@ pub fn unwrap_body_terminal(
     }
 }
 
-pub fn meet_per_field_results(
-    results: Rc<Vec<Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
-) -> Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>> {
+pub fn meet_per_field_results(results: Rc<Vec<Rc<List>>>) -> Rc<Vec<Rc<Map>>> {
     match results.clone().first().cloned() {
         None => Rc::new(vec![]),
         Some(first_result) => {
@@ -10328,7 +10326,7 @@ pub fn empty_prov_map() -> Rc<HashMap<String, Rc<SubValueRelation>>> {
 }
 
 pub fn meet_body_provenance_maps(
-    provs: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    provs: Rc<Vec<Rc<Map>>>,
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     match provs.clone().first().cloned() {
         None => empty_prov_map(),
@@ -10475,7 +10473,7 @@ pub fn compose_callee_param_map(
     param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
     func_env: Rc<ResolvedFuncEnv>,
-    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    let_prov: Rc<HashMap<String, Rc<Map>>>,
 ) -> Rc<HashMap<String, Rc<SubValueRelation>>> {
     Rc::new(v1_rt::map_keys(&callee_prov)).iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<SubValueRelation>>(),
@@ -10536,7 +10534,7 @@ pub fn compute_variant_provenance(
     params: Rc<Vec<Rc<Node>>>,
     type_env: Rc<TypeEnv>,
     func_env: Rc<ResolvedFuncEnv>,
-) -> Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>> {
+) -> Rc<HashMap<String, Rc<Map>>> {
     {
         let rt_name = authored_name_at(type_env.source_indices.clone(), return_type.clone());
         let rt_def = lookup_type_by_name(type_env.clone(), rt_name.clone());
@@ -10603,9 +10601,9 @@ pub fn collect_variant_constructors(
     param_types: Rc<HashMap<String, String>>,
     type_env: Rc<TypeEnv>,
     func_env: Rc<ResolvedFuncEnv>,
-    let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-    acc: Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
-) -> Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>> {
+    let_prov: Rc<HashMap<String, Rc<Map>>>,
+    acc: Rc<HashMap<String, Rc<Map>>>,
+) -> Rc<HashMap<String, Rc<Map>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprRecordLit {
@@ -10859,9 +10857,9 @@ if ((Rc::new(v1_rt::map_keys(&composed_field_map)).len() as i64) > 0) {
 }
 
 pub fn merge_field_prov_maps(
-    a: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-    b: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
-) -> Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>> {
+    a: Rc<HashMap<String, Rc<Map>>>,
+    b: Rc<HashMap<String, Rc<Map>>>,
+) -> Rc<HashMap<String, Rc<Map>>> {
     {
         let from_a = Rc::new(v1_rt::map_keys(&a)).iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<SubValueRelation>>>>(),
@@ -14132,10 +14130,10 @@ pub fn fold_module_contributions(
     mut remaining: Rc<Vec<Rc<ItemContribution>>>,
     mut resolved_items: Rc<Vec<Rc<Node>>>,
     mut func_sigs: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
-    mut svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    mut svc_registry: Rc<HashMap<String, Rc<List>>>,
     mut svc_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+    mut diag_chunks: Rc<Vec<Rc<List>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<LocalContributionState> {
     loop {
@@ -14926,7 +14924,7 @@ pub fn resolve_env_bindings(
     env: Rc<TypeEnv>,
     module_name: String,
     local_names: Rc<HashMap<i64, bool>>,
-    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
+    deps_map: Rc<HashMap<String, Rc<List>>>,
 ) -> Rc<EnvResolveResult> {
     {
         let remaining = Rc::new({
@@ -14971,7 +14969,7 @@ pub fn topo_resolve_types(
     mut module_name: String,
     mut diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     mut local_names: Rc<HashMap<i64, bool>>,
-    mut deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut deps_map: Rc<HashMap<String, Rc<List>>>,
     mut fuel: i64,
 ) -> Rc<EnvResolveResult> {
     loop {

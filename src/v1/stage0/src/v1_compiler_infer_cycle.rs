@@ -13,9 +13,9 @@ use std::rc::Rc;
 
 pub fn compute_in_graph_deps(
     all_names: Rc<Vec<String>>,
-    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
+    deps_map: Rc<HashMap<String, Rc<List>>>,
     name_set: Rc<BTreeSet<String>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+) -> Rc<HashMap<String, Rc<List>>> {
     {
         let result = all_names.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
@@ -46,8 +46,8 @@ pub fn compute_in_graph_deps(
 
 pub fn build_reverse_adj(
     all_names: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    local_deps: Rc<HashMap<String, Rc<List>>>,
+) -> Rc<HashMap<String, Rc<List>>> {
     all_names.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
         |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
@@ -75,7 +75,7 @@ pub fn build_reverse_adj(
 
 pub fn build_in_degree(
     all_names: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
+    local_deps: Rc<HashMap<String, Rc<List>>>,
 ) -> Rc<HashMap<String, i64>> {
     all_names.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, i64>(),
@@ -91,7 +91,7 @@ pub fn build_in_degree(
 
 pub fn kahn_remove_loop(
     remaining: Rc<Vec<String>>,
-    local_deps: Rc<HashMap<String, Rc<Vec<String>>>>,
+    local_deps: Rc<HashMap<String, Rc<List>>>,
 ) -> Rc<Vec<String>> {
     {
         let reverse_adj = build_reverse_adj(remaining.clone(), local_deps.clone());
@@ -143,7 +143,7 @@ pub struct KahnState {
 pub fn kahn_cycle_drain(
     mut queue: Rc<Vec<String>>,
     mut in_degree: Rc<HashMap<String, i64>>,
-    mut reverse_adj: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut reverse_adj: Rc<HashMap<String, Rc<List>>>,
     mut removed_count: i64,
     mut fuel: i64,
 ) -> Rc<KahnState> {
@@ -224,7 +224,7 @@ pub fn kahn_cycle_drain(
 }
 
 pub fn detect_type_cycles_kahn(
-    deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
+    deps_map: Rc<HashMap<String, Rc<List>>>,
     bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<Vec<String>> {
     {

@@ -482,9 +482,9 @@ pub struct GuardedStrBindingsUnion {
 }
 
 pub fn union_deps_map_into_acc(
-    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
-    overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    acc: Rc<HashMap<String, Rc<List>>>,
+    overlay: Rc<HashMap<String, Rc<List>>>,
+) -> Rc<HashMap<String, Rc<List>>> {
     Rc::new(v1_rt::map_keys(&overlay)).iter().cloned().fold(
         acc.clone(),
         |m: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
@@ -507,9 +507,9 @@ pub fn union_deps_map_into_acc(
 }
 
 pub fn union_deps_map_into_overlay(
-    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
-    overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    acc: Rc<HashMap<String, Rc<List>>>,
+    overlay: Rc<HashMap<String, Rc<List>>>,
+) -> Rc<HashMap<String, Rc<List>>> {
     Rc::new(v1_rt::map_keys(&acc)).iter().cloned().fold(
         overlay.clone(),
         |m: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| match v1_rt::map_get(
@@ -526,9 +526,9 @@ pub fn union_deps_map_into_overlay(
 }
 
 pub fn union_deps_map_skip_equal(
-    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
-    overlay: Rc<HashMap<String, Rc<Vec<String>>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    acc: Rc<HashMap<String, Rc<List>>>,
+    overlay: Rc<HashMap<String, Rc<List>>>,
+) -> Rc<HashMap<String, Rc<List>>> {
     if ((acc.clone().len() as i64) >= (overlay.clone().len() as i64)) {
         union_deps_map_into_acc(acc.clone(), overlay.clone())
     } else {
@@ -906,12 +906,12 @@ pub fn append_inductive_field_absent(
 }
 
 pub fn put_inductive_field(
-    fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+    fields: Rc<HashMap<String, Rc<List>>>,
     type_name: String,
     variant_name: String,
     field_name: String,
     shape: RecursionShape,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+) -> Rc<HashMap<String, Rc<List>>> {
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
             Some(fs) => fs.clone(),
@@ -935,13 +935,13 @@ pub fn put_inductive_field(
 }
 
 pub fn put_inductive_field_cross(
-    fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
+    fields: Rc<HashMap<String, Rc<List>>>,
     type_name: String,
     variant_name: String,
     field_name: String,
     shape: RecursionShape,
     element_type: String,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+) -> Rc<HashMap<String, Rc<List>>> {
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
             Some(fs) => fs.clone(),
@@ -1003,9 +1003,9 @@ pub fn inductive_field_key(f: Rc<InductiveField>) -> String {
 }
 
 pub fn merge_inductive_fields(
-    left: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-    right: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+    left: Rc<HashMap<String, Rc<List>>>,
+    right: Rc<HashMap<String, Rc<List>>>,
+) -> Rc<HashMap<String, Rc<List>>> {
     Rc::new(v1_rt::map_keys(&right)).iter().cloned().fold(
         left.clone(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| {
@@ -1057,7 +1057,7 @@ pub fn merge_inductive_fields(
 
 pub fn inductive_fields_list_to_map(
     fields: Rc<Vec<Rc<InductiveField>>>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
+) -> Rc<HashMap<String, Rc<List>>> {
     fields.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, field: Rc<InductiveField>| {

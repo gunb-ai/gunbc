@@ -202,7 +202,7 @@ pub struct ModuleResolveResult {
 pub fn resolve_module_imports(
     module: Rc<Node>,
     module_index: Rc<HashMap<String, Rc<Node>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    export_sets: Rc<HashMap<String, Rc<Map>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ModuleResolveResult> {
     {
@@ -263,7 +263,7 @@ pub fn resolve_import(
     import: Rc<Node>,
     module_index: Rc<HashMap<String, Rc<Node>>>,
     importing_module: String,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    export_sets: Rc<HashMap<String, Rc<Map>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ImportResolveResult> {
     {
@@ -479,10 +479,10 @@ pub struct TopoResult {
 }
 
 pub fn adjacency_add_edge(
-    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
+    adjacency: Rc<HashMap<String, Rc<List>>>,
     from_module: String,
     to_module: String,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+) -> Rc<HashMap<String, Rc<List>>> {
     {
         let existing = match v1_rt::map_get(&adjacency, from_module.clone()) {
             Some(lst) => lst.clone(),
@@ -664,7 +664,7 @@ pub fn kahn_drain(
     mut queue: Rc<Vec<String>>,
     mut sorted: Rc<Vec<String>>,
     mut in_degree_map: Rc<HashMap<String, i64>>,
-    mut adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut adjacency: Rc<HashMap<String, Rc<List>>>,
     mut fuel: i64,
 ) -> Rc<KahnDrainState> {
     loop {

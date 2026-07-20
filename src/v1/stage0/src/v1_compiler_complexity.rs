@@ -1416,7 +1416,7 @@ pub fn infer_parser_always_advancing_members_worklist(
     mut queue: Rc<Vec<String>>,
     mut func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
     mut parser_name_set: Rc<HashMap<String, bool>>,
-    mut reverse_graph: Rc<HashMap<String, Rc<Vec<String>>>>,
+    mut reverse_graph: Rc<HashMap<String, Rc<List>>>,
     mut proven: Rc<HashMap<String, bool>>,
     mut si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, bool>> {
@@ -2231,7 +2231,7 @@ pub fn build_scc_measure_params(
     members: Rc<Vec<String>>,
     func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, Rc<HashMap<String, String>>>> {
+) -> Rc<HashMap<String, Rc<Map>>> {
     members.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, String>>>(),
         |acc: Rc<HashMap<String, Rc<HashMap<String, String>>>>, name: String| match v1_rt::map_get(
@@ -2252,7 +2252,7 @@ pub fn target_call_has_arithmetic_descent(
     call_node: Rc<Node>,
     target_set: Rc<HashMap<String, bool>>,
     func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_measure_params: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
+    scc_measure_params: Rc<HashMap<String, Rc<Map>>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
@@ -2322,7 +2322,7 @@ pub fn scc_calls_have_arithmetic_descent(
     body: Rc<Node>,
     target_set: Rc<HashMap<String, bool>>,
     func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
-    scc_measure_params: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
+    scc_measure_params: Rc<HashMap<String, Rc<Map>>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -6009,7 +6009,7 @@ pub fn collect_scc_child_edges(
     target_set: Rc<HashMap<String, bool>>,
     check_child: bool,
     check_list: bool,
-    scc_measure_params: Rc<HashMap<String, Rc<HashMap<String, String>>>>,
+    scc_measure_params: Rc<HashMap<String, Rc<Map>>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ParserProgressEdge>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -9690,7 +9690,7 @@ pub fn collect_call_evidence(
     body: Rc<Node>,
     target_set: Rc<HashMap<String, bool>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+) -> Rc<Vec<Rc<List>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprCall {
@@ -9734,7 +9734,7 @@ pub fn collect_self_call_evidence(
     body: Rc<Node>,
     fn_name: String,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+) -> Rc<Vec<Rc<List>>> {
     collect_call_evidence(
         body.clone(),
         v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, bool>(), fn_name.clone(), true),
@@ -9746,7 +9746,7 @@ pub fn collect_callee_evidence(
     body: Rc<Node>,
     callee_name: String,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>> {
+) -> Rc<Vec<Rc<List>>> {
     collect_call_evidence(
         body.clone(),
         v1_rt::rc_map_insert(
@@ -9758,7 +9758,7 @@ pub fn collect_callee_evidence(
     )
 }
 
-pub fn derive_edge_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>) -> DescentEvidence {
+pub fn derive_edge_evidence(all_calls: Rc<Vec<Rc<List>>>) -> DescentEvidence {
     all_calls.clone().iter().cloned().fold(
         DescentEvidence::Strict,
         |worst: DescentEvidence, call_ev: Rc<Vec<Rc<SubValueRelation>>>| {
@@ -9781,10 +9781,7 @@ pub fn derive_edge_evidence(all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>) -
     )
 }
 
-pub fn merge_param_evidence(
-    all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>,
-    param_index: i64,
-) -> DescentEvidence {
+pub fn merge_param_evidence(all_calls: Rc<Vec<Rc<List>>>, param_index: i64) -> DescentEvidence {
     all_calls.clone().iter().cloned().fold(
         DescentEvidence::Strict,
         |acc: DescentEvidence, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match call_evidence
@@ -9801,7 +9798,7 @@ pub fn merge_param_evidence(
 }
 
 pub fn extract_shrink_factor(
-    all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>,
+    all_calls: Rc<Vec<Rc<List>>>,
     param_index: i64,
 ) -> Option<Rc<ShrinkFactor>> {
     all_calls.clone().iter().cloned().fold(
@@ -9968,10 +9965,7 @@ pub fn max_path_descending(
     })
 }
 
-pub fn distinct_descended_fields(
-    all_calls: Rc<Vec<Rc<Vec<Rc<SubValueRelation>>>>>,
-    param_index: i64,
-) -> i64 {
+pub fn distinct_descended_fields(all_calls: Rc<Vec<Rc<List>>>, param_index: i64) -> i64 {
     {
         let field_set = all_calls.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
