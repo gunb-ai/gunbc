@@ -263,21 +263,20 @@ fn run_module_grain_produce(
     drop(index);
 
     const MAX_SNAPSHOT_BYTES: usize = 50_000_000;
+    const MAX_TYPECHECK_NS: u64 = 500_000_000; // 500ms — skip outlier modules whose serde payloads OOM
     let mut tc_by_key: std::collections::HashMap<String, (String, u64)> =
         std::collections::HashMap::new();
     for (mod_name, typed_key, ns) in records {
-        tc_by_key.insert(typed_key, (mod_name, ns));
-    }
-
-    let mut candidates = Vec::new();
-    for (typed_key, result) in cache {
-        if let Some((mod_name, ns)) = tc_by_key.get(&typed_key) {
-            if *ns > 0 {
-                candidates.push((typed_key, mod_name.clone(), *ns, result));
-            }
+        if ns > 0 && ns <= MAX_TYPECHECK_NS {
+            tc_by_key.insert(typed_key, (mod_name, ns));
         }
     }
-    candidates.sort_by(|a, b| b.2.cmp(&a.2));
+
+    let mut keys: Vec<(String, String, u64)> = tc_by_key
+        .into_iter()
+        .map(|(k, (m, ns))| (k, m, ns))
+        .collect();
+    keys.sort_by(|a, b| a.2.cmp(&b.2)); // ascending — typical modules first
 
     let out_dir = module_grain_out_dir();
     let _ = std::fs::remove_dir_all(&out_dir);
@@ -295,10 +294,15 @@ fn run_module_grain_produce(
 
     let mut written = 0usize;
     let mut skipped_large = 0usize;
-    for (typed_key, mod_name, typecheck_ns, result) in candidates {
+    let mut skipped_missing = 0usize;
+    for (typed_key, mod_name, typecheck_ns) in keys {
         if written >= sample_size {
             break;
         }
+        let Some(result) = cache.get(&typed_key) else {
+            skipped_missing += 1;
+            continue;
+        };
         let bytes = SharedTypecheckCaches::encode_typed_snapshot(result.as_ref()).map_err(|e| {
             eprintln!("measure_rc_arc_share_spike: encode failed for {mod_name}: {e}");
             ExitCode::from(2)
@@ -322,9 +326,12 @@ fn run_module_grain_produce(
             serde_json::to_string(&mod_name).unwrap(),
             serde_json::to_string(snap_path.to_string_lossy().as_ref()).unwrap(),
         );
-        manifest.write_all(line.as_bytes()).map_err(|_| ExitCode::from(2))?;
+        manifest
+            .write_all(line.as_bytes())
+            .map_err(|_| ExitCode::from(2))?;
         written += 1;
     }
+    drop(cache);
 
     if written == 0 {
         eprintln!("[rc-arc-spike] kind=blocked measurement=module-grain-produce encoded=0");
@@ -332,7 +339,7 @@ fn run_module_grain_produce(
     }
 
     eprintln!(
-        "[rc-arc-spike] kind=module-grain-produce discovery_entries={entries} discovery_rows={rows} sampled_modules={written} skipped_large={skipped_large} manifest={}",
+        "[rc-arc-spike] kind=module-grain-produce discovery_entries={entries} discovery_rows={rows} sampled_modules={written} skipped_large={skipped_large} skipped_missing={skipped_missing} manifest={}",
         manifest_path.display()
     );
 
