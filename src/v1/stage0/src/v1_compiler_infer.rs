@@ -4224,12 +4224,11 @@ match bare_s.clone() {
                                                         };
                                                         let call_diags = match type_match.clone() {
                                                             Some(_) => Rc::new(vec![]),
-                                                            None => match global_bare_callable
-                                                                .clone()
-                                                            {
-                                                                Some(_) => Rc::new(vec![]),
-                                                                None => {
-                                                                    Rc::new(vec![inference_error(
+                                                            None => {
+                                                                match global_bare_callable.clone() {
+                                                                    Some(_) => Rc::new(vec![]),
+                                                                    None => Rc::new(
+                                                                        vec![inference_error(
                                                                         v1_rt::concat(
                                                                             v1_rt::concat(
                                                                                 "function '"
@@ -4241,9 +4240,10 @@ match bare_s.clone() {
                                                                         ),
                                                                         span.clone(),
                                                                         scope.module_name.clone(),
-                                                                    )])
+                                                                    )],
+                                                                    ),
                                                                 }
-                                                            },
+                                                            }
                                                         };
                                                         Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
