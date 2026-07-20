@@ -941,23 +941,31 @@ pub fn render_rust_applied_type_arg(
     ) {
         "()".to_string()
     } else {
-        match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: tv, .. }) => {
-                if type_var_in_fn_generic_scope(tv.clone(), generic_param_names.clone()) {
-                    to_pascal(tv.clone())
-                } else {
-                    "_".to_string()
+        if type_node_has_unbound_type_variable(
+            n.clone(),
+            generic_param_names.clone(),
+            source_indices.clone(),
+        ) {
+            "_".to_string()
+        } else {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: tv, .. }) => {
+                    if type_var_in_fn_generic_scope(tv.clone(), generic_param_names.clone()) {
+                        to_pascal(tv.clone())
+                    } else {
+                        "_".to_string()
+                    }
                 }
+                _ => render_rust_decl_type(
+                    n.clone(),
+                    generic_param_names.clone(),
+                    shared_types.clone(),
+                    corpus_repr.clone(),
+                    source_indices.clone(),
+                    variant_to_enum.clone(),
+                    env.clone(),
+                ),
             }
-            _ => render_rust_decl_type(
-                n.clone(),
-                generic_param_names.clone(),
-                shared_types.clone(),
-                corpus_repr.clone(),
-                source_indices.clone(),
-                variant_to_enum.clone(),
-                env.clone(),
-            ),
         }
     }
 }
@@ -1875,48 +1883,58 @@ pub fn type_node_has_unbound_type_variable(
         if (n.inferred.clone() != None) {
             match (*n.inferred.clone().clone().unwrap()).clone() {
                 InferredNode::TypeVariable { id: tv, .. } => {
-                    !type_var_in_fn_generic_scope(tv.clone(), generic_param_names.clone())
+                    if !type_var_in_fn_generic_scope(tv.clone(), generic_param_names.clone()) {
+                        return true;
+                    }
                 }
-                _ => false,
-            }
-        } else {
-            if {
-                let mut __found = false;
-                for c in n.children.clone().iter().cloned() {
+                InferredNode::Resolved { node: rt, .. } => {
                     if type_node_has_unbound_type_variable(
-                        child_type_node(c.clone()),
+                        rt.clone(),
                         generic_param_names.clone(),
                         source_indices.clone(),
                     ) {
-                        __found = true;
-                        break;
+                        return true;
                     }
                 }
-                __found
-            } {
-                true
-            } else {
-                match find_property(
-                    n.properties.clone(),
-                    "__applied_type_args".to_string(),
+                _ => (),
+            }
+        }
+        if {
+            let mut __found = false;
+            for c in n.children.clone().iter().cloned() {
+                if type_node_has_unbound_type_variable(
+                    child_type_node(c.clone()),
+                    generic_param_names.clone(),
                     source_indices.clone(),
                 ) {
-                    Some(applied) => {
-                        let mut __found = false;
-                        for c in applied.children.clone().iter().cloned() {
-                            if type_node_has_unbound_type_variable(
-                                c.clone(),
-                                generic_param_names.clone(),
-                                source_indices.clone(),
-                            ) {
-                                __found = true;
-                                break;
-                            }
-                        }
-                        __found
-                    }
-                    None => false,
+                    __found = true;
+                    break;
                 }
+            }
+            __found
+        } {
+            true
+        } else {
+            match find_property(
+                n.properties.clone(),
+                "__applied_type_args".to_string(),
+                source_indices.clone(),
+            ) {
+                Some(applied) => {
+                    let mut __found = false;
+                    for c in applied.children.clone().iter().cloned() {
+                        if type_node_has_unbound_type_variable(
+                            c.clone(),
+                            generic_param_names.clone(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }
+                None => false,
             }
         }
     })

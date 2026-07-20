@@ -521,6 +521,8 @@ fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: Lis
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     "()"
+  } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
+    "_"
   } else {
     match n.inferred {
       Present { value: TypeVariable { id: tv } } =>
@@ -811,10 +813,14 @@ fn type_var_in_fn_generic_scope(id: String, generic_param_names: List<String>) -
 fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
   if n.inferred != none {
     match n.inferred.value {
-      TypeVariable { id: tv } => !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names)
-      _ => false
+      TypeVariable { id: tv } =>
+        if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
+      Resolved { node: rt } =>
+        if type_node_has_unbound_type_variable(n: rt, generic_param_names: generic_param_names, source_indices: source_indices) { return true }
+      _ => ()
     }
-  } else if n.children |> any(c => type_node_has_unbound_type_variable(n: child_type_node(ch: c), generic_param_names: generic_param_names, source_indices: source_indices)) {
+  }
+  if n.children |> any(c => type_node_has_unbound_type_variable(n: child_type_node(ch: c), generic_param_names: generic_param_names, source_indices: source_indices)) {
     true
   } else {
     match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
