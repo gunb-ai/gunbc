@@ -2923,6 +2923,10 @@ pub struct ModuleGraphFactsLive {
     // state `entry_file_touched_via_import_closure` may refuse on. Every other edgeless entry has
     // a known-empty dependency set and a precise `{self}` closure.
     reference_unaccounted: HashSet<String>,
+    // Workspace-relative path → dotted module name, precomputed once per facts build: the
+    // reference-derived content-key term (`reference_only_direct_import_modules`) needs to
+    // translate `selection_adjacency`'s path-keyed targets into module names per query.
+    path_to_module: HashMap<String, String>,
 }
 
 #[cfg(test)]
@@ -3014,6 +3018,9 @@ mod typed_module_content_key_tests {
         "module k.imp\nfn base() -> Int { 10 }\nfn extra() -> Int { 1 }\n";
     const DEPENDENT_MODULE: &str =
         "module k.dep\nimport k.imp { base }\nfn wit() -> Bool { base() == 10 }\n";
+    // No `import` line: a namespace-wave-1 stripped module (PR #6848) that resolves `base`
+    // through the corpus-wide bare-name census instead of a declared import.
+    const DEPENDENT_MODULE_STRIPPED: &str = "module k.dep\nfn wit() -> Bool { base() == 10 }\n";
 
     struct Fixture {
         dir: std::path::PathBuf,
@@ -3034,6 +3041,26 @@ mod typed_module_content_key_tests {
             fs::create_dir_all(&dir).expect("create fixture dir");
             fs::write(dir.join("imp.dag"), IMPORT_MODULE).expect("write imp.dag");
             fs::write(dir.join("dep.dag"), DEPENDENT_MODULE).expect("write dep.dag");
+            let roots = vec![dir.to_string_lossy().into_owned()];
+            let entry = dir.join("dep.dag").to_string_lossy().into_owned();
+            Fixture { dir, roots, entry }
+        }
+
+        /// Same shape as `new`, but `dep.dag` is import-less (stripped) and depends on
+        /// `k.imp.base` only through the bare-name census — the PR #6848 case
+        /// `typed_module_content_key`'s reference-derived term now covers.
+        fn new_stripped(tag: &str) -> Fixture {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static SEQ: AtomicU64 = AtomicU64::new(0);
+            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
+            let dir = workspace_root().join("target").join(format!(
+                "typed-module-content-key-{tag}-{}-{seq}",
+                std::process::id()
+            ));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(&dir).expect("create fixture dir");
+            fs::write(dir.join("imp.dag"), IMPORT_MODULE).expect("write imp.dag");
+            fs::write(dir.join("dep.dag"), DEPENDENT_MODULE_STRIPPED).expect("write dep.dag");
             let roots = vec![dir.to_string_lossy().into_owned()];
             let entry = dir.join("dep.dag").to_string_lossy().into_owned();
             Fixture { dir, roots, entry }
@@ -3122,6 +3149,41 @@ mod typed_module_content_key_tests {
                 after_edit, 1,
                 "body-only import edit: import recomputes, dependent stays warm \
                  (interface-grain minimality, signed decision 1)"
+            );
+        });
+    }
+
+    /// The stripped-module discriminating RED (namespace wave 1, PR #6848 follow-up): a
+    /// dependent with NO `import` line reaches its provider only through the corpus-wide
+    /// bare-name census (`selection_adjacency`'s reference-derived edges). Before this fix
+    /// `typed_module_content_key` only folded `resolved.resolved_imports` — empty here — so
+    /// the dependent's key was invariant under the provider's export-surface change and it
+    /// served a STALE typed result (0 computes). This is the same control as
+    /// `import_interface_term_recomputes_dependent` above, over a stripped dependent instead
+    /// of an import-bearing one.
+    #[test]
+    fn reference_derived_interface_term_recomputes_stripped_dependent() {
+        with_typecheck_compute_count_receipt(|| {
+            let fx = Fixture::new_stripped("stripped-reference-term");
+            let store = new_shared_typecheck_caches();
+
+            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(
+                cold, 2,
+                "cold resolve computes both closure modules (imp pulled in via bare-reference \
+                 closure loading)"
+            );
+
+            // Export-surface edit: a new exported fn changes k.imp's interface rollup, exactly
+            // as `import_interface_term_recomputes_dependent` — but dep.dag has no import line.
+            fx.rewrite_import(IMPORT_MODULE_SURFACE_EDIT);
+            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
+            assert_eq!(
+                after_edit, 2,
+                "a provider export-surface change must recompute a STRIPPED dependent too: \
+                 the content key must consume the reference-derived import term, not just \
+                 `resolved_imports` (DESIGN §5 — a stale serve here is cache impurity, and a \
+                 provider fix in place is a wrong-answer-forever, not a cold-cache-once)"
             );
         });
     }
@@ -3370,6 +3432,10 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         .iter()
         .map(|n| workspace_relative_repo_path(&n.path))
         .collect();
+    let path_to_module: HashMap<String, String> = nodes
+        .iter()
+        .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
+        .collect();
     ModuleGraphFactsLive {
         edges,
         nodes,
@@ -3377,6 +3443,7 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         selection_adjacency,
         declared_paths,
         reference_unaccounted,
+        path_to_module,
     }
 }
 
