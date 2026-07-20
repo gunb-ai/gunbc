@@ -102,12 +102,7 @@ fn median_tokenize_secs(source: &str) -> (f64, usize) {
 }
 
 fn tokenizer_source_ref(source: &str) -> Rc<SourceRef> {
-    let chars = Rc::new(
-        source
-            .chars()
-            .map(|c| c as i64)
-            .collect::<im::Vector<_>>(),
-    );
+    let chars = Rc::new(source.chars().map(|c| c as i64).collect::<im::Vector<_>>());
     Rc::new(SourceRef {
         file: "tokenizer_lookup_flat.v3".to_string(),
         text: source.to_string(),

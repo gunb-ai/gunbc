@@ -55,9 +55,7 @@ fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Rc<Sourc
     }
 }
 
-fn load_floor_census(
-    ws: &std::path::Path,
-) -> Rc<im::HashMap<String, Rc<GlobalBareLookupState>>> {
+fn load_floor_census(ws: &std::path::Path) -> Rc<im::HashMap<String, Rc<GlobalBareLookupState>>> {
     let mut sources: Vec<Rc<SourceFile>> = Vec::new();
     collect(ws, &ws.join("dag"), &mut sources);
     collect(ws, &ws.join("src/v2"), &mut sources);
