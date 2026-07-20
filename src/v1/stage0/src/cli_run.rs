@@ -17219,12 +17219,10 @@ fn module_path_to_qualified_path(module_path: &str, name: &str) -> String {
 
 type ModuleItemIndex = HashMap<(String, String), Rc<Node>>;
 
-fn build_module_item_index(
-    modules: &im_rc::Vector<Rc<TypedModule>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> ModuleItemIndex {
+fn build_module_item_index(ctx: &v1_interpreter::InterpContext) -> ModuleItemIndex {
+    let source_indices = ctx.source_indices.clone();
     let mut index = HashMap::new();
-    for tm in modules.iter() {
+    for tm in ctx.modules.iter() {
         let module_path = tm.type_env.module_path.clone();
         for item in tm.items.iter() {
             let name = authored_name_at(source_indices.clone(), item.clone());
@@ -17489,7 +17487,7 @@ pub fn resolution_divergence_census_from_ctx(
     ctx: &v1_interpreter::InterpContext,
 ) -> ResolutionDivergenceCensus {
     let source_indices = ctx.source_indices.clone();
-    let item_index = build_module_item_index(&ctx.modules, source_indices.clone());
+    let item_index = build_module_item_index(ctx);
 
     let mut out = ResolutionDivergenceCensus::default();
 
@@ -17782,7 +17780,7 @@ fn planted_call() -> Bool {
             lookup_resolved_sig(planted.func_env.clone(), "twin_sig".to_string()).expect("import");
         let import_owner = import_chain_owner(&planted.func_env, "twin_sig").expect("import owner");
         let import_arity = import_sig.params.len();
-        let item_index = build_module_item_index(&ctx.modules, ctx.source_indices.clone());
+        let item_index = build_module_item_index(&ctx);
         let containment = containment_resolve_fn_v1_for_module(
             &planted.type_env.symbol_index,
             "test.claim.X.planted",
