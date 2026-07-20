@@ -4813,8 +4813,8 @@ struct PoolParse {
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-/// Shared per-thread marker so every stripped fn decl keeps `body.is_some()` for
-/// `local_binding_for_item`'s fn discriminator without retaining real bodies.
+// Shared per-thread marker so every stripped fn decl keeps `body.is_some()` for
+// `local_binding_for_item`'s fn discriminator without retaining real bodies.
 thread_local! {
     static STRIPPED_FN_BODY_MARKER: Rc<Node> = Rc::new(Node {
         name: String::new(),
