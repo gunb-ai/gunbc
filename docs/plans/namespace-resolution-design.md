@@ -283,9 +283,15 @@ both read the *same* fully-filled `Map<QualifiedName, Node>`. If a policy ever n
 Rule 1 forbids. So the guard is explicit: **policy is a lookup filter; fill is one, complete, and
 shared** — which also keeps the O(M²) fix policy-agnostic (fill-once stands under either policy).
 
-**Sequencing consequence:** `SymbolIndex` lands first (it is the substrate *and* the O(M²) fix,
-gated on loyal-heron's scaling receipt per that doc's §7.5). Namespace-only is then a policy
-layer over the settled index — not a from-scratch resolver. Resolution is a **walk over the
+**Sequencing consequence:** `SymbolIndex` lands first (it is the substrate *and* the O(M²) fix).
+**LANDED — #6809** ("SymbolIndex / type-env-single-authority — the containment-tree naming
+authority"), carrier `dag/std/symbol_index.dag`:
+`SymbolIndex { entries: Map<QualifiedName, Node>, global_bare: Map<Symbol, GlobalBareBindingState> }`
+with `symbol_index_lookup` / `symbol_index_global_unique_lookup` / `symbol_index_lexical_lookup`,
+and `GlobalBareLookup = GlobalBareHit | GlobalBareLookupAmbiguous | GlobalBareLookupUnbound`.
+The loyal-heron scaling gate is **discharged**; this precondition is satisfied and the lane is no
+longer blocked on it. Namespace-only is now a policy layer over a *settled, in-tree* index — not a
+from-scratch resolver. Resolution is a **walk over the
 containment tree** the `SymbolIndex` materializes (§3: lexical lookup up the ancestor chain, `.`
 projection down), not a fuzzy key search; the kernel-`Nat` / `:231` / family-closure /
 `source_visible_names` collapse (§7) all happen *at* this seam. Reconciliation owed: fold the `import-list-visibility` assumption in
