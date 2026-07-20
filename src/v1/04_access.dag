@@ -1,6 +1,7 @@
 module v1.compiler.infer_access
 
 import std.types { SourceSpan, is_ordered_element_collection }
+
 import v1.std.core {
   Node, NewlineIndex, authored_name_at,
   InferredNode, Resolved, CompilerError,
@@ -10,11 +11,13 @@ import v1.std.core {
 
   unit_type, string_type, int_type
 }
+
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node,
   node_type_equals, node_is_keyed_collection,
   node_is_element_collection, for_each_element_type_node
 }
+
 
 type AccessCheckResultNode {
   inferred: InferredNode?

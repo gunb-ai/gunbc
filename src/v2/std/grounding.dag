@@ -1,34 +1,4 @@
 module v2.std.grounding
-
-import v2.std.collection { Absent, Map, Present, empty_map, map_get, map_insert }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  Outcome,
-  Rejected,
-  Unavailable,
-  UserInputBoundary,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.host_run { EmitHostRunReceipt }
-import v2.std.logic { Bool }
-import v2.std.model_core {
-  ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisOverflowDisposition,
-  ModelCoreFactAxisRange,
-  ModelCoreFactAxisSignedness,
-  ModelCoreFactAxisSurfaceSpelling,
-  ModelCoreFactAxisWidth,
-  ModelCorePrimitiveFactAxis,
-  PrimitiveFactBundle
-}
-import v2.std.node { Node, Symbol }
-import v2.std.compilers.target_model { FunctionBoundarySite, TargetModel }
-import v2.std.verdict { VerdictTally }
-
 type PerLanguageFactBundleKey {
   subject_carrier: Node
   target: TargetModel
@@ -74,7 +44,7 @@ fn insert_per_language_fact_bundle_entry(
   key: PerLanguageFactBundleKey,
   fact_value: Node
 ) -> Outcome<PerLanguageFactBundleRegistry> {
-  match map_get(m: registry.by_key, key: key) {
+  match v2.std.collection.map_get(m: registry.by_key, key: key) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: _ } =>
         outcome_rejected(d: per_language_fact_bundle_duplicate_key_diagnostic())
@@ -108,7 +78,7 @@ fn per_language_fact_bundle_insert_subject_axis(
   target: TargetModel,
   fact_axis: ModelCorePrimitiveFactAxis
 ) -> Outcome<PerLanguageFactBundleSpecFactsFoldState> {
-  match map_get(
+  match v2.std.collection.map_get(
     m: registry.by_key,
     key: per_language_fact_bundle_subject_axis_key(
       subject_carrier: subject_carrier,
@@ -263,7 +233,7 @@ type GroundingEvidenceSchema
   | Sg5Evidence { source_carrier: Node }
 
 type PerTargetGroundingReceipt {
-  host_run: EmitHostRunReceipt
+  host_run: v2.std.host_run.EmitHostRunReceipt
 }
 
 fn per_target_grounding_receipt_target(receipt: PerTargetGroundingReceipt) -> TargetModel {
@@ -275,9 +245,9 @@ type HostVerdictSurfaceExecutionStatus
   | AuthoringTimeVerdictSurface
 
 type PerTargetTestClaimReceipt {
-  host_run: EmitHostRunReceipt
+  host_run: v2.std.host_run.EmitHostRunReceipt
   execution_status: HostVerdictSurfaceExecutionStatus
-  verdict_tally: VerdictTally
+  verdict_tally: v2.std.verdict.VerdictTally
 }
 
 fn per_target_testclaim_receipt_target(receipt: PerTargetTestClaimReceipt) -> TargetModel {

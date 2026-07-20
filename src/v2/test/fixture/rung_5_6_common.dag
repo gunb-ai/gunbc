@@ -1,23 +1,5 @@
 module v2.test.rung_5_6_common
 
-import v2.compiler.emit_host {
-  run_test_claim_emit_vs_eval
-}
-import v2.extdeps.languages.go { go_runtime_row, go_source_text }
-import v2.extdeps.languages.python { python_runtime_row, python_source_text }
-import v2.compiler.eval {
-  TestClaimRun
-}
-import v2.std.collection { empty_map }
-import v2.std.compilers.lexing { VoidLexRules }
-import v2.std.node { Node }
-import v2.std.runtime { RuntimeValue }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
-import v2.std.verification { TestClaim }
-import v2.test.rung_3_4_common {
-  rung34_emit_host_rust_target_model,
-  rung34_test_claim_subject
-}
 
 data rung56_emit_host_python_target_model: TargetModel = TargetModel {
   bundle: rung34_emit_host_rust_target_model.bundle,

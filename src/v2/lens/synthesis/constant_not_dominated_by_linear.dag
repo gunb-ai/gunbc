@@ -12,6 +12,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data synthesis_const_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_const_x_symbol } },
   children: [],

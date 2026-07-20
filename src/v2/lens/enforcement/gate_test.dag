@@ -1,35 +1,5 @@
 module v2.test.lens_enforcement.gate_test
 
-import v2.std.logic { Bool }
-import v2.std.collection { List }
-import v2.lens.registry { Parallelism, lens_registry_v0_parallelism }
-import v2.std.qualified_name { qualified_name_from_dotted_string }
-import v2.lens.enforcement.vocab {
-  SubjectRoster, ScopeRoster,
-  Blocking, AuditOnly, Advisory,
-  ConsumerRequirement, Exact, AnyLiveConsumer, OneOf,
-  FloorGate, WitnessOnly, MergeAdmission,
-  NoConsumerWitness,
-  ScopeCovers, ScopeNarrowed, ExternalRuntimeOnly,
-  RedControlPassed, RedControlFailedToFlip,
-  SelfAppliesObserved, NoReceiptRef,
-  consumer_satisfies, enforcement_mode_satisfies
-}
-import v2.lens.enforcement.contract {
-  LensContract, CoverageReceipt
-}
-import v2.lens.enforcement.standing_intent {
-  StandingIntent, LensFamily, Refuse,
-  standing_intent_registry
-}
-import v2.lens.enforcement.gate {
-  leg_holds, leg_fails, intent_family_holds, intent_family_verdict,
-  contract_internally_consistent,
-  enforcement_consistency_holds,
-  all_intents_admissible
-}
-import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,12 +1,5 @@
 module test.claim.dag_compile_clean_seam_witness
 
-import tools.dag_compile_clean_seam {
-  witness_cross_shard_seam_preservation_holds,
-  witness_seam_algebra_reds_on_synthetic_break,
-  witness_seam_algebra_fails_closed_when_class_missing,
-  witness_seam_algebra_fails_closed_when_importer_silently_passes
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

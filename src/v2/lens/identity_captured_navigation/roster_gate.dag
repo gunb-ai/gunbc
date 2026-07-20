@@ -1,23 +1,5 @@
 module v2.lens.identity_captured_navigation.roster_gate
 
-import extdeps.filesystem.filesystem_io
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse_module }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.identity_captured_navigation { Finding }
-import v2.lens.identity_captured_navigation.analyze {
-  finding_is_refusal,
-  finding_is_suspect,
-  identity_captured_navigation_findings
-}
-import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.provenance { SpanIndex }
-import v2.std.text { String }
 
 data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/identity_captured_navigation/roster_gate in gunbc.ci_layer_roots — same structural reason as complexity_accumulator_copy's roster gate: file_gate reads its roster targets via filesystem_read at runtime, a data dependency invisible to resolve-closure attribution). Local recipe, one test fn per invocation: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag --function <fn> --claim-run --wet."
 

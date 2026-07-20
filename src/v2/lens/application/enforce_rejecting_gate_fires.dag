@@ -25,6 +25,7 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
+
 data enforce_reject_root: Node = claim_atom_node(s: ^enforce_reject_symbol)
 
 fn enforce_reject_tree() -> InferredTree {

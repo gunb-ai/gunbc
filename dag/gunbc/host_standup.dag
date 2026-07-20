@@ -1,34 +1,5 @@
 module gunbc.host_standup
 
-import std.types { List, String, NonEmptyStr, Bool, Int }
-import std.measure { millisecond }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.effects { IdempotencyEvidence }
-import gunbc.host_effect {
-  host_effect_identity_evidence,
-  host_effect_converge_loop_evidence,
-}
-import gunbc.bmc_onboarding {
-  FactoryDefault,
-  CredentialsRotated,
-  bmc_credential_probe_to_phase,
-  BmcCredentialProbeResult,
-  FactoryCredentialActive,
-  RotatedCredentialActive,
-}
-import gunbc.os_install_mechanism {
-  NbdProxyVirtualMediaInstall,
-  srv3_install_mechanism,
-}
-import gunbc.host_converge { fleet_converge_policy, ConvergePolicy }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import product.placement_supply { HostIdentity }
-import std.upsert_decision { ObservationVerdict, Converged, Absent }
-import gunbc.host_standup_assimilation_deduction {
-  srv3_pre_install_actuation_verdict,
-  deduce_os_install_actuated_satisfied,
-}
 
 type HostStandupPrefixPhase
   = BmcCredentialConverge

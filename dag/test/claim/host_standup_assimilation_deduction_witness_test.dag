@@ -1,62 +1,5 @@
 module test.claim.host_standup_assimilation_deduction
 
-import std.types { Bool, List }
-import std.measure { Millisecond, millisecond, millisecond_count }
-import std.upsert_decision {
-  Converged,
-  Absent,
-  Drifted,
-  UnknownRefused,
-  Apply,
-  Refuse,
-  Noop,
-  UpsertClassification,
-}
-import std.temporal_effect {
-  StallBudgetVerdict,
-  StallWithinBudget,
-  StallBudgetExceeded,
-  stall_budget_verdict,
-}
-import extdeps.bmc.types { BootOverrideModeLegacy, BootOverrideModeUefi }
-import gunbc.os_install_deduction { SubiquityStorageScreen }
-import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
-import gunbc.host_standup_assimilation_deduction {
-  hang_budget_millisecond,
-  srv3_os_install_to_host_identity_budget,
-  AssertOsInstallActuationPending,
-  StallTransitionProbe,
-  StallCauseBootModeLegacyUefiRequired,
-  StallCauseMediaNeverAttached,
-  StallCauseSeedNotFoundAwaitingStorage,
-  StallCauseConsoleRedirectOff,
-  StallCauseNoBootableDevice,
-  RemediationSetBootOverrideModeUefi,
-  RemediationStartNbdServeSession,
-  RemediationRemasterSeedOrDeclareStoragePolicy,
-  srv3_pre_install_actuation_verdict,
-  srv3_post_install_actuation_verdict,
-  srv3_unreadable_lease_actuation_verdict,
-  deduce_os_install_actuated_satisfied,
-  decision_for_os_install_actuation_verdict,
-  classify_os_install_actuation_upsert,
-  srv3_pre_install_lease_observation,
-  srv3_unreadable_lease_observation,
-  stall_causes_from_probe,
-  cause_fold_primary_stall_remediation,
-  stall_transition_cause_label,
-}
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.host_standup {
-  host_standup_gap_count_at_actuation_verdict,
-  host_standup_step_is_effective_gap_at_actuation_verdict,
-  host_standup_spine,
-  Prefix,
-  OsInstallActuated,
-  Assimilation,
-  HostIdentityConverge,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -68,7 +11,7 @@ test fn pre_install_within_budget_is_absent_not_converged() -> Bool {
 }
 
 test fn post_install_lease_row_deduces_converged_noop() -> Bool {
-  srv3_post_install_actuation_verdict(elapsed: zero_elapsed) == Converged
+  srv3_post_install_actuation_verdict(elapsed: zero_elapsed) == std.upsert_decision.Converged
     && deduce_os_install_actuated_satisfied(verdict: Converged)
     && match decision_for_os_install_actuation_verdict(
       verdict: Converged,

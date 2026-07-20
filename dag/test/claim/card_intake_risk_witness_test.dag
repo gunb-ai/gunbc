@@ -1,28 +1,5 @@
 module test.claim.card_intake_risk_witness
 
-import extdeps.tcgplayer.catalog {
-  CardCondition,
-  NearMint,
-  card_condition_display_name,
-  parse_card_condition,
-}
-import gunbc.tools.card_intake {
-  CatalogMatch,
-  ExactMatch,
-  AmbiguousMatch,
-  NoMatch,
-  RiskReason,
-  UnmatchedCard,
-  AmbiguousCatalogMatch,
-  UnpricedCard,
-  HighValue,
-  IntakeDisposition,
-  ReadyToList,
-  NeedsReview,
-  classify_catalog_match,
-  assess_intake,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

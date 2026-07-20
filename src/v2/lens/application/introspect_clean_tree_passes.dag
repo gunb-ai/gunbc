@@ -20,6 +20,7 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
+
 data introspect_root: Node = claim_atom_node(s: ^introspect_claim_symbol)
 
 fn introspect_tree() -> InferredTree {

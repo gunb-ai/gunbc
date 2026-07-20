@@ -1,25 +1,5 @@
 module v2.test.parse.lean
 
-import v2.std.grammar { ParseTree }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse }
-import v2.extdeps.languages.lean {
-  lean_source_text,
-  lean_lex,
-  lean_grammar
-}
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.logic { Bool }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  manual_claim_anchor
-}
 fn lean_parse_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^lean_parse_bool_true } }, children: [],

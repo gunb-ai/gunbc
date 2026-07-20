@@ -1,40 +1,5 @@
 module v2.test.emit.type_alias_emit
 
-import v2.compiler.translate {
-  grammar_relation_row_for_emitted,
-  grammar_relation_row_tokens_root,
-  serialize_concrete_syntax_tokens_to_source
-}
-import v2.extdeps.languages.rust { rust_inhabitant_atom }
-import v2.extdeps.languages.rust_test {
-  rust_type_alias_decl_productions_only_translation_rules,
-  rust_type_alias_decl_structural_target_model
-}
-import v2.std.algebra { fold_list }
-import v2.std.collection { List }
-import v2.std.compilers.target_model {
-  TargetModel,
-  concrete_syntax_token_list_from_node
-}
-import v2.std.diagnostic {
-  Accepted,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

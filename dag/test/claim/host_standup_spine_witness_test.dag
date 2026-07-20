@@ -1,74 +1,5 @@
 module test.claim.host_standup_spine
 
-import std.logic { Bool }
-import std.types { Int }
-import std.measure { millisecond }
-import gunbc.host_standup {
-  host_standup_spine,
-  host_standup_spine_length,
-  host_standup_gap_count,
-  host_standup_gap_count_at_actuation_verdict,
-  host_standup_gap_ledger,
-  srv3_host_standup_target,
-  srv3_install_mechanism_is_nbd_proxy_no_fallback,
-  credential_probe_maps_factory_default,
-  credential_probe_maps_credentials_rotated,
-  host_standup_fleet_converge_policy,
-  assimilation_complete,
-  assimilation_complete_all_satisfied,
-  AssimilationCompleteGate,
-  AssimilationComplete,
-  AssimilationIncomplete,
-  InputSatisfied,
-  InputGap,
-  InputRefused,
-  NodeRegistered,
-  ResourcesPresent,
-  RunnerSlotHealthy,
-  GreenPlacePinCoherent,
-  GreenPlacePinCoherentWitness,
-  GreenPlaceFromGunbcGate,
-  GreenPlacePinGap,
-  GreenPlacePinRefused,
-  host_standup_p5_green_place_noop_gate_authority,
-  host_standup_p5_green_place_marker_gate_authority,
-  host_standup_p5_desired_pin_authority,
-  host_standup_p5_default_green_place_gate_verdict,
-  green_place_pin_coherent_satisfied,
-  host_standup_p3_fail_closed_blocks_complete,
-  host_standup_p3_gunbc_pinned_tree_landed,
-  host_standup_default_assimilation_gate_unsatisfied,
-  HostStandupStep,
-  Prefix,
-  Assimilation,
-  BmcCredentialConverge,
-  OsInstallMechanismResolved,
-  OsInstallActuated,
-  HostConvergePolicyDerived,
-  HostIdentityConverge,
-  ReachSecretsNetwork,
-  RunnerDeploySlot,
-  BuildCacheProvision,
-  ComputeFabricEnroll,
-  GreenPlaceReadiness,
-  SessionPlacementEnrollment,
-  StandupAssimilationComplete,
-  DeclaredGap,
-  ModeledCompose,
-}
-import gunbc.bmc_onboarding {
-  FactoryCredentialActive,
-  RotatedCredentialActive,
-}
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import std.upsert_decision { Converged }
-import gunbc.host_standup_assimilation_deduction {
-  srv3_post_install_actuation_verdict,
-}
-import gunbc.ci_fleet { fleet_intent_offers, srv3_offer }
-import gunbc.host_converge { ConvergePolicyDerived, ConvergePolicyUnsound }
-import product.compute_fabric { witness_fabric_binds_need_to_opportunity }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -238,8 +169,8 @@ test fn assimilation_gate_still_refuses_p0_p2_p4_gaps_when_p3_landed() -> Bool {
 }
 
 test fn post_install_dhcp_subsumption_reduces_gap_count_by_one() -> Bool {
-  srv3_post_install_actuation_verdict(elapsed: millisecond(count: 0)) == Converged
-    && host_standup_gap_count_at_actuation_verdict(verdict: Converged) == (host_standup_gap_count() - 1)
+  srv3_post_install_actuation_verdict(elapsed: millisecond(count: 0)) == std.upsert_decision.Converged
+    && host_standup_gap_count_at_actuation_verdict(verdict: std.upsert_decision.Converged) == (host_standup_gap_count() - 1)
 }
 
 test fn declared_gap_steps_carry_interim_realization_authority() -> Bool {
@@ -279,3 +210,4 @@ test fn p3_gap_ledger_notes_green_place_dag_writer_path() -> Bool {
         && string_contains(s: row.authority_or_interim, pattern: "read-gunbc-pin.sh"))
   )
 }
+

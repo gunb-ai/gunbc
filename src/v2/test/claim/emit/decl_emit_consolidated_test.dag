@@ -1,52 +1,5 @@
 module v2.test.emit.decl_emit_consolidated
 
-import v2.compiler.translate {
-  grammar_relation_row_for_emitted,
-  grammar_relation_row_tokens_root,
-  serialize_concrete_syntax_tokens_to_source
-}
-import v2.extdeps.languages.rust {
-  rust_inhabitant_atom,
-  rust_decl_enum_derive_binding_for_coproduct,
-  rust_decl_struct_derive_binding,
-  rust_enum_general_decl_productions_only_translation_rules,
-  rust_enum_general_decl_structural_target_model,
-  rust_struct_general_decl_productions_only_translation_rules,
-  rust_struct_general_decl_structural_target_model
-}
-import extdeps.languages.rust.emit {
-  rust_enum_derives,
-  rust_enum_derives_copy,
-  rust_struct_derives
-}
-import v2.std.algebra { fold_list, fold_list_right }
-import v2.std.collection { List }
-import v2.std.compilers.target_model {
-  TargetModel,
-  concrete_syntax_token_list_from_node
-}
-import v2.std.diagnostic {
-  Accepted,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted
-}
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Disj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -16,12 +16,11 @@ import v2.compiler.parse {
   parse_prov_initial,
   parse_table_empty,
   ParseExprAccepted,
-  ParseExprRejected,
-  ParseTree
+  ParseExprRejected
 }
 import v2.compiler.resolve { resolve }
-import v2.compiler.tokenize { tokenize, TokenStream }
-import v2.std.compilers.lexing { token_stream_all, token_stream_remaining }
+import v2.compiler.tokenize { tokenize }
+import v2.std.compilers.lexing { token_stream_all, token_stream_remaining, TokenStream }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.std.collection { List }
 import v2.std.diagnostic {
@@ -33,12 +32,12 @@ import v2.std.diagnostic {
   outcome_accepted,
   port_locus
 }
-import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot }
+import v2.std.grammar { ModeledGrammar, ValidatedGrammarRoot, ParseTree }
 import v2.std.logic { Bool }
 import v2.std.node { Node, well_formed }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data bisect_empty_source: Medium<String> = Medium { carried: "module stage0.bisect.empty\n", fidelity: Lossless }
 data bisect_add_module_source: Medium<String> = Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }

@@ -1,7 +1,5 @@
 module v2.test.manual.grounding_lens_whole_tree
 
-import v2.lens.grounding { whole_tree_extract_smoke }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

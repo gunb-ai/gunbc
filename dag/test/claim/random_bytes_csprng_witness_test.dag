@@ -1,17 +1,11 @@
 module test.claim.random_bytes_csprng_witness
 
-import std.logic { Bool }
-import std.types { Int, list_length }
-import std.integer { UInt8 }
-import extdeps.entropy
-import std.encoding { Base64Variant, Standard, UrlSafe, base64_encode, base64_decode }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 
 
-fn getrandom_octets(count: Int) -> List<UInt8>? {
+fn getrandom_octets(count: Int) -> List<std.integer.UInt8>? {
   base64_decode(s: Urandom.ReadBytes(count: count).octets_b64, variant: Standard)
 }
 

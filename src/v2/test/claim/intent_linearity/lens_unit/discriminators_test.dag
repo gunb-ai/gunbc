@@ -1,14 +1,5 @@
 module v2.test.intent_linearity.lens_unit.discriminators
 
-import v2.lens.intent_linearity { chain_is_redundant, forest_is_redundant, chain_residual, level_is_linear, body_is_linear }
-import v2.std.node {
-  Node, Edge, EdgeLabel, Positional,
-  NodeKind, TypeNode, Connective, Atom, Conj,
-  Symbol, node_synthetic
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

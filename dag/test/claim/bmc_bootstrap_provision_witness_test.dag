@@ -1,23 +1,5 @@
 module test.claim.bmc_bootstrap_provision_witness
 
-import std.logic { Bool }
-import std.types { String }
-import extdeps.cloud.gcp.iam {
-  GcpBinding,
-  role_secretmanager_secret_accessor,
-  role_secretmanager_secret_version_adder
-}
-import gunbc.assimilate.bmc_token_federation {
-  bmc_assimilator_sa_member,
-  bmc_role_allowed
-}
-import extdeps.cloud.gcp.gcp { GcpService, gcp_service_api_id }
-import gunbc.assimilate.bmc_bootstrap_provision {
-  bmc_secret_iam_bindings,
-  bmc_required_gcp_apis,
-  bmc_assimilate_service_deps
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

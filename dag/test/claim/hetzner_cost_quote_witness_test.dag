@@ -1,22 +1,9 @@
 module test.claim.hetzner_cost_quote_witness
 
-import std.logic { Bool }
-import std.nat { Nat }
-import std.currency { Eur }
-import extdeps.cloud.hetzner { cax41_catalog }
-import gunbc.ci_fleet {
-  per_second_billed_cost_quote,
-  cost_estimate_unit_price_micros,
-  PerSecondBilled,
-  OwnedMarginalZero,
-  Metered,
-  DeveloperAttention,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn hetzner_cax41_hourly_micros() -> Nat {
+fn hetzner_cax41_hourly_micros() -> std.nat.Nat {
   cost_estimate_unit_price_micros(
     quote: per_second_billed_cost_quote(
       unit_price: cax41_catalog.hourly,

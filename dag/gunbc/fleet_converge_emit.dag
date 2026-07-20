@@ -1,5 +1,6 @@
 module gunbc.fleet_converge_emit
 
+
 import std.types { String, List, Int, Bool }
 import product.placement_supply { HostIdentity }
 import std.layout {
@@ -54,6 +55,8 @@ import v2.std.diagnostic { Accepted, Rejected, None }
 import v2.compiler.emit_orchestration { orch_emit_pipeline }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import extdeps.git { git_fetch_prune_shell }
+
+
 
 data fleet_converge_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 

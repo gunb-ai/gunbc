@@ -1,13 +1,5 @@
 module test.claim.markup_serializer_witness
 
-import std.markup {
-  Fragment, Element, FragmentText,
-  Attribute, AttributeContext, UrlContext,
-  escape_text, escape_attribute, escape_url,
-  unescape_text, unescape_attribute, unescape_url
-}
-import extdeps.languages.html_fragment { serialize_fragment }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -24,12 +16,12 @@ fn witness_url_escaping_by_execution() -> Bool {
 }
 
 fn sample_fragment() -> Fragment {
-  Element {
+  std.markup.Element {
     tag: "a",
     attributes: [ Attribute { name: "href", ctx: UrlContext, value: "/x?a=1&b=2" } ],
     children: [
       FragmentText { content: "hi <b> & \"q\"" },
-      Element { tag: "span", attributes: [], children: [ FragmentText { content: ">end" } ] }
+      std.markup.Element { tag: "span", attributes: [], children: [ FragmentText { content: ">end" } ] }
     ]
   }
 }
@@ -40,7 +32,7 @@ fn witness_serialize_fragment_full() -> Bool {
 }
 
 fn html_consumer_button() -> Fragment {
-  Element {
+  std.markup.Element {
     tag: "button",
     attributes: [ Attribute { name: "class", ctx: AttributeContext, value: "primary" } ],
     children: [ FragmentText { content: "Go" } ]
@@ -48,7 +40,7 @@ fn html_consumer_button() -> Fragment {
 }
 
 fn react_consumer_button() -> Fragment {
-  Element {
+  std.markup.Element {
     tag: "button",
     attributes: [ Attribute { name: "class", ctx: AttributeContext, value: "primary" } ],
     children: [ FragmentText { content: "Go" } ]
@@ -78,7 +70,7 @@ fn witness_round_trip_url_literal_percent() -> Bool {
 }
 
 fn req_a_breakout_fragment() -> Fragment {
-  Element {
+  std.markup.Element {
     tag: "a",
     attributes: [ Attribute { name: "href", ctx: UrlContext, value: "x\"&<y onmouseover=z" } ],
     children: []

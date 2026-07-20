@@ -1,13 +1,5 @@
 module test.claim.hand_lens_host_bridge_scaffold_watchdog
 
-import gunbc.hand_lens_host_bridge_scaffold_watchdog {
-  hand_lens_host_bridge_scaffold_roster_tracked,
-  transport_script_position_scaffold_row,
-  scaffold_dissolution_trigger_matches_authority,
-  scaffold_dissolution_trigger_nonempty,
-}
-import std.types { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

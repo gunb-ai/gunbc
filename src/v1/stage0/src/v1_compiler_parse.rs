@@ -46,24 +46,24 @@ use crate::v1_std_core::TokenShape::{
 use crate::v1_std_core::UnaryOpKind::{Neg, Not};
 pub use crate::v1_std_core::{
     arg_name_at, arg_value, authored_name_at, empty_intern_table, error_type, expr_call_func_at,
-    expr_var_name_at, field_access_field_at, field_binding_pattern, field_node_cardinality,
-    field_node_default_value, field_node_from_key, field_node_name_at, field_node_type_expr,
-    file_transport_node, import_node, intern, is_compiler_error, is_container_type, kernel_span,
-    leaf_node_with_span, local_transport_node, make_arg_node, make_arm_node, make_error_node,
-    make_expr_error_node, make_expr_node, make_field_binding_node, make_field_init_node,
-    make_field_node, make_interp_part_node, make_named_expr_node, make_param_node,
-    make_resource_use_node, make_span, make_text_part_node, make_variant_node, module_node,
-    no_span, node_name_span, param_node_default_value, param_node_type_expr, pre_intern_tokens,
-    rest_transport_node, service_config_properties, shell_transport_node, transport_auth_basic_key,
-    transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
-    transport_path_template_key, transport_query_key, transport_response_format_key,
-    transport_stdin_key, transport_tls_key, transport_url_key, variant_node_fields,
-    variant_node_name_at, with_required_cardinality,
+    expr_var_name_at, field_access_base, field_access_field_at, field_access_spine,
+    field_binding_pattern, field_node_cardinality, field_node_default_value, field_node_from_key,
+    field_node_name_at, field_node_type_expr, file_transport_node, import_node, intern,
+    is_compiler_error, is_container_type, kernel_span, leaf_node_with_span, local_transport_node,
+    make_arg_node, make_arm_node, make_error_node, make_expr_error_node, make_expr_node,
+    make_field_binding_node, make_field_init_node, make_field_node, make_interp_part_node,
+    make_named_expr_node, make_param_node, make_resource_use_node, make_span, make_text_part_node,
+    make_variant_node, module_node, no_span, node_name_span, param_node_default_value,
+    param_node_type_expr, pre_intern_tokens, rest_transport_node, service_config_properties,
+    shell_transport_node, transport_auth_basic_key, transport_body_key, transport_headers_key,
+    transport_method_key, transport_path_key, transport_path_template_key, transport_query_key,
+    transport_response_format_key, transport_stdin_key, transport_tls_key, transport_url_key,
+    variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
-    InternResult, InternTable, MatchPattern, NewlineIndex, Node, OperationModifier, StringPart,
-    Token, TokenShape, UnaryOpKind,
+    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
+    FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
+    OperationModifier, StringPart, Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -11298,6 +11298,63 @@ pub fn try_postfix(
                         }
                     }
                 }
+                ExprData::ExprFieldAccess { summary: _, .. } => {
+                    let last_seg = field_access_field_at(lhs.clone(), ctx.source_indices.clone());
+                    if (is_uppercase_start(last_seg.clone()) && (14 <= min_bp.clone())) {
+                        Rc::new(PostfixResult {
+                            expr: lhs.clone(),
+                            changed: false,
+                            tokens: tokens.clone(),
+                            ctx: ctx.clone(),
+                            err: None,
+                        })
+                    } else {
+                        if is_uppercase_start(last_seg.clone()) {
+                            match field_access_spine(lhs.clone(), ctx.source_indices.clone()) {
+                                Some(spine) => {
+                                    let r = parse_record_literal_named(
+                                        tokens.clone(),
+                                        ctx.clone(),
+                                        spine.dotted.clone(),
+                                        field_access_chain_span(lhs.clone()),
+                                        kernel_span(spine.dotted.clone()),
+                                    );
+                                    if has_err(r.err.clone()) {
+                                        return Rc::new(PostfixResult {
+                                            expr: lhs.clone(),
+                                            changed: false,
+                                            tokens: r.tokens.clone(),
+                                            ctx: r.ctx.clone(),
+                                            err: r.err.clone(),
+                                        });
+                                    }
+                                    Rc::new(PostfixResult {
+                                        expr: r.expr.clone(),
+                                        changed: true,
+                                        tokens: r.tokens.clone(),
+                                        ctx: r.ctx.clone(),
+                                        err: None,
+                                    })
+                                }
+                                None => Rc::new(PostfixResult {
+                                    expr: lhs.clone(),
+                                    changed: false,
+                                    tokens: tokens.clone(),
+                                    ctx: ctx.clone(),
+                                    err: None,
+                                }),
+                            }
+                        } else {
+                            Rc::new(PostfixResult {
+                                expr: lhs.clone(),
+                                changed: false,
+                                tokens: tokens.clone(),
+                                ctx: ctx.clone(),
+                                err: None,
+                            })
+                        }
+                    }
+                }
                 _ => Rc::new(PostfixResult {
                     expr: lhs.clone(),
                     changed: false,
@@ -13099,11 +13156,47 @@ pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
     }
 }
 
+pub fn field_access_chain_span(texpr: Rc<Node>) -> Rc<SourceSpan> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprFieldAccess { summary: _, .. } => {
+                let base_span = field_access_chain_span(field_access_base(texpr.clone()));
+                let chain_end = match texpr.ident_span.clone() {
+                    Some(is) => is.end.clone(),
+                    None => texpr.span.clone().end.clone(),
+                };
+                Rc::new(SourceSpan {
+                    file: base_span.file.clone(),
+                    start: base_span.start.clone(),
+                    end: chain_end.clone(),
+                })
+            }
+            _ => texpr.span.clone(),
+        }
+    })
+}
+
 pub fn parse_record_literal(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
     name: String,
     span: Rc<SourceSpan>,
+) -> Rc<ExprResult> {
+    parse_record_literal_named(
+        tokens.clone(),
+        ctx.clone(),
+        name.clone(),
+        span.clone(),
+        span.clone(),
+    )
+}
+
+pub fn parse_record_literal_named(
+    tokens: Rc<TokenStream>,
+    ctx: Rc<ParseContext>,
+    name: String,
+    span: Rc<SourceSpan>,
+    name_span: Rc<SourceSpan>,
 ) -> Rc<ExprResult> {
     {
         let dummy_expr = parse_recovery_placeholder();
@@ -13143,7 +13236,7 @@ pub fn parse_record_literal(
                 r.fields.clone(),
                 None,
                 span.clone(),
-                span.clone(),
+                name_span.clone(),
             ),
             tokens: r2.tokens.clone(),
             ctx: r.ctx.clone(),

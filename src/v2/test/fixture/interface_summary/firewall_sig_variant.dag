@@ -1,7 +1,5 @@
 module v2.test.fixture.interface_summary.firewall_sig_variant
 
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
 
 fn firewall_gate(x: Int) -> Bool {
   true

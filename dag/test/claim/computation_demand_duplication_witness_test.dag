@@ -1,59 +1,45 @@
 module test.claim.computation_demand_duplication_witness
 
-import v2.lens.duplicate_computation {
-  ComputationDemandFact,
-  ReplicationIntent,
-  ReplicatedOracle,
-  SingleRun,
-  TypedArgvInvocation,
-  UnguardedDemand,
-  duplicate_computation_clean_holds,
-  duplicate_computation_violation_count,
-  typed_argv_computation_demands
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn synthetic_replicated_invocation(run_site: String, out_dir: String) -> TypedArgvInvocation {
-  TypedArgvInvocation {
+fn synthetic_replicated_invocation(run_site: String, out_dir: String) -> v2.lens.duplicate_computation.TypedArgvInvocation {
+  v2.lens.duplicate_computation.TypedArgvInvocation {
     site: run_site,
     tool: "gunbc",
     args: ["compile", "--source-root", "dag", "--dependency-pool-index", "primary-precedence", "--output-dir", out_dir, "--target", "rust"]
   }
 }
 
-fn replicated_pair_demand_facts(replication: ReplicationIntent) -> List<ComputationDemandFact> {
+fn replicated_pair_demand_facts(replication: v2.lens.duplicate_computation.ReplicationIntent) -> List<v2.lens.duplicate_computation.ComputationDemandFact> {
   concat(
-    typed_argv_computation_demands(
+    v2.lens.duplicate_computation.typed_argv_computation_demands(
       invocation: synthetic_replicated_invocation(
         run_site: "test.claim.computation_demand_duplication_witness#first",
         out_dir: "/tmp/replicated-oracle-out-first"
       ),
-      guard: UnguardedDemand,
+      guard: v2.lens.duplicate_computation.UnguardedDemand,
       replication: replication
     ),
-    typed_argv_computation_demands(
+    v2.lens.duplicate_computation.typed_argv_computation_demands(
       invocation: synthetic_replicated_invocation(
         run_site: "test.claim.computation_demand_duplication_witness#second",
         out_dir: "/tmp/replicated-oracle-out-second"
       ),
-      guard: UnguardedDemand,
+      guard: v2.lens.duplicate_computation.UnguardedDemand,
       replication: replication
     )
   )
 }
 
 test fn replicated_oracle_pair_is_declared_and_admissible() -> Bool {
-  return duplicate_computation_clean_holds(
-    facts: replicated_pair_demand_facts(replication: ReplicatedOracle { runs: 2 })
+  return v2.lens.duplicate_computation.duplicate_computation_clean_holds(
+    facts: replicated_pair_demand_facts(replication: v2.lens.duplicate_computation.ReplicatedOracle { runs: 2 })
   )
 }
 
 test fn replicated_pair_without_declaration_reds() -> Bool {
-  return duplicate_computation_violation_count(
-    facts: replicated_pair_demand_facts(replication: SingleRun)
+  return v2.lens.duplicate_computation.duplicate_computation_violation_count(
+    facts: replicated_pair_demand_facts(replication: v2.lens.duplicate_computation.SingleRun)
   ) == 1
 }
 

@@ -20,6 +20,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data synthesis_lin_poly_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_lin_poly_x_symbol } },
   children: [],

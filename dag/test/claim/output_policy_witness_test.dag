@@ -1,28 +1,5 @@
 module test.claim.output_policy_witness
 
-import gunbc.output_policy {
-  ChannelPolicy,
-  ClaimResult,
-  Condensed,
-  Diagnostic,
-  Full,
-  Instrumentation,
-  Normal,
-  OutputDecision,
-  Progress,
-  Quiet,
-  ShellTrace,
-  Suppressed,
-  Verbose,
-  Verbosity,
-  VerbosityEnv,
-  channel_decision,
-  env_var_for,
-  resolve_channel_policy,
-  resolve_verbosity,
-  shell_trace_summary_max_columns
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -47,9 +24,9 @@ fn verbosity_is_normal(v: Verbosity) -> Bool {
 }
 
 fn w_diagnostic_never_hidden() -> Bool {
-  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Quiet), suppressed: false, condensed: false, full: true) &&
-  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Normal), suppressed: false, condensed: false, full: true) &&
-  dec_is(d: channel_decision(channel: Diagnostic, verbosity: Verbose), suppressed: false, condensed: false, full: true)
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Quiet), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Normal), suppressed: false, condensed: false, full: true) &&
+  dec_is(d: channel_decision(channel: gunbc.output_policy.Diagnostic, verbosity: Verbose), suppressed: false, condensed: false, full: true)
 }
 
 fn w_instrumentation_is_debug_only() -> Bool {

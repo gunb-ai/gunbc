@@ -1,25 +1,5 @@
 module v2.test.claim.cross_tree_import_model
 
-import v2.std.collection { List }
-import v2.std.cross_tree.import_model {
-  CoFundamental,
-  CrossTreeAdmitted,
-  CrossTreeAdmissionVerdict,
-  CrossTreeDenied,
-  CrossTreeImport,
-  DagTree,
-  FundamentalityUnknown,
-  ImportClosure,
-  LessFundamental,
-  MoreFundamental,
-  SourceRootSet,
-  V2Tree,
-  cross_tree_import_admitted,
-  cross_tree_import_closure_admitted
-}
-import v2.std.layer { LayerPrefixCompiler, LayerPrefixStd, LayerPrefixWorkflow }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

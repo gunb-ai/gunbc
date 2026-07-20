@@ -1,23 +1,5 @@
 module test.claim.ci_oom_reclassify_witness
 
-import std.process { ProcessExit, ExitFailure }
-import gunbc.ci_failure_class {
-  FloorOutcome, NoFailure, FloorFailed,
-  FloorFailureClass, Infra, Structural,
-  ClusteredOutOfMemoryKill,
-  classify_floor_exit, floor_outcome_blocks_merge
-}
-import gunbc.ci_oom_reclassify {
-  OomKillSource, CgroupMemoryEvents, SystemdOomdJournal,
-  OomKillObservation, OomKillConfirmed, NoOomKillObserved,
-  ClusteringSignal, SimultaneousMultiJobDeath, HostBootIdReset,
-  ClusteringEvidence, Clustered, NotClustered,
-  oom_kill_from_cgroup_counter, oom_kill_from_oomd_journal,
-  observe_oom_kill, oom_is_confirmed,
-  host_boot_id_reset, clustering_signal_from_boot_id, clustering_is_present,
-  reclassify_floor_failure, reclassify_floor_outcome
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -107,7 +89,7 @@ fn witness_boot_id_oracle_discriminates() -> Bool {
 
 fn witness_reclassify_never_demotes_or_touches_non_137() -> Bool {
   let no_failure = reclassify_floor_outcome(o: NoFailure, oom: confirmed_cgroup_oom(), clustering: clustered_simultaneous())
-  let already_infra = FloorFailed { class: Infra { signature: ClusteredOutOfMemoryKill } }
+  let already_infra = FloorFailed { class: gunbc.ci_failure_class.Infra { signature: ClusteredOutOfMemoryKill } }
   let still_infra = reclassify_floor_outcome(o: already_infra, oom: no_oom(), clustering: NotClustered)
   let real_compile_error = FloorFailed { class: Structural { reason: "error[E0599]: no method named frobnicate" } }
   let unchanged = reclassify_floor_outcome(o: real_compile_error, oom: no_oom(), clustering: clustered_simultaneous())

@@ -1,15 +1,5 @@
 module gunbc.ci_render
 
-import std.render { Frame, Line, Span, SpanStyle, RenderCapability, CursorAction, repeat_string }
-import std.symbols {
-  SemanticColor, SymbolId, Tier, Unicode,
-  BoxHorizontal, BoxVertical, BoxCornerTopLeft, BoxCornerTopRight, BoxCornerBottomLeft, BoxCornerBottomRight,
-}
-import std.unicode { string_display_width }
-import std.width { truncate_text }
-import std.measure { Nanosecond, nanosecond, nanosecond_count }
-import extdeps.render.glyphs { resolve_symbol }
-import extdeps.render.terminal { serialize_frame }
 
 fn glyph_for(id: SymbolId, tier: Tier) -> String {
   match resolve_symbol(id: id, tier: tier) {
@@ -23,7 +13,7 @@ fn pad_to(text: String, width: Int) -> String {
   if w >= width {
     text
   } else {
-    concat(text, repeat_string(s: " ", n: width - w))
+    concat(text, std.render.repeat_string(s: " ", n: width - w))
   }
 }
 
@@ -45,7 +35,7 @@ fn box_top(title: String, width: Int, tier: Tier) -> Line {
   let tr = glyph_for(id: BoxCornerTopRight, tier: tier)
   let prefix = concat(glyph_for(id: BoxCornerTopLeft, tier: tier), concat(hz, concat(" ", concat(title, " "))))
   let dashes = width - string_display_width(s: prefix) - string_display_width(s: tr)
-  line_of(span: dim_span(text: concat(prefix, concat(repeat_string(s: hz, n: dashes), tr))))
+  line_of(span: dim_span(text: concat(prefix, concat(std.render.repeat_string(s: hz, n: dashes), tr))))
 }
 
 fn box_bottom(width: Int, tier: Tier) -> Line {
@@ -53,7 +43,7 @@ fn box_bottom(width: Int, tier: Tier) -> Line {
   let bl = glyph_for(id: BoxCornerBottomLeft, tier: tier)
   let br = glyph_for(id: BoxCornerBottomRight, tier: tier)
   let dashes = width - string_display_width(s: bl) - string_display_width(s: br)
-  line_of(span: dim_span(text: concat(bl, concat(repeat_string(s: hz, n: dashes), br))))
+  line_of(span: dim_span(text: concat(bl, concat(std.render.repeat_string(s: hz, n: dashes), br))))
 }
 
 fn box_content_line(text: String, width: Int, tier: Tier) -> Line {
@@ -63,10 +53,10 @@ fn box_content_line(text: String, width: Int, tier: Tier) -> Line {
   line_of(span: plain_span(text: concat(v, concat(" ", concat(inner, concat(" ", v))))))
 }
 
-fn boxed_frame(title: String, body: List<String>, width: Int, tier: Tier) -> Frame {
+fn boxed_frame(title: String, body: List<String>, width: Int, tier: Tier) -> std.render.Frame {
   let content = map(body, l => box_content_line(text: l, width: width, tier: tier))
   let all = concat([box_top(title: title, width: width, tier: tier)], concat(content, [box_bottom(width: width, tier: tier)]))
-  Frame { lines: all, cursor_action: Append }
+  std.render.Frame { lines: all, cursor_action: Append }
 }
 
 fn format_duration(d: Nanosecond) -> String {
@@ -94,7 +84,7 @@ fn percentile_row(p50: Nanosecond, p90: Nanosecond, p95: Nanosecond, p99: Nanose
   concat("  ", timing_cell(label: "max", d: p100)))))))))
 }
 
-fn percentile_box_frame(title: String, p50: Nanosecond, p90: Nanosecond, p95: Nanosecond, p99: Nanosecond, p100: Nanosecond, width: Int, tier: Tier) -> Frame {
+fn percentile_box_frame(title: String, p50: Nanosecond, p90: Nanosecond, p95: Nanosecond, p99: Nanosecond, p100: Nanosecond, width: Int, tier: Tier) -> std.render.Frame {
   boxed_frame(title: title, body: [percentile_row(p50: p50, p90: p90, p95: p95, p99: p99, p100: p100)], width: width, tier: tier)
 }
 
@@ -102,7 +92,7 @@ fn render_capability(color: Bool) -> RenderCapability {
   RenderCapability { color: color, tier: Unicode, cursor_addressable: false }
 }
 
-fn percentiles_box_frame_ns(title: String, p50: Int, p90: Int, p95: Int, p99: Int, p100: Int, width: Int, tier: Tier) -> Frame {
+fn percentiles_box_frame_ns(title: String, p50: Int, p90: Int, p95: Int, p99: Int, p100: Int, width: Int, tier: Tier) -> std.render.Frame {
   percentile_box_frame(
     title: title,
     p50: nanosecond(count: p50), p90: nanosecond(count: p90), p95: nanosecond(count: p95),
@@ -119,7 +109,7 @@ fn render_percentile_box(title: String, p50: Int, p90: Int, p95: Int, p99: Int, 
   )
 }
 
-fn timing_histogram_frame(p50: Int, p90: Int, p95: Int, p99: Int, p100: Int, width: Int) -> Frame {
+fn timing_histogram_frame(p50: Int, p90: Int, p95: Int, p99: Int, p100: Int, width: Int) -> std.render.Frame {
   percentiles_box_frame_ns(title: "WITNESS TIMING HISTOGRAM", p50: p50, p90: p90, p95: p95, p99: p99, p100: p100, width: width, tier: Unicode)
 }
 
@@ -166,10 +156,10 @@ fn hot_content_lines(body: List<String>, hot_count: Int, width: Int, tier: Tier,
   acc.lines
 }
 
-fn boxed_frame_hot(title: String, body: List<String>, hot_count: Int, width: Int, tier: Tier, color: Bool) -> Frame {
+fn boxed_frame_hot(title: String, body: List<String>, hot_count: Int, width: Int, tier: Tier, color: Bool) -> std.render.Frame {
   let content = hot_content_lines(body: body, hot_count: hot_count, width: width, tier: tier, color: color)
   let all = concat([box_top(title: title, width: width, tier: tier)], concat(content, [box_bottom(width: width, tier: tier)]))
-  Frame { lines: all, cursor_action: Append }
+  std.render.Frame { lines: all, cursor_action: Append }
 }
 
 fn render_slowest_witnesses_box(body: List<String>, hot_count: Int, width: Int, color: Bool) -> String {

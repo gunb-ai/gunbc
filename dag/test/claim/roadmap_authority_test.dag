@@ -1,9 +1,5 @@
 module test.claim.roadmap_authority
 
-import extdeps.languages.markdown { serialize_markdown_source }
-import gunbc.roadmap_document { project_roadmap_to_markdown }
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

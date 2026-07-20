@@ -12,6 +12,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data hollow_alias_input: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_alias_int32_symbol } },
   children: [],
