@@ -4,126 +4,132 @@
 >
 > Answers open decision **2** in [cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) §9 (`Arc migration depth: store-path-only vs whole-seed`).
 >
-> Harness: `measure_rc_arc_share_spike` (`src/v1/stage0/src/bin/measure_rc_arc_share_spike.rs`), structural accounting in `index_memory_receipt.rs`. Lines are `[rc-arc-spike] kind=...` for grep/oracle consumption.
+> Harness: `measure_rc_arc_share_spike` (`src/v1/stage0/src/bin/measure_rc_arc_share_spike.rs`). Lines are `[rc-arc-spike] kind=...`.
 
 ---
 
-## 1. Executive summary
+## 1. Executive summary (what is actually established)
 
 | Question | Answer |
 |---|---|
-| **Is cross-worker Arc share worth the memory trade on a 125 GiB box?** | **Yes at floor width ≥3** for witness-shaped closures — width-scaling shows ~linear private-index duplication (~620 MiB/worker per discovery entry); union-sample crossover at width **3** (optimistic) / **4** (pessimistic) on a 3-entry sample. |
-| **store-path-only vs whole-seed Arc?** | **store-path-only** for increment C. Whole-seed is not required to land the typed store; `TypedModule.module: Rc<Node>` and `im_rc` collections are separate follow-ons (§4). |
-| **im-rc blocker price?** | **123 / 154** stage0 `.rs` files import `im_rc` (aliased `HashMap`/`Vector`/`BTreeSet`). Collections stay `!Send` until `im-rc` → `im` swap — orthogonal to outer `Rc`→`Arc` on store payloads. |
+| **What object was measured?** | The **floor worker index**: `build_multi_entry_index` over both roots (`dag`, `src/v2`), then discovery-corpus warm (`populate_worker_discovery_index` — all 73 unique discovery entries, 299 rows). This matches the adaptive worker spawn site (`cli_run.rs` ~11191–11195), **not** a single-entry import closure. |
+| **Peak RSS on worker object (this box)?** | **~1.51 GiB** VmHWM after discovery warm (73 entries). Shell-only build: **~50 MiB**, **~7.5 s**. |
+| **Width duplication (RSS)?** | **~linear**: W=1 → 1.58 GiB; W=2 → 3.16 GiB on the same box. |
+| **RSS crossover for sharing?** | At W=2, private ≈3.16 GiB vs one union ≈1.58 GiB — memory favors sharing from width 2 **on RSS alone**. This box has a **31.25 GiB cgroup cap**; even W=9 private ≈14 GiB stays under cap — **bytes are not the binding constraint here**. |
+| **Is width worth it for wall-clock?** | **Not answered by this spike alone.** PR #6905 showed parallel pool is a wall-clock **loss** (serial 11.75 min green vs un-latched 47 min+). Shell build is ~7.5 s/worker; discovery warm is ~55 s/worker on this box. Sharing must remove the **warm typecheck path**, not just bytes, or the lane stays Amdahl-bound. |
+| **store-path-only vs whole-seed?** | **store-path-only** for increment C (design §9.2 default). `im_rc` collections stay `!Send` without `im-rc`→`im`. |
+| **im-rc price?** | **123 / 154** stage0 `.rs` files reference `im_rc` (dynamic census). `lib.rs` aliases `HashMap`/`Vector`/`BTreeSet` to it. |
 
-**Operator note:** [execution-spine-design](execution-spine-design.md) removed the interpreter `Rc`→`Arc` gate (2026-07-10). This spike prices the **typecheck-store** lane only; escalate if these numbers gate increment C landing.
+**What is NOT established:** serde-based crossover (discarded — see §2.2). Full `build-vs-attach` on this box (**OOM exit 137**, §3.5). Whole-tree strict resolve to the ~10.7 GiB nimble-owl/srv1 receipt (not re-run here).
 
 ---
 
 ## 2. Methodology
 
-### 2.1 Shareable vs per-worker residue (design §4.2)
+### 2.1 Measurement host (always record with numbers)
 
-| Bucket | `MultiEntryIndex` fields | Spike accounting |
+| Field | Value |
+|---|---|
+| **hostname** | `b96c6d293441` |
+| **MemAvailable** | ~107–117 GiB (`/proc/meminfo`) |
+| **cgroup memory.max** | **33 578 549 248 B (~31.25 GiB)** — processes OOM here before host RAM is exhausted |
+| **source roots** | `dag`, `src/v2` |
+
+### 2.2 Honest limits
+
+1. **Peak RSS (VmHWM) is the only byte metric used for conclusions.** Per-field `index-field` lines are shallow map-shell + key counts; they **under-count** parse trees, resolved graphs, and typed payloads. They are diagnostic, not summed for crossover.
+2. **Serde transport bytes are not reported** — per-module encode OOM'd or produced non-credible extrapolations; using them for crossover was an error in the first draft (corrected per operator review).
+3. **Residue is under-estimated** — `parse_cache`, `resolved_graph_memo`, and `intern_table` payloads stay per-worker after Arc migration; shallow accounting excludes their heap bodies.
+4. **`build-vs-attach` OOM'd** on this box (exit 137, ~100 s) — cannot report attach-vs-cold wall-clock on shared store here without a larger cgroup or split processes.
+
+### 2.3 Shareable vs per-worker residue (design §4.2)
+
+| Bucket | Fields | Spike treatment |
 |---|---|---|
-| **Shareable** | `typed_module_cache` (+ transitive typed payloads) | Serde transport bytes (`SharedTypecheckCaches::encode_typed_snapshot`) + map shell. One module sampled, extrapolated × entry count (§2.2). |
-| **Per-worker residue** | `parse_cache`, `resolved_graph_memo`, `intern_table`, `normalize_diag_cache`, `ownership_diag_cache` | Shallow map-shell + key bytes (residue **underestimates** parse/graph payload — noted below). |
-
-Populate uses `resolve_entry_with_index_for_discovery_corpus` (floor's `DiscoveryCorpusAdvisory` gate), not strict whole-tree.
-
-### 2.2 Measurement limits (honest)
-
-1. **Serde extrapolation** — encoding every typed module OOM'd on this host; receipt uses **one** module's serde size × `typed_module_cache.len()`. Modules vary widely; extrapolated shareable bytes are an **order-of-magnitude proxy**, not a byte oracle. Peak RSS (VmHWM) is the reliable retention metric.
-2. **Shallow residue** — parse trees and resolved graphs are not walked; reported residue is a **lower bound**. Real per-worker residue is larger.
-3. **Full discovery union** — `populate_multi_entry_index_discovery_corpus(None)` OOM'd (exit 137, ~116 s). Default corpus is `representative` (9 large-closure entries) or `discovery:N` cap.
-4. **union-sample N=9** — OOM'd during per-entry populate; N=3 completed.
+| **Shareable (typed store)** | `typed_module_cache` | Entry count + map shell bytes; **peak RSS** for retention |
+| **Per-worker residue** | `parse_cache`, `resolved_graph_memo`, `intern_table`, normalize/ownership diag caches | Shallow shell (lower bound) — real residue larger |
 
 ---
 
-## 3. Receipts (green-by-execution)
+## 3. Receipts (green-by-execution, pasted output)
 
-### 3.1 im-rc census
+### 3.1 Host metadata
 
 ```
-[rc-arc-spike] kind=im-rc-census im_rc_files=123 stage0_rs_files=154
+[rc-arc-spike] kind=host-metadata hostname=b96c6d293441 mem_available_kb=107078536 cgroup_max_bytes=33578549248
 ```
 
-Swapping `im-rc` → `im` (Arc-backed sibling) touches persistent maps/lists across the stage0 seed plus serde feature parity. **Not on increment C's critical path** if only `typed_module_cache` store payloads migrate to `Arc`.
+### 3.2 im-rc census
 
-### 3.2 Width-scaling baseline (`discovery:1`, parallel worker-index simulation)
+```
+[rc-arc-spike] kind=im-rc-census im_rc_files=123 stage0_rs_files=154 note=im-rc (Rc-backed HAMT) is aliased as HashMap/Vector/BTreeSet in lib.rs; the Arc-backed sibling crate is `im`. Collections remain !Send even if outer Rc→Arc lands — swapping im-rc→im touches every persistent map/list in stage0 .rs files plus serde feature parity.
+```
 
-| Width | Peak RSS (VmHWM) |
+### 3.3 Worker shell build (`--mode worker-shell-build`)
+
+```
+[rc-arc-spike] kind=timing label=worker-shell-build elapsed_ms=7452 peak_rss_bytes=52498432
+```
+
+~7.5 s, ~50 MiB — this is what every worker pays at thread start **before** any entry-group resolve.
+
+### 3.4 Worker discovery warm (`--mode worker-discovery-warm`)
+
+Full discovery roster: **73 entries**, **299 rows**.
+
+```
+[rc-arc-spike] kind=timing label=worker-shell-only elapsed_ms=6996 peak_rss_bytes=52486144
+[rc-arc-spike] kind=timing label=worker-discovery-warm elapsed_ms=55011 peak_rss_bytes=1626210304
+[rc-arc-spike] kind=worker-object discovery_entries=73 discovery_rows=299 peak_rss_bytes=1626210304
+```
+
+~55 s warm, **~1.51 GiB** peak — the retention shape after resolving all discovery entries on one worker index.
+
+### 3.5 Width-scaling worker object (`--mode width-scaling-worker --max-width 2`)
+
+```
+[rc-arc-spike] kind=width-scaling width=1 peak_rss_bytes=1582301184
+[rc-arc-spike] kind=width-scaling width=2 peak_rss_bytes=3162173440
+```
+
+| Width | Peak RSS |
 |---|---|
-| 1 | 650 113 024 B (~620 MiB) |
-| 2 | 1 295 810 560 B (~1.21 GiB) |
-| 3 | 1 940 291 584 B (~1.81 GiB) |
+| 1 | 1 582 301 184 B (~1.47 GiB) |
+| 2 | 3 162 173 440 B (~2.95 GiB) |
 
-**~linear ×W duplication** — consistent with per-worker `build_multi_entry_index` retaining a cold private cache (governor comment ~8091–8120 in `cli_run.rs`). At falsifier width **9**, naive extrapolation ≈ **5.6 GiB** duplicate index shells vs **~620 MiB** shared union for the same closure shape.
+**~linear ×W** private duplication on the worker object.
 
-### 3.3 Index fields — single discovery entry (`discovery:1`)
+**RSS net-win sketch (not a done-bar):** `private(W) ≈ 1.58 GiB × W`; `shared(W) ≈ 1.58 GiB + (W−1) × 0.05 GiB` (one warm union + cold shells). Crossover **W≥2** on bytes alone — but cgroup headroom is ample to W=9 (~14 GiB naive linear).
 
-```
-[rc-arc-spike] kind=index-summary shareable_bytes=8144530640 residue_bytes=96096
-  typed_module_cache_entries=37 peak_rss_bytes=653803520
-```
-
-37 typed modules; peak RSS **~624 MiB** (credible). Serde extrapolation **~7.6 GiB** (proxy only).
-
-### 3.4 Index fields — representative union (`representative`, 9 entries)
+### 3.6 build-vs-attach — **BLOCKED on this box**
 
 ```
-[rc-arc-spike] kind=index-summary shareable_bytes=159913142162 residue_bytes=425132
-  typed_module_cache_entries=318 peak_rss_bytes=746315776
+EXIT=137 (OOM killed, ~100s)
+[rc-arc-spike] kind=host-metadata hostname=b96c6d293441 mem_available_kb=111314968 cgroup_max_bytes=33578549248
+measure_rc_arc_share_spike: build-vs-attach
 ```
 
-318 typed modules across 9 large-closure entries; peak RSS **~712 MiB** for the combined index. Serde extrapolation **~149 GiB** is not credible (sample-module skew); **trust peak RSS** for retention pricing.
+Warm shared index + cold shell + attach in one process exceeds the **31.25 GiB cgroup** before timing lines emit. **Escalation:** re-run on srv3 (125 GiB budget, no tight cgroup) or split into separate processes.
 
-### 3.5 Union-sample net-win curve (3 witness entries, max width 9)
+### 3.7 The decisive question (time, not bytes)
 
-```
-shareable_per_worker_avg=3349243766  residue_per_worker_avg=57030
-union_shareable_max=8144530640       union_shareable_sum=10047731300
-```
+From PR #6905: widening the pool is a **wall-clock loss** on ~12 min total corpus work because each worker front-loads index build + warm resolve.
 
-| Model | Crossover width (net_win_bytes > 0) |
+| Phase | This box (worker object) |
 |---|---|
-| Optimistic (`union_shareable_max`) | **3** |
-| Pessimistic (`union_shareable_sum`) | **4** |
+| Shell build | ~7.5 s |
+| Discovery warm (73 entries) | ~55 s |
 
-On a **125 GiB** box at falsifier width **9**, shared retention is well inside envelope even before M2 strip; the **time** prize (52% `typecheck_compute`, design §0) dominates.
+Increment C helps **only if** `build_multi_entry_index_with_shared_caches` + warm shared typed store lets workers **skip the ~55 s cold typecheck warm** (decode/hit path on cache hits). It does **not** remove the ~7.5 s shell build (`build_module_index` + `build_module_graph_facts_live` are per-worker). `build-vs-attach` wall-clock remains **unmeasured** here (OOM).
 
 ---
 
 ## 4. Decision 2 — store-path-only vs whole-seed
 
-### 4.1 Recommendation: **store-path-only** for increment C
+**Recommendation: store-path-only** for increment C (unchanged from design §9.2).
 
-Aligns with [cross-worker-typecheck-share-design](cross-worker-typecheck-share-design.md) §9.2 default.
-
-**In scope (store-path `Rc`→`Arc`):**
-
-- `TypecheckModuleResult`, `TypedModule`, `ModuleInterface` inserted into `typed_module_cache`
-- `parse_cache` entries on the typecheck critical path (design §4.2)
-- `SharedTypecheckCaches` shell (`std::collections::HashMap` + `Arc` payloads — already modeled in #6561)
-
-**Stays `Rc` (thread-local eval):**
-
-- `ResolvedGraph` handed to `make_eval_context` per worker
-- Ephemeral inference temporaries
-
-### 4.2 Why whole-seed is not required now
-
-1. **Eval path** — execution-spine ruling keeps interpreter on `Rc`; increment C does not need eval cross-thread.
-2. **Peak RSS evidence** — duplicate cost is the per-worker **index shell + caches**, not every `Rc` site in the seed. Width-scaling shows the prize is killing **W× cold typed caches**, not a global `Rc` sweep.
-3. **im_rc** — 123 files use `im_rc::HashMap`/`Vector`; outer `Arc` on store wrappers does not make these `Send`. A whole-seed sweep that stops at outer `Arc` leaves the im_rc blocker; a sweep that includes `im-rc`→`im` is a **separate migration** with much larger blast radius.
-
-### 4.3 Residual risks (counted, not silent)
-
-| Risk | Mitigation |
-|---|---|
-| `TypedModule.module: Rc<Node>` inside store payloads | Store-path migration must `Arc` nested carriers on **insert paths** only; eval keeps `Rc<Node>`. |
-| Shared retention ↑ co-resident bytes | Governor dial + M2 strip (design §7); this spike shows headroom at width 9 on 125 GiB. |
-| Serde transport size for cross-worker clone | Measure on falsifier host with batched per-module encode before S2b; not blocking C1 host proof. |
+- Migrate `TypecheckModuleResult` / store insertion paths to `Arc`; eval `ResolvedGraph` stays `Rc`.
+- `im_rc` → `im` is a **separate** migration (123 files); outer `Arc` does not make `im_rc::HashMap` `Send`.
 
 ---
 
@@ -133,13 +139,14 @@ Aligns with [cross-worker-typecheck-share-design](cross-worker-typecheck-share-d
 cargo build --release -p v1-compiler --bin measure_rc_arc_share_spike
 
 ./target/release/measure_rc_arc_share_spike --mode im-rc-census
-./target/release/measure_rc_arc_share_spike --mode index-fields --corpus representative
-./target/release/measure_rc_arc_share_spike --mode width-scaling --corpus discovery:1 --max-width 3
-./target/release/measure_rc_arc_share_spike --mode union-sample --sample-entries 3 --max-width 9
+./target/release/measure_rc_arc_share_spike --mode worker-shell-build
+./target/release/measure_rc_arc_share_spike --mode worker-discovery-warm
+./target/release/measure_rc_arc_share_spike --mode width-scaling-worker --max-width 2
+./target/release/measure_rc_arc_share_spike --mode build-vs-attach   # blocked on 31GiB cgroup
 ```
 
 ---
 
 ## 6. Dissolution
 
-This doc dissolves when increment C lands (C1 host receipt + C2 ladder row) or when a successor measurement supersedes the harness receipts above.
+Dissolves when increment C lands or a successor measurement supersedes these receipts.
