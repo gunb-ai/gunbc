@@ -5994,7 +5994,7 @@ pub fn populate_multi_entry_index_entry(
     entry_file: &str,
 ) -> Result<MultiEntryIndex, String> {
     let index = build_multi_entry_index(source_roots);
-    resolve_entry_with_index(&index, entry_file)?;
+    resolve_entry_with_index_for_discovery_corpus(&index, entry_file)?;
     Ok(index)
 }
 
@@ -6024,7 +6024,7 @@ pub fn populate_multi_entry_index_representative_entries(
     let entries = discovery_corpus_representative_entries();
     let index = build_multi_entry_index(source_roots);
     for entry in &entries {
-        resolve_entry_with_index(&index, entry)?;
+        resolve_entry_with_index_for_discovery_corpus(&index, entry)?;
     }
     Ok((index, entries.len()))
 }
@@ -6052,7 +6052,7 @@ pub fn populate_multi_entry_index_discovery_corpus(
     }
     let index = build_multi_entry_index(source_roots);
     for entry in &entries {
-        resolve_entry_with_index(&index, entry)?;
+        resolve_entry_with_index_for_discovery_corpus(&index, entry)?;
     }
     Ok((index, entries.len(), rows.len().max(total_entries)))
 }
