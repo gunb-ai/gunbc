@@ -7458,8 +7458,13 @@ pub fn handle_serve(
         result.source_indices.clone(),
         v1_interpreter::ExecutionMode::Wet,
     );
-    let listener = std::net::TcpListener::bind((host.as_str(), port))
-        .unwrap_or_else(|e| panic!("failed to bind {}:{}: {}", host, port, e));
+    let listener = match std::net::TcpListener::bind((host.as_str(), port)) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("error: failed to bind {}:{}: {}", host, port, e);
+            std::process::exit(1);
+        }
+    };
     eprintln!(
         "gunbc serve listening on {}:{} -> {}()",
         host, port, function

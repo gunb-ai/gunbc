@@ -82,25 +82,46 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
   ]
 }
 
+type RoadmapServeRouteRow
+  = RouteRow { route: ServedRoute<RoadmapServeHandler> }
+  | RouteRowRefused { raw: String, segment: String, reason: String }
+
+data roadmap_serve_build_shape_note: String = "Cost-shape per DESIGN §6 bare-minimum-cost (review 40297 note: the first cut grew the route list by concat inside a fold — the copied-accumulator class that is always fixed regardless of realized n): the build is now map (per-spec row sum) + a scalar first-refusal fold (no list accumulation) + flat_map projection — linear by construction. The projection's RouteRowRefused arm contributes nothing and is reached only in the refusal-free branch (the scalar fold structurally excludes refused rows there), so it is a projection, never a fabricated value."
+
+fn roadmap_serve_route_row(spec: RoadmapServeRouteSpec) -> RoadmapServeRouteRow {
+  match parse_path_template(raw: spec.raw) {
+    MalformedPathTemplate { raw: r, segment: s, reason: why } =>
+      RouteRowRefused { raw: r, segment: s, reason: why }
+    ParsedPathTemplate { template: tpl } =>
+      RouteRow { route: DynamicRoute { method: spec.method, path_pattern: tpl, handler: spec.handler } }
+  }
+}
+
 fn roadmap_serve_build_from_specs(specs: List<RoadmapServeRouteSpec>) -> RoadmapServeTableBuild {
-  fold(specs, init: RoadmapServeTable { table: ServedRouteTable { routes: [] } }, f: (acc, spec) =>
+  let rows = map(specs, spec => roadmap_serve_route_row(spec: spec))
+  let first_refusal = fold(rows, init: none, f: (acc, r) =>
     match acc {
-      RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => acc
-      RoadmapServeTable { table: t } =>
-        match parse_path_template(raw: spec.raw) {
-          MalformedPathTemplate { raw: r, segment: s, reason: why } =>
-            RoadmapServeTableRefused { raw: r, segment: s, reason: why }
-          ParsedPathTemplate { template: tpl } =>
-            RoadmapServeTable {
-              table: ServedRouteTable {
-                routes: concat(t.routes, [
-                  DynamicRoute { method: spec.method, path_pattern: tpl, handler: spec.handler },
-                ])
-              }
-            }
+      Present { value: v } => acc
+      Absent =>
+        match r {
+          RouteRowRefused { raw: rr, segment: s, reason: why } =>
+            Present { value: RoadmapServeTableRefused { raw: rr, segment: s, reason: why } }
+          RouteRow { route: _ } => Absent
         }
     }
   )
+  match first_refusal {
+    Present { value: refusal } => refusal
+    Absent =>
+      RoadmapServeTable {
+        table: ServedRouteTable {
+          routes: rows |> flat_map(r => match r {
+            RouteRow { route: rt } => [rt]
+            RouteRowRefused { raw: _, segment: _, reason: _ } => []
+          })
+        }
+      }
+  }
 }
 
 fn roadmap_serve_route_table_build() -> RoadmapServeTableBuild {
