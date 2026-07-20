@@ -220,7 +220,9 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     }
   } else {
     let tn = authored_name_at(source_indices: source_indices, node: n)
-    if tn == "String" && n.children |> count == 0 && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+    if type_node_has_unbound_type_variable(n: n, generic_param_names: emit_info.fn_generic_param_names, source_indices: source_indices) {
+      "_"
+    } else if tn == "String" && n.children |> count == 0 && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
       render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
@@ -635,6 +637,8 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         }
         render_rust_shared_type_with_optional(n: n, type_name: name, rendered: applied_ty, shared_types: shared_types)
         }
+      } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
+        "_"
       } else {
         render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
       }
@@ -828,6 +832,12 @@ fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String
       Absent => false
     }
   }
+}
+
+fn rust_rendered_type_needs_infer_wildcard(rendered: String, generic_param_names: List<String>) -> Bool {
+  if rendered == "_" || rendered == "" { return false }
+  if generic_param_names |> any(g => rendered |> contains(substring: concat("<", to_pascal(name: g), ">"))) { return false }
+  rendered |> contains(substring: "<T>") || rendered |> contains(substring: ", T>") || rendered |> contains(substring: "<T,")
 }
 
 fn is_rust_value_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -6076,7 +6086,7 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let bd = lambda_body(texpr: lambda_expr)
       let pn = lambda_expr.children |> skip(1)
 
-      let safe_acc_type = if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" { "_" } else { acc_type_str }
+      let safe_acc_type = if acc_type_str == "Rc<Vec<()>>" || acc_type_str == "Vec<()>" || acc_type_str == "Option<()>" || rust_rendered_type_needs_infer_wildcard(rendered: acc_type_str, generic_param_names: emit_info.fn_generic_param_names) { "_" } else { acc_type_str }
       let fallback_types = ps |> enumerate |> map(pair =>
         if pair.first == 0 { safe_acc_type } else { elem_type_str }
       )
@@ -6206,7 +6216,7 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
   let acc_has_unbound_type_var = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var { "_" } else { acc_type_str }
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var || rust_rendered_type_needs_infer_wildcard(rendered: acc_type_str, generic_param_names: emit_info.fn_generic_param_names) { "_" } else { acc_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
     Present { value: init_arg } =>
