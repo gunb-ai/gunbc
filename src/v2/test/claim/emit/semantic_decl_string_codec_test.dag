@@ -1,14 +1,5 @@
 module v2.test.emit.semantic_decl_string_codec
 
-import extdeps.languages.rust.emit { rust_enum_derives_copy }
-import v2.std.compilers.semantic_decl_emission {
-  semantic_decl_string_from_bundle_node,
-  semantic_decl_string_to_bundle_node
-}
-import v2.extdeps.languages.rust { rust_decl_derive_lex_spelling }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 fn round_trip_ok(s: String) -> Bool {
   match semantic_decl_string_from_bundle_node(bundle: semantic_decl_string_to_bundle_node(s: s)) {

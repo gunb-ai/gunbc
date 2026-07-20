@@ -1,33 +1,5 @@
 module v2.test.lens_application.rejecting_lens_blocks_before_compile
 
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.compiler.compile {
-  CompileOutput,
-  CompileLens,
-  TranslateTo,
-  Validated,
-  compile_lens_gate_rejected_diagnostic,
-  validate_then_compile
-}
-import v2.compiler.infer { InferredTree }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
-import v2.std.compilers.lexing { VoidLexRules }
-import v2.std.collection { empty_map }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_rejected, port_locus }
-import v2.std.logic { Bool }
-import std.algebra { Empty }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.std.witness { Witness }
-import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 
 data rejecting_lens_target_model_stub: TargetModel = TargetModel {
   bundle: Node {

@@ -1,38 +1,5 @@
 module v2.test.lens_affected_set.irt1_leaf_claim_suite
 
-import v2.lens.affected_set_examples {
-  affected_set_claim_failure_node,
-  affected_set_example_node
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.test.lens_affected_set.fail_closed_pending_escalation {
-  fail_closed_pending_escalation_claim_holds
-}
-import v2.test.lens_affected_set.irt1_boundary_prune_receipt {
-  irt1_boundary_prune_receipt_claim_holds
-}
-import v2.test.lens_affected_set.irt1_dimension_seed_receipt {
-  irt1_dimension_seed_receipt_claim_holds
-}
-import v2.test.lens_affected_set.irt1_empty_diff_frontier_receipt {
-  irt1_empty_diff_frontier_receipt_claim_holds
-}
-import v2.test.lens_affected_set.irt1_excluded_propagation_receipt {
-  irt1_excluded_propagation_receipt_claim_holds
-}
-import v2.test.lens_affected_set.irt1_fail_closed_absorption_receipt {
-  irt1_fail_closed_absorption_receipt_claim_holds
-}
 
 fn affected_set_irt1_leaf_claim_suite_holds() -> Bool {
   irt1_boundary_prune_receipt_claim_holds()

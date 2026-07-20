@@ -1,24 +1,5 @@
 module v2.test.claim.build_transport_admission_witness
 
-import std.types { Bool, String, List }
-import std.effect_grant {
-  Write, verb_eq, Read,
-  FilesystemPathTree,
-  NamespacePosition, position_under,
-  EffectAdmission, Admitted, EffectOutsideGrant,
-}
-import v2.std.host_transport {
-  HostTransportDescriptor, WorkspaceFile, WorkspaceContent, EmittedSource,
-  ProcessInvocation, HostToolProgram, ProducedProgram,
-  InvocationArg, WorkspacePath,
-  RuntimeValueCodec, SignedI32Le,
-}
-import v2.compiler.build_transport_admission {
-  build_transport_admissible,
-  build_transport_rel_position,
-  rel_path_is_workspace_contained,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,52 +1,5 @@
 module v2.test.claim.compilation_unit_witness
 
-import std.algebra { Empty }
-import std.types { NonEmptyStr, ContentHash, List }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.compilers.compilation_unit {
-  CompilationUnit,
-  CompilationUnitId,
-  HandExplicit,
-  ModuleDag,
-  ModuleDagEdge,
-  ModuleId,
-  ModuleTypeDefinitionRow,
-  InterfaceClosureUnreachedFixpoint,
-  PartitionFoldOk,
-  PartitionFoldRefused,
-  PartitionInterfaceClosed,
-  PartitionInterfaceTruncated,
-  PartitionR4Refused,
-  PartitionR4Valid,
-  PartitionR4ValidityVerdict,
-  PolicyDerived,
-  partition_r4_witness_refused_scc_split,
-  compilation_unit_artifact_id,
-  partition_fold,
-  partition_fold_deps_match_boundary_edges,
-  partition_fold_outcome,
-  partition_fold_outcome_with_closure_fuel,
-  partition_interface_closure_saturate_result,
-  partition_interface_contains_node,
-  partition_provenance_eq,
-  partition_provenance_hand_explicit,
-  partition_provenance_policy_derived,
-  partition_unit_by_id,
-}
-import v2.std.collection { empty_map, map_insert }
-import v2.std.node {
-  Arrow,
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  TypeNode,
-  content_hash,
-  node_synthetic,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

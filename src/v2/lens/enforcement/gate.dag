@@ -1,37 +1,5 @@
 module v2.lens.enforcement.gate
 
-import v2.std.logic { Bool }
-import v2.std.collection { List }
-import v2.std.text { String }
-import v2.std.algebra { for_all, any, filter, contains, non_empty, list_head, HeadFound, HeadAbsent }
-import v2.lens.registry { LensRegistryEntryV0, LensIdV0, lens_id_v0_eq }
-import v2.lens.enforcement.vocab {
-  SubjectRoster,
-  EnforcementMode, Advisory, AuditOnly, Blocking, enforcement_mode_satisfies,
-  ConsumerKind, ConsumerRequirement, WitnessOnly, consumer_is_live, consumer_satisfies,
-  ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,
-  subject_roster_covers,
-  NarrowingReason, narrowing_reason_same_variant,
-  RedControlStatus, red_control_passed,
-  SelfApplicationStatus, self_application_ok
-}
-import v2.lens.enforcement.contract {
-  LensContract, CoverageReceipt
-}
-import v2.lens.enforcement.lens_module_gate {
-  LensInvariantSurface,
-  lens_module_gate_blocking_holds,
-  lens_module_gate_unenrolled_count_from_facts,
-  lens_module_gate_unjustified_count_from_facts,
-  lens_module_gate_redundant_blocking_count_from_surfaces,
-  lens_module_gate_audit_residue_count_from_surfaces,
-  lens_module_gate_surfaces
-}
-import v2.lens.enforcement.standing_intent {
-  StandingIntent, IntentProperty, LensFamily, LensHygieneLiveness,
-  LensHygieneSelfApply, LensClosureQuestionZero, ModelAnemia, SingleAuthorityConsolidation
-}
-import v2.lens.module_graph { ModuleDeclarationFact }
 
 type LegVerdict = LegHolds | LegFails { reason: String }
 

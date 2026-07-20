@@ -1,29 +1,5 @@
 module v2.test.computation_shapes.branch_dispatch
 
-import v2.std.node {
-  Atom,
-  Branch,
-  ComputationNode,
-  Edge,
-  Node,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  content_hash,
-  well_formed,
-  SyntheticOccurrence
-}
-import v2.std.verification {
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  CompilesClaim,
-  EqualsClaim,
-  manual_claim_anchor
-}
 
 fn branch_dispatch_leaf(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],

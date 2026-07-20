@@ -1,34 +1,5 @@
 module v2.lens.effect
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.lens.common.algebraic_composition { EffectClassification, effect_classifier }
-import std.disposition { SingleAuthority }
 
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.std.algebra { bag_eq, list_snoc_item, non_empty }
-import v2.std.collection {
-  List,
-  Optional,
-  optional_absent,
-  optional_prefer_first_present,
-  optional_present,
-  optional_present_witness
-}
-import v2.std.dependency {
-  ClassifiedDependencyView,
-  DependencyView,
-  classify_dependency_view,
-  classified_dependency_view_eq
-}
-import v2.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Textual,
-  Unavailable,
-  WholeFile
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.witness { Holds, Violates, Witness }
 
 type EffectFact {
   dependencies: List<ClassifiedDependencyView<EffectClassification>>

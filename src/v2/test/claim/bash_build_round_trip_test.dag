@@ -1,36 +1,5 @@
 module v2.test.claim.bash_build_round_trip
 
-import v2.compiler.emit { emit }
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.bash_build {
-  bash_build_and_then,
-  bash_build_assign_lit,
-  bash_build_command_from_lits,
-  bash_build_exit,
-  bash_build_pipe
-}
-import v2.extdeps.languages.bash_command_fold {
-  bash_fold_cmd_false_emitted,
-  bash_fold_cmd_true_emitted,
-  bash_fold_cmd_wc_minus_c_emitted,
-  bash_fold_target_model_for_emitted_witness
-}
-import v2.std.collection { Map }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Rejected,
-  Unavailable,
-  node_locus
-}
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.node { Node, Symbol }
-import v2.std.witness { Holds, Violates, Witness }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

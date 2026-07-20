@@ -1,45 +1,5 @@
 module v2.lens.machine_shape
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
-import v2.extdeps.languages.dag {
-  parse_production_emitted_identity_optional,
-  qualified_name_from_module_node
-}
-import v2.std.collection {
-  Absent,
-  List,
-  Optional,
-  Present,
-  list_at_optional,
-  optional_absent,
-  optional_present
-}
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  NonEmptyDiagnostics,
-  Outcome,
-  Rejected,
-  Unavailable,
-  node_locus,
-  outcome_accepted
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Edge,
-  Node,
-  NodeFoldTopDown,
-  Symbol,
-  TypeNode,
-  fold_node_topdown
-}
-import v2.std.node_query { node_is_call, node_positional_child_targets }
-import std.algebra { Cons, Empty }
-import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
-import v2.std.witness { Holds, Witness }
 
 data machine_shape_construction_wall_note: String = "Single-constructor discipline (machine-shape-orthogonal-scheduling.md §2 ruling 9 / operator redirect 2026-07-16): MachineShape may be MATERIALIZED only inside std.machine_shape, extdeps.*.machine_shape (shape_from_catalog fills beside cited catalog rows), or in test/claim RED controls. Every other direct MachineShape { .. } record literal is an unsanctioned hand-authored shape — judgment-guarded until this compile gate lands. Precedent: symbol_index_fill's fill-only discipline (SymbolIndex materializes only through symbol_index_fill_* / empty_symbol_index, never a parallel index walk). Recognition: module-context fold_node_topdown + callee Atom identity (^MachineShape on a Transform call), mirroring determinism_compile_gate's map_keys reach detection."
 

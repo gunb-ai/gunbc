@@ -1,50 +1,5 @@
 module v2.test.lens_parallelism.data_dependency
 
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.compiler.eval {
-  TestClaimEvalSubject,
-  TestClaimRun,
-  eval_test_claim_subject,
-  run_test_claim_assert,
-  run_test_claim
-}
-import v2.lens.parallelism {
-  DataDependent,
-  ParallelismFact,
-  parallelism_fact_eq,
-  parallelism_witness
-}
-import v2.std.diagnostic { Accepted, None }
-import v2.std.dependency {
-  ClassifiedDependencyView,
-  DataDependsOn,
-  DependencyView
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.runtime { RuntimeValue }
-import v2.std.verification {
-  ManualAnchorAbsent,
-  TestClassification,
-  TestClaim,
-  Tier1,
-  Integration,
-  EqualsClaim,
-  manual_claim_anchor
-}
-import v2.std.verdict { Verdict }
-import v2.std.witness { Holds, Witness }
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts,
-  claim_inferred_tree
-}
-import v2.test.manual.eval_runtime {
-  eval_add_subgraph,
-  eval_context,
-  eval_inferred_tree
-}
 
 data parallelism_child: Node = claim_atom_node(s: ^parallelism_child_symbol)
 

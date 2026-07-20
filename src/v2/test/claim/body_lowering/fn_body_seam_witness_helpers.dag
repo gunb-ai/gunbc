@@ -1,38 +1,5 @@
 module v2.test.claim.body_lowering.fn_body_seam_witness_helpers
 
-import v2.compiler.body_lowering_fold {
-  BodyLoweringLowered,
-  BodyLoweringWrapperRetained,
-  body_lower_fn_body_shell,
-  body_lower_outcome_frontier_disposition
-}
-import v2.compiler.ingested_fixture_arrows {
-  ingested_add_module_source,
-  ingested_find_arrow_in_module
-}
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  dag_language_model,
-  parse_production_emitted_identity_optional
-}
-import v2.std.collection { Absent, Optional, Present, optional_present }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  ComputationNode,
-  Node,
-  Transform,
-  TypeNode,
-  node_synthetic
-}
-import v2.std.node_query { find_arrow_body_child }
-import v2.test.parse.parse_binding_fidelity {
-  pbf_parse_preserves_param_x_binding,
-  pbf_parse_preserves_param_y_binding
-}
 
 data fn_body_seam_witness_helpers_note: String = "Shared helpers for fn_body seam witnesses (decoupled from #6775 integer closure). Execution proofs exceed per-PR 5s fast-lane budget — enrolled in long/wave1_gate1_a1_fn_body_seam_witness_test.dag. Fast RED (invalid shell wrapper-retained) lives in self_host/wave1_gate1_a1_fn_body_seam_witness_test.dag."
 

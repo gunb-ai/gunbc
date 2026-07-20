@@ -1,28 +1,5 @@
 module v2.test.lens_fact_density.fact_bundle_named
 
-import v2.lens.fact_density { NamedFieldFacts, carrier_spec_fact }
-import v2.std.cardinality { NonZeroNat }
-import v2.std.logic { Bool }
-import v2.std.nat { Succ, Zero }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.verification {
-  EqualsClaim,
-  TestClaim,
-  TestClassification,
-  ManualAnchorAbsent,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data fact_bundle_alias: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^fact_bundle_alias_symbol } },

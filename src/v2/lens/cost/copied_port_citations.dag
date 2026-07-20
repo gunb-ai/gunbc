@@ -1,29 +1,5 @@
 module v2.lens.cost.copied_port_citations
 
-import std.algebra { Cons, Empty }
-import v2.lens.cost.copied_port_derivation {
-  CombinerArrowCitation,
-  derive_copied_port_fact,
-  copied_port_index_from_registry
-}
-import v2.std.algebra { CopiedPortFact, fold_list }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.integer { Int }
-import v2.std.node {
-  Arrow,
-  Atom,
-  ComputationNode,
-  Conj,
-  Edge,
-  Loop,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  Transform,
-  TypeNode,
-  SyntheticOccurrence
-}
 
 data copied_port_citations_note: String = "Cited combiner Arrow bodies for per-op derivation (Wave 1 Gate 1 C1). Each row pairs a combiner symbol with a FAITHFUL lowered Arrow shape on ^arrow_body_edge (Loop bound = the combiner's carrier-size axis — left spine for list_append/list_snoc_item, overlay for map_merge — NOT rigged to the target index). derive_copied_port_index_from_arrow recovers the copied-port index from body cost. 🟡 dissolve-on: copied_port_citation_frontier_dissolution_note — citation-retained rows retire when Stage D general body producer emits ingested Arrow bodies for these combiners."
 
