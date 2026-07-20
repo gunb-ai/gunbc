@@ -73,6 +73,7 @@ fn empty_symbol_index() -> SymbolIndex {
 
 fn empty_type_env() -> TypeEnv {
   TypeEnv {
+    module_path: "",
     bindings: empty_map(),
     str_bindings: empty_map(),
     ancestry_str_bindings: empty_map(),
@@ -83,8 +84,7 @@ fn empty_type_env() -> TypeEnv {
     source_indices: empty_map(),
     intern_table: empty_intern_table(),
     source_visible_names: empty_map(),
-    symbol_index: empty_symbol_index(),
-    module_path: ""
+    symbol_index: empty_symbol_index()
   }
 }
 
