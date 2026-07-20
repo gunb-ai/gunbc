@@ -213,7 +213,7 @@ test fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() -> Boo
     && src_has(complexity_stage0_path, "pub fn classify_complexity(")
     && src_has(complexity_stage0_path, "ExprData::ExprReturn")
     && src_has(complexity_path, "fn classify_complexity(expr: CostExpr) -> String")
-    && src_has(complexity_stage0_path, "pub fn classify_complexity(expr: Rc<CostExpr>) -> String")
+    && src_has(complexity_stage0_path, "pub fn classify_complexity(expr: Arc<CostExpr>) -> String")
     && src_lacks(complexity_path, "type ComplexityClass")
     && src_lacks(complexity_path, "formatted: String")
     && src_lacks(complexity_path, "fn recursive_variant_field_key(")
@@ -277,7 +277,7 @@ test fn testgen_emits_valid_rust() -> Bool {
     && src_lacks(emit_rust_path, "starts_with_prefix")
     && src_has(emit_path, "extract_test_projections")
     && src_has(emit_path, "TestProjection")
-    && src_has(languages_path, "Rc<dyn Fn(")
+    && src_has(languages_path, "Arc<dyn Fn(")
     && src_has(languages_path, "callable_type_template")
     && src_has(emit_path, "callable_type_template")
 }
