@@ -17318,7 +17318,7 @@ pub fn containment_resolve_fn_v1_for_module(
                 continue;
             }
             let qn = module_path_to_qualified_path(&imp_path, name);
-            if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn) {
+            if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn.clone()) {
                 if is_fn_decl_node(&node) {
                     direct_hit = Some(ContainmentResolve::Hit {
                         owner_module: imp_path.clone(),
@@ -17658,9 +17658,9 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
 #[cfg(test)]
 mod resolution_divergence_census_tests {
     use super::{
-        containment_resolve_fn_v1, import_chain_owner, lookup_resolved_sig,
-        resolution_divergence_census_live, whole_tree_resolved_ctx, ResolutionDivergenceBucket,
-        WholeTreeCtx,
+        containment_resolve_fn_v1, containment_resolve_fn_v1_for_module, import_chain_owner,
+        lookup_resolved_sig, resolution_divergence_census_live, whole_tree_resolved_ctx,
+        ResolutionDivergenceBucket, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
 
