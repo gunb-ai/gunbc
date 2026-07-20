@@ -2,7 +2,6 @@ module test.claim.host_effect_plan_witness
 
 import std.logic { Bool }
 import gunbc.host_effect {
-  ShellCommand,
   NodeControlPlane, HostOs,
   host_effect_identity_evidence,
   LocalShell,
@@ -11,7 +10,7 @@ import gunbc.host_effect_plan {
   HostEffectPlan, HostEffectPlanContext,
   host_effect_plan_apply,
 }
-import v2.std.effect_plan { EffectPlan, Do, If }
+import v2.std.effect_plan { EffectPlan, If }
 import v2.std.orchestration { FailFast, ExitZero, Run }
 import v2.std.collection { Absent }
 import std.realization_reconcile { reconciliation_converged }
@@ -20,7 +19,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data real_execution_home_doc: String = "Wave A2 host_effect_plan_apply witness drives real shell.Exec.Run effects (LocalShell true/exit-1) through Do-effect leaves; the hermetic discovery corpus cannot discriminate exit codes under mock_response, so this file is excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled as a declared Wet explicit entry (bin_witness_wet_entries), same lane as host_build_cache_provision_real_execution_witness_test.dag."
+data hermetic_witness_home_doc: String = "Hermetic-safe Wave A2 host_effect_plan_apply witnesses: control-flow and empty-plan refusal arms only (no shell.Exec.Run). Shell converge/failure/sequential poles live in host_effect_plan_real_execution_witness_test.dag (Wet bin batch)."
 
 fn witness_host_os_target() -> NodeControlPlane {
   HostOs { node: srv1_host }
@@ -34,28 +33,8 @@ fn witness_plan_ctx() -> HostEffectPlanContext {
   }
 }
 
-fn witness_single_do_true_plan() -> HostEffectPlan {
-  EffectPlan {
-    steps: [Do { effect: ShellCommand { script: "true" } }],
-    on_failure: FailFast,
-  }
-}
-
-fn witness_single_do_false_plan() -> HostEffectPlan {
-  EffectPlan {
-    steps: [Do { effect: ShellCommand { script: "exit 1" } }],
-    on_failure: FailFast,
-  }
-}
-
-fn witness_sequential_do_plan() -> HostEffectPlan {
-  EffectPlan {
-    steps: [
-      Do { effect: ShellCommand { script: "true" } },
-      Do { effect: ShellCommand { script: "true" } },
-    ],
-    on_failure: FailFast,
-  }
+fn witness_empty_plan() -> HostEffectPlan {
+  EffectPlan { steps: [], on_failure: FailFast }
 }
 
 fn witness_if_control_flow_plan() -> HostEffectPlan {
@@ -73,23 +52,9 @@ fn witness_if_control_flow_plan() -> HostEffectPlan {
   }
 }
 
-fn witness_do_effect_leaf_converges() -> Bool {
-  reconciliation_converged(r: host_effect_plan_apply(
-    plan: witness_single_do_true_plan(),
-    ctx: witness_plan_ctx(),
-  ))
-}
-
-fn witness_do_effect_leaf_failure_fails_closed() -> Bool {
+fn witness_empty_plan_refuses_fail_closed() -> Bool {
   !reconciliation_converged(r: host_effect_plan_apply(
-    plan: witness_single_do_false_plan(),
-    ctx: witness_plan_ctx(),
-  ))
-}
-
-fn witness_sequential_do_effects_converge() -> Bool {
-  reconciliation_converged(r: host_effect_plan_apply(
-    plan: witness_sequential_do_plan(),
+    plan: witness_empty_plan(),
     ctx: witness_plan_ctx(),
   ))
 }
@@ -102,8 +67,6 @@ fn witness_control_flow_step_refuses_fail_closed() -> Bool {
 }
 
 test fn host_effect_plan_witness_holds() -> Bool {
-  witness_do_effect_leaf_converges()
-    && witness_do_effect_leaf_failure_fails_closed()
-    && witness_sequential_do_effects_converge()
+  witness_empty_plan_refuses_fail_closed()
     && witness_control_flow_step_refuses_fail_closed()
 }
