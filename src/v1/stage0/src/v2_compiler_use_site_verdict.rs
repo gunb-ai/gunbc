@@ -9,7 +9,7 @@ use crate::usv_pilot_v2_std_node::{
     NamedEdgeTargetLookup, Node, NodeKind, Symbol,
 };
 use im::{vector as vec, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -24,7 +24,7 @@ pub enum UseSiteVerdict {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum UseSiteVerdictLookup {
-    VerdictFound { verdict: Rc<UseSiteVerdict> },
+    VerdictFound { verdict: Arc<UseSiteVerdict> },
     VerdictAbsent,
     VerdictAmbiguous,
 }
@@ -57,26 +57,26 @@ pub fn use_site_verdict_unclassified_tag() -> Symbol {
     "use_site_verdict_unclassified".to_string()
 }
 
-pub fn use_site_verdict_atom(tag: Symbol) -> Rc<Node> {
+pub fn use_site_verdict_atom(tag: Symbol) -> Arc<Node> {
     node_synthetic(
-        Rc::new(NodeKind::TypeNode {
-            connective: Rc::new(Connective::Atom { identity: tag }),
+        Arc::new(NodeKind::TypeNode {
+            connective: Arc::new(Connective::Atom { identity: tag }),
         }),
-        Rc::new(vec![]),
+        Arc::new(vec![]),
     )
 }
 
-pub fn use_site_verdict_to_node(verdict: Rc<UseSiteVerdict>) -> Rc<Node> {
+pub fn use_site_verdict_to_node(verdict: Arc<UseSiteVerdict>) -> Arc<Node> {
     match &*verdict {
         UseSiteVerdict::MoveWhole => use_site_verdict_atom(use_site_verdict_move_whole_tag()),
         UseSiteVerdict::MoveField { field } => node_synthetic(
-            Rc::new(NodeKind::TypeNode {
-                connective: Rc::new(Connective::Atom {
+            Arc::new(NodeKind::TypeNode {
+                connective: Arc::new(Connective::Atom {
                     identity: use_site_verdict_move_field_tag(),
                 }),
             }),
-            Rc::new(vec![Rc::new(Edge {
-                label: Rc::new(EdgeLabel::Named {
+            Arc::new(vec![Arc::new(Edge {
+                label: Arc::new(EdgeLabel::Named {
                     name: use_site_verdict_field_edge(),
                 }),
                 target: use_site_verdict_atom(field.clone()),
@@ -88,63 +88,63 @@ pub fn use_site_verdict_to_node(verdict: Rc<UseSiteVerdict>) -> Rc<Node> {
     }
 }
 
-pub fn use_site_verdict_move_field_of(children: Rc<Vec<Rc<Edge>>>) -> Rc<UseSiteVerdict> {
+pub fn use_site_verdict_move_field_of(children: Arc<Vec<Arc<Edge>>>) -> Arc<UseSiteVerdict> {
     match &*named_edge_target_lookup(children, use_site_verdict_field_edge()) {
         NamedEdgeTargetLookup::Found { target: field_node } => match &*field_node.kind {
             NodeKind::TypeNode { connective } => match &**connective {
                 Connective::Atom { identity: f } => {
-                    Rc::new(UseSiteVerdict::MoveField { field: f.clone() })
+                    Arc::new(UseSiteVerdict::MoveField { field: f.clone() })
                 }
-                _ => Rc::new(UseSiteVerdict::Unclassified),
+                _ => Arc::new(UseSiteVerdict::Unclassified),
             },
-            _ => Rc::new(UseSiteVerdict::Unclassified),
+            _ => Arc::new(UseSiteVerdict::Unclassified),
         },
         NamedEdgeTargetLookup::Absent | NamedEdgeTargetLookup::Ambiguous => {
-            Rc::new(UseSiteVerdict::Unclassified)
+            Arc::new(UseSiteVerdict::Unclassified)
         }
     }
 }
 
-pub fn use_site_verdict_of_node(target: Rc<Node>) -> Rc<UseSiteVerdict> {
+pub fn use_site_verdict_of_node(target: Arc<Node>) -> Arc<UseSiteVerdict> {
     match &*target.kind {
         NodeKind::TypeNode { connective } => match &**connective {
             Connective::Atom { identity: sym } => {
                 if sym == &use_site_verdict_move_whole_tag() {
-                    Rc::new(UseSiteVerdict::MoveWhole)
+                    Arc::new(UseSiteVerdict::MoveWhole)
                 } else if sym == &use_site_verdict_borrow_tag() {
-                    Rc::new(UseSiteVerdict::Borrow)
+                    Arc::new(UseSiteVerdict::Borrow)
                 } else if sym == &use_site_verdict_clone_shared_tag() {
-                    Rc::new(UseSiteVerdict::CloneShared)
+                    Arc::new(UseSiteVerdict::CloneShared)
                 } else if sym == &use_site_verdict_move_field_tag() {
                     use_site_verdict_move_field_of(target.children.clone())
                 } else {
-                    Rc::new(UseSiteVerdict::Unclassified)
+                    Arc::new(UseSiteVerdict::Unclassified)
                 }
             }
-            _ => Rc::new(UseSiteVerdict::Unclassified),
+            _ => Arc::new(UseSiteVerdict::Unclassified),
         },
-        _ => Rc::new(UseSiteVerdict::Unclassified),
+        _ => Arc::new(UseSiteVerdict::Unclassified),
     }
 }
 
-pub fn use_site_verdict_lookup(node: Rc<Node>) -> Rc<UseSiteVerdictLookup> {
+pub fn use_site_verdict_lookup(node: Arc<Node>) -> Arc<UseSiteVerdictLookup> {
     match &*named_edge_target_lookup(node.children.clone(), use_site_verdict_edge()) {
-        NamedEdgeTargetLookup::Found { target } => Rc::new(UseSiteVerdictLookup::VerdictFound {
+        NamedEdgeTargetLookup::Found { target } => Arc::new(UseSiteVerdictLookup::VerdictFound {
             verdict: use_site_verdict_of_node(target.clone()),
         }),
-        NamedEdgeTargetLookup::Absent => Rc::new(UseSiteVerdictLookup::VerdictAbsent),
-        NamedEdgeTargetLookup::Ambiguous => Rc::new(UseSiteVerdictLookup::VerdictAmbiguous),
+        NamedEdgeTargetLookup::Absent => Arc::new(UseSiteVerdictLookup::VerdictAbsent),
+        NamedEdgeTargetLookup::Ambiguous => Arc::new(UseSiteVerdictLookup::VerdictAmbiguous),
     }
 }
 
-pub fn attach_use_site_verdict(node: Rc<Node>, verdict: Rc<UseSiteVerdict>) -> Rc<Node> {
+pub fn attach_use_site_verdict(node: Arc<Node>, verdict: Arc<UseSiteVerdict>) -> Arc<Node> {
     let children = node.children.clone();
     node_rebuild(
         node,
         list_snoc_item(
             children,
-            Rc::new(Edge {
-                label: Rc::new(EdgeLabel::Named {
+            Arc::new(Edge {
+                label: Arc::new(EdgeLabel::Named {
                     name: use_site_verdict_edge(),
                 }),
                 target: use_site_verdict_to_node(verdict),

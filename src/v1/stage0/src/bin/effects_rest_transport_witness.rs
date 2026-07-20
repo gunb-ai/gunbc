@@ -3,7 +3,7 @@
 use im::HashMap;
 use std::collections::HashSet;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{collect_rest_transport_operations, DeclaredRestTransportOp};
@@ -52,7 +52,7 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::from(1)
 }
 
-fn parse_path(path: &str) -> Rc<PathTemplate> {
+fn parse_path(path: &str) -> Arc<PathTemplate> {
     match &*parse_path_template(path.to_string()) {
         PathTemplateParseResult::ParsedPathTemplate { template } => template.clone(),
         PathTemplateParseResult::MalformedPathTemplate { .. } => {
@@ -83,7 +83,9 @@ fn fingerprint(op: &DeclaredRestTransportOp) -> (String, String, String, String)
     )
 }
 
-fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+fn parse_extdep_module(
+    relative_path: &str,
+) -> (Arc<Node>, Arc<HashMap<String, Arc<NewlineIndex>>>) {
     let path = workspace_root().join(relative_path);
     let source = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
@@ -95,7 +97,7 @@ fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<
     let tokens = tokenize(source.clone(), filename.clone());
     let mut source_indices = HashMap::new();
     source_indices.insert(filename.clone(), build_newline_index(filename, source));
-    let source_indices = Rc::new(source_indices);
+    let source_indices = Arc::new(source_indices);
     let result = parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
         panic!(
@@ -199,7 +201,7 @@ fn main() -> ExitCode {
         .iter()
         .filter(|d| is_idempotent_effect(d.shape.clone()))
         .count();
-    let obligations = generate_idempotency_obligations(Rc::new(derived.clone().into()));
+    let obligations = generate_idempotency_obligations(Arc::new(derived.clone().into()));
     if obligations.len() != idempotent_count {
         return fail(format!(
             "obligation count {} != idempotent op count {idempotent_count}",

@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
@@ -12,13 +12,13 @@ fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
 }
 
-fn bisect_sources() -> Vec<Rc<SourceFile>> {
+fn bisect_sources() -> Vec<Arc<SourceFile>> {
     let entry_content = std::fs::read_to_string(workspace_root().join(BISECT_ENTRY))
         .unwrap_or_else(|e| panic!("read {BISECT_ENTRY}: {e}"));
     resolve_imports_transitively_with_source_roots(BISECT_ENTRY, &entry_content, &v2_source_roots())
         .iter()
         .map(|s| {
-            Rc::new(SourceFile {
+            Arc::new(SourceFile {
                 path: s.path.clone(),
                 content: s.content.clone(),
             })
@@ -40,7 +40,7 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult) {
 }
 
 fn assert_witness_terminates(function: &str, budget: Duration) {
-    let resolved = compile_to_resolved(Rc::new(bisect_sources().into()));
+    let resolved = compile_to_resolved(Arc::new(bisect_sources().into()));
     assert_resolved_ok(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = v1_interpreter::InterpContext::new(
@@ -73,7 +73,7 @@ fn interpreted_parse_bisect_parse_terminates() {
 }
 
 fn run_bisect_witness_bool(function: &str) -> v1_interpreter::InterpResult<Value> {
-    let resolved = compile_to_resolved(Rc::new(bisect_sources().into()));
+    let resolved = compile_to_resolved(Arc::new(bisect_sources().into()));
     assert_resolved_ok(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = v1_interpreter::InterpContext::new(

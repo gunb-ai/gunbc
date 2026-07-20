@@ -2,7 +2,7 @@
 
 use im::HashMap;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
@@ -53,17 +53,17 @@ where
     cold.output().expect("failed to spawn cargo cold retry")
 }
 
-fn tokenize_for_parse(source: &str) -> Rc<im::Vector<Rc<v1_compiler::v1_std_core::Token>>> {
+fn tokenize_for_parse(source: &str) -> Arc<im::Vector<Arc<v1_compiler::v1_std_core::Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 
-fn parse_source(source: &str) -> Rc<v1_compiler::v1_compiler_parse::ParseResult> {
+fn parse_source(source: &str) -> Arc<v1_compiler::v1_compiler_parse::ParseResult> {
     let tokens = tokenize_for_parse(source);
     let source_index =
         v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert("test.dag".to_string(), source_index);
-    v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices))
+    v1_compiler::v1_compiler_parse::parse(tokens, Arc::new(source_indices))
 }
 
 fn build_module_index_for_roots(
@@ -129,9 +129,9 @@ fn resolve_imports_transitively_with_index(
     entry_path: &str,
     entry_content: &str,
     module_index: &HashMap<String, std::path::PathBuf>,
-) -> Vec<Rc<SourceFile>> {
+) -> Vec<Arc<SourceFile>> {
     let ws = workspace_root();
-    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    let mut seen: HashMap<String, Arc<SourceFile>> = HashMap::new();
     let mut queue: Vec<(String, String)> = Vec::new();
 
     queue.push((entry_path.to_string(), entry_content.to_string()));
@@ -149,7 +149,7 @@ fn resolve_imports_transitively_with_index(
                         .unwrap_or(file_path)
                         .to_string_lossy()
                         .to_string();
-                    let source = Rc::new(SourceFile {
+                    let source = Arc::new(SourceFile {
                         path: rel_path.clone(),
                         content: file_content.clone(),
                     });
@@ -160,21 +160,21 @@ fn resolve_imports_transitively_with_index(
         }
     }
 
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
-    sources.push(Rc::new(SourceFile {
+    let mut sources: Vec<Arc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
+    sources.push(Arc::new(SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
     }));
     sources
 }
 
-fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc<SourceFile>> {
+fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Arc<SourceFile>> {
     resolve_imports_transitively_with_index(entry_path, entry_content, &build_module_index())
 }
 
-fn compile_dag_named(filename: &str, source: &str, target: RenderTarget) -> Rc<PipelineResult> {
+fn compile_dag_named(filename: &str, source: &str, target: RenderTarget) -> Arc<PipelineResult> {
     let sources = resolve_imports_transitively(filename, source);
-    compile_sources(Rc::new(sources.into()), target)
+    compile_sources(Arc::new(sources.into()), target)
 }
 
 fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
@@ -188,7 +188,7 @@ fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
 fn collect_dag_sources(
     root: &std::path::Path,
     dir: &std::path::Path,
-    sources: &mut Vec<Rc<SourceFile>>,
+    sources: &mut Vec<Arc<SourceFile>>,
 ) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read {}: {}", dir.display(), e))
@@ -207,7 +207,7 @@ fn collect_dag_sources(
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .to_string();
-            sources.push(Rc::new(SourceFile { path: rel, content }));
+            sources.push(Arc::new(SourceFile { path: rel, content }));
         }
     }
 }
@@ -893,7 +893,7 @@ fn ci_full_dag() {
     ci_timing("ci_full_dag: start");
     let ws = workspace_root();
     let dag_dir = ws.join("dag");
-    let mut dag_sources: Vec<Rc<SourceFile>> = Vec::new();
+    let mut dag_sources: Vec<Arc<SourceFile>> = Vec::new();
     collect_dag_sources(&ws, &dag_dir, &mut dag_sources);
 
     assert!(
@@ -902,7 +902,7 @@ fn ci_full_dag() {
     );
 
     let dag_result = v1_compiler::v1_compiler_compile::compile_sources(
-        std::rc::Rc::new(dag_sources.clone().into()),
+        std::sync::Arc::new(dag_sources.clone().into()),
         v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
     );
 
@@ -1069,7 +1069,6 @@ fn bootstrap_l4_structural() {
 fn generate_weather_structural_tests() -> String {
     r#"use v1_compiled::examples_weather::*;
 use v1_compiled::examples_weather::Condition::*;
-use std::rc::Rc;
 
 
 #[test]
@@ -1079,16 +1078,16 @@ fn witness_temperature() {
 
 #[test]
 fn witness_condition_sunny() {
-    let _w = Rc::new(Sunny);
+    let _w = Arc::new(Sunny);
 }
 
 #[test]
 fn witness_forecast() {
-    let _w = Rc::new(Forecast {
+    let _w = Arc::new(Forecast {
         location: String::new(),
         high: Temperature { celsius: 0.0 },
         low: Temperature { celsius: 0.0 },
-        condition: Rc::new(Sunny),
+        condition: Arc::new(Sunny),
     });
 }
 
@@ -1105,32 +1104,32 @@ fn call_is_freezing() {
 
 #[test]
 fn call_describe_condition() {
-    let _result = describe_condition(Rc::new(Sunny));
+    let _result = describe_condition(Arc::new(Sunny));
 }
 
 #[test]
 fn call_daily_summary() {
-    let forecast = Rc::new(Forecast {
+    let forecast = Arc::new(Forecast {
         location: String::new(),
         high: Temperature { celsius: 0.0 },
         low: Temperature { celsius: 0.0 },
-        condition: Rc::new(Sunny),
+        condition: Arc::new(Sunny),
     });
     let _result = daily_summary(forecast);
 }
 
 #[test]
 fn call_freezing_locations_empty() {
-    let _result = freezing_locations(Rc::new(vec![]));
+    let _result = freezing_locations(Arc::new(vec![]));
 }
 
 
 #[test]
 fn describe_condition_all_variants() {
-    let _ = describe_condition(Rc::new(Sunny));
-    let _ = describe_condition(Rc::new(Cloudy));
-    let _ = describe_condition(Rc::new(Rainy { mm_per_hour: 0.0 }));
-    let _ = describe_condition(Rc::new(Snowy { cm_per_hour: 0.0 }));
+    let _ = describe_condition(Arc::new(Sunny));
+    let _ = describe_condition(Arc::new(Cloudy));
+    let _ = describe_condition(Arc::new(Rainy { mm_per_hour: 0.0 }));
+    let _ = describe_condition(Arc::new(Snowy { cm_per_hour: 0.0 }));
 }
 
 
@@ -1148,18 +1147,18 @@ fn is_freezing_boundary() {
 
 #[test]
 fn freezing_locations_filters_correctly() {
-    let forecasts = Rc::new(vec![
-        Rc::new(Forecast {
+    let forecasts = Arc::new(vec![
+        Arc::new(Forecast {
             location: "cold".to_string(),
             high: Temperature { celsius: 5.0 },
             low: Temperature { celsius: -2.0 },
-            condition: Rc::new(Sunny),
+            condition: Arc::new(Sunny),
         }),
-        Rc::new(Forecast {
+        Arc::new(Forecast {
             location: "warm".to_string(),
             high: Temperature { celsius: 25.0 },
             low: Temperature { celsius: 15.0 },
-            condition: Rc::new(Sunny),
+            condition: Arc::new(Sunny),
         }),
     ]);
     let result = freezing_locations(forecasts);
@@ -1169,8 +1168,8 @@ fn freezing_locations_filters_correctly() {
 
 #[test]
 fn describe_condition_rainy_branches() {
-    let light = describe_condition(Rc::new(Rainy { mm_per_hour: 5.0 }));
-    let heavy = describe_condition(Rc::new(Rainy { mm_per_hour: 15.0 }));
+    let light = describe_condition(Arc::new(Rainy { mm_per_hour: 5.0 }));
+    let heavy = describe_condition(Arc::new(Rainy { mm_per_hour: 15.0 }));
     assert_ne!(light, heavy, "light and heavy rain should have different descriptions");
 }
 
@@ -1197,7 +1196,7 @@ fn roundtrip_forecast() {
         location: "test".to_string(),
         high: Temperature { celsius: 30.0 },
         low: Temperature { celsius: 10.0 },
-        condition: Rc::new(Sunny),
+        condition: Arc::new(Sunny),
     };
     let json = serde_json::to_string(&w).expect("serialize");
     let back: Forecast = serde_json::from_str(&json).expect("deserialize");

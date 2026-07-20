@@ -1,5 +1,5 @@
 use im::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 use v1_compiler::v1_rt::VecCompat;
 
 use v1_compiler::v1_compiler_artifact::RenderTarget;
@@ -12,11 +12,11 @@ use v1_compiler::v1_std_core::{
     diagnostic_to_message, empty_intern_table, is_error_diagnostic, ExprData, TokenShape,
 };
 
-fn tokenize_expr(src: &str) -> Rc<im::Vector<Rc<v1_compiler::v1_std_core::Token>>> {
+fn tokenize_expr(src: &str) -> Arc<im::Vector<Arc<v1_compiler::v1_std_core::Token>>> {
     tokenize(src.to_string(), "test.dag".to_string())
 }
 
-fn token_stream_remaining(stream: &TokenStream) -> Vec<Rc<v1_compiler::v1_std_core::Token>> {
+fn token_stream_remaining(stream: &TokenStream) -> Vec<Arc<v1_compiler::v1_std_core::Token>> {
     stream
         .all
         .iter()
@@ -25,9 +25,9 @@ fn token_stream_remaining(stream: &TokenStream) -> Vec<Rc<v1_compiler::v1_std_co
         .collect()
 }
 
-fn parse_ctx() -> Rc<ParseContext> {
-    Rc::new(ParseContext {
-        source_indices: Rc::new(HashMap::new()),
+fn parse_ctx() -> Arc<ParseContext> {
+    Arc::new(ParseContext {
+        source_indices: Arc::new(HashMap::new()),
         intern_table: empty_intern_table(),
     })
 }
@@ -124,7 +124,7 @@ fn probe() -> Bool {
   true
 }
 "#;
-    let sources = Rc::new(im::vector![Rc::new(SourceFile {
+    let sources = Arc::new(im::vector![Arc::new(SourceFile {
         path: "caret_probe5b.dag".to_string(),
         content: src.to_string(),
     })]);
@@ -141,7 +141,7 @@ fn probe() -> Bool {
 }
 
 fn compile_rust_sources(content: &str, path: &str) -> String {
-    let sources = Rc::new(im::vector![Rc::new(SourceFile {
+    let sources = Arc::new(im::vector![Arc::new(SourceFile {
         path: path.to_string(),
         content: content.to_string(),
     })]);

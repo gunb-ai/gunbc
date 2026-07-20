@@ -1530,7 +1530,7 @@ fn run_walk(
     let mut batch_records: Vec<BatchRecord> = Vec::new();
     // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
     // run on the main thread and share a single resolved InterpContext per entry across all batches.
-    // Rc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
+    // Arc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
     // run sequentially here after the spawned (non-memo) threads in each batch are joined.
     // Key invariant: source_roots is constant for the lifetime of a run_walk call, so
     // keying the memo by (entry, execution_mode) is sufficient — a given entry always

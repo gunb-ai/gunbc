@@ -11,25 +11,25 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
-pub fn dag_keywords() -> Rc<HashMap<String, String>> {
+pub fn dag_keywords() -> Arc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Arc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
@@ -38,15 +38,15 @@ pub fn dag_keywords() -> Rc<HashMap<String, String>> {
             __m.insert("or".to_string(), "||".to_string());
             __m.insert("not".to_string(), "!".to_string());
             __m.insert("div".to_string(), "/".to_string());
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, String>>| c.clone())
 }
 
-pub fn dag_container_templates() -> Rc<HashMap<String, String>> {
+pub fn dag_container_templates() -> Arc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Arc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "List<{0}>".to_string());
             __m.insert("set".to_string(), "Set<{0}>".to_string());
@@ -57,28 +57,28 @@ pub fn dag_container_templates() -> Rc<HashMap<String, String>> {
             __m.insert("free_monoid".to_string(), "List<{0}>".to_string());
             __m.insert("partial_function".to_string(), "Map<{0}, {1}>".to_string());
             __m.insert("boolean_algebra".to_string(), "Bool".to_string());
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, String>>| c.clone())
 }
 
-pub fn dag_reserved() -> Rc<Vec<String>> {
+pub fn dag_reserved() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec![])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec![])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
-pub fn dag_string_types() -> Rc<Vec<String>> {
+pub fn dag_string_types() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["String".to_string(), "Secret".to_string()])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
 pub fn dag_func_keyword() -> String {

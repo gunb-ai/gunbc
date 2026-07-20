@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -55,13 +55,13 @@ fn temp_dir(label: &str) -> std::path::PathBuf {
     dir
 }
 
-fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
+fn rc_identity_fixture_sources() -> Vec<Arc<SourceFile>> {
     vec![
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "definer.dag".to_string(),
             content: "module test.type_env_rc_definer\ntype Shared = Int\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "consumer.dag".to_string(),
             content: "module test.type_env_rc_consumer\nimport test.type_env_rc_definer\nfn use_shared() -> Shared { 7 }\n".to_string(),
         }),
@@ -69,10 +69,10 @@ fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
 }
 
 fn typed_module_by_name<'a>(
-    modules: &'a im::Vector<Rc<TypedModule>>,
-    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    modules: &'a im::Vector<Arc<TypedModule>>,
+    source_indices: &Arc<im::HashMap<String, Arc<v1_compiler::v1_std_core::NewlineIndex>>>,
     name: &str,
-) -> &'a Rc<TypedModule> {
+) -> &'a Arc<TypedModule> {
     modules
         .iter()
         .find(|m| authored_name_at(source_indices.clone(), m.module.clone()) == name)
@@ -81,7 +81,7 @@ fn typed_module_by_name<'a>(
 
 fn assert_rc_identity_across_import_chain(
     graph: &ResolvedGraph,
-    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    source_indices: &Arc<im::HashMap<String, Arc<v1_compiler::v1_std_core::NewlineIndex>>>,
 ) {
     let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.type_env_rc_definer");
     let use_mod = typed_module_by_name(&graph.modules, source_indices, "test.type_env_rc_consumer");
@@ -92,7 +92,7 @@ fn assert_rc_identity_across_import_chain(
     let use_ty = lookup_type_by_name(use_mod.type_env.clone(), "Shared".to_string())
         .expect("consumer lookup Shared");
     assert!(
-        Rc::ptr_eq(&def_binding.resolved, &use_ty),
+        Arc::ptr_eq(&def_binding.resolved, &use_ty),
         "import chain must reach the defining module's resolved node Rc, not a fresh clone"
     );
 }
@@ -102,14 +102,14 @@ fn collect_binding_ptrs(
     out: &mut HashSet<*const v1_compiler::v1_compiler_infer_env::TypeBinding>,
 ) {
     for binding in env.bindings.values() {
-        out.insert(Rc::as_ptr(binding));
+        out.insert(Arc::as_ptr(binding));
     }
     for parent in env.parents.iter() {
         collect_binding_ptrs(parent, out);
     }
 }
 
-fn unique_binding_ptr_count_modules(modules: &im::Vector<Rc<TypedModule>>) -> usize {
+fn unique_binding_ptr_count_modules(modules: &im::Vector<Arc<TypedModule>>) -> usize {
     let mut ptrs = HashSet::new();
     for m in modules.iter() {
         collect_binding_ptrs(&m.type_env, &mut ptrs);
@@ -134,9 +134,9 @@ fn assert_resolved_no_hard_errors(
 }
 
 fn compile_modules(
-    sources: Vec<Rc<SourceFile>>,
-) -> Rc<v1_compiler::v1_compiler_compile::ResolvedPipelineResult> {
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    sources: Vec<Arc<SourceFile>>,
+) -> Arc<v1_compiler::v1_compiler_compile::ResolvedPipelineResult> {
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     resolved
 }
@@ -230,11 +230,11 @@ fn type_env_shared_type_single_local_authority() {
 #[test]
 fn type_env_local_binding_shadows_imported_name() {
     let sources = vec![
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "definer.dag".to_string(),
             content: "module test.type_env_shadow_definer\ntype Marker = String\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "consumer.dag".to_string(),
             content: "module test.type_env_shadow_consumer\nimport test.type_env_shadow_definer\ntype Marker = Int\nfn pick() -> Marker { 0 }\n".to_string(),
         }),
@@ -256,7 +256,7 @@ fn type_env_local_binding_shadows_imported_name() {
     let visible = lookup_type_by_name(consumer.type_env.clone(), "Marker".to_string())
         .expect("consumer Marker must resolve to local shadow, not import");
     assert!(
-        !Rc::ptr_eq(&imported, &visible),
+        !Arc::ptr_eq(&imported, &visible),
         "local Marker must shadow imported Marker (distinct resolved nodes)"
     );
     assert_eq!(
@@ -288,17 +288,17 @@ fn type_env_import_resolves_via_str_bindings_index() {
         "sanity: imported Shared must resolve via merged str_bindings index"
     );
 
-    let stripped = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
+    let stripped = Arc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
-        str_bindings: Rc::new(im::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im::HashMap::new()),
+        str_bindings: Arc::new(im::HashMap::new()),
+        ancestry_str_bindings: Arc::new(im::HashMap::new()),
         parents: consumer.type_env.parents.clone(),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
-        source_visible_names: Rc::new(im::HashMap::new()),
+        source_visible_names: Arc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         module_path: consumer.type_env.module_path.clone(),
     });
@@ -322,17 +322,17 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         "sanity: imported Shared must resolve with intact parent chain"
     );
 
-    let stripped = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
+    let stripped = Arc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
         str_bindings: consumer.type_env.str_bindings.clone(),
         ancestry_str_bindings: consumer.type_env.ancestry_str_bindings.clone(),
-        parents: Rc::new(im::vector![]),
+        parents: Arc::new(im::vector![]),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
-        source_visible_names: Rc::new(im::HashMap::new()),
+        source_visible_names: Arc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         module_path: consumer.type_env.module_path.clone(),
     });
@@ -340,17 +340,17 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         lookup_type_by_name(stripped.clone(), "Shared".to_string()).is_some(),
         "parent chain drop must not break lookup when str_bindings index carries ancestry"
     );
-    let stripped_index = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
+    let stripped_index = Arc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
-        str_bindings: Rc::new(im::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im::HashMap::new()),
-        parents: Rc::new(im::vector![]),
+        str_bindings: Arc::new(im::HashMap::new()),
+        ancestry_str_bindings: Arc::new(im::HashMap::new()),
+        parents: Arc::new(im::vector![]),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
-        source_visible_names: Rc::new(im::HashMap::new()),
+        source_visible_names: Arc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         module_path: consumer.type_env.module_path.clone(),
     });
@@ -360,7 +360,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
     );
 }
 
-fn synthetic_import_chain_sources(depth: usize) -> Vec<Rc<SourceFile>> {
+fn synthetic_import_chain_sources(depth: usize) -> Vec<Arc<SourceFile>> {
     (0..depth)
         .map(|i| {
             let content = if i == 0 {
@@ -372,7 +372,7 @@ fn synthetic_import_chain_sources(depth: usize) -> Vec<Rc<SourceFile>> {
                     i - 1
                 )
             };
-            Rc::new(SourceFile {
+            Arc::new(SourceFile {
                 path: format!("chain_{i}.dag"),
                 content,
             })
@@ -430,20 +430,20 @@ fn type_env_dual_import_same_tree_collision_is_ledgered_overlay_wins_preserved()
     // earlier import (Collider=String) won, or had the collision been silently dropped to an
     // error, this would fail — so "no error" proves the overlay-wins winner is the last import.
     let sources = vec![
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "dual_a.dag".to_string(),
             content: "module test.dual_import_a\ntype Collider = String\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "dual_b.dag".to_string(),
             content: "module test.dual_import_b\ntype Collider = Int\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "consumer.dag".to_string(),
             content: "module test.dual_import_consumer\nimport test.dual_import_a\nimport test.dual_import_b\nfn pick() -> Collider { 0 }\n".to_string(),
         }),
     ];
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     let hard_errors: Vec<String> = resolved
         .diagnostics
         .iter()
@@ -473,47 +473,47 @@ fn type_env_std_types_type_variable_filtered_from_import() {
     use v1_compiler::v1_compiler_infer_env::TypeBinding;
     use v1_compiler::v1_std_core::{empty_intern_table, intern, leaf_node_with_span, make_span};
 
-    fn stub_leaf(name: &str) -> Rc<v1_compiler::v1_std_core::Node> {
+    fn stub_leaf(name: &str) -> Arc<v1_compiler::v1_std_core::Node> {
         leaf_node_with_span(name.to_string(), make_span(0, 0))
     }
 
     let intern_table = empty_intern_table();
-    let t_binding = Rc::new(TypeBinding {
+    let t_binding = Arc::new(TypeBinding {
         name: "T".to_string(),
         resolved: stub_leaf("T"),
-        provenance: Rc::new(v1_compiler::v1_std_core::SubValueRelation::SubValueUnknown),
+        provenance: Arc::new(v1_compiler::v1_std_core::SubValueRelation::SubValueUnknown),
     });
-    let int_binding = Rc::new(TypeBinding {
+    let int_binding = Arc::new(TypeBinding {
         name: "Int".to_string(),
         resolved: stub_leaf("Int"),
-        provenance: Rc::new(v1_compiler::v1_std_core::SubValueRelation::SubValueUnknown),
+        provenance: Arc::new(v1_compiler::v1_std_core::SubValueRelation::SubValueUnknown),
     });
     let t_id = intern(intern_table.clone(), "T".to_string()).id;
     let int_id = intern(intern_table.clone(), "Int".to_string()).id;
-    let parent = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
-        bindings: Rc::new(im::HashMap::from_iter([
+    let parent = Arc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
+        bindings: Arc::new(im::HashMap::from_iter([
             (t_id, t_binding.clone()),
             (int_id, int_binding.clone()),
         ])),
-        str_bindings: Rc::new(im::HashMap::from_iter([
+        str_bindings: Arc::new(im::HashMap::from_iter([
             ("T".to_string(), t_binding),
             ("Int".to_string(), int_binding),
         ])),
-        ancestry_str_bindings: Rc::new(im::HashMap::new()),
-        parents: Rc::new(im::vector![]),
-        recursive_types: Rc::new(im::vector![]),
-        recursive_type_set: Rc::new(im::HashMap::new()),
-        inductive_fields: Rc::new(im::HashMap::new()),
-        source_indices: Rc::new(im::HashMap::from_iter([(
+        ancestry_str_bindings: Arc::new(im::HashMap::new()),
+        parents: Arc::new(im::vector![]),
+        recursive_types: Arc::new(im::vector![]),
+        recursive_type_set: Arc::new(im::HashMap::new()),
+        inductive_fields: Arc::new(im::HashMap::new()),
+        source_indices: Arc::new(im::HashMap::from_iter([(
             "stub.dag".to_string(),
-            Rc::new(v1_compiler::v1_std_core::NewlineIndex {
+            Arc::new(v1_compiler::v1_std_core::NewlineIndex {
                 file: "stub.dag".to_string(),
-                offsets: Rc::new(im::vector![0]),
-                char_codes: Rc::new(im::vector![]),
+                offsets: Arc::new(im::vector![0]),
+                char_codes: Arc::new(im::vector![]),
             }),
         )])),
         intern_table: intern_table.clone(),
-        source_visible_names: Rc::new(im::HashMap::new()),
+        source_visible_names: Arc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         module_path: "stub".to_string(),
     });
@@ -542,18 +542,18 @@ fn type_env_std_types_type_variable_filtered_from_import() {
 #[test]
 fn local_variant_over_glob_imported_variant_is_a_collision() {
     let sources = vec![
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "parent.dag".to_string(),
             content: "module test.variant_shadow_parent\ntype E = Alpha { x: Int } | Beta { y: String }\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "consumer.dag".to_string(),
             content: "module test.variant_shadow_consumer\nimport test.variant_shadow_parent\ntype F = Alpha { x: String } | Gamma { z: Int }\n".to_string(),
         }),
     ];
     // Raw compile (not compile_modules): the collision IS the expected outcome,
     // so the no-hard-errors helper assertion does not apply here.
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     let has_collision = resolved.diagnostics.iter().any(|d| {
         matches!(
             &*d.diagnostic,
@@ -612,33 +612,33 @@ fn global_bare_fallback_resolves_when_corpus_wide_unique() {
     };
 
     let intern_table = empty_intern_table();
-    let binding = Rc::new(TypeBinding {
+    let binding = Arc::new(TypeBinding {
         name: "Widget".to_string(),
         resolved: leaf_node_with_span("Widget".to_string(), make_span(0, 0)),
-        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+        provenance: Arc::new(SubValueRelation::SubValueUnknown),
     });
-    let env = Rc::new(TypeEnv {
-        bindings: Rc::new(im::HashMap::new()),
-        str_bindings: Rc::new(im::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im::HashMap::new()),
-        parents: Rc::new(im::vector![]),
-        recursive_types: Rc::new(im::vector![]),
-        recursive_type_set: Rc::new(im::HashMap::new()),
-        inductive_fields: Rc::new(im::HashMap::new()),
-        source_indices: Rc::new(im::HashMap::new()),
+    let env = Arc::new(TypeEnv {
+        bindings: Arc::new(im::HashMap::new()),
+        str_bindings: Arc::new(im::HashMap::new()),
+        ancestry_str_bindings: Arc::new(im::HashMap::new()),
+        parents: Arc::new(im::vector![]),
+        recursive_types: Arc::new(im::vector![]),
+        recursive_type_set: Arc::new(im::HashMap::new()),
+        inductive_fields: Arc::new(im::HashMap::new()),
+        source_indices: Arc::new(im::HashMap::new()),
         intern_table,
-        source_visible_names: Rc::new(im::HashMap::new()),
+        source_visible_names: Arc::new(im::HashMap::new()),
         module_path: "probe.consumer".to_string(),
-        symbol_index: Rc::new(SymbolIndex {
-            entries: Rc::new(im::HashMap::new()),
-            global_bare: Rc::new(im::HashMap::from_iter([(
+        symbol_index: Arc::new(SymbolIndex {
+            entries: Arc::new(im::HashMap::new()),
+            global_bare: Arc::new(im::HashMap::from_iter([(
                 "Widget".to_string(),
-                Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
+                Arc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
                     module_path: "probe.def".to_string(),
                     binding: binding.clone(),
                 }),
             )])),
-            services: Rc::new(im::HashMap::new()),
+            services: Arc::new(im::HashMap::new()),
         }),
     });
 
@@ -657,27 +657,27 @@ fn global_bare_fallback_stays_absent_when_corpus_wide_ambiguous() {
     };
     use v1_compiler::v1_std_core::empty_intern_table;
 
-    let env = Rc::new(TypeEnv {
-        bindings: Rc::new(im::HashMap::new()),
-        str_bindings: Rc::new(im::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im::HashMap::new()),
-        parents: Rc::new(im::vector![]),
-        recursive_types: Rc::new(im::vector![]),
-        recursive_type_set: Rc::new(im::HashMap::new()),
-        inductive_fields: Rc::new(im::HashMap::new()),
-        source_indices: Rc::new(im::HashMap::new()),
+    let env = Arc::new(TypeEnv {
+        bindings: Arc::new(im::HashMap::new()),
+        str_bindings: Arc::new(im::HashMap::new()),
+        ancestry_str_bindings: Arc::new(im::HashMap::new()),
+        parents: Arc::new(im::vector![]),
+        recursive_types: Arc::new(im::vector![]),
+        recursive_type_set: Arc::new(im::HashMap::new()),
+        inductive_fields: Arc::new(im::HashMap::new()),
+        source_indices: Arc::new(im::HashMap::new()),
         intern_table: empty_intern_table(),
-        source_visible_names: Rc::new(im::HashMap::new()),
+        source_visible_names: Arc::new(im::HashMap::new()),
         module_path: "probe.consumer".to_string(),
-        symbol_index: Rc::new(SymbolIndex {
-            entries: Rc::new(im::HashMap::new()),
-            global_bare: Rc::new(im::HashMap::from_iter([(
+        symbol_index: Arc::new(SymbolIndex {
+            entries: Arc::new(im::HashMap::new()),
+            global_bare: Arc::new(im::HashMap::from_iter([(
                 "Widget".to_string(),
-                Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                    candidates: Rc::new(im::vector![]),
+                Arc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                    candidates: Arc::new(im::vector![]),
                 }),
             )])),
-            services: Rc::new(im::HashMap::new()),
+            services: Arc::new(im::HashMap::new()),
         }),
     });
 

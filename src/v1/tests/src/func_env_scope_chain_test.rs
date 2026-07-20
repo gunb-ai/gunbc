@@ -1,7 +1,7 @@
 use im::HashMap;
 use std::collections::HashSet;
 use std::fs;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -60,13 +60,13 @@ fn temp_dir(label: &str) -> std::path::PathBuf {
     dir
 }
 
-fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
+fn rc_identity_fixture_sources() -> Vec<Arc<SourceFile>> {
     vec![
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "definer.dag".to_string(),
             content: "module test.func_env_rc_definer\nfn shared_fn() -> Int { 7 }\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "consumer.dag".to_string(),
             content: "module test.func_env_rc_consumer\nimport test.func_env_rc_definer\nfn call_shared() -> Int { shared_fn() }\n".to_string(),
         }),
@@ -75,7 +75,7 @@ fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
 
 fn assert_rc_identity_across_import_chain(
     graph: &ResolvedGraph,
-    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    source_indices: &Arc<im::HashMap<String, Arc<v1_compiler::v1_std_core::NewlineIndex>>>,
 ) {
     let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_definer");
     let use_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_consumer");
@@ -88,21 +88,21 @@ fn assert_rc_identity_across_import_chain(
     )
     .expect("consumer lookup shared_fn");
     assert!(
-        Rc::ptr_eq(&def_sig, &use_sig),
+        Arc::ptr_eq(&def_sig, &use_sig),
         "import chain must reach the defining module's Rc, not a fresh clone"
     );
 }
 
 fn collect_func_sig_ptrs(env: &ResolvedFuncEnv, out: &mut HashSet<*const ResolvedFuncSig>) {
     for sig in env.local.iter() {
-        out.insert(Rc::as_ptr(sig.1));
+        out.insert(Arc::as_ptr(sig.1));
     }
     for parent in env.parents.iter() {
         collect_func_sig_ptrs(parent, out);
     }
 }
 
-fn unique_func_sig_ptr_count_modules(modules: &im::Vector<Rc<TypedModule>>) -> usize {
+fn unique_func_sig_ptr_count_modules(modules: &im::Vector<Arc<TypedModule>>) -> usize {
     let mut ptrs = HashSet::new();
     for m in modules.iter() {
         collect_func_sig_ptrs(&m.func_env, &mut ptrs);
@@ -110,7 +110,7 @@ fn unique_func_sig_ptr_count_modules(modules: &im::Vector<Rc<TypedModule>>) -> u
     ptrs.len()
 }
 
-fn sum_local_func_sig_defs_modules(modules: &im::Vector<Rc<TypedModule>>) -> usize {
+fn sum_local_func_sig_defs_modules(modules: &im::Vector<Arc<TypedModule>>) -> usize {
     modules.iter().map(|m| m.func_env.local.len()).sum()
 }
 
@@ -135,35 +135,35 @@ fn assert_resolved_no_hard_errors(
 }
 
 fn compile_modules(
-    sources: Vec<Rc<SourceFile>>,
-) -> Rc<v1_compiler::v1_compiler_compile::ResolvedPipelineResult> {
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    sources: Vec<Arc<SourceFile>>,
+) -> Arc<v1_compiler::v1_compiler_compile::ResolvedPipelineResult> {
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     resolved
 }
 
 fn typed_module_by_name<'a>(
-    modules: &'a im::Vector<Rc<TypedModule>>,
-    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    modules: &'a im::Vector<Arc<TypedModule>>,
+    source_indices: &Arc<im::HashMap<String, Arc<v1_compiler::v1_std_core::NewlineIndex>>>,
     name: &str,
-) -> &'a Rc<TypedModule> {
+) -> &'a Arc<TypedModule> {
     modules
         .iter()
         .find(|m| authored_name_at(source_indices.clone(), m.module.clone()) == name)
         .unwrap_or_else(|| panic!("module {name} not found"))
 }
 
-fn shadow_fixture_sources() -> Vec<Rc<SourceFile>> {
+fn shadow_fixture_sources() -> Vec<Arc<SourceFile>> {
     vec![
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "shadow_first.dag".to_string(),
             content: "module test.func_env_shadow_first\nfn marker() -> Int { 1 }\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "shadow_second.dag".to_string(),
             content: "module test.func_env_shadow_second\nfn marker() -> Int { 2 }\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "shadow_consumer.dag".to_string(),
             content: "module test.func_env_shadow_consumer\nimport test.func_env_shadow_first\nimport test.func_env_shadow_second\nfn use_marker() -> Int { marker() }\n".to_string(),
         }),
@@ -183,15 +183,15 @@ fn func_env_import_shadowing_last_import_wins() {
 #[test]
 fn func_env_local_shadow_beats_imports() {
     let sources = vec![
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "shadow_first.dag".to_string(),
             content: "module test.func_env_shadow_first\nfn marker() -> Int { 1 }\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "shadow_second.dag".to_string(),
             content: "module test.func_env_shadow_second\nfn marker() -> Int { 2 }\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "shadow_local_consumer.dag".to_string(),
             content: "module test.func_env_shadow_local_consumer\nimport test.func_env_shadow_first\nimport test.func_env_shadow_second\nfn marker() -> Int { 3 }\nfn use_marker() -> Int { marker() }\n".to_string(),
         }),
@@ -299,17 +299,17 @@ fn func_env_dropped_parent_chain_fails_lookup() {
         "sanity: imported shared_fn must resolve with intact parent chain"
     );
 
-    let stripped = Rc::new(ResolvedFuncEnv {
+    let stripped = Arc::new(ResolvedFuncEnv {
         name: consumer.func_env.name.clone(),
         local: consumer.func_env.local.clone(),
-        parents: Rc::new(im::vector![]),
+        parents: Arc::new(im::vector![]),
     });
     // The global-bare census fallback (namespace wave-1) would rescue a stripped
     // chain through type_env; withhold it so the perturbation isolates the chain-walk.
-    let census_stripped_env = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
-        bindings: Rc::new(HashMap::new()),
-        str_bindings: Rc::new(HashMap::new()),
-        ancestry_str_bindings: Rc::new(HashMap::new()),
+    let census_stripped_env = Arc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
+        bindings: Arc::new(HashMap::new()),
+        str_bindings: Arc::new(HashMap::new()),
+        ancestry_str_bindings: Arc::new(HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         ..(*consumer.type_env).clone()
     });
@@ -332,16 +332,16 @@ fn func_env_dropped_parent_chain_fails_lookup() {
         })
         .expect("call_shared item in rc_identity consumer fixture");
     let body = call_shared.body.clone().expect("call_shared body expr");
-    let stripped_scope = Rc::new(InferScope {
+    let stripped_scope = Arc::new(InferScope {
         type_env: census_stripped_env,
         func_env: stripped,
-        locals: Rc::new(HashMap::new()),
-        body_locals: Rc::new(HashMap::new()),
-        match_bound_names: Rc::new(HashMap::new()),
+        locals: Arc::new(HashMap::new()),
+        body_locals: Arc::new(HashMap::new()),
+        match_bound_names: Arc::new(HashMap::new()),
         module_name: "test.func_env_rc_consumer".to_string(),
-        service_registry: Rc::new(HashMap::new()),
+        service_registry: Arc::new(HashMap::new()),
         item_registry: consumer.item_registry.clone(),
-        lambda_param_provenance: Rc::new(HashMap::new()),
+        lambda_param_provenance: Arc::new(HashMap::new()),
     });
     let reinfer = infer_expr(body, stripped_scope, None);
     let diag_msgs: Vec<String> = reinfer

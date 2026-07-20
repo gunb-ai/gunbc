@@ -28,7 +28,7 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -48,24 +48,24 @@ pub struct ItemInfo {
     pub name: String,
     pub module_name: String,
     pub kind: ItemKind,
-    pub service_names: Rc<Vec<String>>,
-    pub resource_names: Rc<Vec<String>>,
-    pub params: Rc<Vec<Rc<Node>>>,
+    pub service_names: Arc<Vec<String>>,
+    pub resource_names: Arc<Vec<String>>,
+    pub params: Arc<Vec<Arc<Node>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleInterface {
-    pub summary: Rc<InterfaceSummary>,
-    pub env: Rc<TypeEnv>,
-    pub cache: Rc<TypeEnvCache>,
+    pub summary: Arc<InterfaceSummary>,
+    pub env: Arc<TypeEnv>,
+    pub cache: Arc<TypeEnvCache>,
 }
 
 pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> String {
     thread_local! {
         static CACHED: String = {
-            "🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.".to_string()
+            "🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Arc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -73,41 +73,41 @@ pub fn typed_module_interface_body_dual_field_dissolution_trigger() -> String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedModule {
-    pub module: Rc<Node>,
-    pub items: Rc<Vec<Rc<Node>>>,
-    pub type_env: Rc<TypeEnv>,
-    pub type_env_cache: Rc<TypeEnvCache>,
-    pub interface: Rc<ModuleInterface>,
-    pub func_env: Rc<ResolvedFuncEnv>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub module: Arc<Node>,
+    pub items: Arc<Vec<Arc<Node>>>,
+    pub type_env: Arc<TypeEnv>,
+    pub type_env_cache: Arc<TypeEnvCache>,
+    pub interface: Arc<ModuleInterface>,
+    pub func_env: Arc<ResolvedFuncEnv>,
+    pub item_registry: Arc<HashMap<String, Arc<ItemInfo>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedGraph {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub modules: Arc<Vec<Arc<TypedModule>>>,
+    pub item_registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedGraph {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub emit_graph_info: Rc<EmitGraphInfo>,
+    pub modules: Arc<Vec<Arc<TypedModule>>>,
+    pub item_registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
+    pub emit_graph_info: Arc<EmitGraphInfo>,
 }
 
 pub fn inferred_to_outputs(
-    inferred: Option<Rc<InferredNode>>,
-    span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<Rc<Node>>> {
+    inferred: Option<Arc<InferredNode>>,
+    span: Arc<SourceSpan>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<Arc<Node>>> {
     if (inferred.clone() == None) {
-        Rc::new(vec![])
+        Arc::new(vec![])
     } else {
         match (*inferred.clone().unwrap()).clone() {
-            InferredNode::CompilerError { .. } => Rc::new(vec![]),
-            InferredNode::TypeVariable { id: _, .. } => Rc::new(vec![]),
+            InferredNode::CompilerError { .. } => Arc::new(vec![]),
+            InferredNode::TypeVariable { id: _, .. } => Arc::new(vec![]),
             InferredNode::Resolved { node: rt, .. } => {
                 let has_structure = (rt.connective.clone() != Connective::NoConnective);
                 if has_structure.clone() {
@@ -115,7 +115,7 @@ pub fn inferred_to_outputs(
                         let is_product = (rt.connective.clone() == Connective::Conj);
                         if is_product.clone() {
                             if (rt.ident_span.clone() == None) {
-                                Rc::new({
+                                Arc::new({
                                     let mut __result = Vec::new();
                                     for child in rt.children.clone().iter().cloned() {
                                         __result.push({
@@ -137,7 +137,7 @@ pub fn inferred_to_outputs(
                                     __result
                                 })
                             } else {
-                                Rc::new(vec![make_field_node(
+                                Arc::new(vec![make_field_node(
                                     "value".to_string(),
                                     rt.clone(),
                                     Cardinality::Required,
@@ -148,7 +148,7 @@ pub fn inferred_to_outputs(
                                 )])
                             }
                         } else {
-                            Rc::new(vec![make_field_node(
+                            Arc::new(vec![make_field_node(
                                 "value".to_string(),
                                 rt.clone(),
                                 Cardinality::Required,
@@ -163,9 +163,9 @@ pub fn inferred_to_outputs(
                     if ((rt.connective.clone() == Connective::Conj)
                         && ((rt.children.clone().len() as i64) == 0))
                     {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     } else {
-                        Rc::new(vec![make_field_node(
+                        Arc::new(vec![make_field_node(
                             "value".to_string(),
                             rt.clone(),
                             Cardinality::Required,
@@ -181,7 +181,7 @@ pub fn inferred_to_outputs(
     }
 }
 
-pub fn item_kind(item: Rc<Node>) -> ItemKind {
+pub fn item_kind(item: Arc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective)
             && (item.transport.clone() == None))

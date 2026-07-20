@@ -27,7 +27,7 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -50,12 +50,12 @@ pub struct EdgeClassification {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingUsage {
     pub name: String,
-    pub binding_kind: Option<Rc<VarBindingKind>>,
-    pub consumers: Rc<Vec<Rc<EdgeClassification>>>,
+    pub binding_kind: Option<Arc<VarBindingKind>>,
+    pub consumers: Arc<Vec<Arc<EdgeClassification>>>,
 }
 
-pub fn semantic_consumer_count(usage: Rc<BindingUsage>) -> i64 {
-    (Rc::new({
+pub fn semantic_consumer_count(usage: Arc<BindingUsage>) -> i64 {
+    (Arc::new({
         let mut __result = Vec::new();
         for c in usage.consumers.clone().iter().cloned() {
             if match c.kind.clone() {
@@ -70,8 +70,8 @@ pub fn semantic_consumer_count(usage: Rc<BindingUsage>) -> i64 {
     .len() as i64)
 }
 
-pub fn binding_fan_out(usage: Rc<BindingUsage>) -> i64 {
-    (Rc::new({
+pub fn binding_fan_out(usage: Arc<BindingUsage>) -> i64 {
+    (Arc::new({
         let mut __result = Vec::new();
         for c in usage.consumers.clone().iter().cloned() {
             if match c.kind.clone() {
@@ -96,7 +96,7 @@ pub enum OwnershipDecision {
     SharedError {
         binding: String,
         consumer_count: i64,
-        sites: Rc<Vec<String>>,
+        sites: Arc<Vec<String>>,
     },
     Unclassified {
         binding: String,
@@ -127,53 +127,53 @@ pub struct FoldAccUnwrapProof {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FoldAccUseSummary {
     pub whole_acc_uses: i64,
-    pub field_moves: Rc<Vec<String>>,
+    pub field_moves: Arc<Vec<String>>,
     pub nested_acc_refs: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipProof {
     pub func_name: String,
-    pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
-    pub decisions: Rc<Vec<Rc<OwnershipDecision>>>,
-    pub fold_acc_unwrap: Rc<Vec<Rc<FoldAccUnwrapProof>>>,
+    pub bindings: Arc<HashMap<String, Arc<BindingUsage>>>,
+    pub decisions: Arc<Vec<Arc<OwnershipDecision>>>,
+    pub fold_acc_unwrap: Arc<Vec<Arc<FoldAccUnwrapProof>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UsageAccum {
-    pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
-    pub fold_call_nodes: Rc<Vec<Rc<Node>>>,
-    pub touched: Rc<Vec<String>>,
+    pub bindings: Arc<HashMap<String, Arc<BindingUsage>>>,
+    pub fold_call_nodes: Arc<Vec<Arc<Node>>>,
+    pub touched: Arc<Vec<String>>,
 }
 
-pub fn empty_usage_accum() -> Rc<UsageAccum> {
-    Rc::new(UsageAccum {
-        bindings: v1_rt::rc_empty_map::<String, Rc<BindingUsage>>(),
-        fold_call_nodes: Rc::new(vec![]),
-        touched: Rc::new(vec![]),
+pub fn empty_usage_accum() -> Arc<UsageAccum> {
+    Arc::new(UsageAccum {
+        bindings: v1_rt::rc_empty_map::<String, Arc<BindingUsage>>(),
+        fold_call_nodes: Arc::new(vec![]),
+        touched: Arc::new(vec![]),
     })
 }
 
 pub fn record_use(
-    accum: Rc<UsageAccum>,
+    accum: Arc<UsageAccum>,
     name: String,
     kind: EdgeKind,
     site: String,
-    binding_kind: Option<Rc<VarBindingKind>>,
+    binding_kind: Option<Arc<VarBindingKind>>,
     span_start: i64,
-) -> Rc<UsageAccum> {
+) -> Arc<UsageAccum> {
     {
-        let edge = Rc::new(EdgeClassification {
+        let edge = Arc::new(EdgeClassification {
             kind: kind.clone(),
             site: site.clone(),
             span_start: span_start.clone(),
         });
         let existing = match v1_rt::map_get(&accum.bindings.clone(), name.clone()) {
             Some(usage) => usage.clone(),
-            None => Rc::new(BindingUsage {
+            None => Arc::new(BindingUsage {
                 name: name.clone(),
                 binding_kind: None,
-                consumers: Rc::new(vec![]),
+                consumers: Arc::new(vec![]),
             }),
         };
         let effective_kind = if (existing.binding_kind.clone() != None) {
@@ -181,12 +181,12 @@ pub fn record_use(
         } else {
             binding_kind.clone()
         };
-        let updated = Rc::new(BindingUsage {
+        let updated = Arc::new(BindingUsage {
             name: name.clone(),
             binding_kind: effective_kind.clone(),
             consumers: v1_rt::rc_list_push(existing.consumers.clone(), edge.clone()),
         });
-        Rc::new(UsageAccum {
+        Arc::new(UsageAccum {
             bindings: v1_rt::rc_map_insert(accum.bindings.clone(), name.clone(), updated.clone()),
             fold_call_nodes: accum.fold_call_nodes.clone(),
             touched: v1_rt::rc_list_push(accum.touched.clone(), name.clone()),
@@ -194,7 +194,7 @@ pub fn record_use(
     }
 }
 
-pub fn max_usage_by_fan_out(a: Rc<BindingUsage>, b: Rc<BindingUsage>) -> Rc<BindingUsage> {
+pub fn max_usage_by_fan_out(a: Arc<BindingUsage>, b: Arc<BindingUsage>) -> Arc<BindingUsage> {
     if (binding_fan_out(b.clone()) > binding_fan_out(a.clone())) {
         b.clone()
     } else {
@@ -203,10 +203,10 @@ pub fn max_usage_by_fan_out(a: Rc<BindingUsage>, b: Rc<BindingUsage>) -> Rc<Bind
 }
 
 pub fn map_usage_merge_at(
-    base: Rc<HashMap<String, Rc<BindingUsage>>>,
+    base: Arc<HashMap<String, Arc<BindingUsage>>>,
     key: String,
-    new_val: Rc<BindingUsage>,
-) -> Rc<HashMap<String, Rc<BindingUsage>>> {
+    new_val: Arc<BindingUsage>,
+) -> Arc<HashMap<String, Arc<BindingUsage>>> {
     match v1_rt::map_get(&base, key.clone()) {
         Some(existing) => v1_rt::rc_map_insert(
             base.clone(),
@@ -217,46 +217,47 @@ pub fn map_usage_merge_at(
     }
 }
 
-pub fn branch_seed(from: Rc<UsageAccum>) -> Rc<UsageAccum> {
-    Rc::new(UsageAccum {
+pub fn branch_seed(from: Arc<UsageAccum>) -> Arc<UsageAccum> {
+    Arc::new(UsageAccum {
         bindings: from.bindings.clone(),
         fold_call_nodes: from.fold_call_nodes.clone(),
-        touched: Rc::new(vec![]),
+        touched: Arc::new(vec![]),
     })
 }
 
 pub fn merge_branch_usages(
-    base: Rc<UsageAccum>,
-    branches: Rc<Vec<Rc<UsageAccum>>>,
-) -> Rc<UsageAccum> {
+    base: Arc<UsageAccum>,
+    branches: Arc<Vec<Arc<UsageAccum>>>,
+) -> Arc<UsageAccum> {
     {
         let binding_merged = branches.clone().iter().cloned().fold(
             base.bindings.clone(),
-            |merged: Rc<HashMap<String, Rc<BindingUsage>>>, branch: Rc<UsageAccum>| {
+            |merged: Arc<HashMap<String, Arc<BindingUsage>>>, branch: Arc<UsageAccum>| {
                 branch.touched.clone().iter().cloned().fold(
                     merged,
-                    |acc: Rc<HashMap<String, Rc<BindingUsage>>>, name: String| match v1_rt::map_get(
-                        &branch.bindings.clone(),
-                        name.clone(),
-                    ) {
-                        Some(usage) => map_usage_merge_at(acc.clone(), name.clone(), usage.clone()),
-                        None => acc.clone(),
+                    |acc: Arc<HashMap<String, Arc<BindingUsage>>>, name: String| {
+                        match v1_rt::map_get(&branch.bindings.clone(), name.clone()) {
+                            Some(usage) => {
+                                map_usage_merge_at(acc.clone(), name.clone(), usage.clone())
+                            }
+                            None => acc.clone(),
+                        }
                     },
                 )
             },
         );
         let touched_merged = branches.clone().iter().cloned().fold(
             base.touched.clone(),
-            |acc: Rc<Vec<String>>, branch: Rc<UsageAccum>| {
+            |acc: Arc<Vec<String>>, branch: Arc<UsageAccum>| {
                 v1_rt::concat(acc, branch.touched.clone())
             },
         );
         let base_fold_count = (base.fold_call_nodes.clone().len() as i64);
-        let branch_fold_nodes = Rc::new({
+        let branch_fold_nodes = Arc::new({
             let mut __result = Vec::new();
             for b in branches.clone().iter().cloned() {
                 __result.extend(
-                    (*Rc::new(
+                    (*Arc::new(
                         b.fold_call_nodes
                             .clone()
                             .iter()
@@ -270,7 +271,7 @@ pub fn merge_branch_usages(
             }
             __result
         });
-        Rc::new(UsageAccum {
+        Arc::new(UsageAccum {
             bindings: binding_merged.clone(),
             fold_call_nodes: v1_rt::concat(base.fold_call_nodes.clone(), branch_fold_nodes.clone()),
             touched: touched_merged.clone(),
@@ -279,11 +280,11 @@ pub fn merge_branch_usages(
 }
 
 pub fn walk_expr(
-    accum: Rc<UsageAccum>,
-    texpr: Rc<Node>,
+    accum: Arc<UsageAccum>,
+    texpr: Arc<Node>,
     in_tail: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<UsageAccum> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<UsageAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -335,7 +336,7 @@ pub fn walk_expr(
                 let fname = expr_call_func_at(texpr.clone(), si.clone());
                 if (fname.clone() == "fold".to_string()) {
                     {
-                        let init_arg = Rc::new({
+                        let init_arg = Arc::new({
                             let mut __result = Vec::new();
                             for a in texpr.children.clone().iter().cloned() {
                                 if (authored_name_at(si.clone(), a.clone()) == "init".to_string()) {
@@ -370,7 +371,7 @@ pub fn walk_expr(
                             }
                             None => accum.clone(),
                         };
-                        let non_init = Rc::new({
+                        let non_init = Arc::new({
                             let mut __result = Vec::new();
                             for a in texpr.children.clone().iter().cloned() {
                                 if (authored_name_at(si.clone(), a.clone()) != "init".to_string()) {
@@ -381,7 +382,7 @@ pub fn walk_expr(
                         });
                         non_init.clone().iter().cloned().fold(
                             threaded_accum.clone(),
-                            |acc: Rc<UsageAccum>, a: Rc<Node>| {
+                            |acc: Arc<UsageAccum>, a: Arc<Node>| {
                                 walk_expr(acc, arg_value(a.clone()), false, si.clone())
                             },
                         )
@@ -389,7 +390,7 @@ pub fn walk_expr(
                 } else {
                     texpr.children.clone().iter().cloned().fold(
                         accum.clone(),
-                        |acc: Rc<UsageAccum>, a: Rc<Node>| {
+                        |acc: Arc<UsageAccum>, a: Arc<Node>| {
                             walk_expr(acc, arg_value(a.clone()), false, si.clone())
                         },
                     )
@@ -402,7 +403,7 @@ pub fn walk_expr(
                 if (mname.clone() == "fold".to_string()) {
                     {
                         let recv_accum = walk_expr(accum.clone(), recv.clone(), false, si.clone());
-                        let init_arg = Rc::new({
+                        let init_arg = Arc::new({
                             let mut __result = Vec::new();
                             for a in mc_args.clone().iter().cloned() {
                                 if (authored_name_at(si.clone(), a.clone()) == "init".to_string()) {
@@ -440,7 +441,7 @@ pub fn walk_expr(
                             }
                             None => recv_accum.clone(),
                         };
-                        let non_init = Rc::new({
+                        let non_init = Arc::new({
                             let mut __result = Vec::new();
                             for a in mc_args.clone().iter().cloned() {
                                 if (authored_name_at(si.clone(), a.clone()) != "init".to_string()) {
@@ -451,11 +452,11 @@ pub fn walk_expr(
                         });
                         let walked = non_init.clone().iter().cloned().fold(
                             threaded_accum.clone(),
-                            |acc: Rc<UsageAccum>, a: Rc<Node>| {
+                            |acc: Arc<UsageAccum>, a: Arc<Node>| {
                                 walk_expr(acc, arg_value(a.clone()), false, si.clone())
                             },
                         );
-                        Rc::new(UsageAccum {
+                        Arc::new(UsageAccum {
                             bindings: walked.bindings.clone(),
                             fold_call_nodes: v1_rt::rc_list_push(
                                 walked.fold_call_nodes.clone(),
@@ -469,7 +470,7 @@ pub fn walk_expr(
                         let recv_accum = walk_expr(accum.clone(), recv.clone(), false, si.clone());
                         mc_args.clone().iter().cloned().fold(
                             recv_accum.clone(),
-                            |acc: Rc<UsageAccum>, a: Rc<Node>| {
+                            |acc: Arc<UsageAccum>, a: Arc<Node>| {
                                 walk_expr(acc, arg_value(a.clone()), false, si.clone())
                             },
                         )
@@ -481,7 +482,7 @@ pub fn walk_expr(
                 let arm_nodes = match_arm_nodes(texpr.clone());
                 let s_accum = walk_expr(accum.clone(), scrut.clone(), false, si.clone());
                 let seed = branch_seed(s_accum.clone());
-                let branch_accums = Rc::new({
+                let branch_accums = Arc::new({
                     let mut __result = Vec::new();
                     for arm_node in arm_nodes.clone().iter().cloned() {
                         __result.push(walk_expr(
@@ -507,7 +508,7 @@ pub fn walk_expr(
                 };
                 merge_branch_usages(
                     c_accum.clone(),
-                    Rc::new(vec![t_accum.clone(), e_accum.clone()]),
+                    Arc::new(vec![t_accum.clone(), e_accum.clone()]),
                 )
             }
             ExprData::ExprLet => {
@@ -525,9 +526,9 @@ pub fn walk_expr(
                     accum.clone()
                 } else {
                     {
-                        let init_accum = Rc::new({
+                        let init_accum = Arc::new({
                             let mut __result = Vec::new();
-                            for p in Rc::new(
+                            for p in Arc::new(
                                 ss.clone()
                                     .iter()
                                     .cloned()
@@ -548,7 +549,7 @@ pub fn walk_expr(
                         .cloned()
                         .fold(
                             accum.clone(),
-                            |acc: Rc<UsageAccum>, p: (i64, Rc<Node>)| {
+                            |acc: Arc<UsageAccum>, p: (i64, Arc<Node>)| {
                                 walk_expr(acc, p.1.clone(), false, si.clone())
                             },
                         );
@@ -566,19 +567,19 @@ pub fn walk_expr(
             }
             ExprData::ExprReturn => texpr.children.clone().iter().cloned().fold(
                 accum.clone(),
-                |acc: Rc<UsageAccum>, child: Rc<Node>| {
+                |acc: Arc<UsageAccum>, child: Arc<Node>| {
                     walk_expr(acc, child.clone(), true, si.clone())
                 },
             ),
             ExprData::ExprLambda => {
                 let body = lambda_body(texpr.clone());
                 let inner = walk_expr(empty_usage_accum(), body.clone(), false, si.clone());
-                let binding_merged = Rc::new(v1_rt::map_values(&inner.bindings.clone()))
+                let binding_merged = Arc::new(v1_rt::map_values(&inner.bindings.clone()))
                     .iter()
                     .cloned()
                     .fold(
                         accum.clone(),
-                        |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
+                        |acc: Arc<UsageAccum>, usage: Arc<BindingUsage>| {
                             record_use(
                                 acc,
                                 usage.name.clone(),
@@ -589,7 +590,7 @@ pub fn walk_expr(
                             )
                         },
                     );
-                Rc::new(UsageAccum {
+                Arc::new(UsageAccum {
                     bindings: binding_merged.bindings.clone(),
                     fold_call_nodes: v1_rt::concat(
                         binding_merged.fold_call_nodes.clone(),
@@ -603,12 +604,12 @@ pub fn walk_expr(
                 let coll_accum = walk_expr(accum.clone(), coll.clone(), false, si.clone());
                 let body = foreach_body(texpr.clone());
                 let inner = walk_expr(empty_usage_accum(), body.clone(), false, si.clone());
-                let binding_merged = Rc::new(v1_rt::map_values(&inner.bindings.clone()))
+                let binding_merged = Arc::new(v1_rt::map_values(&inner.bindings.clone()))
                     .iter()
                     .cloned()
                     .fold(
                         coll_accum.clone(),
-                        |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
+                        |acc: Arc<UsageAccum>, usage: Arc<BindingUsage>| {
                             record_use(
                                 acc,
                                 usage.name.clone(),
@@ -619,7 +620,7 @@ pub fn walk_expr(
                             )
                         },
                     );
-                Rc::new(UsageAccum {
+                Arc::new(UsageAccum {
                     bindings: binding_merged.bindings.clone(),
                     fold_call_nodes: v1_rt::concat(
                         binding_merged.fold_call_nodes.clone(),
@@ -630,7 +631,7 @@ pub fn walk_expr(
             }
             _ => texpr.children.clone().iter().cloned().fold(
                 accum.clone(),
-                |acc: Rc<UsageAccum>, child: Rc<Node>| {
+                |acc: Arc<UsageAccum>, child: Arc<Node>| {
                     walk_expr(acc, child.clone(), false, si.clone())
                 },
             ),
@@ -638,12 +639,12 @@ pub fn walk_expr(
     })
 }
 
-pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
+pub fn make_decision(usage: Arc<BindingUsage>) -> Arc<OwnershipDecision> {
     {
         let sc = semantic_consumer_count(usage.clone());
         if (sc.clone() == 1) {
             {
-                let consumed_sites = Rc::new({
+                let consumed_sites = Arc::new({
                     let mut __result = Vec::new();
                     for c in usage.consumers.clone().iter().cloned() {
                         if match c.kind.clone() {
@@ -659,7 +660,7 @@ pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
                     Some(c) => c.site.clone(),
                     None => "unknown".to_string(),
                 };
-                Rc::new(OwnershipDecision::SoleOwner {
+                Arc::new(OwnershipDecision::SoleOwner {
                     binding: usage.name.clone(),
                     site: site.clone(),
                 })
@@ -667,9 +668,9 @@ pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
         } else {
             if (sc.clone() > 1) {
                 {
-                    let sites = Rc::new({
+                    let sites = Arc::new({
                         let mut __result = Vec::new();
-                        for c in Rc::new({
+                        for c in Arc::new({
                             let mut __result = Vec::new();
                             for c in usage.consumers.clone().iter().cloned() {
                                 if match c.kind.clone() {
@@ -688,14 +689,14 @@ pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
                         }
                         __result
                     });
-                    Rc::new(OwnershipDecision::SharedError {
+                    Arc::new(OwnershipDecision::SharedError {
                         binding: usage.name.clone(),
                         consumer_count: sc.clone(),
                         sites: sites.clone(),
                     })
                 }
             } else {
-                Rc::new(OwnershipDecision::Unclassified {
+                Arc::new(OwnershipDecision::Unclassified {
                     binding: usage.name.clone(),
                     reason: "no consumers found".to_string(),
                 })
@@ -704,15 +705,15 @@ pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
     }
 }
 
-pub fn is_owned_local(kind: Option<Rc<VarBindingKind>>) -> bool {
+pub fn is_owned_local(kind: Option<Arc<VarBindingKind>>) -> bool {
     match kind.clone().as_deref().cloned() {
         Some(VarBindingKind::LocalValueBinding) => true,
         _ => false,
     }
 }
 
-pub fn whole_value_borrow_count(usage: Rc<BindingUsage>) -> i64 {
-    (Rc::new({
+pub fn whole_value_borrow_count(usage: Arc<BindingUsage>) -> i64 {
+    (Arc::new({
         let mut __result = Vec::new();
         for c in usage.consumers.clone().iter().cloned() {
             if match c.kind.clone() {
@@ -729,12 +730,12 @@ pub fn whole_value_borrow_count(usage: Rc<BindingUsage>) -> i64 {
 }
 
 pub fn build_movable_set(
-    proof: Rc<OwnershipProof>,
-    param_names: Rc<BTreeSet<String>>,
-) -> Rc<BTreeSet<String>> {
-    Rc::new({
+    proof: Arc<OwnershipProof>,
+    param_names: Arc<BTreeSet<String>>,
+) -> Arc<BTreeSet<String>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
+        for usage in Arc::new(v1_rt::map_values(&proof.bindings.clone()))
             .iter()
             .cloned()
         {
@@ -754,19 +755,19 @@ pub fn build_movable_set(
     .cloned()
     .fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
+        |acc: Arc<BTreeSet<String>>, usage: Arc<BindingUsage>| {
             v1_rt::rc_set_insert(acc, usage.name.clone())
         },
     )
 }
 
 pub fn build_read_only_params(
-    proof: Rc<OwnershipProof>,
-    param_names: Rc<BTreeSet<String>>,
-) -> Rc<BTreeSet<String>> {
-    Rc::new({
+    proof: Arc<OwnershipProof>,
+    param_names: Arc<BTreeSet<String>>,
+) -> Arc<BTreeSet<String>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
+        for usage in Arc::new(v1_rt::map_values(&proof.bindings.clone()))
             .iter()
             .cloned()
         {
@@ -798,16 +799,16 @@ pub fn build_read_only_params(
     .cloned()
     .fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
+        |acc: Arc<BTreeSet<String>>, usage: Arc<BindingUsage>| {
             v1_rt::rc_set_insert(acc, usage.name.clone())
         },
     )
 }
 
 pub fn collect_callable_refs(
-    texpr: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<BTreeSet<String>> {
+    texpr: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<BTreeSet<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -825,7 +826,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
+                |acc: Arc<BTreeSet<String>>, a: Arc<Node>| {
                     v1_rt::rc_set_union(
                         acc,
                         collect_callable_refs(arg_value(a.clone()), si.clone()),
@@ -839,7 +840,7 @@ pub fn collect_callable_refs(
                 let recv = collect_callable_refs(method_receiver(texpr.clone()), si.clone());
                 method_arg_nodes(texpr.clone()).iter().cloned().fold(
                     recv.clone(),
-                    |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
+                    |acc: Arc<BTreeSet<String>>, a: Arc<Node>| {
                         v1_rt::rc_set_union(
                             acc,
                             collect_callable_refs(arg_value(a.clone()), si.clone()),
@@ -863,7 +864,7 @@ pub fn collect_callable_refs(
                 let scrut = collect_callable_refs(match_scrutinee(texpr.clone()), si.clone());
                 match_arm_nodes(texpr.clone()).iter().cloned().fold(
                     scrut.clone(),
-                    |acc: Rc<BTreeSet<String>>, arm: Rc<Node>| {
+                    |acc: Arc<BTreeSet<String>>, arm: Arc<Node>| {
                         v1_rt::rc_set_union(
                             acc,
                             collect_callable_refs(arm_body(arm.clone()), si.clone()),
@@ -883,7 +884,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, child: Rc<Node>| {
+                |acc: Arc<BTreeSet<String>>, child: Arc<Node>| {
                     v1_rt::rc_set_union(acc, collect_callable_refs(child.clone(), si.clone()))
                 },
             ),
@@ -901,7 +902,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, field: Rc<Node>| {
+                |acc: Arc<BTreeSet<String>>, field: Arc<Node>| {
                     v1_rt::rc_set_union(
                         acc,
                         collect_callable_refs(arg_value(field.clone()), si.clone()),
@@ -913,7 +914,7 @@ pub fn collect_callable_refs(
     })
 }
 
-pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
+pub fn fold_terminal_expr(mut body: Arc<Node>) -> Arc<Node> {
     loop {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprLet => match let_body(body.clone()) {
@@ -943,19 +944,19 @@ pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn empty_fold_acc_use_summary() -> Rc<FoldAccUseSummary> {
-    Rc::new(FoldAccUseSummary {
+pub fn empty_fold_acc_use_summary() -> Arc<FoldAccUseSummary> {
+    Arc::new(FoldAccUseSummary {
         whole_acc_uses: 0,
-        field_moves: Rc::new(vec![]),
+        field_moves: Arc::new(vec![]),
         nested_acc_refs: false,
     })
 }
 
 pub fn merge_fold_acc_use_summaries(
-    left: Rc<FoldAccUseSummary>,
-    right: Rc<FoldAccUseSummary>,
-) -> Rc<FoldAccUseSummary> {
-    Rc::new(FoldAccUseSummary {
+    left: Arc<FoldAccUseSummary>,
+    right: Arc<FoldAccUseSummary>,
+) -> Arc<FoldAccUseSummary> {
+    Arc::new(FoldAccUseSummary {
         whole_acc_uses: (left.whole_acc_uses.clone() + right.whole_acc_uses.clone()),
         field_moves: v1_rt::concat(left.field_moves.clone(), right.field_moves.clone()),
         nested_acc_refs: (left.nested_acc_refs.clone() || right.nested_acc_refs.clone()),
@@ -963,11 +964,11 @@ pub fn merge_fold_acc_use_summaries(
 }
 
 pub fn summarize_fold_acc_uses(
-    node: Rc<Node>,
+    node: Arc<Node>,
     acc_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
     inside_nested: bool,
-) -> Rc<FoldAccUseSummary> {
+) -> Arc<FoldAccUseSummary> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*node.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -975,15 +976,15 @@ pub fn summarize_fold_acc_uses(
             } => {
                 if (expr_var_name_at(node.clone(), si.clone()) == acc_name.clone()) {
                     if inside_nested.clone() {
-                        Rc::new(FoldAccUseSummary {
+                        Arc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
-                            field_moves: Rc::new(vec![]),
+                            field_moves: Arc::new(vec![]),
                             nested_acc_refs: true,
                         })
                     } else {
-                        Rc::new(FoldAccUseSummary {
+                        Arc::new(FoldAccUseSummary {
                             whole_acc_uses: 1,
-                            field_moves: Rc::new(vec![]),
+                            field_moves: Arc::new(vec![]),
                             nested_acc_refs: false,
                         })
                     }
@@ -1001,15 +1002,15 @@ pub fn summarize_fold_acc_uses(
                 };
                 if is_direct.clone() {
                     if inside_nested.clone() {
-                        Rc::new(FoldAccUseSummary {
+                        Arc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
-                            field_moves: Rc::new(vec![]),
+                            field_moves: Arc::new(vec![]),
                             nested_acc_refs: true,
                         })
                     } else {
-                        Rc::new(FoldAccUseSummary {
+                        Arc::new(FoldAccUseSummary {
                             whole_acc_uses: 0,
-                            field_moves: Rc::new(vec![field_access_field_at(
+                            field_moves: Arc::new(vec![field_access_field_at(
                                 node.clone(),
                                 si.clone(),
                             )]),
@@ -1019,7 +1020,7 @@ pub fn summarize_fold_acc_uses(
                 } else {
                     node.children.clone().iter().cloned().fold(
                         empty_fold_acc_use_summary(),
-                        |acc: Rc<FoldAccUseSummary>, child: Rc<Node>| {
+                        |acc: Arc<FoldAccUseSummary>, child: Arc<Node>| {
                             merge_fold_acc_use_summaries(
                                 acc,
                                 summarize_fold_acc_uses(
@@ -1044,9 +1045,9 @@ pub fn summarize_fold_acc_uses(
                     || ((body_summary.field_moves.clone().len() as i64) > 0))
                     || body_summary.nested_acc_refs.clone())
                 {
-                    Rc::new(FoldAccUseSummary {
+                    Arc::new(FoldAccUseSummary {
                         whole_acc_uses: 0,
-                        field_moves: Rc::new(vec![]),
+                        field_moves: Arc::new(vec![]),
                         nested_acc_refs: true,
                     })
                 } else {
@@ -1070,9 +1071,9 @@ pub fn summarize_fold_acc_uses(
                     || ((body_summary.field_moves.clone().len() as i64) > 0))
                     || body_summary.nested_acc_refs.clone())
                 {
-                    Rc::new(FoldAccUseSummary {
+                    Arc::new(FoldAccUseSummary {
                         whole_acc_uses: 0,
-                        field_moves: Rc::new(vec![]),
+                        field_moves: Arc::new(vec![]),
                         nested_acc_refs: true,
                     })
                 } else {
@@ -1082,7 +1083,7 @@ pub fn summarize_fold_acc_uses(
             }
             _ => node.children.clone().iter().cloned().fold(
                 empty_fold_acc_use_summary(),
-                |acc: Rc<FoldAccUseSummary>, child: Rc<Node>| {
+                |acc: Arc<FoldAccUseSummary>, child: Arc<Node>| {
                     merge_fold_acc_use_summaries(
                         acc,
                         summarize_fold_acc_uses(
@@ -1099,10 +1100,10 @@ pub fn summarize_fold_acc_uses(
 }
 
 pub fn fold_lambda_acc_use_summary(
-    lambda_node: Rc<Node>,
+    lambda_node: Arc<Node>,
     acc_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FoldAccUseSummary> {
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<FoldAccUseSummary> {
     match (*lambda_node.expr_data.clone()).clone() {
         ExprData::ExprLambda => summarize_fold_acc_uses(
             lambda_body(lambda_node.clone()),
@@ -1115,9 +1116,9 @@ pub fn fold_lambda_acc_use_summary(
 }
 
 pub fn fold_body_constructs_acc_struct(
-    lambda_node: Rc<Node>,
+    lambda_node: Arc<Node>,
     acc_type_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*lambda_node.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
@@ -1135,29 +1136,29 @@ pub fn fold_body_constructs_acc_struct(
 }
 
 pub fn fold_body_safe_field_moves(
-    lambda_node: Rc<Node>,
+    lambda_node: Arc<Node>,
     acc_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let summary =
             fold_lambda_acc_use_summary(lambda_node.clone(), acc_name.clone(), si.clone());
         let deduped = summary.field_moves.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |seen: Rc<HashMap<String, bool>>, field: String| {
+            |seen: Arc<HashMap<String, bool>>, field: String| {
                 v1_rt::rc_map_insert(seen, field.clone(), true)
             },
         );
         ((!summary.nested_acc_refs.clone() && (summary.whole_acc_uses.clone() == 0))
-            && ((Rc::new(v1_rt::map_keys(&deduped)).len() as i64)
+            && ((Arc::new(v1_rt::map_keys(&deduped)).len() as i64)
                 == (summary.field_moves.clone().len() as i64)))
     }
 }
 
 pub fn fold_body_consumes_acc_once(
-    lambda_node: Rc<Node>,
+    lambda_node: Arc<Node>,
     acc_name: String,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let summary =
@@ -1168,9 +1169,9 @@ pub fn fold_body_consumes_acc_once(
 }
 
 pub fn analyze_single_fold(
-    method_call: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<FoldAccUnwrapProof> {
+    method_call: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<FoldAccUnwrapProof> {
     {
         let args = method_arg_nodes(method_call.clone());
         let init_arg_node = match args.clone().first().cloned() {
@@ -1222,7 +1223,7 @@ pub fn analyze_single_fold(
         );
         let eligible = ((cond_required.clone() && (acc_type_name.clone() != "".to_string()))
             && ((cond_struct.clone() && cond_safe.clone()) || cond_whole_acc.clone()));
-        Rc::new(FoldAccUnwrapProof {
+        Arc::new(FoldAccUnwrapProof {
             site_key: (method_call.span.clone().start.clone()).to_string(),
             acc_param_name: acc_param_name.clone(),
             acc_type_name: acc_type_name.clone(),
@@ -1236,25 +1237,25 @@ pub fn analyze_single_fold(
 
 pub fn analyze_ownership(
     func_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    body: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<OwnershipProof> {
+    params: Arc<Vec<Arc<Node>>>,
+    body: Arc<Node>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<OwnershipProof> {
     {
         let initial = params.clone().iter().cloned().fold(
             empty_usage_accum(),
-            |acc: Rc<UsageAccum>, p: Rc<Node>| {
+            |acc: Arc<UsageAccum>, p: Arc<Node>| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let p_name = authored_name_at(si.clone(), p.clone());
-                    Rc::new(UsageAccum {
+                    Arc::new(UsageAccum {
                         bindings: v1_rt::rc_map_insert(
                             acc.bindings,
                             p_name.clone(),
-                            Rc::new(BindingUsage {
+                            Arc::new(BindingUsage {
                                 name: p_name.clone(),
                                 binding_kind: None,
-                                consumers: Rc::new(vec![]),
+                                consumers: Arc::new(vec![]),
                             }),
                         ),
                         fold_call_nodes: acc.fold_call_nodes,
@@ -1264,22 +1265,22 @@ pub fn analyze_ownership(
             },
         );
         let result = walk_expr(initial.clone(), body.clone(), true, si.clone());
-        let binding_list = Rc::new(v1_rt::map_values(&result.bindings.clone()));
-        let decisions = Rc::new({
+        let binding_list = Arc::new(v1_rt::map_values(&result.bindings.clone()));
+        let decisions = Arc::new({
             let mut __result = Vec::new();
             for usage in binding_list.clone().iter().cloned() {
                 __result.push(make_decision(usage.clone()));
             }
             __result
         });
-        let fold_proofs = Rc::new({
+        let fold_proofs = Arc::new({
             let mut __result = Vec::new();
             for n in result.fold_call_nodes.clone().iter().cloned() {
                 __result.push(analyze_single_fold(n.clone(), si.clone()));
             }
             __result
         });
-        Rc::new(OwnershipProof {
+        Arc::new(OwnershipProof {
             func_name: func_name.clone(),
             bindings: result.bindings.clone(),
             decisions: decisions.clone(),

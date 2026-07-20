@@ -1,14 +1,14 @@
 //! Measure-tower E0560: a record literal that names a TYPE ALIAS to an Rc-shared applied
 //! struct must be constructed through the canonical struct, not the alias. The `.dag` source
 //! `Gibibyte { count: count }` (where `type Gibibyte = Measure<Memory, Gibi, Nat>`) emitted
-//! `Gibibyte { count: count }`, but `Gibibyte` resolves to `Rc<Measure<...>>` — you cannot
+//! `Gibibyte { count: count }`, but `Gibibyte` resolves to `Arc<Measure<...>>` — you cannot
 //! struct-construct through an Rc alias, and the emitter-synthesized `_phantom` field was
-//! missing. Result: `E0560: struct Rc<Measure<...>> has no field named count`.
+//! missing. Result: `E0560: struct Arc<Measure<...>> has no field named count`.
 //!
 //! Faithful fix (emitter-faithfulness, reusing existing resolution): resolve the alias to its
-//! canonical struct, emit `Rc::new(Measure { count: count, _phantom: PhantomData })` — matching
+//! canonical struct, emit `Arc::new(Measure { count: count, _phantom: PhantomData })` — matching
 //! the struct def the emitter itself emits. Like the deref fix this is HostNative-keyed (the
-//! type aliases only render as `Rc<Measure<...>>` under HostNative), so the fixture is named
+//! type aliases only render as `Arc<Measure<...>>` under HostNative), so the fixture is named
 //! under src/v1 to exercise the same emit as `--emit-fresh`.
 
 use crate::helpers::compile_dag_named;
@@ -65,11 +65,11 @@ fn alias_ctor_resolves_to_canonical_struct_with_phantom_and_rc() {
     assert!(
         body.contains("Meas {")
             && body.contains("_phantom: std::marker::PhantomData")
-            && body.contains("Rc::new("),
-        "an alias-to-Rc<struct> ctor must emit `Rc::new(Meas {{ count: c, _phantom: PhantomData }})`, got:\n{body}"
+            && body.contains("Arc::new("),
+        "an alias-to-Arc<struct> ctor must emit `Arc::new(Meas {{ count: c, _phantom: PhantomData }})`, got:\n{body}"
     );
     // Negative: the alias name must NOT be used as the struct-literal head (it resolves to
-    // `Rc<Meas<...>>`, which has no fields). Check the signature-stripped body so `-> Giga {`
+    // `Arc<Meas<...>>`, which has no fields). Check the signature-stripped body so `-> Giga {`
     // in the fn signature does not false-match.
     let body_no_sig = fn_body_no_sig(&emitted, "mk");
     assert!(

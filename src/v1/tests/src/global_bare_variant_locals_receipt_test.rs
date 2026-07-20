@@ -4,7 +4,7 @@
 //! present in BOTH module `variant_fold.locals` and shared `global_bare_variant_locals`).
 
 use im::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
 use v1_compiler::v1_compiler_infer::{
@@ -32,19 +32,19 @@ fn probe_minor_unit(c: ProbeCurrency) -> Int {
 }
 "#;
 
-fn src(path: &str, content: &str) -> Rc<SourceFile> {
-    Rc::new(SourceFile {
+fn src(path: &str, content: &str) -> Arc<SourceFile> {
+    Arc::new(SourceFile {
         path: path.to_string(),
         content: content.to_string(),
     })
 }
 
 fn binding_byte_identical(
-    a: &Rc<TypeBinding>,
-    b: &Rc<TypeBinding>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    a: &Arc<TypeBinding>,
+    b: &Arc<TypeBinding>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
-    if Rc::ptr_eq(a, b) {
+    if Arc::ptr_eq(a, b) {
         return true;
     }
     if a.name != b.name {
@@ -59,9 +59,9 @@ fn binding_byte_identical(
 }
 
 fn maps_byte_identical(
-    got: &Rc<HashMap<String, Rc<TypeBinding>>>,
-    expected: &Rc<HashMap<String, Rc<TypeBinding>>>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    got: &Arc<HashMap<String, Arc<TypeBinding>>>,
+    expected: &Arc<HashMap<String, Arc<TypeBinding>>>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     if got.len() != expected.len() {
         return false;
@@ -75,11 +75,11 @@ fn maps_byte_identical(
 
 /// Old `merge_global_bare_variant_locals` semantics (still-owl pre-fix).
 fn simulate_old_merge_global_bare_variant_locals(
-    global_bare: &Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-    state: Rc<VariantFoldState>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    global_bare: &Arc<HashMap<String, Arc<GlobalBareLookupState>>>,
+    state: Arc<VariantFoldState>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
     module_name: &str,
-) -> Rc<VariantFoldState> {
+) -> Arc<VariantFoldState> {
     global_bare
         .iter()
         .fold(state, |acc, (name, lookup)| match lookup.as_ref() {
@@ -111,11 +111,11 @@ fn simulate_old_merge_global_bare_variant_locals(
 }
 
 fn expected_variant_locals_old_path(
-    resolved: &Rc<ResolvedModule>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: &Rc<InternTable>,
-    global_bare: &Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    resolved: &Arc<ResolvedModule>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+    intern_table: &Arc<InternTable>,
+    global_bare: &Arc<HashMap<String, Arc<GlobalBareLookupState>>>,
+) -> Arc<HashMap<String, Arc<TypeBinding>>> {
     let bte = build_type_env(
         resolved.clone(),
         v1_rt::rc_empty_map(),
@@ -129,9 +129,9 @@ fn expected_variant_locals_old_path(
         resolved.module.children.clone(),
         source_indices.clone(),
         module_name.clone(),
-        Rc::new(VariantFoldState {
+        Arc::new(VariantFoldState {
             locals: v1_rt::rc_empty_map(),
-            collision_errors: Rc::new(im::Vector::new()),
+            collision_errors: Arc::new(im::Vector::new()),
         }),
     );
     let after_old_merge = simulate_old_merge_global_bare_variant_locals(
@@ -148,7 +148,7 @@ fn expected_variant_locals_old_path(
 
 #[test]
 fn receipt1_owning_module_same_authority_variant_locals_byte_identical() {
-    let sources = Rc::new(
+    let sources = Arc::new(
         vec![src("dag/probe_def.dag", DEFINER)]
             .into_iter()
             .collect::<im::Vector<_>>(),
@@ -156,7 +156,7 @@ fn receipt1_owning_module_same_authority_variant_locals_byte_identical() {
     let frontend = front_end_sources(sources);
     let graph = frontend.graph.clone().expect("graph");
     let source_indices = frontend.newline_indices.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
         |acc, si| v1_rt::rc_map_insert(acc, si.file.clone(), si),
     );
     let norm = normalize_graph(graph, source_indices.clone());
@@ -218,9 +218,9 @@ fn receipt1_owning_module_same_authority_variant_locals_byte_identical() {
         resolved.module.children.clone(),
         source_indices.clone(),
         module_path.clone(),
-        Rc::new(VariantFoldState {
+        Arc::new(VariantFoldState {
             locals: v1_rt::rc_empty_map(),
-            collision_errors: Rc::new(im::Vector::new()),
+            collision_errors: Arc::new(im::Vector::new()),
         }),
     );
     let probe_eur_module = module_fold

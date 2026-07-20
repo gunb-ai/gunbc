@@ -157,14 +157,14 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn render_rust_applied_via_emit_info(
-    n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     render_rust_applied_type_shared(
         n.clone(),
@@ -178,11 +178,11 @@ pub fn render_rust_applied_via_emit_info(
 }
 
 pub fn render_rust_type(
-    n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -227,11 +227,11 @@ pub fn render_rust_type(
 }
 
 pub fn render_rust_type_without_applied_binding(
-    n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -392,13 +392,13 @@ pub fn render_rust_type_without_applied_binding(
     }
 }
 
-pub fn empty_string_bool_map() -> Rc<HashMap<String, bool>> {
+pub fn empty_string_bool_map() -> Arc<HashMap<String, bool>> {
     v1_rt::rc_empty_map::<String, bool>()
 }
 
 pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
     ((v1_rt::string_length(&type_name) >= 3)
-        && (v1_rt::substring(&type_name, 0, 3) == "Rc<".to_string()))
+        && (v1_rt::substring(&type_name, 0, 3) == "Arc<".to_string()))
 }
 
 pub fn corpus_repr_is_faithful(corpus_repr: RustCorpusRepr) -> bool {
@@ -419,7 +419,7 @@ pub fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -
     (corpus_repr_is_host(corpus_repr.clone()) && (name.clone() == "FreeMonoid".to_string()))
 }
 
-pub fn render_rust_text_carrier(shared_types: Rc<BTreeSet<String>>) -> String {
+pub fn render_rust_text_carrier(shared_types: Arc<BTreeSet<String>>) -> String {
     render_rust_shared_type_if_needed(
         "FreeMonoid".to_string(),
         "FreeMonoid<Char>".to_string(),
@@ -464,8 +464,8 @@ pub fn emit_rust_map_literal_key(
 }
 
 pub fn map_literal_key_is_string(
-    map_type_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    map_type_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match map_type_node.children.clone().first().cloned() {
         Some(key_child) => is_rust_string_like(key_child.clone(), source_indices.clone()),
@@ -523,13 +523,13 @@ pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
         ))
     } else {
         if (name.clone() == "string_head".to_string()) {
-            Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_head(s: String) -> Rc<CharResult> {\n".to_string(), "    match s.chars().next() {\n".to_string()), "        Some(c) => Rc::new(CharResult::CharFound { value: Box::new(c as i64) }),\n".to_string()), "        None => Rc::new(CharResult::CharAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
+            Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_head(s: String) -> Arc<CharResult> {\n".to_string(), "    match s.chars().next() {\n".to_string()), "        Some(c) => Arc::new(CharResult::CharFound { value: Box::new(c as i64) }),\n".to_string()), "        None => Arc::new(CharResult::CharAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
         } else {
             if (name.clone() == "string_tail".to_string()) {
-                Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_tail(s: String) -> Rc<ListTailResult<Char>> {\n".to_string(), "    let mut __it = s.chars();\n".to_string()), "    match __it.next() {\n".to_string()), "        Some(_) => Rc::new(ListTailResult::TailFound { tail: Rc::new(__it.map(|c| c as i64).collect::<Vec<i64>>()) }),\n".to_string()), "        None => Rc::new(ListTailResult::TailAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
+                Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_tail(s: String) -> Arc<ListTailResult<Char>> {\n".to_string(), "    let mut __it = s.chars();\n".to_string()), "    match __it.next() {\n".to_string()), "        Some(_) => Arc::new(ListTailResult::TailFound { tail: Arc::new(__it.map(|c| c as i64).collect::<Vec<i64>>()) }),\n".to_string()), "        None => Arc::new(ListTailResult::TailAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
             } else {
                 if (name.clone() == "fold_source".to_string()) {
-                    Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn fold_source<R: Clone>(src: String, algebra: Rc<SourceFold<R>>) -> R {\n".to_string(), "    let mut __acc = (algebra.init)(src.clone());\n".to_string()), "    for _ in src.chars() {\n".to_string()), "        __acc = if (algebra.is_done)(__acc.clone()) { __acc } else { (algebra.step)(__acc) };\n".to_string()), "    }\n".to_string()), "    __acc\n".to_string()), "}\n".to_string()))
+                    Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn fold_source<R: Clone>(src: String, algebra: Arc<SourceFold<R>>) -> R {\n".to_string(), "    let mut __acc = (algebra.init)(src.clone());\n".to_string()), "    for _ in src.chars() {\n".to_string()), "        __acc = if (algebra.is_done)(__acc.clone()) { __acc } else { (algebra.step)(__acc) };\n".to_string()), "    }\n".to_string()), "    __acc\n".to_string()), "}\n".to_string()))
                 } else {
                     None
                 }
@@ -567,8 +567,8 @@ pub fn rust_seed_host_container_base(name: String, corpus_repr: RustCorpusRepr) 
 }
 
 pub fn rust_host_text_carrier_elem_name(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match n.children.clone().first().cloned() {
         Some(ch) => authored_name_at(source_indices.clone(), ch.clone()),
@@ -587,8 +587,8 @@ pub fn rust_host_text_carrier_elem_name(
 }
 
 pub fn is_host_text_carrier_type(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
     if !corpus_repr_is_host(corpus_repr.clone()) {
@@ -616,7 +616,7 @@ pub fn rust_seed_host_freemonoid_empty(
     corpus_repr: RustCorpusRepr,
 ) -> Option<String> {
     match rust_seed_host_container_base(carrier_name.clone(), corpus_repr.clone()) {
-        Some(_) => Some("Rc::new(vec![])".to_string()),
+        Some(_) => Some("Arc::new(vec![])".to_string()),
         None => None,
     }
 }
@@ -666,7 +666,7 @@ pub fn rust_normalize_partial_function_field_type_text(rendered: String) -> Stri
     )
 }
 
-pub fn is_parametric_opaque_type_by_name(env: Rc<TypeEnv>, type_name: String) -> bool {
+pub fn is_parametric_opaque_type_by_name(env: Arc<TypeEnv>, type_name: String) -> bool {
     match lookup_type_by_name(env.clone(), type_name.clone()) {
         Some(item) => is_parametric_opaque_type_decl_item(item.clone(), env.source_indices.clone()),
         None => false,
@@ -676,9 +676,9 @@ pub fn is_parametric_opaque_type_by_name(env: Rc<TypeEnv>, type_name: String) ->
 pub fn is_parametric_opaque_type_base(
     type_name: String,
     def_mod_filename: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     match type_item_by_name_in_module_filename(
         type_name.clone(),
@@ -695,9 +695,9 @@ pub fn is_parametric_opaque_type_base(
 pub fn alias_base_is_zero_param_decl(
     type_name: String,
     def_mod_filename: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     match type_item_by_name_in_module_filename(
         type_name.clone(),
@@ -713,8 +713,8 @@ pub fn alias_base_is_zero_param_decl(
 
 pub fn type_param_is_collection_element_in_values(
     param_name: String,
-    value_params: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    value_params: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -743,8 +743,8 @@ pub fn type_param_is_collection_element_in_values(
 }
 
 pub fn is_value_variant_type_arg(
-    generic_param_names: Rc<Vec<String>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
+    generic_param_names: Arc<Vec<String>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
     name: String,
 ) -> bool {
     if {
@@ -764,8 +764,8 @@ pub fn is_value_variant_type_arg(
 }
 
 pub fn type_leaf_name_for_collapse(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let a = authored_name_at(source_indices.clone(), n.clone());
@@ -778,10 +778,10 @@ pub fn type_leaf_name_for_collapse(
 }
 
 pub fn rust_type_arg_renders_as_unit(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (is_width_nat_type_literal(n.clone())
         || is_value_variant_type_arg(
@@ -792,10 +792,10 @@ pub fn rust_type_arg_renders_as_unit(
 }
 
 pub fn type_node_has_value_variant_arg(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_value_variant_type_arg(
@@ -850,19 +850,19 @@ pub fn type_node_has_value_variant_arg(
 }
 
 pub fn render_rust_phantom_opaque_applied_type_arg(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    scope: Rc<InferScope>,
-    imports: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    scope: Arc<InferScope>,
+    imports: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     module_name: String,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
-    variant_to_enum: Rc<HashMap<String, String>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    module_index: Arc<ModuleIndex>,
+    variant_to_enum: Arc<HashMap<String, String>>,
 ) -> String {
     if rust_type_arg_renders_as_unit(
         n.clone(),
@@ -891,13 +891,13 @@ pub fn render_rust_phantom_opaque_applied_type_arg(
 }
 
 pub fn render_rust_phantom_opaque_applied_decl_arg(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     if rust_type_arg_renders_as_unit(
         n.clone(),
@@ -920,13 +920,13 @@ pub fn render_rust_phantom_opaque_applied_decl_arg(
 }
 
 pub fn render_rust_applied_type_arg(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     if rust_type_arg_renders_as_unit(
         n.clone(),
@@ -952,13 +952,13 @@ pub fn render_rust_applied_type_arg(
 }
 
 pub fn render_rust_applied_type(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -978,7 +978,7 @@ pub fn render_rust_applied_type(
                         None => rust_applied_type_base(base_name.clone(), corpus_repr.clone()),
                     };
                 let peel = is_parametric_opaque_type_by_name(env.clone(), base_name.clone());
-                let args = Rc::new({
+                let args = Arc::new({
                     let mut __result = Vec::new();
                     for arg in n.children.clone().iter().cloned() {
                         __result.push(if peel.clone() {
@@ -1018,7 +1018,7 @@ pub fn render_rust_applied_type(
 pub fn render_rust_shared_type_if_needed(
     type_name: String,
     rendered: String,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Arc<BTreeSet<String>>,
 ) -> String {
     if (v1_rt::set_contains(&shared_types, type_name.clone())
         && !rust_type_is_rc_wrapped(rendered.clone()))
@@ -1030,10 +1030,10 @@ pub fn render_rust_shared_type_if_needed(
 }
 
 pub fn render_rust_shared_type_with_optional(
-    n: Rc<Node>,
+    n: Arc<Node>,
     type_name: String,
     rendered: String,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Arc<BTreeSet<String>>,
 ) -> String {
     rust_carrier_optional_wrap(
         n.clone(),
@@ -1046,13 +1046,13 @@ pub fn render_rust_shared_type_with_optional(
 }
 
 pub fn render_rust_applied_type_shared(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let rendered = render_rust_applied_type(
@@ -1075,13 +1075,13 @@ pub fn render_rust_applied_type_shared(
 }
 
 pub fn render_rust_decl_type(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -1202,7 +1202,7 @@ pub fn render_rust_decl_type(
                                             env.clone(),
                                             name.clone(),
                                         );
-                                        let arg_list = Rc::new({
+                                        let arg_list = Arc::new({
                                             let mut __result = Vec::new();
                                             for arg in n.children.clone().iter().cloned() {
                                                 __result.push(if peel.clone() {
@@ -1347,7 +1347,7 @@ pub fn render_rust_decl_type(
     })
 }
 
-pub fn rust_fn_sig_peel_closed_alias(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
+pub fn rust_fn_sig_peel_closed_alias(env: Arc<TypeEnv>, n: Arc<Node>) -> bool {
     {
         let name = authored_name_at(env.source_indices.clone(), n.clone());
         if (name.clone() == "String".to_string()) {
@@ -1382,7 +1382,7 @@ pub fn rust_fn_sig_preserves_authored_alias_leaf(
     }
 }
 
-pub fn rust_carrier_optional_wrap(n: Rc<Node>, rendered: String) -> String {
+pub fn rust_carrier_optional_wrap(n: Arc<Node>, rendered: String) -> String {
     {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional.clone() {
@@ -1397,13 +1397,13 @@ pub fn rust_carrier_optional_wrap(n: Rc<Node>, rendered: String) -> String {
 }
 
 pub fn render_rust_fn_sig_type(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -1486,11 +1486,11 @@ pub fn render_rust_fn_sig_type(
 }
 
 pub fn render_rust_fn_sig_type_applied_binding(
-    n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     match find_property(
         n.properties.clone(),
@@ -1546,9 +1546,9 @@ pub fn render_rust_fn_sig_type_applied_binding(
 }
 
 pub fn alias_rhs_container_arg(
-    arg: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+    arg: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Node> {
     match arg.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
             if node_is_collection(rt.clone(), source_indices.clone()) {
@@ -1562,19 +1562,19 @@ pub fn alias_rhs_container_arg(
 }
 
 pub fn render_rust_alias_rhs_type(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    scope: Rc<InferScope>,
-    imports: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    scope: Arc<InferScope>,
+    imports: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     module_name: String,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
-    variant_to_enum: Rc<HashMap<String, String>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    module_index: Arc<ModuleIndex>,
+    variant_to_enum: Arc<HashMap<String, String>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -1740,7 +1740,7 @@ pub fn render_rust_alias_rhs_type(
                             source_indices.clone(),
                             module_index.clone(),
                         );
-                        let args = Rc::new({
+                        let args = Arc::new({
                             let mut __result = Vec::new();
                             for arg in n.children.clone().iter().cloned() {
                                 __result.push(if peel.clone() {
@@ -1812,30 +1812,30 @@ pub fn render_rust_alias_rhs_type(
     })
 }
 
-pub fn type_variable_node(id: String) -> Rc<Node> {
-    Rc::new(Node {
+pub fn type_variable_node(id: String) -> Arc<Node> {
+    Arc::new(Node {
         name: "".to_string(),
         span: make_span(0, 0),
         ident_span: None,
-        children: Rc::new(vec![]),
+        children: Arc::new(vec![]),
         connective: Connective::NoConnective,
-        params: Rc::new(vec![]),
-        inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
+        params: Arc::new(vec![]),
+        inferred: Some(Arc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
-        uses: Rc::new(vec![]),
+        uses: Arc::new(vec![]),
         body: None,
         transport: None,
-        properties: Rc::new(vec![]),
+        properties: Arc::new(vec![]),
         type_annotation: None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
         match_pattern: None,
-        expr_data: Rc::new(ExprData::NoExprData),
+        expr_data: Arc::new(ExprData::NoExprData),
         ident: None,
     })
 }
 
-pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
+pub fn is_type_variable(inferred: Arc<InferredNode>) -> bool {
     match (*inferred.clone()).clone() {
         InferredNode::TypeVariable { id: _, .. } => true,
         _ => false,
@@ -1843,8 +1843,8 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
 }
 
 pub fn is_rust_value_type(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let normed = normalize_access_type_node(n.clone());
@@ -1859,8 +1859,8 @@ pub fn is_rust_value_type(
 }
 
 pub fn is_rust_string_like(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let normed = normalize_access_type_node(n.clone());
@@ -1891,7 +1891,7 @@ pub fn rust_visibility_prefix() -> String {
     }
 }
 
-pub fn rust_items() -> Rc<ItemKeywords> {
+pub fn rust_items() -> Arc<ItemKeywords> {
     language_spec(RenderTarget::Rust).items.clone()
 }
 
@@ -1944,8 +1944,8 @@ pub fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> bool {
 }
 
 pub fn rust_nominal_identity_carrier_shape_eligible(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     ((((authored_name_at(source_indices.clone(), n.clone()) == "Symbol".to_string())
         && ((n.children.clone().len() as i64) == 0))
@@ -1954,8 +1954,8 @@ pub fn rust_nominal_identity_carrier_shape_eligible(
 }
 
 pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
-    children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    children: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     if ((children.clone().len() as i64) != 1) {
         false
@@ -1972,8 +1972,8 @@ pub fn rust_symbol_wrapped_ord_carrier_shape_eligible(
 
 pub fn rust_nominal_ord_derives_for_shape(
     name: String,
-    children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    children: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     if rust_symbol_wrapped_ord_carrier_shape_eligible(children.clone(), source_indices.clone()) {
         rust_ord_derives_text()
@@ -1983,8 +1983,8 @@ pub fn rust_nominal_ord_derives_for_shape(
 }
 
 pub fn rust_nominal_ord_type_decl_ord_eligible(
-    decl: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    decl: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (rust_nominal_identity_carrier_shape_eligible(decl.clone(), source_indices.clone())
         || rust_symbol_wrapped_ord_carrier_shape_eligible(
@@ -1994,9 +1994,9 @@ pub fn rust_nominal_ord_type_decl_ord_eligible(
 }
 
 pub fn rust_nominal_ord_type_ref_eligible(
-    elem_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    elem_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> bool {
     {
         let type_name = authored_name_at(source_indices.clone(), elem_node.clone());
@@ -2013,9 +2013,9 @@ pub fn rust_nominal_ord_type_ref_eligible(
 }
 
 pub fn rust_nominal_ord_type_eligible(
-    elem_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    elem_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> bool {
     ((rust_nominal_identity_carrier_shape_eligible(elem_node.clone(), source_indices.clone())
         || rust_nominal_ord_type_ref_eligible(
@@ -2056,8 +2056,8 @@ pub fn rust_serde_policy(
     rename_prefix: Option<String>,
     rename_suffix: Option<String>,
     rename_style: Option<String>,
-) -> Rc<RustEnumWireSerde> {
-    Rc::new(RustEnumWireSerde {
+) -> Arc<RustEnumWireSerde> {
+    Arc::new(RustEnumWireSerde {
         enum_attr: enum_attr.clone(),
         rename_prefix: rename_prefix.clone(),
         rename_suffix: rename_suffix.clone(),
@@ -2066,8 +2066,8 @@ pub fn rust_serde_policy(
     })
 }
 
-pub fn rust_serde_policy_error(message: String) -> Rc<RustEnumWireSerde> {
-    Rc::new(RustEnumWireSerde {
+pub fn rust_serde_policy_error(message: String) -> Arc<RustEnumWireSerde> {
+    Arc::new(RustEnumWireSerde {
         enum_attr: "".to_string(),
         rename_prefix: None,
         rename_suffix: None,
@@ -2076,27 +2076,27 @@ pub fn rust_serde_policy_error(message: String) -> Rc<RustEnumWireSerde> {
     })
 }
 
-pub fn rust_tagged_object_policy() -> Rc<RustEnumWireSerde> {
+pub fn rust_tagged_object_policy() -> Arc<RustEnumWireSerde> {
     rust_serde_policy(rust_serde_tag_attr(), None, None, None)
 }
 
-pub fn rust_untagged_policy() -> Rc<RustEnumWireSerde> {
+pub fn rust_untagged_policy() -> Arc<RustEnumWireSerde> {
     rust_serde_policy("#[serde(untagged)]".to_string(), None, None, None)
 }
 
-pub fn rust_serde_error_policy(message: String) -> Rc<RustEnumWireSerde> {
+pub fn rust_serde_error_policy(message: String) -> Arc<RustEnumWireSerde> {
     rust_serde_policy_error(message.clone())
 }
 
-pub fn rust_string_as_authored_policy() -> Rc<RustEnumWireSerde> {
+pub fn rust_string_as_authored_policy() -> Arc<RustEnumWireSerde> {
     rust_serde_policy("".to_string(), None, None, None)
 }
 
-pub fn rust_snake_string_policy() -> Rc<RustEnumWireSerde> {
+pub fn rust_snake_string_policy() -> Arc<RustEnumWireSerde> {
     rust_serde_policy(rust_serde_rename_all_snake_case(), None, None, None)
 }
 
-pub fn rust_screaming_snake_string_policy() -> Rc<RustEnumWireSerde> {
+pub fn rust_screaming_snake_string_policy() -> Arc<RustEnumWireSerde> {
     rust_serde_policy(
         rust_serde_rename_all_screaming_snake_case(),
         None,
@@ -2106,11 +2106,11 @@ pub fn rust_screaming_snake_string_policy() -> Rc<RustEnumWireSerde> {
 }
 
 pub fn field_value_by_name(
-    record: Rc<Node>,
+    record: Arc<Node>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match Rc::new({
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
+    match Arc::new({
         let mut __result = Vec::new();
         for fi in record.children.clone().iter().cloned() {
             if (field_init_node_name_at(fi.clone(), source_indices.clone()) == field_name.clone()) {
@@ -2127,7 +2127,7 @@ pub fn field_value_by_name(
     }
 }
 
-pub fn literal_string_value(n: Rc<Node>) -> Option<String> {
+pub fn literal_string_value(n: Arc<Node>) -> Option<String> {
     match (*n.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
             LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
@@ -2138,9 +2138,9 @@ pub fn literal_string_value(n: Rc<Node>) -> Option<String> {
 }
 
 pub fn record_string_field(
-    record: Rc<Node>,
+    record: Arc<Node>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     match field_value_by_name(record.clone(), field_name.clone(), source_indices.clone()) {
         Some(value_node) => literal_string_value(value_node.clone()),
@@ -2149,9 +2149,9 @@ pub fn record_string_field(
 }
 
 pub fn naming_policy_node(
-    encoding: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    encoding: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     field_value_by_name(
         encoding.clone(),
         "naming".to_string(),
@@ -2160,8 +2160,8 @@ pub fn naming_policy_node(
 }
 
 pub fn coproduct_decl_ref_decl_name(
-    body: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    body: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     match field_value_by_name(
         body.clone(),
@@ -2178,9 +2178,9 @@ pub fn coproduct_decl_ref_decl_name(
 }
 
 pub fn optional_string_record_field(
-    record: Rc<Node>,
+    record: Arc<Node>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     match field_value_by_name(record.clone(), field_name.clone(), source_indices.clone()) {
         Some(n) => literal_string_value(n.clone()),
@@ -2189,9 +2189,9 @@ pub fn optional_string_record_field(
 }
 
 pub fn required_literal_string_policy_field(
-    record: Rc<Node>,
+    record: Arc<Node>,
     field_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     match field_value_by_name(record.clone(), field_name.clone(), source_indices.clone()) {
         Some(n) => literal_string_value(n.clone()),
@@ -2200,9 +2200,9 @@ pub fn required_literal_string_policy_field(
 }
 
 pub fn rust_string_policy_for_naming(
-    naming: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<RustEnumWireSerde> {
+    naming: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<RustEnumWireSerde> {
     {
         let naming_name = authored_name_at(source_indices.clone(), naming.clone());
         if (naming_name.clone() == "AsAuthored".to_string()) {
@@ -2273,9 +2273,9 @@ pub fn rust_string_policy_for_naming(
 
 pub fn rust_internal_policy_for_naming(
     tag_field: String,
-    naming: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<RustEnumWireSerde> {
+    naming: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<RustEnumWireSerde> {
     {
         let naming_name = authored_name_at(source_indices.clone(), naming.clone());
         if (naming_name.clone() == "AsAuthored".to_string()) {
@@ -2381,9 +2381,9 @@ pub fn rust_internal_policy_for_naming(
 }
 
 pub fn rust_internal_policy_for_encoding(
-    encoding: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<RustEnumWireSerde> {
+    encoding: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<RustEnumWireSerde> {
     match record_string_field(
         encoding.clone(),
         "tag_field".to_string(),
@@ -2406,9 +2406,9 @@ pub fn rust_internal_policy_for_encoding(
 }
 
 pub fn resolve_wire_serde_policy_from_encoding_node(
-    ve: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<RustEnumWireSerde> {
+    ve: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<RustEnumWireSerde> {
     {
         let encoding_name = authored_name_at(source_indices.clone(), ve.clone());
         if (encoding_name.clone() == "InternallyTaggedObject".to_string()) {
@@ -2440,9 +2440,9 @@ pub fn resolve_wire_serde_policy_from_encoding_node(
 }
 
 pub fn resolve_wire_serde_policy(
-    wire_item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<RustEnumWireSerde> {
+    wire_item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<RustEnumWireSerde> {
     match wire_item.body.clone() {
     Some(ve) => resolve_wire_serde_policy_from_encoding_node(ve.clone(), source_indices.clone()),
     None => match (*wire_item.expr_data.clone()).clone() {
@@ -2452,16 +2452,16 @@ pub fn resolve_wire_serde_policy(
 }
 }
 
-pub fn item_binding_is_named(env: Rc<TypeEnv>, node: Rc<Node>, name: String) -> bool {
+pub fn item_binding_is_named(env: Arc<TypeEnv>, node: Arc<Node>, name: String) -> bool {
     ((authored_name(env.clone(), node.clone()) == name.clone())
         || (node.name.clone() == name.clone()))
 }
 
 pub fn resolve_wire_serde_policy_for_coproduct(
-    wire_contract_item: Option<Rc<Node>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
-) -> Rc<RustEnumWireSerde> {
+    wire_contract_item: Option<Arc<Node>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    data_items: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>,
+) -> Arc<RustEnumWireSerde> {
     resolve_wire_serde_policy_for_coproduct_seen(
         wire_contract_item.clone(),
         source_indices.clone(),
@@ -2472,12 +2472,12 @@ pub fn resolve_wire_serde_policy_for_coproduct(
 }
 
 pub fn resolve_wire_serde_policy_for_coproduct_seen(
-    mut wire_contract_item: Option<Rc<Node>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
-    mut seen_aliases: Rc<HashMap<String, bool>>,
+    mut wire_contract_item: Option<Arc<Node>>,
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    mut data_items: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>,
+    mut seen_aliases: Arc<HashMap<String, bool>>,
     mut fuel: i64,
-) -> Rc<RustEnumWireSerde> {
+) -> Arc<RustEnumWireSerde> {
     loop {
         if (fuel.clone() <= 0) {
             break rust_serde_error_policy(
@@ -2634,9 +2634,9 @@ pub fn resolve_wire_serde_policy_for_coproduct_seen(
 }
 
 pub fn coproduct_wire_contract_encoding(
-    contract_item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    contract_item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     match contract_item.body.clone() {
         Some(body) => {
             field_value_by_name(body.clone(), "encoding".to_string(), source_indices.clone())
@@ -2646,16 +2646,16 @@ pub fn coproduct_wire_contract_encoding(
 }
 
 pub fn variant_encoding_is_string_variant(
-    encoding: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    encoding: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (authored_name_at(source_indices.clone(), encoding.clone()) == "StringVariant".to_string())
 }
 
 pub fn coproduct_wire_contract_targets(
-    contract_item: Rc<Node>,
+    contract_item: Arc<Node>,
     coproduct_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match contract_item.body.clone() {
         Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices.clone()) {
@@ -2681,8 +2681,8 @@ pub fn emit_rust_compile_error_expr(message: String) -> String {
 }
 
 pub fn module_imports_std_serialization_coproduct_wire_contract(
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    imports: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -2712,9 +2712,9 @@ pub fn module_imports_std_serialization_coproduct_wire_contract(
 }
 
 pub fn data_item_type_is_coproduct_wire_contract(
-    item: Rc<Node>,
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    imports: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match item.type_annotation.clone() {
         Some(type_node) => {
@@ -2730,8 +2730,8 @@ pub fn data_item_type_is_coproduct_wire_contract(
 }
 
 pub fn module_defines_local_coproduct_wire_contract_type(
-    module_items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_items: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -2751,10 +2751,10 @@ pub fn module_defines_local_coproduct_wire_contract_type(
 }
 
 pub fn is_coproduct_wire_contract_row(
-    item: Rc<Node>,
-    module_items: Rc<Vec<Rc<Node>>>,
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    module_items: Arc<Vec<Arc<Node>>>,
+    imports: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     if !is_data_def_item(item.clone()) {
         false
@@ -2793,9 +2793,9 @@ pub fn is_coproduct_wire_contract_row(
 }
 
 pub fn emit_coproduct_wire_contract_target_validation(
-    contract_item: Rc<Node>,
-    local_coproduct_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    contract_item: Arc<Node>,
+    local_coproduct_names: Arc<Vec<String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match contract_item.body.clone() {
         Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices.clone()) {
@@ -2831,19 +2831,19 @@ pub fn emit_coproduct_wire_contract_target_validation(
 }
 
 pub fn emit_coproduct_wire_contract_validations(
-    module_items: Rc<Vec<Rc<Node>>>,
-    imports: Rc<Vec<Rc<Node>>>,
-    local_coproduct_names: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_items: Arc<Vec<Arc<Node>>>,
+    imports: Arc<Vec<Arc<Node>>>,
+    local_coproduct_names: Arc<Vec<String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     if ((local_coproduct_names.clone().len() as i64) == 0) {
         "".to_string()
     } else {
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
-            for text in Rc::new({
+            for text in Arc::new({
                 let mut __result = Vec::new();
-                for item in Rc::new({
+                for item in Arc::new({
                     let mut __result = Vec::new();
                     for item in module_items.clone().iter().cloned() {
                         if is_coproduct_wire_contract_row(
@@ -2884,12 +2884,12 @@ pub fn emit_coproduct_wire_contract_validations(
 pub fn resolve_local_coproduct_wire_policy(
     coproduct_name: String,
     all_unit_variants: bool,
-    module_items: Rc<Vec<Rc<Node>>>,
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<RustEnumWireSerde>> {
+    module_items: Arc<Vec<Arc<Node>>>,
+    imports: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<RustEnumWireSerde>> {
     {
-        let contracts = Rc::new({
+        let contracts = Arc::new({
             let mut __result = Vec::new();
             for item in module_items.clone().iter().cloned() {
                 if (is_coproduct_wire_contract_row(
@@ -2947,15 +2947,17 @@ pub fn resolve_local_coproduct_wire_policy(
     }
 }
 
-pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
+pub fn build_data_item_index(
+    modules: Arc<Vec<Arc<TypedModule>>>,
+) -> Arc<HashMap<String, Arc<Node>>> {
     modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<String, Arc<Node>>(),
+        |acc: Arc<HashMap<String, Arc<Node>>>, tm: Arc<TypedModule>| {
             let module_name = authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
             );
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
                 for item in tm.items.clone().iter().cloned() {
                     if is_data_def_item(item.clone()) {
@@ -2968,7 +2970,7 @@ pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
             .cloned()
             .fold(
                 acc,
-                |item_acc: Rc<HashMap<String, Rc<Node>>>, item: Rc<Node>| {
+                |item_acc: Arc<HashMap<String, Arc<Node>>>, item: Arc<Node>| {
                     let item_name =
                         authored_name_at(tm.type_env.clone().source_indices.clone(), item.clone());
                     let qualified_name = v1_rt::concat(
@@ -2983,33 +2985,33 @@ pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
 }
 
 pub fn insert_scoped_data_item(
-    scoped: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    scoped: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>,
     name: String,
-    item: Rc<Node>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
+    item: Arc<Node>,
+) -> Arc<HashMap<String, Arc<Vec<Arc<Node>>>>> {
     {
         let existing = match v1_rt::map_get(&scoped, name.clone()) {
             Some(entries) => entries.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         v1_rt::rc_map_insert(
             scoped.clone(),
             name.clone(),
-            v1_rt::concat(existing.clone(), Rc::new(vec![item.clone()])),
+            v1_rt::concat(existing.clone(), Arc::new(vec![item.clone()])),
         )
     }
 }
 
 pub fn build_scoped_data_item_index(
-    typed_module: Rc<TypedModule>,
-    data_items: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
+    typed_module: Arc<TypedModule>,
+    data_items: Arc<HashMap<String, Arc<Node>>>,
+) -> Arc<HashMap<String, Arc<Vec<Arc<Node>>>>> {
     {
         let module_name = authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
             typed_module.module.clone(),
         );
-        let local = Rc::new({
+        let local = Arc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
                 if is_data_def_item(item.clone()) {
@@ -3021,8 +3023,8 @@ pub fn build_scoped_data_item_index(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<Node>>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, item: Rc<Node>| {
+            v1_rt::rc_empty_map::<String, Arc<Vec<Arc<Node>>>>(),
+            |acc: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>, item: Arc<Node>| {
                 insert_scoped_data_item(
                     acc,
                     authored_name_at(
@@ -3038,7 +3040,7 @@ pub fn build_scoped_data_item_index(
             .cloned()
             .fold(
                 local.clone(),
-                |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
+                |acc: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>, imp: Arc<Node>| {
                     let import_path = authored_name_at(
                         typed_module.type_env.clone().source_indices.clone(),
                         imp.clone(),
@@ -3054,7 +3056,7 @@ pub fn build_scoped_data_item_index(
                         .cloned()
                         .fold(
                             acc.clone(),
-                            |inner: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+                            |inner: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>,
                              imported_name: String| {
                                 let qualified = v1_rt::concat(
                                     v1_rt::concat(import_path.clone(), ".".to_string()),
@@ -3077,14 +3079,14 @@ pub fn build_scoped_data_item_index(
 }
 
 pub fn augment_scoped_data_item_index_with_imports(
-    scoped: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    data_items: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
+    scoped: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>,
+    imports: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    data_items: Arc<HashMap<String, Arc<Node>>>,
+) -> Arc<HashMap<String, Arc<Vec<Arc<Node>>>>> {
     imports.clone().iter().cloned().fold(
         scoped.clone(),
-        |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
+        |acc: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>, imp: Arc<Node>| {
             let import_path = authored_name_at(source_indices.clone(), imp.clone());
             if import_is_all(imp.clone()) {
                 acc.clone()
@@ -3094,7 +3096,8 @@ pub fn augment_scoped_data_item_index_with_imports(
                     .cloned()
                     .fold(
                         acc.clone(),
-                        |inner: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imported_name: String| {
+                        |inner: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>,
+                         imported_name: String| {
                             match v1_rt::map_get(&inner, imported_name.clone()) {
                                 Some(_) => inner.clone(),
                                 None => {
@@ -3153,7 +3156,7 @@ pub fn rust_test_file_path(module_name: String) -> String {
     }
 }
 
-pub fn rust_test_name(projection: Rc<TestProjection>) -> String {
+pub fn rust_test_name(projection: Arc<TestProjection>) -> String {
     test_function_name(projection.clone(), RenderTarget::Rust)
 }
 
@@ -3171,18 +3174,18 @@ pub fn rust_async_test_decorator() -> String {
 }
 
 pub fn emit_rust_block_stmts(
-    mut remaining: Rc<Vec<Rc<Node>>>,
-    mut text: Rc<Vec<String>>,
-    mut scope: Rc<InferScope>,
-    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut remaining: Arc<Vec<Arc<Node>>>,
+    mut text: Arc<Vec<String>>,
+    mut scope: Arc<InferScope>,
+    mut registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Rc<BTreeSet<String>>,
-    mut emit_info: Rc<EmitGraphInfo>,
-) -> Rc<BlockEmitState> {
+    mut shared_types: Arc<BTreeSet<String>>,
+    mut emit_info: Arc<EmitGraphInfo>,
+) -> Arc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
             None => {
-                break Rc::new(BlockEmitState {
+                break Arc::new(BlockEmitState {
                     text: text.clone(),
                     scope: scope.clone(),
                 });
@@ -3199,7 +3202,7 @@ pub fn emit_rust_block_stmts(
                 );
                 let next_scope = scope_after_expr(stmt.clone(), scope.clone());
                 {
-                    let __tco_0 = Rc::new(
+                    let __tco_0 = Arc::new(
                         remaining
                             .iter()
                             .cloned()
@@ -3219,24 +3222,24 @@ pub fn emit_rust_block_stmts(
 }
 
 pub fn emit_rust_init_block_stmts(
-    mut remaining: Rc<Vec<Rc<Node>>>,
-    mut text: Rc<Vec<String>>,
-    mut scope: Rc<InferScope>,
-    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut remaining: Arc<Vec<Arc<Node>>>,
+    mut text: Arc<Vec<String>>,
+    mut scope: Arc<InferScope>,
+    mut registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Rc<BTreeSet<String>>,
-    mut emit_info: Rc<EmitGraphInfo>,
-) -> Rc<BlockEmitState> {
+    mut shared_types: Arc<BTreeSet<String>>,
+    mut emit_info: Arc<EmitGraphInfo>,
+) -> Arc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
             None => {
-                break Rc::new(BlockEmitState {
+                break Arc::new(BlockEmitState {
                     text: text.clone(),
                     scope: scope.clone(),
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(
+                let rest = Arc::new(
                     remaining
                         .clone()
                         .iter()
@@ -3246,7 +3249,7 @@ pub fn emit_rust_init_block_stmts(
                 );
                 match rest.clone().first().cloned() {
                     None => {
-                        break Rc::new(BlockEmitState {
+                        break Arc::new(BlockEmitState {
                             text: text.clone(),
                             scope: scope.clone(),
                         });
@@ -3289,7 +3292,7 @@ pub fn emit_rust_init_block_stmts(
 
 pub fn rust_qualify_type_leaf_name(
     name: String,
-    variant_to_enum: Rc<HashMap<String, String>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
 ) -> String {
     match v1_rt::map_get(&variant_to_enum, name.clone()) {
         Some(parent) => {
@@ -3308,9 +3311,9 @@ pub fn rust_qualify_type_leaf_name(
 
 pub fn rust_render_type_leaf_name(
     name: String,
-    variant_to_enum: Rc<HashMap<String, String>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
 ) -> String {
-    if is_value_variant_type_arg(Rc::new(vec![]), variant_to_enum.clone(), name.clone()) {
+    if is_value_variant_type_arg(Arc::new(vec![]), variant_to_enum.clone(), name.clone()) {
         "()".to_string()
     } else {
         match rust_opaque_kernel_alias_carrier(name.clone()) {
@@ -3324,13 +3327,16 @@ pub fn rust_phantom_zst_marker_def(vname: String) -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n".to_string(), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " ".to_string()), vname.clone()), ";".to_string())
 }
 
-pub fn emit_phantom_zst_markers_for_enum(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
+pub fn emit_phantom_zst_markers_for_enum(
+    children: Arc<Vec<Arc<Node>>>,
+    env: Arc<TypeEnv>,
+) -> String {
     {
-        let markers = Rc::new({
+        let markers = Arc::new({
             let mut __result = Vec::new();
-            for child in Rc::new({
+            for child in Arc::new({
                 let mut __result = Vec::new();
-                for child in Rc::new({
+                for child in Arc::new({
                     let mut __result = Vec::new();
                     for child in children.clone().iter().cloned() {
                         if ((child.children.clone().len() as i64) == 0) {
@@ -3367,8 +3373,8 @@ pub fn emit_phantom_zst_markers_for_enum(children: Rc<Vec<Rc<Node>>>, env: Rc<Ty
 }
 
 pub fn phantom_marker_name_shadowed_by_real_type_item(
-    items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    items: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     vname: String,
 ) -> bool {
     {
@@ -3387,10 +3393,10 @@ pub fn phantom_marker_name_shadowed_by_real_type_item(
 }
 
 pub fn collect_phantom_zst_marker_names(
-    items: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
-) -> Rc<Vec<String>> {
-    Rc::new({
+    items: Arc<Vec<Arc<Node>>>,
+    env: Arc<TypeEnv>,
+) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
         for item in items.clone().iter().cloned() {
             if (is_type_def_item(item.clone()) && {
@@ -3410,45 +3416,48 @@ pub fn collect_phantom_zst_marker_names(
     })
     .iter()
     .cloned()
-    .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, item: Rc<Node>| {
-        item.children.clone().iter().cloned().fold(
-            acc,
-            |inner: Rc<Vec<String>>, child: Rc<Node>| {
-                if ((child.children.clone().len() as i64) == 0) {
-                    {
-                        let vname = authored_name(env.clone(), child.clone());
-                        if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
-                            && !{
-                                let mut __found = false;
-                                for n in inner.clone().iter().cloned() {
-                                    if (n.clone() == vname.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            })
-                            && !phantom_marker_name_shadowed_by_real_type_item(
-                                items.clone(),
-                                env.source_indices.clone(),
-                                vname.clone(),
-                            ))
+    .fold(
+        Arc::new(vec![]),
+        |acc: Arc<Vec<String>>, item: Arc<Node>| {
+            item.children.clone().iter().cloned().fold(
+                acc,
+                |inner: Arc<Vec<String>>, child: Arc<Node>| {
+                    if ((child.children.clone().len() as i64) == 0) {
                         {
-                            v1_rt::concat(inner.clone(), Rc::new(vec![vname.clone()]))
-                        } else {
-                            inner.clone()
+                            let vname = authored_name(env.clone(), child.clone());
+                            if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
+                                && !{
+                                    let mut __found = false;
+                                    for n in inner.clone().iter().cloned() {
+                                        if (n.clone() == vname.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                })
+                                && !phantom_marker_name_shadowed_by_real_type_item(
+                                    items.clone(),
+                                    env.source_indices.clone(),
+                                    vname.clone(),
+                                ))
+                            {
+                                v1_rt::concat(inner.clone(), Arc::new(vec![vname.clone()]))
+                            } else {
+                                inner.clone()
+                            }
                         }
+                    } else {
+                        inner.clone()
                     }
-                } else {
-                    inner.clone()
-                }
-            },
-        )
-    })
+                },
+            )
+        },
+    )
 }
 
-pub fn emit_module_phantom_zst_markers(items: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
-    Rc::new({
+pub fn emit_module_phantom_zst_markers(items: Arc<Vec<Arc<Node>>>, env: Arc<TypeEnv>) -> String {
+    Arc::new({
         let mut __result = Vec::new();
         for vname in collect_phantom_zst_marker_names(items.clone(), env.clone())
             .iter()
@@ -3461,7 +3470,7 @@ pub fn emit_module_phantom_zst_markers(items: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv
     .join(&"\n".to_string())
 }
 
-pub fn has_complex_variants(item: Rc<Node>) -> bool {
+pub fn has_complex_variants(item: Arc<Node>) -> bool {
     if ((item.children.clone().len() as i64) == 0) {
         false
     } else {
@@ -3478,9 +3487,9 @@ pub fn has_complex_variants(item: Rc<Node>) -> bool {
     }
 }
 
-pub fn is_simple_disj(item: Rc<Node>) -> bool {
+pub fn is_simple_disj(item: Arc<Node>) -> bool {
     {
-        let complex = Rc::new({
+        let complex = Arc::new({
             let mut __result = Vec::new();
             for v in item.children.clone().iter().cloned() {
                 if ((v.children.clone().len() as i64) > 0) {
@@ -3501,8 +3510,8 @@ pub fn is_dag_value_type_name(name: String) -> bool {
 }
 
 pub fn is_type_constant(
-    summary: Rc<TypeSummary>,
-    recursive_type_set: Rc<BTreeSet<String>>,
+    summary: Arc<TypeSummary>,
+    recursive_type_set: Arc<BTreeSet<String>>,
 ) -> bool {
     {
         let is_recursive = v1_rt::set_contains(&recursive_type_set, summary.name.clone());
@@ -3521,20 +3530,20 @@ pub fn is_type_constant(
                     false
                 } else {
                     {
-                        let field_count = (Rc::new(v1_rt::sorted_map_keys(
-                            &summary.field_summaries.clone(),
+                        let field_count =
+                            (Arc::new(v1_rt::sorted_map_keys(&summary.field_summaries.clone()))
+                                .len() as i64);
+                        let ft_count = (Arc::new(v1_rt::sorted_map_keys(
+                            &summary.field_type_map.clone(),
                         ))
                         .len() as i64);
-                        let ft_count =
-                            (Rc::new(v1_rt::sorted_map_keys(&summary.field_type_map.clone())).len()
-                                as i64);
                         if (ft_count.clone() < field_count.clone()) {
                             false
                         } else {
                             {
                                 let mut __all = true;
                                 for tn in
-                                    Rc::new(v1_rt::map_values(&summary.field_type_map.clone()))
+                                    Arc::new(v1_rt::map_values(&summary.field_type_map.clone()))
                                         .iter()
                                         .cloned()
                                 {
@@ -3554,11 +3563,11 @@ pub fn is_type_constant(
 }
 
 pub fn maybe_mark_shared_type(
-    acc: Rc<BTreeSet<String>>,
-    summary: Rc<TypeSummary>,
-    recursive_type_set: Rc<BTreeSet<String>>,
+    acc: Arc<BTreeSet<String>>,
+    summary: Arc<TypeSummary>,
+    recursive_type_set: Arc<BTreeSet<String>>,
     target_needs_sharing: bool,
-) -> Rc<BTreeSet<String>> {
+) -> Arc<BTreeSet<String>> {
     {
         let needs_sharing = (target_needs_sharing.clone()
             && match (*summary.repr.clone()).clone() {
@@ -3578,18 +3587,18 @@ pub fn maybe_mark_shared_type(
 }
 
 pub fn build_shared_types(
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    recursive_type_set: Rc<BTreeSet<String>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+    recursive_type_set: Arc<BTreeSet<String>>,
     target: RenderTarget,
-) -> Rc<BTreeSet<String>> {
+) -> Arc<BTreeSet<String>> {
     {
         let sharing = sharing_for_target(target.clone());
-        let user_shared = Rc::new(v1_rt::map_values(&type_summaries))
+        let user_shared = Arc::new(v1_rt::map_values(&type_summaries))
             .iter()
             .cloned()
             .fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<BTreeSet<String>>, summary: Rc<TypeSummary>| {
+                |acc: Arc<BTreeSet<String>>, summary: Arc<TypeSummary>| {
                     maybe_mark_shared_type(
                         acc,
                         summary.clone(),
@@ -3598,9 +3607,9 @@ pub fn build_shared_types(
                     )
                 },
             );
-        let collection_keys = Rc::new({
+        let collection_keys = Arc::new({
             let mut __result = Vec::new();
-            for k in Rc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
+            for k in Arc::new(v1_rt::sorted_map_keys(&rust_container_templates()))
                 .iter()
                 .cloned()
             {
@@ -3614,7 +3623,7 @@ pub fn build_shared_types(
         });
         collection_keys.clone().iter().cloned().fold(
             user_shared.clone(),
-            |acc: Rc<BTreeSet<String>>, key: String| {
+            |acc: Arc<BTreeSet<String>>, key: String| {
                 let pascal = to_pascal(key.clone());
                 v1_rt::rc_set_insert(acc, pascal.clone())
             },
@@ -3625,22 +3634,22 @@ pub fn build_shared_types(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipProofEntry {
     pub name: String,
-    pub proof: Rc<OwnershipProof>,
-    pub param_names: Rc<BTreeSet<String>>,
+    pub proof: Arc<OwnershipProof>,
+    pub param_names: Arc<BTreeSet<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipBuildResult {
-    pub ownership_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-    pub read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    pub ownership_index: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+    pub read_only_params_index: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
 }
 
-pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
+pub fn build_ownership_results(modules: Arc<Vec<Arc<TypedModule>>>) -> Arc<OwnershipBuildResult> {
     {
         let callable_set = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
-            |acc: _, m: Rc<TypedModule>| {
-                Rc::new({
+            |acc: _, m: Arc<TypedModule>| {
+                Arc::new({
                     let mut __result = Vec::new();
                     for item in m.items.clone().iter().cloned() {
                         if (item.body.clone() != None) {
@@ -3651,7 +3660,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                 })
                 .iter()
                 .cloned()
-                .fold(acc, |inner: _, item: Rc<Node>| {
+                .fold(acc, |inner: _, item: Arc<Node>| {
                     v1_rt::rc_set_union(
                         inner,
                         collect_callable_refs(
@@ -3662,13 +3671,13 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                 })
             },
         );
-        let proofs = Rc::new({
+        let proofs = Arc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
                 __result.extend(
-                    (*Rc::new({
+                    (*Arc::new({
                         let mut __result = Vec::new();
-                        for item in Rc::new({
+                        for item in Arc::new({
                             let mut __result = Vec::new();
                             for item in m.items.clone().iter().cloned() {
                                 if (item.body.clone() != None) {
@@ -3683,7 +3692,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                             __result.push({
                                 let pnames = item.params.clone().iter().cloned().fold(
                                     v1_rt::rc_empty_set::<_>(),
-                                    |acc: _, p: Rc<Node>| {
+                                    |acc: _, p: Arc<Node>| {
                                         v1_rt::rc_set_insert(
                                             acc,
                                             param_node_name_at(
@@ -3701,7 +3710,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                                     ),
                                     authored_name_at(si.clone(), item.clone()),
                                 );
-                                Rc::new(OwnershipProofEntry {
+                                Arc::new(OwnershipProofEntry {
                                     name: qualified.clone(),
                                     proof: analyze_ownership(
                                         authored_name_at(si.clone(), item.clone()),
@@ -3722,11 +3731,11 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
             __result
         });
         proofs.clone().iter().cloned().fold(
-            Rc::new(OwnershipBuildResult {
-                ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
-                read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+            Arc::new(OwnershipBuildResult {
+                ownership_index: v1_rt::rc_empty_map::<String, Arc<BTreeSet<String>>>(),
+                read_only_params_index: v1_rt::rc_empty_map::<String, Arc<BTreeSet<String>>>(),
             }),
-            |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
+            |acc: Arc<OwnershipBuildResult>, entry: Arc<OwnershipProofEntry>| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let read_only = if v1_rt::set_contains(
@@ -3738,7 +3747,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                         build_read_only_params(entry.proof.clone(), entry.param_names.clone())
                     };
                     let movable = build_movable_set(entry.proof.clone(), entry.param_names.clone());
-                    Rc::new(OwnershipBuildResult {
+                    Arc::new(OwnershipBuildResult {
                         ownership_index: v1_rt::rc_map_insert(
                             acc.ownership_index,
                             entry.name.clone(),
@@ -3756,7 +3765,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
     }
 }
 
-pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
+pub fn emit_rust(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
     {
         let has_v1_seed = corpus_has_v1_seed_source_indices(typed.modules.clone());
         let base_info = build_emit_graph_info(typed.modules.clone(), has_v1_seed.clone());
@@ -3766,7 +3775,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             base_info.recursive_type_set.clone(),
             RenderTarget::Rust,
         );
-        let emit_info = Rc::new(EmitGraphInfo {
+        let emit_info = Arc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
             recursive_type_set: base_info.recursive_type_set.clone(),
@@ -3793,15 +3802,15 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         );
         let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs.clone());
         if ((workflow_default_diags.clone().len() as i64) > 0) {
-            return Rc::new(EmitResult {
-                files: Rc::new(vec![]),
+            return Arc::new(EmitResult {
+                files: Arc::new(vec![]),
                 diagnostics: workflow_default_diags.clone(),
             });
         }
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
-                let svc_items = Rc::new({
+            |acc: Arc<HashMap<String, String>>, tm: Arc<TypedModule>| {
+                let svc_items = Arc::new({
                     let mut __result = Vec::new();
                     for item in tm.items.clone().iter().cloned() {
                         if is_service_item(item.clone()) {
@@ -3816,7 +3825,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 ));
                 svc_items.clone().iter().cloned().fold(
                     acc,
-                    |a: Rc<HashMap<String, String>>, svc: Rc<Node>| {
+                    |a: Arc<HashMap<String, String>>, svc: Arc<Node>| {
                         v1_rt::rc_map_insert(
                             a,
                             authored_name_at(
@@ -3832,7 +3841,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let test_projections = extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
         let module_index = build_module_index(typed.modules.clone());
-        let module_files = Rc::new({
+        let module_files = Arc::new({
             let mut __result = Vec::new();
             for tm in typed.modules.clone().iter().cloned() {
                 __result.push(emit_module_full(
@@ -3849,9 +3858,9 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             }
             __result
         });
-        let test_files = Rc::new({
+        let test_files = Arc::new({
             let mut __result = Vec::new();
-            for f in Rc::new({
+            for f in Arc::new({
                 let mut __result = Vec::new();
                 for tm in typed.modules.clone().iter().cloned() {
                     __result.push(emit_test_file(
@@ -3859,7 +3868,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                             tm.type_env.clone().source_indices.clone(),
                             tm.module.clone(),
                         ),
-                        Rc::new({
+                        Arc::new({
                             let mut __result = Vec::new();
                             for p in test_projections.clone().iter().cloned() {
                                 if (p.module_name.clone()
@@ -3915,30 +3924,30 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         );
         let rt_file = emit_v2_rt_module();
         let compiler_tests_file = if has_pipeline.clone() {
-            Rc::new(vec![emit_compiler_tests_module()])
+            Arc::new(vec![emit_compiler_tests_module()])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let dry_run_file = if has_services.clone() {
-            Rc::new(vec![emit_dry_run_module()])
+            Arc::new(vec![emit_dry_run_module()])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let v2_std_text_stub = if ((corpus_repr_is_faithful(emit_info.corpus_repr.clone())
             && module_files_reference_v2_std_text(module_files.clone()))
             && !module_files_include_v2_std_text(module_files.clone()))
         {
-            Rc::new(vec![emit_v2_std_text_closure_stub_module()])
+            Arc::new(vec![emit_v2_std_text_closure_stub_module()])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let v2_std_integer_stub = if ((corpus_repr_is_faithful(emit_info.corpus_repr.clone())
             && module_files_reference_v2_std_integer(module_files.clone()))
             && !module_files_include_v2_std_integer(module_files.clone()))
         {
-            Rc::new(vec![emit_v2_std_integer_closure_stub_module()])
+            Arc::new(vec![emit_v2_std_integer_closure_stub_module()])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let all_mod_files = v1_rt::concat(
             v1_rt::concat(
@@ -3946,7 +3955,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                     v1_rt::concat(module_files.clone(), v2_std_text_stub.clone()),
                     v2_std_integer_stub.clone(),
                 ),
-                Rc::new(vec![rt_file.clone()]),
+                Arc::new(vec![rt_file.clone()]),
             ),
             dry_run_file.clone(),
         );
@@ -3954,22 +3963,22 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let files = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    Rc::new(vec![cargo.clone(), lib_file.clone(), main_file.clone()]),
+                    Arc::new(vec![cargo.clone(), lib_file.clone(), main_file.clone()]),
                     all_mod_files.clone(),
                 ),
                 compiler_tests_file.clone(),
             ),
             test_files.clone(),
         );
-        Rc::new(EmitResult {
+        Arc::new(EmitResult {
             files: files.clone(),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         })
     }
 }
 
-pub fn emit_v2_rt_module() -> Rc<TextFile> {
-    Rc::new(TextFile {
+pub fn emit_v2_rt_module() -> Arc<TextFile> {
+    Arc::new(TextFile {
         path: v1_rt::concat(
             v1_rt::concat(rust_source_root(), "v1_rt".to_string()),
             rust_source_ext(),
@@ -3978,8 +3987,8 @@ pub fn emit_v2_rt_module() -> Rc<TextFile> {
     })
 }
 
-pub fn emit_compiler_tests_module() -> Rc<TextFile> {
-    Rc::new(TextFile {
+pub fn emit_compiler_tests_module() -> Arc<TextFile> {
+    Arc::new(TextFile {
         path: v1_rt::concat(
             v1_rt::concat(rust_source_root(), "compiler_tests".to_string()),
             rust_source_ext(),
@@ -3988,7 +3997,7 @@ pub fn emit_compiler_tests_module() -> Rc<TextFile> {
     })
 }
 
-pub fn module_files_reference_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+pub fn module_files_reference_v2_std_text(files: Arc<Vec<Arc<TextFile>>>) -> bool {
     {
         let mut __found = false;
         for f in files.clone().iter().cloned() {
@@ -4001,7 +4010,7 @@ pub fn module_files_reference_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool 
     }
 }
 
-pub fn module_files_reference_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+pub fn module_files_reference_v2_std_integer(files: Arc<Vec<Arc<TextFile>>>) -> bool {
     {
         let mut __found = false;
         for f in files.clone().iter().cloned() {
@@ -4014,7 +4023,7 @@ pub fn module_files_reference_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bo
     }
 }
 
-pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+pub fn module_files_include_v2_std_text(files: Arc<Vec<Arc<TextFile>>>) -> bool {
     {
         let expected = v1_rt::concat(
             v1_rt::concat(rust_source_root(), "v2_std_text".to_string()),
@@ -4033,7 +4042,7 @@ pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
     }
 }
 
-pub fn module_files_include_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+pub fn module_files_include_v2_std_integer(files: Arc<Vec<Arc<TextFile>>>) -> bool {
     {
         let expected = v1_rt::concat(
             v1_rt::concat(rust_source_root(), "v2_std_integer".to_string()),
@@ -4052,8 +4061,8 @@ pub fn module_files_include_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool
     }
 }
 
-pub fn emit_v2_std_integer_closure_stub_module() -> Rc<TextFile> {
-    Rc::new(TextFile {
+pub fn emit_v2_std_integer_closure_stub_module() -> Arc<TextFile> {
+    Arc::new(TextFile {
         path: v1_rt::concat(
             v1_rt::concat(rust_source_root(), "v2_std_integer".to_string()),
             rust_source_ext(),
@@ -4062,8 +4071,8 @@ pub fn emit_v2_std_integer_closure_stub_module() -> Rc<TextFile> {
     })
 }
 
-pub fn emit_v2_std_text_closure_stub_module() -> Rc<TextFile> {
-    Rc::new(TextFile {
+pub fn emit_v2_std_text_closure_stub_module() -> Arc<TextFile> {
+    Arc::new(TextFile {
         path: v1_rt::concat(
             v1_rt::concat(rust_source_root(), "v2_std_text".to_string()),
             rust_source_ext(),
@@ -4073,13 +4082,13 @@ pub fn emit_v2_std_text_closure_stub_module() -> Rc<TextFile> {
 }
 
 pub fn emit_lib_rs_from_files(
-    all_module_files: Rc<Vec<Rc<TextFile>>>,
+    all_module_files: Arc<Vec<Arc<TextFile>>>,
     has_compiler_tests: bool,
-) -> Rc<TextFile> {
+) -> Arc<TextFile> {
     {
         let src_prefix_len = v1_rt::string_length(&rust_source_root());
         let ext_len = v1_rt::string_length(&rust_source_ext());
-        let mod_decls = Rc::new({
+        let mod_decls = Arc::new({
             let mut __result = Vec::new();
             for f in all_module_files.clone().iter().cloned() {
                 __result.push({
@@ -4118,7 +4127,7 @@ pub fn emit_lib_rs_from_files(
         };
         let shared_types = emit_non_empty_wrappers();
         let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n\n".to_string(), "#![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]\n#![deny(unreachable_patterns)]\n".to_string()), "#![recursion_limit = \"256\"]\n\n".to_string()), "use im::{OrdSet as BTreeSet, Vector as Vec};\n\n".to_string()), mod_decls.clone().join(&"\n".to_string())), hand_maintained_mods.clone()), "\n\n".to_string()), shared_types.clone()), test_mod.clone());
-        Rc::new(TextFile {
+        Arc::new(TextFile {
             path: v1_rt::concat(
                 v1_rt::concat(rust_source_root(), "lib".to_string()),
                 rust_source_ext(),
@@ -4129,19 +4138,19 @@ pub fn emit_lib_rs_from_files(
 }
 
 pub fn emit_module(
-    typed_module: Rc<TypedModule>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-) -> Rc<TextFile> {
+    typed_module: Arc<TypedModule>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+) -> Arc<TextFile> {
     {
-        let has_v1_seed = corpus_has_v1_seed_source_indices(Rc::new(vec![typed_module.clone()]));
+        let has_v1_seed = corpus_has_v1_seed_source_indices(Arc::new(vec![typed_module.clone()]));
         let base_info =
-            build_emit_graph_info(Rc::new(vec![typed_module.clone()]), has_v1_seed.clone());
+            build_emit_graph_info(Arc::new(vec![typed_module.clone()]), has_v1_seed.clone());
         let shared = build_shared_types(
             base_info.type_summaries.clone(),
             base_info.recursive_type_set.clone(),
             RenderTarget::Rust,
         );
-        let emit_info = Rc::new(EmitGraphInfo {
+        let emit_info = Arc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
             recursive_type_set: base_info.recursive_type_set.clone(),
@@ -4159,28 +4168,28 @@ pub fn emit_module(
             fn_type_env: base_info.fn_type_env.clone(),
         });
         let shared_types = emit_info.shared_types.clone();
-        let export_sets = build_module_export_sets(Rc::new(vec![typed_module.clone()]));
-        let module_index = build_module_index(Rc::new(vec![typed_module.clone()]));
+        let export_sets = build_module_export_sets(Arc::new(vec![typed_module.clone()]));
+        let module_index = build_module_index(Arc::new(vec![typed_module.clone()]));
         emit_module_full(
             typed_module.clone(),
             registry.clone(),
             emit_info.clone(),
             shared_types.clone(),
             v1_rt::rc_empty_map::<String, String>(),
-            build_data_item_index(Rc::new(vec![typed_module.clone()])),
+            build_data_item_index(Arc::new(vec![typed_module.clone()])),
             export_sets.clone(),
-            Rc::new(vec![typed_module.clone()]),
+            Arc::new(vec![typed_module.clone()]),
             module_index.clone(),
         )
     }
 }
 
 pub fn build_module_export_sets(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
+    modules: Arc<Vec<Arc<TypedModule>>>,
+) -> Arc<HashMap<String, Arc<HashMap<String, bool>>>> {
     modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-        |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, tm: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<String, Arc<HashMap<String, bool>>>(),
+        |acc: Arc<HashMap<String, Arc<HashMap<String, bool>>>>, tm: Arc<TypedModule>| {
             let m_name = authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -4191,7 +4200,7 @@ pub fn build_module_export_sets(
             );
             let exported_set = exported.clone().iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, bool>(),
-                |inner: Rc<HashMap<String, bool>>, n: String| {
+                |inner: Arc<HashMap<String, bool>>, n: String| {
                     v1_rt::rc_map_insert(inner, n.clone(), true)
                 },
             );
@@ -4201,16 +4210,16 @@ pub fn build_module_export_sets(
 }
 
 pub fn emit_module_full(
-    typed_module: Rc<TypedModule>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    emit_info: Rc<EmitGraphInfo>,
-    shared_types: Rc<BTreeSet<String>>,
-    svc_module_map: Rc<HashMap<String, String>>,
-    data_items: Rc<HashMap<String, Rc<Node>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<TextFile> {
+    typed_module: Arc<TypedModule>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    emit_info: Arc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    svc_module_map: Arc<HashMap<String, String>>,
+    data_items: Arc<HashMap<String, Arc<Node>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    module_index: Arc<ModuleIndex>,
+) -> Arc<TextFile> {
     {
         let m = typed_module.module.clone();
         let scope = module_emit_scope(typed_module.clone());
@@ -4225,7 +4234,7 @@ pub fn emit_module_full(
             scope.type_env.clone().source_indices.clone(),
             data_items.clone(),
         );
-        let prelude_imported_names = Rc::new({
+        let prelude_imported_names = Arc::new({
             let mut __result = Vec::new();
             for imp in module_imports(m.clone()).iter().cloned() {
                 __result.extend(
@@ -4240,9 +4249,9 @@ pub fn emit_module_full(
             __result
         });
         let local_type_names = v1_rt::concat(
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
-                for item in Rc::new({
+                for item in Arc::new({
                     let mut __result = Vec::new();
                     for item in typed_module.items.clone().iter().cloned() {
                         if ((is_type_def_item(item.clone())
@@ -4282,9 +4291,9 @@ pub fn emit_module_full(
             typed_module.items.clone(),
         );
         let dag_import_lines = if (imports_str.clone() == "".to_string()) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(
+            Arc::new(
                 imports_str
                     .clone()
                     .split(&"\n".to_string())
@@ -4307,7 +4316,7 @@ pub fn emit_module_full(
                 typed_modules.clone(),
             )
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let merged_imports = dedupe_rust_import_lines(v1_rt::concat(
             dag_import_lines.clone(),
@@ -4321,7 +4330,7 @@ pub fn emit_module_full(
         };
         let this_mod_filename =
             module_to_filename(authored_name(scope.type_env.clone(), m.clone()));
-        let all_svc_names = Rc::new({
+        let all_svc_names = Arc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
                 __result.extend(
@@ -4330,7 +4339,7 @@ pub fn emit_module_full(
                         authored_name(scope.type_env.clone(), item.clone()),
                     ) {
                         Some(info) => info.service_names.clone(),
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -4338,16 +4347,16 @@ pub fn emit_module_full(
             }
             __result
         });
-        let extern_svc_imports = Rc::new({
+        let extern_svc_imports = Arc::new({
             let mut __result = Vec::new();
             for sn in unique_strings(all_svc_names.clone()).iter().cloned() {
                 __result.extend(
                     (*match v1_rt::map_get(&svc_module_map, sn.clone()) {
                         Some(mod_file) => {
                             if (mod_file.clone() == this_mod_filename.clone()) {
-                                Rc::new(vec![])
+                                Arc::new(vec![])
                             } else {
-                                Rc::new(vec![v1_rt::concat(
+                                Arc::new(vec![v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
                                             v1_rt::concat(
@@ -4365,7 +4374,7 @@ pub fn emit_module_full(
                                 )])
                             }
                         }
-                        None => Rc::new(vec![]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -4381,9 +4390,9 @@ pub fn emit_module_full(
                 extern_svc_imports.clone().join(&"\n".to_string()),
             )
         };
-        let local_enum_uses = Rc::new({
+        let local_enum_uses = Arc::new({
             let mut __result = Vec::new();
-            for item in Rc::new({
+            for item in Arc::new({
                 let mut __result = Vec::new();
                 for item in typed_module.items.clone().iter().cloned() {
                     if ((is_type_def_item(item.clone()) && is_coproduct_type(item.clone()))
@@ -4410,9 +4419,9 @@ pub fn emit_module_full(
             }
             __result
         });
-        let local_coproduct_names = Rc::new({
+        let local_coproduct_names = Arc::new({
             let mut __result = Vec::new();
-            for item in Rc::new({
+            for item in Arc::new({
                 let mut __result = Vec::new();
                 for item in typed_module.items.clone().iter().cloned() {
                     if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
@@ -4471,7 +4480,7 @@ pub fn emit_module_full(
                 local_enum_uses.clone().join(&"\n".to_string()),
             )
         };
-        let wire_contract_item = Rc::new({
+        let wire_contract_item = Arc::new({
             let mut __result = Vec::new();
             for i in wire_context_items.clone().iter().cloned() {
                 if (is_data_def_item(i.clone())
@@ -4485,7 +4494,7 @@ pub fn emit_module_full(
         })
         .first()
         .cloned();
-        let items_str = Rc::new({
+        let items_str = Arc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
                 __result.push(emit_typed_item(
@@ -4528,7 +4537,7 @@ pub fn emit_module_full(
             "".to_string()
         };
         let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n".to_string(), "// Source module: ".to_string()), authored_name(scope.type_env.clone(), m.clone())), "\n\n".to_string()), module_attrs.clone()), prelude.clone()), imports_section.clone()), svc_imports_str.clone()), local_uses_str.clone()), "\n\n".to_string()), coproduct_wire_contract_validation_section.clone()), items_str.clone()), phantom_section.clone()), "\n".to_string());
-        Rc::new(TextFile {
+        Arc::new(TextFile {
             path: v1_rt::concat(
                 v1_rt::concat(rust_source_root(), filename.clone()),
                 rust_source_ext(),
@@ -4538,7 +4547,7 @@ pub fn emit_module_full(
     }
 }
 
-pub fn emit_import_name(n: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
+pub fn emit_import_name(n: String, registry: Arc<HashMap<String, Arc<ItemInfo>>>) -> String {
     {
         let is_data = match v1_rt::map_get(&registry, n.clone()) {
             Some(info) => (info.kind.clone() == ItemKind::DataItem),
@@ -4555,12 +4564,12 @@ pub fn emit_import_name(n: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) 
 pub fn is_import_graph_type_name(
     name: String,
     import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     if has_physical_type_def_in_module_filename(
         name.clone(),
@@ -4624,7 +4633,7 @@ pub fn is_import_graph_type_name(
 
 pub fn item_defining_module_filename(
     name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     fallback: String,
 ) -> String {
     match lookup_item(registry.clone(), name.clone()) {
@@ -4635,15 +4644,15 @@ pub fn item_defining_module_filename(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleIndex {
-    pub by_name: Rc<HashMap<String, Rc<TypedModule>>>,
-    pub by_filename: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>,
+    pub by_name: Arc<HashMap<String, Arc<TypedModule>>>,
+    pub by_filename: Arc<HashMap<String, Arc<Vec<Arc<TypedModule>>>>>,
 }
 
-pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> {
+pub fn build_module_index(modules: Arc<Vec<Arc<TypedModule>>>) -> Arc<ModuleIndex> {
     {
         let by_name = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            |acc: Rc<HashMap<String, Rc<TypedModule>>>, tm: Rc<TypedModule>| {
+            v1_rt::rc_empty_map::<String, Arc<TypedModule>>(),
+            |acc: Arc<HashMap<String, Arc<TypedModule>>>, tm: Arc<TypedModule>| {
                 let nm = authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
@@ -4655,8 +4664,8 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
             },
         );
         let by_filename = modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<TypedModule>>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>, tm: Rc<TypedModule>| {
+            v1_rt::rc_empty_map::<String, Arc<Vec<Arc<TypedModule>>>>(),
+            |acc: Arc<HashMap<String, Arc<Vec<Arc<TypedModule>>>>>, tm: Arc<TypedModule>| {
                 let fname = module_to_filename(authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
@@ -4668,12 +4677,12 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
                         v1_rt::rc_list_push(prior.clone(), tm.clone()),
                     ),
                     None => {
-                        v1_rt::rc_map_insert(acc.clone(), fname.clone(), Rc::new(vec![tm.clone()]))
+                        v1_rt::rc_map_insert(acc.clone(), fname.clone(), Arc::new(vec![tm.clone()]))
                     }
                 }
             },
         );
-        Rc::new(ModuleIndex {
+        Arc::new(ModuleIndex {
             by_name: by_name.clone(),
             by_filename: by_filename.clone(),
         })
@@ -4682,19 +4691,19 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
 
 pub fn typed_module_by_name(
     module_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Option<Rc<TypedModule>> {
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+) -> Option<Arc<TypedModule>> {
     v1_rt::map_get(&module_index.by_name.clone(), module_name.clone())
 }
 
 pub fn contracts_items_for_module(
     module_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<Rc<Node>>> {
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+) -> Arc<Vec<Arc<Node>>> {
     match typed_module_by_name(
         v1_rt::concat(module_name.clone(), "_contracts".to_string()),
         typed_modules.clone(),
@@ -4702,16 +4711,16 @@ pub fn contracts_items_for_module(
         module_index.clone(),
     ) {
         Some(tm) => tm.items.clone(),
-        None => Rc::new(vec![]),
+        None => Arc::new(vec![]),
     }
 }
 
 pub fn contracts_imports_for_module(
     module_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<Rc<Node>>> {
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+) -> Arc<Vec<Arc<Node>>> {
     match typed_module_by_name(
         v1_rt::concat(module_name.clone(), "_contracts".to_string()),
         typed_modules.clone(),
@@ -4719,18 +4728,18 @@ pub fn contracts_imports_for_module(
         module_index.clone(),
     ) {
         Some(tm) => module_imports(tm.module.clone()),
-        None => Rc::new(vec![]),
+        None => Arc::new(vec![]),
     }
 }
 
 pub fn module_name_from_filename(
     mod_filename: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> Option<String> {
     match v1_rt::map_get(&module_index.by_filename.clone(), mod_filename.clone()) {
-        Some(mods) => Rc::new({
+        Some(mods) => Arc::new({
             let mut __result = Vec::new();
             for tm in mods.clone().iter().cloned() {
                 __result.push(authored_name_at(source_indices.clone(), tm.module.clone()));
@@ -4746,9 +4755,9 @@ pub fn module_name_from_filename(
 pub fn has_physical_type_def_in_module_filename(
     rhs_name: String,
     mod_filename: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     match v1_rt::map_get(&module_index.by_filename.clone(), mod_filename.clone()) {
         Some(mods) => {
@@ -4782,9 +4791,9 @@ pub fn has_physical_type_def_in_module_filename(
 pub fn find_variant_parent_in_module(
     variant_name: String,
     module_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> Option<String> {
     match typed_module_by_name(
         module_name.clone(),
@@ -4793,11 +4802,11 @@ pub fn find_variant_parent_in_module(
         module_index.clone(),
     ) {
         None => None,
-        Some(tm) => Rc::new({
+        Some(tm) => Arc::new({
             let mut __result = Vec::new();
-            for item in Rc::new({
+            for item in Arc::new({
                 let mut __result = Vec::new();
-                for item in Rc::new({
+                for item in Arc::new({
                     let mut __result = Vec::new();
                     for item in tm.items.clone().iter().cloned() {
                         if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
@@ -4841,9 +4850,9 @@ pub fn find_variant_parent_in_module(
 pub fn type_name_is_export_source_in_module(
     name: String,
     module_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     match typed_module_by_name(
         module_name.clone(),
@@ -4872,11 +4881,11 @@ pub fn type_name_is_export_source_in_module(
 pub fn type_name_is_rust_importable_in_module(
     name: String,
     module_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     match typed_module_by_name(
         module_name.clone(),
@@ -4885,7 +4894,7 @@ pub fn type_name_is_rust_importable_in_module(
         module_index.clone(),
     ) {
         None => false,
-        Some(tm) => match Rc::new({
+        Some(tm) => match Arc::new({
             let mut __result = Vec::new();
             for item in tm.items.clone().iter().cloned() {
                 if ((authored_name_at(source_indices.clone(), item.clone()) == name.clone())
@@ -4921,11 +4930,11 @@ pub fn type_name_is_rust_importable_in_module(
 pub fn imported_name_is_non_emittable_type(
     name: String,
     import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     {
         let defining_module = match reexport_source_module_name(
@@ -4960,11 +4969,11 @@ pub fn imported_name_is_non_emittable_type(
 pub fn name_in_transitive_export_surface(
     name: String,
     module_name: String,
-    visited: Rc<Vec<String>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    visited: Arc<Vec<String>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if {
@@ -4996,7 +5005,7 @@ pub fn name_in_transitive_export_surface(
                         None => false,
                         Some(tm) => {
                             let mut __found = false;
-                            for imp in Rc::new({
+                            for imp in Arc::new({
                                 let mut __result = Vec::new();
                                 for imp in module_imports(tm.module.clone()).iter().cloned() {
                                     if import_is_all(imp.clone()) {
@@ -5013,7 +5022,7 @@ pub fn name_in_transitive_export_surface(
                                     authored_name_at(source_indices.clone(), imp.clone()),
                                     v1_rt::concat(
                                         visited.clone(),
-                                        Rc::new(vec![module_name.clone()]),
+                                        Arc::new(vec![module_name.clone()]),
                                     ),
                                     export_sets.clone(),
                                     typed_modules.clone(),
@@ -5036,15 +5045,15 @@ pub fn name_in_transitive_export_surface(
 pub fn reexport_source_module_name(
     name: String,
     import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> Option<String> {
     reexport_source_module_name_with_visited(
         name.clone(),
         import_module.clone(),
-        Rc::new(vec![]),
+        Arc::new(vec![]),
         typed_modules.clone(),
         export_sets.clone(),
         source_indices.clone(),
@@ -5055,11 +5064,11 @@ pub fn reexport_source_module_name(
 pub fn reexport_source_module_name_with_visited(
     mut name: String,
     mut import_module: String,
-    mut visited: Rc<Vec<String>>,
-    mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut module_index: Rc<ModuleIndex>,
+    mut visited: Arc<Vec<String>>,
+    mut typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    mut export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    mut module_index: Arc<ModuleIndex>,
 ) -> Option<String> {
     loop {
         if {
@@ -5104,9 +5113,9 @@ pub fn reexport_source_module_name_with_visited(
                                 break Some(import_module.clone());
                             }
                             None => {
-                                match Rc::new({
+                                match Arc::new({
                                     let mut __result = Vec::new();
-                                    for imp in Rc::new({
+                                    for imp in Arc::new({
                                         let mut __result = Vec::new();
                                         for imp in module_imports(tm.module.clone()).iter().cloned()
                                         {
@@ -5147,17 +5156,17 @@ pub fn reexport_source_module_name_with_visited(
                                     Some(src) => {
                                         let __tco_0 = src.clone();
                                         let __tco_1 =
-                                            v1_rt::concat(visited, Rc::new(vec![import_module]));
+                                            v1_rt::concat(visited, Arc::new(vec![import_module]));
                                         import_module = __tco_0;
                                         visited = __tco_1;
                                         continue;
                                     }
                                     None => {
-                                        match Rc::new({
+                                        match Arc::new({
                                             let mut __result = Vec::new();
-                                            for imp in Rc::new({
+                                            for imp in Arc::new({
                                                 let mut __result = Vec::new();
-                                                for imp in Rc::new({
+                                                for imp in Arc::new({
                                                     let mut __result = Vec::new();
                                                     for imp in module_imports(tm.module.clone())
                                                         .iter()
@@ -5182,9 +5191,9 @@ pub fn reexport_source_module_name_with_visited(
                                                             src_mod.clone(),
                                                             v1_rt::concat(
                                                                 visited.clone(),
-                                                                Rc::new(
-                                                                    vec![import_module.clone()],
-                                                                ),
+                                                                Arc::new(vec![
+                                                                    import_module.clone()
+                                                                ]),
                                                             ),
                                                             export_sets.clone(),
                                                             typed_modules.clone(),
@@ -5214,7 +5223,7 @@ pub fn reexport_source_module_name_with_visited(
                                                 let __tco_0 = src.clone();
                                                 let __tco_1 = v1_rt::concat(
                                                     visited,
-                                                    Rc::new(vec![import_module]),
+                                                    Arc::new(vec![import_module]),
                                                 );
                                                 import_module = __tco_0;
                                                 visited = __tco_1;
@@ -5237,13 +5246,13 @@ pub fn reexport_source_module_name_with_visited(
 
 pub fn import_module_enum_scope(
     import_module: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<String>> {
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+) -> Arc<Vec<String>> {
     {
         let physical = enum_names_in_module(
             import_module.clone(),
@@ -5252,13 +5261,13 @@ pub fn import_module_enum_scope(
             module_index.clone(),
         );
         let reexport_parents = match v1_rt::map_get(&export_sets, import_module.clone()) {
-            Some(exported) => Rc::new({
+            Some(exported) => Arc::new({
                 let mut __result = Vec::new();
-                for p in Rc::new({
+                for p in Arc::new({
                     let mut __result = Vec::new();
-                    for n in Rc::new({
+                    for n in Arc::new({
                         let mut __result = Vec::new();
-                        for n in Rc::new(v1_rt::sorted_map_keys(&exported)).iter().cloned() {
+                        for n in Arc::new(v1_rt::sorted_map_keys(&exported)).iter().cloned() {
                             if (is_known_variant(type_summaries.clone(), n.clone())
                                 && (is_enum_in_summaries(type_summaries.clone(), n.clone())
                                     == false))
@@ -5298,7 +5307,7 @@ pub fn import_module_enum_scope(
                 }
                 __result
             }),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         unique_strings(v1_rt::concat(physical.clone(), reexport_parents.clone()))
     }
@@ -5306,20 +5315,20 @@ pub fn import_module_enum_scope(
 
 pub fn enum_names_in_module(
     module_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<String>> {
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+) -> Arc<Vec<String>> {
     match typed_module_by_name(
         module_name.clone(),
         typed_modules.clone(),
         source_indices.clone(),
         module_index.clone(),
     ) {
-        None => Rc::new(vec![]),
-        Some(tm) => Rc::new({
+        None => Arc::new(vec![]),
+        Some(tm) => Arc::new({
             let mut __result = Vec::new();
-            for item in Rc::new({
+            for item in Arc::new({
                 let mut __result = Vec::new();
                 for item in tm.items.clone().iter().cloned() {
                     if (is_type_def_item(item.clone()) && is_coproduct_type(item.clone())) {
@@ -5341,9 +5350,9 @@ pub fn enum_names_in_module(
 pub fn enum_physically_defined_in_module(
     enum_name: String,
     module_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     match typed_module_by_name(
         module_name.clone(),
@@ -5370,12 +5379,12 @@ pub fn enum_physically_defined_in_module(
 
 pub fn wildcard_import_pool_surface_names(
     module_name: String,
-    visited: Rc<Vec<String>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<String>> {
+    visited: Arc<Vec<String>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+) -> Arc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if {
             let mut __found = false;
@@ -5387,7 +5396,7 @@ pub fn wildcard_import_pool_surface_names(
             }
             __found
         } {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
             match typed_module_by_name(
                 module_name.clone(),
@@ -5395,10 +5404,10 @@ pub fn wildcard_import_pool_surface_names(
                 source_indices.clone(),
                 module_index.clone(),
             ) {
-                None => Rc::new(vec![]),
-                Some(tm) => Rc::new({
+                None => Arc::new(vec![]),
+                Some(tm) => Arc::new({
                     let mut __result = Vec::new();
-                    for imp in Rc::new({
+                    for imp in Arc::new({
                         let mut __result = Vec::new();
                         for imp in module_imports(tm.module.clone()).iter().cloned() {
                             if import_is_all(imp.clone()) {
@@ -5414,8 +5423,8 @@ pub fn wildcard_import_pool_surface_names(
                             (*{
                                 let src_mod = authored_name_at(source_indices.clone(), imp.clone());
                                 let direct = match v1_rt::map_get(&export_sets, src_mod.clone()) {
-                                    Some(exported) => Rc::new(v1_rt::sorted_map_keys(&exported)),
-                                    None => Rc::new(vec![]),
+                                    Some(exported) => Arc::new(v1_rt::sorted_map_keys(&exported)),
+                                    None => Arc::new(vec![]),
                                 };
                                 v1_rt::concat(
                                     direct.clone(),
@@ -5423,7 +5432,7 @@ pub fn wildcard_import_pool_surface_names(
                                         src_mod.clone(),
                                         v1_rt::concat(
                                             visited.clone(),
-                                            Rc::new(vec![module_name.clone()]),
+                                            Arc::new(vec![module_name.clone()]),
                                         ),
                                         export_sets.clone(),
                                         typed_modules.clone(),
@@ -5445,25 +5454,25 @@ pub fn wildcard_import_pool_surface_names(
 
 pub fn wildcard_reexport_surface_names(
     import_module: String,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<String>> {
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+) -> Arc<Vec<String>> {
     {
         let local_candidates = match v1_rt::map_get(&export_sets, import_module.clone()) {
-            Some(exported) => Rc::new(v1_rt::sorted_map_keys(&exported)),
-            None => Rc::new(vec![]),
+            Some(exported) => Arc::new(v1_rt::sorted_map_keys(&exported)),
+            None => Arc::new(vec![]),
         };
         let wildcard_pool_candidates = wildcard_import_pool_surface_names(
             import_module.clone(),
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             export_sets.clone(),
             typed_modules.clone(),
             source_indices.clone(),
             module_index.clone(),
         );
-        unique_strings(Rc::new({
+        unique_strings(Arc::new({
             let mut __result = Vec::new();
             for n in v1_rt::concat(local_candidates.clone(), wildcard_pool_candidates.clone())
                 .iter()
@@ -5492,10 +5501,10 @@ pub fn graph_type_import_module_filename(
     name: String,
     import_module: String,
     mod_name: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> String {
     if has_physical_type_def_in_module_filename(
         name.clone(),
@@ -5523,11 +5532,11 @@ pub fn graph_type_import_module_filename(
 pub fn variant_defining_module_filename_for_import(
     mut variant_name: String,
     mut import_module: String,
-    mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    mut export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     mut fallback: String,
-    mut module_index: Rc<ModuleIndex>,
+    mut module_index: Arc<ModuleIndex>,
 ) -> String {
     loop {
         match find_variant_parent_in_module(
@@ -5573,12 +5582,12 @@ pub fn variant_parent_defining_module_filename(
     parent_enum: String,
     variant_name: String,
     import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     fallback: String,
-    module_index: Rc<ModuleIndex>,
+    module_index: Arc<ModuleIndex>,
 ) -> String {
     match find_variant_parent_in_module(
         variant_name.clone(),
@@ -5621,10 +5630,10 @@ pub fn variant_parent_defining_module_filename(
 pub fn explicit_import_source_module_for_name(
     name: String,
     import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> Option<String> {
     match typed_module_by_name(
         import_module.clone(),
@@ -5633,9 +5642,9 @@ pub fn explicit_import_source_module_for_name(
         module_index.clone(),
     ) {
         None => None,
-        Some(tm) => match Rc::new({
+        Some(tm) => match Arc::new({
             let mut __result = Vec::new();
-            for imp in Rc::new({
+            for imp in Arc::new({
                 let mut __result = Vec::new();
                 for imp in module_imports(tm.module.clone()).iter().cloned() {
                     if ((import_is_all(imp.clone()) == false) && {
@@ -5667,11 +5676,11 @@ pub fn explicit_import_source_module_for_name(
         .cloned()
         {
             Some(src) => Some(src.clone()),
-            None => match Rc::new({
+            None => match Arc::new({
                 let mut __result = Vec::new();
-                for imp in Rc::new({
+                for imp in Arc::new({
                     let mut __result = Vec::new();
-                    for imp in Rc::new({
+                    for imp in Arc::new({
                         let mut __result = Vec::new();
                         for imp in module_imports(tm.module.clone()).iter().cloned() {
                             if import_is_all(imp.clone()) {
@@ -5717,12 +5726,12 @@ pub fn explicit_import_source_module_for_name(
 pub fn reexport_variant_parent_in_import_module(
     mut variant_name: String,
     mut import_module: String,
-    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    mut type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut module_index: Rc<ModuleIndex>,
+    mut registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    mut type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+    mut typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    mut export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    mut module_index: Arc<ModuleIndex>,
 ) -> Option<String> {
     loop {
         match reexport_source_module_name(
@@ -5781,13 +5790,13 @@ pub fn reexport_variant_parent_in_import_module(
 pub fn alias_rhs_rust_qualify_module_filename(
     name: String,
     alias_module: String,
-    imports: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    imports: Arc<Vec<Arc<Node>>>,
+    scope: Arc<InferScope>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> String {
     {
         let spell_mod = alias_rhs_base_module_filename(
@@ -5836,13 +5845,13 @@ pub fn alias_rhs_rust_qualify_module_filename(
 pub fn alias_rhs_base_module_filename(
     name: String,
     alias_module: String,
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    scope: Rc<InferScope>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
+    imports: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    scope: Arc<InferScope>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> String {
     {
         let local_mod = module_to_filename(alias_module.clone());
@@ -5882,17 +5891,17 @@ pub fn alias_rhs_base_module_filename(
 
 pub fn alias_rhs_base_module_from_import_or_registry(
     name: String,
-    imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    imports: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     local_mod: String,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> String {
-    match Rc::new({
+    match Arc::new({
         let mut __result = Vec::new();
-        for imp in Rc::new({
+        for imp in Arc::new({
             let mut __result = Vec::new();
             for imp in imports.clone().iter().cloned() {
                 if {
@@ -5924,11 +5933,11 @@ pub fn alias_rhs_base_module_from_import_or_registry(
     .cloned()
     {
         Some(import_module) => module_to_filename(import_module.clone()),
-        None => match Rc::new({
+        None => match Arc::new({
             let mut __result = Vec::new();
-            for imp in Rc::new({
+            for imp in Arc::new({
                 let mut __result = Vec::new();
-                for imp in Rc::new({
+                for imp in Arc::new({
                     let mut __result = Vec::new();
                     for imp in imports.clone().iter().cloned() {
                         if import_is_all(imp.clone()) {
@@ -5945,7 +5954,7 @@ pub fn alias_rhs_base_module_from_import_or_registry(
                         name_in_transitive_export_surface(
                             name.clone(),
                             import_module.clone(),
-                            Rc::new(vec![]),
+                            Arc::new(vec![]),
                             export_sets.clone(),
                             typed_modules.clone(),
                             source_indices.clone(),
@@ -5976,10 +5985,10 @@ pub fn alias_rhs_base_module_from_import_or_registry(
 }
 
 pub fn item_generic_param_names(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
         for p in item.params.clone().iter().cloned() {
             __result.push(generic_param_name_at(p.clone(), source_indices.clone()));
@@ -5991,10 +6000,10 @@ pub fn item_generic_param_names(
 pub fn type_item_by_name_in_module_filename(
     rhs_name: String,
     mod_filename: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Option<Rc<Node>> {
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+) -> Option<Arc<Node>> {
     match module_name_from_filename(
         mod_filename.clone(),
         typed_modules.clone(),
@@ -6007,7 +6016,7 @@ pub fn type_item_by_name_in_module_filename(
             source_indices.clone(),
             module_index.clone(),
         ) {
-            Some(tm) => Rc::new({
+            Some(tm) => Arc::new({
                 let mut __result = Vec::new();
                 for item in tm.items.clone().iter().cloned() {
                     if ((authored_name_at(source_indices.clone(), item.clone())
@@ -6030,16 +6039,16 @@ pub fn type_item_by_name_in_module_filename(
 }
 
 pub fn type_item_has_rust_nominal_shell_authority(
-    item: Rc<Node>,
+    item: Arc<Node>,
     item_text: String,
     module_name: String,
-    imports: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    imports: Arc<Vec<Arc<Node>>>,
+    scope: Arc<InferScope>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     if is_type_def_item(item.clone()) {
         true
@@ -6115,7 +6124,7 @@ pub fn type_item_has_rust_nominal_shell_authority(
     }
 }
 
-pub fn is_phantom_unit_variant_type_arg(env: Rc<TypeEnv>, variant_name: String) -> bool {
+pub fn is_phantom_unit_variant_type_arg(env: Arc<TypeEnv>, variant_name: String) -> bool {
     match lookup_unit_variant_phantom_type(env.clone(), variant_name.clone()) {
         Some(_) => true,
         None => false,
@@ -6126,13 +6135,13 @@ pub fn rhs_base_has_rust_type_authority_in_module(
     mut rhs_name: String,
     mut def_mod_filename: String,
     mut module_name: String,
-    mut imports: Rc<Vec<Rc<Node>>>,
-    mut scope: Rc<InferScope>,
-    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut module_index: Rc<ModuleIndex>,
+    mut imports: Arc<Vec<Arc<Node>>>,
+    mut scope: Arc<InferScope>,
+    mut registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    mut typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    mut export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    mut module_index: Arc<ModuleIndex>,
 ) -> bool {
     loop {
         if is_phantom_unit_variant_type_arg(scope.type_env.clone(), rhs_name.clone()) {
@@ -6229,15 +6238,15 @@ pub fn rhs_base_has_rust_type_authority_in_module(
 }
 
 pub fn alias_rhs_nominal_shell_has_rust_authority(
-    n: Rc<Node>,
+    n: Arc<Node>,
     module_name: String,
-    imports: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    imports: Arc<Vec<Arc<Node>>>,
+    scope: Arc<InferScope>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if ((n.connective.clone() == Connective::NoConnective)
@@ -6345,8 +6354,8 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
 }
 
 pub fn is_self_referential_opaque_type_resolved(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let item_text = authored_name_at(source_indices.clone(), item.clone());
@@ -6357,16 +6366,16 @@ pub fn is_self_referential_opaque_type_resolved(
 }
 
 pub fn is_zero_param_self_referential_opaque_decl(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (is_bare_leaf_item(item.clone())
         && is_self_referential_opaque_type_resolved(item.clone(), source_indices.clone()))
 }
 
 pub fn is_parametric_opaque_type_decl_item(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     ((((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None))
         && (item.transport.clone() == None))
@@ -6376,8 +6385,8 @@ pub fn is_parametric_opaque_type_decl_item(
 }
 
 pub fn emit_zero_param_phantom_opaque_struct(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let item_text = authored_name_at(source_indices.clone(), item.clone());
@@ -6386,8 +6395,8 @@ pub fn emit_zero_param_phantom_opaque_struct(
 }
 
 pub fn emit_parametric_phantom_opaque_struct(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let item_text = authored_name_at(source_indices.clone(), item.clone());
@@ -6408,16 +6417,16 @@ pub fn emit_parametric_phantom_opaque_struct(
 }
 
 pub fn is_emittable_parametric_type_alias_item(
-    item: Rc<Node>,
+    item: Arc<Node>,
     item_text: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     module_name: String,
-    imports: Rc<Vec<Rc<Node>>>,
-    scope: Rc<InferScope>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
+    imports: Arc<Vec<Arc<Node>>>,
+    scope: Arc<InferScope>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> bool {
     if ((item.params.clone().len() as i64) == 0) {
         false
@@ -6459,14 +6468,14 @@ pub fn is_emittable_parametric_type_alias_item(
 pub fn import_variant_parent_for_name(
     n: String,
     import_module: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-    imported_enums: Rc<Vec<String>>,
-    import_module_enums: Rc<Vec<String>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+    imported_enums: Arc<Vec<String>>,
+    import_module_enums: Arc<Vec<String>>,
 ) -> String {
     if is_import_graph_type_name(
         n.clone(),
@@ -6535,18 +6544,18 @@ pub fn import_variant_parent_for_name(
 pub fn emit_specific_import_block(
     import_module: String,
     mod_name: String,
-    filtered_names: Rc<Vec<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    local_names: Rc<Vec<String>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
+    filtered_names: Arc<Vec<String>>,
+    emit_info: Arc<EmitGraphInfo>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    local_names: Arc<Vec<String>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> String {
     {
         let type_summaries = emit_info.type_summaries.clone();
-        let deduped_names = unique_strings(Rc::new({
+        let deduped_names = unique_strings(Arc::new({
             let mut __result = Vec::new();
             for n in filtered_names.clone().iter().cloned() {
                 if {
@@ -6577,7 +6586,7 @@ pub fn emit_specific_import_block(
                     source_indices.clone(),
                     module_index.clone(),
                 );
-                let top_level = Rc::new({
+                let top_level = Arc::new({
                     let mut __result = Vec::new();
                     for n in deduped_names.clone().iter().cloned() {
                         if if is_import_graph_type_name(
@@ -6628,7 +6637,7 @@ pub fn emit_specific_import_block(
                     }
                     __result
                 });
-                let imported_enums = Rc::new({
+                let imported_enums = Arc::new({
                     let mut __result = Vec::new();
                     for n in deduped_names.clone().iter().cloned() {
                         if {
@@ -6646,9 +6655,9 @@ pub fn emit_specific_import_block(
                     }
                     __result
                 });
-                let all_parents = Rc::new({
+                let all_parents = Arc::new({
                     let mut __result = Vec::new();
-                    for p in Rc::new({
+                    for p in Arc::new({
                         let mut __result = Vec::new();
                         for n in deduped_names.clone().iter().cloned() {
                             __result.push(import_variant_parent_for_name(
@@ -6676,7 +6685,7 @@ pub fn emit_specific_import_block(
                     __result
                 });
                 let parent_list = unique_strings(all_parents.clone());
-                let non_variant_top = Rc::new({
+                let non_variant_top = Arc::new({
                     let mut __result = Vec::new();
                     for n in top_level.clone().iter().cloned() {
                         if if (import_variant_parent_for_name(
@@ -6715,7 +6724,7 @@ pub fn emit_specific_import_block(
                     __result
                 });
                 let direct_names = unique_strings(non_variant_top.clone());
-                let local_parent_names = Rc::new({
+                let local_parent_names = Arc::new({
                     let mut __result = Vec::new();
                     for p in parent_list.clone().iter().cloned() {
                         if {
@@ -6742,9 +6751,9 @@ pub fn emit_specific_import_block(
                     }
                     __result
                 });
-                let remote_parent_list = Rc::new({
+                let remote_parent_list = Arc::new({
                     let mut __result = Vec::new();
-                    for p in Rc::new({
+                    for p in Arc::new({
                         let mut __result = Vec::new();
                         for p in parent_list.clone().iter().cloned() {
                             if {
@@ -6794,7 +6803,7 @@ pub fn emit_specific_import_block(
                     direct_names.clone(),
                     local_parent_names.clone(),
                 ));
-                let type_direct_names = Rc::new({
+                let type_direct_names = Arc::new({
                     let mut __result = Vec::new();
                     for n in merged_direct_names.clone().iter().cloned() {
                         if is_import_graph_type_name(
@@ -6812,7 +6821,7 @@ pub fn emit_specific_import_block(
                     }
                     __result
                 });
-                let other_direct_names = Rc::new({
+                let other_direct_names = Arc::new({
                     let mut __result = Vec::new();
                     for n in merged_direct_names.clone().iter().cloned() {
                         if (is_import_graph_type_name(
@@ -6831,7 +6840,7 @@ pub fn emit_specific_import_block(
                     }
                     __result
                 });
-                let type_direct_mods = unique_strings(Rc::new({
+                let type_direct_mods = unique_strings(Arc::new({
                     let mut __result = Vec::new();
                     for n in type_direct_names.clone().iter().cloned() {
                         __result.push(graph_type_import_module_filename(
@@ -6846,11 +6855,11 @@ pub fn emit_specific_import_block(
                     }
                     __result
                 }));
-                let type_direct_lines = Rc::new({
+                let type_direct_lines = Arc::new({
                     let mut __result = Vec::new();
                     for def_mod in type_direct_mods.clone().iter().cloned() {
                         __result.push({
-                            let group = Rc::new({
+                            let group = Arc::new({
                                 let mut __result = Vec::new();
                                 for n in type_direct_names.clone().iter().cloned() {
                                     if (graph_type_import_module_filename(
@@ -6870,7 +6879,7 @@ pub fn emit_specific_import_block(
                             });
                             if ((group.clone().len() as i64) > 0) {
                                 {
-                                    let names_str = Rc::new({
+                                    let names_str = Arc::new({
                                         let mut __result = Vec::new();
                                         for n in group.clone().iter().cloned() {
                                             __result.push(emit_import_name(
@@ -6907,7 +6916,7 @@ pub fn emit_specific_import_block(
                 });
                 let other_direct_line = if ((other_direct_names.clone().len() as i64) > 0) {
                     {
-                        let names_str = Rc::new({
+                        let names_str = Arc::new({
                             let mut __result = Vec::new();
                             for n in other_direct_names.clone().iter().cloned() {
                                 __result.push(emit_import_name(n.clone(), registry.clone()));
@@ -6936,7 +6945,7 @@ pub fn emit_specific_import_block(
                     "".to_string()
                 };
                 let direct_lines = v1_rt::concat(
-                    Rc::new({
+                    Arc::new({
                         let mut __result = Vec::new();
                         for l in type_direct_lines.clone().iter().cloned() {
                             if (l.clone() != "".to_string()) {
@@ -6946,16 +6955,16 @@ pub fn emit_specific_import_block(
                         __result
                     }),
                     if (other_direct_line.clone() != "".to_string()) {
-                        Rc::new(vec![other_direct_line.clone()])
+                        Arc::new(vec![other_direct_line.clone()])
                     } else {
-                        Rc::new(vec![])
+                        Arc::new(vec![])
                     },
                 );
-                let parent_defining_mods = unique_strings(Rc::new({
+                let parent_defining_mods = unique_strings(Arc::new({
                     let mut __result = Vec::new();
                     for p in remote_parent_list.clone().iter().cloned() {
                         __result.push({
-                            let rep_variant = Rc::new({
+                            let rep_variant = Arc::new({
                                 let mut __result = Vec::new();
                                 for n in deduped_names.clone().iter().cloned() {
                                     if match find_variant_parent_in_module(
@@ -7009,12 +7018,12 @@ pub fn emit_specific_import_block(
                     }
                     __result
                 }));
-                let parent_main_lines = Rc::new({
+                let parent_main_lines = Arc::new({
                     let mut __result = Vec::new();
                     for def_mod in parent_defining_mods.clone().iter().cloned() {
                         __result.push({
-                    let group = Rc::new({ let mut __result = Vec::new(); for p in remote_parent_list.clone().iter().cloned() { if {
-                        let rep_variant = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
+                    let group = Arc::new({ let mut __result = Vec::new(); for p in remote_parent_list.clone().iter().cloned() { if {
+                        let rep_variant = Arc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if match find_variant_parent_in_module(n.clone(), import_module.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone()) {
     Some(found) => (found.clone() == p.clone()),
     None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone()) {
     Some(found) => (found.clone() == p.clone()),
@@ -7041,7 +7050,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                 let main_lines = if ((direct_lines.clone().len() as i64) > 0) {
                     v1_rt::concat(
                         direct_lines.clone(),
-                        Rc::new({
+                        Arc::new({
                             let mut __result = Vec::new();
                             for l in parent_main_lines.clone().iter().cloned() {
                                 if (l.clone() != "".to_string()) {
@@ -7052,7 +7061,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                         }),
                     )
                 } else {
-                    Rc::new({
+                    Arc::new({
                         let mut __result = Vec::new();
                         for l in parent_main_lines.clone().iter().cloned() {
                             if (l.clone() != "".to_string()) {
@@ -7062,14 +7071,14 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
                         __result
                     })
                 };
-                let variant_lines = Rc::new({
+                let variant_lines = Arc::new({
                     let mut __result = Vec::new();
                     for parent in parent_list.clone().iter().cloned() {
                         __result.push(if is_host_freemonoid_vec_alias(parent.clone(), emit_info.corpus_repr.clone()) {
                     "".to_string()
                 } else {
                     {
-                        let variants = Rc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if ((n.clone() == "None".to_string()) || (n.clone() == "Some".to_string())) {
+                        let variants = Arc::new({ let mut __result = Vec::new(); for n in deduped_names.clone().iter().cloned() { if if ((n.clone() == "None".to_string()) || (n.clone() == "Some".to_string())) {
                             false
                         } else {
                             if is_import_graph_type_name(n.clone(), import_module.clone(), typed_modules.clone(), registry.clone(), export_sets.clone(), type_summaries.clone(), source_indices.clone(), module_index.clone()) {
@@ -7082,7 +7091,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visib
     Some(found) => (found.clone() == parent.clone()),
     None => match reexport_variant_parent_in_import_module(n.clone(), import_module.clone(), registry.clone(), type_summaries.clone(), typed_modules.clone(), export_sets.clone(), source_indices.clone(), module_index.clone()) {
     Some(found) => (found.clone() == parent.clone()),
-    None => match find_variant_parent(type_summaries.clone(), n.clone(), Rc::new(vec![parent.clone()])) {
+    None => match find_variant_parent(type_summaries.clone(), n.clone(), Arc::new(vec![parent.clone()])) {
     Some(_) => true,
     None => false,
 },
@@ -7102,7 +7111,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     }
                     __result
                 });
-                let final_imported_enums = Rc::new({
+                let final_imported_enums = Arc::new({
                     let mut __result = Vec::new();
                     for n in top_level.clone().iter().cloned() {
                         if {
@@ -7120,9 +7129,9 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                     }
                     __result
                 });
-                let wildcard_enum_lines = Rc::new({
+                let wildcard_enum_lines = Arc::new({
                     let mut __result = Vec::new();
-                    for en in Rc::new({
+                    for en in Arc::new({
                         let mut __result = Vec::new();
                         for en in final_imported_enums.clone().iter().cloned() {
                             if (({
@@ -7163,7 +7172,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                 });
                 let all_lines = v1_rt::concat(
                     v1_rt::concat(
-                        Rc::new({
+                        Arc::new({
                             let mut __result = Vec::new();
                             for l in main_lines.clone().iter().cloned() {
                                 if (l.clone() != "".to_string()) {
@@ -7172,7 +7181,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
                             }
                             __result
                         }),
-                        Rc::new({
+                        Arc::new({
                             let mut __result = Vec::new();
                             for l in variant_lines.clone().iter().cloned() {
                                 if (l.clone() != "".to_string()) {
@@ -7208,7 +7217,7 @@ pub fn rust_use_after_crate(line: String) -> String {
         if (marker.clone() == "".to_string()) {
             "".to_string()
         } else {
-            match Rc::new(
+            match Arc::new(
                 line.clone()
                     .split(&marker.clone())
                     .map(|s| s.to_string())
@@ -7231,7 +7240,7 @@ pub fn rust_pub_use_module_name(line: String) -> String {
             "".to_string()
         } else {
             if v1_rt::contains(rest.clone(), "::{".to_string()) {
-                match Rc::new(
+                match Arc::new(
                     rest.clone()
                         .split(&"::{".to_string())
                         .map(|s| s.to_string())
@@ -7245,7 +7254,7 @@ pub fn rust_pub_use_module_name(line: String) -> String {
                 }
             } else {
                 if v1_rt::contains(rest.clone(), "::*".to_string()) {
-                    match Rc::new(
+                    match Arc::new(
                         rest.clone()
                             .split(&"::*".to_string())
                             .map(|s| s.to_string())
@@ -7258,7 +7267,7 @@ pub fn rust_pub_use_module_name(line: String) -> String {
                         None => "".to_string(),
                     }
                 } else {
-                    match Rc::new(
+                    match Arc::new(
                         rest.clone()
                             .split(&";".to_string())
                             .map(|s| s.to_string())
@@ -7268,7 +7277,7 @@ pub fn rust_pub_use_module_name(line: String) -> String {
                     .cloned()
                     {
                         Some(without_semi) => {
-                            let segments = Rc::new(
+                            let segments = Arc::new(
                                 without_semi
                                     .clone()
                                     .split(&"::".to_string())
@@ -7323,7 +7332,7 @@ pub fn rust_pub_use_singleton_name(line: String) -> String {
         {
             "".to_string()
         } else {
-            match Rc::new(
+            match Arc::new(
                 rest.clone()
                     .split(&";".to_string())
                     .map(|s| s.to_string())
@@ -7333,7 +7342,7 @@ pub fn rust_pub_use_singleton_name(line: String) -> String {
             .cloned()
             {
                 Some(without_semi) => {
-                    let segments = Rc::new(
+                    let segments = Arc::new(
                         without_semi
                             .clone()
                             .split(&"::".to_string())
@@ -7351,11 +7360,11 @@ pub fn rust_pub_use_singleton_name(line: String) -> String {
     }
 }
 
-pub fn rust_pub_use_braced_names(line: String) -> Rc<Vec<String>> {
+pub fn rust_pub_use_braced_names(line: String) -> Arc<Vec<String>> {
     if (v1_rt::contains(line.clone(), "::{".to_string())
         && (rust_use_crate_marker(line.clone()) != "".to_string()))
     {
-        match Rc::new(
+        match Arc::new(
             line.clone()
                 .split(&"::{".to_string())
                 .map(|s| s.to_string())
@@ -7364,7 +7373,7 @@ pub fn rust_pub_use_braced_names(line: String) -> Rc<Vec<String>> {
         .get(1 as usize)
         .cloned()
         {
-            Some(rest) => match Rc::new(
+            Some(rest) => match Arc::new(
                 rest.clone()
                     .split(&"}".to_string())
                     .map(|s| s.to_string())
@@ -7373,19 +7382,19 @@ pub fn rust_pub_use_braced_names(line: String) -> Rc<Vec<String>> {
             .first()
             .cloned()
             {
-                Some(names) => Rc::new(
+                Some(names) => Arc::new(
                     names
                         .clone()
                         .split(&", ".to_string())
                         .map(|s| s.to_string())
                         .collect::<Vec<_>>(),
                 ),
-                None => Rc::new(vec![]),
+                None => Arc::new(vec![]),
             },
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         }
     } else {
-        Rc::new(vec![])
+        Arc::new(vec![])
     }
 }
 
@@ -7419,7 +7428,7 @@ pub fn rust_pub_use_braced_line_has_name(line: String, mod_name: String, name: S
         )))
 }
 
-pub fn rust_pub_use_singleton_covered(line: String, lines: Rc<Vec<String>>) -> bool {
+pub fn rust_pub_use_singleton_covered(line: String, lines: Arc<Vec<String>>) -> bool {
     {
         let mod_name = rust_pub_use_module_name(line.clone());
         let name = rust_pub_use_singleton_name(line.clone());
@@ -7444,7 +7453,7 @@ pub fn rust_pub_use_singleton_covered(line: String, lines: Rc<Vec<String>>) -> b
     }
 }
 
-pub fn rust_pub_use_braced_subset_covered(line: String, lines: Rc<Vec<String>>) -> bool {
+pub fn rust_pub_use_braced_subset_covered(line: String, lines: Arc<Vec<String>>) -> bool {
     {
         let mod_name = rust_pub_use_module_name(line.clone());
         let names = rust_pub_use_braced_names(line.clone());
@@ -7490,7 +7499,7 @@ pub struct BracedImportCoverAccum {
     pub covered: bool,
 }
 
-pub fn rust_pub_use_braced_equal_prior_covered(line: String, lines: Rc<Vec<String>>) -> bool {
+pub fn rust_pub_use_braced_equal_prior_covered(line: String, lines: Arc<Vec<String>>) -> bool {
     {
         let mod_name = rust_pub_use_module_name(line.clone());
         let names = rust_pub_use_braced_names(line.clone());
@@ -7550,9 +7559,9 @@ pub fn rust_pub_use_braced_equal_prior_covered(line: String, lines: Rc<Vec<Strin
     }
 }
 
-pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
+pub fn dedupe_rust_import_lines(lines: Arc<Vec<String>>) -> Arc<Vec<String>> {
     {
-        let exact = unique_strings(Rc::new({
+        let exact = unique_strings(Arc::new({
             let mut __result = Vec::new();
             for line in lines.clone().iter().cloned() {
                 if (line.clone() != "".to_string()) {
@@ -7561,7 +7570,7 @@ pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
             }
             __result
         }));
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for line in exact.clone().iter().cloned() {
                 if (((rust_pub_use_singleton_covered(line.clone(), exact.clone()) == false)
@@ -7578,33 +7587,33 @@ pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
 }
 
 pub fn emit_imports(
-    imports: Rc<Vec<Rc<Node>>>,
-    emit_info: Rc<EmitGraphInfo>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    local_names: Rc<Vec<String>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-    supplement_items: Rc<Vec<Rc<Node>>>,
+    imports: Arc<Vec<Arc<Node>>>,
+    emit_info: Arc<EmitGraphInfo>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    local_names: Arc<Vec<String>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+    supplement_items: Arc<Vec<Arc<Node>>>,
 ) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
     } else {
         {
-            let import_modules = unique_strings(Rc::new({
+            let import_modules = unique_strings(Arc::new({
                 let mut __result = Vec::new();
                 for imp in imports.clone().iter().cloned() {
                     __result.push(authored_name_at(source_indices.clone(), imp.clone()));
                 }
                 __result
             }));
-            let import_lines = Rc::new({
+            let import_lines = Arc::new({
                 let mut __result = Vec::new();
                 for import_module in import_modules.clone().iter().cloned() {
                     __result.extend(
                         (*{
-                            let mod_imports = Rc::new({
+                            let mod_imports = Arc::new({
                                 let mut __result = Vec::new();
                                 for imp in imports.clone().iter().cloned() {
                                     if (authored_name_at(source_indices.clone(), imp.clone())
@@ -7640,9 +7649,9 @@ pub fn emit_imports(
                                         module_index.clone(),
                                     );
                                     let merged_specific = unique_strings(v1_rt::concat(
-                                        Rc::new({
+                                        Arc::new({
                                             let mut __result = Vec::new();
-                                            for imp in Rc::new({
+                                            for imp in Arc::new({
                                                 let mut __result = Vec::new();
                                                 for imp in mod_imports.clone().iter().cloned() {
                                                     if (import_is_all(imp.clone()) == false) {
@@ -7690,7 +7699,7 @@ pub fn emit_imports(
                                 }
                             } else {
                                 {
-                                    let specific_names = Rc::new({
+                                    let specific_names = Arc::new({
                                         let mut __result = Vec::new();
                                         for imp in mod_imports.clone().iter().cloned() {
                                             __result.extend(
@@ -7730,7 +7739,7 @@ pub fn emit_imports(
                                     )
                                 }
                             };
-                            Rc::new(
+                            Arc::new(
                                 block
                                     .clone()
                                     .split(&"\n".to_string())
@@ -7750,8 +7759,8 @@ pub fn emit_imports(
 }
 
 pub fn type_node_is_faithful_string_leaf(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
     (corpus_repr_is_faithful(corpus_repr.clone())
@@ -7759,8 +7768,8 @@ pub fn type_node_is_faithful_string_leaf(
 }
 
 pub fn node_tree_has_faithful_string_leaf(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -7808,9 +7817,9 @@ pub fn node_tree_has_faithful_string_leaf(
 }
 
 pub fn node_tree_references_type_name(
-    n: Rc<Node>,
+    n: Arc<Node>,
     type_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (authored_name_at(source_indices.clone(), n.clone()) == type_name.clone()) {
@@ -7856,18 +7865,18 @@ pub fn node_tree_references_type_name(
 }
 
 pub fn module_data_field_struct_import_names(
-    items: Rc<Vec<Rc<Node>>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    items: Arc<Vec<Arc<Node>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
     import_module: String,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<String>> {
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    module_index: Arc<ModuleIndex>,
+) -> Arc<Vec<String>> {
     {
         let mod_filename = module_to_filename(import_module.clone());
-        unique_strings(Rc::new({
+        unique_strings(Arc::new({
             let mut __result = Vec::new();
-            for item in Rc::new({
+            for item in Arc::new({
                 let mut __result = Vec::new();
                 for item in items.clone().iter().cloned() {
                     if is_data_def_item(item.clone()) {
@@ -7886,13 +7895,13 @@ pub fn module_data_field_struct_import_names(
                             None => "".to_string(),
                         };
                         if (type_name.clone() == "".to_string()) {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         } else {
                             match v1_rt::map_get(&type_summaries, type_name.clone()) {
-                                Some(summary) => Rc::new({
+                                Some(summary) => Arc::new({
                                     let mut __result = Vec::new();
                                     for field_type in
-                                        Rc::new(v1_rt::map_values(&summary.field_type_map.clone()))
+                                        Arc::new(v1_rt::map_values(&summary.field_type_map.clone()))
                                             .iter()
                                             .cloned()
                                     {
@@ -7920,7 +7929,7 @@ pub fn module_data_field_struct_import_names(
                                     }
                                     __result
                                 }),
-                                None => Rc::new(vec![]),
+                                None => Arc::new(vec![]),
                             }
                         }
                     })
@@ -7934,9 +7943,9 @@ pub fn module_data_field_struct_import_names(
 }
 
 pub fn typed_closure_includes_module_filename(
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
     filename: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -7953,8 +7962,8 @@ pub fn typed_closure_includes_module_filename(
 }
 
 pub fn module_item_has_faithful_string_leaf(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
     ((node_tree_has_faithful_string_leaf(
@@ -7985,9 +7994,9 @@ pub fn module_item_has_faithful_string_leaf(
 }
 
 pub fn module_item_references_type_name(
-    item: Rc<Node>,
+    item: Arc<Node>,
     type_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     (((node_tree_references_type_name(item.clone(), type_name.clone(), source_indices.clone())
         || match item.type_annotation.clone() {
@@ -8023,8 +8032,8 @@ pub fn module_item_references_type_name(
 }
 
 pub fn module_item_references_faithful_expanded_type(
-    item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     ((module_item_references_type_name(
         item.clone(),
@@ -8042,9 +8051,9 @@ pub fn module_item_references_faithful_expanded_type(
 }
 
 pub fn module_needs_faithful_carrier_imports(
-    items: Rc<Vec<Rc<Node>>>,
+    items: Arc<Vec<Arc<Node>>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     if !corpus_repr_is_faithful(corpus_repr.clone()) {
         false
@@ -8094,9 +8103,9 @@ pub fn module_needs_faithful_carrier_imports(
 }
 
 pub fn module_renders_faithful_text_carrier(
-    items: Rc<Vec<Rc<Node>>>,
+    items: Arc<Vec<Arc<Node>>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     if !corpus_repr_is_faithful(corpus_repr.clone()) {
         false
@@ -8119,8 +8128,8 @@ pub fn module_renders_faithful_text_carrier(
 }
 
 pub fn rust_import_name_already_resolved(
-    imported_names: Rc<Vec<String>>,
-    local_type_names: Rc<Vec<String>>,
+    imported_names: Arc<Vec<String>>,
+    local_type_names: Arc<Vec<String>>,
     name: String,
 ) -> bool {
     ({
@@ -8145,14 +8154,14 @@ pub fn rust_import_name_already_resolved(
 }
 
 pub fn emit_faithful_text_carrier_import_lines(
-    imported_names: Rc<Vec<String>>,
-    local_type_names: Rc<Vec<String>>,
-    items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    imported_names: Arc<Vec<String>>,
+    local_type_names: Arc<Vec<String>>,
+    items: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
     corpus_repr: RustCorpusRepr,
-    shared_types: Rc<BTreeSet<String>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<Vec<String>> {
+    shared_types: Arc<BTreeSet<String>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+) -> Arc<Vec<String>> {
     {
         let closure_has_std_measure = typed_closure_includes_module_filename(
             typed_modules.clone(),
@@ -8260,9 +8269,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "FreeMonoid".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_algebra::FreeMonoid;".to_string(),
             )])
@@ -8273,9 +8282,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "Char".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_types::Char;".to_string(),
             )])
@@ -8286,9 +8295,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "NonEmptyStr".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_types::NonEmptyStr;".to_string(),
             )])
@@ -8303,9 +8312,9 @@ pub fn emit_faithful_text_carrier_import_lines(
             }
             __found
         }) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::v2_std_integer::Int;".to_string(),
             )])
@@ -8316,9 +8325,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "PartialFunction".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_algebra::PartialFunction;".to_string(),
             )])
@@ -8329,9 +8338,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "Memory".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_measure::Memory;".to_string(),
             )])
@@ -8342,9 +8351,9 @@ pub fn emit_faithful_text_carrier_import_lines(
                 local_type_names.clone(),
                 "One".to_string(),
             )) {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![v1_rt::concat(
+            Arc::new(vec![v1_rt::concat(
                 rust_visibility_prefix(),
                 "use crate::std_measure::One;".to_string(),
             )])
@@ -8368,7 +8377,7 @@ pub fn emit_faithful_text_carrier_import_lines(
     }
 }
 
-pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
+pub fn emit_prelude(imported_names: Arc<Vec<String>>) -> String {
     {
         let base = v1_rt::concat(
             v1_rt::concat(
@@ -8377,7 +8386,7 @@ pub fn emit_prelude(imported_names: Rc<Vec<String>>) -> String {
                         .to_string(),
                     "use crate::v1_rt::{VecCompat, VecJoin};\n".to_string(),
                 ),
-                "use std::rc::Rc;\n".to_string(),
+                "use std::sync::Arc;\n".to_string(),
             ),
             "use crate::v1_rt;".to_string(),
         );
@@ -8452,19 +8461,19 @@ pub fn emit_non_empty_wrappers() -> String {
 }
 
 pub fn emit_typed_item(
-    item: Rc<Node>,
+    item: Arc<Node>,
     module_name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-    wire_contract_item: Option<Rc<Node>>,
-    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
-    module_items: Rc<Vec<Rc<Node>>>,
-    imports: Rc<Vec<Rc<Node>>>,
-    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    module_index: Rc<ModuleIndex>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
+    wire_contract_item: Option<Arc<Node>>,
+    data_items: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>,
+    module_items: Arc<Vec<Arc<Node>>>,
+    imports: Arc<Vec<Arc<Node>>>,
+    export_sets: Arc<HashMap<String, Arc<HashMap<String, bool>>>>,
+    typed_modules: Arc<Vec<Arc<TypedModule>>>,
+    module_index: Arc<ModuleIndex>,
 ) -> String {
     {
         let env = scope.type_env.clone();
@@ -8552,7 +8561,7 @@ pub fn emit_typed_item(
                                         ),
                                         render_rust_alias_rhs_type(
                                             resolved_type(item.clone()),
-                                            Rc::new(vec![]),
+                                            Arc::new(vec![]),
                                             shared_types.clone(),
                                             emit_info.corpus_repr.clone(),
                                             env.source_indices.clone(),
@@ -8618,7 +8627,7 @@ pub fn emit_typed_item(
                                             ),
                                             "<".to_string(),
                                         ),
-                                        Rc::new({
+                                        Arc::new({
                                             let mut __result = Vec::new();
                                             for n in generic_names.clone().iter().cloned() {
                                                 __result.push(to_pascal(n.clone()));
@@ -8754,7 +8763,7 @@ pub fn emit_typed_item(
                                     None => v1_rt::rc_empty_set::<String>(),
                                 }
                             };
-                            let fn_emit_info = Rc::new(EmitGraphInfo {
+                            let fn_emit_info = Arc::new(EmitGraphInfo {
                                 type_summaries: emit_info.type_summaries.clone(),
                                 type_decl_items: emit_info.type_decl_items.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
@@ -8856,10 +8865,10 @@ pub fn emit_typed_item(
 }
 
 pub fn needs_box_wrapping(
-    mut n: Rc<Node>,
-    mut recursive_types: Rc<BTreeSet<String>>,
-    mut shared_types: Rc<BTreeSet<String>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut n: Arc<Node>,
+    mut recursive_types: Arc<BTreeSet<String>>,
+    mut shared_types: Arc<BTreeSet<String>>,
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     loop {
         let name = authored_name_at(source_indices.clone(), n.clone());
@@ -8893,14 +8902,14 @@ pub fn needs_box_wrapping(
 }
 
 pub fn emit_type_params(
-    params: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    params: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     if ((params.clone().len() as i64) == 0) {
         "".to_string()
     } else {
         {
-            let names = Rc::new({
+            let names = Arc::new({
                 let mut __result = Vec::new();
                 for p in params.clone().iter().cloned() {
                     __result.push(to_pascal(generic_param_name_at(
@@ -8919,15 +8928,15 @@ pub fn emit_type_params(
 }
 
 pub fn emit_type_params_with_clone_bound(
-    params: Rc<Vec<Rc<Node>>>,
+    params: Arc<Vec<Arc<Node>>>,
     clone_param: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     if ((params.clone().len() as i64) == 0) {
         "".to_string()
     } else {
         {
-            let names = Rc::new({
+            let names = Arc::new({
                 let mut __result = Vec::new();
                 for p in params.clone().iter().cloned() {
                     __result.push({
@@ -8950,7 +8959,7 @@ pub fn emit_type_params_with_clone_bound(
     }
 }
 
-pub fn is_function_type_param(param: Rc<Node>) -> bool {
+pub fn is_function_type_param(param: Arc<Node>) -> bool {
     {
         let type_expr = param_node_type_expr(param.clone());
         let type_expr_is_var = match type_expr.inferred.clone() {
@@ -8966,8 +8975,8 @@ pub fn is_function_type_param(param: Rc<Node>) -> bool {
     }
 }
 
-pub fn function_type_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new({
+pub fn function_type_params(params: Arc<Vec<Arc<Node>>>) -> Arc<Vec<Arc<Node>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for p in params.clone().iter().cloned() {
             if is_function_type_param(p.clone()) {
@@ -8978,8 +8987,8 @@ pub fn function_type_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     })
 }
 
-pub fn function_value_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
-    Rc::new({
+pub fn function_value_params(params: Arc<Vec<Arc<Node>>>) -> Arc<Vec<Arc<Node>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for p in params.clone().iter().cloned() {
             if !is_function_type_param(p.clone()) {
@@ -8990,9 +8999,9 @@ pub fn function_value_params(params: Rc<Vec<Rc<Node>>>) -> Rc<Vec<Rc<Node>>> {
     })
 }
 
-pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bool {
+pub fn function_type_params_have_collision(type_params: Arc<Vec<Arc<Node>>>) -> bool {
     {
-        let names = Rc::new({
+        let names = Arc::new({
             let mut __result = Vec::new();
             for p in type_params.clone().iter().cloned() {
                 __result.push(p.name.clone());
@@ -9004,15 +9013,15 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
 }
 
 pub fn emit_type_def_from_connective(
-    item: Rc<Node>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
-    env: Rc<TypeEnv>,
-    emit_info: Rc<EmitGraphInfo>,
-    wire_contract_item: Option<Rc<Node>>,
-    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
-    module_items: Rc<Vec<Rc<Node>>>,
-    imports: Rc<Vec<Rc<Node>>>,
+    item: Arc<Node>,
+    recursive_types: Arc<BTreeSet<String>>,
+    shared_types: Arc<BTreeSet<String>>,
+    env: Arc<TypeEnv>,
+    emit_info: Arc<EmitGraphInfo>,
+    wire_contract_item: Option<Arc<Node>>,
+    data_items: Arc<HashMap<String, Arc<Vec<Arc<Node>>>>>,
+    module_items: Arc<Vec<Arc<Node>>>,
+    imports: Arc<Vec<Arc<Node>>>,
 ) -> String {
     {
         let type_params = emit_type_params(item.params.clone(), env.source_indices.clone());
@@ -9020,7 +9029,7 @@ pub fn emit_type_def_from_connective(
         let is_product = is_product_type(item.clone());
         if is_product.clone() {
             {
-                let generic_param_names = Rc::new({
+                let generic_param_names = Arc::new({
                     let mut __result = Vec::new();
                     for p in item.params.clone().iter().cloned() {
                         __result.push(generic_param_name_at(p.clone(), env.source_indices.clone()));
@@ -9041,7 +9050,7 @@ pub fn emit_type_def_from_connective(
         } else {
             if is_host_freemonoid_vec_alias(item_text.clone(), emit_info.corpus_repr.clone()) {
                 {
-                    let elem_csv = Rc::new({
+                    let elem_csv = Arc::new({
                         let mut __result = Vec::new();
                         for p in item.params.clone().iter().cloned() {
                             __result.push(to_pascal(generic_param_name_at(
@@ -9128,7 +9137,7 @@ pub fn emit_type_def_from_connective(
                             )
                         }
                     };
-                    let generic_param_names = Rc::new({
+                    let generic_param_names = Arc::new({
                         let mut __result = Vec::new();
                         for p in item.params.clone().iter().cloned() {
                             __result
@@ -9162,9 +9171,9 @@ pub fn emit_type_def_from_connective(
 }
 
 pub fn type_node_mentions_name(
-    n: Rc<Node>,
+    n: Arc<Node>,
     target: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (authored_name_at(source_indices.clone(), n.clone()) == target.clone()) {
@@ -9185,11 +9194,11 @@ pub fn type_node_mentions_name(
 }
 
 pub fn struct_unused_param_names(
-    generic_param_names: Rc<Vec<String>>,
-    children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
+    generic_param_names: Arc<Vec<String>>,
+    children: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
         for p in generic_param_names.clone().iter().cloned() {
             if !{
@@ -9214,11 +9223,11 @@ pub fn struct_unused_param_names(
 }
 
 pub fn alias_unused_param_names(
-    generic_param_names: Rc<Vec<String>>,
-    rhs: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
+    generic_param_names: Arc<Vec<String>>,
+    rhs: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
         for p in generic_param_names.clone().iter().cloned() {
             if !type_node_mentions_name(rhs.clone(), p.clone(), source_indices.clone()) {
@@ -9229,9 +9238,9 @@ pub fn alias_unused_param_names(
     })
 }
 
-pub fn rust_phantom_marker_inner(unused: Rc<Vec<String>>) -> String {
+pub fn rust_phantom_marker_inner(unused: Arc<Vec<String>>) -> String {
     {
-        let pascal_unused = Rc::new({
+        let pascal_unused = Arc::new({
             let mut __result = Vec::new();
             for n in unused.clone().iter().cloned() {
                 __result.push(to_pascal(n.clone()));
@@ -9256,26 +9265,26 @@ pub fn rust_phantom_field_name() -> String {
     "_phantom".to_string()
 }
 
-pub fn type_has_fn_fields(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
+pub fn type_has_fn_fields(name: String, emit_info: Arc<EmitGraphInfo>) -> bool {
     match v1_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
         Some(ts) => ts.has_fn_fields.clone(),
         None => false,
     }
 }
 
-pub fn struct_needs_serde(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
+pub fn struct_needs_serde(name: String, emit_info: Arc<EmitGraphInfo>) -> bool {
     !type_has_fn_fields(name.clone(), emit_info.clone())
 }
 
 pub fn emit_struct_from_children(
     name: String,
     type_params: String,
-    generic_param_names: Rc<Vec<String>>,
-    children: Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
-    env: Rc<TypeEnv>,
-    emit_info: Rc<EmitGraphInfo>,
+    generic_param_names: Arc<Vec<String>>,
+    children: Arc<Vec<Arc<Node>>>,
+    recursive_types: Arc<BTreeSet<String>>,
+    shared_types: Arc<BTreeSet<String>>,
+    env: Arc<TypeEnv>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
@@ -9323,7 +9332,7 @@ pub fn emit_struct_from_children(
             )
         } else {
             {
-                let field_lines = Rc::new({
+                let field_lines = Arc::new({
                     let mut __result = Vec::new();
                     for child in children.clone().iter().cloned() {
                         __result.push(emit_struct_field_from_child(
@@ -9346,7 +9355,7 @@ pub fn emit_struct_from_children(
                 let all_field_lines = if ((unused_params.clone().len() as i64) > 0) {
                     v1_rt::concat(
                         field_lines.clone(),
-                        Rc::new(vec![v1_rt::concat(
+                        Arc::new(vec![v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
@@ -9395,10 +9404,10 @@ pub fn emit_struct_from_children(
 }
 
 pub fn render_rust_type_with_applied_binding(
-    n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
@@ -9437,30 +9446,31 @@ pub fn render_rust_type_with_applied_binding(
                                 } else {
                                     render_rust_applied_type_shared(
                                         applied.clone(),
-                                        Rc::new(vec![]),
+                                        Arc::new(vec![]),
                                         shared_types.clone(),
                                         corpus_repr.clone(),
                                         source_indices.clone(),
                                         v1_rt::rc_empty_map::<String, String>(),
-                                        Rc::new(TypeEnv {
+                                        Arc::new(TypeEnv {
                                             module_path: "".to_string(),
-                                            bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                                            bindings: v1_rt::rc_empty_map::<i64, Arc<TypeBinding>>(
+                                            ),
                                             str_bindings: v1_rt::rc_empty_map::<
                                                 String,
-                                                Rc<TypeBinding>,
+                                                Arc<TypeBinding>,
                                             >(
                                             ),
                                             ancestry_str_bindings: v1_rt::rc_empty_map::<
                                                 String,
-                                                Rc<TypeBinding>,
+                                                Arc<TypeBinding>,
                                             >(
                                             ),
-                                            parents: Rc::new(vec![]),
-                                            recursive_types: Rc::new(vec![]),
+                                            parents: Arc::new(vec![]),
+                                            recursive_types: Arc::new(vec![]),
                                             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
                                             inductive_fields: v1_rt::rc_empty_map::<
                                                 String,
-                                                Rc<Vec<Rc<InductiveField>>>,
+                                                Arc<Vec<Arc<InductiveField>>>,
                                             >(
                                             ),
                                             source_indices: source_indices.clone(),
@@ -9475,25 +9485,25 @@ pub fn render_rust_type_with_applied_binding(
                         } else {
                             render_rust_applied_type_shared(
                                 applied.clone(),
-                                Rc::new(vec![]),
+                                Arc::new(vec![]),
                                 shared_types.clone(),
                                 corpus_repr.clone(),
                                 source_indices.clone(),
                                 v1_rt::rc_empty_map::<String, String>(),
-                                Rc::new(TypeEnv {
+                                Arc::new(TypeEnv {
                                     module_path: "".to_string(),
-                                    bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-                                    str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                                    bindings: v1_rt::rc_empty_map::<i64, Arc<TypeBinding>>(),
+                                    str_bindings: v1_rt::rc_empty_map::<String, Arc<TypeBinding>>(),
                                     ancestry_str_bindings: v1_rt::rc_empty_map::<
                                         String,
-                                        Rc<TypeBinding>,
+                                        Arc<TypeBinding>,
                                     >(),
-                                    parents: Rc::new(vec![]),
-                                    recursive_types: Rc::new(vec![]),
+                                    parents: Arc::new(vec![]),
+                                    recursive_types: Arc::new(vec![]),
                                     recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
                                     inductive_fields: v1_rt::rc_empty_map::<
                                         String,
-                                        Rc<Vec<Rc<InductiveField>>>,
+                                        Arc<Vec<Arc<InductiveField>>>,
                                     >(),
                                     source_indices: source_indices.clone(),
                                     intern_table: empty_intern_table(),
@@ -9525,13 +9535,13 @@ pub fn render_rust_type_with_applied_binding(
 }
 
 pub fn render_rust_field_type_with_applied_binding(
-    field: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    field: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let authored_type = field_node_type_expr(field.clone());
@@ -9598,12 +9608,12 @@ pub fn render_rust_field_type_with_applied_binding(
 
 pub fn emit_struct_field_from_child(
     struct_name: String,
-    child: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
-    env: Rc<TypeEnv>,
-    emit_info: Rc<EmitGraphInfo>,
+    child: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    recursive_types: Arc<BTreeSet<String>>,
+    shared_types: Arc<BTreeSet<String>>,
+    env: Arc<TypeEnv>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let rt_child = resolved_type(child.clone());
@@ -9673,7 +9683,7 @@ pub fn emit_struct_field_from_child(
                                                     RenderTarget::Rust,
                                                     rt_child_name.clone(),
                                                 );
-                                                let param_names = Rc::new({
+                                                let param_names = Arc::new({
                                                     let mut __result = Vec::new();
                                                     for p in resolved.params.clone().iter().cloned()
                                                     {
@@ -9768,7 +9778,7 @@ pub fn emit_struct_field_from_child(
         let rename_attr = if !needs_serde.clone() {
             "".to_string()
         } else {
-            match Rc::new({
+            match Arc::new({
                 let mut __result = Vec::new();
                 for p in child.properties.clone().iter().cloned() {
                     if (field_init_node_name_at(p.clone(), env.source_indices.clone())
@@ -9860,9 +9870,9 @@ pub fn emit_rust_field_definition(
     }
 }
 
-pub fn enum_derives(name: String, children: Rc<Vec<Rc<Node>>>) -> String {
+pub fn enum_derives(name: String, children: Arc<Vec<Arc<Node>>>) -> String {
     {
-        let complex = Rc::new({
+        let complex = Arc::new({
             let mut __result = Vec::new();
             for v in children.clone().iter().cloned() {
                 if ((v.children.clone().len() as i64) > 0) {
@@ -9881,17 +9891,17 @@ pub fn enum_derives(name: String, children: Rc<Vec<Rc<Node>>>) -> String {
 pub fn emit_enum_from_children(
     name: String,
     type_params: String,
-    generic_param_names: Rc<Vec<String>>,
-    children: Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
-    env: Rc<TypeEnv>,
-    serde_policy: Rc<RustEnumWireSerde>,
-    emit_info: Rc<EmitGraphInfo>,
+    generic_param_names: Arc<Vec<String>>,
+    children: Arc<Vec<Arc<Node>>>,
+    recursive_types: Arc<BTreeSet<String>>,
+    shared_types: Arc<BTreeSet<String>>,
+    env: Arc<TypeEnv>,
+    serde_policy: Arc<RustEnumWireSerde>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let derives = enum_derives(name.clone(), children.clone());
-        let variant_lines = Rc::new({
+        let variant_lines = Arc::new({
             let mut __result = Vec::new();
             for child in children.clone().iter().cloned() {
                 __result.push(emit_variant_from_child(
@@ -9962,9 +9972,12 @@ pub fn emit_enum_from_children(
     }
 }
 
-pub fn find_shared_enum_fields(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> Rc<Vec<String>> {
+pub fn find_shared_enum_fields(
+    children: Arc<Vec<Arc<Node>>>,
+    env: Arc<TypeEnv>,
+) -> Arc<Vec<String>> {
     {
-        let fielded = Rc::new({
+        let fielded = Arc::new({
             let mut __result = Vec::new();
             for child in children.clone().iter().cloned() {
                 if (((child.children.clone().len() as i64) > 0)
@@ -9979,19 +9992,19 @@ pub fn find_shared_enum_fields(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) ->
             __result
         });
         if ((fielded.clone().len() as i64) == 0) {
-            return Rc::new(vec![]);
+            return Arc::new(vec![]);
         }
         let first_fields = match fielded.clone().first().cloned() {
-            Some(v) => Rc::new({
+            Some(v) => Arc::new({
                 let mut __result = Vec::new();
                 for f in v.children.clone().iter().cloned() {
                     __result.push(authored_name(env.clone(), f.clone()));
                 }
                 __result
             }),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for fname in first_fields.clone().iter().cloned() {
                 if {
@@ -10024,19 +10037,19 @@ pub fn find_shared_enum_fields(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) ->
 pub fn emit_enum_shared_accessors(
     name: String,
     type_params: String,
-    generic_param_names: Rc<Vec<String>>,
-    children: Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
-    env: Rc<TypeEnv>,
-    emit_info: Rc<EmitGraphInfo>,
+    generic_param_names: Arc<Vec<String>>,
+    children: Arc<Vec<Arc<Node>>>,
+    recursive_types: Arc<BTreeSet<String>>,
+    shared_types: Arc<BTreeSet<String>>,
+    env: Arc<TypeEnv>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let all_shared = find_shared_enum_fields(children.clone(), env.clone());
         if ((all_shared.clone().len() as i64) == 0) {
             return "".to_string();
         }
-        let fielded = Rc::new({
+        let fielded = Arc::new({
             let mut __result = Vec::new();
             for child in children.clone().iter().cloned() {
                 if (((child.children.clone().len() as i64) > 0)
@@ -10054,15 +10067,15 @@ pub fn emit_enum_shared_accessors(
             return "compile_error!(\"enum shared accessor missing fielded variant\")".to_string();
         }
         let first_fielded = fielded.clone().first().cloned().clone().unwrap();
-        let shared = Rc::new({
+        let shared = Arc::new({
             let mut __result = Vec::new();
             for fname in all_shared.clone().iter().cloned() {
                 if {
-                    let types = Rc::new({
+                    let types = Arc::new({
                         let mut __result = Vec::new();
                         for variant in fielded.clone().iter().cloned() {
                             __result.push(
-                                match Rc::new({
+                                match Arc::new({
                                     let mut __result = Vec::new();
                                     for f in variant.children.clone().iter().cloned() {
                                         if (authored_name(env.clone(), f.clone()) == fname.clone())
@@ -10113,11 +10126,11 @@ pub fn emit_enum_shared_accessors(
         if ((shared.clone().len() as i64) == 0) {
             return "".to_string();
         }
-        let accessor_fns = Rc::new({
+        let accessor_fns = Arc::new({
             let mut __result = Vec::new();
             for fname in shared.clone().iter().cloned() {
                 __result.push({
-                    let ty = match Rc::new({
+                    let ty = match Arc::new({
                         let mut __result = Vec::new();
                         for f in first_fielded.children.clone().iter().cloned() {
                             if (authored_name(env.clone(), f.clone()) == fname.clone()) {
@@ -10141,7 +10154,7 @@ pub fn emit_enum_shared_accessors(
                         None => "compile_error!(\"enum shared accessor missing field metadata\")"
                             .to_string(),
                     };
-                    let arms = Rc::new({
+                    let arms = Arc::new({
                         let mut __result = Vec::new();
                         for child in children.clone().iter().cloned() {
                             __result.push({
@@ -10345,7 +10358,7 @@ pub fn string_index_of(haystack: String, needle: String) -> Option<i64> {
 
 pub fn wire_variant_tag_for_policy(
     authored: String,
-    policy: Rc<RustEnumWireSerde>,
+    policy: Arc<RustEnumWireSerde>,
 ) -> Option<String> {
     if (policy.error_message.clone() != None) {
         None
@@ -10400,7 +10413,7 @@ pub fn wire_variant_tag_for_policy(
     }
 }
 
-pub fn policy_serde_tag_field(policy: Rc<RustEnumWireSerde>) -> Option<String> {
+pub fn policy_serde_tag_field(policy: Arc<RustEnumWireSerde>) -> Option<String> {
     {
         let needle = "tag = \"".to_string();
         match string_index_of(policy.enum_attr.clone(), needle.clone()) {
@@ -10424,11 +10437,11 @@ pub fn policy_serde_tag_field(policy: Rc<RustEnumWireSerde>) -> Option<String> {
     }
 }
 
-pub fn policy_is_untagged(policy: Rc<RustEnumWireSerde>) -> bool {
+pub fn policy_is_untagged(policy: Arc<RustEnumWireSerde>) -> bool {
     v1_rt::contains(policy.enum_attr.clone(), "untagged".to_string())
 }
 
-pub fn policy_is_string_variant(policy: Rc<RustEnumWireSerde>) -> bool {
+pub fn policy_is_string_variant(policy: Arc<RustEnumWireSerde>) -> bool {
     (((!v1_rt::contains(policy.enum_attr.clone(), "tag =".to_string())
         && (policy.rename_prefix.clone() == None))
         && (policy.rename_suffix.clone() == None))
@@ -10437,7 +10450,7 @@ pub fn policy_is_string_variant(policy: Rc<RustEnumWireSerde>) -> bool {
 
 pub fn wire_variant_rename_attr_for_policy(
     authored: String,
-    policy: Rc<RustEnumWireSerde>,
+    policy: Arc<RustEnumWireSerde>,
 ) -> String {
     match wire_variant_tag_for_policy(authored.clone(), policy.clone()) {
         Some(tag) => match policy.rename_style.clone() {
@@ -10459,7 +10472,7 @@ pub fn wire_variant_rename_attr_for_policy(
 
 pub fn variant_rename_validation_for_policy(
     authored: String,
-    policy: Rc<RustEnumWireSerde>,
+    policy: Arc<RustEnumWireSerde>,
 ) -> String {
     match policy.rename_style.clone() {
         Some(style) => {
@@ -10509,13 +10522,13 @@ pub fn variant_rename_validation_for_policy(
 }
 
 pub fn variant_rename_validations_for_policy(
-    children: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
-    serde_policy: Rc<RustEnumWireSerde>,
+    children: Arc<Vec<Arc<Node>>>,
+    env: Arc<TypeEnv>,
+    serde_policy: Arc<RustEnumWireSerde>,
 ) -> String {
-    Rc::new({
+    Arc::new({
         let mut __result = Vec::new();
-        for text in Rc::new({
+        for text in Arc::new({
             let mut __result = Vec::new();
             for child in children.clone().iter().cloned() {
                 __result.push(variant_rename_validation_for_policy(
@@ -10538,13 +10551,13 @@ pub fn variant_rename_validations_for_policy(
 }
 
 pub fn enum_variant_field_type_node(
-    env: Rc<TypeEnv>,
+    env: Arc<TypeEnv>,
     enum_name: String,
     variant_name: String,
     field_name: String,
-    fallback: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+    fallback: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<Node> {
     match lookup_type_by_name(env.clone(), enum_name.clone()) {
         Some(enum_node) => match find_child_named(
             enum_node.clone(),
@@ -10571,17 +10584,17 @@ pub fn enum_variant_field_type_node(
 }
 
 pub fn render_variant_payload_type(
-    n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     if ((n.connective.clone() == Connective::NoConnective)
         && ((n.children.clone().len() as i64) > 0))
     {
         {
             let tn = authored_name_at(source_indices.clone(), n.clone());
-            let args = Rc::new({
+            let args = Arc::new({
                 let mut __result = Vec::new();
                 for c in n.children.clone().iter().cloned() {
                     __result.push(render_rust_type(
@@ -10618,8 +10631,8 @@ pub fn render_variant_payload_type(
 }
 
 pub fn variant_is_synthetic_positional_payload(
-    fields: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    fields: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     if ((fields.clone().len() as i64) != 1) {
         false
@@ -10632,14 +10645,14 @@ pub fn variant_is_synthetic_positional_payload(
 }
 
 pub fn emit_variant_from_child(
-    child: Rc<Node>,
+    child: Arc<Node>,
     enum_name: String,
-    generic_param_names: Rc<Vec<String>>,
-    recursive_types: Rc<BTreeSet<String>>,
-    shared_types: Rc<BTreeSet<String>>,
-    env: Rc<TypeEnv>,
-    serde_policy: Rc<RustEnumWireSerde>,
-    emit_info: Rc<EmitGraphInfo>,
+    generic_param_names: Arc<Vec<String>>,
+    recursive_types: Arc<BTreeSet<String>>,
+    shared_types: Arc<BTreeSet<String>>,
+    env: Arc<TypeEnv>,
+    serde_policy: Arc<RustEnumWireSerde>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let child_text = authored_name(env.clone(), child.clone());
@@ -10749,7 +10762,7 @@ pub fn emit_variant_from_child(
                         }
                     } else {
                         {
-                            let field_lines = Rc::new({
+                            let field_lines = Arc::new({
                                 let mut __result = Vec::new();
                                 for f in child.children.clone().iter().cloned() {
                                     __result.push({
@@ -10807,7 +10820,7 @@ pub fn emit_variant_from_child(
                 }
             } else {
                 {
-                    let field_lines = Rc::new({
+                    let field_lines = Arc::new({
                         let mut __result = Vec::new();
                         for f in child.children.clone().iter().cloned() {
                             __result.push({
@@ -10868,13 +10881,13 @@ pub fn emit_variant_from_child(
 
 pub fn emit_fn_def(
     name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    inferred: Rc<Node>,
-    body: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    params: Arc<Vec<Arc<Node>>>,
+    inferred: Arc<Node>,
+    body: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -10903,7 +10916,7 @@ pub fn emit_fn_def(
                 if function_type_params_have_collision(type_params.clone()) {
                     return v1_rt::concat(v1_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
                 }
-                let generic_param_names = Rc::new({
+                let generic_param_names = Arc::new({
                     let mut __result = Vec::new();
                     for p in type_params.clone().iter().cloned() {
                         __result.push(generic_param_name_at(p.clone(), si.clone()));
@@ -10915,7 +10928,7 @@ pub fn emit_fn_def(
                     generic_param_names.clone(),
                     scope.type_env.clone(),
                 );
-                let value_param_names = Rc::new({
+                let value_param_names = Arc::new({
                     let mut __result = Vec::new();
                     for p in value_params.clone().iter().cloned() {
                         __result.push(p.name.clone());
@@ -10923,7 +10936,7 @@ pub fn emit_fn_def(
                     __result
                 });
                 let ret_name = authored_name_at(si.clone(), inferred.clone());
-                let return_is_bare_generic = ((Rc::new({
+                let return_is_bare_generic = ((Arc::new({
                     let mut __result = Vec::new();
                     for g in generic_param_names.clone().iter().cloned() {
                         if (g.clone() == ret_name.clone()) {
@@ -10934,7 +10947,7 @@ pub fn emit_fn_def(
                 })
                 .len() as i64)
                     > 0);
-                let body_is_param_ref = ((Rc::new({
+                let body_is_param_ref = ((Arc::new({
                     let mut __result = Vec::new();
                     for n in value_param_names.clone().iter().cloned() {
                         if (n.clone() == body.name.clone()) {
@@ -10950,7 +10963,7 @@ pub fn emit_fn_def(
                 let element_clone_param = if body_is_param_ref.clone() {
                     None
                 } else {
-                    Rc::new({
+                    Arc::new({
                         let mut __result = Vec::new();
                         for g in generic_param_names.clone().iter().cloned() {
                             if type_param_is_collection_element_in_values(
@@ -11098,12 +11111,12 @@ pub fn emit_fn_def_non_tco(
     type_params_str: String,
     params_str: String,
     ret_str: String,
-    body: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    body: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
     needs_stacker: bool,
 ) -> String {
     if needs_stacker.clone() {
@@ -11228,14 +11241,14 @@ pub fn emit_fn_def_non_tco(
 
 pub fn emit_func_def(
     name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    inferred: Rc<Node>,
-    uses: Rc<Vec<Rc<Node>>>,
-    body: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    params: Arc<Vec<Arc<Node>>>,
+    inferred: Arc<Node>,
+    uses: Arc<Vec<Arc<Node>>>,
+    body: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         if ((function_type_params(params.clone()).len() as i64) > 0) {
@@ -11244,7 +11257,7 @@ pub fn emit_func_def(
         let depth = 0;
         let service_names = match lookup_item(registry.clone(), name.clone()) {
             Some(info) => info.service_names.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let params_str = emit_func_params(
             params.clone(),
@@ -11267,12 +11280,12 @@ pub fn emit_func_def(
         let si = scope.type_env.clone().source_indices.clone();
         let body_scope = uses.clone().iter().cloned().fold(
             body_scope.clone(),
-            |s: Rc<InferScope>, u: Rc<Node>| {
+            |s: Arc<InferScope>, u: Arc<Node>| {
                 extend_scope(
                     s,
                     resource_use_name_at(u.clone(), si.clone()),
                     resource_use_resource(u.clone()),
-                    Rc::new(SubValueRelation::SubValueUnknown),
+                    Arc::new(SubValueRelation::SubValueUnknown),
                 )
             },
         );
@@ -11326,12 +11339,12 @@ pub fn emit_func_def(
 }
 
 pub fn emit_func_body(
-    body: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    body: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let si = scope.type_env.clone().source_indices.clone();
@@ -11354,7 +11367,7 @@ pub fn emit_func_body(
                     scope.clone(),
                     n.clone(),
                     resolved_type(v.clone()),
-                    Rc::new(SubValueRelation::SubValueUnknown),
+                    Arc::new(SubValueRelation::SubValueUnknown),
                 );
                 match inner.clone() {
                     Some(bd) => v1_rt::concat(
@@ -11379,7 +11392,7 @@ pub fn emit_func_body(
                     {
                         let init_state = emit_rust_init_block_stmts(
                             ss.clone(),
-                            Rc::new(vec![]),
+                            Arc::new(vec![]),
                             scope.clone(),
                             registry.clone(),
                             depth.clone(),
@@ -11471,16 +11484,16 @@ pub fn emit_func_body(
 }
 
 pub fn emit_tco_params(
-    params: Rc<Vec<Rc<Node>>>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    params: Arc<Vec<Arc<Node>>>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
-        let strs = Rc::new({
+        let strs = Arc::new({
             let mut __result = Vec::new();
             for p in params.clone().iter().cloned() {
                 __result.push(emit_tco_param(
@@ -11500,13 +11513,13 @@ pub fn emit_tco_params(
 }
 
 pub fn emit_tco_param(
-    param: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    param: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let authored = param_node_type_expr(param.clone());
@@ -11548,23 +11561,23 @@ pub fn emit_tco_param(
 }
 
 pub fn emit_func_params(
-    params: Rc<Vec<Rc<Node>>>,
-    uses: Rc<Vec<Rc<Node>>>,
-    service_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    params: Arc<Vec<Arc<Node>>>,
+    uses: Arc<Vec<Arc<Node>>>,
+    service_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params: Rc<BTreeSet<String>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    read_only_params: Arc<BTreeSet<String>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
-        let param_strs = Rc::new({
+        let param_strs = Arc::new({
             let mut __result = Vec::new();
             for p in params.clone().iter().cloned() {
                 __result.push(emit_param(
                     p.clone(),
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     shared_types.clone(),
                     corpus_repr.clone(),
                     source_indices.clone(),
@@ -11575,7 +11588,7 @@ pub fn emit_func_params(
             }
             __result
         });
-        let resource_strs = Rc::new({
+        let resource_strs = Arc::new({
             let mut __result = Vec::new();
             for u in uses.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -11597,7 +11610,7 @@ pub fn emit_func_params(
             }
             __result
         });
-        let service_strs = Rc::new({
+        let service_strs = Arc::new({
             let mut __result = Vec::new();
             for sn in service_names.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -11616,10 +11629,10 @@ pub fn emit_func_params(
 }
 
 pub fn emit_func_inferred(
-    inferred: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    inferred: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -11637,17 +11650,17 @@ pub fn emit_func_inferred(
 }
 
 pub fn emit_params(
-    params: Rc<Vec<Rc<Node>>>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    params: Arc<Vec<Arc<Node>>>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params: Rc<BTreeSet<String>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    read_only_params: Arc<BTreeSet<String>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
-        let strs = Rc::new({
+        let strs = Arc::new({
             let mut __result = Vec::new();
             for p in params.clone().iter().cloned() {
                 __result.push(emit_param(
@@ -11668,13 +11681,13 @@ pub fn emit_params(
 }
 
 pub fn render_rust_param_sig_type(
-    param: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    param: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let type_node = resolved_type(param.clone());
@@ -11691,17 +11704,17 @@ pub fn render_rust_param_sig_type(
 }
 
 pub fn emit_rust_param_type(
-    n: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    n: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     if ((n.params.clone().len() as i64) > 0) {
         {
-            let param_types = Rc::new({
+            let param_types = Arc::new({
                 let mut __result = Vec::new();
                 for p in n.params.clone().iter().cloned() {
                     __result.push(render_rust_fn_sig_type(
@@ -11754,14 +11767,14 @@ pub fn emit_rust_param_type(
 }
 
 pub fn emit_param(
-    param: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    param: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params: Rc<BTreeSet<String>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    read_only_params: Arc<BTreeSet<String>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let authored = param_node_type_expr(param.clone());
@@ -11798,13 +11811,13 @@ pub fn emit_param(
 }
 
 pub fn emit_inferred(
-    inferred: Rc<Node>,
-    generic_param_names: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    inferred: Arc<Node>,
+    generic_param_names: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<String, String>>,
-    env: Rc<TypeEnv>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    variant_to_enum: Arc<HashMap<String, String>>,
+    env: Arc<TypeEnv>,
 ) -> String {
     v1_rt::concat(
         rust_items().return_arrow.clone(),
@@ -11821,8 +11834,8 @@ pub fn emit_inferred(
 }
 
 pub fn needs_reference_node(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     if ((n.connective.clone() != Connective::NoConnective)
         || ((n.children.clone().len() as i64) > 0))
@@ -11837,7 +11850,7 @@ pub fn needs_reference_node(
     }
 }
 
-pub fn is_string_lit_pattern(p: Rc<MatchPattern>) -> bool {
+pub fn is_string_lit_pattern(p: Arc<MatchPattern>) -> bool {
     match (*p.clone()).clone() {
         MatchPattern::LitPattern { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitStr { value: _, .. } => true,
@@ -11847,12 +11860,12 @@ pub fn is_string_lit_pattern(p: Rc<MatchPattern>) -> bool {
     }
 }
 
-pub fn pattern_string_binding_name(path: Rc<Vec<String>>) -> String {
+pub fn pattern_string_binding_name(path: Arc<Vec<String>>) -> String {
     if ((path.clone().len() as i64) == 0) {
         "__pos0_val".to_string()
     } else {
         {
-            let segments = Rc::new({
+            let segments = Arc::new({
                 let mut __result = Vec::new();
                 for seg in path.clone().iter().cloned() {
                     __result.push(emit_ident(seg.clone(), RenderTarget::Rust));
@@ -11870,7 +11883,7 @@ pub fn pattern_string_binding_name(path: Rc<Vec<String>>) -> String {
     }
 }
 
-pub fn positional_payload_string_guard(fb_pat: Rc<MatchPattern>, bind_name: String) -> String {
+pub fn positional_payload_string_guard(fb_pat: Arc<MatchPattern>, bind_name: String) -> String {
     match (*fb_pat.clone()).clone() {
         MatchPattern::LitPattern { ref value, .. } => {
             let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
@@ -11886,12 +11899,12 @@ pub fn positional_payload_string_guard(fb_pat: Rc<MatchPattern>, bind_name: Stri
 }
 
 pub fn collect_field_binding_string_guards(
-    field_bindings: Rc<Vec<Rc<Node>>>,
-    path_prefix: Rc<Vec<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field_bindings: Arc<Vec<Arc<Node>>>,
+    path_prefix: Arc<Vec<String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
-        let parts = Rc::new({
+        let parts = Arc::new({
             let mut __result = Vec::new();
             for fb in field_bindings.clone().iter().cloned() {
                 __result.extend(
@@ -11910,8 +11923,8 @@ pub fn collect_field_binding_string_guards(
                                     fb_pat.clone(),
                                     bind_name.clone(),
                                 ) {
-                                    ref __s if __s == "" => Rc::new(vec![]),
-                                    guard => Rc::new(vec![guard.clone()]),
+                                    ref __s if __s == "" => Arc::new(vec![]),
+                                    guard => Arc::new(vec![guard.clone()]),
                                 }
                             }
                         } else {
@@ -11924,9 +11937,9 @@ pub fn collect_field_binding_string_guards(
                                     source_indices.clone(),
                                 );
                                 if (nested.clone() == "".to_string()) {
-                                    Rc::new(vec![])
+                                    Arc::new(vec![])
                                 } else {
-                                    Rc::new(vec![nested.clone()])
+                                    Arc::new(vec![nested.clone()])
                                 }
                             }
                         }
@@ -11942,9 +11955,9 @@ pub fn collect_field_binding_string_guards(
 }
 
 pub fn collect_pattern_string_guards(
-    mut pattern: Rc<MatchPattern>,
-    mut path_prefix: Rc<Vec<String>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut pattern: Arc<MatchPattern>,
+    mut path_prefix: Arc<Vec<String>>,
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     loop {
         match (*pattern.clone()).clone() {
@@ -12046,7 +12059,7 @@ pub fn collect_pattern_string_guards(
     }
 }
 
-pub fn all_arms_are_string_lit(arms: Rc<Vec<Rc<Node>>>) -> bool {
+pub fn all_arms_are_string_lit(arms: Arc<Vec<Arc<Node>>>) -> bool {
     ({
         let mut __all = true;
         for arm in arms.clone().iter().cloned() {
@@ -12066,7 +12079,7 @@ pub fn all_arms_are_string_lit(arms: Rc<Vec<Rc<Node>>>) -> bool {
     } && ((arms.clone().len() as i64) > 0))
 }
 
-pub fn has_string_lit_with_bind(arms: Rc<Vec<Rc<Node>>>) -> bool {
+pub fn has_string_lit_with_bind(arms: Arc<Vec<Arc<Node>>>) -> bool {
     {
         let has_lit = {
             let mut __found = false;
@@ -12102,12 +12115,12 @@ pub fn has_string_lit_with_bind(arms: Rc<Vec<Rc<Node>>>) -> bool {
 }
 
 pub fn emit_pattern(
-    pattern: Rc<MatchPattern>,
-    path_prefix: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    pattern: Arc<MatchPattern>,
+    path_prefix: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     scrut_type: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Rust),
@@ -12135,7 +12148,7 @@ pub fn pattern_parent_enum(
     name: String,
     parent_enum: Option<String>,
     scrut_type: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
 ) -> Option<String> {
     {
         let scrut_is_known_enum = ((scrut_type.clone() != "".to_string())
@@ -12153,13 +12166,13 @@ pub fn pattern_parent_enum(
 }
 
 pub fn unique_variant_parent(
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
     variant_name: String,
 ) -> Option<String> {
     {
-        let parent_matches = Rc::new({
+        let parent_matches = Arc::new({
             let mut __result = Vec::new();
-            for type_name in Rc::new(v1_rt::sorted_map_keys(&type_summaries))
+            for type_name in Arc::new(v1_rt::sorted_map_keys(&type_summaries))
                 .iter()
                 .cloned()
             {
@@ -12197,9 +12210,9 @@ pub fn is_optional_parent(parent_enum: Option<String>) -> bool {
 pub fn positional_payload_scrut_type(
     parent_enum: Option<String>,
     variant_name: String,
-    field_binding: Rc<Node>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    field_binding: Arc<Node>,
+    emit_info: Arc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let type_key = match parent_enum.clone() {
@@ -12241,12 +12254,12 @@ pub fn optional_pattern_unknown_parent_note() -> String {
 pub fn emit_variant_pattern(
     name: String,
     parent_enum: Option<String>,
-    field_bindings: Rc<Vec<Rc<Node>>>,
-    path_prefix: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    field_bindings: Arc<Vec<Arc<Node>>>,
+    path_prefix: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     scrut_type: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let resolved_parent = pattern_parent_enum(
@@ -12460,7 +12473,7 @@ pub fn emit_variant_pattern(
                     }
                 } else {
                     {
-                        let effective_bindings = Rc::new({
+                        let effective_bindings = Arc::new({
                             let mut __result = Vec::new();
                             for fb in field_bindings.clone().iter().cloned() {
                                 if match (*field_binding_pattern(fb.clone())).clone() {
@@ -12507,7 +12520,7 @@ pub fn emit_variant_pattern(
                             }
                         } else {
                             {
-                                let binding_strs = Rc::new({
+                                let binding_strs = Arc::new({
                                     let mut __result = Vec::new();
                                     for fb in effective_bindings.clone().iter().cloned() {
                                         __result.push({
@@ -12627,7 +12640,7 @@ pub struct RcPatternAnalysis {
     pub matches_rc_variant: bool,
     pub matches_option_rc_variant: bool,
     pub needs_rc_pattern: bool,
-    pub ref_bound_fields: Rc<Vec<String>>,
+    pub ref_bound_fields: Arc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -12637,16 +12650,16 @@ pub struct RcMatchAnalysis {
     pub needs_rc_option_ref: bool,
 }
 
-pub fn empty_rc_pattern_analysis() -> Rc<RcPatternAnalysis> {
-    Rc::new(RcPatternAnalysis {
+pub fn empty_rc_pattern_analysis() -> Arc<RcPatternAnalysis> {
+    Arc::new(RcPatternAnalysis {
         matches_rc_variant: false,
         matches_option_rc_variant: false,
         needs_rc_pattern: false,
-        ref_bound_fields: Rc::new(vec![]),
+        ref_bound_fields: Arc::new(vec![]),
     })
 }
 
-pub fn field_needs_rc_ref(field_name: String, rc_analysis: Rc<RcPatternAnalysis>) -> bool {
+pub fn field_needs_rc_ref(field_name: String, rc_analysis: Arc<RcPatternAnalysis>) -> bool {
     {
         let mut __found = false;
         for name in rc_analysis.ref_bound_fields.clone().iter().cloned() {
@@ -12660,12 +12673,12 @@ pub fn field_needs_rc_ref(field_name: String, rc_analysis: Rc<RcPatternAnalysis>
 }
 
 pub fn analyze_rc_pattern(
-    pattern: Rc<MatchPattern>,
+    pattern: Arc<MatchPattern>,
     scrut_type: String,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<RcPatternAnalysis> {
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<RcPatternAnalysis> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
             MatchPattern::VariantPattern {
@@ -12686,13 +12699,13 @@ pub fn analyze_rc_pattern(
                                     emit_info.clone(),
                                     source_indices.clone(),
                                 );
-                                Rc::new(RcPatternAnalysis {
+                                Arc::new(RcPatternAnalysis {
                                     matches_rc_variant: false,
                                     matches_option_rc_variant: ((n.clone()
                                         == "Present".to_string())
                                         && inner.matches_rc_variant.clone()),
                                     needs_rc_pattern: inner.needs_rc_pattern.clone(),
-                                    ref_bound_fields: Rc::new(vec![]),
+                                    ref_bound_fields: Arc::new(vec![]),
                                 })
                             }
                             None => empty_rc_pattern_analysis(),
@@ -12714,7 +12727,7 @@ pub fn analyze_rc_pattern(
                             }
                             None => false,
                         };
-                        let ref_bound_fields = Rc::new({
+                        let ref_bound_fields = Arc::new({
                             let mut __result = Vec::new();
                             for fb in fbs.clone().iter().cloned() {
                                 __result.extend(
@@ -12744,9 +12757,9 @@ pub fn analyze_rc_pattern(
                                         .matches_rc_variant
                                         .clone()
                                         {
-                                            Rc::new(vec![fb_name.clone()])
+                                            Arc::new(vec![fb_name.clone()])
                                         } else {
-                                            Rc::new(vec![])
+                                            Arc::new(vec![])
                                         }
                                     })
                                     .iter()
@@ -12755,7 +12768,7 @@ pub fn analyze_rc_pattern(
                             }
                             __result
                         });
-                        Rc::new(RcPatternAnalysis {
+                        Arc::new(RcPatternAnalysis {
                             matches_rc_variant: matches_rc_variant.clone(),
                             matches_option_rc_variant: false,
                             needs_rc_pattern: ((ref_bound_fields.clone().len() as i64) > 0),
@@ -12770,15 +12783,15 @@ pub fn analyze_rc_pattern(
 }
 
 pub fn analyze_rc_match(
-    scrutinee: Rc<Node>,
-    arms: Rc<Vec<Rc<Node>>>,
+    scrutinee: Arc<Node>,
+    arms: Arc<Vec<Arc<Node>>>,
     scrut_type: String,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> RcMatchAnalysis {
     {
-        let arm_analyses = Rc::new({
+        let arm_analyses = Arc::new({
             let mut __result = Vec::new();
             for arm in arms.clone().iter().cloned() {
                 __result.push(analyze_rc_pattern(
@@ -12860,13 +12873,13 @@ pub fn analyze_rc_match(
 }
 
 pub fn emit_pattern_rc_aware(
-    pattern: Rc<MatchPattern>,
-    path_prefix: Rc<Vec<String>>,
-    rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: Rc<BTreeSet<String>>,
+    pattern: Arc<MatchPattern>,
+    path_prefix: Arc<Vec<String>>,
+    rc_analysis: Arc<RcPatternAnalysis>,
+    shared_types: Arc<BTreeSet<String>>,
     scrut_type: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind { name: n, .. } => emit_ident(n.clone(), RenderTarget::Rust),
@@ -12894,13 +12907,13 @@ pub fn emit_pattern_rc_aware(
 pub fn emit_variant_pattern_rc_aware(
     name: String,
     parent_enum: Option<String>,
-    field_bindings: Rc<Vec<Rc<Node>>>,
-    path_prefix: Rc<Vec<String>>,
-    rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: Rc<BTreeSet<String>>,
+    field_bindings: Arc<Vec<Arc<Node>>>,
+    path_prefix: Arc<Vec<String>>,
+    rc_analysis: Arc<RcPatternAnalysis>,
+    shared_types: Arc<BTreeSet<String>>,
     scrut_type: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let resolved_parent = pattern_parent_enum(
@@ -13154,7 +13167,7 @@ pub fn emit_variant_pattern_rc_aware(
                     }
                 } else {
                     {
-                        let effective_bindings = Rc::new({
+                        let effective_bindings = Arc::new({
                             let mut __result = Vec::new();
                             for fb in field_bindings.clone().iter().cloned() {
                                 if match (*field_binding_pattern(fb.clone())).clone() {
@@ -13201,7 +13214,7 @@ pub fn emit_variant_pattern_rc_aware(
                             }
                         } else {
                             {
-                                let binding_strs = Rc::new({
+                                let binding_strs = Arc::new({
                                     let mut __result = Vec::new();
                                     for fb in effective_bindings.clone().iter().cloned() {
                                         __result.push({
@@ -13341,11 +13354,11 @@ pub fn emit_variant_pattern_rc_aware(
 }
 
 pub fn rc_pattern_preludes(
-    pattern: Rc<MatchPattern>,
-    rc_analysis: Rc<RcPatternAnalysis>,
-    shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    pattern: Arc<MatchPattern>,
+    rc_analysis: Arc<RcPatternAnalysis>,
+    shared_types: Arc<BTreeSet<String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
@@ -13389,7 +13402,7 @@ pub fn rc_pattern_preludes(
                             "".to_string(),
                             emit_info.type_summaries.clone(),
                         );
-                        let preludes = Rc::new({
+                        let preludes = Arc::new({
                             let mut __result = Vec::new();
                             for fb in fbs.clone().iter().cloned() {
                                 __result.extend(
@@ -13422,9 +13435,9 @@ pub fn rc_pattern_preludes(
                                                     emit_info.clone(),
                                                 );
                                                 if (inner_preludes.clone() == "".to_string()) {
-                                                    Rc::new(vec![])
+                                                    Arc::new(vec![])
                                                 } else {
-                                                    Rc::new(vec![inner_preludes.clone()])
+                                                    Arc::new(vec![inner_preludes.clone()])
                                                 }
                                             }
                                         } else {
@@ -13432,7 +13445,7 @@ pub fn rc_pattern_preludes(
                                                 fb_name.clone(),
                                                 rc_analysis.clone(),
                                             ) {
-                                                Rc::new(vec![v1_rt::concat(
+                                                Arc::new(vec![v1_rt::concat(
                                                     v1_rt::concat(
                                                         v1_rt::concat(
                                                             v1_rt::concat(
@@ -13443,7 +13456,7 @@ pub fn rc_pattern_preludes(
                                                                     ),
                                                                     v1_rt::rc_list_push(
                                                                         v1_rt::rc_list_push(
-                                                                            Rc::new(vec![]),
+                                                                            Arc::new(vec![]),
                                                                             n.clone(),
                                                                         ),
                                                                         fb_name.clone(),
@@ -13465,7 +13478,7 @@ pub fn rc_pattern_preludes(
                                                         .to_string(),
                                                 )])
                                             } else {
-                                                Rc::new(vec![])
+                                                Arc::new(vec![])
                                             }
                                         }
                                     })
@@ -13486,9 +13499,9 @@ pub fn rc_pattern_preludes(
 
 pub fn explicit_record_struct_name(
     type_name: Option<String>,
-    inferred_node: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    inferred_node: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     {
         let is_optional = (inferred_node.return_cardinality.clone() == Cardinality::CardOptional);
@@ -13546,14 +13559,14 @@ pub fn explicit_record_struct_name(
 }
 
 pub fn is_simple_type_node(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     is_rust_value_type(n.clone(), source_indices.clone())
 }
 
 pub fn variant_parent_from_binding_kind(
-    binding_kind: Option<Rc<VarBindingKind>>,
+    binding_kind: Option<Arc<VarBindingKind>>,
 ) -> Option<String> {
     match binding_kind.clone().as_deref().cloned() {
         Some(VarBindingKind::VariantValueBinding {
@@ -13592,10 +13605,10 @@ pub fn clone_iterator_suffix() -> String {
 
 pub fn effective_variant_parent(
     name: String,
-    binding_kind: Option<Rc<VarBindingKind>>,
-    resolved_type: Option<Rc<InferredNode>>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    binding_kind: Option<Arc<VarBindingKind>>,
+    resolved_type: Option<Arc<InferredNode>>,
+    emit_info: Arc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     {
         let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), name.clone()) {
@@ -13634,7 +13647,7 @@ pub fn effective_variant_parent(
 pub fn variant_ref_self_wraps(
     name: String,
     enum_name: String,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
 ) -> bool {
     ((((name.clone() == "Empty".to_string()) && (enum_name.clone() == "FreeMonoid".to_string()))
@@ -13644,12 +13657,12 @@ pub fn variant_ref_self_wraps(
 
 pub fn emit_var_ref(
     name: String,
-    binding_kind: Option<Rc<VarBindingKind>>,
-    resolved_type: Option<Rc<InferredNode>>,
-    shared_types: Rc<BTreeSet<String>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    binding_kind: Option<Arc<VarBindingKind>>,
+    resolved_type: Option<Arc<InferredNode>>,
+    shared_types: Arc<BTreeSet<String>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    emit_info: Arc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let variant_parent = effective_variant_parent(
@@ -13701,7 +13714,7 @@ pub fn emit_var_ref(
                                 emit_info.corpus_repr.clone(),
                             ) {
                                 v1_rt::concat(
-                                    v1_rt::concat("Rc::new(".to_string(), body.clone()),
+                                    v1_rt::concat("Arc::new(".to_string(), body.clone()),
                                     ")".to_string(),
                                 )
                             } else {
@@ -13765,12 +13778,12 @@ pub fn emit_var_ref(
 }
 
 pub fn emit_typed_expr_base(
-    texpr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    texpr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -13801,7 +13814,7 @@ pub fn emit_typed_expr_base(
                                     && (enum_name.clone() == "FreeMonoid".to_string()))
                                     && corpus_repr_is_host(emit_info.corpus_repr.clone()))
                                 {
-                                    "Rc::new(vec![])".to_string()
+                                    "Arc::new(vec![])".to_string()
                                 } else {
                                     {
                                         let qualified = if (is_optional_variant_name(n.clone())
@@ -13821,7 +13834,7 @@ pub fn emit_typed_expr_base(
                                         if v1_rt::set_contains(&shared_types, enum_name.clone()) {
                                             v1_rt::concat(
                                                 v1_rt::concat(
-                                                    "Rc::new(".to_string(),
+                                                    "Arc::new(".to_string(),
                                                     qualified.clone(),
                                                 ),
                                                 ")".to_string(),
@@ -13861,11 +13874,11 @@ pub fn emit_typed_expr_base(
 }
 
 pub fn field_access_field_is_boxed(
-    base: Rc<Node>,
+    base: Arc<Node>,
     field: String,
-    scope: Rc<InferScope>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    scope: Arc<InferScope>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> bool {
     {
         let base_struct = expand_type_for_field_access(
@@ -13912,14 +13925,14 @@ pub fn field_access_field_is_boxed(
 }
 
 pub fn emit_typed_field_access(
-    base: Rc<Node>,
+    base: Arc<Node>,
     field: String,
-    summary: Option<Rc<FieldSummary>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    summary: Option<Arc<FieldSummary>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let base_str = emit_typed_expr_base(
@@ -13956,9 +13969,9 @@ pub fn emit_typed_field_access(
                     )
                 } else {
                     {
-                        let matches = Rc::new({
+                        let matches = Arc::new({
                             let mut __result = Vec::new();
-                            for pair in Rc::new(
+                            for pair in Arc::new(
                                 bt.children
                                     .clone()
                                     .iter()
@@ -14091,8 +14104,8 @@ pub fn emit_typed_field_access(
 }
 
 pub fn type_needs_rc(
-    type_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     type_needs_rc_seen(
         type_node.clone(),
@@ -14102,9 +14115,9 @@ pub fn type_needs_rc(
 }
 
 pub fn type_needs_rc_seen(
-    mut type_node: Rc<Node>,
-    mut seen: Rc<HashMap<String, bool>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut type_node: Arc<Node>,
+    mut seen: Arc<HashMap<String, bool>>,
+    mut source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     loop {
         let normed = normalize_access_type_node(type_node.clone());
@@ -14182,10 +14195,10 @@ pub fn rust_runtime_bridge_name(function_name: String) -> String {
 }
 
 pub fn rust_empty_map_value_type_str(
-    map_type: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    map_type: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match map_type.children.clone().get(1 as usize).cloned() {
         Some(value_child) => {
@@ -14207,10 +14220,10 @@ pub fn rust_empty_map_value_type_str(
 }
 
 pub fn rust_empty_map_kv_type_str(
-    map_type: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    map_type: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let key_str = match map_type.children.clone().first().cloned() {
@@ -14240,7 +14253,7 @@ pub fn rust_empty_map_kv_type_str(
     }
 }
 
-pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
+pub fn type_node_child_is_type_variable(c: Arc<Node>) -> bool {
     {
         let ch = child_type_node(c.clone());
         if (ch.inferred.clone() != None) {
@@ -14252,9 +14265,9 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
 }
 
 pub fn rust_btree_set_element_ord_eligible(
-    elem_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    elem_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> bool {
     {
         let elem_name = authored_name_at(source_indices.clone(), elem_node.clone());
@@ -14273,10 +14286,10 @@ pub fn rust_btree_set_element_ord_eligible(
 }
 
 pub fn rust_empty_set_element_type_str(
-    set_type: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    set_type: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match set_type.children.clone().first().cloned() {
         Some(elem_child) => {
@@ -14315,10 +14328,10 @@ pub fn rust_empty_set_element_type_str(
 }
 
 pub fn emit_rust_empty_set_expr(
-    set_type: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    set_type: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match set_type.children.clone().first().cloned() {
         Some(elem_child) => {
@@ -14377,7 +14390,7 @@ pub fn rust_runtime_bridge_wraps_collection_result_in_rc(function_name: String) 
 
 pub fn rust_runtime_bridge_collection_result_needs_rc_elements(
     function_name: String,
-    result_type: Option<Rc<InferredNode>>,
+    result_type: Option<Arc<InferredNode>>,
 ) -> bool {
     false
 }
@@ -14385,7 +14398,7 @@ pub fn rust_runtime_bridge_collection_result_needs_rc_elements(
 pub fn rust_wrap_runtime_collection_result(
     call_str: String,
     function_name: String,
-    result_type: Option<Rc<InferredNode>>,
+    result_type: Option<Arc<InferredNode>>,
 ) -> String {
     if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
         if rust_runtime_bridge_collection_result_needs_rc_elements(
@@ -14393,12 +14406,12 @@ pub fn rust_wrap_runtime_collection_result(
             result_type.clone(),
         ) {
             v1_rt::concat(
-                v1_rt::concat("Rc::new((".to_string(), call_str.clone()),
-                ").into_iter().map(Rc::new).collect::<Vec<_>>())".to_string(),
+                v1_rt::concat("Arc::new((".to_string(), call_str.clone()),
+                ").into_iter().map(Arc::new).collect::<Vec<_>>())".to_string(),
             )
         } else {
             v1_rt::concat(
-                v1_rt::concat("Rc::new(".to_string(), call_str.clone()),
+                v1_rt::concat("Arc::new(".to_string(), call_str.clone()),
                 ")".to_string(),
             )
         }
@@ -14408,11 +14421,11 @@ pub fn rust_wrap_runtime_collection_result(
 }
 
 pub fn emit_rust_expr_var(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -14438,12 +14451,12 @@ pub fn emit_rust_expr_var(
 }
 
 pub fn emit_rust_expr_field_access(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -14495,12 +14508,12 @@ pub fn emit_rust_expr_field_access(
 }
 
 pub fn emit_rust_expr_call(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
@@ -14524,12 +14537,12 @@ pub fn emit_rust_expr_call(
 }
 
 pub fn emit_rust_expr_method_call(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprMethodCall {
@@ -14562,12 +14575,12 @@ pub fn emit_rust_expr_method_call(
 }
 
 pub fn emit_rust_expr_match(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprMatch => {
@@ -14591,12 +14604,12 @@ pub fn emit_rust_expr_match(
 }
 
 pub fn emit_rust_expr_if(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprIf => {
@@ -14622,12 +14635,12 @@ pub fn emit_rust_expr_if(
 }
 
 pub fn emit_rust_expr_let(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLet => {
@@ -14654,12 +14667,12 @@ pub fn emit_rust_expr_let(
 }
 
 pub fn emit_rust_expr_record_lit(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprRecordLit {
@@ -14738,7 +14751,7 @@ pub fn emit_rust_expr_record_lit(
                 && v1_rt::set_contains(&shared_types, rc_name.clone()))
             {
                 v1_rt::concat(
-                    v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                    v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                     ")".to_string(),
                 )
             } else {
@@ -14753,16 +14766,16 @@ pub fn emit_rust_expr_record_lit(
 }
 
 pub fn emit_rust_expr_string_interp(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprStringInterp => {
-            let ps = Rc::new({
+            let ps = Arc::new({
                 let mut __result = Vec::new();
                 for child in expr.children.clone().iter().cloned() {
                     __result.push(match (*child.expr_data.clone()).clone() {
@@ -14770,11 +14783,11 @@ pub fn emit_rust_expr_string_interp(
                             let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                                 unreachable!()
                             };
-                            Rc::new(StringPart::Text {
+                            Arc::new(StringPart::Text {
                                 value: text.clone(),
                             })
                         }
-                        _ => Rc::new(StringPart::Interpolation {
+                        _ => Arc::new(StringPart::Interpolation {
                             expr: arg_value(child.clone()),
                         }),
                     });
@@ -14798,12 +14811,12 @@ pub fn emit_rust_expr_string_interp(
 }
 
 pub fn emit_rust_expr_block(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprBlock => emit_typed_block(
@@ -14822,12 +14835,12 @@ pub fn emit_rust_expr_block(
 }
 
 pub fn emit_rust_expr_cast(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCast => emit_typed_cast_shared(
@@ -14855,12 +14868,12 @@ pub fn emit_rust_expr_cast(
 }
 
 pub fn emit_rust_expr_for_each(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprForEach => {
@@ -14887,12 +14900,12 @@ pub fn emit_rust_expr_for_each(
 }
 
 pub fn emit_rust_expr_index(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprIndex => {
@@ -14916,12 +14929,12 @@ pub fn emit_rust_expr_index(
 }
 
 pub fn emit_rust_expr_slice(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprSlice => {
@@ -14947,12 +14960,12 @@ pub fn emit_rust_expr_slice(
 }
 
 pub fn emit_rust_expr_bin_op(
-    expr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    expr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprBinOp {
@@ -14978,12 +14991,12 @@ pub fn emit_rust_expr_bin_op(
 }
 
 pub fn emit_typed_expr(
-    texpr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    texpr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
     fuel: i64,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -15157,12 +15170,12 @@ pub fn emit_typed_expr(
 }
 
 pub fn emit_cloned_arg(
-    texpr: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    texpr: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     emit_typed_expr(
         texpr.clone(),
@@ -15177,7 +15190,7 @@ pub fn emit_cloned_arg(
 
 pub fn is_enum_type_name(
     type_name: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
 ) -> bool {
     is_enum_in_summaries(type_summaries.clone(), type_name.clone())
 }
@@ -15185,9 +15198,9 @@ pub fn is_enum_type_name(
 pub fn contextual_variant_parent(
     variant_name: String,
     parent_enum: Option<String>,
-    resolved_type: Rc<Node>,
-    emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    resolved_type: Arc<Node>,
+    emit_info: Arc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     match parent_enum.clone() {
         Some(explicit_parent) => {
@@ -15220,8 +15233,8 @@ pub fn contextual_variant_parent(
 }
 
 pub fn is_map_typed_expr(
-    texpr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    texpr: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match texpr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
@@ -15232,8 +15245,8 @@ pub fn is_map_typed_expr(
 }
 
 pub fn is_collection_typed_expr(
-    texpr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    texpr: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match texpr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
@@ -15244,12 +15257,12 @@ pub fn is_collection_typed_expr(
 }
 
 pub fn emit_discriminant_call_lowering(
-    value_arg: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    value_arg: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let arg = arg_value(value_arg.clone());
@@ -15268,7 +15281,7 @@ pub fn emit_discriminant_call_lowering(
             Some(enum_node) => {
                 if is_coproduct_type(enum_node.clone()) {
                     {
-                        let arms = Rc::new({
+                        let arms = Arc::new({
                             let mut __result = Vec::new();
                             for child in enum_node.children.clone().iter().cloned() {
                                 __result.push({
@@ -15375,13 +15388,13 @@ pub fn emit_discriminant_call_lowering(
 
 pub fn emit_typed_call_expr(
     func: String,
-    args: Rc<Vec<Rc<Node>>>,
-    inferred: Option<Rc<InferredNode>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    args: Arc<Vec<Arc<Node>>>,
+    inferred: Option<Arc<InferredNode>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let call_str = if (func.clone() == "empty_map".to_string()) {
@@ -15402,11 +15415,11 @@ pub fn emit_typed_call_expr(
                             ">()".to_string(),
                         )
                     } else {
-                        "Rc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */"
+                        "Arc::new(HashMap::new()) /* BRIDGE: empty_map value type unresolved */"
                             .to_string()
                     }
                 }
-                _ => "Rc::new(HashMap::new()) /* BRIDGE: empty_map return type unresolved */"
+                _ => "Arc::new(HashMap::new()) /* BRIDGE: empty_map return type unresolved */"
                     .to_string(),
             }
         } else {
@@ -15436,7 +15449,7 @@ pub fn emit_typed_call_expr(
         };
         if rust_runtime_bridge_wraps_collection_result_in_rc(func.clone()) {
             v1_rt::concat(
-                v1_rt::concat("Rc::new(".to_string(), call_str.clone()),
+                v1_rt::concat("Arc::new(".to_string(), call_str.clone()),
                 ")".to_string(),
             )
         } else {
@@ -15447,8 +15460,8 @@ pub fn emit_typed_call_expr(
 
 pub fn rust_call_arg_fail_closed_unwrap(
     arg_str: String,
-    arg: Rc<Node>,
-    callee: Option<Rc<ItemInfo>>,
+    arg: Arc<Node>,
+    callee: Option<Arc<ItemInfo>>,
     idx: i64,
     func: String,
 ) -> String {
@@ -15475,12 +15488,12 @@ pub fn rust_call_arg_fail_closed_unwrap(
 
 pub fn emit_typed_call(
     func: String,
-    args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    args: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         if (func.clone() == "get".to_string()) {
@@ -15557,7 +15570,7 @@ pub fn emit_typed_call(
                     "compile_error!(\"with call missing resolved record type\")".to_string()
                 };
                 let field_strs = match (*update_arg.expr_data.clone()).clone() {
-                    ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new({
+                    ExprData::ExprRecordLit { parent_enum: _, .. } => Arc::new({
                         let mut __result = Vec::new();
                         for f in update_arg.children.clone().iter().cloned() {
                             __result.push(v1_rt::concat(
@@ -15584,7 +15597,7 @@ pub fn emit_typed_call(
                         }
                         __result
                     }),
-                    _ => Rc::new(vec![emit_typed_expr(
+                    _ => Arc::new(vec![emit_typed_expr(
                         update_arg.clone(),
                         registry.clone(),
                         scope.clone(),
@@ -15617,7 +15630,7 @@ pub fn emit_typed_call(
                 );
                 if needs_rc.clone() {
                     return v1_rt::concat(
-                        v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                        v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                         ")".to_string(),
                     );
                 } else {
@@ -15699,7 +15712,7 @@ pub fn emit_typed_call(
                             lambda_scope_from_children(
                                 scope.clone(),
                                 lps.clone(),
-                                Rc::new(
+                                Arc::new(
                                     arg_value(a.clone())
                                         .children
                                         .clone()
@@ -15733,9 +15746,9 @@ pub fn emit_typed_call(
         let is_rt = v1_rt::map_contains_key(&rt_functions(), func.clone());
         let is_rt_ref_map = v1_rt::map_contains_key(&rt_ref_map_functions(), func.clone());
         let callee_borrow_positions = empty_string_bool_map();
-        let arg_strs = Rc::new({
+        let arg_strs = Arc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new(
+            for pair in Arc::new(
                 filled_args
                     .clone()
                     .iter()
@@ -15813,7 +15826,7 @@ pub fn emit_typed_call(
                     || ((info.resource_names.clone().len() as i64) > 0));
                 if has_effects.clone() {
                     {
-                        let resource_args = Rc::new({
+                        let resource_args = Arc::new({
                             let mut __result = Vec::new();
                             for rn in info.resource_names.clone().iter().cloned() {
                                 __result.push(v1_rt::concat(
@@ -15823,7 +15836,7 @@ pub fn emit_typed_call(
                             }
                             __result
                         });
-                        let service_args = Rc::new({
+                        let service_args = Arc::new({
                             let mut __result = Vec::new();
                             for sn in info.service_names.clone().iter().cloned() {
                                 __result.push(service_var_name(sn.clone()));
@@ -15833,10 +15846,10 @@ pub fn emit_typed_call(
                         v1_rt::concat(resource_args.clone(), service_args.clone())
                     }
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 }
             }
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let all_args = v1_rt::concat(arg_strs.clone(), extra_args.clone());
         let args_str = all_args.clone().join(&", ".to_string());
@@ -15898,17 +15911,17 @@ pub fn emit_typed_call(
 }
 
 pub fn fill_default_args(
-    ordered: Rc<Vec<Rc<Node>>>,
-    callee: Option<Rc<ItemInfo>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    ordered: Arc<Vec<Arc<Node>>>,
+    callee: Option<Arc<ItemInfo>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> Rc<Vec<Rc<Node>>> {
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
+) -> Arc<Vec<Arc<Node>>> {
     match callee.clone() {
         Some(info) => {
-            let provided_names = Rc::new({
+            let provided_names = Arc::new({
                 let mut __result = Vec::new();
                 for a in ordered.clone().iter().cloned() {
                     __result.push(
@@ -15921,7 +15934,7 @@ pub fn fill_default_args(
                 }
                 __result
             });
-            let missing_with_defaults = Rc::new({
+            let missing_with_defaults = Arc::new({
                 let mut __result = Vec::new();
                 for p in info.params.clone().iter().cloned() {
                     if {
@@ -15951,7 +15964,7 @@ pub fn fill_default_args(
                 }
                 __result
             });
-            let default_args = Rc::new({
+            let default_args = Arc::new({
                 let mut __result = Vec::new();
                 for p in missing_with_defaults.clone().iter().cloned() {
                     __result.push(make_arg_node(
@@ -15973,19 +15986,19 @@ pub fn fill_default_args(
 }
 
 pub fn fill_op_default_args(
-    ordered: Rc<Vec<Rc<Node>>>,
-    op_params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    ordered: Arc<Vec<Arc<Node>>>,
+    op_params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
-) -> Rc<Vec<Rc<Node>>> {
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
+) -> Arc<Vec<Arc<Node>>> {
     {
         let si = scope.type_env.clone().source_indices.clone();
         let arg_map = ordered.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<Node>>(),
-            |acc: Rc<HashMap<String, Rc<Node>>>, a: Rc<Node>| match arg_name_at(
+            v1_rt::rc_empty_map::<String, Arc<Node>>(),
+            |acc: Arc<HashMap<String, Arc<Node>>>, a: Arc<Node>| match arg_name_at(
                 a.clone(),
                 si.clone(),
             ) {
@@ -15993,7 +16006,7 @@ pub fn fill_op_default_args(
                 None => acc.clone(),
             },
         );
-        let unnamed_args = Rc::new({
+        let unnamed_args = Arc::new({
             let mut __result = Vec::new();
             for a in ordered.clone().iter().cloned() {
                 if (arg_name_at(a.clone(), si.clone()) == None) {
@@ -16002,24 +16015,24 @@ pub fn fill_op_default_args(
             }
             __result
         });
-        let named_ordered = Rc::new({
+        let named_ordered = Arc::new({
             let mut __result = Vec::new();
             for p in op_params.clone().iter().cloned() {
                 __result.extend(
                     (*{
                         let pname = param_node_name_at(p.clone(), si.clone());
                         match v1_rt::map_get(&arg_map, pname.clone()) {
-                            Some(arg) => Rc::new(vec![arg.clone()]),
+                            Some(arg) => Arc::new(vec![arg.clone()]),
                             None => {
                                 if (param_node_default_value(p.clone()) != None) {
-                                    Rc::new(vec![make_arg_node(
+                                    Arc::new(vec![make_arg_node(
                                         Some(pname.clone()),
                                         param_node_default_value(p.clone()).clone().unwrap(),
                                         p.span.clone(),
                                         p.span.clone(),
                                     )])
                                 } else {
-                                    Rc::new(vec![])
+                                    Arc::new(vec![])
                                 }
                             }
                         }
@@ -16035,9 +16048,9 @@ pub fn fill_op_default_args(
 }
 
 pub fn emit_nested_rt_concat(
-    mut remaining: Rc<Vec<String>>,
+    mut remaining: Arc<Vec<String>>,
     mut acc: String,
-    mut shared_types: Rc<BTreeSet<String>>,
+    mut shared_types: Arc<BTreeSet<String>>,
 ) -> String {
     loop {
         match remaining.clone().first().cloned() {
@@ -16060,7 +16073,7 @@ pub fn emit_nested_rt_concat(
                     )
                 };
                 {
-                    let __tco_0 = Rc::new(
+                    let __tco_0 = Arc::new(
                         remaining
                             .iter()
                             .cloned()
@@ -16079,13 +16092,13 @@ pub fn emit_nested_rt_concat(
 
 pub fn emit_typed_for_each(
     variable: String,
-    collection: Rc<Node>,
-    body: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    collection: Arc<Node>,
+    body: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
@@ -16106,7 +16119,7 @@ pub fn emit_typed_for_each(
             scope.clone(),
             variable.clone(),
             elem_type.clone(),
-            Rc::new(SubValueRelation::SubValueUnknown),
+            Arc::new(SubValueRelation::SubValueUnknown),
         );
         let body_str = emit_typed_expr(
             body.clone(),
@@ -16121,18 +16134,18 @@ pub fn emit_typed_for_each(
         let ind2 = make_indent((depth.clone() + 2));
         let ind0 = make_indent(depth.clone());
         let iter_str = apply_type_template1(sharing.iter_owned.clone(), coll_str.clone());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\n".to_string(), ind1.clone()), "let mut __collect = Vec::new();\n".to_string()), ind1.clone()), "for ".to_string()), emit_ident(variable.clone(), RenderTarget::Rust)), " in ".to_string()), iter_str.clone()), " {\n".to_string()), ind2.clone()), "__collect.push(".to_string()), body_str.clone()), ");\n".to_string()), ind1.clone()), "}\n".to_string()), ind1.clone()), "Rc::new(__collect)\n".to_string()), ind0.clone()), "}".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\n".to_string(), ind1.clone()), "let mut __collect = Vec::new();\n".to_string()), ind1.clone()), "for ".to_string()), emit_ident(variable.clone(), RenderTarget::Rust)), " in ".to_string()), iter_str.clone()), " {\n".to_string()), ind2.clone()), "__collect.push(".to_string()), body_str.clone()), ");\n".to_string()), ind1.clone()), "}\n".to_string()), ind1.clone()), "Arc::new(__collect)\n".to_string()), ind0.clone()), "}".to_string())
     }
 }
 
 pub fn emit_typed_index(
-    base: Rc<Node>,
-    index: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    base: Arc<Node>,
+    index: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let spec = language_spec(RenderTarget::Rust);
@@ -16187,14 +16200,14 @@ pub fn emit_typed_index(
 }
 
 pub fn emit_typed_slice(
-    base: Rc<Node>,
-    start: Rc<Node>,
-    end: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    base: Arc<Node>,
+    start: Arc<Node>,
+    end: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let spec = language_spec(RenderTarget::Rust);
@@ -16260,11 +16273,11 @@ pub fn emit_typed_slice(
 }
 
 pub fn collection_element_type(
-    receiver_type: Option<Rc<InferredNode>>,
-    shared_types: Rc<BTreeSet<String>>,
+    receiver_type: Option<Arc<InferredNode>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match receiver_type.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -16306,11 +16319,11 @@ pub fn collection_element_type(
 }
 
 pub fn lambda_scope_from_children(
-    scope: Rc<InferScope>,
-    params: Rc<Vec<String>>,
-    param_nodes: Rc<Vec<Rc<Node>>>,
-) -> Rc<InferScope> {
-    Rc::new(
+    scope: Arc<InferScope>,
+    params: Arc<Vec<String>>,
+    param_nodes: Arc<Vec<Arc<Node>>>,
+) -> Arc<InferScope> {
+    Arc::new(
         params
             .clone()
             .iter()
@@ -16321,41 +16334,44 @@ pub fn lambda_scope_from_children(
     )
     .iter()
     .cloned()
-    .fold(scope.clone(), |acc: Rc<InferScope>, pair: (i64, String)| {
-        let idx = pair.0.clone();
-        let param_name = pair.1.clone();
-        let param_type = match param_nodes.clone().get(idx.clone() as usize).cloned() {
-            Some(pn) => match pn.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved {
-                    node: resolved_type,
-                    ..
-                }) => resolved_type.clone(),
-                _ => type_variable_node("lambda_param".to_string()),
-            },
-            None => type_variable_node("lambda_param".to_string()),
-        };
-        extend_scope(
-            acc,
-            param_name.clone(),
-            param_type.clone(),
-            Rc::new(SubValueRelation::SubValueUnknown),
-        )
-    })
+    .fold(
+        scope.clone(),
+        |acc: Arc<InferScope>, pair: (i64, String)| {
+            let idx = pair.0.clone();
+            let param_name = pair.1.clone();
+            let param_type = match param_nodes.clone().get(idx.clone() as usize).cloned() {
+                Some(pn) => match pn.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved {
+                        node: resolved_type,
+                        ..
+                    }) => resolved_type.clone(),
+                    _ => type_variable_node("lambda_param".to_string()),
+                },
+                None => type_variable_node("lambda_param".to_string()),
+            };
+            extend_scope(
+                acc,
+                param_name.clone(),
+                param_type.clone(),
+                Arc::new(SubValueRelation::SubValueUnknown),
+            )
+        },
+    )
 }
 
 pub fn lambda_param_type_strs(
-    params: Rc<Vec<String>>,
-    param_nodes: Rc<Vec<Rc<Node>>>,
-    fallback_types: Rc<Vec<String>>,
-    shared_types: Rc<BTreeSet<String>>,
+    params: Arc<Vec<String>>,
+    param_nodes: Arc<Vec<Arc<Node>>>,
+    fallback_types: Arc<Vec<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    emit_info: Arc<EmitGraphInfo>,
     fold_acc_uses_fallback: bool,
-) -> Rc<Vec<String>> {
-    Rc::new({
+) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for pair in Rc::new(
+        for pair in Arc::new(
             params
                 .clone()
                 .iter()
@@ -16431,13 +16447,13 @@ pub fn lambda_param_type_strs(
 }
 
 pub fn emit_typed_collection_lambda(
-    lambda_expr: Rc<Node>,
+    lambda_expr: Arc<Node>,
     elem_type_str: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
@@ -16446,7 +16462,7 @@ pub fn emit_typed_collection_lambda(
                 scope.type_env.clone().source_indices.clone(),
             );
             let bd = lambda_body(lambda_expr.clone());
-            let pn = Rc::new(
+            let pn = Arc::new(
                 lambda_expr
                     .children
                     .clone()
@@ -16458,7 +16474,7 @@ pub fn emit_typed_collection_lambda(
             let param_strs = lambda_param_type_strs(
                 ps.clone(),
                 pn.clone(),
-                Rc::new(vec![elem_type_str.clone()]),
+                Arc::new(vec![elem_type_str.clone()]),
                 shared_types.clone(),
                 emit_info.corpus_repr.clone(),
                 scope.type_env.clone().source_indices.clone(),
@@ -16497,14 +16513,14 @@ pub fn emit_typed_collection_lambda(
 }
 
 pub fn emit_typed_fold_lambda(
-    lambda_expr: Rc<Node>,
+    lambda_expr: Arc<Node>,
     acc_type_str: String,
     elem_type_str: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
@@ -16513,7 +16529,7 @@ pub fn emit_typed_fold_lambda(
                 scope.type_env.clone().source_indices.clone(),
             );
             let bd = lambda_body(lambda_expr.clone());
-            let pn = Rc::new(
+            let pn = Arc::new(
                 lambda_expr
                     .children
                     .clone()
@@ -16522,7 +16538,7 @@ pub fn emit_typed_fold_lambda(
                     .skip(1 as usize)
                     .collect::<Vec<_>>(),
             );
-            let safe_acc_type = if (((acc_type_str.clone() == "Rc<Vec<()>>".to_string())
+            let safe_acc_type = if (((acc_type_str.clone() == "Arc<Vec<()>>".to_string())
                 || (acc_type_str.clone() == "Vec<()>".to_string()))
                 || (acc_type_str.clone() == "Option<()>".to_string()))
             {
@@ -16530,9 +16546,9 @@ pub fn emit_typed_fold_lambda(
             } else {
                 acc_type_str.clone()
             };
-            let fallback_types = Rc::new({
+            let fallback_types = Arc::new({
                 let mut __result = Vec::new();
-                for pair in Rc::new(
+                for pair in Arc::new(
                     ps.clone()
                         .iter()
                         .cloned()
@@ -16627,16 +16643,16 @@ pub fn emit_typed_fold_lambda(
 }
 
 pub fn emit_rust_fold_method_call(
-    method_call_node: Rc<Node>,
-    fold_accumulator_type: Option<Rc<Node>>,
-    result_type: Option<Rc<InferredNode>>,
-    receiver: Rc<Node>,
-    args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    method_call_node: Arc<Node>,
+    fold_accumulator_type: Option<Arc<Node>>,
+    result_type: Option<Arc<InferredNode>>,
+    receiver: Arc<Node>,
+    args: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let recv_str = emit_typed_expr(
@@ -16788,7 +16804,7 @@ pub fn emit_rust_fold_method_call(
                         scope.type_env.clone().source_indices.clone(),
                     );
                     match ps.clone().first().cloned() {
-                        Some(acc_name) => Rc::new(EmitGraphInfo {
+                        Some(acc_name) => Arc::new(EmitGraphInfo {
                             type_summaries: emit_info.type_summaries.clone(),
                             type_decl_items: emit_info.type_decl_items.clone(),
                             recursive_type_set: emit_info.recursive_type_set.clone(),
@@ -16824,7 +16840,7 @@ pub fn emit_rust_fold_method_call(
                             scope.type_env.clone().source_indices.clone(),
                         );
                         match ps.clone().first().cloned() {
-                            Some(acc_name) => Rc::new(EmitGraphInfo {
+                            Some(acc_name) => Arc::new(EmitGraphInfo {
                                 type_summaries: emit_info.type_summaries.clone(),
                                 type_decl_items: emit_info.type_decl_items.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
@@ -16942,12 +16958,12 @@ pub fn emit_rust_fold_method_call(
                                     ">()".to_string(),
                                 )
                             } else {
-                                "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */".to_string()
+                                "Arc::new(HashMap::new()) /* BRIDGE: fold empty_map value type unresolved */".to_string()
                             }
                         }
                     } else {
                         if (init_func.clone() == "empty_map".to_string()) {
-                            "Rc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */".to_string()
+                            "Arc::new(HashMap::new()) /* BRIDGE: fold empty_map accumulator type unresolved */".to_string()
                         } else {
                             if ((((init_func.clone() == "empty_set".to_string())
                                 && (acc_type_str.clone() != "_".to_string()))
@@ -17040,8 +17056,8 @@ pub fn emit_rust_fold_method_call(
 }
 
 pub fn fold_lambda_element_unused(
-    lambda_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    lambda_expr: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match (*lambda_expr.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
@@ -17056,13 +17072,13 @@ pub fn fold_lambda_element_unused(
 }
 
 pub fn emit_rust_sort_by_method_call(
-    receiver: Rc<Node>,
-    args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    receiver: Arc<Node>,
+    args: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let recv_str = emit_typed_expr(
@@ -17117,21 +17133,21 @@ pub fn emit_rust_sort_by_method_call(
         let a_clone = apply_type_template1(sharing.clone_value.clone(), "a".to_string());
         let b_clone = apply_type_template1(sharing.clone_value.clone(), "b".to_string());
         if (elem_type_str.clone() == "_".to_string()) {
-            v1_rt::concat(v1_rt::concat("Rc::new({ let mut __sorted: Vec<_> = ".to_string(), iter_str.clone()), ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })".to_string())
+            v1_rt::concat(v1_rt::concat("Arc::new({ let mut __sorted: Vec<_> = ".to_string(), iter_str.clone()), ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })".to_string())
         } else {
-            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("Rc::new({ let mut __sorted: Vec<_> = ".to_string(), iter_str.clone()), ".collect(); __sorted.sort_by(|a: &".to_string()), elem_type_str.clone()), ", b: &".to_string()), elem_type_str.clone()), "| { let __ka = (".to_string()), sort_key_fn.clone()), ")(".to_string()), a_clone.clone()), "); let __kb = (".to_string()), sort_key_fn.clone()), ")(".to_string()), b_clone.clone()), "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })".to_string())
+            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("Arc::new({ let mut __sorted: Vec<_> = ".to_string(), iter_str.clone()), ".collect(); __sorted.sort_by(|a: &".to_string()), elem_type_str.clone()), ", b: &".to_string()), elem_type_str.clone()), "| { let __ka = (".to_string()), sort_key_fn.clone()), ")(".to_string()), a_clone.clone()), "); let __kb = (".to_string()), sort_key_fn.clone()), ")(".to_string()), b_clone.clone()), "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted })".to_string())
         }
     }
 }
 
 pub fn emit_rust_map_method_call(
-    receiver: Rc<Node>,
-    args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    receiver: Arc<Node>,
+    args: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let recv_str = emit_typed_expr(
@@ -17177,7 +17193,7 @@ pub fn emit_rust_map_method_call(
                         let lambda_scope = lambda_scope_from_children(
                             scope.clone(),
                             ps.clone(),
-                            Rc::new(
+                            Arc::new(
                                 arg_value(a.clone())
                                     .children
                                     .clone()
@@ -17231,63 +17247,60 @@ pub fn emit_rust_map_method_call(
                 let sharing = language_spec(RenderTarget::Rust).sharing.clone();
                 let iter_str = apply_type_template1(sharing.iter_owned.clone(), recv_str.clone());
                 match args.clone().first().cloned() {
-                    Some(a) => {
-                        match (*arg_value(a.clone()).expr_data.clone()).clone() {
-                            ExprData::ExprLambda => {
-                                let bd =
-                                    match arg_value(a.clone()).children.clone().first().cloned() {
-                                        Some(v) => v.clone(),
-                                        None => arg_value(a.clone()),
-                                    };
-                                let ps = lambda_param_names_at(
-                                    arg_value(a.clone()),
-                                    scope.type_env.clone().source_indices.clone(),
-                                );
-                                let dag_name = match ps.clone().first().cloned() {
-                                    Some(n) => n.clone(),
-                                    None => "__x".to_string(),
-                                };
-                                let p = emit_ident(dag_name.clone(), RenderTarget::Rust);
-                                let lambda_scope = lambda_scope_from_children(
-                                    scope.clone(),
-                                    ps.clone(),
-                                    Rc::new(
-                                        arg_value(a.clone())
-                                            .children
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .skip(1 as usize)
-                                            .collect::<Vec<_>>(),
-                                    ),
-                                );
-                                let body_str = emit_typed_expr(
-                                    bd.clone(),
-                                    registry.clone(),
-                                    lambda_scope.clone(),
-                                    depth.clone(),
-                                    shared_types.clone(),
-                                    emit_info.clone(),
-                                    1024,
-                                );
-                                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("Rc::new({ let mut __result = Vec::new(); for ".to_string(), p.clone()), " in ".to_string()), iter_str.clone()), " { __result.push(".to_string()), body_str.clone()), "); } __result })".to_string())
-                            }
-                            _ => v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat("Rc::new(".to_string(), iter_str.clone()),
-                                        ".map(".to_string(),
-                                    ),
-                                    first_arg_str.clone(),
+                    Some(a) => match (*arg_value(a.clone()).expr_data.clone()).clone() {
+                        ExprData::ExprLambda => {
+                            let bd = match arg_value(a.clone()).children.clone().first().cloned() {
+                                Some(v) => v.clone(),
+                                None => arg_value(a.clone()),
+                            };
+                            let ps = lambda_param_names_at(
+                                arg_value(a.clone()),
+                                scope.type_env.clone().source_indices.clone(),
+                            );
+                            let dag_name = match ps.clone().first().cloned() {
+                                Some(n) => n.clone(),
+                                None => "__x".to_string(),
+                            };
+                            let p = emit_ident(dag_name.clone(), RenderTarget::Rust);
+                            let lambda_scope = lambda_scope_from_children(
+                                scope.clone(),
+                                ps.clone(),
+                                Arc::new(
+                                    arg_value(a.clone())
+                                        .children
+                                        .clone()
+                                        .iter()
+                                        .cloned()
+                                        .skip(1 as usize)
+                                        .collect::<Vec<_>>(),
                                 ),
-                                ").collect::<Vec<_>>())".to_string(),
-                            ),
+                            );
+                            let body_str = emit_typed_expr(
+                                bd.clone(),
+                                registry.clone(),
+                                lambda_scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                1024,
+                            );
+                            v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("Arc::new({ let mut __result = Vec::new(); for ".to_string(), p.clone()), " in ".to_string()), iter_str.clone()), " { __result.push(".to_string()), body_str.clone()), "); } __result })".to_string())
                         }
-                    }
+                        _ => v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("Arc::new(".to_string(), iter_str.clone()),
+                                    ".map(".to_string(),
+                                ),
+                                first_arg_str.clone(),
+                            ),
+                            ").collect::<Vec<_>>())".to_string(),
+                        ),
+                    },
                     None => v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat("Rc::new(".to_string(), iter_str.clone()),
+                                v1_rt::concat("Arc::new(".to_string(), iter_str.clone()),
                                 ".map(".to_string(),
                             ),
                             first_arg_str.clone(),
@@ -17301,14 +17314,14 @@ pub fn emit_rust_map_method_call(
 }
 
 pub fn emit_rust_higher_order_method(
-    ho_spec: Rc<HigherOrderMethodSpec>,
-    receiver: Rc<Node>,
-    args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    ho_spec: Arc<HigherOrderMethodSpec>,
+    receiver: Arc<Node>,
+    args: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
@@ -17349,7 +17362,7 @@ pub fn emit_rust_higher_order_method(
                     let lambda_scope = lambda_scope_from_children(
                         scope.clone(),
                         ps.clone(),
-                        Rc::new(
+                        Arc::new(
                             arg_value(a.clone())
                                 .children
                                 .clone()
@@ -17392,7 +17405,7 @@ pub fn emit_rust_higher_order_method(
                         apply_named_template(ho_spec.inline_template.clone(), bindings.clone());
                     if ho_spec.wraps_in_sharing.clone() {
                         v1_rt::concat(
-                            v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                            v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                             ")".to_string(),
                         )
                     } else {
@@ -17409,7 +17422,7 @@ pub fn emit_rust_higher_order_method(
                         apply_named_template(ho_spec.fn_ref_template.clone(), bindings.clone());
                     if ho_spec.wraps_in_sharing.clone() {
                         v1_rt::concat(
-                            v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                            v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                             ")".to_string(),
                         )
                     } else {
@@ -17426,7 +17439,7 @@ pub fn emit_rust_higher_order_method(
                 let raw = apply_named_template(ho_spec.fn_ref_template.clone(), bindings.clone());
                 if ho_spec.wraps_in_sharing.clone() {
                     v1_rt::concat(
-                        v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                        v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                         ")".to_string(),
                     )
                 } else {
@@ -17438,13 +17451,13 @@ pub fn emit_rust_higher_order_method(
 }
 
 pub fn emit_rust_get_method_call(
-    receiver: Rc<Node>,
-    args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    receiver: Arc<Node>,
+    args: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let recv_str = emit_typed_expr(
@@ -17506,13 +17519,13 @@ pub fn emit_rust_get_method_call(
 }
 
 pub fn emit_rust_with_method_call(
-    receiver: Rc<Node>,
-    args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    receiver: Arc<Node>,
+    args: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let base_str = emit_typed_expr(
@@ -17544,7 +17557,7 @@ pub fn emit_rust_with_method_call(
         }
         let update_arg = arg_value(args.clone().first().cloned().clone().unwrap());
         let field_strs = match (*update_arg.expr_data.clone()).clone() {
-            ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new({
+            ExprData::ExprRecordLit { parent_enum: _, .. } => Arc::new({
                 let mut __result = Vec::new();
                 for f in update_arg.children.clone().iter().cloned() {
                     __result.push(v1_rt::concat(
@@ -17571,7 +17584,7 @@ pub fn emit_rust_with_method_call(
                 }
                 __result
             }),
-            _ => Rc::new(vec![emit_typed_expr(
+            _ => Arc::new(vec![emit_typed_expr(
                 update_arg.clone(),
                 registry.clone(),
                 scope.clone(),
@@ -17604,7 +17617,7 @@ pub fn emit_rust_with_method_call(
         );
         if needs_rc.clone() {
             v1_rt::concat(
-                v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                 ")".to_string(),
             )
         } else {
@@ -17614,12 +17627,12 @@ pub fn emit_rust_with_method_call(
 }
 
 pub fn emit_rust_first_method_call(
-    receiver: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    receiver: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprMethodCall {
@@ -17691,14 +17704,14 @@ pub fn emit_rust_first_method_call(
 
 pub fn emit_rust_generic_method_call(
     method_name: String,
-    receiver: Rc<Node>,
-    args: Rc<Vec<Rc<Node>>>,
-    result_type: Option<Rc<InferredNode>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    receiver: Arc<Node>,
+    args: Arc<Vec<Arc<Node>>>,
+    result_type: Option<Arc<InferredNode>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let function_name = method_name.clone();
@@ -17716,7 +17729,7 @@ pub fn emit_rust_generic_method_call(
                     shared_types.clone(),
                     emit_info.clone(),
                 );
-                let arg_strs = Rc::new({
+                let arg_strs = Arc::new({
                     let mut __result = Vec::new();
                     for a in args.clone().iter().cloned() {
                         __result.push(emit_cloned_arg(
@@ -17772,7 +17785,7 @@ pub fn emit_rust_generic_method_call(
                         emit_info.clone(),
                     )
                 };
-                let arg_strs = Rc::new({
+                let arg_strs = Arc::new({
                     let mut __result = Vec::new();
                     for a in args.clone().iter().cloned() {
                         __result.push(emit_cloned_arg(
@@ -17786,7 +17799,7 @@ pub fn emit_rust_generic_method_call(
                     }
                     __result
                 });
-                let all_strs = v1_rt::concat(Rc::new(vec![recv_str.clone()]), arg_strs.clone());
+                let all_strs = v1_rt::concat(Arc::new(vec![recv_str.clone()]), arg_strs.clone());
                 let bridge_name = rust_runtime_bridge_name(function_name.clone());
                 let lowered = v1_rt::concat(
                     v1_rt::concat(
@@ -17803,7 +17816,7 @@ pub fn emit_rust_generic_method_call(
                 );
                 if rust_runtime_bridge_wraps_collection_result_in_rc(function_name.clone()) {
                     v1_rt::concat(
-                        v1_rt::concat("Rc::new(".to_string(), lowered.clone()),
+                        v1_rt::concat("Arc::new(".to_string(), lowered.clone()),
                         ")".to_string(),
                     )
                 } else {
@@ -17815,17 +17828,17 @@ pub fn emit_rust_generic_method_call(
 }
 
 pub fn emit_typed_method_call(
-    method_call_node: Rc<Node>,
-    receiver: Rc<Node>,
+    method_call_node: Arc<Node>,
+    receiver: Arc<Node>,
     method: String,
-    args: Rc<Vec<Rc<Node>>>,
-    result_type: Option<Rc<InferredNode>>,
-    method_semantics: Option<Rc<MethodSemantics>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    args: Arc<Vec<Arc<Node>>>,
+    result_type: Option<Arc<InferredNode>>,
+    method_semantics: Option<Arc<MethodSemantics>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     if (method_semantics.clone() != None) {
         match (*method_semantics.clone().unwrap()).clone() {
@@ -17845,7 +17858,7 @@ pub fn emit_typed_method_call(
                     shared_types.clone(),
                     emit_info.clone(),
                 );
-                let optional_param_set = Rc::new({
+                let optional_param_set = Arc::new({
                     let mut __result = Vec::new();
                     for p in op_params.clone().iter().cloned() {
                         if (param_node_type_expr(p.clone()).return_cardinality.clone()
@@ -17860,11 +17873,11 @@ pub fn emit_typed_method_call(
                 .cloned()
                 .fold(
                     v1_rt::rc_empty_map::<String, bool>(),
-                    |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                    |acc: Arc<HashMap<String, bool>>, p: Arc<Node>| {
                         v1_rt::rc_map_insert(acc, param_node_name_at(p.clone(), si.clone()), true)
                     },
                 );
-                let json_param_set = Rc::new({
+                let json_param_set = Arc::new({
                     let mut __result = Vec::new();
                     for p in op_params.clone().iter().cloned() {
                         if (coerce_primitive_type(
@@ -17881,11 +17894,11 @@ pub fn emit_typed_method_call(
                 .cloned()
                 .fold(
                     v1_rt::rc_empty_map::<String, bool>(),
-                    |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+                    |acc: Arc<HashMap<String, bool>>, p: Arc<Node>| {
                         v1_rt::rc_map_insert(acc, param_node_name_at(p.clone(), si.clone()), true)
                     },
                 );
-                let arg_strs = Rc::new({
+                let arg_strs = Arc::new({
                     let mut __result = Vec::new();
                     for a in filled_args.clone().iter().cloned() {
                         __result.push({
@@ -18015,7 +18028,7 @@ pub fn emit_typed_method_call(
                                 emit_info.clone(),
                             )
                         } else {
-                            match Rc::new({
+                            match Arc::new({
                                 let mut __result = Vec::new();
                                 for s in rust_higher_order_methods().iter().cloned() {
                                     if (s.method_name.clone() == method_name.clone()) {
@@ -18086,7 +18099,7 @@ pub fn emit_typed_method_call(
                                                             emit_info.clone(),
                                                             1024,
                                                         );
-                                                        let arg_strs = Rc::new({
+                                                        let arg_strs = Arc::new({
                                                             let mut __result = Vec::new();
                                                             for a in args.clone().iter().cloned() {
                                                                 __result.push(emit_typed_expr(
@@ -18102,7 +18115,7 @@ pub fn emit_typed_method_call(
                                                             __result
                                                         });
                                                         let all_arg_strs = v1_rt::concat(
-                                                            Rc::new(vec![recv_str.clone()]),
+                                                            Arc::new(vec![recv_str.clone()]),
                                                             arg_strs.clone(),
                                                         );
                                                         emit_nested_rt_concat(
@@ -18173,7 +18186,7 @@ pub fn emit_typed_method_call(
                                                                         bindings.clone(),
                                                                     );
                                                                     if rust_runtime_bridge_wraps_collection_result_in_rc(method_name.clone()) {
-                                                        v1_rt::concat(v1_rt::concat("Rc::new(".to_string(), raw.clone()), ")".to_string())
+                                                        v1_rt::concat(v1_rt::concat("Arc::new(".to_string(), raw.clone()), ")".to_string())
                                                     } else {
                                                         raw.clone()
                                                     }
@@ -18250,7 +18263,7 @@ pub fn emit_typed_method_call(
                                 if rust_runtime_bridge_wraps_collection_result_in_rc(method.clone())
                                 {
                                     v1_rt::concat(
-                                        v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                                        v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                                         ")".to_string(),
                                     )
                                 } else {
@@ -18258,7 +18271,7 @@ pub fn emit_typed_method_call(
                                 }
                             }
                             None => {
-                                let arg_strs = Rc::new({
+                                let arg_strs = Arc::new({
                                     let mut __result = Vec::new();
                                     for a in args.clone().iter().cloned() {
                                         __result.push(emit_typed_expr(
@@ -18299,12 +18312,12 @@ pub fn emit_typed_method_call(
 }
 
 pub fn emit_typed_first_arg(
-    args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    args: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match args.clone().first().cloned() {
         Some(a) => emit_typed_expr(
@@ -18320,8 +18333,8 @@ pub fn emit_typed_first_arg(
     }
 }
 
-pub fn freemonoid_match_arm_for(arms: Rc<Vec<Rc<Node>>>, variant: String) -> Option<Rc<Node>> {
-    Rc::new({
+pub fn freemonoid_match_arm_for(arms: Arc<Vec<Arc<Node>>>, variant: String) -> Option<Arc<Node>> {
+    Arc::new({
         let mut __result = Vec::new();
         for arm in arms.clone().iter().cloned() {
             if match (*arm_pattern(arm.clone())).clone() {
@@ -18338,15 +18351,15 @@ pub fn freemonoid_match_arm_for(arms: Rc<Vec<Rc<Node>>>, variant: String) -> Opt
 }
 
 pub fn freemonoid_cons_binding(
-    cons_arm: Rc<Node>,
+    cons_arm: Arc<Node>,
     field: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match (*arm_pattern(cons_arm.clone())).clone() {
         MatchPattern::VariantPattern {
             field_bindings: fbs,
             ..
-        } => match Rc::new({
+        } => match Arc::new({
             let mut __result = Vec::new();
             for fb in fbs.clone().iter().cloned() {
                 if (field_binding_name_at(fb.clone(), source_indices.clone()) == field.clone()) {
@@ -18369,9 +18382,9 @@ pub fn freemonoid_cons_binding(
 }
 
 pub fn arm_resolved_parent_enum(
-    arm: Rc<Node>,
+    arm: Arc<Node>,
     scrut_type: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
 ) -> Option<String> {
     match (*arm_pattern(arm.clone())).clone() {
         MatchPattern::VariantPattern {
@@ -18395,8 +18408,8 @@ pub fn parent_enum_is_freemonoid(p: Option<String>) -> bool {
     }
 }
 
-pub fn freemonoid_catchall_arm(arms: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
-    Rc::new({
+pub fn freemonoid_catchall_arm(arms: Arc<Vec<Arc<Node>>>) -> Option<Arc<Node>> {
+    Arc::new({
         let mut __result = Vec::new();
         for arm in arms.clone().iter().cloned() {
             if match (*arm_pattern(arm.clone())).clone() {
@@ -18413,7 +18426,7 @@ pub fn freemonoid_catchall_arm(arms: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
     .cloned()
 }
 
-pub fn freemonoid_catchall_bind_name(arm: Rc<Node>) -> String {
+pub fn freemonoid_catchall_bind_name(arm: Arc<Node>) -> String {
     match (*arm_pattern(arm.clone())).clone() {
         MatchPattern::Bind { name: nm, .. } => nm.clone(),
         _ => "".to_string(),
@@ -18421,9 +18434,9 @@ pub fn freemonoid_catchall_bind_name(arm: Rc<Node>) -> String {
 }
 
 pub fn arms_are_freemonoid_coproduct(
-    arms: Rc<Vec<Rc<Node>>>,
+    arms: Arc<Vec<Arc<Node>>>,
     scrut_type: String,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
 ) -> bool {
     {
         let has_empty = match freemonoid_match_arm_for(arms.clone(), "Empty".to_string()) {
@@ -18462,13 +18475,13 @@ pub fn arms_are_freemonoid_coproduct(
 }
 
 pub fn freemonoid_empty_branch_body(
-    empty_arm: Option<Rc<Node>>,
-    catchall: Option<Rc<Node>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    empty_arm: Option<Arc<Node>>,
+    catchall: Option<Arc<Node>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match empty_arm.clone() {
         Some(ea) => emit_typed_expr(
@@ -18510,14 +18523,14 @@ pub fn freemonoid_empty_branch_body(
 }
 
 pub fn freemonoid_nonempty_branch_body(
-    cons_arm: Option<Rc<Node>>,
-    catchall: Option<Rc<Node>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    cons_arm: Option<Arc<Node>>,
+    catchall: Option<Arc<Node>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match cons_arm.clone() {
         Some(ca) => {
@@ -18536,7 +18549,7 @@ pub fn freemonoid_nonempty_branch_body(
             } else {
                 v1_rt::concat(
                     v1_rt::concat("let ".to_string(), tail_bind.clone()),
-                    ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ".to_string(),
+                    ": Arc<Vec<_>> = Arc::new((*__fm)[1..].to_vec()); ".to_string(),
                 )
             };
             v1_rt::concat(
@@ -18583,12 +18596,12 @@ pub fn freemonoid_nonempty_branch_body(
 
 pub fn emit_native_freemonoid_match(
     scrut_str: String,
-    arms: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    arms: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -18638,13 +18651,13 @@ pub fn emit_native_freemonoid_match(
 }
 
 pub fn emit_typed_match(
-    scrutinee: Rc<Node>,
-    arms: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    scrutinee: Arc<Node>,
+    arms: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let scrut_str = emit_typed_expr(
@@ -18703,7 +18716,7 @@ pub fn emit_typed_match(
             Some(first_arm) => resolved_type(arm_body(first_arm.clone())),
             None => type_variable_node("match_result".to_string()),
         };
-        let arm_strs = Rc::new({
+        let arm_strs = Arc::new({
             let mut __result = Vec::new();
             for arm in arms.clone().iter().cloned() {
                 __result.push(emit_typed_match_arm(
@@ -18789,7 +18802,7 @@ pub fn emit_typed_match(
                     } else {
                         if needs_string_from.clone() {
                             {
-                                let sf_arm_strs = Rc::new({
+                                let sf_arm_strs = Arc::new({
                                     let mut __result = Vec::new();
                                     for arm in arms.clone().iter().cloned() {
                                         __result.push(emit_typed_match_arm(
@@ -18838,14 +18851,14 @@ pub fn emit_typed_match(
 }
 
 pub fn emit_typed_match_arm(
-    arm: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    arm: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
     scrut_type: String,
-    match_result_type: Rc<Node>,
+    match_result_type: Arc<Node>,
     string_from_mode: bool,
 ) -> String {
     {
@@ -18874,7 +18887,7 @@ pub fn emit_typed_match_arm(
                 },
                 _ => emit_pattern(
                     arm_pat.clone(),
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     shared_types.clone(),
                     scrut_type.clone(),
                     si.clone(),
@@ -18885,7 +18898,7 @@ pub fn emit_typed_match_arm(
             if rc_analysis.needs_rc_pattern.clone() {
                 emit_pattern_rc_aware(
                     arm_pat.clone(),
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     rc_analysis.clone(),
                     shared_types.clone(),
                     scrut_type.clone(),
@@ -18895,7 +18908,7 @@ pub fn emit_typed_match_arm(
             } else {
                 emit_pattern(
                     arm_pat.clone(),
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                     shared_types.clone(),
                     scrut_type.clone(),
                     si.clone(),
@@ -18904,7 +18917,7 @@ pub fn emit_typed_match_arm(
             }
         };
         let field_guards =
-            collect_pattern_string_guards(arm_pat.clone(), Rc::new(vec![]), si.clone());
+            collect_pattern_string_guards(arm_pat.clone(), Arc::new(vec![]), si.clone());
         let arm_guard_str = match arm_g.clone() {
             Some(g) => emit_typed_expr(
                 g.clone(),
@@ -18948,7 +18961,7 @@ pub fn emit_typed_match_arm(
                     emit_var_ref(
                         body_name.clone(),
                         body_binding_kind.clone(),
-                        Some(Rc::new(InferredNode::Resolved {
+                        Some(Arc::new(InferredNode::Resolved {
                             node: match_result_type.clone(),
                         })),
                         shared_types.clone(),
@@ -19026,14 +19039,14 @@ pub fn emit_typed_match_arm(
 }
 
 pub fn emit_typed_if(
-    condition: Rc<Node>,
-    then_branch: Rc<Node>,
-    else_branch: Option<Rc<Node>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    condition: Arc<Node>,
+    then_branch: Arc<Node>,
+    else_branch: Option<Arc<Node>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let cond_str = emit_typed_expr(
@@ -19070,13 +19083,13 @@ pub fn emit_typed_if(
 
 pub fn emit_typed_let(
     name: String,
-    value: Rc<Node>,
-    body: Option<Rc<Node>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    value: Arc<Node>,
+    body: Option<Arc<Node>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let val_str = emit_typed_expr(
@@ -19111,7 +19124,7 @@ pub fn emit_typed_let(
 }
 
 pub fn is_optional_struct_field(
-    emit_info: Rc<EmitGraphInfo>,
+    emit_info: Arc<EmitGraphInfo>,
     struct_name: String,
     field_name: String,
 ) -> bool {
@@ -19129,10 +19142,10 @@ pub fn is_optional_struct_field(
 }
 
 pub fn rust_struct_field_type_node(
-    scope: Rc<InferScope>,
+    scope: Arc<InferScope>,
     struct_name: String,
     field_name: String,
-) -> Option<Rc<Node>> {
+) -> Option<Arc<Node>> {
     match lookup_type_by_name(scope.type_env.clone(), struct_name.clone()) {
         Some(struct_node) => match find_child_named(
             struct_node.clone(),
@@ -19147,7 +19160,7 @@ pub fn rust_struct_field_type_node(
 }
 
 pub fn rust_record_field_needs_fn_rc(
-    scope: Rc<InferScope>,
+    scope: Arc<InferScope>,
     struct_name: String,
     field_name: String,
 ) -> bool {
@@ -19158,9 +19171,9 @@ pub fn rust_record_field_needs_fn_rc(
 }
 
 pub fn rust_receiver_has_callable_method_field(
-    receiver: Rc<Node>,
+    receiver: Arc<Node>,
     method_name: String,
-    scope: Rc<InferScope>,
+    scope: Arc<InferScope>,
 ) -> bool {
     {
         let receiver_type = resolved_type(receiver.clone());
@@ -19177,9 +19190,9 @@ pub fn rust_receiver_has_callable_method_field(
 }
 
 pub fn rust_record_field_needs_box(
-    scope: Rc<InferScope>,
-    emit_info: Rc<EmitGraphInfo>,
-    shared_types: Rc<BTreeSet<String>>,
+    scope: Arc<InferScope>,
+    emit_info: Arc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
     struct_name: String,
     field_name: String,
 ) -> bool {
@@ -19196,9 +19209,9 @@ pub fn rust_record_field_needs_box(
 
 pub fn wrap_rust_record_field_value(
     raw: String,
-    scope: Rc<InferScope>,
-    emit_info: Rc<EmitGraphInfo>,
-    shared_types: Rc<BTreeSet<String>>,
+    scope: Arc<InferScope>,
+    emit_info: Arc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
     struct_name: String,
     field_name: String,
 ) -> String {
@@ -19206,7 +19219,7 @@ pub fn wrap_rust_record_field_value(
         let is_bounded_lattice_field = (struct_name.clone() == "BoundedLattice".to_string());
         if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
             v1_rt::concat(
-                v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                 ")".to_string(),
             )
         } else {
@@ -19215,7 +19228,7 @@ pub fn wrap_rust_record_field_value(
                     || (field_name.clone() == "join".to_string())))
             {
                 v1_rt::concat(
-                    v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                    v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                     ")".to_string(),
                 )
             } else {
@@ -19239,9 +19252,9 @@ pub fn wrap_rust_record_field_value(
 }
 
 pub fn is_already_optional(
-    texpr: Rc<Node>,
-    emit_info: Rc<EmitGraphInfo>,
-    scope: Rc<InferScope>,
+    texpr: Arc<Node>,
+    emit_info: Arc<EmitGraphInfo>,
+    scope: Arc<InferScope>,
 ) -> bool {
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -19350,10 +19363,10 @@ pub fn is_already_optional(
 }
 
 pub fn lookup_struct_field_type_name(
-    struct_node: Rc<Node>,
+    struct_node: Arc<Node>,
     field_name: String,
     variant_name: Option<String>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     {
         let direct = match find_child_named(
@@ -19432,15 +19445,15 @@ pub fn lookup_struct_field_type_name(
 }
 
 pub fn emit_field_value_with_context(
-    field_value: Rc<Node>,
-    struct_node: Rc<Node>,
+    field_value: Arc<Node>,
+    struct_node: Arc<Node>,
     outer_type_name: Option<String>,
     field_name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*field_value.expr_data.clone()).clone() {
         ExprData::ExprRecordLit {
@@ -19514,7 +19527,7 @@ pub fn emit_field_value_with_context(
                         && v1_rt::set_contains(&shared_types, rc_name.clone()))
                     {
                         v1_rt::concat(
-                            v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                            v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                             ")".to_string(),
                         )
                     } else {
@@ -19545,21 +19558,21 @@ pub fn emit_field_value_with_context(
 }
 
 pub fn struct_candidates_by_field_names(
-    field_names: Rc<Vec<String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<Vec<Rc<TypeSummary>>> {
+    field_names: Arc<Vec<String>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
+) -> Arc<Vec<Arc<TypeSummary>>> {
     {
         let n_fields = (field_names.clone().len() as i64);
         if (n_fields.clone() == 0) {
-            return Rc::new(vec![]);
+            return Arc::new(vec![]);
         }
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
-            for summary in Rc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
+            for summary in Arc::new(v1_rt::map_values(&type_summaries)).iter().cloned() {
                 if match (*summary.repr.clone()).clone() {
                     TypeRepr::StructRepr => {
                         let ftm_keys =
-                            Rc::new(v1_rt::sorted_map_keys(&summary.field_type_map.clone()));
+                            Arc::new(v1_rt::sorted_map_keys(&summary.field_type_map.clone()));
                         if ((ftm_keys.clone().len() as i64) == n_fields.clone()) {
                             {
                                 let mut __all = true;
@@ -19589,9 +19602,9 @@ pub fn struct_candidates_by_field_names(
 }
 
 pub fn find_struct_name_by_fields(
-    field_names: Rc<Vec<String>>,
-    field_type_hints: Rc<HashMap<String, String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    field_names: Arc<Vec<String>>,
+    field_type_hints: Arc<HashMap<String, String>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
 ) -> Option<String> {
     {
         let candidates =
@@ -19603,12 +19616,12 @@ pub fn find_struct_name_by_fields(
             }
         } else {
             {
-                let typed_candidates = Rc::new({
+                let typed_candidates = Arc::new({
                     let mut __result = Vec::new();
                     for cand in candidates.clone().iter().cloned() {
                         if {
                             let mut __all = true;
-                            for fname in Rc::new(v1_rt::sorted_map_keys(&field_type_hints))
+                            for fname in Arc::new(v1_rt::sorted_map_keys(&field_type_hints))
                                 .iter()
                                 .cloned()
                             {
@@ -19639,11 +19652,11 @@ pub fn find_struct_name_by_fields(
                         None => None,
                     }
                 } else {
-                    match Rc::new({
+                    match Arc::new({
                         let mut __sorted: Vec<_> = candidates.clone().iter().cloned().collect();
-                        __sorted.sort_by(|a: &Rc<TypeSummary>, b: &Rc<TypeSummary>| {
-                            let __ka = (|c: Rc<TypeSummary>| c.name.clone())(a.clone());
-                            let __kb = (|c: Rc<TypeSummary>| c.name.clone())(b.clone());
+                        __sorted.sort_by(|a: &Arc<TypeSummary>, b: &Arc<TypeSummary>| {
+                            let __ka = (|c: Arc<TypeSummary>| c.name.clone())(a.clone());
+                            let __kb = (|c: Arc<TypeSummary>| c.name.clone())(b.clone());
                             __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
                         });
                         __sorted
@@ -19661,8 +19674,8 @@ pub fn find_struct_name_by_fields(
 }
 
 pub fn find_unique_struct_name_by_fields(
-    field_names: Rc<Vec<String>>,
-    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    field_names: Arc<Vec<String>>,
+    type_summaries: Arc<HashMap<String, Arc<TypeSummary>>>,
 ) -> Option<String> {
     {
         let candidates =
@@ -19680,14 +19693,14 @@ pub fn find_unique_struct_name_by_fields(
 
 pub fn emit_typed_record_lit(
     type_name: Option<String>,
-    fields: Rc<Vec<Rc<Node>>>,
+    fields: Arc<Vec<Arc<Node>>>,
     parent_enum: Option<String>,
-    resolved_type: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    resolved_type: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let struct_name = explicit_record_struct_name(
@@ -19732,7 +19745,7 @@ pub fn emit_typed_record_lit(
                                     emit_info.clone(),
                                     1024,
                                 );
-                                let single_field_names = Rc::new({
+                                let single_field_names = Arc::new({
                                     let mut __result = Vec::new();
                                     for ff in fields.clone().iter().cloned() {
                                         __result.push(field_init_node_name_at(
@@ -19784,7 +19797,7 @@ pub fn emit_typed_record_lit(
                                                 {
                                                     v1_rt::concat(
                                                         v1_rt::concat(
-                                                            "Rc::new(".to_string(),
+                                                            "Arc::new(".to_string(),
                                                             struct_lit.clone(),
                                                         ),
                                                         ")".to_string(),
@@ -19806,7 +19819,7 @@ pub fn emit_typed_record_lit(
                         }
                     } else {
                         {
-                            let lit_field_names = Rc::new({
+                            let lit_field_names = Arc::new({
                                 let mut __result = Vec::new();
                                 for f in fields.clone().iter().cloned() {
                                     __result.push(field_init_node_name_at(
@@ -19818,7 +19831,7 @@ pub fn emit_typed_record_lit(
                             });
                             let field_type_hints = fields.clone().iter().cloned().fold(
                                 v1_rt::rc_empty_map::<String, String>(),
-                                |acc: Rc<HashMap<String, String>>, f: Rc<Node>| {
+                                |acc: Arc<HashMap<String, String>>, f: Arc<Node>| {
                                     let fname = field_init_node_name_at(
                                         f.clone(),
                                         scope.type_env.clone().source_indices.clone(),
@@ -19845,7 +19858,7 @@ pub fn emit_typed_record_lit(
                                 emit_info.type_summaries.clone(),
                             ) {
                                 Some(resolved_sn) => {
-                                    let field_strs = Rc::new({
+                                    let field_strs = Arc::new({
                                         let mut __result = Vec::new();
                                         for f in fields.clone().iter().cloned() {
                                             __result.push({
@@ -19893,7 +19906,7 @@ pub fn emit_typed_record_lit(
                                     if v1_rt::set_contains(&shared_types, resolved_sn.clone()) {
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                "Rc::new(".to_string(),
+                                                "Arc::new(".to_string(),
                                                 struct_lit.clone(),
                                             ),
                                             ")".to_string(),
@@ -19903,7 +19916,7 @@ pub fn emit_typed_record_lit(
                                     }
                                 }
                                 None => {
-                                    let vals = Rc::new({
+                                    let vals = Arc::new({
                                         let mut __result = Vec::new();
                                         for f in fields.clone().iter().cloned() {
                                             __result.push(emit_typed_expr(
@@ -19951,7 +19964,7 @@ pub fn emit_typed_record_lit(
                         .clone();
                         if (resolved_struct.connective.clone() == Connective::Conj) {
                             {
-                                let resolved_field_names = Rc::new({
+                                let resolved_field_names = Arc::new({
                                     let mut __result = Vec::new();
                                     for c in resolved_struct.children.clone().iter().cloned() {
                                         __result.push(authored_name_at(si.clone(), c.clone()));
@@ -20018,7 +20031,7 @@ pub fn emit_typed_record_lit(
                     });
                 if host_freemonoid_cons.clone() {
                     {
-                        let head_val = match Rc::new({
+                        let head_val = match Arc::new({
                             let mut __result = Vec::new();
                             for f in fields.clone().iter().cloned() {
                                 if (field_init_node_name_at(f.clone(), si.clone())
@@ -20045,7 +20058,7 @@ pub fn emit_typed_record_lit(
                                 "compile_error!(\"FreeMonoid Cons missing head field\")".to_string()
                             }
                         };
-                        let tail_val = match Rc::new({
+                        let tail_val = match Arc::new({
                             let mut __result = Vec::new();
                             for f in fields.clone().iter().cloned() {
                                 if (field_init_node_name_at(f.clone(), si.clone())
@@ -20202,7 +20215,7 @@ pub fn emit_typed_record_lit(
                                 }
                             } else {
                                 {
-                                    let field_strs = Rc::new({
+                                    let field_strs = Arc::new({
                                         let mut __result = Vec::new();
                                         for f in fields.clone().iter().cloned() {
                                             __result.push({
@@ -20270,7 +20283,7 @@ pub fn emit_typed_record_lit(
                                         }
                                         __result
                                     });
-                                    let provided_names = Rc::new({
+                                    let provided_names = Arc::new({
                                         let mut __result = Vec::new();
                                         for f in fields.clone().iter().cloned() {
                                             __result.push(field_init_node_name_at(
@@ -20282,7 +20295,7 @@ pub fn emit_typed_record_lit(
                                     });
                                     let provided_set = provided_names.clone().iter().cloned().fold(
                                         v1_rt::rc_empty_map::<String, bool>(),
-                                        |acc: Rc<HashMap<String, bool>>, n: String| {
+                                        |acc: Arc<HashMap<String, bool>>, n: String| {
                                             v1_rt::rc_map_insert(acc, n.clone(), true)
                                         },
                                     );
@@ -20294,9 +20307,9 @@ pub fn emit_typed_record_lit(
                                         Some(s) => {
                                             let fs = s.field_summaries.clone();
                                             let ftm = s.field_type_map.clone();
-                                            let missing = Rc::new({
+                                            let missing = Arc::new({
                                                 let mut __result = Vec::new();
-                                                for k in Rc::new(v1_rt::sorted_map_keys(&fs))
+                                                for k in Arc::new(v1_rt::sorted_map_keys(&fs))
                                                     .iter()
                                                     .cloned()
                                                 {
@@ -20340,28 +20353,28 @@ pub fn emit_typed_record_lit(
                                                 __all
                                             };
                                             if all_defaultable.clone() {
-                                                Rc::new({
+                                                Arc::new({
                                                     let mut __result = Vec::new();
                                                     for fname in missing.clone().iter().cloned() {
                                                         __result.extend((*if is_optional_struct_field(emit_info.clone(), variant_summary_name.clone(), fname.clone()) {
-                                            Rc::new(vec![v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": None,".to_string())])
+                                            Arc::new(vec![v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": None,".to_string())])
                                         } else {
                                             match v1_rt::map_get(&ftm, fname.clone()) {
     Some(ft) => match rust_zero_value(ft.clone(), emit_info.corpus_repr.clone()) {
-    Some(zv) => Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), zv.clone()), ",".to_string())]),
-    None => Rc::new(vec![]),
+    Some(zv) => Arc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_string(), emit_ident(fname.clone(), RenderTarget::Rust)), ": ".to_string()), zv.clone()), ",".to_string())]),
+    None => Arc::new(vec![]),
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }
                                         }).iter().cloned());
                                                     }
                                                     __result
                                                 })
                                             } else {
-                                                Rc::new(vec![])
+                                                Arc::new(vec![])
                                             }
                                         }
-                                        None => Rc::new(vec![]),
+                                        None => Arc::new(vec![]),
                                     };
                                     let phantom_strs = match lookup_type_by_name(
                                         scope.type_env.clone(),
@@ -20370,7 +20383,7 @@ pub fn emit_typed_record_lit(
                                         Some(struct_decl) => {
                                             let is_struct = (struct_decl.connective.clone()
                                                 == Connective::Conj);
-                                            let pnames = Rc::new({
+                                            let pnames = Arc::new({
                                                 let mut __result = Vec::new();
                                                 for p in struct_decl.params.clone().iter().cloned()
                                                 {
@@ -20388,7 +20401,7 @@ pub fn emit_typed_record_lit(
                                             );
                                             let has_unused = ((unused.clone().len() as i64) > 0);
                                             if (is_struct.clone() && has_unused.clone()) {
-                                                Rc::new(vec![v1_rt::concat(
+                                                Arc::new(vec![v1_rt::concat(
                                                     v1_rt::concat(
                                                         "    ".to_string(),
                                                         rust_phantom_field_name(),
@@ -20396,10 +20409,10 @@ pub fn emit_typed_record_lit(
                                                     ": std::marker::PhantomData,".to_string(),
                                                 )])
                                             } else {
-                                                Rc::new(vec![])
+                                                Arc::new(vec![])
                                             }
                                         }
-                                        None => Rc::new(vec![]),
+                                        None => Arc::new(vec![]),
                                     };
                                     let all_field_strs = v1_rt::concat(
                                         v1_rt::concat(field_strs.clone(), default_strs.clone()),
@@ -20417,7 +20430,7 @@ pub fn emit_typed_record_lit(
                                         && v1_rt::set_contains(&shared_types, ctor_name.clone()))
                                     {
                                         v1_rt::concat(
-                                            v1_rt::concat("Rc::new(".to_string(), raw.clone()),
+                                            v1_rt::concat("Arc::new(".to_string(), raw.clone()),
                                             ")".to_string(),
                                         )
                                     } else {
@@ -20459,13 +20472,13 @@ pub fn rust_zero_value(type_name: String, corpus_repr: RustCorpusRepr) -> Option
 pub fn emit_typed_bin_op(
     op: BinOp,
     algebra_field: Option<AlgebraFieldKind>,
-    left: Rc<Node>,
-    right: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    left: Arc<Node>,
+    right: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let l_str = emit_typed_expr(
@@ -20629,7 +20642,7 @@ pub fn emit_typed_bin_op(
     }
 }
 
-pub fn is_optional_typed_expr(e: Rc<Node>) -> bool {
+pub fn is_optional_typed_expr(e: Arc<Node>) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
             (rt.return_cardinality.clone() == Cardinality::CardOptional)
@@ -20640,9 +20653,9 @@ pub fn is_optional_typed_expr(e: Rc<Node>) -> bool {
 
 pub fn is_string_comparison(
     op: BinOp,
-    left: Rc<Node>,
-    right: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    left: Arc<Node>,
+    right: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match op.clone() {
         BinOp::Eq => {
@@ -20658,8 +20671,8 @@ pub fn is_string_comparison(
 }
 
 pub fn is_string_typed_expr(
-    e: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    e: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -20676,12 +20689,12 @@ pub fn is_string_typed_expr(
 }
 
 pub fn emit_typed_string_interp(
-    parts: Rc<Vec<Rc<StringPart>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    parts: Arc<Vec<Arc<StringPart>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let has_interpolations = {
@@ -20697,7 +20710,7 @@ pub fn emit_typed_string_interp(
             }
             __found
         };
-        let fmt_parts = Rc::new({
+        let fmt_parts = Arc::new({
             let mut __result = Vec::new();
             for p in parts.clone().iter().cloned() {
                 __result.push(typed_interp_format_part(
@@ -20712,7 +20725,7 @@ pub fn emit_typed_string_interp(
             }
             __result
         });
-        let fmt_str = Rc::new({
+        let fmt_str = Arc::new({
             let mut __result = Vec::new();
             for p in fmt_parts.clone().iter().cloned() {
                 __result.push(p.format_segment.clone());
@@ -20720,9 +20733,9 @@ pub fn emit_typed_string_interp(
             __result
         })
         .join(&"".to_string());
-        let args = Rc::new({
+        let args = Arc::new({
             let mut __result = Vec::new();
-            for a in Rc::new({
+            for a in Arc::new({
                 let mut __result = Vec::new();
                 for p in fmt_parts.clone().iter().cloned() {
                     __result.push(p.arg_expr.clone());
@@ -20768,14 +20781,14 @@ pub fn emit_typed_string_interp(
 }
 
 pub fn typed_interp_format_part(
-    part: Rc<StringPart>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    part: Arc<StringPart>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
     has_interpolations: bool,
-) -> Rc<InterpPart> {
+) -> Arc<InterpPart> {
     match (*part.clone()).clone() {
         StringPart::Text { value: v, .. } => {
             let escaped = if has_interpolations.clone() {
@@ -20783,12 +20796,12 @@ pub fn typed_interp_format_part(
             } else {
                 escape_string_literal_body(v.clone())
             };
-            Rc::new(InterpPart {
+            Arc::new(InterpPart {
                 format_segment: escaped.clone(),
                 arg_expr: "".to_string(),
             })
         }
-        StringPart::Interpolation { expr: e, .. } => Rc::new(InterpPart {
+        StringPart::Interpolation { expr: e, .. } => Arc::new(InterpPart {
             format_segment: "{}".to_string(),
             arg_expr: emit_typed_expr(
                 e.clone(),
@@ -20804,17 +20817,17 @@ pub fn typed_interp_format_part(
 }
 
 pub fn emit_typed_block(
-    stmts: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    stmts: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let state = emit_rust_block_stmts(
             stmts.clone(),
-            Rc::new(vec![]),
+            Arc::new(vec![]),
             scope.clone(),
             registry.clone(),
             (depth.clone() + 1),
@@ -20832,25 +20845,25 @@ pub fn emit_typed_block(
 }
 
 pub fn emit_tco_init_block_stmts(
-    mut remaining: Rc<Vec<Rc<Node>>>,
-    mut text: Rc<Vec<String>>,
-    mut scope: Rc<InferScope>,
-    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut remaining: Arc<Vec<Arc<Node>>>,
+    mut text: Arc<Vec<String>>,
+    mut scope: Arc<InferScope>,
+    mut registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     mut depth: i64,
-    mut shared_types: Rc<BTreeSet<String>>,
-    mut emit_info: Rc<EmitGraphInfo>,
-    mut params: Rc<Vec<Rc<Node>>>,
-) -> Rc<BlockEmitState> {
+    mut shared_types: Arc<BTreeSet<String>>,
+    mut emit_info: Arc<EmitGraphInfo>,
+    mut params: Arc<Vec<Arc<Node>>>,
+) -> Arc<BlockEmitState> {
     loop {
         match remaining.clone().first().cloned() {
             None => {
-                break Rc::new(BlockEmitState {
+                break Arc::new(BlockEmitState {
                     text: text.clone(),
                     scope: scope.clone(),
                 });
             }
             Some(stmt) => {
-                let rest = Rc::new(
+                let rest = Arc::new(
                     remaining
                         .clone()
                         .iter()
@@ -20860,7 +20873,7 @@ pub fn emit_tco_init_block_stmts(
                 );
                 match rest.clone().first().cloned() {
                     None => {
-                        break Rc::new(BlockEmitState {
+                        break Arc::new(BlockEmitState {
                             text: text.clone(),
                             scope: scope.clone(),
                         });
@@ -20893,13 +20906,13 @@ pub fn emit_tco_init_block_stmts(
 }
 
 pub fn emit_tco_init_stmt(
-    stmt: Rc<Node>,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    stmt: Arc<Node>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*stmt.expr_data.clone()).clone() {
         ExprData::ExprLet => {
@@ -20954,14 +20967,14 @@ pub fn emit_tco_init_stmt(
 }
 
 pub fn emit_typed_tco_body(
-    texpr: Rc<Node>,
+    texpr: Arc<Node>,
     fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let inner = emit_typed_tco_expr(
@@ -20985,10 +20998,10 @@ pub fn emit_typed_tco_body(
 }
 
 pub fn emit_rust_tco_non_self_call(
-    frame: Rc<TcoFrame>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    frame: Arc<TcoFrame>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
@@ -21018,12 +21031,12 @@ pub fn emit_rust_tco_non_self_call(
 }
 
 pub fn emit_rust_tco_if(
-    frame: Rc<TcoFrame>,
+    frame: Arc<TcoFrame>,
     fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprIf => {
@@ -21107,15 +21120,15 @@ pub fn emit_rust_tco_if(
 }
 
 pub fn freemonoid_tco_empty_branch_body(
-    empty_arm: Option<Rc<Node>>,
-    catchall: Option<Rc<Node>>,
+    empty_arm: Option<Arc<Node>>,
+    catchall: Option<Arc<Node>>,
     fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match empty_arm.clone() {
         Some(ea) => emit_typed_tco_expr(
@@ -21159,16 +21172,16 @@ pub fn freemonoid_tco_empty_branch_body(
 }
 
 pub fn freemonoid_tco_nonempty_branch_body(
-    cons_arm: Option<Rc<Node>>,
-    catchall: Option<Rc<Node>>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    cons_arm: Option<Arc<Node>>,
+    catchall: Option<Arc<Node>>,
+    si: Arc<HashMap<String, Arc<NewlineIndex>>>,
     fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match cons_arm.clone() {
         Some(ca) => {
@@ -21187,7 +21200,7 @@ pub fn freemonoid_tco_nonempty_branch_body(
             } else {
                 v1_rt::concat(
                     v1_rt::concat("let ".to_string(), tail_bind.clone()),
-                    ": Rc<Vec<_>> = Rc::new((*__fm)[1..].to_vec()); ".to_string(),
+                    ": Arc<Vec<_>> = Arc::new((*__fm)[1..].to_vec()); ".to_string(),
                 )
             };
             v1_rt::concat(
@@ -21236,14 +21249,14 @@ pub fn freemonoid_tco_nonempty_branch_body(
 
 pub fn emit_native_freemonoid_tco_match(
     scrut_str: String,
-    arms: Rc<Vec<Rc<Node>>>,
+    arms: Arc<Vec<Arc<Node>>>,
     fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -21297,12 +21310,12 @@ pub fn emit_native_freemonoid_tco_match(
 }
 
 pub fn emit_rust_tco_match(
-    frame: Rc<TcoFrame>,
+    frame: Arc<TcoFrame>,
     fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprMatch => {
@@ -21366,7 +21379,7 @@ pub fn emit_rust_tco_match(
                         emit_info.clone(),
                         frame.scope.clone().type_env.clone().source_indices.clone(),
                     );
-                    let arm_strs = Rc::new({
+                    let arm_strs = Arc::new({
                         let mut __result = Vec::new();
                         for arm in arm_list.clone().iter().cloned() {
                             __result.push(emit_typed_tco_match_arm(
@@ -21483,12 +21496,12 @@ pub fn emit_rust_tco_match(
 }
 
 pub fn emit_rust_tco_let(
-    frame: Rc<TcoFrame>,
+    frame: Arc<TcoFrame>,
     fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprLet => {
@@ -21548,7 +21561,7 @@ pub fn emit_rust_tco_let(
                 frame.scope.clone(),
                 n.clone(),
                 resolved_type(v.clone()),
-                Rc::new(SubValueRelation::SubValueUnknown),
+                Arc::new(SubValueRelation::SubValueUnknown),
             );
             match bd.clone() {
                 Some(b) => v1_rt::concat(
@@ -21575,12 +21588,12 @@ pub fn emit_rust_tco_let(
 }
 
 pub fn emit_rust_tco_block(
-    frame: Rc<TcoFrame>,
+    frame: Arc<TcoFrame>,
     fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprBlock => {
@@ -21591,7 +21604,7 @@ pub fn emit_rust_tco_block(
                 {
                     let init_state = emit_tco_init_block_stmts(
                         ss.clone(),
-                        Rc::new(vec![]),
+                        Arc::new(vec![]),
                         frame.scope.clone(),
                         registry.clone(),
                         frame.depth.clone(),
@@ -21634,10 +21647,10 @@ pub fn emit_rust_tco_block(
 }
 
 pub fn emit_rust_tco_default_return(
-    frame: Rc<TcoFrame>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    frame: Arc<TcoFrame>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let val_str = emit_typed_expr(
@@ -21657,17 +21670,17 @@ pub fn emit_rust_tco_default_return(
 }
 
 pub fn emit_typed_tco_expr(
-    texpr: Rc<Node>,
+    texpr: Arc<Node>,
     fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     emit_shared_tco_expr(
-        Rc::new(TcoFrame {
+        Arc::new(TcoFrame {
             expr: texpr.clone(),
             scope: scope.clone(),
             depth: depth.clone(),
@@ -21744,14 +21757,14 @@ pub fn emit_typed_tco_expr(
 }
 
 pub fn emit_typed_tco_match_arm(
-    arm: Rc<Node>,
+    arm: Arc<Node>,
     fn_name: String,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
     scrut_type: String,
 ) -> String {
     {
@@ -21769,7 +21782,7 @@ pub fn emit_typed_tco_match_arm(
         let pat_str = if rc_analysis.needs_rc_pattern.clone() {
             emit_pattern_rc_aware(
                 arm_pat.clone(),
-                Rc::new(vec![]),
+                Arc::new(vec![]),
                 rc_analysis.clone(),
                 shared_types.clone(),
                 scrut_type.clone(),
@@ -21779,7 +21792,7 @@ pub fn emit_typed_tco_match_arm(
         } else {
             emit_pattern(
                 arm_pat.clone(),
-                Rc::new(vec![]),
+                Arc::new(vec![]),
                 shared_types.clone(),
                 scrut_type.clone(),
                 si.clone(),
@@ -21787,7 +21800,7 @@ pub fn emit_typed_tco_match_arm(
             )
         };
         let field_guards =
-            collect_pattern_string_guards(arm_pat.clone(), Rc::new(vec![]), si.clone());
+            collect_pattern_string_guards(arm_pat.clone(), Arc::new(vec![]), si.clone());
         let arm_guard_str = match arm_g.clone() {
             Some(g) => emit_typed_expr(
                 g.clone(),
@@ -21879,9 +21892,9 @@ pub fn emit_typed_tco_match_arm(
 }
 
 pub fn expr_references_var(
-    node: Rc<Node>,
+    node: Arc<Node>,
     var_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*node.expr_data.clone()).clone() {
@@ -21903,24 +21916,24 @@ pub fn expr_references_var(
 }
 
 pub fn emit_typed_tco_reassign(
-    args: Rc<Vec<Rc<Node>>>,
-    params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    args: Arc<Vec<Arc<Node>>>,
+    params: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
-        let arg_values = Rc::new({
+        let arg_values = Arc::new({
             let mut __result = Vec::new();
             for a in args.clone().iter().cloned() {
                 __result.push(arg_value(a.clone()));
             }
             __result
         });
-        let identity_params = Rc::new(
+        let identity_params = Arc::new(
             params
                 .clone()
                 .iter()
@@ -21933,7 +21946,7 @@ pub fn emit_typed_tco_reassign(
         .cloned()
         .fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |m: Rc<HashMap<String, bool>>, pair: (i64, Rc<Node>)| {
+            |m: Arc<HashMap<String, bool>>, pair: (i64, Arc<Node>)| {
                 let pname = param_node_name_at(pair.1.clone(), si.clone());
                 let av = match arg_values.clone().get(pair.0.clone() as usize).cloned() {
                     Some(v) => v.clone(),
@@ -21946,11 +21959,11 @@ pub fn emit_typed_tco_reassign(
                 }
             },
         );
-        let filtered_arg_values = Rc::new({
+        let filtered_arg_values = Arc::new({
             let mut __result = Vec::new();
-            for pair in Rc::new({
+            for pair in Arc::new({
                 let mut __result = Vec::new();
-                for pair in Rc::new(
+                for pair in Arc::new(
                     params
                         .clone()
                         .iter()
@@ -21986,7 +21999,7 @@ pub fn emit_typed_tco_reassign(
             }
             __result
         });
-        let filtered_params = Rc::new({
+        let filtered_params = Arc::new({
             let mut __result = Vec::new();
             for p in params.clone().iter().cloned() {
                 if match v1_rt::map_get(&identity_params, param_node_name_at(p.clone(), si.clone()))
@@ -22002,11 +22015,11 @@ pub fn emit_typed_tco_reassign(
         let tco_movable =
             filtered_params.clone().iter().cloned().fold(
                 emit_info.movable.clone(),
-                |m: Rc<BTreeSet<String>>, p: Rc<Node>| {
+                |m: Arc<BTreeSet<String>>, p: Arc<Node>| {
                     let pname = param_node_name_at(p.clone(), si.clone());
                     let ref_count = filtered_arg_values.clone().iter().cloned().fold(
                         0,
-                        |n: i64, av: Rc<Node>| {
+                        |n: i64, av: Arc<Node>| {
                             if expr_references_var(av.clone(), pname.clone(), si.clone()) {
                                 (n.clone() + 1)
                             } else {
@@ -22021,11 +22034,11 @@ pub fn emit_typed_tco_reassign(
                     }
                 },
             );
-        let tco_emit_info = Rc::new(EmitGraphInfo {
+        let tco_emit_info = Arc::new(EmitGraphInfo {
             movable: tco_movable.clone(),
             ..(*emit_info.clone()).clone()
         });
-        let ordered_args = Rc::new({
+        let ordered_args = Arc::new({
             let mut __result = Vec::new();
             for av in filtered_arg_values.clone().iter().cloned() {
                 __result.push(emit_typed_expr(
@@ -22040,7 +22053,7 @@ pub fn emit_typed_tco_reassign(
             }
             __result
         });
-        let param_names = Rc::new({
+        let param_names = Arc::new({
             let mut __result = Vec::new();
             for p in filtered_params.clone().iter().cloned() {
                 __result.push(emit_ident(
@@ -22071,11 +22084,11 @@ pub fn emit_typed_tco_reassign(
 }
 
 pub fn emit_service_def(
-    item: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    item: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    env: Rc<TypeEnv>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let safe_name = sanitize_service_name(authored_name(env.clone(), item.clone()));
@@ -22107,10 +22120,10 @@ pub fn emit_service_def(
 
 pub fn emit_service_struct(
     name: String,
-    fallback_transport: Rc<Node>,
-    op_children: Rc<Vec<Rc<Node>>>,
-    service_item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    fallback_transport: Arc<Node>,
+    op_children: Arc<Vec<Arc<Node>>>,
+    service_item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let derives = "#[derive(Debug, Clone)]".to_string();
@@ -22141,10 +22154,10 @@ pub fn emit_service_struct(
 }
 
 pub fn emit_service_config_fields(
-    fallback_transport: Rc<Node>,
-    op_children: Rc<Vec<Rc<Node>>>,
-    service_item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    fallback_transport: Arc<Node>,
+    op_children: Arc<Vec<Arc<Node>>>,
+    service_item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let fs = compute_service_fields(
@@ -22181,13 +22194,13 @@ pub fn emit_service_config_fields(
 
 pub fn emit_service_impl(
     name: String,
-    transport: Rc<Node>,
-    op_children: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    transport: Arc<Node>,
+    op_children: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    env: Rc<TypeEnv>,
-    service_item: Rc<Node>,
+    env: Arc<TypeEnv>,
+    service_item: Arc<Node>,
 ) -> String {
     {
         let depth = 0;
@@ -22198,7 +22211,7 @@ pub fn emit_service_impl(
             service_item.clone(),
             env.source_indices.clone(),
         );
-        let method_strs = Rc::new({
+        let method_strs = Arc::new({
             let mut __result = Vec::new();
             for op_node in op_children.clone().iter().cloned() {
                 __result.push(emit_operation_method(
@@ -22215,7 +22228,7 @@ pub fn emit_service_impl(
             }
             __result
         });
-        let all_methods = v1_rt::concat(Rc::new(vec![new_method.clone()]), method_strs.clone());
+        let all_methods = v1_rt::concat(Arc::new(vec![new_method.clone()]), method_strs.clone());
         let methods_str = all_methods.clone().join(&"\n\n".to_string());
         v1_rt::concat(
             v1_rt::concat(
@@ -22235,10 +22248,10 @@ pub fn emit_service_impl(
 
 pub fn emit_service_new_method(
     name: String,
-    fallback_transport: Rc<Node>,
-    op_children: Rc<Vec<Rc<Node>>>,
-    service_item: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    fallback_transport: Arc<Node>,
+    op_children: Arc<Vec<Arc<Node>>>,
+    service_item: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let fs = compute_service_fields(
@@ -22313,7 +22326,7 @@ pub fn emit_service_new_method(
             fs.clone(),
             language_spec(RenderTarget::Rust).service_fields.clone(),
         );
-        let ctors = Rc::new({
+        let ctors = Arc::new({
             let mut __result = Vec::new();
             for c in ctors.clone().iter().cloned() {
                 __result.push(apply_type_template1(c.clone(), base_url_default.clone()));
@@ -22321,7 +22334,7 @@ pub fn emit_service_new_method(
             __result
         });
         let ctors = match service_config_auth_source(service_item.clone(), source_indices.clone()) {
-            Some(src) => Rc::new({
+            Some(src) => Arc::new({
                 let mut __result = Vec::new();
                 for c in ctors.clone().iter().cloned() {
                     __result.push(if v1_rt::contains(c.clone(), "auth_token".to_string()) {
@@ -22362,8 +22375,8 @@ pub fn emit_service_new_method(
 }
 
 pub fn emit_auth_source_ctor(
-    source_expr: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_expr: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match (*source_expr.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => match record_lit_type_name_at(source_expr.clone(), source_indices.clone()) {
@@ -22385,8 +22398,8 @@ pub fn emit_auth_source_ctor(
 }
 
 pub fn emit_modifier_doc_from_props(
-    properties: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    properties: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let names = extract_modifier_names(properties.clone(), source_indices.clone());
@@ -22406,18 +22419,18 @@ pub fn emit_modifier_doc_from_props(
 
 pub fn emit_operation_method(
     service_name: String,
-    transport: Rc<Node>,
-    op_node: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    transport: Arc<Node>,
+    op_node: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    env: Rc<TypeEnv>,
-    service_item: Rc<Node>,
+    env: Arc<TypeEnv>,
+    service_item: Arc<Node>,
 ) -> String {
     {
         let op_text = authored_name(env.clone(), op_node.clone());
-        let input_params = Rc::new({
+        let input_params = Arc::new({
             let mut __result = Vec::new();
             for p in op_node.params.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -22430,7 +22443,7 @@ pub fn emit_operation_method(
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
-                        Rc::new(vec![]),
+                        Arc::new(vec![]),
                         shared_types.clone(),
                         corpus_repr.clone(),
                         env.source_indices.clone(),
@@ -22469,7 +22482,7 @@ pub fn emit_operation_method(
             corpus_repr.clone(),
             env.clone(),
         );
-        let mock_props = Rc::new({
+        let mock_props = Arc::new({
             let mut __result = Vec::new();
             for p in op_node.properties.clone().iter().cloned() {
                 if has_mock_prefix(field_init_node_name_at(
@@ -22565,13 +22578,13 @@ pub fn emit_operation_method(
 
 pub fn emit_dry_run_branch_from_props(
     op_name: String,
-    inferred: Rc<Node>,
-    mock_props: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    op_node: Rc<Node>,
-    env: Rc<TypeEnv>,
-    shared_types: Rc<BTreeSet<String>>,
+    inferred: Arc<Node>,
+    mock_props: Arc<Vec<Arc<Node>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    op_node: Arc<Node>,
+    env: Arc<TypeEnv>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
 ) -> String {
     {
@@ -22615,7 +22628,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("let __rest_wire: ".to_s
                                     },
     None => v1_rt::concat(v1_rt::concat("let json_body: serde_json::Value = serde_json::from_str(r#\"".to_string(), mock_json.clone()), "\"#)?;\n".to_string()),
 };
-let extract_lines = Rc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push({
+let extract_lines = Arc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push({
                                         let ch_name = authored_name_at(source_indices.clone(), ch.clone());
 let field_name = emit_ident(ch_name.clone(), RenderTarget::Rust);
 let from_path = match child_from_key(ch.clone(), source_indices.clone()) {
@@ -22638,7 +22651,7 @@ match ch.return_cardinality.clone() {
     _ => raw.clone(),
 }
 }); } __result });
-let field_names = Rc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push(emit_ident(authored_name_at(source_indices.clone(), ch.clone()), RenderTarget::Rust)); } __result });
+let field_names = Arc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push(emit_ident(authored_name_at(source_indices.clone(), ch.clone()), RenderTarget::Rust)); } __result });
 let result_body = v1_rt::concat(v1_rt::concat("(".to_string(), field_names.clone().join(&", ".to_string())), ")".to_string());
 v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(log_line.clone(), "\n".to_string()), prelude.clone()), extract_lines.clone().join(&"\n".to_string())), "\nOk(".to_string()), result_body.clone()), ")".to_string())
 }
@@ -22667,17 +22680,17 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
 }
 
 pub fn emit_transport_call(
-    transport: Rc<Node>,
+    transport: Arc<Node>,
     op_name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     depth: i64,
-    inferred: Rc<Node>,
-    service_item: Rc<Node>,
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    inferred: Arc<Node>,
+    service_item: Arc<Node>,
+    op_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    env: Rc<TypeEnv>,
+    env: Arc<TypeEnv>,
 ) -> String {
     if is_rest_transport(transport.clone(), source_indices.clone()) {
         emit_rest_call(
@@ -22716,15 +22729,15 @@ pub fn emit_transport_call(
 
 pub fn emit_rest_call(
     op_name: String,
-    transport: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    transport: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     depth: i64,
-    service_item: Rc<Node>,
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    service_item: Arc<Node>,
+    op_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    env: Rc<TypeEnv>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let has_config_auth =
@@ -22759,7 +22772,7 @@ pub fn emit_rest_call(
                 );
                 let body_line = emit_rest_body_line(transport.clone(), source_indices.clone());
                 let headers = transport_headers(transport.clone(), source_indices.clone());
-                let header_lines = Rc::new({
+                let header_lines = Arc::new({
                     let mut __result = Vec::new();
                     for h in headers.clone().iter().cloned() {
                         __result.push({
@@ -22798,11 +22811,11 @@ pub fn emit_rest_call(
                     corpus_repr.clone(),
                     env.clone(),
                 );
-                let all_lines = Rc::new({
+                let all_lines = Arc::new({
                     let mut __result = Vec::new();
                     for l in v1_rt::concat(
                         v1_rt::concat(
-                            Rc::new(vec![
+                            Arc::new(vec![
                                 client_init.clone(),
                                 url_line.clone(),
                                 auth_line.clone(),
@@ -22810,7 +22823,7 @@ pub fn emit_rest_call(
                             ]),
                             header_lines.clone(),
                         ),
-                        Rc::new(vec![
+                        Arc::new(vec![
                             query_line.clone(),
                             body_line.clone(),
                             send_line.clone(),
@@ -22833,8 +22846,8 @@ pub fn emit_rest_call(
 }
 
 pub fn emit_rest_client_init(
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    transport: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match transport_tls_posture(transport.clone(), source_indices.clone()) {
         Some(p) => {
@@ -22862,12 +22875,12 @@ pub fn emit_rest_client_init(
 }
 
 pub fn emit_rest_basic_auth_line(
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    transport: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match transport_auth_basic(transport.clone(), source_indices.clone()) {
         Some(b) => {
-            let user_field = Rc::new({
+            let user_field = Arc::new({
                 let mut __result = Vec::new();
                 for fi in b.children.clone().iter().cloned() {
                     if (field_init_node_name_at(fi.clone(), source_indices.clone())
@@ -22880,7 +22893,7 @@ pub fn emit_rest_basic_auth_line(
             })
             .first()
             .cloned();
-            let pass_field = Rc::new({
+            let pass_field = Arc::new({
                 let mut __result = Vec::new();
                 for fi in b.children.clone().iter().cloned() {
                     if (field_init_node_name_at(fi.clone(), source_indices.clone())
@@ -22936,16 +22949,16 @@ pub fn emit_rest_basic_auth_line(
 }
 
 pub fn emit_rest_http_method(
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    transport: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match transport_method(transport.clone(), source_indices.clone()) {
         Some(m) => match m.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: _, .. }) => {
                 let method_name = expr_var_name_at(m.clone(), source_indices.clone());
-                Rc::new({
+                Arc::new({
                     let mut __result = Vec::new();
-                    for ch in Rc::new(
+                    for ch in Arc::new(
                         method_name
                             .clone()
                             .chars()
@@ -22968,9 +22981,9 @@ pub fn emit_rest_http_method(
 }
 
 pub fn emit_rest_url_line(
-    transport: Rc<Node>,
+    transport: Arc<Node>,
     op_name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match transport_path_template(transport.clone(), source_indices.clone()) {
         Some(path_node) => match (*path_node.expr_data.clone()).clone() {
@@ -22990,7 +23003,7 @@ pub fn emit_rest_url_line(
                 )
             }
             ExprData::ExprStringInterp => {
-                let parts = Rc::new({
+                let parts = Arc::new({
                     let mut __result = Vec::new();
                     for child in path_node.children.clone().iter().cloned() {
                         __result.push(match (*child.expr_data.clone()).clone() {
@@ -22999,18 +23012,18 @@ pub fn emit_rest_url_line(
                                 else {
                                     unreachable!()
                                 };
-                                Rc::new(StringPart::Text {
+                                Arc::new(StringPart::Text {
                                     value: text.clone(),
                                 })
                             }
-                            _ => Rc::new(StringPart::Interpolation {
+                            _ => Arc::new(StringPart::Interpolation {
                                 expr: arg_value(child.clone()),
                             }),
                         });
                     }
                     __result
                 });
-                let fmt_segments = Rc::new({
+                let fmt_segments = Arc::new({
                     let mut __result = Vec::new();
                     for p in parts.clone().iter().cloned() {
                         __result.push(match (*p.clone()).clone() {
@@ -23021,12 +23034,12 @@ pub fn emit_rest_url_line(
                     __result
                 });
                 let fmt_str = fmt_segments.clone().join(&"".to_string());
-                let args = Rc::new({
+                let args = Arc::new({
                     let mut __result = Vec::new();
                     for p in parts.clone().iter().cloned() {
                         __result.extend(
                             (*match (*p.clone()).clone() {
-                                StringPart::Text { value: _, .. } => Rc::new(vec![]),
+                                StringPart::Text { value: _, .. } => Arc::new(vec![]),
                                 StringPart::Interpolation { expr: e, .. } => {
                                     let var_name = emit_ident(
                                         expr_var_name_at(e.clone(), source_indices.clone()),
@@ -23034,12 +23047,12 @@ pub fn emit_rest_url_line(
                                     );
                                     let is_opt = is_optional_typed_expr(e.clone());
                                     if is_opt.clone() {
-                                        Rc::new(vec![v1_rt::concat(
+                                        Arc::new(vec![v1_rt::concat(
                                             var_name.clone(),
                                             ".as_deref().unwrap_or(\"\")".to_string(),
                                         )])
                                     } else {
-                                        Rc::new(vec![var_name.clone()])
+                                        Arc::new(vec![var_name.clone()])
                                     }
                                 }
                             })
@@ -23087,10 +23100,10 @@ pub fn emit_rest_url_line(
 }
 
 pub fn emit_rest_auth_line(
-    transport: Rc<Node>,
-    service_item: Rc<Node>,
+    transport: Arc<Node>,
+    service_item: Arc<Node>,
     http_method: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let auth_scheme = service_config_auth(service_item.clone(), source_indices.clone());
@@ -23178,13 +23191,13 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
 }
 
 pub fn emit_rest_query_line(
-    transport: Rc<Node>,
+    transport: Arc<Node>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match transport_query(transport.clone(), source_indices.clone()) {
         Some(q) => {
-            let pairs = Rc::new({
+            let pairs = Arc::new({
                 let mut __result = Vec::new();
                 for fi in q.children.clone().iter().cloned() {
                     __result.push(v1_rt::concat(
@@ -23227,15 +23240,15 @@ pub fn emit_rest_query_line(
 }
 
 pub fn emit_rest_body_line(
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    transport: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match transport_request_body(transport.clone(), source_indices.clone()) {
     Some(b) => match (*b.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => {
-        let required_fields = Rc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { if !is_optional_typed_expr(field_init_node_value(fi.clone())) { __result.push(fi); } } __result });
-let optional_fields = Rc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { if is_optional_typed_expr(field_init_node_value(fi.clone())) { __result.push(fi); } } __result });
-let req_strs = Rc::new({ let mut __result = Vec::new(); for fi in required_fields.clone().iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat("\"".to_string(), field_init_node_name_at(fi.clone(), source_indices.clone())), "\": ".to_string()), emit_simple_expr(field_init_node_value(fi.clone()), RenderTarget::Rust, source_indices.clone()))); } __result });
+        let required_fields = Arc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { if !is_optional_typed_expr(field_init_node_value(fi.clone())) { __result.push(fi); } } __result });
+let optional_fields = Arc::new({ let mut __result = Vec::new(); for fi in b.children.clone().iter().cloned() { if is_optional_typed_expr(field_init_node_value(fi.clone())) { __result.push(fi); } } __result });
+let req_strs = Arc::new({ let mut __result = Vec::new(); for fi in required_fields.clone().iter().cloned() { __result.push(v1_rt::concat(v1_rt::concat(v1_rt::concat("\"".to_string(), field_init_node_name_at(fi.clone(), source_indices.clone())), "\": ".to_string()), emit_simple_expr(field_init_node_value(fi.clone()), RenderTarget::Rust, source_indices.clone()))); } __result });
 if (((req_strs.clone().len() as i64) == 0) && ((optional_fields.clone().len() as i64) == 0)) {
             "compile_error!(\"transport body record has no fields\");".to_string()
         } else {
@@ -23245,13 +23258,13 @@ if (((req_strs.clone().len() as i64) == 0) && ((optional_fields.clone().len() as
                 } else {
                     "let mut __body = serde_json::json!({});".to_string()
                 };
-let opt_lines = Rc::new({ let mut __result = Vec::new(); for fi in optional_fields.clone().iter().cloned() { __result.push({
+let opt_lines = Arc::new({ let mut __result = Vec::new(); for fi in optional_fields.clone().iter().cloned() { __result.push({
                     let fname = field_init_node_name_at(fi.clone(), source_indices.clone());
 let fexpr = emit_simple_expr(field_init_node_value(fi.clone()), RenderTarget::Rust, source_indices.clone());
 v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("if let Some(ref __v) = ".to_string(), fexpr.clone()), " { __body[\"".to_string()), fname.clone()), "\"] = serde_json::json!(__v); }".to_string())
 }); } __result });
 let assign_line = "let request = request.json(&__body);".to_string();
-v1_rt::concat(v1_rt::concat(Rc::new(vec![body_init.clone()]), opt_lines.clone()), Rc::new(vec![assign_line.clone()])).join(&"\n".to_string())
+v1_rt::concat(v1_rt::concat(Arc::new(vec![body_init.clone()]), opt_lines.clone()), Arc::new(vec![assign_line.clone()])).join(&"\n".to_string())
 }
         }
 },
@@ -23270,10 +23283,10 @@ pub fn has_response_prefix(name: String) -> bool {
 }
 
 pub fn child_from_key(
-    ch: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ch: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
-    match Rc::new({
+    match Arc::new({
         let mut __result = Vec::new();
         for p in ch.properties.clone().iter().cloned() {
             if (field_init_node_name_at(p.clone(), source_indices.clone())
@@ -23301,13 +23314,13 @@ pub fn child_from_key(
 }
 
 pub fn has_from_key_fields(
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    op_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let rt = resolved_type(op_node.clone());
         let is_conj = (rt.connective.clone() == Connective::Conj);
-        let from_key_count = (Rc::new({
+        let from_key_count = (Arc::new({
             let mut __result = Vec::new();
             for ch in rt.children.clone().iter().cloned() {
                 if match child_from_key(ch.clone(), source_indices.clone()) {
@@ -23325,8 +23338,8 @@ pub fn has_from_key_fields(
 }
 
 pub fn has_response_200_property(
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    op_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -23343,11 +23356,11 @@ pub fn has_response_200_property(
 }
 
 pub fn operation_response_200_resolved_type(
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    env: Rc<TypeEnv>,
-) -> Option<Rc<Node>> {
-    match Rc::new({
+    op_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    env: Arc<TypeEnv>,
+) -> Option<Arc<Node>> {
+    match Arc::new({
         let mut __result = Vec::new();
         for p in op_node.properties.clone().iter().cloned() {
             if (field_init_node_name_at(p.clone(), source_indices.clone())
@@ -23383,8 +23396,8 @@ pub fn operation_response_200_resolved_type(
 }
 
 pub fn is_json_wire_declaration_type(
-    t: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    t: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let n = authored_name_at(
@@ -23395,7 +23408,7 @@ pub fn is_json_wire_declaration_type(
             true
         } else {
             {
-                let parts = Rc::new(
+                let parts = Arc::new(
                     n.clone()
                         .split(&".".to_string())
                         .map(|s| s.to_string())
@@ -23416,7 +23429,7 @@ pub fn path_segment_is_list_index(seg: String) -> bool {
     } else {
         {
             let mut __all = true;
-            for c in Rc::new(seg.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
+            for c in Arc::new(seg.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
                 .iter()
                 .cloned()
             {
@@ -23433,18 +23446,18 @@ pub fn path_segment_is_list_index(seg: String) -> bool {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WirePathProjection {
     pub expr: String,
-    pub node: Option<Rc<Node>>,
+    pub node: Option<Arc<Node>>,
     pub ok: bool,
 }
 
 pub fn wire_child_for_segment(
-    wire_node: Rc<Node>,
+    wire_node: Arc<Node>,
     seg: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Option<Arc<Node>> {
     {
         let normed = normalize_access_type_node(wire_node.clone());
-        match Rc::new({
+        match Arc::new({
             let mut __result = Vec::new();
             for ch in normed.children.clone().iter().cloned() {
                 if {
@@ -23470,11 +23483,11 @@ pub fn wire_child_for_segment(
 }
 
 pub fn advance_wire_path_projection(
-    state: Rc<WirePathProjection>,
+    state: Arc<WirePathProjection>,
     seg: String,
     full_path: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<WirePathProjection> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<WirePathProjection> {
     if !state.ok.clone() {
         state.clone()
     } else {
@@ -23487,7 +23500,7 @@ pub fn advance_wire_path_projection(
                     )),
                     None => None,
                 };
-                Rc::new(WirePathProjection {
+                Arc::new(WirePathProjection {
                     expr: v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
@@ -23519,7 +23532,7 @@ pub fn advance_wire_path_projection(
             match state.node.clone() {
                 Some(n) => {
                     match wire_child_for_segment(n.clone(), seg.clone(), source_indices.clone()) {
-                        Some(ch) => Rc::new(WirePathProjection {
+                        Some(ch) => Arc::new(WirePathProjection {
                             expr: v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat("(".to_string(), state.expr.clone()),
@@ -23533,14 +23546,14 @@ pub fn advance_wire_path_projection(
                             node: Some(resolved_type(ch.clone())),
                             ok: true,
                         }),
-                        None => Rc::new(WirePathProjection {
+                        None => Arc::new(WirePathProjection {
                             expr: state.expr.clone(),
                             node: None,
                             ok: false,
                         }),
                     }
                 }
-                None => Rc::new(WirePathProjection {
+                None => Arc::new(WirePathProjection {
                     expr: state.expr.clone(),
                     node: None,
                     ok: false,
@@ -23552,14 +23565,14 @@ pub fn advance_wire_path_projection(
 
 pub fn emit_wire_struct_path_chain(
     base: String,
-    wire_node: Rc<Node>,
+    wire_node: Arc<Node>,
     from_path: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<WirePathProjection> {
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<WirePathProjection> {
     {
-        let segs = Rc::new({
+        let segs = Arc::new({
             let mut __result = Vec::new();
-            for s in Rc::new(
+            for s in Arc::new(
                 from_path
                     .clone()
                     .split(&"/".to_string())
@@ -23576,12 +23589,12 @@ pub fn emit_wire_struct_path_chain(
             __result
         });
         segs.clone().iter().cloned().fold(
-            Rc::new(WirePathProjection {
+            Arc::new(WirePathProjection {
                 expr: base.clone(),
                 node: Some(wire_node.clone()),
                 ok: true,
             }),
-            |acc: Rc<WirePathProjection>, seg: String| {
+            |acc: Arc<WirePathProjection>, seg: String| {
                 advance_wire_path_projection(
                     acc,
                     seg.clone(),
@@ -23596,8 +23609,8 @@ pub fn emit_wire_struct_path_chain(
 pub fn emit_typed_wire_field_assign(
     field_name: String,
     from_path: String,
-    wire_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    wire_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let projection = emit_wire_struct_path_chain(
@@ -23636,12 +23649,12 @@ pub fn emit_json_value_extract(
     from_path: String,
     dag_type_name: String,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
-        let escaped_path = Rc::new({
+        let escaped_path = Arc::new({
             let mut __result = Vec::new();
-            for seg in Rc::new(
+            for seg in Arc::new(
                 from_path
                     .clone()
                     .split(&"/".to_string())
@@ -23728,11 +23741,11 @@ pub fn emit_json_value_extract(
 }
 
 pub fn emit_from_key_extraction(
-    op_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    op_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    env: Rc<TypeEnv>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let rt = resolved_type(op_node.clone());
@@ -23786,7 +23799,7 @@ pub fn emit_from_key_extraction(
                         "let json_body: serde_json::Value = response.json().await?;\n".to_string()
                     }
                 };
-                let extract_lines = Rc::new({
+                let extract_lines = Arc::new({
                     let mut __result = Vec::new();
                     for ch in children.clone().iter().cloned() {
                         __result.push({
@@ -23811,7 +23824,7 @@ match ch.inferred.clone().as_deref().cloned() {
                     }
                     __result
                 });
-                let field_names = Rc::new({
+                let field_names = Arc::new({
                     let mut __result = Vec::new();
                     for ch in children.clone().iter().cloned() {
                         __result.push(emit_ident(
@@ -23854,9 +23867,9 @@ match ch.inferred.clone().as_deref().cloned() {
 }
 
 pub fn emit_plain_response_body(
-    op_node: Rc<Node>,
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    op_node: Arc<Node>,
+    transport: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let is_text = match transport_response_format(transport.clone(), source_indices.clone()) {
@@ -23874,16 +23887,16 @@ pub fn emit_plain_response_body(
 }
 
 pub fn emit_response_code_handling(
-    op_node: Rc<Node>,
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    op_node: Arc<Node>,
+    transport: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    env: Rc<TypeEnv>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let use_from_key = has_from_key_fields(op_node.clone(), source_indices.clone());
-        let response_props = Rc::new({
+        let response_props = Arc::new({
             let mut __result = Vec::new();
             for p in op_node.properties.clone().iter().cloned() {
                 if has_response_prefix(field_init_node_name_at(p.clone(), source_indices.clone())) {
@@ -23906,7 +23919,7 @@ pub fn emit_response_code_handling(
             }
         } else {
             {
-                let arms = Rc::new({
+                let arms = Arc::new({
                     let mut __result = Vec::new();
                     for p in response_props.clone().iter().cloned() {
                         __result.push(emit_response_arm(
@@ -23942,14 +23955,14 @@ pub fn emit_response_code_handling(
 }
 
 pub fn emit_response_arm(
-    prop: Rc<Node>,
-    op_node: Rc<Node>,
+    prop: Arc<Node>,
+    op_node: Arc<Node>,
     use_from_key: bool,
-    transport: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    shared_types: Rc<BTreeSet<String>>,
+    transport: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    env: Rc<TypeEnv>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let name = field_init_node_name_at(prop.clone(), source_indices.clone());
@@ -24028,13 +24041,13 @@ pub fn has_exit_prefix(name: String) -> bool {
 }
 
 pub fn emit_exit_code_handling(
-    op_node: Rc<Node>,
-    inferred: Rc<Node>,
+    op_node: Arc<Node>,
+    inferred: Arc<Node>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
-        let exit_props = Rc::new({
+        let exit_props = Arc::new({
             let mut __result = Vec::new();
             for p in op_node.properties.clone().iter().cloned() {
                 if has_exit_prefix(field_init_node_name_at(p.clone(), source_indices.clone())) {
@@ -24059,7 +24072,7 @@ pub fn emit_exit_code_handling(
                     }
                     __found
                 };
-                let exit_arms = Rc::new({
+                let exit_arms = Arc::new({
                     let mut __result = Vec::new();
                     for p in exit_props.clone().iter().cloned() {
                         __result.push(emit_exit_arm(
@@ -24095,10 +24108,10 @@ pub fn emit_exit_code_handling(
 }
 
 pub fn emit_exit_arm(
-    prop: Rc<Node>,
-    inferred: Rc<Node>,
+    prop: Arc<Node>,
+    inferred: Arc<Node>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let name = field_init_node_name_at(prop.clone(), source_indices.clone());
@@ -24128,17 +24141,17 @@ pub fn emit_exit_arm(
 
 pub fn emit_shell_call(
     op_name: String,
-    transport: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    transport: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
     depth: i64,
-    inferred: Rc<Node>,
-    op_node: Rc<Node>,
+    inferred: Arc<Node>,
+    op_node: Arc<Node>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let argv = transport.children.clone();
-        let optional_params = Rc::new({
+        let optional_params = Arc::new({
             let mut __result = Vec::new();
             for p in op_node.params.clone().iter().cloned() {
                 if (param_node_type_expr(p.clone()).return_cardinality.clone()
@@ -24153,7 +24166,7 @@ pub fn emit_shell_call(
         .cloned()
         .fold(
             v1_rt::rc_empty_map::<String, bool>(),
-            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
+            |acc: Arc<HashMap<String, bool>>, p: Arc<Node>| {
                 v1_rt::rc_map_insert(
                     acc,
                     param_node_name_at(p.clone(), source_indices.clone()),
@@ -24208,9 +24221,9 @@ pub fn emit_shell_call(
             )
         };
         let arg_lines = if ((argv.clone().len() as i64) > 1) {
-            Rc::new({
+            Arc::new({
                 let mut __result = Vec::new();
-                for arg in Rc::new(
+                for arg in Arc::new(
                     argv.clone()
                         .iter()
                         .cloned()
@@ -24236,10 +24249,10 @@ pub fn emit_shell_call(
                 __result
             })
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let env_entries = transport_env(transport.clone(), source_indices.clone());
-        let env_lines = Rc::new({
+        let env_lines = Arc::new({
             let mut __result = Vec::new();
             for e in env_entries.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -24295,10 +24308,10 @@ pub fn emit_shell_call(
                 );
                 let all_lines = v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(Rc::new(vec![cmd_line.clone()]), arg_lines.clone()),
+                        v1_rt::concat(Arc::new(vec![cmd_line.clone()]), arg_lines.clone()),
                         env_lines.clone(),
                     ),
-                    Rc::new(vec![
+                    Arc::new(vec![
                         wd_line.clone(),
                         spawn_line.clone(),
                         spawn_exec.clone(),
@@ -24323,10 +24336,10 @@ pub fn emit_shell_call(
                 );
                 let all_lines = v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(Rc::new(vec![cmd_line.clone()]), arg_lines.clone()),
+                        v1_rt::concat(Arc::new(vec![cmd_line.clone()]), arg_lines.clone()),
                         env_lines.clone(),
                     ),
-                    Rc::new(vec![
+                    Arc::new(vec![
                         wd_line.clone(),
                         output_line.clone(),
                         check_line.clone(),
@@ -24340,10 +24353,10 @@ pub fn emit_shell_call(
 }
 
 pub fn emit_shell_argv_element(
-    arg: Rc<Node>,
-    optional_params: Rc<HashMap<String, bool>>,
+    arg: Arc<Node>,
+    optional_params: Arc<HashMap<String, bool>>,
     corpus_repr: RustCorpusRepr,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match (*arg.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. } => {
@@ -24356,7 +24369,7 @@ pub fn emit_shell_argv_element(
             )
         }
         ExprData::ExprStringInterp => {
-            let parts = Rc::new({
+            let parts = Arc::new({
                 let mut __result = Vec::new();
                 for child in arg.children.clone().iter().cloned() {
                     __result.push(match (*child.expr_data.clone()).clone() {
@@ -24364,18 +24377,18 @@ pub fn emit_shell_argv_element(
                             let LiteralValue::LitStr { value: text, .. } = value.as_ref() else {
                                 unreachable!()
                             };
-                            Rc::new(StringPart::Text {
+                            Arc::new(StringPart::Text {
                                 value: text.clone(),
                             })
                         }
-                        _ => Rc::new(StringPart::Interpolation {
+                        _ => Arc::new(StringPart::Interpolation {
                             expr: arg_value(child.clone()),
                         }),
                     });
                 }
                 __result
             });
-            let fmt_segments = Rc::new({
+            let fmt_segments = Arc::new({
                 let mut __result = Vec::new();
                 for p in parts.clone().iter().cloned() {
                     __result.push(match (*p.clone()).clone() {
@@ -24386,12 +24399,12 @@ pub fn emit_shell_argv_element(
                 __result
             });
             let fmt_str = fmt_segments.clone().join(&"".to_string());
-            let args = Rc::new({
+            let args = Arc::new({
                 let mut __result = Vec::new();
                 for p in parts.clone().iter().cloned() {
                     __result.extend(
                         (*match (*p.clone()).clone() {
-                            StringPart::Text { value: _, .. } => Rc::new(vec![]),
+                            StringPart::Text { value: _, .. } => Arc::new(vec![]),
                             StringPart::Interpolation { expr: e, .. } => {
                                 let name = expr_var_name_at(e.clone(), source_indices.clone());
                                 let var_name = emit_ident(name.clone(), RenderTarget::Rust);
@@ -24401,12 +24414,12 @@ pub fn emit_shell_argv_element(
                                         None => false,
                                     });
                                 if is_opt.clone() {
-                                    Rc::new(vec![v1_rt::concat(
+                                    Arc::new(vec![v1_rt::concat(
                                         var_name.clone(),
                                         ".as_deref().unwrap_or(\"\")".to_string(),
                                     )])
                                 } else {
-                                    Rc::new(vec![var_name.clone()])
+                                    Arc::new(vec![var_name.clone()])
                                 }
                             }
                         })
@@ -24452,8 +24465,8 @@ pub fn emit_shell_argv_element(
 }
 
 pub fn emit_shell_return(
-    inferred: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    inferred: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let effective = unwrap_single_field_product(inferred.clone());
@@ -24495,7 +24508,7 @@ pub fn emit_shell_return(
                         } else {
                             "".to_string()
                         };
-                        let field_exprs = Rc::new({
+                        let field_exprs = Arc::new({
                             let mut __result = Vec::new();
                             for ch in effective.children.clone().iter().cloned() {
                                 __result.push({
@@ -24545,7 +24558,7 @@ pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
                 "stderr.clone()".to_string()
             } else {
                 if (channel.clone() == "stdout_lines".to_string()) {
-                    "Rc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())".to_string()
+                    "Arc::new(stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect())".to_string()
                 } else {
                     "stdout.clone()".to_string()
                 }
@@ -24562,7 +24575,7 @@ pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
     }
 }
 
-pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
+pub fn unwrap_single_field_product(n: Arc<Node>) -> Arc<Node> {
     {
         let is_product = is_product_type(n.clone());
         if ((is_product.clone() && (n.ident_span.clone() == None))
@@ -24578,7 +24591,7 @@ pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn emit_file_call(op_name: String, inferred: Rc<Node>) -> String {
+pub fn emit_file_call(op_name: String, inferred: Arc<Node>) -> String {
     {
         let effective = unwrap_single_field_product(inferred.clone());
         let is_product = is_product_type(effective.clone());
@@ -24618,10 +24631,10 @@ pub fn emit_local_call(op_name: String) -> String {
 }
 
 pub fn emit_resource_def(
-    item: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    item: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    env: Rc<TypeEnv>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
         let item_text = authored_name(env.clone(), item.clone());
@@ -24637,7 +24650,7 @@ pub fn emit_resource_def(
         } else {
             {
                 let depth = 0;
-                let cap_methods = Rc::new({
+                let cap_methods = Arc::new({
                     let mut __result = Vec::new();
                     for c in cap_children.clone().iter().cloned() {
                         __result.push(emit_capability_method(
@@ -24672,13 +24685,13 @@ pub fn emit_resource_def(
 }
 
 pub fn emit_capability_method(
-    cap_node: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
+    cap_node: Arc<Node>,
+    shared_types: Arc<BTreeSet<String>>,
     corpus_repr: RustCorpusRepr,
-    env: Rc<TypeEnv>,
+    env: Arc<TypeEnv>,
 ) -> String {
     {
-        let input_params = Rc::new({
+        let input_params = Arc::new({
             let mut __result = Vec::new();
             for p in cap_node.params.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -24691,7 +24704,7 @@ pub fn emit_capability_method(
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
-                        Rc::new(vec![]),
+                        Arc::new(vec![]),
                         shared_types.clone(),
                         corpus_repr.clone(),
                         env.source_indices.clone(),
@@ -24747,7 +24760,7 @@ pub fn emit_capability_method(
     }
 }
 
-pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
+pub fn data_value_has_cross_refs(value: Arc<Node>) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*value.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -24779,8 +24792,8 @@ pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
 }
 
 pub fn data_def_annotation_is_named_refinement(
-    annotation: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    annotation: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     {
         let ann_name = authored_name_at(source_indices.clone(), annotation.clone());
@@ -24796,13 +24809,13 @@ pub fn data_def_annotation_is_named_refinement(
 
 pub fn emit_data_def(
     name: String,
-    type_node: Rc<Node>,
-    value: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    type_node: Arc<Node>,
+    value: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
 ) -> String {
     {
         let annotation_type_node = type_node.clone();
@@ -24850,7 +24863,7 @@ pub fn emit_data_def(
             }
         };
         let ty_str = if ((raw_ty_str.clone() == "BoundedLattice".to_string())
-            || (raw_ty_str.clone() == "Rc<BoundedLattice>".to_string()))
+            || (raw_ty_str.clone() == "Arc<BoundedLattice>".to_string()))
         {
             match field_value_by_name(
                 value.clone(),
@@ -24865,10 +24878,10 @@ pub fn emit_data_def(
                     if (top_type_name.clone() == "".to_string()) {
                         raw_ty_str.clone()
                     } else {
-                        if (raw_ty_str.clone() == "Rc<BoundedLattice>".to_string()) {
+                        if (raw_ty_str.clone() == "Arc<BoundedLattice>".to_string()) {
                             v1_rt::concat(
                                 v1_rt::concat(
-                                    "Rc<BoundedLattice<".to_string(),
+                                    "Arc<BoundedLattice<".to_string(),
                                     top_type_name.clone(),
                                 ),
                                 ">>".to_string(),
@@ -24967,9 +24980,9 @@ pub fn emit_data_def(
 }
 
 pub fn rust_nominal_identity_data_expr(
-    type_node: Rc<Node>,
-    value: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_node: Arc<Node>,
+    value: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     {
         let type_name = authored_name_at(source_indices.clone(), type_node.clone());
@@ -25000,13 +25013,13 @@ pub fn rust_nominal_identity_data_expr(
 }
 
 pub fn emit_data_def_body(
-    type_node: Rc<Node>,
-    value: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    scope: Rc<InferScope>,
+    type_node: Arc<Node>,
+    value: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    scope: Arc<InferScope>,
     depth: i64,
-    shared_types: Rc<BTreeSet<String>>,
-    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Arc<BTreeSet<String>>,
+    emit_info: Arc<EmitGraphInfo>,
     needs_rc: bool,
 ) -> String {
     {
@@ -25122,7 +25135,7 @@ pub fn emit_data_def_body(
                         "BoundedLattice".to_string(),
                     ) {
                         Some(struct_decl) => {
-                            let pnames = Rc::new({
+                            let pnames = Arc::new({
                                 let mut __result = Vec::new();
                                 for p in struct_decl.params.clone().iter().cloned() {
                                     __result.push(generic_param_name_at(
@@ -25147,7 +25160,7 @@ pub fn emit_data_def_body(
                         }
                         None => "".to_string(),
                     };
-                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            Rc::new(BoundedLattice {\n".to_string(), "                meet: Rc::new(".to_string()), meet_str.clone()), "),\n".to_string()), "                join: Rc::new(".to_string()), join_str.clone()), "),\n".to_string()), "                top: ".to_string()), top_str.clone()), ",\n".to_string()), "                bottom: ".to_string()), bottom_str.clone()), ",\n".to_string()), phantom_line.clone()), "            })".to_string())
+                    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            Arc::new(BoundedLattice {\n".to_string(), "                meet: Arc::new(".to_string()), meet_str.clone()), "),\n".to_string()), "                join: Arc::new(".to_string()), join_str.clone()), "),\n".to_string()), "                top: ".to_string()), top_str.clone()), ",\n".to_string()), "                bottom: ".to_string()), bottom_str.clone()), ",\n".to_string()), phantom_line.clone()), "            })".to_string())
                 }
                 _ => "            compile_error!(\"BoundedLattice data must be a record\")"
                     .to_string(),
@@ -25187,7 +25200,7 @@ pub fn emit_data_def_body(
                                     type_node.clone(),
                                     scope.type_env.clone().source_indices.clone(),
                                 );
-                                let inserts = Rc::new({
+                                let inserts = Arc::new({
                                     let mut __result = Vec::new();
                                     for f in value.children.clone().iter().cloned() {
                                         __result.push({
@@ -25238,7 +25251,7 @@ pub fn emit_data_def_body(
                                         ),
                                         "\n".to_string(),
                                     ),
-                                    "            Rc::new(__m)".to_string(),
+                                    "            Arc::new(__m)".to_string(),
                                 )
                             }
                             _ => {
@@ -25294,7 +25307,7 @@ pub fn emit_data_def_body(
                                 _ => false,
                             };
                             let wrap_start = if (needs_rc.clone() && !is_already_wrapped.clone()) {
-                                "Rc::new(".to_string()
+                                "Arc::new(".to_string()
                             } else {
                                 "".to_string()
                             };
@@ -25320,12 +25333,12 @@ pub fn emit_data_def_body(
 
 pub fn emit_test_file(
     module_name: String,
-    projections: Rc<Vec<Rc<TestProjection>>>,
+    projections: Arc<Vec<Arc<TestProjection>>>,
     corpus_repr: RustCorpusRepr,
-) -> Rc<TextFile> {
+) -> Arc<TextFile> {
     {
         let depth = 0;
-        let test_fns = Rc::new({
+        let test_fns = Arc::new({
             let mut __result = Vec::new();
             for p in projections.clone().iter().cloned() {
                 __result.push(emit_operation_test(
@@ -25337,7 +25350,7 @@ pub fn emit_test_file(
             __result
         });
         if ((test_fns.clone().len() as i64) == 0) {
-            Rc::new(TextFile {
+            Arc::new(TextFile {
                 path: "".to_string(),
                 content: "".to_string(),
             })
@@ -25374,7 +25387,7 @@ pub fn emit_test_file(
                     ),
                     "}\n".to_string(),
                 );
-                Rc::new(TextFile {
+                Arc::new(TextFile {
                     path: rust_test_file_path(module_name.clone()),
                     content: content.clone(),
                 })
@@ -25384,25 +25397,25 @@ pub fn emit_test_file(
 }
 
 pub fn rust_test_signature_comment(
-    projection: Rc<TestProjection>,
+    projection: Arc<TestProjection>,
     corpus_repr: RustCorpusRepr,
 ) -> String {
     {
-        let stub_env = Rc::new(TypeEnv {
+        let stub_env = Arc::new(TypeEnv {
             module_path: "".to_string(),
-            bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            parents: Rc::new(vec![]),
-            recursive_types: Rc::new(vec![]),
+            bindings: v1_rt::rc_empty_map::<i64, Arc<TypeBinding>>(),
+            str_bindings: v1_rt::rc_empty_map::<String, Arc<TypeBinding>>(),
+            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Arc<TypeBinding>>(),
+            parents: Arc::new(vec![]),
+            recursive_types: Arc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
+            inductive_fields: v1_rt::rc_empty_map::<String, Arc<Vec<Arc<InductiveField>>>>(),
             source_indices: projection.source_indices.clone(),
             intern_table: empty_intern_table(),
             source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
             symbol_index: empty_symbol_index(),
         });
-        let params_str = Rc::new({
+        let params_str = Arc::new({
             let mut __result = Vec::new();
             for p in projection.params.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -25412,7 +25425,7 @@ pub fn rust_test_signature_comment(
                     ),
                     emit_rust_param_type(
                         param_node_type_expr(p.clone()),
-                        Rc::new(vec![]),
+                        Arc::new(vec![]),
                         v1_rt::rc_empty_set::<String>(),
                         corpus_repr.clone(),
                         projection.source_indices.clone(),
@@ -25454,7 +25467,7 @@ pub fn rust_test_signature_comment(
 }
 
 pub fn emit_operation_test(
-    projection: Rc<TestProjection>,
+    projection: Arc<TestProjection>,
     depth: i64,
     corpus_repr: RustCorpusRepr,
 ) -> String {
@@ -25463,7 +25476,7 @@ pub fn emit_operation_test(
         let struct_name = sanitize_service_name(projection.service_name.clone());
         let op_method = to_snake(projection.operation_name.clone());
         let indent = make_indent((depth.clone() + 1));
-        let param_args = Rc::new({
+        let param_args = Arc::new({
             let mut __result = Vec::new();
             for p in projection.params.clone().iter().cloned() {
                 __result.push(emit_rust_default_value(
@@ -25484,8 +25497,8 @@ pub fn emit_operation_test(
 }
 
 pub fn emit_rust_default_value(
-    param: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    param: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let type_name =
@@ -25513,9 +25526,9 @@ pub fn emit_rust_default_value(
 }
 
 pub fn emit_mock_prop_setup(
-    mock_prop: Rc<Node>,
+    mock_prop: Arc<Node>,
     depth: i64,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let body_str = emit_simple_expr(
@@ -25539,10 +25552,10 @@ pub fn emit_mock_prop_setup(
     }
 }
 
-pub fn emit_cargo_dep(name: String, version: String, features: Rc<Vec<String>>) -> String {
+pub fn emit_cargo_dep(name: String, version: String, features: Arc<Vec<String>>) -> String {
     if ((features.clone().len() as i64) > 0) {
         {
-            let feat_strs = Rc::new({
+            let feat_strs = Arc::new({
                 let mut __result = Vec::new();
                 for f in features.clone().iter().cloned() {
                     __result.push(v1_rt::concat(
@@ -25580,10 +25593,10 @@ pub fn emit_cargo_dep(name: String, version: String, features: Rc<Vec<String>>) 
 pub fn emit_cargo_dep_no_default_features(
     name: String,
     version: String,
-    features: Rc<Vec<String>>,
+    features: Arc<Vec<String>>,
 ) -> String {
     {
-        let feat_strs = Rc::new({
+        let feat_strs = Arc::new({
             let mut __result = Vec::new();
             for f in features.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -25609,59 +25622,59 @@ pub fn emit_cargo_dep_no_default_features(
     }
 }
 
-pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
+pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Arc<TextFile> {
     {
         let header = v1_rt::concat(
             render_cargo_package_header_prefix(crate_name.clone()),
             "\nedition = \"2021\"\n".to_string(),
         );
         let workspace = "\n[workspace]\n".to_string();
-        let base_deps = Rc::new(vec![
+        let base_deps = Arc::new(vec![
             emit_cargo_dep(
                 "im".to_string(),
                 "15.1".to_string(),
-                Rc::new(vec!["serde".to_string()]),
+                Arc::new(vec!["serde".to_string()]),
             ),
             emit_cargo_dep(
                 "unicode-ident".to_string(),
                 "1".to_string(),
-                Rc::new(vec![]),
+                Arc::new(vec![]),
             ),
             emit_cargo_dep(
                 "unicode-properties".to_string(),
                 "0.1".to_string(),
-                Rc::new(vec!["emoji".to_string()]),
+                Arc::new(vec!["emoji".to_string()]),
             ),
             emit_cargo_dep(
                 "serde".to_string(),
                 "1".to_string(),
-                Rc::new(vec!["derive".to_string(), "rc".to_string()]),
+                Arc::new(vec!["derive".to_string(), "rc".to_string()]),
             ),
-            emit_cargo_dep("serde_json".to_string(), "1".to_string(), Rc::new(vec![])),
-            emit_cargo_dep("stacker".to_string(), "0.1".to_string(), Rc::new(vec![])),
+            emit_cargo_dep("serde_json".to_string(), "1".to_string(), Arc::new(vec![])),
+            emit_cargo_dep("stacker".to_string(), "0.1".to_string(), Arc::new(vec![])),
             emit_cargo_dep(
                 "clap".to_string(),
                 "4".to_string(),
-                Rc::new(vec!["derive".to_string()]),
+                Arc::new(vec!["derive".to_string()]),
             ),
-            emit_cargo_dep("lazy_static".to_string(), "1".to_string(), Rc::new(vec![])),
+            emit_cargo_dep("lazy_static".to_string(), "1".to_string(), Arc::new(vec![])),
             emit_cargo_dep(
                 "ureq".to_string(),
                 "2".to_string(),
-                Rc::new(vec!["json".to_string()]),
+                Arc::new(vec!["json".to_string()]),
             ),
         ]);
         let async_deps = if has_services.clone() {
-            Rc::new(vec![
+            Arc::new(vec![
                 emit_cargo_dep(
                     "tokio".to_string(),
                     "1".to_string(),
-                    Rc::new(vec!["full".to_string()]),
+                    Arc::new(vec!["full".to_string()]),
                 ),
                 emit_cargo_dep_no_default_features(
                     "reqwest".to_string(),
                     "0.12".to_string(),
-                    Rc::new(vec![
+                    Arc::new(vec![
                         "json".to_string(),
                         "rustls-tls".to_string(),
                         "http2".to_string(),
@@ -25671,14 +25684,14 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
                 emit_cargo_dep(
                     "async-trait".to_string(),
                     "0.1".to_string(),
-                    Rc::new(vec![]),
+                    Arc::new(vec![]),
                 ),
             ])
         } else {
-            Rc::new(vec![])
+            Arc::new(vec![])
         };
         let all_deps = v1_rt::concat(base_deps.clone(), async_deps.clone());
-        Rc::new(TextFile {
+        Arc::new(TextFile {
             path: "Cargo.toml".to_string(),
             content: v1_rt::concat(
                 v1_rt::concat(
@@ -25695,16 +25708,16 @@ pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
 pub struct WorkflowFunc {
     pub name: String,
     pub module_name: String,
-    pub params: Rc<Vec<Rc<Node>>>,
-    pub inferred: Rc<Node>,
-    pub uses: Rc<Vec<Rc<Node>>>,
-    pub service_names: Rc<Vec<String>>,
-    pub resolved_defaults: Rc<HashMap<String, String>>,
-    pub read_only_params: Rc<BTreeSet<String>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pub params: Arc<Vec<Arc<Node>>>,
+    pub inferred: Arc<Node>,
+    pub uses: Arc<Vec<Arc<Node>>>,
+    pub service_names: Arc<Vec<String>>,
+    pub resolved_defaults: Arc<HashMap<String, String>>,
+    pub read_only_params: Arc<BTreeSet<String>>,
+    pub source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 }
 
-pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
+pub fn extract_literal_string(expr: Arc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
@@ -25721,13 +25734,15 @@ pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
     }
 }
 
-pub fn build_data_body_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
+pub fn build_data_body_index(
+    modules: Arc<Vec<Arc<TypedModule>>>,
+) -> Arc<HashMap<String, Arc<Node>>> {
     modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<String, Arc<Node>>(),
+        |acc: Arc<HashMap<String, Arc<Node>>>, tm: Arc<TypedModule>| {
             tm.items.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<HashMap<String, Rc<Node>>>, i: Rc<Node>| match i.body.clone() {
+                |inner: Arc<HashMap<String, Arc<Node>>>, i: Arc<Node>| match i.body.clone() {
                     Some(b) => v1_rt::rc_map_insert(
                         inner.clone(),
                         authored_name_at(tm.type_env.clone().source_indices.clone(), i.clone()),
@@ -25741,10 +25756,10 @@ pub fn build_data_body_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
 }
 
 pub fn resolve_param_default(
-    param: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    data_body_index: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    param: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    data_body_index: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> Option<String> {
     match param_node_default_value(param.clone()) {
         Some(dv) => match (*dv.expr_data.clone()).clone() {
@@ -25774,22 +25789,22 @@ pub fn resolve_param_default(
 }
 
 pub fn to_workflow_func(
-    item: Rc<Node>,
+    item: Arc<Node>,
     module_name: String,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    data_body_index: Rc<HashMap<String, Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-) -> Rc<WorkflowFunc> {
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    data_body_index: Arc<HashMap<String, Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    read_only_params_index: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+) -> Arc<WorkflowFunc> {
     {
         let item_name = authored_name_at(source_indices.clone(), item.clone());
         let svc_names = match lookup_item(registry.clone(), item_name.clone()) {
             Some(info) => info.service_names.clone(),
-            None => Rc::new(vec![]),
+            None => Arc::new(vec![]),
         };
         let defaults = item.params.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, String>(),
-            |acc: Rc<HashMap<String, String>>, p: Rc<Node>| match resolve_param_default(
+            |acc: Arc<HashMap<String, String>>, p: Arc<Node>| match resolve_param_default(
                 p.clone(),
                 registry.clone(),
                 data_body_index.clone(),
@@ -25811,7 +25826,7 @@ pub fn to_workflow_func(
             Some(m) => m.clone(),
             None => v1_rt::rc_empty_set::<String>(),
         };
-        Rc::new(WorkflowFunc {
+        Arc::new(WorkflowFunc {
             name: item_name.clone(),
             module_name: module_name.clone(),
             params: item.params.clone(),
@@ -25826,9 +25841,9 @@ pub fn to_workflow_func(
 }
 
 pub fn is_workflow_item(
-    item: Rc<Node>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: Arc<Node>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> bool {
     if (item.body.clone() == None) {
         false
@@ -25851,19 +25866,19 @@ pub fn is_workflow_item(
 }
 
 pub fn collect_workflow_funcs(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
-) -> Rc<Vec<Rc<WorkflowFunc>>> {
+    modules: Arc<Vec<Arc<TypedModule>>>,
+    registry: Arc<HashMap<String, Arc<ItemInfo>>>,
+    read_only_params_index: Arc<HashMap<String, Arc<BTreeSet<String>>>>,
+) -> Arc<Vec<Arc<WorkflowFunc>>> {
     {
         let data_body_index = build_data_body_index(modules.clone());
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for tm in modules.clone().iter().cloned() {
                 __result.extend(
-                    (*Rc::new({
+                    (*Arc::new({
                         let mut __result = Vec::new();
-                        for item in Rc::new({
+                        for item in Arc::new({
                             let mut __result = Vec::new();
                             for item in tm.items.clone().iter().cloned() {
                                 if is_workflow_item(
@@ -25902,7 +25917,7 @@ pub fn collect_workflow_funcs(
     }
 }
 
-pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
+pub fn cli_default_literal_value(expr: Arc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
@@ -25921,12 +25936,12 @@ pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
 }
 
 pub fn validate_workflow_param_defaults(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
+    workflow_funcs: Arc<Vec<Arc<WorkflowFunc>>>,
+) -> Arc<Vec<Arc<ErrorNode>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for wf in workflow_funcs.clone().iter().cloned() {
-            __result.extend((*Rc::new({ let mut __result = Vec::new(); for param in wf.params.clone().iter().cloned() { __result.extend((*match param_node_default_value(param.clone()) {
+            __result.extend((*Arc::new({ let mut __result = Vec::new(); for param in wf.params.clone().iter().cloned() { __result.extend((*match param_node_default_value(param.clone()) {
     Some(dv) => {
         let param_name = authored_name_at(wf.source_indices.clone(), param.clone());
 let resolved = match v1_rt::map_get(&wf.resolved_defaults.clone(), param_name.clone()) {
@@ -25937,24 +25952,24 @@ let resolved = match v1_rt::map_get(&wf.resolved_defaults.clone(), param_name.cl
 },
 };
 if resolved.clone() {
-            Rc::new(vec![])
+            Arc::new(vec![])
         } else {
-            Rc::new(vec![make_error_node(Rc::new(CompilerDiagnostic::InternalError {
+            Arc::new(vec![make_error_node(Arc::new(CompilerDiagnostic::InternalError {
     message: v1_rt::concat(v1_rt::concat("workflow CLI default for parameter `".to_string(), param_name.clone()), "` must be a string, int, float, bool literal, or data reference".to_string()),
     span: param.span.clone(),
 }), wf.module_name.clone())])
         }
 },
-    None => Rc::new(vec![]),
+    None => Arc::new(vec![]),
 }).iter().cloned()); } __result })).iter().cloned());
         }
         __result
     })
 }
 
-pub fn find_resource_module(resource_name: String, modules: Rc<Vec<Rc<TypedModule>>>) -> String {
+pub fn find_resource_module(resource_name: String, modules: Arc<Vec<Arc<TypedModule>>>) -> String {
     {
-        let matching = Rc::new({
+        let matching = Arc::new({
             let mut __result = Vec::new();
             for m in modules.clone().iter().cloned() {
                 if {
@@ -25988,12 +26003,12 @@ pub fn find_resource_module(resource_name: String, modules: Rc<Vec<Rc<TypedModul
 }
 
 pub fn emit_main_rs(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
-    modules: Rc<Vec<Rc<TypedModule>>>,
+    workflow_funcs: Arc<Vec<Arc<WorkflowFunc>>>,
+    modules: Arc<Vec<Arc<TypedModule>>>,
     has_services: bool,
     crate_name: String,
-    svc_module_map: Rc<HashMap<String, String>>,
-) -> Rc<TextFile> {
+    svc_module_map: Arc<HashMap<String, String>>,
+) -> Arc<TextFile> {
     {
         let has_pipeline = {
             let mut __found = false;
@@ -26007,11 +26022,11 @@ pub fn emit_main_rs(
             }
             __found
         };
-        let resource_type_names = Rc::new({
+        let resource_type_names = Arc::new({
             let mut __result = Vec::new();
             for wf in workflow_funcs.clone().iter().cloned() {
                 __result.extend(
-                    (*Rc::new({
+                    (*Arc::new({
                         let mut __result = Vec::new();
                         for u in wf.uses.clone().iter().cloned() {
                             __result.push(authored_name_at(
@@ -26028,14 +26043,14 @@ pub fn emit_main_rs(
             __result
         });
         let unique_resource_types = unique_strings(resource_type_names.clone());
-        let resource_imports = Rc::new({
+        let resource_imports = Arc::new({
             let mut __result = Vec::new();
             for rname in unique_resource_types.clone().iter().cloned() {
                 __result.extend(
                     (*{
                         let mod_name = find_resource_module(rname.clone(), modules.clone());
                         if (mod_name.clone() != "".to_string()) {
-                            Rc::new(vec![v1_rt::concat(
+                            Arc::new(vec![v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
@@ -26055,7 +26070,7 @@ pub fn emit_main_rs(
                                 ";".to_string(),
                             )])
                         } else {
-                            Rc::new(vec![])
+                            Arc::new(vec![])
                         }
                     })
                     .iter()
@@ -26065,7 +26080,7 @@ pub fn emit_main_rs(
             __result
         });
         let resource_imports_str = resource_imports.clone().join(&"\n".to_string());
-        let all_svc_names = Rc::new({
+        let all_svc_names = Arc::new({
             let mut __result = Vec::new();
             for wf in workflow_funcs.clone().iter().cloned() {
                 __result.extend((*wf.service_names.clone()).iter().cloned());
@@ -26073,14 +26088,14 @@ pub fn emit_main_rs(
             __result
         });
         let unique_svc_names = unique_strings(all_svc_names.clone());
-        let svc_imports = Rc::new({
+        let svc_imports = Arc::new({
             let mut __result = Vec::new();
             for sn in unique_svc_names.clone().iter().cloned() {
                 __result.extend(
                     (*{
                         let struct_name = sanitize_service_name(sn.clone());
                         match v1_rt::map_get(&svc_module_map, sn.clone()) {
-                            Some(mod_name) => Rc::new(vec![v1_rt::concat(
+                            Some(mod_name) => Arc::new(vec![v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
@@ -26099,7 +26114,7 @@ pub fn emit_main_rs(
                                 ),
                                 ";".to_string(),
                             )]),
-                            None => Rc::new(vec![]),
+                            None => Arc::new(vec![]),
                         }
                     })
                     .iter()
@@ -26144,7 +26159,7 @@ pub fn emit_main_rs(
             "".to_string()
         };
         if (((workflow_funcs.clone().len() as i64) == 0) && (has_pipeline.clone() == false)) {
-            return Rc::new(TextFile {
+            return Arc::new(TextFile {
                 path: v1_rt::concat(
                     v1_rt::concat(rust_source_root(), "main".to_string()),
                     rust_source_ext(),
@@ -26236,7 +26251,7 @@ pub fn emit_main_rs(
             ),
             diagnostic_fns.clone(),
         );
-        Rc::new(TextFile {
+        Arc::new(TextFile {
             path: v1_rt::concat(
                 v1_rt::concat(rust_source_root(), "main".to_string()),
                 rust_source_ext(),
@@ -26247,12 +26262,12 @@ pub fn emit_main_rs(
 }
 
 pub fn emit_main_mod_uses(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
+    workflow_funcs: Arc<Vec<Arc<WorkflowFunc>>>,
     has_pipeline: bool,
     crate_name: String,
 ) -> String {
     {
-        let mod_names = Rc::new({
+        let mod_names = Arc::new({
             let mut __result = Vec::new();
             for wf in workflow_funcs.clone().iter().cloned() {
                 __result.push(module_to_filename(wf.module_name.clone()));
@@ -26260,7 +26275,7 @@ pub fn emit_main_mod_uses(
             __result
         });
         let unique_mods = unique_strings(mod_names.clone());
-        let use_lines = Rc::new({
+        let use_lines = Arc::new({
             let mut __result = Vec::new();
             for m in unique_mods.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -26281,7 +26296,7 @@ pub fn emit_main_mod_uses(
             {
                 let pipeline_mod = module_to_filename("v1.compiler.compile".to_string());
                 let core_mod = module_to_filename("v1.std.core".to_string());
-                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "\nuse im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};\n".to_string()), "use std::rc::Rc;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::".to_string()), "{".to_string()), "\n    diagnostic_to_message, diagnostic_to_span,\n".to_string()), "    byte_to_line_col, source_line_at, NewlineIndex,\n".to_string()), "    CompilerDiagnostic,\n".to_string()), "}".to_string()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::cli_run;\n".to_string())
+                v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "\nuse im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};\n".to_string()), "use std::sync::Arc;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult;\n".to_string()), "use ".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::".to_string()), "{".to_string()), "\n    diagnostic_to_message, diagnostic_to_span,\n".to_string()), "    byte_to_line_col, source_line_at, NewlineIndex,\n".to_string()), "    CompilerDiagnostic,\n".to_string()), "}".to_string()), ";\n".to_string()), "use ".to_string()), crate_name.clone()), "::cli_run;\n".to_string())
             }
         } else {
             base.clone()
@@ -26290,7 +26305,7 @@ pub fn emit_main_mod_uses(
 }
 
 pub fn emit_cli_struct(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
+    workflow_funcs: Arc<Vec<Arc<WorkflowFunc>>>,
     binary_name: String,
     about: String,
 ) -> String {
@@ -26344,12 +26359,12 @@ pub fn emit_cli_struct(
 }
 
 pub fn emit_subcommand_enum(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
+    workflow_funcs: Arc<Vec<Arc<WorkflowFunc>>>,
     has_pipeline: bool,
 ) -> String {
     {
         let depth = 0;
-        let variants = Rc::new({
+        let variants = Arc::new({
             let mut __result = Vec::new();
             for wf in workflow_funcs.clone().iter().cloned() {
                 __result.push(emit_subcommand_variant(wf.clone(), (depth.clone() + 1)));
@@ -26361,7 +26376,7 @@ pub fn emit_subcommand_enum(
         } else {
             "".to_string()
         };
-        let run_variant_lines = Rc::new(vec![
+        let run_variant_lines = Arc::new(vec![
             "/// Execute a .dag program directly (interpreter)\n".to_string(),
             make_indent((depth.clone() + 1)),
             "Run {\n".to_string(),
@@ -26403,7 +26418,7 @@ pub fn emit_subcommand_enum(
         let all_variants = if has_pipeline.clone() {
             v1_rt::concat(
                 variants.clone(),
-                Rc::new(vec![compile_variant.clone(), run_variant.clone()]),
+                Arc::new(vec![compile_variant.clone(), run_variant.clone()]),
             )
         } else {
             variants.clone()
@@ -26428,7 +26443,7 @@ pub fn emit_subcommand_enum(
     }
 }
 
-pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> String {
+pub fn emit_subcommand_variant(wf: Arc<WorkflowFunc>, depth: i64) -> String {
     {
         let variant_name = to_pascal(wf.name.clone());
         let doc_line = v1_rt::concat(
@@ -26445,7 +26460,7 @@ pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> String {
             )
         } else {
             {
-                let fields = Rc::new({
+                let fields = Arc::new({
                     let mut __result = Vec::new();
                     for p in wf.params.clone().iter().cloned() {
                         __result.push(emit_subcommand_field(
@@ -26482,9 +26497,9 @@ pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> String {
 }
 
 pub fn emit_subcommand_field(
-    param: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    resolved_defaults: Rc<HashMap<String, String>>,
+    param: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    resolved_defaults: Arc<HashMap<String, String>>,
 ) -> String {
     {
         let field_name = emit_ident(
@@ -26530,8 +26545,8 @@ pub fn emit_subcommand_field(
 }
 
 pub fn emit_cli_param_type_node(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    n: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -26577,7 +26592,7 @@ pub fn emit_cli_param_type_node(
 }
 
 pub fn emit_main_fn(
-    workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
+    workflow_funcs: Arc<Vec<Arc<WorkflowFunc>>>,
     has_services: bool,
     has_pipeline: bool,
     crate_name: String,
@@ -26595,7 +26610,7 @@ pub fn emit_main_fn(
         } else {
             "".to_string()
         };
-        let match_arms = Rc::new({
+        let match_arms = Arc::new({
             let mut __result = Vec::new();
             for wf in workflow_funcs.clone().iter().cloned() {
                 __result.push(emit_main_match_arm(wf.clone(), has_services.clone()));
@@ -26615,7 +26630,7 @@ pub fn emit_main_fn(
         let all_arms = if has_pipeline.clone() {
             v1_rt::concat(
                 match_arms.clone(),
-                Rc::new(vec![compile_arm.clone(), run_arm.clone()]),
+                Arc::new(vec![compile_arm.clone(), run_arm.clone()]),
             )
         } else {
             match_arms.clone()
@@ -26672,7 +26687,7 @@ pub fn emit_main_fn(
 pub fn emit_compile_match_arm(crate_name: String) -> String {
     {
         let pipeline_mod = module_to_filename("v1.compiler.compile".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("Commands::Compile { source_roots, source_dir, output_dir, target, dependency_pool_index } => {\n".to_string(), "            let render_targets = parse_render_targets(&target);\n".to_string()), "            let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n".to_string()), "\n".to_string()), "            let sources = if !source_roots.is_empty() {\n".to_string()), "                let index = build_module_index(&source_roots, pool_index);\n".to_string()), "                eprintln!(\"indexed {} modules from {} source roots\", index.len(), source_roots.len());\n".to_string()), "\n".to_string()), "                // Entry modules: all .dag files in the FIRST source root.\n".to_string()), "                // Additional roots are dependency pools resolved via imports.\n".to_string()), "                // This is intentional: --source-root src/v1 --source-root dag\n".to_string()), "                // means 'compile src/v1, using dag as a dependency pool.'\n".to_string()), "                let first_root = std::path::Path::new(&source_roots[0]);\n".to_string()), "                let mut entry_files = Vec::new();\n".to_string()), "                if first_root.is_dir() {\n".to_string()), "                    let mut dag_paths = Vec::new();\n".to_string()), "                    collect_dag_files(first_root, &mut dag_paths);\n".to_string()), "                    for path in dag_paths {\n".to_string()), "                        let content = std::fs::read_to_string(&path)\n".to_string()), "                            .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                        entry_files.push((path.to_string_lossy().to_string(), content));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);\n".to_string()), "                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);\n".to_string()), "\n".to_string()), "                let mut seen: HashMap<String, Rc<".to_string()), pipeline_mod.clone()), "::SourceFile>> = HashMap::new();\n".to_string()), "                let mut entry_for_queue = Vec::new();\n".to_string()), "                for (path, content) in &entry_files {\n".to_string()), "                    if let Some(mod_path) = extract_module_path(content) {\n".to_string()), "                        let source = Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                            path: path.clone(),\n".to_string()), "                            content: content.clone(),\n".to_string()), "                        });\n".to_string()), "                        seen.insert(mod_path, source);\n".to_string()), "                        entry_for_queue.push((path.clone(), content.clone()));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "\n".to_string()), "                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);\n".to_string()), "                for (path, content) in entry_files {\n".to_string()), "                    if extract_module_path(&content).is_none() { continue; }\n".to_string()), "                    let already_there = resolved.iter().any(|s| s.path == path);\n".to_string()), "                    if !already_there {\n".to_string()), "                        resolved.push(Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile { path, content }));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "                eprintln!(\"resolved {} sources (transitive import closure)\", resolved.len());\n".to_string()), "                resolved\n".to_string()), "\n".to_string()), "            } else if let Some(dir) = source_dir {\n".to_string()), "                // Legacy: flat directory scan (backward compatibility)\n".to_string()), "                let mut dag_paths = Vec::new();\n".to_string()), "                collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);\n".to_string()), "                let mut sources = Vec::new();\n".to_string()), "                for path in &dag_paths {\n".to_string()), "                    let content = std::fs::read_to_string(path)\n".to_string()), "                        .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                    let filename = path.file_name().unwrap().to_string_lossy().to_string();\n".to_string()), "                    sources.push(Rc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                        path: filename,\n".to_string()), "                        content,\n".to_string()), "                    }));\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiling {} .dag files from {} (target: {})\", sources.len(), dir, target);\n".to_string()), "                sources\n".to_string()), "\n".to_string()), "            } else {\n".to_string()), "                eprintln!(\"error: provide --source-root or --source-dir\");\n".to_string()), "                std::process::exit(1);\n".to_string()), "            };\n".to_string()), "\n".to_string()), "            if render_targets.len() == 1 {\n".to_string()), "                let result = ".to_string()), pipeline_mod.clone()), "::compile_sources(Rc::new(sources), render_targets[0].1.clone());\n".to_string()), "                write_output_files(&output_dir, &result);\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", result.files.len(), result.diagnostics.len());\n".to_string()), "                render_diagnostics(&result);\n".to_string()), "                if hard_errors(&result) {\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "                if result.files.is_empty() {\n".to_string()), "                    eprintln!(\"error: no files emitted\");\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            } else {\n".to_string()), "                let resolved = ".to_string()), pipeline_mod.clone()), "::compile_to_resolved(Rc::new(sources));\n".to_string()), "                let mut any_hard_errors = false;\n".to_string()), "                let mut any_empty = false;\n".to_string()), "                let mut total_files = 0usize;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for (name, render_target) in render_targets {\n".to_string()), "                    let result = ".to_string()), pipeline_mod.clone()), "::emit_resolved_for_target(resolved.clone(), render_target);\n".to_string()), "                    let target_output_dir = format!(\"{}/{}\", output_dir, name);\n".to_string()), "                    write_output_files(&target_output_dir, &result);\n".to_string()), "                    eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", name, result.files.len(), result.diagnostics.len());\n".to_string()), "                    render_diagnostics(&result);\n".to_string()), "                    any_hard_errors |= hard_errors(&result);\n".to_string()), "                    any_empty |= result.files.is_empty();\n".to_string()), "                    total_files += result.files.len();\n".to_string()), "                    total_diagnostics += result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", total_files, total_diagnostics);\n".to_string()), "                if any_hard_errors {\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "                if any_empty {\n".to_string()), "                    eprintln!(\"error: no files emitted for at least one target\");\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            }\n".to_string()), "        },".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("Commands::Compile { source_roots, source_dir, output_dir, target, dependency_pool_index } => {\n".to_string(), "            let render_targets = parse_render_targets(&target);\n".to_string()), "            let pool_index = parse_dependency_pool_index(&dependency_pool_index);\n".to_string()), "\n".to_string()), "            let sources = if !source_roots.is_empty() {\n".to_string()), "                let index = build_module_index(&source_roots, pool_index);\n".to_string()), "                eprintln!(\"indexed {} modules from {} source roots\", index.len(), source_roots.len());\n".to_string()), "\n".to_string()), "                // Entry modules: all .dag files in the FIRST source root.\n".to_string()), "                // Additional roots are dependency pools resolved via imports.\n".to_string()), "                // This is intentional: --source-root src/v1 --source-root dag\n".to_string()), "                // means 'compile src/v1, using dag as a dependency pool.'\n".to_string()), "                let first_root = std::path::Path::new(&source_roots[0]);\n".to_string()), "                let mut entry_files = Vec::new();\n".to_string()), "                if first_root.is_dir() {\n".to_string()), "                    let mut dag_paths = Vec::new();\n".to_string()), "                    collect_dag_files(first_root, &mut dag_paths);\n".to_string()), "                    for path in dag_paths {\n".to_string()), "                        let content = std::fs::read_to_string(&path)\n".to_string()), "                            .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                        entry_files.push((path.to_string_lossy().to_string(), content));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);\n".to_string()), "                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);\n".to_string()), "\n".to_string()), "                let mut seen: HashMap<String, Arc<".to_string()), pipeline_mod.clone()), "::SourceFile>> = HashMap::new();\n".to_string()), "                let mut entry_for_queue = Vec::new();\n".to_string()), "                for (path, content) in &entry_files {\n".to_string()), "                    if let Some(mod_path) = extract_module_path(content) {\n".to_string()), "                        let source = Arc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                            path: path.clone(),\n".to_string()), "                            content: content.clone(),\n".to_string()), "                        });\n".to_string()), "                        seen.insert(mod_path, source);\n".to_string()), "                        entry_for_queue.push((path.clone(), content.clone()));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "\n".to_string()), "                let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);\n".to_string()), "                for (path, content) in entry_files {\n".to_string()), "                    if extract_module_path(&content).is_none() { continue; }\n".to_string()), "                    let already_there = resolved.iter().any(|s| s.path == path);\n".to_string()), "                    if !already_there {\n".to_string()), "                        resolved.push(Arc::new(".to_string()), pipeline_mod.clone()), "::SourceFile { path, content }));\n".to_string()), "                    }\n".to_string()), "                }\n".to_string()), "                eprintln!(\"resolved {} sources (transitive import closure)\", resolved.len());\n".to_string()), "                resolved\n".to_string()), "\n".to_string()), "            } else if let Some(dir) = source_dir {\n".to_string()), "                // Legacy: flat directory scan (backward compatibility)\n".to_string()), "                let mut dag_paths = Vec::new();\n".to_string()), "                collect_dag_files(std::path::Path::new(&dir), &mut dag_paths);\n".to_string()), "                let mut sources = Vec::new();\n".to_string()), "                for path in &dag_paths {\n".to_string()), "                    let content = std::fs::read_to_string(path)\n".to_string()), "                        .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "                    let filename = path.file_name().unwrap().to_string_lossy().to_string();\n".to_string()), "                    sources.push(Arc::new(".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                        path: filename,\n".to_string()), "                        content,\n".to_string()), "                    }));\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiling {} .dag files from {} (target: {})\", sources.len(), dir, target);\n".to_string()), "                sources\n".to_string()), "\n".to_string()), "            } else {\n".to_string()), "                eprintln!(\"error: provide --source-root or --source-dir\");\n".to_string()), "                std::process::exit(1);\n".to_string()), "            };\n".to_string()), "\n".to_string()), "            if render_targets.len() == 1 {\n".to_string()), "                let result = ".to_string()), pipeline_mod.clone()), "::compile_sources(Arc::new(sources), render_targets[0].1.clone());\n".to_string()), "                write_output_files(&output_dir, &result);\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", result.files.len(), result.diagnostics.len());\n".to_string()), "                render_diagnostics(&result);\n".to_string()), "                if hard_errors(&result) {\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "                if result.files.is_empty() {\n".to_string()), "                    eprintln!(\"error: no files emitted\");\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            } else {\n".to_string()), "                let resolved = ".to_string()), pipeline_mod.clone()), "::compile_to_resolved(Arc::new(sources));\n".to_string()), "                let mut any_hard_errors = false;\n".to_string()), "                let mut any_empty = false;\n".to_string()), "                let mut total_files = 0usize;\n".to_string()), "                let mut total_diagnostics = 0usize;\n".to_string()), "                for (name, render_target) in render_targets {\n".to_string()), "                    let result = ".to_string()), pipeline_mod.clone()), "::emit_resolved_for_target(resolved.clone(), render_target);\n".to_string()), "                    let target_output_dir = format!(\"{}/{}\", output_dir, name);\n".to_string()), "                    write_output_files(&target_output_dir, &result);\n".to_string()), "                    eprintln!(\"compiled[{}]: {} files emitted, {} diagnostics\", name, result.files.len(), result.diagnostics.len());\n".to_string()), "                    render_diagnostics(&result);\n".to_string()), "                    any_hard_errors |= hard_errors(&result);\n".to_string()), "                    any_empty |= result.files.is_empty();\n".to_string()), "                    total_files += result.files.len();\n".to_string()), "                    total_diagnostics += result.diagnostics.len();\n".to_string()), "                }\n".to_string()), "                eprintln!(\"compiled: {} files emitted, {} diagnostics\", total_files, total_diagnostics);\n".to_string()), "                if any_hard_errors {\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "                if any_empty {\n".to_string()), "                    eprintln!(\"error: no files emitted for at least one target\");\n".to_string()), "                    std::process::exit(1);\n".to_string()), "                }\n".to_string()), "            }\n".to_string()), "        },".to_string())
     }
 }
 
@@ -26729,17 +26744,17 @@ pub fn emit_dep_pool_type_and_fns() -> String {
 }
 
 pub fn emit_resolve_transitively_fn(crate_name: String, pipeline_mod: String) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Resolve imports transitively from entry modules.\n".to_string(), "/// Fail-closed: panics on unreadable imported files.\n".to_string()), "/// Returns sources sorted by path for deterministic fixed-point convergence.\n".to_string()), "fn resolve_transitively_with_seen(\n".to_string()), "    entry_sources: Vec<(String, String)>,\n".to_string()), "    index: &HashMap<String, std::path::PathBuf>,\n".to_string()), "    mut seen: HashMap<String, Rc<".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::SourceFile>>,\n".to_string()), ") -> Vec<Rc<".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::SourceFile>> {\n".to_string()), "    let mut queue: Vec<(String, String)> = entry_sources;\n".to_string()), "\n".to_string()), "    while let Some((_path, content)) = queue.pop() {\n".to_string()), "        let imports = extract_import_paths(&content);\n".to_string()), "        for module_path in imports {\n".to_string()), "            if seen.contains_key(&module_path) {\n".to_string()), "                continue;\n".to_string()), "            }\n".to_string()), "            if let Some(file_path) = index.get(&module_path) {\n".to_string()), "                let file_content = std::fs::read_to_string(file_path)\n".to_string()), "                    .unwrap_or_else(|e| panic!(\"failed to read imported module '{}' at {:?}: {}\",\n".to_string()), "                        module_path, file_path, e));\n".to_string()), "                let rel_path = file_path.to_string_lossy().to_string();\n".to_string()), "                let source = Rc::new(".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                    path: rel_path.clone(),\n".to_string()), "                    content: file_content.clone(),\n".to_string()), "                });\n".to_string()), "                seen.insert(module_path, source);\n".to_string()), "                queue.push((rel_path, file_content));\n".to_string()), "            }\n".to_string()), "            // If not found in index, the compiler's resolve stage will report the error.\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();\n".to_string()), "    result.sort_by(|a, b| a.path.cmp(&b.path));\n".to_string()), "    result\n".to_string()), "}\n\n".to_string())
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Resolve imports transitively from entry modules.\n".to_string(), "/// Fail-closed: panics on unreadable imported files.\n".to_string()), "/// Returns sources sorted by path for deterministic fixed-point convergence.\n".to_string()), "fn resolve_transitively_with_seen(\n".to_string()), "    entry_sources: Vec<(String, String)>,\n".to_string()), "    index: &HashMap<String, std::path::PathBuf>,\n".to_string()), "    mut seen: HashMap<String, Arc<".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::SourceFile>>,\n".to_string()), ") -> Vec<Arc<".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::SourceFile>> {\n".to_string()), "    let mut queue: Vec<(String, String)> = entry_sources;\n".to_string()), "\n".to_string()), "    while let Some((_path, content)) = queue.pop() {\n".to_string()), "        let imports = extract_import_paths(&content);\n".to_string()), "        for module_path in imports {\n".to_string()), "            if seen.contains_key(&module_path) {\n".to_string()), "                continue;\n".to_string()), "            }\n".to_string()), "            if let Some(file_path) = index.get(&module_path) {\n".to_string()), "                let file_content = std::fs::read_to_string(file_path)\n".to_string()), "                    .unwrap_or_else(|e| panic!(\"failed to read imported module '{}' at {:?}: {}\",\n".to_string()), "                        module_path, file_path, e));\n".to_string()), "                let rel_path = file_path.to_string_lossy().to_string();\n".to_string()), "                let source = Arc::new(".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                    path: rel_path.clone(),\n".to_string()), "                    content: file_content.clone(),\n".to_string()), "                });\n".to_string()), "                seen.insert(module_path, source);\n".to_string()), "                queue.push((rel_path, file_content));\n".to_string()), "            }\n".to_string()), "            // If not found in index, the compiler's resolve stage will report the error.\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();\n".to_string()), "    result.sort_by(|a, b| a.path.cmp(&b.path));\n".to_string()), "    result\n".to_string()), "}\n\n".to_string())
 }
 
 pub fn emit_main_diagnostic_fns(crate_name: String) -> String {
     {
         let core_mod = module_to_filename("v1.std.core".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nfn render_diagnostics(result: &PipelineResult) {\n".to_string(), "    if result.diagnostics.is_empty() {\n".to_string()), "        return;\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    let index_map: HashMap<String, Rc<NewlineIndex>> = result\n".to_string()), "        .newline_indices\n".to_string()), "        .iter()\n".to_string()), "        .map(|idx| (idx.file.clone(), idx.clone()))\n".to_string()), "        .collect();\n".to_string()), "\n".to_string()), "    for d in result.diagnostics.iter() {\n".to_string()), "        render_one_diagnostic(d, &index_map, \"\");\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    eprintln!(\"\\n{} error(s)\", result.diagnostics.len());\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn render_one_diagnostic(\n".to_string()), "    d: &".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::ErrorNode,\n".to_string()), "    index_map: &HashMap<String, Rc<NewlineIndex>>,\n".to_string()), "    indent: &str,\n".to_string()), ") {\n".to_string()), "    let severity = \"error\";\n".to_string()), "    let message = diagnostic_to_message(d.diagnostic.clone());\n".to_string()), "    let span = diagnostic_to_span(d.diagnostic.clone());\n".to_string()), "\n".to_string()), "    let location = if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            let lc = byte_to_line_col(idx.clone(), span.start);\n".to_string()), "            format!(\"{}:{}:{}\", span.file, lc.line, lc.col)\n".to_string()), "        } else {\n".to_string()), "            span.file.clone()\n".to_string()), "        }\n".to_string()), "    } else if !d.module_name.is_empty() {\n".to_string()), "        d.module_name.clone()\n".to_string()), "    } else {\n".to_string()), "        String::new()\n".to_string()), "    };\n".to_string()), "\n".to_string()), "    if location.is_empty() {\n".to_string()), "        eprintln!(\"{}{}: {}\", indent, severity, message);\n".to_string()), "    } else {\n".to_string()), "        eprintln!(\"{}{}[{}]: {}\", indent, severity, location, message);\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            let lc = byte_to_line_col(idx.clone(), span.start);\n".to_string()), "            let line_text = source_line_at(idx.clone(), lc.line);\n".to_string()), "            let line_num = format!(\"{}\", lc.line);\n".to_string()), "            let gutter_width = line_num.len();\n".to_string()), "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n".to_string()), "            eprintln!(\"{} {} | {}\", indent, line_num, line_text);\n".to_string()), "\n".to_string()), "            let span_len = std::cmp::max(1, (span.end - span.start) as usize);\n".to_string()), "            let col_offset = (lc.col - 1) as usize;\n".to_string()), "            eprintln!(\n".to_string()), "                \"{} {} | {}{}\",\n".to_string()), "                indent,\n".to_string()), "                \" \".repeat(gutter_width),\n".to_string()), "                \" \".repeat(col_offset),\n".to_string()), "                \"^\".repeat(std::cmp::min(span_len, line_text.len().saturating_sub(col_offset)))\n".to_string()), "            );\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\nfn render_diagnostics(result: &PipelineResult) {\n".to_string(), "    if result.diagnostics.is_empty() {\n".to_string()), "        return;\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    let index_map: HashMap<String, Arc<NewlineIndex>> = result\n".to_string()), "        .newline_indices\n".to_string()), "        .iter()\n".to_string()), "        .map(|idx| (idx.file.clone(), idx.clone()))\n".to_string()), "        .collect();\n".to_string()), "\n".to_string()), "    for d in result.diagnostics.iter() {\n".to_string()), "        render_one_diagnostic(d, &index_map, \"\");\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    eprintln!(\"\\n{} error(s)\", result.diagnostics.len());\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn render_one_diagnostic(\n".to_string()), "    d: &".to_string()), crate_name.clone()), "::".to_string()), core_mod.clone()), "::ErrorNode,\n".to_string()), "    index_map: &HashMap<String, Arc<NewlineIndex>>,\n".to_string()), "    indent: &str,\n".to_string()), ") {\n".to_string()), "    let severity = \"error\";\n".to_string()), "    let message = diagnostic_to_message(d.diagnostic.clone());\n".to_string()), "    let span = diagnostic_to_span(d.diagnostic.clone());\n".to_string()), "\n".to_string()), "    let location = if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            let lc = byte_to_line_col(idx.clone(), span.start);\n".to_string()), "            format!(\"{}:{}:{}\", span.file, lc.line, lc.col)\n".to_string()), "        } else {\n".to_string()), "            span.file.clone()\n".to_string()), "        }\n".to_string()), "    } else if !d.module_name.is_empty() {\n".to_string()), "        d.module_name.clone()\n".to_string()), "    } else {\n".to_string()), "        String::new()\n".to_string()), "    };\n".to_string()), "\n".to_string()), "    if location.is_empty() {\n".to_string()), "        eprintln!(\"{}{}: {}\", indent, severity, message);\n".to_string()), "    } else {\n".to_string()), "        eprintln!(\"{}{}[{}]: {}\", indent, severity, location, message);\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    if !span.file.is_empty() {\n".to_string()), "        if let Some(idx) = index_map.get(&span.file) {\n".to_string()), "            let lc = byte_to_line_col(idx.clone(), span.start);\n".to_string()), "            let line_text = source_line_at(idx.clone(), lc.line);\n".to_string()), "            let line_num = format!(\"{}\", lc.line);\n".to_string()), "            let gutter_width = line_num.len();\n".to_string()), "            eprintln!(\"{} {} |\", indent, \" \".repeat(gutter_width));\n".to_string()), "            eprintln!(\"{} {} | {}\", indent, line_num, line_text);\n".to_string()), "\n".to_string()), "            let span_len = std::cmp::max(1, (span.end - span.start) as usize);\n".to_string()), "            let col_offset = (lc.col - 1) as usize;\n".to_string()), "            eprintln!(\n".to_string()), "                \"{} {} | {}{}\",\n".to_string()), "                indent,\n".to_string()), "                \" \".repeat(gutter_width),\n".to_string()), "                \" \".repeat(col_offset),\n".to_string()), "                \"^\".repeat(std::cmp::min(span_len, line_text.len().saturating_sub(col_offset)))\n".to_string()), "            );\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n".to_string())
     }
 }
 
-pub fn emit_main_match_arm(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
+pub fn emit_main_match_arm(wf: Arc<WorkflowFunc>, has_services: bool) -> String {
     {
         let variant_name = to_pascal(wf.name.clone());
         let mod_name = module_to_filename(wf.module_name.clone());
@@ -26794,7 +26809,7 @@ pub fn emit_main_match_arm(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
             v1_rt::concat("Commands::".to_string(), variant_name.clone())
         } else {
             {
-                let field_binds = Rc::new({
+                let field_binds = Arc::new({
                     let mut __result = Vec::new();
                     for p in wf.params.clone().iter().cloned() {
                         __result.push(emit_ident(
@@ -26831,9 +26846,9 @@ pub fn emit_main_match_arm(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
     }
 }
 
-pub fn emit_main_call_args(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
+pub fn emit_main_call_args(wf: Arc<WorkflowFunc>, has_services: bool) -> String {
     {
-        let param_args = Rc::new({
+        let param_args = Arc::new({
             let mut __result = Vec::new();
             for p in wf.params.clone().iter().cloned() {
                 __result.push({
@@ -26849,17 +26864,17 @@ pub fn emit_main_call_args(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
     }
 }
 
-pub fn emit_main_service_args(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
+pub fn emit_main_service_args(wf: Arc<WorkflowFunc>, has_services: bool) -> String {
     {
         let service_args = emit_main_service_arg_list(wf.clone(), has_services.clone());
         service_args.clone().join(&", ".to_string())
     }
 }
 
-pub fn emit_main_service_arg_list(wf: Rc<WorkflowFunc>, has_services: bool) -> Rc<Vec<String>> {
+pub fn emit_main_service_arg_list(wf: Arc<WorkflowFunc>, has_services: bool) -> Arc<Vec<String>> {
     {
         let sharing = language_spec(RenderTarget::Rust).sharing.clone();
-        let resource_args = Rc::new({
+        let resource_args = Arc::new({
             let mut __result = Vec::new();
             for u in wf.uses.clone().iter().cloned() {
                 __result.push(v1_rt::concat(
@@ -26869,7 +26884,7 @@ pub fn emit_main_service_arg_list(wf: Rc<WorkflowFunc>, has_services: bool) -> R
             }
             __result
         });
-        let svc_args = Rc::new({
+        let svc_args = Arc::new({
             let mut __result = Vec::new();
             for sn in wf.service_names.clone().iter().cloned() {
                 __result.push({
@@ -26902,10 +26917,10 @@ pub fn emit_main_service_arg_list(wf: Rc<WorkflowFunc>, has_services: bool) -> R
     }
 }
 
-pub fn emit_dry_run_module() -> Rc<TextFile> {
+pub fn emit_dry_run_module() -> Arc<TextFile> {
     {
         let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n".to_string(), "//\n".to_string()), "// Dry-run support: when DryRunMode(true), service methods return\n".to_string()), "// mock data instead of performing real I/O.\n\n".to_string()), "#[derive(Debug, Clone)]\n".to_string()), "pub struct DryRunMode(pub bool);\n\n".to_string()), "impl DryRunMode {\n".to_string()), "    pub fn is_dry_run(&self) -> bool {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl Default for DryRunMode {\n".to_string()), "    fn default() -> Self {\n".to_string()), "        DryRunMode(false)\n".to_string()), "    }\n".to_string()), "}\n".to_string());
-        Rc::new(TextFile {
+        Arc::new(TextFile {
             path: v1_rt::concat(
                 v1_rt::concat(rust_source_root(), "dry_run".to_string()),
                 rust_source_ext(),

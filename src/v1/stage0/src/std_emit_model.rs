@@ -10,7 +10,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -30,7 +30,7 @@ pub struct SimpleMethodSpec {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MethodTemplateContract {
-    pub dag_method: Rc<DeclarationRef>,
+    pub dag_method: Arc<DeclarationRef>,
     pub runtime_template: String,
     pub emit_template: String,
     pub wraps_result: bool,

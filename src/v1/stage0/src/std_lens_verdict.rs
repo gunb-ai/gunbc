@@ -10,7 +10,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -30,7 +30,7 @@ impl LensVerdictLocus {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LensVerdictDiagnostic {
     pub reason: String,
-    pub at: Rc<LensVerdictLocus>,
+    pub at: Arc<LensVerdictLocus>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -38,17 +38,17 @@ pub struct LensVerdictDiagnostic {
 pub enum LensVerdict {
     Holds,
     Violation {
-        diagnostic: Rc<LensVerdictDiagnostic>,
+        diagnostic: Arc<LensVerdictDiagnostic>,
     },
     NotApplicable {
-        diagnostic: Rc<LensVerdictDiagnostic>,
+        diagnostic: Arc<LensVerdictDiagnostic>,
     },
     Unrealized {
-        diagnostic: Rc<LensVerdictDiagnostic>,
+        diagnostic: Arc<LensVerdictDiagnostic>,
     },
 }
 impl LensVerdict {
-    pub fn diagnostic(&self) -> Rc<LensVerdictDiagnostic> {
+    pub fn diagnostic(&self) -> Arc<LensVerdictDiagnostic> {
         match self {
             LensVerdict::Holds => panic!("no diagnostic on unit variant"),
             LensVerdict::Violation {

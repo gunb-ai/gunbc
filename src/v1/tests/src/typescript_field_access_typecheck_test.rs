@@ -24,7 +24,7 @@
 //! confirm that. If a runner ever lacks `npx`, the skip is honest and names
 //! its dissolution trigger rather than silently passing.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
@@ -43,7 +43,7 @@ fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
 }
 
-fn witness_sources() -> Vec<Rc<SourceFile>> {
+fn witness_sources() -> Vec<Arc<SourceFile>> {
     let entry_content = std::fs::read_to_string(workspace_root().join(WITNESS_ENTRY))
         .unwrap_or_else(|e| panic!("read {WITNESS_ENTRY}: {e}"));
     resolve_imports_transitively_with_source_roots(
@@ -104,7 +104,7 @@ fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
 /// Resolve the witness once and emit both source fragments we need, so the
 /// (expensive) resolve happens a single time per test.
 fn emit_add_and_field_access() -> (String, String) {
-    let resolved = compile_to_resolved(Rc::new(witness_sources().into()));
+    let resolved = compile_to_resolved(Arc::new(witness_sources().into()));
     let blocking: Vec<String> = resolved
         .diagnostics
         .iter()
@@ -133,7 +133,7 @@ fn emit_one(entry: &str, function: &str) -> String {
         .unwrap_or_else(|e| panic!("read {entry}: {e}"));
     let sources =
         resolve_imports_transitively_with_source_roots(entry, &entry_content, &v2_source_roots());
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     let blocking: Vec<String> = resolved
         .diagnostics
         .iter()

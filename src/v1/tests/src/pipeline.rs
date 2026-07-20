@@ -4,7 +4,7 @@ use crate::helpers::*;
 use im::HashMap;
 use im::OrdSet as BTreeSet;
 use serde_json::Value;
-use std::rc::Rc;
+use std::sync::Arc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::SourceFile;
 use v1_compiler::v1_std_core::CompilerDiagnostic;
@@ -15,7 +15,7 @@ fn full_dag_compiles() {
     let ws = workspace_root();
 
     let dag_dir = ws.join("dag");
-    let mut dag_sources: Vec<Rc<SourceFile>> = Vec::new();
+    let mut dag_sources: Vec<Arc<SourceFile>> = Vec::new();
     collect_dag_sources(&ws, &dag_dir, &mut dag_sources);
 
     assert!(
@@ -24,7 +24,7 @@ fn full_dag_compiles() {
     );
 
     let dag_result = v1_compiler::v1_compiler_compile::compile_sources(
-        Rc::new(dag_sources.clone().into()),
+        Arc::new(dag_sources.clone().into()),
         RenderTarget::Rust,
     );
 
@@ -60,7 +60,7 @@ fn full_dag_compiles() {
                     content,
                     path.to_string_lossy().to_string(),
                 ),
-                Rc::new(HashMap::new()),
+                Arc::new(HashMap::new()),
             );
             if let Some(ref err) = result.error {
                 v1_errors.push(format!(
@@ -97,7 +97,7 @@ fn full_dag_compiles() {
 pub fn collect_dag_sources(
     root: &std::path::Path,
     dir: &std::path::Path,
-    sources: &mut Vec<Rc<SourceFile>>,
+    sources: &mut Vec<Arc<SourceFile>>,
 ) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read {}: {}", dir.display(), e))
@@ -116,7 +116,7 @@ pub fn collect_dag_sources(
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .to_string();
-            sources.push(Rc::new(SourceFile { path: rel, content }));
+            sources.push(Arc::new(SourceFile { path: rel, content }));
         }
     }
 }
@@ -126,11 +126,11 @@ fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
     use v1_compiler::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
     use v1_compiler::v1_compiler_complexity::{parser_result_state_progress, ParserResultSource};
 
-    let empty = Rc::new(HashMap::new());
+    let empty = Arc::new(HashMap::new());
 
     assert_eq!(
         parser_result_state_progress(
-            Rc::new(ParserResultSource::ParserResultAdvance {
+            Arc::new(ParserResultSource::ParserResultAdvance {
                 input: NonIncreasing
             }),
             empty.clone(),
@@ -141,7 +141,7 @@ fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
     );
     assert_eq!(
         parser_result_state_progress(
-            Rc::new(ParserResultSource::ParserResultAdvance {
+            Arc::new(ParserResultSource::ParserResultAdvance {
                 input: DescentUnknown
             }),
             empty.clone(),
@@ -151,10 +151,10 @@ fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
         DescentUnknown
     );
 
-    let consumed_true_set = Rc::new(HashMap::from_iter([("eat_result".to_string(), true)]));
+    let consumed_true_set = Arc::new(HashMap::from_iter([("eat_result".to_string(), true)]));
     assert_eq!(
         parser_result_state_progress(
-            Rc::new(ParserResultSource::ParserResultEat {
+            Arc::new(ParserResultSource::ParserResultEat {
                 input: NonIncreasing
             }),
             empty.clone(),
@@ -164,10 +164,10 @@ fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
         Strict
     );
 
-    let parser_always_advancing = Rc::new(HashMap::from_iter([("parse_tail".to_string(), true)]));
+    let parser_always_advancing = Arc::new(HashMap::from_iter([("parse_tail".to_string(), true)]));
     assert_eq!(
         parser_result_state_progress(
-            Rc::new(ParserResultSource::ParserResultCall {
+            Arc::new(ParserResultSource::ParserResultCall {
                 input: NonIncreasing,
                 callee: "parse_tail".to_string(),
             }),
@@ -180,7 +180,7 @@ fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
 
     assert_eq!(
         parser_result_state_progress(
-            Rc::new(ParserResultSource::ParserResultDirectState {
+            Arc::new(ParserResultSource::ParserResultDirectState {
                 input: NonIncreasing
             }),
             empty.clone(),
@@ -267,7 +267,7 @@ fn std_os_types_resolves_with_t_question_and_leading_pipe() {
         .to_string();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &entry)
         .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
-    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Arc::new(sources.into()));
     let msgs: Vec<String> = resolved
         .diagnostics
         .iter()
@@ -1170,7 +1170,6 @@ fn bare_import_wildcard_survives_pipeline() {
 
 #[test]
 fn discovery_corpus_blocks_typecheck_like_strict() {
-    use std::rc::Rc;
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_blocking_diagnostic, is_interpreter_blocking_diagnostic, no_span,
         CompilerDiagnostic,
@@ -1179,7 +1178,7 @@ fn discovery_corpus_blocks_typecheck_like_strict() {
     // The advisory demotion is narrowed to UnlistedImportUse only: a hard
     // typecheck error blocks discovery-corpus resolve exactly as it blocks
     // Strict resolve (an advisory-carrying witness must not be vouched green).
-    let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
+    let typecheck = Arc::new(CompilerDiagnostic::VariantNotFound {
         variant: "Empty".to_string(),
         type_name: "FreeMonoid<T>".to_string(),
         span: no_span(),
@@ -1187,7 +1186,7 @@ fn discovery_corpus_blocks_typecheck_like_strict() {
     assert!(is_interpreter_blocking_diagnostic(typecheck.clone()));
     assert!(is_discovery_corpus_blocking_diagnostic(typecheck));
 
-    let parse = Rc::new(CompilerDiagnostic::ParseError {
+    let parse = Arc::new(CompilerDiagnostic::ParseError {
         message: "expected module".to_string(),
         span: no_span(),
     });
@@ -1196,7 +1195,6 @@ fn discovery_corpus_blocks_typecheck_like_strict() {
 
 #[test]
 fn discovery_corpus_advisory_set_is_exactly_unlisted_import_use() {
-    use std::rc::Rc;
     use v1_compiler::v1_std_core::{
         is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
         is_interpreter_blocking_diagnostic, no_span, CompilerDiagnostic,
@@ -1204,7 +1202,7 @@ fn discovery_corpus_advisory_set_is_exactly_unlisted_import_use() {
 
     // UnlistedImportUse is the sole surviving advisory class (non-blocking
     // under every gate; the class dissolves with namespace-only resolution).
-    let unlisted = Rc::new(CompilerDiagnostic::UnlistedImportUse {
+    let unlisted = Arc::new(CompilerDiagnostic::UnlistedImportUse {
         name: "NormalizedTree".to_string(),
         span: no_span(),
     });
@@ -1215,7 +1213,7 @@ fn discovery_corpus_advisory_set_is_exactly_unlisted_import_use() {
     assert!(!is_discovery_corpus_blocking_diagnostic(unlisted));
 
     // A hard typecheck class is no longer advisory-demoted.
-    let typecheck = Rc::new(CompilerDiagnostic::VariantNotFound {
+    let typecheck = Arc::new(CompilerDiagnostic::VariantNotFound {
         variant: "Empty".to_string(),
         type_name: "FreeMonoid<T>".to_string(),
         span: no_span(),
@@ -1270,7 +1268,7 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         .into_owned();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &sample)
         .expect("load ci_floor_plan closure");
-    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Arc::new(sources.into()));
     for d in resolved.diagnostics.iter() {
         if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
             continue;
@@ -1328,16 +1326,16 @@ fn front_end_resilience_partial_graph_excludes_only_the_broken_module() {
     // tree (this `expect` would have panicked).
     use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
     let sources = vec![
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "clean.dag".to_string(),
             content: "module test.clean\nfn ok() -> Int { 42 }\n".to_string(),
         }),
-        Rc::new(SourceFile {
+        Arc::new(SourceFile {
             path: "broken.dag".to_string(),
             content: "module test.broken\nfn bad( -> Int\n".to_string(),
         }),
     ];
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     let graph = resolved
         .graph
         .as_ref()
@@ -1487,7 +1485,7 @@ fn use_fold<S>(fold: NodeFold<S>) -> NodeFold<S> {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/gen_applied_sig.rs");
     assert!(
-        content.contains("fn use_fold<S>(fold: Rc<NodeFold<S>>) -> Rc<NodeFold<S>>"),
+        content.contains("fn use_fold<S>(fold: Arc<NodeFold<S>>) -> Arc<NodeFold<S>>"),
         "generic fn params and return must preserve applied type args with shared_types Rc; got:\n{content}"
     );
 }
@@ -1514,7 +1512,7 @@ fn use_wrap<S>(w: Wrapper<Boxed<S>>) -> Wrapper<Boxed<S>> {
     let content = find_file(&result, "src/nested_applied_sig.rs");
     assert!(
         content
-            .contains("fn use_wrap<S>(w: Rc<Wrapper<Rc<Boxed<S>>>>) -> Rc<Wrapper<Rc<Boxed<S>>>>"),
+            .contains("fn use_wrap<S>(w: Arc<Wrapper<Arc<Boxed<S>>>>) -> Arc<Wrapper<Arc<Boxed<S>>>>"),
         "nested applied generic args (Wrapper<Boxed<S>>) must render through decl-type path; got:\n{content}"
     );
 }
@@ -1615,11 +1613,11 @@ fn rust_container_ops_emit_rc_sharing_bridges() {
         "empty_map should lower through the Rc runtime bridge: {content}"
     );
     assert!(
-        content.contains("Rc::new(v1_rt::map_keys("),
+        content.contains("Arc::new(v1_rt::map_keys("),
         "map_keys should wrap its list result in Rc: {content}"
     );
     assert!(
-        content.contains("Rc::new(v1_rt::map_values("),
+        content.contains("Arc::new(v1_rt::map_values("),
         "map_values should wrap its list result in Rc: {content}"
     );
     assert!(
@@ -1811,7 +1809,7 @@ fn sum_list(items: List<Int>) -> Int {
 
 fn compile_dag_with_complexity(
     source: &str,
-) -> Rc<v1_compiler::v1_compiler_complexity::ComplexityReport> {
+) -> Arc<v1_compiler::v1_compiler_complexity::ComplexityReport> {
     use v1_compiler::v1_compiler_compile::{
         build_recursion_context, extract_func_entries, front_end_sources,
     };
@@ -1819,13 +1817,13 @@ fn compile_dag_with_complexity(
     use v1_compiler::v1_compiler_infer::reconcile;
     use v1_compiler::v1_compiler_normalize::normalize_graph;
     let sources = resolve_imports_transitively("test.dag", source);
-    let frontend = front_end_sources(Rc::new(sources.into()));
+    let frontend = front_end_sources(Arc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
         .expect("frontend must produce a graph");
-    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
-    let source_indices = Rc::new(HashMap::new());
+    let norm = normalize_graph(graph, Arc::new(HashMap::new()));
+    let source_indices = Arc::new(HashMap::new());
     let typed = reconcile(
         norm.graph.clone(),
         source_indices,
@@ -1834,21 +1832,21 @@ fn compile_dag_with_complexity(
 
     let func_entries = extract_func_entries(typed.clone());
     let recursion_ctx = build_recursion_context(typed);
-    build_complexity_report(func_entries, recursion_ctx, Rc::new(HashMap::new()))
+    build_complexity_report(func_entries, recursion_ctx, Arc::new(HashMap::new()))
 }
 
 use v1_compiler::v1_compiler_complexity::{classify_complexity, CostExpr, SizeExpr};
 
 #[test]
 fn complexity_class_add_keeps_log_terms() {
-    let expr = Rc::new(CostExpr::CostAdd {
-        left: Rc::new(CostExpr::CostLog {
+    let expr = Arc::new(CostExpr::CostAdd {
+        left: Arc::new(CostExpr::CostLog {
             base: 2,
-            argument: Rc::new(SizeExpr::SizeVar {
+            argument: Arc::new(SizeExpr::SizeVar {
                 name: "n".to_string(),
             }),
         }),
-        right: Rc::new(CostExpr::CostConst { value: 1 }),
+        right: Arc::new(CostExpr::CostConst { value: 1 }),
     });
     let formatted = classify_complexity(expr);
     assert!(
@@ -1859,11 +1857,11 @@ fn complexity_class_add_keeps_log_terms() {
 
 #[test]
 fn complexity_class_max_keeps_log_terms() {
-    let expr = Rc::new(CostExpr::CostMax {
-        left: Rc::new(CostExpr::CostConst { value: 1 }),
-        right: Rc::new(CostExpr::CostLog {
+    let expr = Arc::new(CostExpr::CostMax {
+        left: Arc::new(CostExpr::CostConst { value: 1 }),
+        right: Arc::new(CostExpr::CostLog {
             base: 2,
-            argument: Rc::new(SizeExpr::SizeVar {
+            argument: Arc::new(SizeExpr::SizeVar {
                 name: "n".to_string(),
             }),
         }),
@@ -2168,8 +2166,8 @@ fn rust_emit_uses_impl_fn_for_callable_params_and_rc_dyn_fn_for_aliases() {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/callable_sig.rs");
     assert!(
-        content.contains("type Mapper = Rc<dyn Fn(i64) -> i64>;"),
-        "callable aliases should stay in type-position-safe Rc<dyn Fn> form: {content}"
+        content.contains("type Mapper = Arc<dyn Fn(i64) -> i64>;"),
+        "callable aliases should stay in type-position-safe Arc<dyn Fn> form: {content}"
     );
     assert!(
         content.contains("fn apply(f: impl Fn(i64) -> i64 + Clone, x: i64) -> i64"),
@@ -2397,30 +2395,30 @@ fn diag_parser_scc_edges() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/02_parse.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/02_parse.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources.into()));
+    let frontend = front_end_sources(Arc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
         .expect("frontend must produce a graph");
-    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(graph, Arc::new(HashMap::new()));
     let typed = reconcile(
         norm.graph.clone(),
-        Rc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
         frontend.intern_table.clone(),
     );
     let func_entries = extract_func_entries(typed);
 
-    let func_index: HashMap<String, Rc<FuncEntry>> = func_entries
+    let func_index: HashMap<String, Arc<FuncEntry>> = func_entries
         .iter()
         .cloned()
         .map(|e| (e.name.clone(), e))
         .collect();
-    let func_index_rc = Rc::new(func_index);
+    let func_index_rc = Arc::new(func_index);
 
     let scc_result = build_scc_index(
         func_entries.clone(),
         func_index_rc.clone(),
-        Rc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
     );
 
     let scc_info = scc_result
@@ -2439,8 +2437,8 @@ fn diag_parser_scc_edges() {
     let edges = collect_parser_edges_for_scc(
         scc_info.members.clone(),
         func_index_rc.clone(),
-        Rc::new(scc_name_set),
-        Rc::new(HashMap::new()),
+        Arc::new(scc_name_set),
+        Arc::new(HashMap::new()),
     );
 
     eprintln!("Total edges: {}", edges.len());
@@ -2491,35 +2489,35 @@ fn diag_parse_node_decl_env() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/02_parse.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/02_parse.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources.into()));
+    let frontend = front_end_sources(Arc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
         .expect("frontend must produce a graph");
-    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(graph, Arc::new(HashMap::new()));
     let typed = reconcile(
         norm.graph.clone(),
-        Rc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
         frontend.intern_table.clone(),
     );
     let func_entries = extract_func_entries(typed.clone());
 
-    let func_index: HashMap<String, Rc<FuncEntry>> = func_entries
+    let func_index: HashMap<String, Arc<FuncEntry>> = func_entries
         .iter()
         .cloned()
         .map(|e| (e.name.clone(), e))
         .collect();
-    let func_index_rc = Rc::new(func_index);
+    let func_index_rc = Arc::new(func_index);
 
     let pnd = func_index_rc
         .get("parse_node_decl")
         .expect("parse_node_decl must exist");
-    let state_param = parser_state_param(pnd.params.clone(), Rc::new(HashMap::new()))
+    let state_param = parser_state_param(pnd.params.clone(), Arc::new(HashMap::new()))
         .expect("must have state param");
 
-    let si = Rc::new(HashMap::new());
+    let si = Arc::new(HashMap::new());
     let parser_always_advancing = infer_parser_always_advancing_members(
-        parser_function_names(func_index_rc.clone(), Rc::new(HashMap::new())),
+        parser_function_names(func_index_rc.clone(), Arc::new(HashMap::new())),
         func_index_rc.clone(),
         si.clone(),
     );
@@ -2530,7 +2528,7 @@ fn diag_parse_node_decl_env() {
         .index
         .get("parse_node_decl")
         .expect("parse_node_decl must be in SCC index");
-    let scc_name_set: Rc<HashMap<String, bool>> = Rc::new(
+    let scc_name_set: Arc<HashMap<String, bool>> = Arc::new(
         scc_info
             .members
             .iter()
@@ -2550,8 +2548,8 @@ fn diag_parse_node_decl_env() {
         scc_name_set,
         empty_parser_progress_env(),
         parser_always_advancing,
-        Rc::new(HashMap::new()),
-        Rc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
     );
 
     eprintln!("Edges from collect_parser_progress_edges: {}", edges.len());
@@ -4001,8 +3999,8 @@ fn rust_list_type_lowers_to_rc_vec() {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_list_lower.rs");
     assert!(
-        content.contains("Rc<Vec<"),
-        "List should lower to Rc<Vec<...>> in Rust, got: {}",
+        content.contains("Arc<Vec<"),
+        "List should lower to Arc<Vec<...>> in Rust, got: {}",
         content
     );
     assert!(
@@ -4019,8 +4017,8 @@ fn rust_map_type_lowers_to_rc_hashmap() {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_map_lower.rs");
     assert!(
-        content.contains("Rc<HashMap<"),
-        "Map should lower to Rc<HashMap<...>> in Rust, got: {}",
+        content.contains("Arc<HashMap<"),
+        "Map should lower to Arc<HashMap<...>> in Rust, got: {}",
         content
     );
     let has_raw_map = content.lines().any(|line| {
@@ -4149,13 +4147,13 @@ fn make_outer() -> Outer {
     );
     let content = find_file(&result, "src/test_rc_struct.rs");
     assert!(
-        content.contains("Rc<Inner>"),
-        "struct field should be Rc<Inner>, got:\n{}",
+        content.contains("Arc<Inner>"),
+        "struct field should be Arc<Inner>, got:\n{}",
         content
     );
     assert!(
-        content.contains("Rc::new(Inner"),
-        "struct construction should use Rc::new(Inner{{...}}), got:\n{}",
+        content.contains("Arc::new(Inner"),
+        "struct construction should use Arc::new(Inner{{...}}), got:\n{}",
         content
     );
 }
@@ -4175,8 +4173,8 @@ fn pick() -> Color { Red }
     );
     let content = find_file(&result, "src/test_rc_unit_enum.rs");
     assert!(
-        !content.contains("Rc<Color>"),
-        "unit enum should not be Rc<Color>, got:\n{}",
+        !content.contains("Arc<Color>"),
+        "unit enum should not be Arc<Color>, got:\n{}",
         content
     );
     assert!(
@@ -4203,8 +4201,8 @@ type Drawing { shape: Shape }
     );
     let content = find_file(&result, "src/test_rc_data_enum.rs");
     assert!(
-        content.contains("Rc<Shape>"),
-        "data enum field should be Rc<Shape>, got:\n{}",
+        content.contains("Arc<Shape>"),
+        "data enum field should be Arc<Shape>, got:\n{}",
         content
     );
 }
@@ -4223,8 +4221,8 @@ type Bag { items: List<String> }
     );
     let content = find_file(&result, "src/test_rc_list.rs");
     assert!(
-        content.contains("Rc<Vec<") || content.contains("Rc<Vec<String>"),
-        "list field should be Rc<Vec<...>>, got:\n{}",
+        content.contains("Arc<Vec<") || content.contains("Arc<Vec<String>"),
+        "list field should be Arc<Vec<...>>, got:\n{}",
         content
     );
 }
@@ -4243,8 +4241,8 @@ type Config { entries: Map<String, String> }
     );
     let content = find_file(&result, "src/test_rc_map.rs");
     assert!(
-        content.contains("Rc<HashMap<"),
-        "map field should be Rc<HashMap<...>>, got:\n{}",
+        content.contains("Arc<HashMap<"),
+        "map field should be Arc<HashMap<...>>, got:\n{}",
         content
     );
 }
@@ -4263,18 +4261,18 @@ type Stats { count: Int, active: Bool, ratio: Float }
     );
     let content = find_file(&result, "src/test_rc_primitives.rs");
     assert!(
-        !content.contains("Rc<i64>"),
-        "Int field should be bare i64, not Rc<i64>, got:\n{}",
+        !content.contains("Arc<i64>"),
+        "Int field should be bare i64, not Arc<i64>, got:\n{}",
         content
     );
     assert!(
-        !content.contains("Rc<bool>"),
-        "Bool field should be bare bool, not Rc<bool>, got:\n{}",
+        !content.contains("Arc<bool>"),
+        "Bool field should be bare bool, not Arc<bool>, got:\n{}",
         content
     );
     assert!(
-        !content.contains("Rc<f64>"),
-        "Float field should be bare f64, not Rc<f64>, got:\n{}",
+        !content.contains("Arc<f64>"),
+        "Float field should be bare f64, not Arc<f64>, got:\n{}",
         content
     );
 }
@@ -4299,15 +4297,15 @@ fn unwrap(c: Container) -> Item {
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_param_match.rs");
-    let has_rc_field = content.contains("item: Rc<Item>");
-    let has_rc_param = content.contains("i: Rc<Item>");
+    let has_rc_field = content.contains("item: Arc<Item>");
+    let has_rc_param = content.contains("i: Arc<Item>");
     assert_eq!(
         has_rc_field, has_rc_param,
         "field type and param type must agree on Rc wrapping.\n\
          field has Rc: {}, param has Rc: {}\n{}",
         has_rc_field, has_rc_param, content
     );
-    let has_rc_return = content.contains("-> Rc<Item>");
+    let has_rc_return = content.contains("-> Arc<Item>");
     assert_eq!(
         has_rc_field, has_rc_return,
         "field type and return type must agree on Rc wrapping.\n\
@@ -4332,8 +4330,8 @@ fn empty_batch() -> Batch {
         diagnostic_messages(&result)
     );
     let content = find_file(&result, "src/test_rc_list_construct.rs");
-    let has_rc_field = content.contains("Rc<Vec<");
-    let has_rc_construction = content.contains("Rc::new(vec![");
+    let has_rc_field = content.contains("Arc<Vec<");
+    let has_rc_construction = content.contains("Arc::new(vec![");
     assert_eq!(
         has_rc_field, has_rc_construction,
         "list field Rc wrapping must match construction.\n\
@@ -4341,8 +4339,8 @@ fn empty_batch() -> Batch {
         has_rc_field, has_rc_construction, content
     );
     assert!(
-        content.contains("Rc::new(vec!["),
-        "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}",
+        content.contains("Arc::new(vec!["),
+        "list construction should use Arc::new(vec![...]) to match Arc<Vec<>> field type, got:\n{}",
         content
     );
 }
@@ -4436,8 +4434,8 @@ fn make() -> Outer {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_struct_field_emit.rs");
     assert!(
-        content.contains("Rc<Inner>"),
-        "struct field type should be rendered as Rc<Inner>, got:\n{}",
+        content.contains("Arc<Inner>"),
+        "struct field type should be rendered as Arc<Inner>, got:\n{}",
         content
     );
     assert!(
@@ -4462,8 +4460,8 @@ type Foo {
     let content = find_file(&result, "src/test.rs");
     eprintln!("=== EMITTED ===\n{}\n=== END ===", content);
     assert!(
-        content.contains("Rc<dyn Fn() -> i64>"),
-        "fn() -> Int field should render as Rc<dyn Fn() -> i64>, got:\n{}",
+        content.contains("Arc<dyn Fn() -> i64>"),
+        "fn() -> Int field should render as Arc<dyn Fn() -> i64>, got:\n{}",
         content
     );
 }
@@ -4543,17 +4541,17 @@ type Outer<S> {
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/test_same_name_generic_args.rs");
     assert!(
-        content.contains("pub same: Rc<NodeFold<S>>,"),
+        content.contains("pub same: Arc<NodeFold<S>>,"),
         "explicit same-name type arg should remain applied, got:\n{}",
         content
     );
 }
 
-fn test_leaf_node(name: &str) -> Rc<v1_compiler::v1_std_core::Node> {
+fn test_leaf_node(name: &str) -> Arc<v1_compiler::v1_std_core::Node> {
     use v1_compiler::v1_std_core::{leaf_node_with_span, SourceSpan};
     leaf_node_with_span(
         name.to_string(),
-        Rc::new(SourceSpan {
+        Arc::new(SourceSpan {
             file: "test".to_string(),
             start: 0,
             end: 0,
@@ -4566,13 +4564,13 @@ fn type_rendering_bare_list_not_map() {
     use v1_compiler::v1_compiler_emit::render_node_type;
 
     let list_node = test_leaf_node("List");
-    let shared_types = Rc::new(BTreeSet::from_iter(["List".to_string()]));
+    let shared_types = Arc::new(BTreeSet::from_iter(["List".to_string()]));
 
     let rendered = render_node_type(
         list_node,
         RenderTarget::Rust,
         shared_types,
-        Rc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
     );
 
     assert!(
@@ -4592,13 +4590,13 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v1_compiler::v1_compiler_emit::render_node_type;
 
     let map_node = test_leaf_node("Map");
-    let shared_types = Rc::new(BTreeSet::from_iter(["Map".to_string()]));
+    let shared_types = Arc::new(BTreeSet::from_iter(["Map".to_string()]));
 
     let rendered = render_node_type(
         map_node,
         RenderTarget::Rust,
         shared_types,
-        Rc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
     );
 
     assert!(
@@ -4613,23 +4611,23 @@ fn type_rendering_named_conj_with_container_template() {
     use v1_compiler::v1_compiler_emit::render_node_type;
     use v1_compiler::v1_std_core::Connective;
 
-    let free_monoid_conj = Rc::new(v1_compiler::v1_std_core::Node {
+    let free_monoid_conj = Arc::new(v1_compiler::v1_std_core::Node {
         name: "FreeMonoid".to_string(),
         connective: Connective::Conj,
-        ident_span: Some(Rc::new(v1_compiler::v1_std_core::SourceSpan {
+        ident_span: Some(Arc::new(v1_compiler::v1_std_core::SourceSpan {
             file: "".to_string(),
             start: 0,
             end: 0,
         })),
         ..(*test_leaf_node("")).clone()
     });
-    let shared_types = Rc::new(BTreeSet::from_iter(["FreeMonoid".to_string()]));
+    let shared_types = Arc::new(BTreeSet::from_iter(["FreeMonoid".to_string()]));
 
     let rendered = render_node_type(
         free_monoid_conj,
         RenderTarget::Rust,
         shared_types,
-        Rc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
     );
 
     assert!(
@@ -4678,7 +4676,7 @@ fn apply_named_template_does_not_rescan_substituted_values() {
     let mut bindings = HashMap::new();
     bindings.insert("recv".to_string(), "expr_with_{arg}_literal".to_string());
     bindings.insert("arg".to_string(), "sep".to_string());
-    let result = apply_named_template(template, Rc::new(bindings));
+    let result = apply_named_template(template, Arc::new(bindings));
 
     assert_eq!(
         result, "expr_with_{arg}_literal.join(&sep)",
@@ -4694,7 +4692,7 @@ fn apply_named_template_arg_value_containing_recv_placeholder() {
     let mut bindings = HashMap::new();
     bindings.insert("recv".to_string(), "receiver".to_string());
     bindings.insert("arg".to_string(), "has_{recv}_inside".to_string());
-    let result = apply_named_template(template, Rc::new(bindings));
+    let result = apply_named_template(template, Arc::new(bindings));
 
     assert_eq!(
         result, "receiver.call(has_{recv}_inside)",
@@ -4955,8 +4953,8 @@ fn index_items(items: List<Entry>) -> Map<String, Entry> {
         "fold with struct value type should not produce BRIDGE: {content}"
     );
     assert!(
-        content.contains("HashMap<String, Rc<Entry>>"),
-        "architecture ratchet: fold should produce typed HashMap<String, Rc<Entry>>: {content}"
+        content.contains("HashMap<String, Arc<Entry>>"),
+        "architecture ratchet: fold should produce typed HashMap<String, Arc<Entry>>: {content}"
     );
 }
 
@@ -5084,8 +5082,8 @@ fn build_index(items: List<Entry>) -> Map<String, Entry> {
         "cross-module fold must not produce BRIDGE fabrication: {content}"
     );
     assert!(
-        content.contains("HashMap<String, Rc<Entry>>"),
-        "architecture ratchet: cross-module fold should produce typed HashMap<String, Rc<Entry>>: {content}"
+        content.contains("HashMap<String, Arc<Entry>>"),
+        "architecture ratchet: cross-module fold should produce typed HashMap<String, Arc<Entry>>: {content}"
     );
 }
 
@@ -5433,12 +5431,12 @@ fn github_token_returns_typed_auth_token_from_credential_source() {
 
     assert!(
         content.contains("pub use crate::extdeps_github_github::{GitHubAuthToken, GitHubScope}")
-            && content.contains("Result<Rc<GitHubAuthToken>"),
+            && content.contains("Result<Arc<GitHubAuthToken>"),
         "ROADMAP:376: expected github_token to return the typed GitHubAuthToken carrier, got:\n{content}"
     );
     assert!(
         content.contains("pub struct GitHubAuthSource")
-            && content.contains("pub token_metadata: Rc<GitHubTokenMetadataAuthority>")
+            && content.contains("pub token_metadata: Arc<GitHubTokenMetadataAuthority>")
             && content.contains("pub enum GitHubTokenMetadataAuthority")
             && content.contains("DeclaredGitHubTokenMetadata"),
         "ROADMAP:376: expected credential source metadata to be explicitly declared/unverified, got:\n{content}"
@@ -5473,7 +5471,7 @@ fn github_create_review_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_github_pulls.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<PullReview> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<PullReview> = response.json().await?"),
         "expected CreateReview 200 response to deserialize through typed PullReview, got:\n{content}"
     );
     assert!(
@@ -5538,7 +5536,7 @@ fn github_oidc_get_token_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_cloud_gcp_sts.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<GitHubOidcToken200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<GitHubOidcToken200Body> = response.json().await?"),
         "expected GitHub OIDC GetToken 200 response to deserialize through typed body, got:\n{content}"
     );
     assert!(
@@ -5579,7 +5577,7 @@ fn gcp_iam_generate_access_token_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_cloud_gcp_iam.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<GcpGenerateAccessToken200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<GcpGenerateAccessToken200Body> = response.json().await?"),
         "expected IAM GenerateAccessToken 200 response to deserialize through typed body, got:\n{content}"
     );
     assert!(
@@ -5624,7 +5622,7 @@ fn google_oauth_refresh_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_cloud_gcp_gcp.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<GoogleOAuth2Refresh200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<GoogleOAuth2Refresh200Body> = response.json().await?"),
         "expected Google OAuth Refresh 200 response to deserialize through typed body, got:\n{content}"
     );
     assert!(
@@ -6281,7 +6279,7 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     assert!(
         content_block.contains("OpenAiChatMessageText(String),")
             && content_block.contains(
-                "OpenAiChatMessageParts(Rc<Vec<Rc<OpenAiChatMessagePart>>>),"
+                "OpenAiChatMessageParts(Arc<Vec<Arc<OpenAiChatMessagePart>>>),"
             ),
         "untagged OpenAiChatMessageContent variants must emit as newtype variants so `content` serializes as a string or content-part array; got:\n{content_block}"
     );
@@ -7113,7 +7111,7 @@ fn openai_chat_completion_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_llm_openai_rest.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<OpenAiChatCompletion200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<OpenAiChatCompletion200Body> = response.json().await?"),
         "expected ChatCompletion 200 response to deserialize through typed OpenAiChatCompletion200Body, got:\n{content}"
     );
     assert!(
@@ -7327,7 +7325,7 @@ fn openai_responses_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_llm_openai_rest.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<OpenAiResponses200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<OpenAiResponses200Body> = response.json().await?"),
         "expected Responses 200 response to deserialize through typed OpenAiResponses200Body, got:\n{content}"
     );
     assert!(
@@ -7615,7 +7613,7 @@ fn anthropic_messages_uses_typed_200_body_projection() {
     let content = find_file(&result, "src/extdeps_llm_anthropic_rest.rs");
 
     assert!(
-        content.contains("let __rest_wire: Rc<AnthropicMessages200Body> = response.json().await?"),
+        content.contains("let __rest_wire: Arc<AnthropicMessages200Body> = response.json().await?"),
         "expected Anthropic Messages 200 response to deserialize through typed AnthropicMessages200Body, got:\n{content}"
     );
     assert!(
@@ -8199,11 +8197,11 @@ fn len(xs: MyList<Int>) -> Int {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "xs".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -8241,11 +8239,11 @@ fn size(t: BinTree<Int>) -> Int {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -8283,11 +8281,11 @@ fn count(c: Chain) -> Int {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "c".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -8372,11 +8370,11 @@ fn sum_tree(t: Tree) -> Int {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -8417,11 +8415,11 @@ fn search(tree: BST<Int>, target: Int) -> Bool {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "tree".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -8461,11 +8459,11 @@ fn insert(tree: BST<Int>, val: Int) -> BST<Int> {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "tree".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -8506,11 +8504,11 @@ fn depth(t: BinTree<Int>) -> Int {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -8556,7 +8554,7 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
         assert_eq!(
             *bounds[0].recurrence_bound,
             v1_compiler::std_induction::CostBound::AtomicBound {
-                cost: Rc::new(v1_compiler::std_induction::AtomicCost::LogCost {
+                cost: Arc::new(v1_compiler::std_induction::AtomicCost::LogCost {
                     param: "xs".to_string(),
                 }),
             },
@@ -8722,7 +8720,7 @@ fn filter_by_membership(items: MyList<Int>, allowed: List<Int>) -> MyList<Int> {
     assert_eq!(
         *bs_bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::LogCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::LogCost {
                 param: "sorted".to_string(),
             }),
         },
@@ -9008,11 +9006,11 @@ fn last_elem(xs: MyList<Int>) -> Int {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "xs".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -9051,11 +9049,11 @@ fn size(t: BinTree<Int>) -> Int {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -9067,11 +9065,11 @@ fn size(t: BinTree<Int>) -> Int {
     assert_eq!(
         *bounds[0].stack_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "t".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -9115,7 +9113,7 @@ fn binary_search(xs: List<Int>, target: Int) -> Bool {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::LogCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::LogCost {
                 param: "xs".to_string(),
             }),
         },
@@ -9158,7 +9156,7 @@ fn bad_split(xs: List<Int>) -> Int {
         assert_ne!(
             *b.recurrence_bound,
             v1_compiler::std_induction::CostBound::AtomicBound {
-                cost: Rc::new(v1_compiler::std_induction::AtomicCost::LogCost {
+                cost: Arc::new(v1_compiler::std_induction::AtomicCost::LogCost {
                     param: "xs".to_string(),
                 }),
             },
@@ -9198,11 +9196,11 @@ fn bad_walk(t: Tree) -> Int {
         assert_ne!(
             *b.recurrence_bound,
             v1_compiler::std_induction::CostBound::AtomicBound {
-                cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+                cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                     param: "t".to_string(),
-                    exponent: Rc::new(
+                    exponent: Arc::new(
                         v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                            degree: Rc::new(
+                            degree: Arc::new(
                                 v1_compiler::std_termination::PositiveDescentAmount::OneStep
                             ),
                         }
@@ -9245,11 +9243,11 @@ fn dup(t: Tree) -> Int {
         assert_ne!(
             *b.recurrence_bound,
             v1_compiler::std_induction::CostBound::AtomicBound {
-                cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+                cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                     param: "t".to_string(),
-                    exponent: Rc::new(
+                    exponent: Arc::new(
                         v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                            degree: Rc::new(
+                            degree: Arc::new(
                                 v1_compiler::std_termination::PositiveDescentAmount::OneStep
                             ),
                         }
@@ -9296,11 +9294,11 @@ fn eval(e: Expr) -> Int {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "e".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -9348,11 +9346,11 @@ fn sum_labels(c: Container) -> Int {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "c".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -9410,11 +9408,11 @@ fn count_items(item: Item) -> Int {
     assert_eq!(
         *bounds[0].recurrence_bound,
         v1_compiler::std_induction::CostBound::AtomicBound {
-            cost: Rc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
+            cost: Arc::new(v1_compiler::std_induction::AtomicCost::PolyCost {
                 param: "item".to_string(),
-                exponent: Rc::new(
+                exponent: Arc::new(
                     v1_compiler::std_induction::PolynomialExponent::IntegerExpPos {
-                        degree: Rc::new(
+                        degree: Arc::new(
                             v1_compiler::std_termination::PositiveDescentAmount::OneStep
                         ),
                     }
@@ -9462,17 +9460,17 @@ fn depth(w: Wrapper) -> Int {
 #[ignore = "run with: cargo test -p v1-compiler-tests dump_complexity_report -- --ignored --nocapture"]
 fn dump_complexity_report() {
     let ws = workspace_root();
-    let mut all_sources: Vec<Rc<SourceFile>> = Vec::new();
+    let mut all_sources: Vec<Arc<SourceFile>> = Vec::new();
     collect_dag_sources(&ws, &ws.join("dag"), &mut all_sources);
     collect_dag_sources(&ws, &ws.join("src/v1"), &mut all_sources);
 
     eprintln!("Compiling {} .dag files...", all_sources.len());
     let result = v1_compiler::v1_compiler_compile::compile_sources_with_options(
-        Rc::new(all_sources.into()),
+        Arc::new(all_sources.into()),
         RenderTarget::Rust,
-        Rc::new(v1_compiler::v1_compiler_compile::CompilePipelineOptions {
+        Arc::new(v1_compiler::v1_compiler_compile::CompilePipelineOptions {
             analyze_complexity: true,
-            census_only_sources: Rc::new(im::Vector::new()),
+            census_only_sources: Arc::new(im::Vector::new()),
         }),
     );
 
@@ -9529,15 +9527,15 @@ fn diag_render_node_type_evidence() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/05_emit.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/05_emit.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources.into()));
+    let frontend = front_end_sources(Arc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
         .expect("frontend must produce a graph");
-    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(graph, Arc::new(HashMap::new()));
     let typed = reconcile(
         norm.graph.clone(),
-        Rc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
         frontend.intern_table.clone(),
     );
     let func_entries = extract_func_entries(typed.clone());
@@ -9547,7 +9545,7 @@ fn diag_render_node_type_evidence() {
         let path_calls = max_path_self_calls(
             entry.body.clone(),
             "render_node_type".to_string(),
-            Rc::new(HashMap::new()),
+            Arc::new(HashMap::new()),
         );
         eprintln!("\n=== render_node_type ===");
         eprintln!("  path_calls: {}", path_calls);
@@ -9555,7 +9553,7 @@ fn diag_render_node_type_evidence() {
         let evidence = collect_self_call_evidence(
             entry.body.clone(),
             "render_node_type".to_string(),
-            Rc::new(HashMap::new()),
+            Arc::new(HashMap::new()),
         );
         eprintln!("  evidence count (self-calls found): {}", evidence.len());
         for (i, call_ev) in evidence.iter().enumerate() {
@@ -9620,29 +9618,30 @@ fn diag_emitter_scc() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/05_emit_rust.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/05_emit_rust.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources.into()));
+    let frontend = front_end_sources(Arc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
         .expect("frontend must produce a graph");
-    let norm = normalize_graph(graph, Rc::new(HashMap::new()));
+    let norm = normalize_graph(graph, Arc::new(HashMap::new()));
     let typed = reconcile(
         norm.graph.clone(),
-        Rc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
         frontend.intern_table.clone(),
     );
     let func_entries = extract_func_entries(typed.clone());
 
-    let func_index: HashMap<String, Rc<v1_compiler::v1_compiler_compile::FuncEntry>> = func_entries
-        .iter()
-        .map(|e| (e.name.clone(), e.clone()))
-        .collect();
-    let func_index = Rc::new(func_index);
+    let func_index: HashMap<String, Arc<v1_compiler::v1_compiler_compile::FuncEntry>> =
+        func_entries
+            .iter()
+            .map(|e| (e.name.clone(), e.clone()))
+            .collect();
+    let func_index = Arc::new(func_index);
 
     let scc_result = build_scc_index(
         func_entries.clone(),
         func_index.clone(),
-        Rc::new(HashMap::new()),
+        Arc::new(HashMap::new()),
     );
 
     if let Some(info) = scc_result.index.get("emit_typed_expr") {
@@ -9653,7 +9652,7 @@ fn diag_emitter_scc() {
         }
         eprintln!("  Pattern: {:?}", info.pattern);
 
-        let scc_name_set = Rc::new(
+        let scc_name_set = Arc::new(
             info.member_set
                 .iter()
                 .map(|m| (m.clone(), true))
@@ -9663,7 +9662,7 @@ fn diag_emitter_scc() {
             info.members.clone(),
             func_index.clone(),
             scc_name_set,
-            Rc::new(HashMap::new()),
+            Arc::new(HashMap::new()),
         );
         eprintln!("\n  CX-L2 tree edges ({}):", edges.len());
         for e in edges.iter() {
@@ -9705,7 +9704,7 @@ fn diag_emitter_scc() {
             let target_evidence = collect_callee_evidence(
                 entry.body.clone(),
                 "emit_rust_expr_match".to_string(),
-                Rc::new(HashMap::new()),
+                Arc::new(HashMap::new()),
             );
             eprintln!("\n  collect_callee_evidence(emit_typed_expr → emit_rust_expr_match):");
             eprintln!("    calls found: {}", target_evidence.len());
@@ -9739,7 +9738,7 @@ fn diag_emitter_scc() {
             let self_ev = collect_self_call_evidence(
                 entry.body.clone(),
                 "emit_typed_expr".to_string(),
-                Rc::new(HashMap::new()),
+                Arc::new(HashMap::new()),
             );
             eprintln!("\n  collect_self_call_evidence(emit_typed_expr):");
             eprintln!("    self-calls found: {}", self_ev.len());
@@ -9781,7 +9780,7 @@ fn diag_emitter_scc() {
         let self_ev = collect_self_call_evidence(
             entry.body.clone(),
             "apply_named_template_nested".to_string(),
-            Rc::new(HashMap::new()),
+            Arc::new(HashMap::new()),
         );
         eprintln!("\n=== apply_named_template_nested ===");
         eprintln!("  self-calls: {}", self_ev.len());
@@ -9812,7 +9811,7 @@ fn diag_emitter_scc() {
         let path_calls = v1_compiler::v1_compiler_complexity::max_path_self_calls(
             entry.body.clone(),
             "apply_named_template_nested".to_string(),
-            Rc::new(HashMap::new()),
+            Arc::new(HashMap::new()),
         );
         eprintln!("  path_calls: {}", path_calls);
     }
@@ -9844,7 +9843,7 @@ fn count_ownership_violations(
         // empty set keeps the param-blind (owned-locals-only) count the movable_but_cloned
         // ratchet below was calibrated against — a conservative subset that stays under
         // the `<= 45` bound. (result.ownership yields proofs without param_names.)
-        let movable = build_movable_set(proof.clone(), Rc::new(BTreeSet::new()));
+        let movable = build_movable_set(proof.clone(), Arc::new(BTreeSet::new()));
         for name in movable.iter() {
             let clone_pattern = format!("{}.clone()", name);
             let clones_in_emitted = count_pattern(&emitted, &clone_pattern);

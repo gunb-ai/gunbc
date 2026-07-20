@@ -1,6 +1,6 @@
 use std::cell::Cell;
 use std::fs;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -104,7 +104,7 @@ fn json_diff_path(a: &serde_json::Value, b: &serde_json::Value, path: &str) -> O
 
 fn canonical_graph_bytes(
     graph: &ResolvedGraph,
-    source_indices: &im::HashMap<String, Rc<NewlineIndex>>,
+    source_indices: &im::HashMap<String, Arc<NewlineIndex>>,
 ) -> Vec<u8> {
     serialize_fixture_payload_for_test(graph, source_indices).expect("serialize payload")
 }
@@ -272,7 +272,7 @@ fn real_resolved_graph_realization_is_pure_under_nonkeyed_probes() {
 
 struct ImpureRealization {
     fixed_key: Hash,
-    hidden_input: Rc<Cell<u8>>,
+    hidden_input: Arc<Cell<u8>>,
 }
 
 impl AuditedRealization for ImpureRealization {
@@ -287,7 +287,7 @@ impl AuditedRealization for ImpureRealization {
 
 #[test]
 fn oracle_raises_loud_located_error_on_injected_impurity() {
-    let hidden = Rc::new(Cell::new(0u8));
+    let hidden = Arc::new(Cell::new(0u8));
     let realization = ImpureRealization {
         fixed_key: "feedfacefeedface".to_string(),
         hidden_input: hidden.clone(),
@@ -322,7 +322,7 @@ fn oracle_raises_loud_located_error_on_injected_impurity() {
 }
 
 struct KeyedRealization {
-    input: Rc<Cell<u8>>,
+    input: Arc<Cell<u8>>,
 }
 
 impl AuditedRealization for KeyedRealization {
@@ -336,7 +336,7 @@ impl AuditedRealization for KeyedRealization {
 
 #[test]
 fn oracle_skips_probes_that_move_the_content_key() {
-    let input = Rc::new(Cell::new(1u8));
+    let input = Arc::new(Cell::new(1u8));
     let realization = KeyedRealization {
         input: input.clone(),
     };
