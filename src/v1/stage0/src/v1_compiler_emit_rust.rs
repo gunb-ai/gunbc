@@ -7809,11 +7809,16 @@ pub fn emit_faithful_text_carrier_import_lines(
                 "use crate::std_types::NonEmptyStr;".to_string(),
             )])
         };
-        let int_line = if rust_import_name_already_resolved(
-            imported_names.clone(),
-            local_type_names.clone(),
-            "Int".to_string(),
-        ) {
+        let int_line = if {
+            let mut __found = false;
+            for n in local_type_names.clone().iter().cloned() {
+                if (n.clone() == "Int".to_string()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
             Rc::new(vec![])
         } else {
             Rc::new(vec![v1_rt::concat(
