@@ -56,8 +56,6 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_complement_family_note: String = "Witness-realization lane 2 (witness_family_fanout): emit_host_complement family — P3 ACCEPT witnesses mirroring emit_on_demand_kernel_witness_test.dag. complement(True) -> False via shared octet codec ([0,0,0,0,0])."
 
-data complement_wet_quarantine_admission_note: String = "Phase 0(b) QuarantineProbeExpectRed (gunbc.ci_layer_roots known_red_probe_entries): wet P3 ACCEPT subtests agreement/native-cold/native-warm/native-cold-then-warm/content-change-cold-rebuild EXPECT RED on main until emit_host_complement transport lands — falsifier probe batch consumer, greening is counted un-quarantine. Pure subtests: OfflineLocalRecipe via test/claim/execution/ exclusion. Owner: swift-stag-662; coordinate lane 3 (jolly-dove-581) if transport defect is shared."
-
 data complement_family_cache_root: String = "/tmp/gunbc_emit_on_demand_complement"
 data complement_family_emitter: String = "v2.compiler.emit"
 data complement_family_provider: CacheProvider = provider_row(
