@@ -5,7 +5,7 @@
 //! Exercises compile-time diagnostic variants, grounded messages, and span
 //! mapping via `compile_multi` until that harness is witness-layer importable.
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::env;
 use std::process::ExitCode;
 use std::rc::Rc;

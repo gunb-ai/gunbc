@@ -358,10 +358,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "im-rc"
+name = "im"
 version = "15.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af1955a75fa080c677d3972822ec4bad316169ab1cfc6c257a942c2265dbe5fe"
+checksum = "d0acd33ff0285af998aaf9b57342af478078f53492322fafc47450e09397e0e9"
 dependencies = [
  "bitmaps",
  "rand_core",
@@ -768,7 +768,7 @@ name = "v1-compiler"
 version = "0.1.0"
 dependencies = [
  "clap",
- "im-rc",
+ "im",
  "lazy_static",
  "libc",
  "serde",
@@ -784,7 +784,7 @@ dependencies = [
 name = "v1-compiler-tests"
 version = "0.1.0"
 dependencies = [
- "im-rc",
+ "im",
  "serde",
  "serde_json",
  "v1-compiler",
@@ -794,7 +794,7 @@ dependencies = [
 name = "v1-stage0-emit-core"
 version = "0.1.0"
 dependencies = [
- "im-rc",
+ "im",
  "serde",
  "serde_json",
  "stacker",
@@ -813,7 +813,7 @@ dependencies = [
 name = "v1-stage0-extdeps-base"
 version = "0.1.0"
 dependencies = [
- "im-rc",
+ "im",
  "serde",
  "serde_json",
  "stacker",
@@ -828,7 +828,7 @@ dependencies = [
 name = "v1-stage0-extdeps-languages"
 version = "0.1.0"
 dependencies = [
- "im-rc",
+ "im",
  "serde",
  "serde_json",
  "stacker",
@@ -844,7 +844,7 @@ dependencies = [
 name = "v1-stage0-runtime"
 version = "0.1.0"
 dependencies = [
- "im-rc",
+ "im",
  "serde",
  "serde_json",
  "stacker",
@@ -856,7 +856,7 @@ dependencies = [
 name = "v1-stage0-std-core"
 version = "0.1.0"
 dependencies = [
- "im-rc",
+ "im",
  "serde",
  "serde_json",
  "stacker",
@@ -869,7 +869,7 @@ dependencies = [
 name = "v1-stage0-std-surface"
 version = "0.1.0"
 dependencies = [
- "im-rc",
+ "im",
  "serde",
  "serde_json",
  "stacker",
@@ -883,7 +883,7 @@ dependencies = [
 name = "v1-stage0-v1-artifact"
 version = "0.1.0"
 dependencies = [
- "im-rc",
+ "im",
  "serde",
  "serde_json",
  "stacker",
@@ -901,7 +901,7 @@ dependencies = [
 name = "v1-stage0-v1-infer"
 version = "0.1.0"
 dependencies = [
- "im-rc",
+ "im",
  "serde",
  "serde_json",
  "stacker",
