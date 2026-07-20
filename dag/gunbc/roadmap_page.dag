@@ -16,8 +16,117 @@ import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLin
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
+import gunbc.v1_deletion_plan {
+  v1_deletion_gates, v1_deletion_milestones, PlanGateSpec, PlanMilestone,
+  PlanGate, GateEmitterFixedPoint, GateHonestFrontier, GateLedgerGreen, GateDeletion,
+  BrickState, Placed, InFlight, Gated,
+}
 
 fn roadmap_page_max_depth() -> Int { 8 }
+
+fn gate_index(g: PlanGate) -> Int {
+  match g {
+    GateEmitterFixedPoint => 0
+    GateHonestFrontier => 1
+    GateLedgerGreen => 2
+    GateDeletion => 3
+  }
+}
+
+fn gate_eq(a: PlanGate, b: PlanGate) -> Bool { gate_index(g: a) == gate_index(g: b) }
+
+fn brick_is_placed(bs: BrickState) -> Bool {
+  match bs {
+    Placed => true
+    InFlight => false
+    Gated => false
+  }
+}
+
+fn brick_is_remaining(bs: BrickState) -> Bool {
+  match bs {
+    Placed => false
+    InFlight => true
+    Gated => true
+  }
+}
+
+fn brick_state_class(bs: BrickState) -> String {
+  match bs {
+    Placed => "placed"
+    InFlight => "inflight"
+    Gated => "gated"
+  }
+}
+
+fn brick_state_label(bs: BrickState) -> String {
+  match bs {
+    Placed => "done"
+    InFlight => "in flight"
+    Gated => "gated"
+  }
+}
+
+fn gate_bricks(g: PlanGate) -> List<PlanMilestone> {
+  filter(v1_deletion_milestones, m => gate_eq(a: m.gate, b: g))
+}
+
+fn gate_total(g: PlanGate) -> Int { count(gate_bricks(g: g)) }
+
+fn gate_placed(g: PlanGate) -> Int {
+  count(filter(gate_bricks(g: g), m => brick_is_placed(bs: m.brick_state)))
+}
+
+fn gate_percent(placed: Int, total: Int) -> Int {
+  if total == 0 { 0 } else { placed * 100 / total }
+}
+
+fn gate_count_label(placed: Int, total: Int) -> String {
+  concat(to_string(placed), concat(" / ", to_string(total)))
+}
+
+fn bar_fill(pct: Int) -> MarkupNode {
+  ElementNode {
+    tag: "div",
+    attrs: [
+      MarkupAttr { name: "class", value: "bar-fill" },
+      MarkupAttr { name: "style", value: concat("width: ", concat(to_string(pct), "%")) },
+    ],
+    children: [],
+  }
+}
+
+fn brick_li(m: PlanMilestone) -> MarkupNode {
+  el_class("li", concat("brick brick-", brick_state_class(bs: m.brick_state)), [
+    el_class("span", "brick-state", [ txt(brick_state_label(bs: m.brick_state)) ]),
+    el_class("span", "brick-title", [ txt(m.title) ]),
+  ])
+}
+
+fn gate_remaining_ul(g: PlanGate) -> MarkupNode {
+  el_class("ul", "bricks",
+    map(filter(gate_bricks(g: g), m => brick_is_remaining(bs: m.brick_state)), m => brick_li(m: m)))
+}
+
+fn gate_progress_row(spec: PlanGateSpec) -> MarkupNode {
+  let total = gate_total(g: spec.gate)
+  let placed = gate_placed(g: spec.gate)
+  el_class("section", "gate-row", [
+    el_class("div", "gate-head", [
+      el_class("span", "gate-name", [ txt(spec.name) ]),
+      el_class("span", "gate-count", [ txt(gate_count_label(placed: placed, total: total)) ]),
+    ]),
+    el_class("div", "gate-bar", [ bar_fill(pct: gate_percent(placed: placed, total: total)) ]),
+    gate_remaining_ul(g: spec.gate),
+  ])
+}
+
+fn three_gate_progress_markup() -> MarkupNode {
+  el_class("section", "three-gate-progress",
+    concat(
+      [ el("h2", [ txt("v1-delete bar: three gates") ]) ],
+      map(v1_deletion_gates, spec => gate_progress_row(spec: spec))))
+}
 
 fn txt(s: String) -> MarkupNode { TextNode { text: s } }
 
@@ -230,6 +339,7 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Mark
       el("body", [
         el("header", [ el("h1", [ txt("gunbc — daily workspace") ]) ]),
         el_class("main", "daily-workspace", [
+          three_gate_progress_markup(),
           roadmap_frontier_markup(frontier: frontier, merged: merged),
         ]),
       ]),
@@ -240,7 +350,7 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Mark
 fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
-  let main_children = concat(lead, secs)
+  let main_children = concat([ three_gate_progress_markup() ], concat(lead, secs))
   ElementNode {
     tag: "html",
     attrs: [],
