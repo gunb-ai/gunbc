@@ -1170,9 +1170,9 @@ fn body_lower_try_fold_behavior_optional(node: Node) -> Outcome<Optional<Node>> 
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: folded, diagnostics: fd } =>
       if body_lower_is_core_substrate(node: folded) {
-        outcome_accepted(value: optional_present(value: folded), diagnostics: fd)
+        outcome_with_diagnostics(value: optional_present(value: folded), diagnostics: fd)
       } else {
-        outcome_accepted(value: optional_absent(), diagnostics: fd)
+        outcome_with_diagnostics(value: optional_absent(), diagnostics: fd)
       }
   }
 }
@@ -1186,14 +1186,14 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
       Accepted { value: fold_found, diagnostics: fd } =>
         match fold_found {
           Present { value: lowered } =>
-            outcome_accepted(value: optional_present(value: lowered), diagnostics: fd)
+            outcome_with_diagnostics(value: optional_present(value: lowered), diagnostics: fd)
           Absent =>
                     match body_lower_try_let_in_from_node(node: node) {
                       Rejected { diagnostics: r } => Rejected { diagnostics: r }
                       Accepted { value: let_found, diagnostics: ld } =>
                         match let_found {
                           Present { value: lowered } =>
-                            outcome_accepted(
+                            outcome_with_diagnostics(
                               value: optional_present(value: lowered),
                               diagnostics: ld
                             )
@@ -1203,7 +1203,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                               Accepted { value: loop_found, diagnostics: lcd } =>
                                 match loop_found {
                                   Present { value: lowered } =>
-                                    outcome_accepted(
+                                    outcome_with_diagnostics(
                                       value: optional_present(value: lowered),
                                       diagnostics: lcd
                                     )
@@ -1213,7 +1213,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                           Accepted { value: fold_result, diagnostics: fd } =>
                             match fold_result {
                               Present { value: lowered } =>
-                                outcome_accepted(
+                                outcome_with_diagnostics(
                                   value: optional_present(value: lowered),
                                   diagnostics: fd
                                 )
@@ -1223,7 +1223,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                           Accepted { value: primary_call, diagnostics: pcd } =>
                             match primary_call {
                               Present { value: lowered } =>
-                                outcome_accepted(
+                                outcome_with_diagnostics(
                                   value: optional_present(value: lowered),
                                   diagnostics: pcd
                                 )
@@ -1233,7 +1233,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                   Accepted { value: projection, diagnostics: pd } =>
                                     match projection {
                                       Present { value: lowered } =>
-                                        outcome_accepted(
+                                        outcome_with_diagnostics(
                                           value: optional_present(value: lowered),
                                           diagnostics: pd
                                         )
@@ -1249,7 +1249,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                                       Accepted { value: stripped_proj, diagnostics: spd } =>
                                                         match stripped_proj {
                                                           Present { value: lowered } =>
-                                                            outcome_accepted(
+                                                            outcome_with_diagnostics(
                                                               value: optional_present(value: lowered),
                                                               diagnostics: spd
                                                             )
@@ -1260,7 +1260,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                                               Accepted { value: stripped_fold, diagnostics: sfd } =>
                                                                 match stripped_fold {
                                                                   Present { value: lowered } =>
-                                                                    outcome_accepted(
+                                                                    outcome_with_diagnostics(
                                                                       value: optional_present(value: lowered),
                                                                       diagnostics: sfd
                                                                     )
@@ -1271,7 +1271,7 @@ fn body_lower_try_body_lowered(node: Node) -> Outcome<Optional<Node>> {
                                                               Accepted { value: stripped_call, diagnostics: scd } =>
                                                                 match stripped_call {
                                                                   Present { value: lowered } =>
-                                                                    outcome_accepted(
+                                                                    outcome_with_diagnostics(
                                                                       value: optional_present(value: lowered),
                                                                       diagnostics: scd
                                                                     )
@@ -1437,7 +1437,7 @@ fn body_lower_body_subtree_lower_from_primary(captured: Node) -> Outcome<Optiona
       match body_lower_primary_expr(shell: primary) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: lowered, diagnostics: d } =>
-          outcome_accepted(
+          outcome_with_diagnostics(
             value: optional_present(value: lowered),
             diagnostics: d
           )
@@ -1467,7 +1467,7 @@ fn body_lower_body_subtree_lower_from_postfix(captured: Node) -> Outcome<Optiona
         Accepted { value: found, diagnostics: d } =>
           match found {
             Present { value: lowered } =>
-              outcome_accepted(
+              outcome_with_diagnostics(
                 value: optional_present(value: lowered),
                 diagnostics: d
               )
@@ -1486,7 +1486,7 @@ fn body_lower_body_subtree_lower_from_expr(captured: Node) -> Outcome<Optional<N
         Accepted { value: found, diagnostics: d } =>
           match found {
             Present { value: lowered } =>
-              outcome_accepted(
+              outcome_with_diagnostics(
                 value: optional_present(value: lowered),
                 diagnostics: d
               )
@@ -1505,7 +1505,7 @@ fn body_lower_body_subtree_lower_from_binary(captured: Node) -> Outcome<Optional
         Accepted { value: found, diagnostics: d } =>
           match found {
             Present { value: lowered } =>
-              outcome_accepted(
+              outcome_with_diagnostics(
                 value: optional_present(value: lowered),
                 diagnostics: d
               )
@@ -1627,7 +1627,7 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
       }) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: children, diagnostics: d } =>
-          outcome_accepted(
+          outcome_with_diagnostics(
             value: node_synthetic(
               kind: ComputationNode { behavior: Transform },
               children: children
@@ -1685,7 +1685,7 @@ fn body_lower_fn_decl_to_arrow(shell: Node) -> Outcome<Node> {
                                       }
                                     ]
                                   )
-                                  outcome_accepted(
+                                  outcome_with_diagnostics(
                                     value: body_lower_fn_decl_named_member_wrap(
                                       arrow: arrow,
                                       fn_name: fn_name
@@ -2577,7 +2577,7 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
         match acc {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: done, diagnostics: d } =>
-            outcome_accepted(
+            outcome_with_diagnostics(
               value: list_snoc_item(
                 xs: done,
                 item: Edge {
@@ -2591,7 +2591,7 @@ fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
       }) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: children, diagnostics: d } =>
-          outcome_accepted(
+          outcome_with_diagnostics(
             value: node_synthetic(
               kind: ComputationNode { behavior: Branch },
               children: children
@@ -3316,7 +3316,7 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
                   Accepted { value: left_found, diagnostics: ld } =>
                     match left_found {
                       Present { value: lowered } =>
-                        outcome_accepted(
+                        outcome_with_diagnostics(
                           value: optional_present(value: lowered),
                           diagnostics: ld
                         )
@@ -3330,7 +3330,7 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
                 Accepted { value: left_found, diagnostics: ld } =>
                   match left_found {
                     Present { value: lowered } =>
-                      outcome_accepted(
+                      outcome_with_diagnostics(
                         value: optional_present(value: lowered),
                         diagnostics: ld
                       )
@@ -3346,7 +3346,7 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
                 Accepted { value: left_found, diagnostics: ld } =>
                   match left_found {
                     Present { value: lowered } =>
-                      outcome_accepted(
+                      outcome_with_diagnostics(
                         value: optional_present(value: lowered),
                         diagnostics: ld
                       )
@@ -3374,7 +3374,7 @@ fn body_lower_try_loop_keyword_from_captured(captured: Node) -> Outcome<Optional
             Accepted { value: left_found, diagnostics: ld } =>
               match left_found {
                 Present { value: lowered } =>
-                  outcome_accepted(
+                  outcome_with_diagnostics(
                     value: optional_present(value: lowered),
                     diagnostics: ld
                   )
@@ -3865,7 +3865,7 @@ fn body_lower_fn_body_shell(shell: Node) -> Outcome<Node> {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: lowered_opt, diagnostics: d } =>
           match lowered_opt {
-            Present { value: lowered } => outcome_accepted(value: lowered, diagnostics: d)
+            Present { value: lowered } => outcome_with_diagnostics(value: lowered, diagnostics: d)
             Absent => body_lower_wrapper_retained_shell(shell: shell)
           }
       }
