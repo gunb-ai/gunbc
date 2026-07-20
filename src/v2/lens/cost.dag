@@ -1,5 +1,53 @@
 module v2.lens.cost
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
+import v2.extdeps.languages.llvm_ir { LlvmInstruction }
+import std.algebra {
+  BoundedLattice,
+  Equal,
+  Greater,
+  Monoid,
+}
+import v2.std.cardinality {
+  loop_bound_measure,
+  loop_bound_witness_for_node,
+  NonZeroNat
+}
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Behavior,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Connective,
+  Disj,
+  Edge,
+  Instantiation,
+  Loop,
+  edge_contributes_to_cost_fold,
+  Named,
+  Node,
+  NodeFold,
+  Symbol,
+  Transform,
+  TypeNode,
+  Value,
+  fold_node
+}
+import v2.std.nat { Nat, Succ, Zero, nat_add, nat_compare }
+import v2.std.witness { Holds, Violates, Witness }
 
 type SizeVariable {
   source: Node
