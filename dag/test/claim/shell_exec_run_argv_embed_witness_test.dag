@@ -10,7 +10,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data shell_dag_path: String = "dag/extdeps/shell/shell.dag"
+data shell_exec_dag_path: String = "dag/extdeps/shell/exec.dag"
 
 fn src_has(path: String, needle: String) -> Bool {
   let r = filesystem_read(path: path)
@@ -24,7 +24,7 @@ fn witness_apply_script_exceeds_local_argv_embed_budget() -> Bool {
 }
 
 fn witness_shell_exec_run_uses_stdin_transport() -> Bool {
-  src_has(path: shell_dag_path, needle: "stdin: script")
+  src_has(path: shell_exec_dag_path, needle: "stdin: script")
 }
 
 fn witness_apply_script_requires_bash_receiver() -> Bool {
@@ -32,8 +32,8 @@ fn witness_apply_script_requires_bash_receiver() -> Bool {
 }
 
 fn witness_shell_exec_run_uses_bash_receiver() -> Bool {
-  src_has(path: shell_dag_path, needle: "argv: [\"bash\", \"-s\"]")
-    && !src_has(path: shell_dag_path, needle: "argv: [\"sh\", \"-s\"]")
+  src_has(path: shell_exec_dag_path, needle: "argv: [\"bash\", \"-s\"]")
+    && !src_has(path: shell_exec_dag_path, needle: "argv: [\"sh\", \"-s\"]")
 }
 
 test fn shell_exec_run_argv_embed_witnesses() -> Bool {

@@ -34,6 +34,7 @@ import v2.lens.registry {
   lens_registry_v0_leaf_model_verification,
   lens_registry_v0_live_read_classification,
   lens_registry_v0_machine_shape,
+  lens_registry_v0_meta_exec_confinement,
   lens_registry_v0_mock_totality,
   lens_registry_v0_mutation_adequacy,
   lens_registry_v0_non_fold_residue,
@@ -357,6 +358,15 @@ data lens_contract_machine_shape: LensContract = {
   boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: SingleAuthority } }
 }
 
+data lens_contract_meta_exec_confinement: LensContract = {
+  entry: lens_registry_v0_meta_exec_confinement,
+  mode: AuditOnly,
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: WallAfterGrounding { dissolves_to: RealizationDispatch } }
+}
+
 data lens_contract_mock_totality: LensContract = {
   entry: lens_registry_v0_mock_totality,
   mode: AuditOnly,
@@ -522,6 +532,7 @@ data lens_contract_registry: List<LensContract> = [
   lens_contract_leaf_model_verification,
   lens_contract_live_read_classification,
   lens_contract_machine_shape,
+  lens_contract_meta_exec_confinement,
   lens_contract_mock_totality,
   lens_contract_mutation_adequacy,
   lens_contract_non_fold_residue,
@@ -568,6 +579,7 @@ data lens_contracts_pending_fn_body_reflection: List<LensIdV0> = [
   LeafModelVerification,
   LiveReadClassification,
   MachineShape,
+  MetaExecConfinement,
   MockTotality,
   MutationAdequacy,
   NonFoldResidue,
