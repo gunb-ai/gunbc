@@ -5535,7 +5535,7 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Sy
                 match parse_qn_repeat_suffixes(repeat_capture: tail, root: root) {
                   Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
                   Accepted { value: suffixes, diagnostics: tail_diag } =>
-                    outcome_accepted(
+                    outcome_with_diagnostics(
                       value: list_append(
                         left: Cons { head: sym, tail: Empty },
                         right: suffixes
@@ -5565,7 +5565,7 @@ fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> O
               match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
                 Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
                 Accepted { value: suffixes, diagnostics: tail_diag } =>
-                  outcome_accepted(
+                  outcome_with_diagnostics(
                     value: list_append(
                       left: Cons { head: head_sym, tail: Empty },
                       right: suffixes
@@ -5603,7 +5603,7 @@ fn parse_comma_ident_list_items(
                   match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
                     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
                     Accepted { value: suffixes, diagnostics: tail_diag } =>
-                      outcome_accepted(
+                      outcome_with_diagnostics(
                         value: list_append(
                           left: Cons { head: head_sym, tail: Empty },
                           right: suffixes
