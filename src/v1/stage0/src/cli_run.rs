@@ -16976,7 +16976,8 @@ pub fn reference_accounting_refusals(
         pool_roots_abs(importer_roots).join("\u{1e}"),
         exclude_substrings.join("\u{1e}")
     );
-    if let Some(cached) = REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
+    if let Some(cached) = REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow().get(&cache_key).cloned())
+    {
         return cached;
     }
     // Cold: run the producer, which populates both caches in one pass.
@@ -19655,7 +19656,11 @@ mod witness_layer_roots_compile_clean_tests {
 
             // Wiring receipt: the entry declares no imports, so a non-empty adjacency here is
             // reference-derived by construction.
-            let targets = facts.selection_adjacency.get(entry).cloned().unwrap_or_default();
+            let targets = facts
+                .selection_adjacency
+                .get(entry)
+                .cloned()
+                .unwrap_or_default();
             assert!(
                 !targets.is_empty(),
                 "expected reference-derived edges for import-less {entry}; empty adjacency means \
@@ -19670,7 +19675,10 @@ mod witness_layer_roots_compile_clean_tests {
                 &["dag/std/encoding.dag".to_string()],
             )
             .expect("selection must not refuse for a parseable entry");
-            assert!(on_dep, "{entry} must be selected when dag/std/encoding.dag is touched");
+            assert!(
+                on_dep,
+                "{entry} must be selected when dag/std/encoding.dag is touched"
+            );
 
             // MUST SKIP: a tool module that is not in this witness's closure. Under the deleted
             // widen arm this returned true, which is exactly the imprecision that made every PR
@@ -19751,9 +19759,13 @@ mod witness_layer_roots_compile_clean_tests {
                     "edgeless entry {entry} must NOT be selected by an unrelated touch — this \
                      assertion is what the widen arm made unconditionally true"
                 );
-                let on_self =
-                    entry_file_touched_via_import_closure(entry, &facts, &declared, &[entry.clone()])
-                        .expect("an accounted edgeless entry must not refuse");
+                let on_self = entry_file_touched_via_import_closure(
+                    entry,
+                    &facts,
+                    &declared,
+                    &[entry.clone()],
+                )
+                .expect("an accounted edgeless entry must not refuse");
                 assert!(
                     on_self,
                     "edgeless entry {entry} must still be selected when its OWN file is touched — \
