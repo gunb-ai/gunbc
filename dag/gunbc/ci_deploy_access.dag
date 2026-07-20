@@ -5,6 +5,7 @@ import std.access { AccessDecision, Permit, Deny, decision_meet }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
 import extdeps.diagnostic.ssh { ssh_session_exec }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
 import gunbc.fleet_intent_network { operator_host_srv1 }
@@ -190,7 +191,7 @@ fn deploy_access_is_local_apply(access: DeployAccess) -> Bool {
 fn deploy_access_sudo_check_cmd(access: DeployAccess, cmd: PrivilegedCommand) -> Bool {
   let probe = concat(concat(concat("sudo -n ", cmd.path), " "), cmd.check)
   match access.transport {
-    LocalShell => shell.Exec.Check(command: probe).exists
+    LocalShell => shell.Exec.Check(command: transport_script_from_body(body: probe)).exists
     SshShell { ssh_host: h } => ssh_session_exec(host: h, command: probe as NonEmptyStr).success
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
@@ -216,7 +217,7 @@ fn deploy_access_principal_line(success: Bool, stdout: String) -> NonEmptyStr? {
 fn deploy_access_observed_principal(access: DeployAccess) -> NonEmptyStr? {
   match access.transport {
     LocalShell => {
-      let result = shell.Exec.Run(script: "whoami")
+      let result = shell.Exec.Run(script: transport_script_from_body(body: "whoami"))
       deploy_access_principal_line(success: result.success, stdout: result.stdout)
     }
     SshShell { ssh_host: h } => {

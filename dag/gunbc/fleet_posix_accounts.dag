@@ -4,6 +4,11 @@ import extdeps.access.posix { PosixUser }
 import std.types { NonEmptyStr, List, String, Bool }
 import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.effects { ExecuteEffect }
+import std.effect_grant {
+  Grant, RealTransport, LifecycleByConstruction,
+  filesystem_position, grant_verb, verb_eq, verb_of_effect_shape,
+}
 
 data fleet_posix_accounts_scope_disposition: Disposition = Terminal {
   reason: "Single authority for fleet POSIX principals on srv1/srv2: closed roster construction only (no arbitrary-string principal). §3: PosixUser is extdeps/access; fleet rows live in gunbc/. declared_probe is authored provenance of the intended id(1) check — NOT live observation; live existence proof is deploy_access_check_observed. Grant alignment seam (#6146): GroundedPosixPrincipal is POSIX WHO; secret_access_grant.GrantPrincipal is GCP WIF WHO; operator links via FleetAccountOperator + fleet_operator_gcp_iam_member()."
@@ -18,6 +23,21 @@ type PosixAccountDeclaredProbe {
 type PosixSudoGrant {
   command_path: NonEmptyStr
   check_argv: NonEmptyStr
+}
+
+data posix_sudo_grant_materialization_note: String = "PosixSudoGrant is the fleet-domain MATERIALIZATION carrier for std.effect_grant.Grant over ExecuteEffect: posix_sudo_grant_to_effect_grant projects command_path to filesystem_position and carries verb via verb_of_effect_shape(ExecuteEffect) -- never a parallel grant vocabulary (DESIGN 3). check_argv is the deploy-preflight probe argv (transport/policy, not reach). WHO may sudo remains GroundedPosixPrincipal / std.access. dissolve-on = deploy-preflight envelope admits via admit_effect over projected grants."
+
+fn absolute_command_path_segments(path: NonEmptyStr) -> List<String> {
+  filter(xs: split(s: path as String, delimiter: "/"), f: s => s != "")
+}
+
+fn posix_sudo_grant_to_effect_grant(g: PosixSudoGrant) -> Grant {
+  Grant {
+    verb: verb_of_effect_shape(shape: ExecuteEffect),
+    root: filesystem_position(path: absolute_command_path_segments(path: g.command_path)),
+    binding: RealTransport,
+    lifecycle: LifecycleByConstruction,
+  }
 }
 
 type GroundedPosixPrincipal {

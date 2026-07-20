@@ -4,6 +4,7 @@ import std.types { String, NonEmptyStr, Bool, Int }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
 import product.placement_supply { HostIdentity }
 import extdeps.os.systemd { systemd_memory_max_property }
 import gunbc.fleet_intent_network { operator_host_srv1 }
@@ -113,7 +114,7 @@ fn host_converge_slice1_srv1_per_slot_memory_max_knob() -> ConvergeKnob? {
 data host_converge_slice1_probed_at_refusal_reason: String = "host_converge_slice1: probed_at read failed (date -Iseconds); fail-closed"
 
 fn host_converge_slice1_probed_at() -> NonEmptyStr? {
-  let result = shell.Exec.Run(script: "date -Iseconds")
+  let result = shell.Exec.Run(script: transport_script_from_body(body: "date -Iseconds"))
   if result.success {
     let line = trim(result.stdout)
     if line == "" {
@@ -138,7 +139,7 @@ fn host_converge_slice1_memory_max_set_script(unit: NonEmptyStr, bytes_value: St
 }
 
 fn host_converge_slice1_read_memory_max_raw(unit: NonEmptyStr) -> String? {
-  let result = shell.Exec.Run(script: host_converge_slice1_memory_max_read_script(unit: unit))
+  let result = shell.Exec.Run(script: transport_script_from_body(body: host_converge_slice1_memory_max_read_script(unit: unit)))
   if result.success {
     let raw = trim(result.stdout)
     if raw == "" { none } else { Present { value: raw } }
@@ -213,7 +214,7 @@ fn host_converge_slice1_fixture_receipt() -> HostConvergeSlice1MemoryCapReceipt?
 }
 
 fn host_converge_slice1_apply_memory_max(unit: NonEmptyStr, bytes_value: String) -> Bool {
-  let result = shell.Exec.Run(script: host_converge_slice1_memory_max_set_script(unit: unit, bytes_value: bytes_value))
+  let result = shell.Exec.Run(script: transport_script_from_body(body: host_converge_slice1_memory_max_set_script(unit: unit, bytes_value: bytes_value)))
   result.success
 }
 
