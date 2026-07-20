@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
-# Throwaway Phase 1 diagnostic: full E-code histogram per frontier module (NOT first_error).
+# SCAFFOLD — dissolve-on: tools.self_host_curated_seed_linked_harness on main post-#6782
+# (+ generic std-seed-link follow-up) retires this hand-shell histogram orchestrator; until
+# then it runs the cssl emit+assemble+cargo spine per frontier module and aggregates full
+# E-code histograms (all codes + counts + sites, NOT first_error).
+# dissolve-on alt: gunbc bash-emit #5828 / modeled cssl_probe sweep transport in .dag.
+# Authority: cssl_v1_compiled_cargo_toml via dag/tools/self_host_curated_probe_cargo.dag
+# (scripts/lib/render_cssl_probe_lib_cargo_toml.sh — no parallel Cargo.toml heredoc).
+# One-shot Gate-2 confidence probe (swift-bee-614 Phase 1, 2026-07-20).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
