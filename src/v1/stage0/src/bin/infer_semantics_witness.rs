@@ -1117,10 +1117,7 @@ fn resolve_node_uses_node_name_for_lookup() {
             user_intern.id,
             user_binding.clone(),
         )])),
-        str_bindings: Rc::new(im::HashMap::from_iter([(
-            "User".to_string(),
-            user_binding,
-        )])),
+        str_bindings: Rc::new(im::HashMap::from_iter([("User".to_string(), user_binding)])),
         ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
@@ -1637,10 +1634,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
             box_intern.id,
             box_binding.clone(),
         )])),
-        str_bindings: Rc::new(im::HashMap::from_iter([(
-            "Box".to_string(),
-            box_binding,
-        )])),
+        str_bindings: Rc::new(im::HashMap::from_iter([("Box".to_string(), box_binding)])),
         ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
