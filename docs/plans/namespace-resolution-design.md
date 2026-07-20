@@ -459,4 +459,43 @@ subset is already closed — the application-site contract wall (#6896) turns th
 mismatched-signature case into a typed `CallContractMismatch`; what remains silent is the
 same-signature case, which only this lane's flip can catch.
 
+### 10.4 NEXT STEP — the divergence census (operator-directed 2026-07-19)
+
+Both resolution mechanisms now exist in-tree simultaneously — `lookup_resolved_sig`
+(`v1_compiler_infer_sigs.rs:108-119`, first-hit over `func_env.parents`) and the containment walk
+over the landed `SymbolIndex` (`symbol_index_lexical_lookup` / `symbol_index_global_unique_lookup`).
+So the question *"which call sites do the two bind differently?"* is **computable today, read-only,
+with no policy flip.** That set IS the blast radius of §8 step 4, and nobody has it.
+
+This is deliberately NOT the §5.1 census. That one counted *declaration* collisions (23 fns, 26
+types, 103 variants). This counts **resolution divergences** — the number that actually decides
+migration risk, and which could be far smaller (most collisions are file-local helpers that never
+co-occur in one closure) or far worse (one divergence on a hot path).
+
+**Method — direct observation, NOT diagnostics.** §10.2 is a standing warning: the compiler
+rejects neither label nor return-type mismatches for the relevant shapes, so "it compiled clean"
+proves nothing about which declaration was bound. Read each mechanism's *return value* and compare
+identity (node pointer, or qualified path). Three probes were wasted learning this.
+
+**Deliverable — a counted, typed inventory,** whole corpus, both source roots. Per call site:
+callee name, calling module, what `lookup_resolved_sig` binds, what the containment walk binds.
+Bucket every site (§5 — a site must land in a named bucket, never be silently skipped):
+
+- `Agree` — both bind the same declaration. The expected bulk; report the count, not the rows.
+- `Diverge` — different declarations. **The deliverable.** Every row listed, with both bindings.
+- `ContainmentAmbiguous` — the walk returns `GlobalBareLookupAmbiguous` where first-hit silently
+  picked. These are the sites §2.4 turns into typed refusals; each needs qualifying before its
+  subtree can flip. Expected to be the main source of migration work.
+- `ContainmentUnresolved` — the walk finds nothing. Either a genuine gap in the index fill or a
+  name that only first-hit reaches; a fill gap is a `SymbolIndex` bug and must be reported as one,
+  not absorbed into the divergence count.
+
+**Second output, nearly free: falsify §10.3's cost claim.** The census exercises exactly the
+lookup dispatch would use, so record its cost shape. §10.3 asserts one map hit on `QualifiedName`,
+not a per-call ancestor walk; if that is wrong, the fold is a rewrite rather than a substitution
+and the lane's shape changes. This is the cheapest moment to find out.
+
+**Do not** flip any policy, edit any resolver, or change dispatch as part of this. The census is an
+artifact the rest of the lane consumes; §8 step 1 starts after it, informed by it.
+
 Related: [type environment: single import authority + scope cursor](type-env-single-authority-design.md) — the type-env/SymbolIndex lane design this walk-rule migration rides on · [interface summaries and the declared↔use arity family](interface-summary-declared-use-arity.md) — the `std.interface_summary` carrier consumed by interface-grain resolve.
