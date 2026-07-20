@@ -1,11 +1,13 @@
 module std.determinism
 
+import std.perturbation { PerturbationVerdict, ResponseConsistent, ResponseViolation }
+import std.decl_ref { DeclarationRef }
 
 type Determinism
   = Deterministic
   | NonDeterministic { source: DeclarationRef }
 
-fn determinism_from_perturbation(verdict: std.perturbation.PerturbationVerdict, reached: DeclarationRef) -> Determinism {
+fn determinism_from_perturbation(verdict: PerturbationVerdict, reached: DeclarationRef) -> Determinism {
   match verdict {
     ResponseConsistent => Deterministic
     ResponseViolation => NonDeterministic { source: reached }

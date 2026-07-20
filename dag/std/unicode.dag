@@ -1,5 +1,6 @@
 module std.unicode
 
+import std.types { Char }
 
 type CharClass = Whitespace | Digit | IdentStart | IdentContinue
 

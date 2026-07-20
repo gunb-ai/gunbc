@@ -1,5 +1,19 @@
 module std.os
 
+import std.os.types {
+  Apfs,
+  Darwin,
+  Linux,
+  MacosDistributionCatalogRow,
+  Ntfs,
+  OperatingSystemSurface,
+  Posix,
+  PosixProcess,
+  UbuntuDistributionCatalogRow,
+  WindowsDistributionCatalogRow,
+  WindowsNt,
+  WindowsProcess,
+}
 
 fn operating_system_surface_ubuntu(row: UbuntuDistributionCatalogRow) -> OperatingSystemSurface {
   OperatingSystemSurface {

@@ -1,13 +1,9 @@
 module std.interface_summary
 
 import std.types { ContentHash, NonEmptyStr, List }
-
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-
 import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
-
 
 type InterfaceHash = ContentHash where brand("InterfaceHash")
 type ModuleKey = ContentHash where brand("ModuleKey")

@@ -1,5 +1,13 @@
 module std.syllogism
 
+import std.graph {
+  GraphEdge,
+  CallGraph,
+  DfsFinishAcc,
+  build_adjacency_views,
+  dfs_finish_order,
+  graph_has_multi_node_scc
+}
 
 type AxiomKind = LogicalAxiom | NonLogicalAxiom
 

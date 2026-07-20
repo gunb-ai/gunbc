@@ -1,5 +1,10 @@
 module std.numerical_contract
 
+import std.approximate_field {
+  RoundingMode,
+  ToNearestEven,
+}
+import std.types { Bool }
 
 type FmaContractionPolicy
   = FmaContractionPermitted
@@ -8,7 +13,7 @@ type FmaContractionPolicy
 type NumericalContract
   = IntegerExact
   | FloatApproximate {
-      rounding: std.approximate_field.RoundingMode
+      rounding: RoundingMode
       fma_contraction: FmaContractionPolicy
     }
 
@@ -17,7 +22,7 @@ fn integer_exact_contract() -> NumericalContract {
 }
 
 fn float_contract(
-  rounding: std.approximate_field.RoundingMode,
+  rounding: RoundingMode,
   fma: FmaContractionPolicy
 ) -> NumericalContract {
   FloatApproximate {

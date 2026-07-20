@@ -1,5 +1,8 @@
 module std.patterns
 
+import std.resources { Filesystem }
+import std.types { FilePath, Milliseconds }
+import std.filesystem { partition_entries, is_text_readable }
 
 type VerifyCheck = Node
 type CreateAction = Node

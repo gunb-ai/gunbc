@@ -1,5 +1,6 @@
 module std.behavioral
 
+import std.determinism { Determinism }
 
 type SideEffects = ReadOnly | WritesState | WritesExternal
 
@@ -40,7 +41,7 @@ type CapabilityFailureContract {
 
 type OperationBehavior {
   side_effects: SideEffects
-  determinism: std.determinism.Determinism
+  determinism: Determinism
   failure_modes: List<FailureMode>
   edge_cases: List<EdgeCase>
   confidence: Confidence
