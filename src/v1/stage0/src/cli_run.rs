@@ -4001,9 +4001,20 @@ fn extend_with_bare_reference_closure(
             .filter(|h| !candidates.bound.contains(*h) && !candidates.names.contains(*h))
             .map(|h| h.to_string())
             .collect();
+        // A name this file BINDS anywhere (binder keyword, key position — fn
+        // params, named-arg keys, let/data/type decls) is served locally at
+        // every scope the reference could sit in; pulling its census homonym
+        // couples the entry to an unrelated module (measured: lens
+        // unit_modeling's `edge` param pulled v2.test.manual.ownership_movable,
+        // whose src/v1 imports are unresolvable in this pool — resolve died on
+        // a module the entry never executes). Same rule dotted-chain heads
+        // already apply; a genuinely-global reference shadowed by a same-name
+        // local binder elsewhere in the file fails LOUD at typecheck/runtime
+        // (no such function), never silently wrong.
         let all_names: Vec<(String, bool)> = candidates
             .names
             .iter()
+            .filter(|n| !candidates.bound.contains(*n))
             .map(|n| (n.clone(), false))
             .chain(dotted_head_refs.into_iter().map(|n| (n, false)))
             .chain(service_prefixes.into_iter().map(|n| (n, true)))
@@ -4097,19 +4108,30 @@ fn extend_with_bare_reference_closure(
             let Some(dep) = index.source_files.get(&module_path) else {
                 continue;
             };
-            // A test-claim module is an execution ROOT, never a dependency: its
-            // helpers are file-local by convention, its health belongs to its own
-            // witness run, and several are deliberately off-auto-path (e.g.
-            // ownership_movable_test imports src/v1 — unresolvable in this pool,
-            // per its own note). A bare homonym resolving into one (`edge`,
-            // 2-param helper) must not couple this entry to it — skip, and let
-            // the typecheck/runtime refusal stay the loud signal if the name was
-            // a genuine reference.
-            if dep
-                .content
-                .lines()
-                .any(|l| l.trim_start().starts_with("test fn "))
-            {
+            // A `test fn`/`test data` ROW is an execution ROOT, never a
+            // dependency: a bare homonym resolving to another module's witness
+            // must not couple this entry to its run. The guard is
+            // DECLARATION-grain: only when the resolved name itself is declared
+            // as a test row in the provider. A PLAIN fn/data declared beside
+            // test rows is an ordinary provider — the former FILE-grain skip
+            // (any provider containing a `test fn` line) silently dropped
+            // those, converting a resolvable cross-file reference into a
+            // runtime `no such function` (infer_emit_compile_anchor.dag →
+            // anchor_rust_add_emit_accepts; review finding, 2026-07-19).
+            let name_is_test_row = dep.content.lines().any(|l| {
+                let t = l.trim_start();
+                ["test fn ", "test data "].iter().any(|prefix| {
+                    t.strip_prefix(prefix).is_some_and(|rest| {
+                        rest.strip_prefix(name.as_str()).is_some_and(|after| {
+                            after
+                                .chars()
+                                .next()
+                                .is_none_or(|c| !c.is_alphanumeric() && c != '_')
+                        })
+                    })
+                })
+            });
+            if name_is_test_row {
                 continue;
             }
             let dep_rel = workspace_relative_repo_path(&dep.path);
