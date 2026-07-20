@@ -194,7 +194,7 @@ fn fork_ledger_still_records_the_leak_conflict() {
 // Same per-module typecheck plumbing as transitive_interface_binding_test: the
 // ledger rides the typed out-of-band channel, never diagnostics.
 fn typecheck_fixture_incremental(files: &[(&str, &str)]) -> Vec<Rc<TypecheckModuleResult>> {
-    let sources: im_rc::Vector<Rc<SourceFile>> = files
+    let sources: im::Vector<Rc<SourceFile>> = files
         .iter()
         .map(|(path, content)| {
             Rc::new(SourceFile {
@@ -212,8 +212,8 @@ fn typecheck_fixture_incremental(files: &[(&str, &str)]) -> Vec<Rc<TypecheckModu
     let norm = normalize_graph(graph, source_indices.clone());
     let intern_table: Rc<InternTable> = frontend.intern_table.clone();
 
-    let mut module_index: Rc<im_rc::HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
-    let mut variant_surfaces: Rc<im_rc::HashMap<String, Rc<VariantExportSurface>>> =
+    let mut module_index: Rc<im::HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
+    let mut variant_surfaces: Rc<im::HashMap<String, Rc<VariantExportSurface>>> =
         v1_rt::rc_empty_map();
     let mut results = Vec::new();
     for resolved in norm.graph.modules.iter() {

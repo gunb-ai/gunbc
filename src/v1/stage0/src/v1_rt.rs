@@ -3,7 +3,7 @@
 
 #![allow(unused_variables, dead_code)]
 
-use im_rc::{HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[cfg(feature = "text_lookup_work_counter")]
@@ -65,7 +65,7 @@ pub fn record_source_chars_index_lookup() {
 #[cfg(not(feature = "text_lookup_work_counter"))]
 pub fn record_source_chars_index_lookup() {}
 
-// Vec here is im_rc's persistent Vector (one realization with the
+// Vec here is im's persistent Vector (one realization with the
 // interpreter's Value::List). VecCompat papers the std-Vec API deltas the
 // emitter's method rows rely on (first/push/with_capacity; join via VecJoin)
 // so emitted call sites stay identical across carriers.
@@ -372,7 +372,7 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
 
 // take_owned: move out of a uniquely-held Rc; clone when shared. With every
-// container realized persistently (im_rc), the shared-arm clone is cheap
+// container realized persistently (im), the shared-arm clone is cheap
 // structural sharing — an ordinary designed path, not a degradation arm, so
 // no counter and no refusal (the clone-fallback guard class was deleted with
 // the Rc<std container> carriers it policed).
@@ -395,7 +395,7 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     result
 }
 
-// Every rc_* update here rides a persistent carrier (im_rc HashMap/Vector/
+// Every rc_* update here rides a persistent carrier (im HashMap/Vector/
 // OrdSet — one realization with the interpreter's Value::Map/List/Set), so
 // make_mut's clone arm is O(1) structural sharing and each update copies an
 // O(log n) node path — a designed update, never a degradation arm.

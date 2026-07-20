@@ -13,7 +13,7 @@
 #![deny(unreachable_patterns)]
 #![recursion_limit = "256"]
 
-use im_rc::{OrdSet as BTreeSet, Vector as Vec};
+use im::{OrdSet as BTreeSet, Vector as Vec};
 
 pub mod cli_run;
 pub mod coproduct_reflection;
