@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use v1_compiler::v1_std_core::diagnostic_to_message;
 
 use crate::helpers::compile_dag_resolved;
