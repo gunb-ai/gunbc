@@ -3205,6 +3205,32 @@ fn node_tree_references_type_name(n: Node, type_name: String, source_indices: Ma
   }
 }
 
+fn node_tree_collect_record_lit_type_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let self_hit = match n.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
+        Present { value: tn } => [tn]
+        Absent => []
+      }
+    _ => []
+  }
+  let child_hits = n.children |> flat_map(child => node_tree_collect_record_lit_type_names(n: child, source_indices: source_indices))
+  let param_hits = n.params |> flat_map(p => node_tree_collect_record_lit_type_names(n: p, source_indices: source_indices))
+  let body_hit = match n.body {
+    Present { value: body } => node_tree_collect_record_lit_type_names(n: body, source_indices: source_indices)
+    Absent => []
+  }
+  let annot_hit = match n.type_annotation {
+    Present { value: ta } => node_tree_collect_record_lit_type_names(n: ta, source_indices: source_indices)
+    Absent => []
+  }
+  concat(self_hit, child_hits, param_hits, body_hit, annot_hit)
+}
+
+fn typed_closure_includes_module_filename(typed_modules: List<TypedModule>, filename: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  typed_modules |> any(tm => module_to_filename(name: authored_name_at(source_indices: source_indices, node: tm.module)) == filename)
+}
+
 fn module_item_has_faithful_string_leaf(item: Node, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr) -> Bool {
   node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
     || item.params |> any(p => node_tree_has_faithful_string_leaf(n: p, source_indices: source_indices, corpus_repr: corpus_repr))
@@ -3262,7 +3288,8 @@ fn rust_import_name_already_resolved(imported_names: List<String>, local_type_na
   imported_names |> any(n => n == name) || local_type_names |> any(n => n == name)
 }
 
-fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_type_names: List<String>, items: List<Node>, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr, shared_types: Set<String>) -> List<String> {
+fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_type_names: List<String>, items: List<Node>, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr, shared_types: Set<String>, typed_modules: List<TypedModule>) -> List<String> {
+  let closure_has_std_measure = typed_closure_includes_module_filename(typed_modules: typed_modules, filename: "std_measure", source_indices: source_indices)
   let needs_free_monoid = items |> any(item =>
     module_item_has_faithful_string_leaf(item: item, source_indices: source_indices, corpus_repr: corpus_repr)
     || module_item_references_type_name(item: item, type_name: "FreeMonoid", source_indices: source_indices)
@@ -3277,7 +3304,7 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
     module_item_references_type_name(item: item, type_name: "PartialFunction", source_indices: source_indices)
     || module_item_references_type_name(item: item, type_name: "Map", source_indices: source_indices)
   )
-  let needs_measure_phantoms = items |> any(item => module_item_references_faithful_expanded_type(item: item, source_indices: source_indices))
+  let needs_measure_phantoms = closure_has_std_measure && items |> any(item => module_item_references_faithful_expanded_type(item: item, source_indices: source_indices))
   let free_monoid = if !needs_free_monoid || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "FreeMonoid") {
     []
   } else {

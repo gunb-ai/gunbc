@@ -4269,6 +4269,20 @@ pub fn emit_module_full(
             }),
             collect_phantom_zst_marker_names(typed_module.items.clone(), scope.type_env.clone()),
         );
+        let synthesized_type_names = unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for item in typed_module.items.clone().iter().cloned() {
+                __result.extend(
+                    (*node_tree_collect_record_lit_type_names(
+                        item.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }));
         let prelude = emit_prelude(prelude_imported_names.clone());
         let imports_str = emit_imports(
             module_imports(m.clone()),
@@ -4279,6 +4293,7 @@ pub fn emit_module_full(
             typed_modules.clone(),
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
+            synthesized_type_names.clone(),
         );
         let dag_import_lines = if (imports_str.clone() == "".to_string()) {
             Rc::new(vec![])
@@ -4303,6 +4318,7 @@ pub fn emit_module_full(
                 scope.type_env.clone().source_indices.clone(),
                 emit_info.corpus_repr.clone(),
                 shared_types.clone(),
+                typed_modules.clone(),
             )
         } else {
             Rc::new(vec![])
@@ -7494,6 +7510,7 @@ pub fn emit_imports(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
+    supplement_names: Rc<Vec<String>>,
 ) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
@@ -7546,32 +7563,35 @@ pub fn emit_imports(
                                         module_index.clone(),
                                     );
                                     let merged_specific = unique_strings(v1_rt::concat(
-                                        Rc::new({
-                                            let mut __result = Vec::new();
-                                            for imp in Rc::new({
+                                        v1_rt::concat(
+                                            Rc::new({
                                                 let mut __result = Vec::new();
-                                                for imp in mod_imports.clone().iter().cloned() {
-                                                    if (import_is_all(imp.clone()) == false) {
-                                                        __result.push(imp);
+                                                for imp in Rc::new({
+                                                    let mut __result = Vec::new();
+                                                    for imp in mod_imports.clone().iter().cloned() {
+                                                        if (import_is_all(imp.clone()) == false) {
+                                                            __result.push(imp);
+                                                        }
                                                     }
+                                                    __result
+                                                })
+                                                .iter()
+                                                .cloned()
+                                                {
+                                                    __result.extend(
+                                                        (*import_specific_names_at(
+                                                            imp.clone(),
+                                                            source_indices.clone(),
+                                                        ))
+                                                        .iter()
+                                                        .cloned(),
+                                                    );
                                                 }
                                                 __result
-                                            })
-                                            .iter()
-                                            .cloned()
-                                            {
-                                                __result.extend(
-                                                    (*import_specific_names_at(
-                                                        imp.clone(),
-                                                        source_indices.clone(),
-                                                    ))
-                                                    .iter()
-                                                    .cloned(),
-                                                );
-                                            }
-                                            __result
-                                        }),
-                                        reexport_surface.clone(),
+                                            }),
+                                            reexport_surface.clone(),
+                                        ),
+                                        supplement_names.clone(),
                                     ));
                                     let specific_block = emit_specific_import_block(
                                         import_module.clone(),
@@ -7610,7 +7630,10 @@ pub fn emit_imports(
                                         }
                                         __result
                                     });
-                                    let merged_specific = unique_strings(specific_names.clone());
+                                    let merged_specific = unique_strings(v1_rt::concat(
+                                        specific_names.clone(),
+                                        supplement_names.clone(),
+                                    ));
                                     emit_specific_import_block(
                                         import_module.clone(),
                                         mod_name.clone(),
@@ -7748,6 +7771,87 @@ pub fn node_tree_references_type_name(
             }
         }
     })
+}
+
+pub fn node_tree_collect_record_lit_type_names(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let self_hit = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                match record_lit_type_name_at(n.clone(), source_indices.clone()) {
+                    Some(tn) => Rc::new(vec![tn.clone()]),
+                    None => Rc::new(vec![]),
+                }
+            }
+            _ => Rc::new(vec![]),
+        };
+        let child_hits = Rc::new({
+            let mut __result = Vec::new();
+            for child in n.children.clone().iter().cloned() {
+                __result.extend(
+                    (*node_tree_collect_record_lit_type_names(
+                        child.clone(),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let param_hits = Rc::new({
+            let mut __result = Vec::new();
+            for p in n.params.clone().iter().cloned() {
+                __result.extend(
+                    (*node_tree_collect_record_lit_type_names(p.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __result
+        });
+        let body_hit = match n.body.clone() {
+            Some(body) => {
+                node_tree_collect_record_lit_type_names(body.clone(), source_indices.clone())
+            }
+            None => Rc::new(vec![]),
+        };
+        let annot_hit = match n.type_annotation.clone() {
+            Some(ta) => node_tree_collect_record_lit_type_names(ta.clone(), source_indices.clone()),
+            None => Rc::new(vec![]),
+        };
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(self_hit.clone(), child_hits.clone()),
+                    param_hits.clone(),
+                ),
+                body_hit.clone(),
+            ),
+            annot_hit.clone(),
+        )
+    })
+}
+
+pub fn typed_closure_includes_module_filename(
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    filename: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for tm in typed_modules.clone().iter().cloned() {
+            if (module_to_filename(authored_name_at(source_indices.clone(), tm.module.clone()))
+                == filename.clone())
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
 }
 
 pub fn module_item_has_faithful_string_leaf(
@@ -7949,8 +8053,14 @@ pub fn emit_faithful_text_carrier_import_lines(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     corpus_repr: RustCorpusRepr,
     shared_types: Rc<BTreeSet<String>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
 ) -> Rc<Vec<String>> {
     {
+        let closure_has_std_measure = typed_closure_includes_module_filename(
+            typed_modules.clone(),
+            "std_measure".to_string(),
+            source_indices.clone(),
+        );
         let needs_free_monoid = {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
@@ -8033,7 +8143,7 @@ pub fn emit_faithful_text_carrier_import_lines(
             }
             __found
         };
-        let needs_measure_phantoms = {
+        let needs_measure_phantoms = (closure_has_std_measure.clone() && {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
                 if module_item_references_faithful_expanded_type(
@@ -8045,7 +8155,7 @@ pub fn emit_faithful_text_carrier_import_lines(
                 }
             }
             __found
-        };
+        });
         let free_monoid = if (!needs_free_monoid.clone()
             || rust_import_name_already_resolved(
                 imported_names.clone(),
