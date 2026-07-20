@@ -6901,8 +6901,7 @@ pub fn infer_record_lit(
                         if (parent_name.clone() == "Optional".to_string()) {
                             variant_lookup_resolved.clone()
                         } else {
-                            match lookup_type_by_name(scope.type_env.clone(), parent_name.clone())
-                            {
+                            match lookup_type_by_name(scope.type_env.clone(), parent_name.clone()) {
                                 Some(parent_decl) => parent_decl.clone(),
                                 None => variant_lookup_resolved.clone(),
                             }
