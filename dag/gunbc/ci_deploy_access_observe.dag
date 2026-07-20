@@ -1,0 +1,127 @@
+module gunbc.ci_deploy_access_observe
+
+import std.types { NonEmptyStr, String, Bool }
+import std.access { AccessDecision, Permit, Deny, decision_meet }
+import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
+import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
+import gunbc.ci_deploy_access {
+  DeployAccess,
+  DeployAccessActor,
+  PrivilegedCommand,
+  deploy_access_check,
+  deploy_access_principal_line,
+  deploy_access_whoami_probe_script,
+  deploy_access_sudo_probe_script,
+  deploy_access_refusal_prefix,
+  deploy_target_proof_from_access,
+}
+import gunbc.ci_deploy_target_host {
+  DeployTargetHostObservation,
+  deploy_target_host_check,
+  deploy_target_host_check_observed,
+}
+
+type DeployAccessShellProbe {
+  success: Bool
+  stdout: String
+}
+
+fn deploy_access_run_shell_probe(access: DeployAccess, script: String) -> DeployAccessShellProbe {
+  match access.transport {
+    LocalShell => {
+      let result = shell.Exec.Run(script: transport_script_from_body(body: script))
+      DeployAccessShellProbe { success: result.success, stdout: result.stdout }
+    }
+    SshShell { ssh_host: h } =>
+      if script == "" {
+        DeployAccessShellProbe {
+          success: false,
+          stdout: "deploy_access_observe: empty shell script over SshShell; fail-closed",
+        }
+      } else {
+        let result = ssh_session_exec_script(host: h, script: script)
+        DeployAccessShellProbe { success: result.success, stdout: result.stdout }
+      }
+    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
+      DeployAccessShellProbe {
+        success: false,
+        stdout: "deploy_access_observe: shell probe cannot use EmitArtifactThenThinRun transport; typed mismatch",
+      }
+  }
+}
+
+fn deploy_access_observed_principal(access: DeployAccess) -> NonEmptyStr? {
+  let result = deploy_access_run_shell_probe(
+    access: access,
+    script: deploy_access_whoami_probe_script()
+  )
+  deploy_access_principal_line(success: result.success, stdout: result.stdout)
+}
+
+fn deploy_access_sudo_check_cmd(access: DeployAccess, cmd: PrivilegedCommand) -> Bool {
+  deploy_access_run_shell_probe(
+    access: access,
+    script: deploy_access_sudo_probe_script(cmd: cmd)
+  ).success
+}
+
+fn deploy_access_sudo_all_granted(access: DeployAccess) -> Bool {
+  fold(
+    access.privileged_commands,
+    init: true,
+    f: (acc, cmd) => if !acc { false } else { deploy_access_sudo_check_cmd(access: access, cmd: cmd) }
+  )
+}
+
+fn deploy_access_observed_actor(access: DeployAccess) -> DeployAccessActor? {
+  match deploy_access_observed_principal(access: access) {
+    Present { value: observed_name } =>
+      Present {
+        value: DeployAccessActor {
+          observed_name: observed_name,
+          sudo_granted: deploy_access_sudo_all_granted(access: access),
+        }
+      }
+    Absent => Absent
+  }
+}
+
+fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
+  match deploy_access_observed_actor(access: access) {
+    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Absent =>
+      Deny {
+        reason: Present {
+          value: concat(
+            deploy_access_refusal_prefix,
+            " — could not observe principal (whoami failed)"
+          )
+        }
+      }
+  }
+}
+
+fn deploy_mutation_gate_observed(access: DeployAccess) -> AccessDecision {
+  let proof = deploy_target_proof_from_access(access: access)
+  let host_decision = deploy_target_host_check_observed(proof: proof)
+  let access_decision = deploy_access_check_observed(access: access)
+  decision_meet(a: host_decision, b: access_decision)
+}
+
+fn deploy_mutation_gate(
+  access: DeployAccess,
+  fixture_actor: DeployAccessActor?,
+  fixture_host: DeployTargetHostObservation?
+) -> AccessDecision {
+  let proof = deploy_target_proof_from_access(access: access)
+  let host_decision = match fixture_host {
+    Present { value: obs } => deploy_target_host_check(proof: proof, observed: obs)
+    Absent => deploy_target_host_check_observed(proof: proof)
+  }
+  let access_decision = match fixture_actor {
+    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Absent => deploy_access_check_observed(access: access)
+  }
+  decision_meet(a: host_decision, b: access_decision)
+}
