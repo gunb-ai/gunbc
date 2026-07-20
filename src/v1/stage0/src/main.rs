@@ -260,6 +260,39 @@ fn resolve_transitively_with_seen(
     result
 }
 
+/// Instance-patch (FreeMonoid pass 2026-07-20, membership grain): `05_emit_rust` emits
+/// `crate::v2_std_text::` refs but import closure may omit `v2.std.text`. dissolve-on:
+/// derive closure pub-mod membership from emitted ref set inside `emit_lib_rs_from_files`.
+fn ensure_text_coercion_closure_module(
+    sources: &mut Vec<Rc<v1_compiler::v1_compiler_compile::SourceFile>>,
+    index: &HashMap<String, std::path::PathBuf>,
+    render_targets: &[(String, v1_compiler::v1_compiler_artifact::RenderTarget)],
+) {
+    const MODULE: &str = "v2.std.text";
+    if !render_targets.iter().any(|(name, _)| name == "rust") {
+        return;
+    }
+    let present = sources
+        .iter()
+        .any(|s| extract_module_path(&s.content).as_deref() == Some(MODULE));
+    if present {
+        return;
+    }
+    if let Some(path) = index.get(MODULE) {
+        let content = std::fs::read_to_string(path).unwrap_or_else(|e| {
+            panic!(
+                "failed to read text coercion module '{}' at {:?}: {}",
+                MODULE, path, e
+            )
+        });
+        sources.push(Rc::new(v1_compiler::v1_compiler_compile::SourceFile {
+            path: path.to_string_lossy().to_string(),
+            content,
+        }));
+        sources.sort_by(|a, b| a.path.cmp(&b.path));
+    }
+}
+
 fn render_target_from_name(
     target: &str,
 ) -> Option<v1_compiler::v1_compiler_artifact::RenderTarget> {
@@ -374,6 +407,7 @@ fn main() {
                 }
 
                 let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
+                ensure_text_coercion_closure_module(&mut resolved, &index, &render_targets);
                 for (path, content) in entry_files {
                     if extract_module_path(&content).is_none() {
                         continue;

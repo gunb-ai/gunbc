@@ -4156,12 +4156,16 @@ pub fn emit_module_full(
                     .collect::<Vec<_>>(),
             )
         };
-        let carrier_import_lines = if module_renders_faithful_text_carrier(
+        let carrier_import_lines = if (module_renders_faithful_text_carrier(
             typed_module.items.clone(),
             emit_info.corpus_repr.clone(),
             shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
-        ) {
+        ) || module_needs_freemonoid_import(
+            typed_module.items.clone(),
+            emit_info.corpus_repr.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        )) {
             emit_faithful_text_carrier_import_lines(
                 prelude_imported_names.clone(),
                 local_type_names.clone(),
@@ -7553,6 +7557,92 @@ pub fn node_tree_has_faithful_string_leaf(
             }
         }
     })
+}
+
+pub fn node_tree_references_type_name(
+    n: Rc<Node>,
+    type_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        if (authored_name_at(source_indices.clone(), n.clone()) == type_name.clone()) {
+            true
+        } else {
+            {
+                let child_hit = {
+                    let mut __found = false;
+                    for child in n.children.clone().iter().cloned() {
+                        if node_tree_references_type_name(
+                            child.clone(),
+                            type_name.clone(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                };
+                let annotation_hit = match n.type_annotation.clone() {
+                    Some(ta) => node_tree_references_type_name(
+                        ta.clone(),
+                        type_name.clone(),
+                        source_indices.clone(),
+                    ),
+                    None => false,
+                };
+                (child_hit.clone() || annotation_hit.clone())
+            }
+        }
+    })
+}
+
+pub fn module_needs_freemonoid_import(
+    items: Rc<Vec<Rc<Node>>>,
+    corpus_repr: RustCorpusRepr,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if !corpus_repr_is_faithful(corpus_repr.clone()) {
+        false
+    } else {
+        {
+            let mut __found = false;
+            for item in items.clone().iter().cloned() {
+                if ((match item.type_annotation.clone() {
+                    Some(ta) => node_tree_references_type_name(
+                        ta.clone(),
+                        "FreeMonoid".to_string(),
+                        source_indices.clone(),
+                    ),
+                    None => false,
+                } || {
+                    let mut __found = false;
+                    for p in item.params.clone().iter().cloned() {
+                        if node_tree_references_type_name(
+                            p.clone(),
+                            "FreeMonoid".to_string(),
+                            source_indices.clone(),
+                        ) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }) || match item.body.clone() {
+                    Some(body) => node_tree_references_type_name(
+                        body.clone(),
+                        "FreeMonoid".to_string(),
+                        source_indices.clone(),
+                    ),
+                    None => false,
+                }) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
 }
 
 pub fn module_renders_faithful_text_carrier(
