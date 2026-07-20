@@ -1631,30 +1631,15 @@ fn load_compile_clean_entry_sources(
             sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
         }
     }
-    // BOTH closures to a joint fixpoint — the SAME authority the witness loader
-    // `load_sources_for_entry_with_pool` runs (a §3 dissolution; both functions'
-    // doc-comments claimed to be "the ONE closure authority" while the code was
-    // forked: this one ran only `extend_with_reference_closure`). The
-    // module-path reference closure and the bare/service-name reference closure
-    // pull disjoint edges — the service-name → provider edge (`gcp.STS` →
-    // dag/extdeps/cloud/gcp/sts.dag) lives ONLY in the bare closure — so an
-    // affected entry that reaches a provider purely through a bare name or a
-    // service call (patterns.dag → `gcp.STS.Exchange`, no import) dropped that
-    // provider from the scoped compile set and its names went unresolved
-    // (proven: ARM1 ref-only = 3 unresolved-type diags on patterns.dag's closure;
-    // +bare = 0). Iterate because each newly-pulled module can itself carry
-    // either edge kind.
-    loop {
-        let before = sources.len();
-        sources = extend_with_bare_reference_closure(sources, mei)?;
-        sources = extend_with_reference_closure(sources, index, facts)?;
-        sources.sort_by(|a, b| a.path.cmp(&b.path));
-        sources.dedup_by(|a, b| a.path == b.path);
-        if sources.len() == before {
-            break;
-        }
-    }
-    Ok(sources)
+    // BOTH closures to a joint fixpoint via the ONE shared authority the witness
+    // loader `load_sources_for_entry_with_pool` also calls (a §3 dissolution: this
+    // gate loader previously ran ONLY `extend_with_reference_closure`, so an
+    // affected entry reaching a provider purely through a bare name or a service
+    // call — patterns.dag → `gcp.STS.Exchange`, no import — dropped that provider,
+    // since the service-name → provider edge `gcp.STS` → dag/extdeps/cloud/gcp/sts.dag
+    // lives ONLY in the bare closure, and its names went unresolved. Proven: ARM1
+    // ref-only = 3 unresolved-type diags on patterns.dag's closure; +bare = 0).
+    extend_sources_to_both_closure_fixpoint(sources, mei)
 }
 
 /// Reference-derived dependency closure (namespace Rule-1 interim). A qualified
@@ -4444,20 +4429,23 @@ fn extend_with_bare_reference_closure(
 /// versa. This is the loader the witness paths use; the raw-pair
 /// `load_sources_for_entry_with_index` stays the dotted-only base for callers
 /// without a pool index.
-fn load_sources_for_entry_with_pool(
-    index: &MultiEntryIndex,
-    entry_path: &str,
+/// The ONE closure-extension authority: run the bare/service-name and the
+/// module-path reference closures to a joint fixpoint (each newly-pulled module
+/// can carry either edge kind). Both source loaders — the per-entry witness
+/// loader and the affected-set compile-clean gate loader — call this, so the
+/// single-authority claim in `extend_with_reference_closure`'s doc-comment is
+/// true by construction rather than by two functions happening to hold identical
+/// loop bodies (the §2 duplicate that dissolving the §3 fork would otherwise
+/// have left behind).
+fn extend_sources_to_both_closure_fixpoint(
+    mut sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    mei: &MultiEntryIndex,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let mut sources = load_sources_for_entry_with_index(
-        &index.source_files,
-        &index.module_graph_facts,
-        entry_path,
-    )?;
     loop {
         let before = sources.len();
-        sources = extend_with_bare_reference_closure(sources, index)?;
+        sources = extend_with_bare_reference_closure(sources, mei)?;
         sources =
-            extend_with_reference_closure(sources, &index.source_files, &index.module_graph_facts)?;
+            extend_with_reference_closure(sources, &mei.source_files, &mei.module_graph_facts)?;
         sources.sort_by(|a, b| a.path.cmp(&b.path));
         sources.dedup_by(|a, b| a.path == b.path);
         if sources.len() == before {
@@ -4465,6 +4453,18 @@ fn load_sources_for_entry_with_pool(
         }
     }
     Ok(sources)
+}
+
+fn load_sources_for_entry_with_pool(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let sources = load_sources_for_entry_with_index(
+        &index.source_files,
+        &index.module_graph_facts,
+        entry_path,
+    )?;
+    extend_sources_to_both_closure_fixpoint(sources, index)
 }
 
 fn load_sources_for_entry_with_index(
