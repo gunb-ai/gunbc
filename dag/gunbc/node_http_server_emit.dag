@@ -19,6 +19,7 @@ import extdeps.http.server {
 }
 import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
 import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority, belt_dispatch_path_prefix }
+import gunbc.roadmap_belt_actuate { belt_dispatch_env_var, belt_actuate_workdir }
 import gunbc.roadmap_static_site { roadmap_site_text_static_routes }
 import extdeps.languages.typescript.program {
   TsProgram,
@@ -536,11 +537,11 @@ fn roadmap_dashboard_dispatch_route_config() -> BeltDispatchRouteConfig {
   BeltDispatchRouteConfig {
     path_prefix: belt_dispatch_path_prefix,
     gunbc_bin: "/opt/gunbc/bin/gunbc",
-    repo_cwd: "/opt/gunbc/gunbc",
+    repo_cwd: belt_actuate_workdir as String,
     source_roots: ["dag", "src/v2"],
     entry: "dag/gunbc/roadmap_belt_actuate.dag",
     function_name: "belt_dispatch_node_cli",
-    env_var: "GUNBC_BELT_NODE_ID",
+    env_var: belt_dispatch_env_var as String,
   }
 }
 
