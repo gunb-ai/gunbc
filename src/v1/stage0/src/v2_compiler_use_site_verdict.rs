@@ -8,7 +8,7 @@ use crate::usv_pilot_v2_std_node::{
     named_edge_target_lookup, node_rebuild, node_synthetic, Connective, Edge, EdgeLabel,
     NamedEdgeTargetLookup, Node, NodeKind, Symbol,
 };
-use im_rc::{vector as vec, Vector as Vec};
+use im::{vector as vec, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

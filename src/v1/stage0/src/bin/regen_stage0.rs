@@ -1,4 +1,4 @@
-use im_rc::HashMap;
+use im::HashMap;
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;

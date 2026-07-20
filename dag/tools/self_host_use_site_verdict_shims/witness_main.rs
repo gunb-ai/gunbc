@@ -1,4 +1,4 @@
-use im_rc::vector as vec;
+use im::vector as vec;
 use std::rc::Rc;
 use v1_compiled::v2_compiler_use_site_verdict as emitted;
 use v1_compiled::v2_std_node::{node_synthetic, Behavior, NodeKind};

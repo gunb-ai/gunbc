@@ -135,7 +135,7 @@ fn same_tree_cross_parent_conflict_is_ledgered_not_refused() {
 // reading the per-module result the floor's receipt line aggregates — the same shape
 // variant_export_surface_witness_test uses.
 fn typecheck_fixture_incremental(files: &[(&str, &str)]) -> Vec<Rc<TypecheckModuleResult>> {
-    let sources: im_rc::Vector<Rc<SourceFile>> = files
+    let sources: im::Vector<Rc<SourceFile>> = files
         .iter()
         .map(|(path, content)| {
             Rc::new(SourceFile {
@@ -153,8 +153,8 @@ fn typecheck_fixture_incremental(files: &[(&str, &str)]) -> Vec<Rc<TypecheckModu
     let norm = normalize_graph(graph, source_indices.clone());
     let intern_table: Rc<InternTable> = frontend.intern_table.clone();
 
-    let mut module_index: Rc<im_rc::HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
-    let mut variant_surfaces: Rc<im_rc::HashMap<String, Rc<VariantExportSurface>>> =
+    let mut module_index: Rc<im::HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
+    let mut variant_surfaces: Rc<im::HashMap<String, Rc<VariantExportSurface>>> =
         v1_rt::rc_empty_map();
     let mut results = Vec::new();
     for resolved in norm.graph.modules.iter() {

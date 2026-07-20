@@ -1,4 +1,4 @@
-use im_rc::HashMap;
+use im::HashMap;
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_parse::parse_with_table;
