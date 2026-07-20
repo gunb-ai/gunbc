@@ -2923,6 +2923,10 @@ pub struct ModuleGraphFactsLive {
     // state `entry_file_touched_via_import_closure` may refuse on. Every other edgeless entry has
     // a known-empty dependency set and a precise `{self}` closure.
     reference_unaccounted: HashSet<String>,
+    // Reverse of `build_import_adjacency`'s internal `module_to_path`: declared module name by
+    // repo path. Built once here so `reference_only_direct_import_modules` (the typed-module
+    // content-key's reference-derived import term, PR-γ) does not re-derive it per module.
+    path_to_module: HashMap<String, String>,
 }
 
 #[cfg(test)]
@@ -3370,6 +3374,10 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         .iter()
         .map(|n| workspace_relative_repo_path(&n.path))
         .collect();
+    let path_to_module: HashMap<String, String> = nodes
+        .iter()
+        .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
+        .collect();
     ModuleGraphFactsLive {
         edges,
         nodes,
@@ -3377,6 +3385,7 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         selection_adjacency,
         declared_paths,
         reference_unaccounted,
+        path_to_module,
     }
 }
 
@@ -3422,6 +3431,35 @@ impl ModuleGraphFactsLive {
     /// the set precomputed at facts build.
     pub(crate) fn declares_repo_path(&self, rel: &str) -> bool {
         self.declared_paths.contains(rel)
+    }
+
+    /// The dotted module names `importer_repo_path` depends on ONLY through a strict-tier
+    /// reference edge (`selection_adjacency` minus `adjacency`) — i.e. the direct-import term
+    /// a stripped (no `import` line) module is otherwise missing from its typed-module content
+    /// key (DESIGN §3: consumes the same `selection_adjacency` authority affected-set selection
+    /// already reads; no second reference-edge producer). An import-bearing file's declared
+    /// imports are already covered by `resolved.resolved_imports`, so this returns empty for it
+    /// (`adjacency` and `selection_adjacency` agree on such a file — see
+    /// `reference_resolution_facts` pass 2).
+    pub(crate) fn reference_only_direct_import_modules(&self, importer_repo_path: &str) -> Vec<String> {
+        let import_targets: HashSet<&str> = self
+            .adjacency
+            .get(importer_repo_path)
+            .into_iter()
+            .flatten()
+            .map(|s| s.as_str())
+            .collect();
+        let mut out: Vec<String> = self
+            .selection_adjacency
+            .get(importer_repo_path)
+            .into_iter()
+            .flatten()
+            .filter(|p| !import_targets.contains(p.as_str()))
+            .filter_map(|p| self.path_to_module.get(p).cloned())
+            .collect();
+        out.sort();
+        out.dedup();
+        out
     }
 }
 
