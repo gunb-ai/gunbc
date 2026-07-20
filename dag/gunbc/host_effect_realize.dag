@@ -71,9 +71,10 @@ import gunbc.srv3_actuate_shell_paths {
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.ci_deploy_access {
   DeployAccess, DeployAccessActor,
-  deploy_access_check, deploy_access_check_observed,
+  deploy_access_check,
   deploy_access_decision_reason,
 }
+import gunbc.ci_deploy_access_observe { deploy_access_check_observed }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
 import gunbc.host_build_cache_catalog_gate {

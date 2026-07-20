@@ -4,7 +4,8 @@ import std.types { NonEmptyStr, String, Bool }
 import std.access { AccessDecision, Permit, Deny, decision_meet }
 import extdeps.shell
 import extdeps.shell.exec { transport_script_from_body }
-import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
+import extdeps.diagnostic.ssh { ssh_session_exec_script }
+import gunbc.host_effect { LocalShell, SshShell, EmitArtifactThenThinRun }
 import gunbc.ci_deploy_access {
   DeployAccess,
   DeployAccessActor,

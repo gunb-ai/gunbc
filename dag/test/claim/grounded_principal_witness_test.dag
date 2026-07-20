@@ -112,10 +112,35 @@ fn witness_operator_grounded_access_gate_permits() -> Bool {
   }
 }
 
-fn witness_deploy_preflight_script_is_dash_safe() -> Bool {
-  let script = deploy_access_preflight_script(access: ci_deploy_srv1_access)
-  !string_contains(s: script, pattern: "pipefail")
-    && string_contains(s: script, pattern: deploy_preflight_shell_header)
+fn witness_deploy_authorization_query_grounds_expected_principal() -> Bool {
+  let query = deploy_access_authorization_query(access: ci_deploy_srv1_access)
+  query.expected_principal == "ghrunner"
+    && query.envelope.grants.count() == 5
+}
+
+fn witness_deploy_preflight_plan_has_whoami_plus_privileged_probes() -> Bool {
+  let plan = deploy_access_preflight_plan(access: ci_deploy_srv1_access)
+  plan.steps.count() == 6
+}
+
+fn witness_deploy_grant_admits_apt_get_probe() -> Bool {
+  match deploy_access_grant_admits_probe(
+    access: ci_deploy_srv1_access,
+    cmd: deploy_access_apt_get_privileged_command()
+  ) {
+    Admitted { via_root: _ } => true
+    EffectOutsideGrant { verb: _, target: _, frame: _ } => false
+  }
+}
+
+fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
+  match deploy_access_grant_admits_probe(
+    access: ci_deploy_srv1_access,
+    cmd: PrivilegedCommand { path: "/usr/bin/bash" as NonEmptyStr, check: "--version" as NonEmptyStr }
+  ) {
+    Admitted { via_root: _ } => false
+    EffectOutsideGrant { verb: _, target: _, frame: _ } => true
+  }
 }
 
 fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
@@ -143,6 +168,9 @@ test fn grounded_principal_witnesses() -> Bool {
     && witness_operator_secret_binding_uses_fleet_gcp_member()
     && witness_ci_runner_grounded_access_gate_permits()
     && witness_operator_grounded_access_gate_permits()
-    && witness_deploy_preflight_script_is_dash_safe()
+    && witness_deploy_authorization_query_grounds_expected_principal()
+    && witness_deploy_preflight_plan_has_whoami_plus_privileged_probes()
+    && witness_deploy_grant_admits_apt_get_probe()
+    && witness_deploy_grant_refuses_outside_envelope()
     && witness_posix_sudo_grant_materializes_execute_grant()
 }
