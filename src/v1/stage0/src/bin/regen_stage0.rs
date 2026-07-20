@@ -721,11 +721,14 @@ fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
 }
 
 fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
+    // Run from the generated crate root: `cargo fmt --manifest-path <temp>/Cargo.toml`
+    // from the workspace cwd is a no-op on the emitted sources (rustfmt never reaches
+    // them), which leaves verify comparing flattened emit to rustfmt_workspace-shaped
+    // committed files. current_dir is the minimal fix; see regen-g vs regen-verify drift.
     let output = Command::new("cargo")
+        .current_dir(dir)
         .arg("fmt")
         .arg("--all")
-        .arg("--manifest-path")
-        .arg(dir.join("Cargo.toml"))
         .output()
         .map_err(|e| format!("spawn cargo fmt for {}: {e}", dir.display()))?;
     if output.status.success() {
