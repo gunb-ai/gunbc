@@ -113,6 +113,32 @@ fn sizing_badge(rn: RoadmapNode) -> List<MarkupNode> {
   }
 }
 
+data dispatch_button_note: String = "The launch button (roadmap belt A, operator 2026-07-20: manual click-to-dispatch). Rendered on every NOT-signoff-done node (open OR review -- DONE = the operator's signoff, never a merged PR), carrying data-node = the node id. The client script POSTs to /dispatch/NODE, which both A (Node exec route) and B (gunbc serve in-process) answer -- the button is transport-agnostic, so the backend swaps under it with zero page change. The JS is authored escape-free (no < > &) so it survives std.markup text escaping intact -- the same way roadmap_css() rides inside <style>; no raw-text-element modeling needed for this payload."
+
+fn dispatch_button_nodes(rn: RoadmapNode, merged: List<Int>) -> List<MarkupNode> {
+  if node_status_symbol(rn: rn, merged: merged) == "done" {
+    []
+  } else {
+    [
+      ElementNode {
+        tag: "button",
+        attrs: [
+          MarkupAttr { name: "class", value: "dispatch-btn" },
+          MarkupAttr { name: "type", value: "button" },
+          MarkupAttr { name: "data-node", value: rn.node as String },
+        ],
+        children: [ txt("dispatch") ],
+      },
+    ]
+  }
+}
+
+data dispatch_client_js: String = "document.querySelectorAll('.dispatch-btn').forEach(function(b)\{b.addEventListener('click',function()\{b.disabled=true;b.textContent='dispatching...';fetch('/dispatch/'+encodeURIComponent(b.getAttribute('data-node')),\{method:'POST'\}).then(function(r)\{return r.json();\}).then(function(j)\{b.textContent=j.ok?('dispatched: '+j.node):'failed';if(!j.ok)\{console.log('dispatch failed',j);\}b.disabled=false;\}).catch(function(e)\{b.textContent='error';b.disabled=false;\});\});\});"
+
+fn dispatch_client_script() -> MarkupNode {
+  el("script", [ txt(dispatch_client_js) ])
+}
+
 fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkupNode {
   let status = node_status_symbol(rn: rn, merged: merged)
   let head = concat(
@@ -148,7 +174,7 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
   ElementNode {
     tag: "li",
     attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
-    children: concat(head, child_block),
+    children: concat(concat(head, dispatch_button_nodes(rn: rn, merged: merged)), child_block),
   }
 }
 
@@ -193,7 +219,7 @@ fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
   ElementNode {
     tag: "li",
     attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
-    children: head,
+    children: concat(head, dispatch_button_nodes(rn: rn, merged: merged)),
   }
 }
 
@@ -232,6 +258,7 @@ fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Mark
         el_class("main", "daily-workspace", [
           roadmap_frontier_markup(frontier: frontier, merged: merged),
         ]),
+        dispatch_client_script(),
       ]),
     ],
   }
@@ -253,6 +280,7 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
       el("body", [
         el("header", [ el("h1", [ txt("gunbc — roadmap") ]) ]),
         el_class("main", "roadmap", main_children),
+        dispatch_client_script(),
       ]),
     ],
   }
