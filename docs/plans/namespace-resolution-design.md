@@ -362,4 +362,101 @@ collecting every unresolved-name error.
   fail-closed (Rule 2), the honest cost of "no ambiguity." The alternative (narrower per-module
   scope) kills the sibling-access ergonomics the operator asked for; not taken.
 
+## 10. Runtime dispatch is the FOURTH consumer — the fork is three-way, not two (zesty-deer-446, 2026-07-19)
+
+**Finding, proven by execution: the import list is already inert. NEITHER typecheck NOR runtime
+binds through it.** This is not "typecheck resolves against imports, runtime against registration
+order" (the framing this lane inherited) — it is *two different arbitrary rules, neither of which
+is the declared import*, plus a declaration nothing reads. §2.1's argument that imports are a
+dual representation is therefore **empirically confirmed and stronger than stated**: they are not
+a redundant-but-working authority to retire, they are a **dead** one.
+
+### 10.1 The evidence
+
+Instrumented probe (not inferred from diagnostics — see 10.2 for why that was necessary). Two
+modules each declare `twin_sig`, distinguishable by arity; a third imports it **from `twin_p`**
+and calls it. Reading what the frontend's own resolver returns:
+
+```
+planted module imports: test.claim.sigprobe.twin_p { twin_sig }     // 1 param
+                        test.claim.sigprobe.twin_q { twin_q_anchor } // twin_q's twin_sig: 3 params
+
+func_env.parents = [twin_q, v2.std.live_tree, std.types, std.algebra,
+                    std.error_primitives, twin_p]
+lookup_resolved_sig(planted.func_env, "twin_sig") -> 3 PARAMS      // == twin_q
+```
+
+`lookup_resolved_sig` (`v1_compiler_infer_sigs.rs:108-119`) checks `local`, then folds `parents`
+taking the **first hit**. `parents` carries *which modules are imported*, never the selective name
+list — `import M { f }` and `import M { g }` are indistinguishable in it — and its order is
+incidental (note the two twins sit at opposite ends with std modules between them). So the
+frontend binds `twin_q`, which the source never imported.
+
+The three claimants:
+
+| claimant | actual rule | honors the import list? |
+|---|---|---|
+| `import M { f }` | declared | **nothing reads it** |
+| typecheck (`lookup_resolved_sig`) | first hit in `func_env.parents`, incidental order | no |
+| runtime (`v1_interpreter fn_nodes`) | last insert into a bare-name map, file-path order | no |
+
+They diverge because the *collections* differ, not because one is right. Consequence for the
+incident that opened this lane (`import_closure` in `effect_reach.dag`): main was green on that
+pair by coincidence at **two** layers, not one.
+
+### 10.2 Why "no diagnostic" proved nothing (method note — do not repeat)
+
+Three black-box probes were run first and all failed to discriminate, because the compiler does
+not reject the mismatches they relied on: a call labelled with a parameter the bound signature
+does not declare resolves clean, **and** a `test fn` declaring `-> Bool` whose callee returns
+`Int` also resolves clean (caught only by the claim harness at runtime). With both label and
+return-type checking inert for this shape, *absence of a diagnostic carries no information about
+which declaration was bound.* Only direct observation of the resolver's return value settles it.
+Two adjacent gaps this surfaced, both independent of naming and worth their own lanes:
+`module_skips_direct_call_arg_check` (`v1_compiler_infer.rs:1233-41`) exempting all `v2.*` and
+`v1.compiler.*` from compile-time direct-call argument checking — the exemption under which 33
+silently-dropped-`diagnostics:` call sites accumulated (fixed #6896) — and the unchecked
+declared-vs-actual return type above.
+
+### 10.3 What "fold runtime dispatch into this lane" means, concretely
+
+§3 names three consumers of the one containment tree (resolution walks it, content-addressing
+hashes it, termination reads its sub-value edges). **Dispatch is a fourth, and was unmodeled.**
+Naming it here is the whole consolidation: it converts component 1 of the bare-name dispatch fork
+from *build a fourth resolver* into *delete a fork*.
+
+- **`v1_interpreter fn_nodes` dissolves.** It is not fixed, re-keyed, or taught about imports — it
+  is deleted. Dispatch reads the same `SymbolIndex` the resolver reads.
+- **Ambiguity already has its typed refusal.** `GlobalBareLookup`'s `GlobalBareLookupAmbiguous` is
+  exactly the §2.4 outcome ("a name resolving to ≥2 nodes is a typed, located error — never a
+  flat-namespace pick"), and it is the direct answer to the dispatch fork's requirement that a
+  bare name ambiguous in the loaded pool refuse rather than pick a winner. Nothing new is minted.
+- **Cost shape is preserved.** Dispatch stays one map hit — on `QualifiedName` into
+  `SymbolIndex.entries` rather than on a bare `String` into `fn_nodes`. It is NOT a per-call
+  ancestor walk; the tree is materialized once by fill (§7.5's fill-once discipline), so §6's
+  "bare minimum cost" is satisfied by construction rather than by measurement. *This is the
+  claim most worth falsifying before implementation — it is the difference between a cheap
+  substitution and a rewrite.*
+- **Migration rides §8 unchanged.** When a subtree flips to `namespace-only-Y`, its runtime
+  dispatch keys on the same index in the same motion. The two cannot drift because there is only
+  one thing; a flip that moved resolution without moving dispatch would re-open the fork.
+
+**Why it must NOT ship standalone.** Every standalone fix threads a *fourth* rule into a system
+that already has three, and two of the three are wrong:
+- threading `ResolvedImport.specific_names` (resolve-stage, `v1_compiler_resolve.rs:37-40`) into
+  the interpreter makes **runtime** honor imports while typecheck still does not — converting
+  shared arbitrariness into a genuine new divergence. Strictly worse.
+- stamping the call site (the shape `MethodSemantics` already uses for algebra/service calls,
+  where plain `CallSemantics` carries no target) is the right *shape*, but a stamp is only as good
+  as the resolver producing it — so it would first require hardening `lookup_resolved_sig` to
+  honor a mechanism §7 deletes. Paying twice.
+
+**Interim, if the flip is not immediate.** The only defensible holding position is *visibility, not
+a fix*: extend the existing binding-fork ledger (`cli_run.rs:5187-98`, which already counts
+declaration-side multiplicity at typecheck, out-of-band, overlay-wins preserved) to also record
+what runtime actually dispatched. Counted and typed, never an arm that widens (§5). The loud
+subset is already closed — the application-site contract wall (#6896) turns the
+mismatched-signature case into a typed `CallContractMismatch`; what remains silent is the
+same-signature case, which only this lane's flip can catch.
+
 Related: [type environment: single import authority + scope cursor](type-env-single-authority-design.md) — the type-env/SymbolIndex lane design this walk-rule migration rides on · [interface summaries and the declared↔use arity family](interface-summary-declared-use-arity.md) — the `std.interface_summary` carrier consumed by interface-grain resolve.
