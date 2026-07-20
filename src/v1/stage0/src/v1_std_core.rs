@@ -240,6 +240,7 @@ pub enum ExprErrorKind {
     ParseRecoveryError,
     SemanticExprError,
     InternalExprError,
+    CensusHeadsBodyStripped,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

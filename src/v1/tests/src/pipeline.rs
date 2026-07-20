@@ -1361,7 +1361,8 @@ fn front_end_resilience_partial_graph_excludes_only_the_broken_module() {
 #[test]
 fn pool_parse_heads_only_does_not_prefill_parse_cache() {
     use v1_compiler::cli_run::{
-        build_multi_entry_index, parse_cache_contains_path_for_test, resolve_entry_with_index,
+        build_multi_entry_index, parse_cache_contains_path_for_test, parse_cache_paths_for_test,
+        resolve_entry_with_index,
     };
 
     let stamp = std::time::SystemTime::now()
@@ -1405,7 +1406,8 @@ fn pool_parse_heads_only_does_not_prefill_parse_cache() {
     );
     assert!(
         parse_cache_contains_path_for_test(&index, &entry_path),
-        "closure resolve must still cache full bodies for compiled modules"
+        "closure resolve must still cache full bodies for compiled modules (entry_path={entry_path:?}, parse_cache_keys={:?})",
+        parse_cache_paths_for_test(&index),
     );
     cleanup();
 }
@@ -1416,7 +1418,7 @@ fn census_heads_fn_stand_in_is_fail_loud_not_empty() {
         census_heads_body_traversal_refusal, census_heads_fn_stand_in_for_test,
         is_census_heads_fn_stand_in,
     };
-    use v1_compiler::v1_std_core::ExprData;
+    use v1_compiler::v1_std_core::{ExprData, ExprErrorKind};
 
     let stand_in = census_heads_fn_stand_in_for_test();
     assert!(
@@ -1424,8 +1426,14 @@ fn census_heads_fn_stand_in_is_fail_loud_not_empty() {
         "stand-in must be identifiable by name/pointer"
     );
     assert!(
-        matches!(&*stand_in.expr_data, ExprData::ExprError { .. }),
-        "stand-in must carry ExprError so body-content traversal refuses, not succeed on emptiness"
+        matches!(
+            &*stand_in.expr_data,
+            ExprData::ExprError {
+                kind: ExprErrorKind::CensusHeadsBodyStripped,
+                ..
+            }
+        ),
+        "stand-in must carry CensusHeadsBodyStripped so infer_expr raises a hard diagnostic"
     );
     assert!(
         stand_in.children.is_empty() && stand_in.body.is_none(),
@@ -1441,9 +1449,7 @@ fn census_heads_fn_stand_in_is_fail_loud_not_empty() {
 fn census_heads_fn_stand_in_preserves_body_presence_discriminator() {
     use im::HashMap;
     use std::rc::Rc;
-    use v1_compiler::cli_run::{
-        census_heads_module_node_for_test, is_census_heads_fn_stand_in,
-    };
+    use v1_compiler::cli_run::{census_heads_module_node_for_test, is_census_heads_fn_stand_in};
     use v1_compiler::v1_compiler_infer::local_binding_for_item;
     use v1_compiler::v1_compiler_parse::parse_with_table;
     use v1_compiler::v1_compiler_tokenize::tokenize;
@@ -1547,7 +1553,9 @@ fn census_heads_fn_stand_in_naive_infer_expr_refuses_not_succeeds() {
     use v1_compiler::v1_compiler_infer::{infer_expr, InferScope};
     use v1_compiler::v1_compiler_infer_env::empty_type_env;
     use v1_compiler::v1_compiler_infer_sigs::ResolvedFuncEnv;
-    use v1_compiler::v1_std_core::ExprData;
+    use v1_compiler::v1_std_core::{
+        diagnostic_to_message, is_error_diagnostic, ExprData, ExprErrorKind,
+    };
 
     let stand_in = census_heads_fn_stand_in_for_test();
     let scope = Rc::new(InferScope {
@@ -1555,7 +1563,7 @@ fn census_heads_fn_stand_in_naive_infer_expr_refuses_not_succeeds() {
         func_env: Rc::new(ResolvedFuncEnv {
             name: "test.census_heads_naive".to_string(),
             local: Rc::new(HashMap::new()),
-            parents: Rc::new(vec![]),
+            parents: Rc::new(im::vector![]),
         }),
         locals: Rc::new(HashMap::new()),
         body_locals: Rc::new(HashMap::new()),
@@ -1567,8 +1575,33 @@ fn census_heads_fn_stand_in_naive_infer_expr_refuses_not_succeeds() {
     });
     let result = infer_expr(stand_in, scope, None);
     assert!(
-        matches!(&*result.typed.expr_data, ExprData::ExprError { .. }),
-        "naive infer_expr traversal must return ExprError, not fabricate a resolved type"
+        matches!(
+            &*result.typed.expr_data,
+            ExprData::ExprError {
+                kind: ExprErrorKind::CensusHeadsBodyStripped,
+                ..
+            }
+        ),
+        "naive infer_expr traversal must return CensusHeadsBodyStripped, not fabricate a resolved type"
+    );
+    let diag_msgs: Vec<String> = result
+        .diagnostics
+        .iter()
+        .map(|diag| diagnostic_to_message(diag.diagnostic.clone()))
+        .collect();
+    assert!(
+        !diag_msgs.is_empty(),
+        "naive infer_expr on stand-in must raise a hard diagnostic without calling predicates"
+    );
+    assert!(
+        result.diagnostics.iter().all(|d| is_error_diagnostic(d.diagnostic.clone())),
+        "stand-in inference diagnostic must be hard/blocking, not advisory"
+    );
+    assert!(
+        diag_msgs
+            .iter()
+            .any(|msg| msg.contains("pool census heads-only")),
+        "diagnostic must locate the stripped-body refusal, got {diag_msgs:?}"
     );
 }
 

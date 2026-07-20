@@ -4773,9 +4773,18 @@ pub fn build_multi_entry_index_with_shared_caches(
 }
 
 /// Test-only: whether `parse_cache` holds a path (pool census must not pre-fill it).
-#[cfg(test)]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn parse_cache_contains_path_for_test(index: &MultiEntryIndex, path: &str) -> bool {
-    index.parse_cache.borrow().contains_key(path)
+    index
+        .parse_cache
+        .borrow()
+        .keys()
+        .any(|k| k == path || same_canonical_file(k, path))
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn parse_cache_paths_for_test(index: &MultiEntryIndex) -> Vec<String> {
+    index.parse_cache.borrow().keys().cloned().collect()
 }
 
 fn new_multi_entry_index_shell(
@@ -4814,9 +4823,13 @@ struct PoolParse {
 }
 
 // Shared per-thread stand-in so stripped fn decls keep `body.is_some()` for
-// `local_binding_for_item`'s fn discriminator. The stand-in is deliberately
-// uninterpretable (ExprError + stable name) so any consumer that walks body
-// CONTENT refuses instead of silently succeeding on emptiness.
+// `local_binding_for_item`'s fn discriminator. Loud-on-inference only:
+// `ExprErrorKind::CensusHeadsBodyStripped` raises a hard diagnostic in `infer_expr`;
+// it is NOT a complete guard against non-inference body-content reads (direct
+// ExprData traversal, emit, node-count, etc.). `is_census_heads_fn_stand_in` and
+// `census_heads_body_traversal_refusal` are dev-convenience query helpers, not the
+// safety mechanism — follow-up (B): standing test forbidding pool.nodes_by_file
+// consumers from descending into a body.
 const CENSUS_HEADS_FN_STAND_IN_NAME: &str = "^census_heads_fn_stand_in";
 
 thread_local! {
@@ -4838,7 +4851,7 @@ thread_local! {
         has_non_tail_self_call: false,
         match_pattern: None,
         expr_data: Rc::new(ExprData::ExprError {
-            kind: ExprErrorKind::InternalExprError,
+            kind: ExprErrorKind::CensusHeadsBodyStripped,
             message: "pool census heads-only: function body stripped — refuse to interpret"
                 .to_string(),
         }),
@@ -4855,7 +4868,8 @@ pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
         || Rc::ptr_eq(node, &STRIPPED_FN_BODY_MARKER.with(Rc::clone))
 }
 
-/// Typed refusal when a traversal reaches the census heads-only fn stand-in body.
+/// Optional query helper for non-inference traversals. Loud refusal on inference is
+/// enforced by `ExprErrorKind::CensusHeadsBodyStripped` in `infer_expr`, not this API.
 pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
     if is_census_heads_fn_stand_in(node) {
         Some(format!(
@@ -4867,12 +4881,12 @@ pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn census_heads_fn_stand_in_for_test() -> Rc<Node> {
     stripped_fn_body_marker()
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn census_heads_module_node_for_test(module: Rc<Node>) -> Rc<Node> {
     census_heads_module_node(module)
 }
