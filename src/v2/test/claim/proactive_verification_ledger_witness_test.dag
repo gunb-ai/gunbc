@@ -1,31 +1,29 @@
 module v2.test.claim.proactive_verification_ledger_witness
 
 import gunbc.proactive_verification_ledger {
-  WholeCorpusWitnessParityCold,
-  CompileCleanParity,
-  RegenBehavioralFixedPoint,
-  FamilyEqualsEval,
   ledger_all_spine_kinds_present,
   ledger_blocked_count,
   ledger_executable_now_count,
   ledger_family_row_count,
   ledger_known_red_count,
   ledger_spine_row_count,
-  ledger_total_row_count
+  ledger_total_row_count,
+  ledger_v1_delete_required_green_count
 }
 import tools.proactive_verification_ledger_transport { run_executable_ledger_rows }
 import v2.std.logic { Bool }
 
-data proactive_verification_ledger_witness_note: String = "OVERLAP-START receipt (sunny-lynx-241, operator no-soak 2026-07-20): the proactive verification ledger is enumerated on the carrier (dag/gunbc/proactive_verification_ledger.dag) and overlap-executable rows run green by execution. Spine rows (whole-corpus falsifier cold, compile-clean, regen fixed point) are honestly BlockedOnCiFloorCutover until that milestone lands — never calendar soak. Known-red family equals_eval rows are counted, not silently skipped. v1_delete gates on ALL rows ExecutableNow or un-quarantined green."
+data proactive_verification_ledger_witness_note: String = "OVERLAP-START receipt (sunny-lynx-241, operator no-soak 2026-07-20): the proactive verification ledger is enumerated on dag/gunbc/proactive_verification_ledger.dag (12 rows: 3 spine + 9 witness-realization families). Overlap-executable family rows (add/match/loop/classical_not_ingested) run green by execution; spine + five family rows are honestly OutcomePending until ci_floor_cutover / #6912 / fold eval arc. v1_delete gates on ALL 12 rows OutcomeGreen — never calendar soak."
 
 test fn proactive_verification_ledger_enumeration_holds() -> Bool {
   ledger_spine_row_count() == 3
-    && ledger_family_row_count() == 12
-    && ledger_total_row_count() == 15
+    && ledger_family_row_count() == 9
+    && ledger_total_row_count() == 12
+    && ledger_v1_delete_required_green_count() == 12
     && ledger_all_spine_kinds_present() == true
     && ledger_blocked_count() == 3
-    && ledger_known_red_count() == 6
-    && ledger_executable_now_count() == 6
+    && ledger_known_red_count() == 5
+    && ledger_executable_now_count() == 4
 }
 
 test fn proactive_verification_ledger_overlap_execution_holds() -> Bool {
