@@ -1,5 +1,5 @@
 use crate::v1_rt::VecCompat;
-use im_rc::HashMap;
+use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::fmt;
@@ -7,9 +7,9 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Instant;
 
-use im_rc::HashMap as HamtMap;
-use im_rc::OrdSet;
-use im_rc::Vector as RrbVector;
+use im::HashMap as HamtMap;
+use im::OrdSet;
+use im::Vector as RrbVector;
 
 use crate::cli_run::value_to_wire_json;
 use crate::std_syntax::BinOp;
@@ -1232,7 +1232,7 @@ impl ExecutionMode {
 }
 
 pub struct InterpContext {
-    pub modules: Rc<im_rc::Vector<Rc<TypedModule>>>,
+    pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
@@ -3368,7 +3368,7 @@ fn eval_recompute_frame_integrate(f: &mut EvalRecomputeFrame, child_h: u64) {
             f.h = eval_recompute_mix(mixed, child_h);
         }
         EvalRecomputeFrameKind::Map { key_hashes, .. } => {
-            // Order-independent combine: im_rc map iteration order is not
+            // Order-independent combine: im map iteration order is not
             // content-canonical, so entries fold commutatively.
             f.h =
                 f.h.wrapping_add(eval_recompute_mix(key_hashes[f.idx], child_h));
@@ -8800,12 +8800,12 @@ fn record_flatten_site(items: usize, loc: &'static std::panic::Location<'static>
 
 /// Hypothesis-B instrumentation (adhoc-c328b166-bca residual hunt): every
 /// `Cons { head, tail }` pattern match against a native `Value::List` clones
-/// the receiver and `split_off(1)`s it to build `tail`. `im_rc::Vector` makes
+/// the receiver and `split_off(1)`s it to build `tail`. `im::Vector` makes
 /// this O(log n) once tree-ified, not the O(n) `free_monoid_to_vec` disease --
 /// but `list_tail`'s call volume across a memoized parse (one call per
 /// position, threaded through `parse_current_position`) could still sum to a
 /// superlinear total. `calls` and `receiver_len_sum` let the ladder answer
-/// that by execution instead of by reading `im_rc`'s source.
+/// that by execution instead of by reading `im`'s source.
 static LIST_CONS_TAIL_SPLIT: (std::sync::atomic::AtomicU64, std::sync::atomic::AtomicU64) = (
     std::sync::atomic::AtomicU64::new(0),
     std::sync::atomic::AtomicU64::new(0),
@@ -9764,7 +9764,7 @@ mod shell_completion_trace_tests {
 mod argv_arg_limit_test {
     use std::rc::Rc;
 
-    use im_rc::{vector as im_vec, HashMap};
+    use im::{vector as im_vec, HashMap};
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;

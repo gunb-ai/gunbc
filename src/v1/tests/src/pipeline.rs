@@ -1,8 +1,8 @@
 #![allow(clippy::disallowed_macros)]
 
 use crate::helpers::*;
-use im_rc::HashMap;
-use im_rc::OrdSet as BTreeSet;
+use im::HashMap;
+use im::OrdSet as BTreeSet;
 use serde_json::Value;
 use std::rc::Rc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
@@ -1929,7 +1929,7 @@ fn dag_artifact_deref_node<'a>(artifact: &'a Value, node_ref: &'a Value) -> &'a 
         .unwrap_or_else(|| panic!("missing node {id} in nodes table"))
 }
 
-fn normalize_typed_graph(value: &Value, name_map: &im_rc::HashMap<&str, String>) -> Value {
+fn normalize_typed_graph(value: &Value, name_map: &im::HashMap<&str, String>) -> Value {
     match value {
         Value::Object(map) => {
             let mut out = serde_json::Map::new();
@@ -1999,8 +1999,8 @@ fn assert_scrambled_name_structural_eq(
     let graph_a = typed_graph_json(source_a);
     let graph_b = typed_graph_json(source_b);
 
-    let mut map_a = im_rc::HashMap::new();
-    let mut map_b = im_rc::HashMap::new();
+    let mut map_a = im::HashMap::new();
+    let mut map_b = im::HashMap::new();
     for (i, (na, nb)) in names_a.iter().zip(names_b.iter()).enumerate() {
         let ordinal = format!("__T{}", i);
         map_a.insert(*na, ordinal.clone());
@@ -5939,7 +5939,7 @@ fn review_dag_compiles_to_rust() {
         .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
         .count();
 
-    let mut categories: im_rc::HashMap<String, usize> = im_rc::HashMap::new();
+    let mut categories: im::HashMap<String, usize> = im::HashMap::new();
     for line in check_stderr.lines() {
         if line.starts_with("error[") {
             let code = line.split(']').next().unwrap_or("unknown").to_string() + "]";

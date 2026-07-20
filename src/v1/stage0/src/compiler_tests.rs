@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod compiler_tests {
     use crate::v1_compiler_tokenize::tokenize;
-    use im_rc::HashMap;
+    use im::HashMap;
 
     /// Find workspace root by walking up from the current directory looking for Cargo.toml + dag/
     fn workspace_root() -> std::path::PathBuf {
@@ -236,7 +236,7 @@ mod compiler_tests {
             "test.dag".to_string(),
         );
         let result =
-            crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im_rc::HashMap::new()));
+            crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
@@ -265,7 +265,7 @@ mod compiler_tests {
 
                 let result = crate::v1_compiler_parse::parse(
                     tokens,
-                    std::rc::Rc::new(im_rc::HashMap::new()),
+                    std::rc::Rc::new(im::HashMap::new()),
                 );
 
                 assert!(
@@ -294,7 +294,7 @@ mod compiler_tests {
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo { x: Int, name: String }\nfn add(a: Int, b: Int) -> Int { a + b }\n".to_string(),
                 });
-                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im_rc::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
 
                 assert!(
                     !result.files.is_empty(),
@@ -344,7 +344,7 @@ mod compiler_tests {
                     content: "module module_c\nimport module_a { Widget }\nfn use_widget(w: Widget) -> Widget { w }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im_rc::vector![module_a, module_b, module_c]),
+                    std::rc::Rc::new(im::vector![module_a, module_b, module_c]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let unlisted: Vec<_> = result.diagnostics.iter()
@@ -385,7 +385,7 @@ mod compiler_tests {
                     content: "module module_b\nimport module_a { Sealed }\nfn bad_ctor(v: String) -> Sealed { Sealed { x: v } }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im_rc::vector![module_a, module_b]),
+                    std::rc::Rc::new(im::vector![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
@@ -438,7 +438,7 @@ mod compiler_tests {
                     content: "module module_b\nimport module_a { FieldlessFoo }\nfn bad_ctor() -> FieldlessFoo { FieldlessFoo { } }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im_rc::vector![module_a, module_b]),
+                    std::rc::Rc::new(im::vector![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
@@ -521,7 +521,7 @@ mod compiler_tests {
                     );
                     let result = crate::v1_compiler_parse::parse(
                         tokens,
-                        std::rc::Rc::new(im_rc::HashMap::new()),
+                        std::rc::Rc::new(im::HashMap::new()),
                     );
                     assert!(
                         result.module.is_some(),
@@ -579,7 +579,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources: std::rc::Rc<im_rc::Vector<_>> =
+                let sources: std::rc::Rc<im::Vector<_>> =
                     std::rc::Rc::new(self_compile_sources().into());
                 let source_count = sources.len();
                 let result = crate::v1_compiler_compile::compile_sources(
@@ -1002,13 +1002,13 @@ mod compiler_tests {
             ident_span: Some(span),
             children: std::rc::Rc::new(children.into()),
             connective: crate::v1_std_core::Connective::NoConnective,
-            params: std::rc::Rc::new(im_rc::Vector::new()),
+            params: std::rc::Rc::new(im::Vector::new()),
             inferred: None,
             return_cardinality: crate::v1_std_core::Cardinality::Required,
-            uses: std::rc::Rc::new(im_rc::Vector::new()),
+            uses: std::rc::Rc::new(im::Vector::new()),
             body: None,
             transport: None,
-            properties: std::rc::Rc::new(im_rc::Vector::new()),
+            properties: std::rc::Rc::new(im::Vector::new()),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -1147,7 +1147,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                use im_rc::HashMap;
+                use im::HashMap;
                 use std::time::Instant;
 
                 let sources = self_compile_sources();
@@ -1623,7 +1623,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                use im_rc::HashMap;
+                use im::HashMap;
                 use std::time::Instant;
 
                 let sources = self_compile_sources();

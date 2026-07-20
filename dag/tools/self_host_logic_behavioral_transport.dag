@@ -26,7 +26,7 @@ data slb_cargo_features_note: String = "The driver Cargo.toml declares [features
 
 fn slb_cargo_toml(root: String) -> String {
   concat(
-    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim-rc = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nclap = { version = \"4\", features = [\"derive\"] }\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
+    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nclap = { version = \"4\", features = [\"derive\"] }\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
     concat(root, "/src/v1/stage0\" }\n")
   )
 }

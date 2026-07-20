@@ -1,4 +1,4 @@
-use im_rc::HashMap;
+use im::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 

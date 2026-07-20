@@ -6,7 +6,7 @@
 //! behavior, and lookup/performance invariants until v1.compiler.parse/tokenize
 //! are witness-layer importable.
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::process::ExitCode;
 use std::rc::Rc;
 use std::time::Instant;
@@ -34,7 +34,7 @@ fn read_v2_file(relative_path: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e))
 }
 
-fn tokenize(source: &str) -> Rc<im_rc::Vector<Rc<Token>>> {
+fn tokenize(source: &str) -> Rc<im::Vector<Rc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 
@@ -106,7 +106,7 @@ fn tokenizer_source_ref(source: &str) -> Rc<SourceRef> {
         source
             .chars()
             .map(|c| c as i64)
-            .collect::<im_rc::Vector<_>>(),
+            .collect::<im::Vector<_>>(),
     );
     Rc::new(SourceRef {
         file: "tokenizer_lookup_flat.v3".to_string(),
@@ -720,12 +720,12 @@ fn parser_scales_linearly_with_token_count() {
 
     let start = Instant::now();
     let _small_result =
-        v1_compiler::v1_compiler_parse::parse(small_tokens.clone(), Rc::new(im_rc::HashMap::new()));
+        v1_compiler::v1_compiler_parse::parse(small_tokens.clone(), Rc::new(im::HashMap::new()));
     let small_time = start.elapsed();
 
     let start = Instant::now();
     let _large_result =
-        v1_compiler::v1_compiler_parse::parse(large_tokens.clone(), Rc::new(im_rc::HashMap::new()));
+        v1_compiler::v1_compiler_parse::parse(large_tokens.clone(), Rc::new(im::HashMap::new()));
     let large_time = start.elapsed();
 
     let token_ratio = large_tokens.len() as f64 / small_tokens.len() as f64;
