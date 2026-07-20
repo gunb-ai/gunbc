@@ -3850,6 +3850,14 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         "service",
         "transport",
     ];
+    // Depth of an open `fn(`-literal parameter list: every ident inside is a
+    // BINDER (untyped lambda params — `fn(acc, edge)` — carry no `:` so the
+    // key-position rule never sees them; measured: rust_test.dag's `fn(acc,
+    // edge)` param leaked 'edge' into the reference set and pulled the
+    // unresolvable ownership_movable test module into an unrelated entry).
+    // Typed idents inside (`p: T`, and type names in `fn(A) -> B` annotations)
+    // over-bind harmlessly: a suppressed pull fails LOUD at typecheck.
+    let mut fn_params_depth: usize = 0;
     while i < bytes.len() {
         if bytes[i] == b'"' {
             i += 1;
@@ -3865,6 +3873,15 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         }
         if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
         {
+            if bytes[i] == b'(' {
+                if prev_token == Some("fn") {
+                    fn_params_depth = 1;
+                } else if fn_params_depth > 0 {
+                    fn_params_depth += 1;
+                }
+            } else if bytes[i] == b')' && fn_params_depth > 0 {
+                fn_params_depth -= 1;
+            }
             if !bytes[i].is_ascii_whitespace() {
                 prev_token = None;
             }
@@ -3896,6 +3913,11 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
         let name = &content[start..i];
         // Binding occurrence (`let repo`, `data repo`) — a name being BOUND is
         // never a reference to another module's decl.
+        if fn_params_depth > 0 {
+            out.bound.insert(name.to_string());
+            prev_token = Some(name);
+            continue;
+        }
         if prev_token.is_some_and(|t| binder_keywords.contains(&t)) {
             out.bound.insert(name.to_string());
             prev_token = Some(name);
