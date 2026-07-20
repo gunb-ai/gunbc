@@ -3906,9 +3906,19 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         } else {
             Rc::new(vec![])
         };
+        let v2_std_integer_stub = if (corpus_repr_is_faithful(emit_info.corpus_repr.clone())
+            && !module_files_include_v2_std_integer(module_files.clone()))
+        {
+            Rc::new(vec![emit_v2_std_integer_closure_stub_module()])
+        } else {
+            Rc::new(vec![])
+        };
         let all_mod_files = v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(module_files.clone(), v2_std_text_stub.clone()),
+                v1_rt::concat(
+                    v1_rt::concat(module_files.clone(), v2_std_text_stub.clone()),
+                    v2_std_integer_stub.clone(),
+                ),
                 Rc::new(vec![rt_file.clone()]),
             ),
             dry_run_file.clone(),
@@ -3975,6 +3985,26 @@ pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
         }
         __found
     }
+}
+
+pub fn module_files_include_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+    {
+        let mut __found = false;
+        for f in files.clone().iter().cloned() {
+            if v1_rt::string_contains(&f.path.clone(), "v2_std_integer".to_string()) {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn emit_v2_std_integer_closure_stub_module() -> Rc<TextFile> {
+    Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "v2_std_integer".to_string()), rust_source_ext()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated closure stub — dissolve-on: derive from emitted ref set\n".to_string(), "// Source module: v2.std.integer (closure stub; std_algebra + std_nat only)\n\n".to_string()), "use std::rc::Rc;\n".to_string()), "use crate::std_algebra::GroupCompletion;\n".to_string()), "use crate::std_nat::Nat;\n\n".to_string()), "pub type Int = GroupCompletion<Rc<Nat>>;\n".to_string()),
+})
 }
 
 pub fn emit_v2_std_text_closure_stub_module() -> Rc<TextFile> {
@@ -7779,9 +7809,24 @@ pub fn emit_faithful_text_carrier_import_lines(
                 "use crate::std_types::NonEmptyStr;".to_string(),
             )])
         };
+        let int_line = if rust_import_name_already_resolved(
+            imported_names.clone(),
+            local_type_names.clone(),
+            "Int".to_string(),
+        ) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                rust_visibility_prefix(),
+                "use crate::v2_std_integer::Int;".to_string(),
+            )])
+        };
         v1_rt::concat(
-            v1_rt::concat(free_monoid.clone(), char_line.clone()),
-            non_empty_str.clone(),
+            v1_rt::concat(
+                v1_rt::concat(free_monoid.clone(), char_line.clone()),
+                non_empty_str.clone(),
+            ),
+            int_line.clone(),
         )
     }
 }

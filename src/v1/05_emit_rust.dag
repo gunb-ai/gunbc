@@ -1776,7 +1776,13 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   } else {
     []
   }
-  let all_mod_files = concat(module_files, v2_std_text_stub, [rt_file], dry_run_file)
+  let v2_std_integer_stub = if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr)
+    && !module_files_include_v2_std_integer(files: module_files) {
+    [emit_v2_std_integer_closure_stub_module()]
+  } else {
+    []
+  }
+  let all_mod_files = concat(module_files, v2_std_text_stub, v2_std_integer_stub, [rt_file], dry_run_file)
   let lib_file = emit_lib_rs_from_files(all_module_files: all_mod_files, has_compiler_tests: has_pipeline)
   let files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
   EmitResult { files: files, diagnostics: [] }
@@ -1796,6 +1802,24 @@ fn module_files_reference_v2_std_text(files: List<TextFile>) -> Bool {
 
 fn module_files_include_v2_std_text(files: List<TextFile>) -> Bool {
   files |> any(f => string_contains(s: f.path, pattern: "v2_std_text"))
+}
+
+fn module_files_include_v2_std_integer(files: List<TextFile>) -> Bool {
+  files |> any(f => string_contains(s: f.path, pattern: "v2_std_integer"))
+}
+
+fn emit_v2_std_integer_closure_stub_module() -> TextFile {
+  TextFile {
+    path: concat(rust_source_root(), "v2_std_integer", rust_source_ext()),
+    content: concat(
+      "// Generated closure stub — dissolve-on: derive from emitted ref set\n",
+      "// Source module: v2.std.integer (closure stub; std_algebra + std_nat only)\n\n",
+      "use std::rc::Rc;\n",
+      "use crate::std_algebra::GroupCompletion;\n",
+      "use crate::std_nat::Nat;\n\n",
+      "pub type Int = GroupCompletion<Rc<Nat>>;\n"
+    )
+  }
 }
 
 fn emit_v2_std_text_closure_stub_module() -> TextFile {
@@ -3219,7 +3243,12 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
   } else {
     [concat(rust_visibility_prefix(), "use crate::std_types::NonEmptyStr;")]
   }
-  concat(free_monoid, char_line, non_empty_str)
+  let int_line = if rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "Int") {
+    []
+  } else {
+    [concat(rust_visibility_prefix(), "use crate::v2_std_integer::Int;")]
+  }
+  concat(free_monoid, char_line, non_empty_str, int_line)
 }
 
 fn emit_prelude(imported_names: List<String>) -> String {
