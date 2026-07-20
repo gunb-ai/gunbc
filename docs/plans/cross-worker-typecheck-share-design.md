@@ -206,7 +206,7 @@ Receipt both axes on the same falsifier run: `typecheck_compute` down, `peak_cur
 ## 9. Open decisions for operator
 
 1. **C1 landing gate:** host-only first (oracles green) before model declaration — recommended yes, same pattern as S1.
-2. **Arc migration depth:** store-path-only (minimal seed touch) vs whole-seed `Rc`→`Arc` — recommend store-path-only for increment C; whole-seed is S2b/S7 frontier-eviction co-migration if needed.
+2. **Arc migration depth:** store-path-only (minimal seed touch) vs whole-seed `Rc`→`Arc` — recommend store-path-only for increment C; whole-seed is S2b/S7 frontier-eviction co-migration if needed. **Receipt (2026-07-20):** [Rc→Arc share spike](rc-to-arc-share-spike.md) — module-grain ratio **0.01** (decode ~100× slower than cold typecheck); increment C does not remove the ~55 s warm; lane dead for wall-clock unless transport changes.
 3. **Memory trade acceptance:** proceed with shared retention on the falsifier evidence that width stays > 1; escalate to M2 only if governor receipts regress — recommend proceed (time prize dominates; M2 is pre-authorized).
 
 ---
