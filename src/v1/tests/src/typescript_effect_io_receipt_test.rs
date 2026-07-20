@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, InterpContext, Value};
@@ -15,7 +15,7 @@ fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
 }
 
-fn witness_sources() -> Vec<Rc<SourceFile>> {
+fn witness_sources() -> Vec<Arc<SourceFile>> {
     let entry_content = std::fs::read_to_string(workspace_root().join(WITNESS_ENTRY))
         .unwrap_or_else(|e| panic!("read {WITNESS_ENTRY}: {e}"));
     resolve_imports_transitively_with_source_roots(
@@ -74,7 +74,7 @@ fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
 }
 
 fn emitted_source(function: &str) -> String {
-    let resolved = compile_to_resolved(Rc::new(witness_sources().into()));
+    let resolved = compile_to_resolved(Arc::new(witness_sources().into()));
     let blocking: Vec<String> = resolved
         .diagnostics
         .iter()

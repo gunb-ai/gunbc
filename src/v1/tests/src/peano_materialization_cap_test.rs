@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::std_induction::{
     cost_bound_is_sum_bound, cost_constant, master_theorem, sum_bound, CostBound, RecurrenceForm,
@@ -25,7 +25,7 @@ fn proportional_divisor_rejects_above_256() {
 
 #[test]
 fn sum_bound_has_cost_bound_introspection_consumer() {
-    let terms = Rc::new(im::vector![cost_constant()]);
+    let terms = Arc::new(im::vector![cost_constant()]);
     let b = sum_bound(terms);
     assert!(cost_bound_is_sum_bound(b));
     assert!(!cost_bound_is_sum_bound(cost_constant()));
@@ -33,13 +33,13 @@ fn sum_bound_has_cost_bound_introspection_consumer() {
 
 #[test]
 fn sum_bound_rejects_empty_alternative_stack() {
-    let terms = Rc::new(im::vector![]);
+    let terms = Arc::new(im::vector![]);
     assert!(matches!(sum_bound(terms).as_ref(), CostBound::ErrorBound));
 }
 
 #[test]
 fn master_theorem_rejects_work_exponent_above_peano_cap() {
-    let form = Rc::new(RecurrenceForm {
+    let form = Arc::new(RecurrenceForm {
         param: "n".to_string(),
         branches: 2,
         divisor: 2,
@@ -53,7 +53,7 @@ fn master_theorem_rejects_work_exponent_above_peano_cap() {
 
 #[test]
 fn master_theorem_rejects_negative_work_exponent() {
-    let form = Rc::new(RecurrenceForm {
+    let form = Arc::new(RecurrenceForm {
         param: "n".to_string(),
         branches: 2,
         divisor: 2,

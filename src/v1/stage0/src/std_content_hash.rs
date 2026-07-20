@@ -9,7 +9,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn content_hash_atom(value: String) -> NonEmptyStr {
     v1_rt::atom_identity_hash(value.clone())

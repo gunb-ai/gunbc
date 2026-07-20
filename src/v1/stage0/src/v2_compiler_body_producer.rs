@@ -8,7 +8,7 @@ use crate::usv_pilot_v2_std_node::{
     node_rebuild, node_synthetic, Behavior, Connective, Edge, EdgeLabel, Node, NodeKind, Symbol,
 };
 use im::{vector as vec, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Locus {
@@ -30,8 +30,8 @@ pub enum Correction {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Diagnostic {
     pub reason: Symbol,
-    pub at: Rc<Locus>,
-    pub correction: Rc<Correction>,
+    pub at: Arc<Locus>,
+    pub correction: Arc<Correction>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -39,63 +39,63 @@ pub struct Diagnostic {
 pub enum Outcome<T> {
     Accepted {
         value: T,
-        diagnostics: Rc<Vec<Rc<Diagnostic>>>,
+        diagnostics: Arc<Vec<Arc<Diagnostic>>>,
     },
     Rejected {
-        diagnostics: Rc<Vec<Rc<Diagnostic>>>,
+        diagnostics: Arc<Vec<Arc<Diagnostic>>>,
     },
 }
 
-pub fn node_locus(node: Rc<Node>) -> Rc<Locus> {
+pub fn node_locus(node: Arc<Node>) -> Arc<Locus> {
     let _ = node;
-    Rc::new(Locus {
+    Arc::new(Locus {
         reason: "synthetic".to_string(),
     })
 }
 
-pub fn outcome_accepted<T>(value: T) -> Rc<Outcome<T>> {
-    Rc::new(Outcome::Accepted {
+pub fn outcome_accepted<T>(value: T) -> Arc<Outcome<T>> {
+    Arc::new(Outcome::Accepted {
         value,
-        diagnostics: Rc::new(Vec::new()),
+        diagnostics: Arc::new(Vec::new()),
     })
 }
 
-pub fn outcome_rejected<T>(d: Rc<Diagnostic>) -> Rc<Outcome<T>> {
+pub fn outcome_rejected<T>(d: Arc<Diagnostic>) -> Arc<Outcome<T>> {
     let mut diags = Vec::new();
     diags.push_back(d);
-    Rc::new(Outcome::Rejected {
-        diagnostics: Rc::new(diags),
+    Arc::new(Outcome::Rejected {
+        diagnostics: Arc::new(diags),
     })
 }
 
-pub fn bind_outcome<T: Clone, U, F>(o: Rc<Outcome<T>>, f: F) -> Rc<Outcome<U>>
+pub fn bind_outcome<T: Clone, U, F>(o: Arc<Outcome<T>>, f: F) -> Arc<Outcome<U>>
 where
-    F: Fn(T) -> Rc<Outcome<U>> + Clone,
+    F: Fn(T) -> Arc<Outcome<U>> + Clone,
 {
     match &*o {
         Outcome::Accepted { value, .. } => f(value.clone()),
-        Outcome::Rejected { diagnostics } => Rc::new(Outcome::Rejected {
+        Outcome::Rejected { diagnostics } => Arc::new(Outcome::Rejected {
             diagnostics: diagnostics.clone(),
         }),
     }
 }
 
-pub fn well_formed(n: Rc<Node>) -> bool {
+pub fn well_formed(n: Arc<Node>) -> bool {
     let _ = n;
     true
 }
 
-pub fn body_producer_diagnostic(reason: Symbol, n: Rc<Node>) -> Rc<Diagnostic> {
-    Rc::new(Diagnostic {
+pub fn body_producer_diagnostic(reason: Symbol, n: Arc<Node>) -> Arc<Diagnostic> {
+    Arc::new(Diagnostic {
         reason,
         at: node_locus(n),
-        correction: Rc::new(Correction::Unavailable {
+        correction: Arc::new(Correction::Unavailable {
             reason: NoCorrectionReason::ExternalContractUnknown,
         }),
     })
 }
 
-pub fn attach_arrow_body(arrow: Rc<Node>, body: Rc<Node>) -> Rc<Outcome<Rc<Node>>> {
+pub fn attach_arrow_body(arrow: Arc<Node>, body: Arc<Node>) -> Arc<Outcome<Arc<Node>>> {
     match &*arrow.kind {
         NodeKind::TypeNode { connective } => match &**connective {
             Connective::Arrow => {
@@ -104,8 +104,8 @@ pub fn attach_arrow_body(arrow: Rc<Node>, body: Rc<Node>) -> Rc<Outcome<Rc<Node>
                     arrow,
                     list_snoc_item(
                         children,
-                        Rc::new(Edge {
-                            label: Rc::new(EdgeLabel::Named {
+                        Arc::new(Edge {
+                            label: Arc::new(EdgeLabel::Named {
                                 name: "arrow_body_edge".to_string(),
                             }),
                             target: body,
@@ -125,7 +125,7 @@ pub fn attach_arrow_body(arrow: Rc<Node>, body: Rc<Node>) -> Rc<Outcome<Rc<Node>
     }
 }
 
-pub fn body_producer_validated_behavior(body: Rc<Node>) -> Rc<Outcome<Rc<Node>>> {
+pub fn body_producer_validated_behavior(body: Arc<Node>) -> Arc<Outcome<Arc<Node>>> {
     if well_formed(body.clone()) {
         outcome_accepted(body)
     } else {
@@ -136,7 +136,7 @@ pub fn body_producer_validated_behavior(body: Rc<Node>) -> Rc<Outcome<Rc<Node>>>
     }
 }
 
-pub fn body_producer_dispatch_structured_body(body: Rc<Node>) -> Rc<Outcome<Rc<Node>>> {
+pub fn body_producer_dispatch_structured_body(body: Arc<Node>) -> Arc<Outcome<Arc<Node>>> {
     match &*body.kind {
         NodeKind::ComputationNode { .. } => body_producer_validated_behavior(body),
         _ => outcome_rejected(body_producer_diagnostic(
@@ -147,12 +147,12 @@ pub fn body_producer_dispatch_structured_body(body: Rc<Node>) -> Rc<Outcome<Rc<N
 }
 
 pub fn produce_arrow_with_structured_body(
-    signature: Rc<Node>,
-    structured_body: Rc<Node>,
-) -> Rc<Outcome<Rc<Node>>> {
+    signature: Arc<Node>,
+    structured_body: Arc<Node>,
+) -> Arc<Outcome<Arc<Node>>> {
     match &*body_producer_dispatch_structured_body(structured_body) {
         Outcome::Accepted { value, .. } => attach_arrow_body(signature, value.clone()),
-        Outcome::Rejected { diagnostics } => Rc::new(Outcome::Rejected {
+        Outcome::Rejected { diagnostics } => Arc::new(Outcome::Rejected {
             diagnostics: diagnostics.clone(),
         }),
     }

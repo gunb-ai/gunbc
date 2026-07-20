@@ -8,7 +8,7 @@
 //! triage invariants (not declaration counts). Dissolve-on: namespace lane owns roster
 //! sizing in a single authority and these gates move there — delete this module.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::cli_run::{bare_ref_reachability_for_name, BareRefReachability};
 use v1_compiler::v1_compiler_compile::{front_end_sources, SourceFile};
@@ -29,7 +29,7 @@ fn floor_source_roots(ws: &std::path::Path) -> Vec<String> {
     ]
 }
 
-fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Rc<SourceFile>>) {
+fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Arc<SourceFile>>) {
     let mut entries: Vec<_> = match std::fs::read_dir(dir) {
         Ok(e) => e.filter_map(|x| x.ok()).collect(),
         Err(_) => return,
@@ -46,7 +46,7 @@ fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Rc<Sourc
                     .unwrap_or(&p)
                     .to_string_lossy()
                     .to_string();
-                out.push(Rc::new(SourceFile {
+                out.push(Arc::new(SourceFile {
                     path: rel,
                     content: c,
                 }));
@@ -55,12 +55,12 @@ fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<Rc<Sourc
     }
 }
 
-fn load_floor_census(ws: &std::path::Path) -> Rc<im::HashMap<String, Rc<GlobalBareLookupState>>> {
-    let mut sources: Vec<Rc<SourceFile>> = Vec::new();
+fn load_floor_census(ws: &std::path::Path) -> Arc<im::HashMap<String, Arc<GlobalBareLookupState>>> {
+    let mut sources: Vec<Arc<SourceFile>> = Vec::new();
     collect(ws, &ws.join("dag"), &mut sources);
     collect(ws, &ws.join("src/v2"), &mut sources);
     assert!(!sources.is_empty(), "no dag sources found");
-    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im::Vector<_>>()));
+    let frontend = front_end_sources(Arc::new(sources.into_iter().collect::<im::Vector<_>>()));
     let graph = frontend.graph.as_ref().expect("graph");
     let source_indices = frontend
         .newline_indices
@@ -69,7 +69,7 @@ fn load_floor_census(ws: &std::path::Path) -> Rc<im::HashMap<String, Rc<GlobalBa
         .fold(im::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
-    build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
+    build_symbol_index_census(graph.modules.clone(), Arc::new(source_indices))
         .global_bare
         .clone()
 }
@@ -81,7 +81,7 @@ enum CensusInvariantDisposition {
 }
 
 fn census_invariant_disposition(
-    census: &im::HashMap<String, Rc<GlobalBareLookupState>>,
+    census: &im::HashMap<String, Arc<GlobalBareLookupState>>,
     name: &str,
 ) -> CensusInvariantDisposition {
     match census.get(name).map(|s| &**s) {
@@ -106,7 +106,7 @@ enum CensusAmbiguityLeg {
 }
 
 fn census_ambiguity_leg(
-    census: &im::HashMap<String, Rc<GlobalBareLookupState>>,
+    census: &im::HashMap<String, Arc<GlobalBareLookupState>>,
     name: &str,
 ) -> CensusAmbiguityLeg {
     match census_invariant_disposition(census, name) {
@@ -213,7 +213,7 @@ fn tier2_namespace_homonym_invariants() {
 #[test]
 fn corpus_census_state_of_failing_names() {
     let ws = workspace_root();
-    let mut sources: Vec<Rc<SourceFile>> = Vec::new();
+    let mut sources: Vec<Arc<SourceFile>> = Vec::new();
     collect(&ws, &ws.join("dag"), &mut sources);
     eprintln!(
         "[corpus] {} .dag sources from {}",
@@ -222,7 +222,7 @@ fn corpus_census_state_of_failing_names() {
     );
     assert!(!sources.is_empty(), "no dag sources found");
 
-    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im::Vector<_>>()));
+    let frontend = front_end_sources(Arc::new(sources.into_iter().collect::<im::Vector<_>>()));
     let graph = frontend.graph.as_ref().expect("graph");
     let source_indices = frontend
         .newline_indices
@@ -231,7 +231,7 @@ fn corpus_census_state_of_failing_names() {
         .fold(im::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
-    let census = build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
+    let census = build_symbol_index_census(graph.modules.clone(), Arc::new(source_indices))
         .global_bare
         .clone();
 
@@ -276,7 +276,7 @@ fn corpus_census_state_of_failing_names() {
 #[test]
 fn corpus_ambiguous_roster() {
     let ws = workspace_root();
-    let mut sources: Vec<Rc<SourceFile>> = Vec::new();
+    let mut sources: Vec<Arc<SourceFile>> = Vec::new();
     collect(&ws, &ws.join("dag"), &mut sources);
     collect(&ws, &ws.join("src/v2"), &mut sources);
     eprintln!(
@@ -284,7 +284,7 @@ fn corpus_ambiguous_roster() {
         sources.len()
     );
 
-    let frontend = front_end_sources(Rc::new(sources.into_iter().collect::<im::Vector<_>>()));
+    let frontend = front_end_sources(Arc::new(sources.into_iter().collect::<im::Vector<_>>()));
     let graph = frontend.graph.as_ref().expect("graph");
     let source_indices = frontend
         .newline_indices
@@ -293,7 +293,7 @@ fn corpus_ambiguous_roster() {
         .fold(im::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
-    let census = build_symbol_index_census(graph.modules.clone(), Rc::new(source_indices))
+    let census = build_symbol_index_census(graph.modules.clone(), Arc::new(source_indices))
         .global_bare
         .clone();
 

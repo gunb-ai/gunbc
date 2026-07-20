@@ -19,7 +19,7 @@
 
 use std::collections::BTreeMap;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::cli_run::{
     compile_clean_diagnostic_histogram_key, compile_clean_whole_tree_hard_diagnostics,
@@ -152,7 +152,7 @@ fn main() -> ExitCode {
     ExitCode::from(if total == 0 { 0 } else { 1 })
 }
 
-fn diagnostic_decl_file(d: &Rc<ErrorNode>) -> String {
+fn diagnostic_decl_file(d: &Arc<ErrorNode>) -> String {
     let raw = diagnostic_to_span(d.diagnostic.clone()).file.clone();
     normalize_repo_relative_path(&raw)
 }
@@ -186,7 +186,7 @@ fn file_prefix_bucket(file: &str) -> String {
     "other".to_string()
 }
 
-fn count_message_substr(diags: &im::Vector<Rc<ErrorNode>>, needle: &str) -> usize {
+fn count_message_substr(diags: &im::Vector<Arc<ErrorNode>>, needle: &str) -> usize {
     use v1_compiler::v1_std_core::{diagnostic_to_message, CompilerDiagnostic};
     diags
         .iter()
@@ -199,7 +199,7 @@ fn count_message_substr(diags: &im::Vector<Rc<ErrorNode>>, needle: &str) -> usiz
         .count()
 }
 
-fn count_type_mismatch_name(diags: &im::Vector<Rc<ErrorNode>>, name: &str) -> usize {
+fn count_type_mismatch_name(diags: &im::Vector<Arc<ErrorNode>>, name: &str) -> usize {
     use v1_compiler::v1_std_core::CompilerDiagnostic;
     diags
         .iter()

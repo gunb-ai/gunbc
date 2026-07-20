@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::resolved_graph_cache::{
     deserialize_fixture_payload_for_test, serialize_fixture_payload_for_test,
@@ -19,14 +19,14 @@ fn wrap(n: Int) -> Box { Box { v: n } }
 fn unbox(b: Box) -> Int { b.v }
 "#;
 
-fn resolved_from_source() -> Rc<ResolvedPipelineResult> {
+fn resolved_from_source() -> Arc<ResolvedPipelineResult> {
     let sources = resolve_imports_transitively("fixture_seam.dag", FIXTURE_SOURCE);
-    compile_to_resolved(Rc::new(sources.into()))
+    compile_to_resolved(Arc::new(sources.into()))
 }
 
 fn emit_rust(
-    resolved: Rc<ResolvedPipelineResult>,
-) -> Rc<v1_compiler::v1_compiler_compile::PipelineResult> {
+    resolved: Arc<ResolvedPipelineResult>,
+) -> Arc<v1_compiler::v1_compiler_compile::PipelineResult> {
     emit_resolved_for_target(resolved, RenderTarget::Rust)
 }
 
@@ -44,27 +44,27 @@ fn emit_files_fingerprint(result: &v1_compiler::v1_compiler_compile::PipelineRes
         .join("\n---\n")
 }
 
-fn resolved_pipeline_from_cached(cached: CachedResolvedGraph) -> Rc<ResolvedPipelineResult> {
-    let newline_indices = Rc::new(
+fn resolved_pipeline_from_cached(cached: CachedResolvedGraph) -> Arc<ResolvedPipelineResult> {
+    let newline_indices = Arc::new(
         cached
             .source_indices
             .values()
             .cloned()
-            .collect::<Vec<Rc<NewlineIndex>>>(),
+            .collect::<Vec<Arc<NewlineIndex>>>(),
     );
-    Rc::new(ResolvedPipelineResult {
+    Arc::new(ResolvedPipelineResult {
         graph: Some(cached.graph),
-        diagnostics: Rc::new(im::vector![]),
+        diagnostics: Arc::new(im::vector![]),
         source_indices: cached.source_indices,
         complexity: empty_complexity_report(),
-        ownership: Rc::new(im::vector![]),
-        newline_indices: Rc::new(newline_indices.iter().cloned().collect()),
+        ownership: Arc::new(im::vector![]),
+        newline_indices: Arc::new(newline_indices.iter().cloned().collect()),
     })
 }
 
 fn strip_intern_table_from_fixture(cached: CachedResolvedGraph) -> CachedResolvedGraph {
     let graph = cached.graph;
-    let modules = Rc::new(
+    let modules = Arc::new(
         graph
             .modules
             .iter()
@@ -72,14 +72,14 @@ fn strip_intern_table_from_fixture(cached: CachedResolvedGraph) -> CachedResolve
                 let mut typed = (**m).clone();
                 let mut type_env = (*typed.type_env).clone();
                 type_env.intern_table = empty_intern_table();
-                typed.type_env = Rc::new(type_env);
-                Rc::new(typed)
+                typed.type_env = Arc::new(type_env);
+                Arc::new(typed)
             })
             .collect::<Vec<_>>(),
     );
     CachedResolvedGraph {
-        graph: Rc::new(ResolvedGraph {
-            modules: Rc::new(modules.iter().cloned().collect()),
+        graph: Arc::new(ResolvedGraph {
+            modules: Arc::new(modules.iter().cloned().collect()),
             item_registry: graph.item_registry.clone(),
             diagnostics: graph.diagnostics.clone(),
             emit_graph_info: graph.emit_graph_info.clone(),
@@ -90,7 +90,7 @@ fn strip_intern_table_from_fixture(cached: CachedResolvedGraph) -> CachedResolve
 
 fn remap_binding_intern_name_mismatch(cached: CachedResolvedGraph) -> CachedResolvedGraph {
     let graph = cached.graph;
-    let modules = Rc::new(
+    let modules = Arc::new(
         graph
             .modules
             .iter()
@@ -115,17 +115,17 @@ fn remap_binding_intern_name_mismatch(cached: CachedResolvedGraph) -> CachedReso
                     if (id as usize) < strings.len() {
                         strings[id as usize] = wrong_name;
                     }
-                    table.strings = Rc::new(strings);
+                    table.strings = Arc::new(strings);
                 }
-                type_env.intern_table = Rc::new(table);
-                typed.type_env = Rc::new(type_env);
-                Rc::new(typed)
+                type_env.intern_table = Arc::new(table);
+                typed.type_env = Arc::new(type_env);
+                Arc::new(typed)
             })
             .collect::<Vec<_>>(),
     );
     CachedResolvedGraph {
-        graph: Rc::new(ResolvedGraph {
-            modules: Rc::new(modules.iter().cloned().collect()),
+        graph: Arc::new(ResolvedGraph {
+            modules: Arc::new(modules.iter().cloned().collect()),
             item_registry: graph.item_registry.clone(),
             diagnostics: graph.diagnostics.clone(),
             emit_graph_info: graph.emit_graph_info.clone(),

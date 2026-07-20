@@ -14,40 +14,40 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "doc.rust-lang.org/reference/types.html".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
-pub fn rust_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
+pub fn rust_type_checkpoints() -> Arc<Vec<Arc<TypeCheckpoint>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<TypeCheckpoint>>> = {
+        static CACHED: Arc<Vec<Arc<TypeCheckpoint>>> = {
             serde_json::from_value(serde_json::json!([{"dag_name": "Int", "target_type": "i64", "default_expr": "0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Float", "target_type": "f64", "default_expr": "0.0", "is_copy": true, "literal_suffix": null}, {"dag_name": "Bool", "target_type": "bool", "default_expr": "false", "is_copy": true, "literal_suffix": null}, {"dag_name": "Symbol", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Unit", "target_type": "()", "default_expr": "()", "is_copy": true, "literal_suffix": null}, {"dag_name": "String", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Bytes", "target_type": "Vec<u8>", "default_expr": "Vec::new()", "is_copy": false, "literal_suffix": null}, {"dag_name": "Secret", "target_type": "String", "default_expr": "String::new()", "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Json", "target_type": "serde_json::Value", "default_expr": "serde_json::Value::Null", "is_copy": false, "literal_suffix": null}, {"dag_name": "Hash", "target_type": "v1_rt::Hash", "default_expr": null, "is_copy": false, "literal_suffix": ".to_string()"}, {"dag_name": "Witness", "target_type": "Witness", "default_expr": null, "is_copy": false, "literal_suffix": null}, {"dag_name": "witness", "target_type": "Witness", "default_expr": null, "is_copy": false, "literal_suffix": null}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<TypeCheckpoint>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<TypeCheckpoint>>>| c.clone())
 }
 
-pub fn rust_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
+pub fn rust_algebra_inhabitants() -> Arc<Vec<Arc<InhabitantDecl>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<InhabitantDecl>>> = {
+        static CACHED: Arc<Vec<Arc<InhabitantDecl>>> = {
             serde_json::from_value(serde_json::json!([{"algebra": "FreeMonoid", "template": "Vec<{0}>", "arity": 1, "identity_expr": "Vec::new()", "import_path": null, "is_copy": false}, {"algebra": "BooleanAlgebra", "template": "BTreeSet<{0}>", "arity": 1, "identity_expr": "BTreeSet::new()", "import_path": null, "is_copy": false}, {"algebra": "PartialFunction", "template": "HashMap<{0}, {1}>", "arity": 2, "identity_expr": "HashMap::new()", "import_path": null, "is_copy": false}, {"algebra": "OrderedRing", "template": "i64", "arity": 0, "identity_expr": "0i64", "import_path": null, "is_copy": true}, {"algebra": "ApproximateField", "template": "f64", "arity": 0, "identity_expr": "0.0f64", "import_path": null, "is_copy": true}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<InhabitantDecl>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<InhabitantDecl>>>| c.clone())
 }
 
 pub fn rust_optional_template() -> String {
@@ -77,14 +77,14 @@ pub fn rust_some_template() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_callable() -> Rc<CallableRepr> {
+pub fn rust_callable() -> Arc<CallableRepr> {
     thread_local! {
-        static CACHED: Rc<CallableRepr> = {
+        static CACHED: Arc<CallableRepr> = {
             serde_json::from_value(serde_json::json!({"template": "fn({params}) -> {return}", "param_separator": ", ", "return_separator": " -> ", "import_path": null}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<CallableRepr>| c.clone())
+    CACHED.with(|c: &Arc<CallableRepr>| c.clone())
 }
 
 #[derive(
@@ -146,7 +146,7 @@ pub fn box_template() -> String {
 pub fn rc_template() -> String {
     thread_local! {
         static CACHED: String = {
-            "Rc<{0}>".to_string()
+            "Arc<{0}>".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -161,13 +161,13 @@ pub fn arc_template() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn common_trait_bounds() -> Rc<Vec<String>> {
+pub fn common_trait_bounds() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["Clone".to_string(), "Debug".to_string(), "Send".to_string(), "Sync".to_string(), "Serialize".to_string(), "Deserialize".to_string()])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec!["Clone".to_string(), "Debug".to_string(), "Send".to_string(), "Sync".to_string(), "Serialize".to_string(), "Deserialize".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
 pub fn where_clause_template() -> String {
@@ -188,32 +188,32 @@ pub fn trait_bound_template() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn integer_types() -> Rc<Vec<String>> {
+pub fn integer_types() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["i8".to_string(), "i16".to_string(), "i32".to_string(), "i64".to_string(), "i128".to_string(), "isize".to_string(), "u8".to_string(), "u16".to_string(), "u32".to_string(), "u64".to_string(), "u128".to_string(), "usize".to_string()])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec!["i8".to_string(), "i16".to_string(), "i32".to_string(), "i64".to_string(), "i128".to_string(), "isize".to_string(), "u8".to_string(), "u16".to_string(), "u32".to_string(), "u64".to_string(), "u128".to_string(), "usize".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
-pub fn float_types() -> Rc<Vec<String>> {
+pub fn float_types() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["f32".to_string(), "f64".to_string()])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec!["f32".to_string(), "f64".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
-pub fn rust_cast_syntax() -> Rc<CastSyntax> {
+pub fn rust_cast_syntax() -> Arc<CastSyntax> {
     thread_local! {
-        static CACHED: Rc<CastSyntax> = {
+        static CACHED: Arc<CastSyntax> = {
             serde_json::from_value(serde_json::json!({"template": "{expr} as {type}", "cast_rules": [{"from_type": "i64", "to_type": "i64"}, {"from_type": "i64", "to_type": "f64"}, {"from_type": "f64", "to_type": "i64"}, {"from_type": "f64", "to_type": "f64"}, {"from_type": "bool", "to_type": "i64"}]}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<CastSyntax>| c.clone())
+    CACHED.with(|c: &Arc<CastSyntax>| c.clone())
 }
 
 pub fn serde_enum_tag_attribute() -> String {

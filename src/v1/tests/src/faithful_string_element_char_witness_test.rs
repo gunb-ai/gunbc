@@ -1,5 +1,5 @@
 use im::OrdSet as BTreeSet;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_emit_rust::{
     render_rust_text_carrier, rust_applied_type_base, rust_named_type_base,
@@ -21,7 +21,7 @@ fn faithful_string_leaf_base_is_freemonoid_char() {
 
 #[test]
 fn faithful_string_text_carrier_is_freemonoid_char() {
-    let carrier = render_rust_text_carrier(Rc::new(BTreeSet::new()));
+    let carrier = render_rust_text_carrier(Arc::new(BTreeSet::new()));
     assert_eq!(carrier, "FreeMonoid<Char>");
     assert_ne!(carrier, "FreeMonoid<Nat>");
 }

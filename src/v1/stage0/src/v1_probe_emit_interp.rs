@@ -12,10 +12,10 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn probe_source() -> Rc<SourceFile> {
-    Rc::new(SourceFile {
+pub fn probe_source() -> Arc<SourceFile> {
+    Arc::new(SourceFile {
         path: "src/v1/probe_add.dag".to_string(),
         content: "module v1.probe.add\nfn add(x: Int, y: Int) -> Int {\n  x + y\n}\n".to_string(),
     })
@@ -23,8 +23,8 @@ pub fn probe_source() -> Rc<SourceFile> {
 
 pub fn probe_emitted() -> String {
     {
-        let result = compile_sources(Rc::new(vec![probe_source()]), RenderTarget::Rust);
-        Rc::new({
+        let result = compile_sources(Arc::new(vec![probe_source()]), RenderTarget::Rust);
+        Arc::new({
             let mut __result = Vec::new();
             for f in result.files.clone().iter().cloned() {
                 __result.push(f.content.clone());
@@ -45,7 +45,7 @@ pub fn probe_emits_fn_add() -> bool {
 
 pub fn probe_clean_source_has_no_diagnostics() -> bool {
     {
-        let result = compile_sources(Rc::new(vec![probe_source()]), RenderTarget::Rust);
+        let result = compile_sources(Arc::new(vec![probe_source()]), RenderTarget::Rust);
         ((result.diagnostics.clone().len() as i64) == 0)
     }
 }

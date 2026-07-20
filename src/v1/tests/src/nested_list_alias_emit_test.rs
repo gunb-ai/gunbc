@@ -53,7 +53,7 @@ fn nested_list_alias_keeps_inner_type_arg() {
     let emitted = emit_host();
     let grid = alias_line(&emitted, "Grid");
     // The inner `List` container must be fully expanded with its element type (`Item`). The bug
-    // left a bare, argless `List` (e.g. `Rc<Vec<Rc<List>>>`) → `E0107: missing generics`. After
+    // left a bare, argless `List` (e.g. `Arc<Vec<Arc<List>>>`) → `E0107: missing generics`. After
     // the fix every container renders as `Vec<..>`, so no bare `List` token survives and the
     // inner element `Item` reaches the leaf. (Shared types are `Rc`-wrapped, so match on tokens
     // rather than an exact string.)

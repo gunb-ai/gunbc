@@ -1,6 +1,6 @@
 use im::HashMap;
 use std::process::Command;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_parse::parse_with_table;
 use v1_compiler::v1_compiler_tokenize::tokenize;
@@ -15,14 +15,14 @@ const RESOLVE_DAG: &str = "src/v1/04_resolve.dag";
 const SELF_FN: &str = "resolve_expr_types";
 const PRE_FIX_REV: &str = "b7d11aa73";
 
-type SiMap = Rc<HashMap<String, Rc<NewlineIndex>>>;
+type SiMap = Arc<HashMap<String, Arc<NewlineIndex>>>;
 
-fn parse_module_from_source(path: &str, content: &str) -> (Rc<Node>, SiMap) {
+fn parse_module_from_source(path: &str, content: &str) -> (Arc<Node>, SiMap) {
     let tokens = tokenize(content.to_string(), path.to_string());
     let nl = build_newline_index(path.to_string(), content.to_string());
-    let mut si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+    let mut si: HashMap<String, Arc<NewlineIndex>> = HashMap::new();
     si.insert(nl.file.clone(), nl.clone());
-    let si: SiMap = Rc::new(si);
+    let si: SiMap = Arc::new(si);
     let parsed = parse_with_table(tokens, si.clone(), empty_intern_table());
     let module = parsed
         .result
@@ -32,23 +32,23 @@ fn parse_module_from_source(path: &str, content: &str) -> (Rc<Node>, SiMap) {
     (module, si)
 }
 
-fn is_lambda(n: &Rc<Node>) -> bool {
+fn is_lambda(n: &Arc<Node>) -> bool {
     matches!(*n.expr_data.clone(), ExprData::ExprLambda)
 }
 
-fn is_self_call(n: &Rc<Node>, si: &SiMap) -> bool {
+fn is_self_call(n: &Arc<Node>, si: &SiMap) -> bool {
     matches!(*n.expr_data.clone(), ExprData::ExprCall { .. })
         && authored_name_at(si.clone(), n.clone()) == SELF_FN
 }
 
-fn subtree_has_self_call(n: &Rc<Node>, si: &SiMap) -> bool {
+fn subtree_has_self_call(n: &Arc<Node>, si: &SiMap) -> bool {
     if is_self_call(n, si) {
         return true;
     }
     n.children.iter().any(|c| subtree_has_self_call(c, si))
 }
 
-fn count_self_calling_traversals(n: &Rc<Node>, si: &SiMap) -> usize {
+fn count_self_calling_traversals(n: &Arc<Node>, si: &SiMap) -> usize {
     if is_lambda(n) && subtree_has_self_call(n, si) {
         return 1;
     }
@@ -58,7 +58,7 @@ fn count_self_calling_traversals(n: &Rc<Node>, si: &SiMap) -> usize {
         .sum()
 }
 
-fn find_match(n: &Rc<Node>) -> Option<&Rc<Node>> {
+fn find_match(n: &Arc<Node>) -> Option<&Arc<Node>> {
     if matches!(*n.expr_data.clone(), ExprData::ExprMatch) {
         return Some(n);
     }
@@ -70,7 +70,7 @@ fn find_match(n: &Rc<Node>) -> Option<&Rc<Node>> {
     None
 }
 
-fn resolve_expr_types_body(module: &Rc<Node>, si: &SiMap) -> Rc<Node> {
+fn resolve_expr_types_body(module: &Arc<Node>, si: &SiMap) -> Arc<Node> {
     let item = module_items(module.clone())
         .iter()
         .find(|it| authored_name_at(si.clone(), (*it).clone()) == SELF_FN)
@@ -138,9 +138,9 @@ fn retraversal_detector_fires_on_real_pre_fix_source() {
     {
         let tokens = tokenize(pre_fix.clone(), RESOLVE_DAG.to_string());
         let nl = build_newline_index(RESOLVE_DAG.to_string(), pre_fix.clone());
-        let mut si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
+        let mut si: HashMap<String, Arc<NewlineIndex>> = HashMap::new();
         si.insert(nl.file.clone(), nl.clone());
-        let parsed = parse_with_table(tokens, Rc::new(si), empty_intern_table());
+        let parsed = parse_with_table(tokens, Arc::new(si), empty_intern_table());
         if parsed.result.module.is_none() {
             eprintln!("skip: pre-fix {PRE_FIX_REV}:{RESOLVE_DAG} no longer parses (parser wall)");
             return;

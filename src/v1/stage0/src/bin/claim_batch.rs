@@ -3,7 +3,7 @@
 use im::HashMap;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
@@ -17,7 +17,7 @@ use v1_compiler::v1_compiler_compile::ResolvedGraph;
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
 use v1_compiler::v1_std_core::NewlineIndex;
 
-type ResolvedEntry = (Rc<ResolvedGraph>, Rc<HashMap<String, Rc<NewlineIndex>>>);
+type ResolvedEntry = (Arc<ResolvedGraph>, Arc<HashMap<String, Arc<NewlineIndex>>>);
 
 #[derive(Default)]
 struct ResolveTimings {
@@ -415,9 +415,9 @@ fn print_eval_profile(function: &str) {
     }
 }
 
-fn fixture_store_rc(path: &Option<PathBuf>) -> Option<Rc<RecordedFixtureStore>> {
+fn fixture_store_rc(path: &Option<PathBuf>) -> Option<Arc<RecordedFixtureStore>> {
     path.as_ref()
-        .map(|p| Rc::new(RecordedFixtureStore::open(p.clone())))
+        .map(|p| Arc::new(RecordedFixtureStore::open(p.clone())))
 }
 
 fn validate_fixture_flags(
@@ -435,8 +435,8 @@ fn run_witnesses(
     index: &MultiEntryIndex,
     group: &EntryGroup,
     execution_mode: ExecutionMode,
-    fixture_store: Option<Rc<RecordedFixtureStore>>,
-    whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
+    fixture_store: Option<Arc<RecordedFixtureStore>>,
+    whole_tree_published_keys: Option<Arc<std::collections::HashSet<String>>>,
     eval_budget_ms: Option<u64>,
     any_failed: &mut bool,
     timings: &mut ResolveTimings,
@@ -594,7 +594,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     "claim_batch: whole-tree published mock corpus — {} operation key(s)",
                     keys.len()
                 );
-                Some(Rc::new(keys))
+                Some(Arc::new(keys))
             }
         }
         Err(e) => {

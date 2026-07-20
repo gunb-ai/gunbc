@@ -15,7 +15,7 @@ pub use crate::v1_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -44,8 +44,8 @@ pub struct Artifact {
     pub name: String,
     pub kind: ArtifactKind,
     pub target: RenderTarget,
-    pub entry_modules: Rc<Vec<String>>,
-    pub dependencies: Rc<Vec<String>>,
+    pub entry_modules: Arc<Vec<String>>,
+    pub dependencies: Arc<Vec<String>>,
 }
 
 #[derive(
@@ -70,17 +70,17 @@ pub struct Boundary {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactPlan {
-    pub artifacts: Rc<Vec<Rc<Artifact>>>,
-    pub boundaries: Rc<Vec<Rc<Boundary>>>,
+    pub artifacts: Arc<Vec<Arc<Artifact>>>,
+    pub boundaries: Arc<Vec<Arc<Boundary>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PartitionRule {
-    Explicit { artifacts: Rc<Vec<Rc<Artifact>>> },
+    Explicit { artifacts: Arc<Vec<Arc<Artifact>>> },
 }
 impl PartitionRule {
-    pub fn artifacts(&self) -> Rc<Vec<Rc<Artifact>>> {
+    pub fn artifacts(&self) -> Arc<Vec<Arc<Artifact>>> {
         match self {
             PartitionRule::Explicit {
                 artifacts: __val, ..
@@ -89,34 +89,34 @@ impl PartitionRule {
     }
 }
 
-pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
+pub fn plan_artifacts(rule: Arc<PartitionRule>) -> Arc<ArtifactPlan> {
     match (*rule.clone()).clone() {
         PartitionRule::Explicit {
             artifacts: arts, ..
-        } => Rc::new(ArtifactPlan {
+        } => Arc::new(ArtifactPlan {
             artifacts: arts.clone(),
-            boundaries: Rc::new(vec![]),
+            boundaries: Arc::new(vec![]),
         }),
     }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactOutput {
-    pub artifact: Rc<Artifact>,
-    pub files: Rc<Vec<Rc<TextFile>>>,
+    pub artifact: Arc<Artifact>,
+    pub files: Arc<Vec<Arc<TextFile>>>,
 }
 
 pub fn default_artifact_plan(
-    root_modules: Rc<Vec<String>>,
+    root_modules: Arc<Vec<String>>,
     target: RenderTarget,
-) -> Rc<ArtifactPlan> {
-    plan_artifacts(Rc::new(PartitionRule::Explicit {
-        artifacts: Rc::new(vec![Rc::new(Artifact {
+) -> Arc<ArtifactPlan> {
+    plan_artifacts(Arc::new(PartitionRule::Explicit {
+        artifacts: Arc::new(vec![Arc::new(Artifact {
             name: "default".to_string(),
             kind: ArtifactKind::ServiceBinary,
             target: target.clone(),
             entry_modules: root_modules.clone(),
-            dependencies: Rc::new(vec![]),
+            dependencies: Arc::new(vec![]),
         })]),
     }))
 }
@@ -134,22 +134,22 @@ pub enum DagInferredRecord {
     },
     CompilerErrorRecord {
         message: String,
-        span: Rc<SourceSpan>,
+        span: Arc<SourceSpan>,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagModuleRef {
     pub module: DagNodeId,
-    pub items: Rc<Vec<DagNodeId>>,
-    pub item_registry_keys: Rc<Vec<String>>,
+    pub items: Arc<Vec<DagNodeId>>,
+    pub item_registry_keys: Arc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagDiagnosticRecord {
     pub severity: String,
     pub message: String,
-    pub span: Rc<SourceSpan>,
+    pub span: Arc<SourceSpan>,
     pub module_name: Option<String>,
     pub category: Option<String>,
 }
@@ -157,11 +157,11 @@ pub struct DagDiagnosticRecord {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagArtifact {
     pub version: String,
-    pub nodes: Rc<HashMap<DagNodeId, String>>,
-    pub modules: Rc<Vec<String>>,
-    pub item_registry_keys: Rc<Vec<String>>,
-    pub diagnostics: Rc<Vec<String>>,
-    pub files: Rc<Vec<String>>,
+    pub nodes: Arc<HashMap<DagNodeId, String>>,
+    pub modules: Arc<Vec<String>>,
+    pub item_registry_keys: Arc<Vec<String>>,
+    pub diagnostics: Arc<Vec<String>>,
+    pub files: Arc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

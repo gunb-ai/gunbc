@@ -12,35 +12,35 @@
 //! hard and `unlisted_import_use_alone_is_not_hard` fails. The genuine-error and
 //! mixed cases keep it from being satisfied by a blanket `false`.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::cli_run::compile_clean_pipeline_has_hard_errors;
 use v1_compiler::std_types::SourceSpan;
 use v1_compiler::v1_std_core::{CompilerDiagnostic, ErrorNode};
 
-fn span() -> Rc<SourceSpan> {
-    Rc::new(SourceSpan {
+fn span() -> Arc<SourceSpan> {
+    Arc::new(SourceSpan {
         file: "test.dag".to_string(),
         start: 0,
         end: 0,
     })
 }
 
-fn node(d: CompilerDiagnostic) -> Rc<ErrorNode> {
-    Rc::new(ErrorNode {
-        diagnostic: Rc::new(d),
+fn node(d: CompilerDiagnostic) -> Arc<ErrorNode> {
+    Arc::new(ErrorNode {
+        diagnostic: Arc::new(d),
         module_name: "test".to_string(),
     })
 }
 
-fn unlisted_import_use() -> Rc<ErrorNode> {
+fn unlisted_import_use() -> Arc<ErrorNode> {
     node(CompilerDiagnostic::UnlistedImportUse {
         name: "NonEmptyStr".to_string(),
         span: span(),
     })
 }
 
-fn complexity_unknown() -> Rc<ErrorNode> {
+fn complexity_unknown() -> Arc<ErrorNode> {
     node(CompilerDiagnostic::ComplexityUnknown {
         func_name: "f".to_string(),
         reason: "unclassifiable".to_string(),
@@ -49,15 +49,15 @@ fn complexity_unknown() -> Rc<ErrorNode> {
 }
 
 /// A diagnostic the model genuinely calls an error.
-fn genuine_error() -> Rc<ErrorNode> {
+fn genuine_error() -> Arc<ErrorNode> {
     node(CompilerDiagnostic::UnresolvedType {
         name: "NoSuchType".to_string(),
         span: span(),
     })
 }
 
-fn has_hard(nodes: Vec<Rc<ErrorNode>>) -> bool {
-    let v: im::Vector<Rc<ErrorNode>> = nodes.into_iter().collect();
+fn has_hard(nodes: Vec<Arc<ErrorNode>>) -> bool {
+    let v: im::Vector<Arc<ErrorNode>> = nodes.into_iter().collect();
     compile_clean_pipeline_has_hard_errors(&v)
 }
 

@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
@@ -53,7 +53,7 @@ fn with_receipts_ctx<R>(body: impl FnOnce(&v1_interpreter::InterpContext) -> R) 
     let roots = [ws.join("src/v2"), ws.join("dag")];
     let sources =
         resolve_imports_transitively_with_source_roots("test.dag", RECEIPTS_SOURCE, &roots);
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_resolved(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx =
@@ -158,7 +158,7 @@ fn with_contract_ctx<R>(body: impl FnOnce(&v1_interpreter::InterpContext) -> R) 
     let roots = [ws.join("src/v2"), ws.join("dag")];
     let sources =
         resolve_imports_transitively_with_source_roots("test.dag", CALL_CONTRACT_SOURCE, &roots);
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_call_contract_resolved(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx =

@@ -1,17 +1,17 @@
 use im::HashMap;
 use std::path::Path;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::v1_compiler_parse::parse;
 use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_std_core::{build_newline_index, NewlineIndex, Node};
 
-type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
+type SourceIndices = Arc<HashMap<String, Arc<NewlineIndex>>>;
 
 /// Parse-only module items for one `.dag` file (no resolve). Shared substrate for
 /// `decl_facts(roots)` (#5966) and emit-only corpus audits.
 pub struct ParsedDagFile {
-    pub items: Rc<im::Vector<Rc<Node>>>,
+    pub items: Arc<im::Vector<Arc<Node>>>,
     pub source_indices: SourceIndices,
 }
 
@@ -22,7 +22,7 @@ pub fn parse_dag_file(path: &Path) -> Option<ParsedDagFile> {
     let source_index = build_newline_index(filename.to_string(), content);
     let mut indices = HashMap::new();
     indices.insert(filename.to_string(), source_index);
-    let source_indices: SourceIndices = Rc::new(indices);
+    let source_indices: SourceIndices = Arc::new(indices);
     let result = parse(tokens, source_indices.clone());
     if result.error.is_some() {
         return None;
@@ -34,6 +34,6 @@ pub fn parse_dag_file(path: &Path) -> Option<ParsedDagFile> {
     })
 }
 
-pub fn parse_file(path: &Path) -> Option<(Rc<im::Vector<Rc<Node>>>, SourceIndices)> {
+pub fn parse_file(path: &Path) -> Option<(Arc<im::Vector<Arc<Node>>>, SourceIndices)> {
     parse_dag_file(path).map(|parsed| (parsed.items, parsed.source_indices))
 }

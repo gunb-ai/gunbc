@@ -9,7 +9,7 @@
 //! checker genuinely reads the transitive structure rather than waving projections
 //! through, so a fail-open flatten cannot pass both arms.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::helpers::{compile_multi, diagnostic_messages};
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
@@ -134,27 +134,27 @@ fn same_tree_cross_parent_conflict_is_ledgered_not_refused() {
 // (consumers rightly read diagnostics as compile cleanliness), so observing it means
 // reading the per-module result the floor's receipt line aggregates — the same shape
 // variant_export_surface_witness_test uses.
-fn typecheck_fixture_incremental(files: &[(&str, &str)]) -> Vec<Rc<TypecheckModuleResult>> {
-    let sources: im::Vector<Rc<SourceFile>> = files
+fn typecheck_fixture_incremental(files: &[(&str, &str)]) -> Vec<Arc<TypecheckModuleResult>> {
+    let sources: im::Vector<Arc<SourceFile>> = files
         .iter()
         .map(|(path, content)| {
-            Rc::new(SourceFile {
+            Arc::new(SourceFile {
                 path: path.to_string(),
                 content: content.to_string(),
             })
         })
         .collect();
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Arc::new(sources));
     let graph = frontend.graph.clone().expect("resolved module graph");
     let source_indices = frontend.newline_indices.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
         |acc, si| v1_rt::rc_map_insert(acc, si.file.clone(), si),
     );
     let norm = normalize_graph(graph, source_indices.clone());
-    let intern_table: Rc<InternTable> = frontend.intern_table.clone();
+    let intern_table: Arc<InternTable> = frontend.intern_table.clone();
 
-    let mut module_index: Rc<im::HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
-    let mut variant_surfaces: Rc<im::HashMap<String, Rc<VariantExportSurface>>> =
+    let mut module_index: Arc<im::HashMap<String, Arc<TypedModule>>> = v1_rt::rc_empty_map();
+    let mut variant_surfaces: Arc<im::HashMap<String, Arc<VariantExportSurface>>> =
         v1_rt::rc_empty_map();
     let mut results = Vec::new();
     for resolved in norm.graph.modules.iter() {
