@@ -303,18 +303,19 @@ fn run_module_grain_produce(
             skipped_missing += 1;
             continue;
         };
-        let bytes = SharedTypecheckCaches::encode_typed_snapshot(result.as_ref()).map_err(|e| {
-            eprintln!("measure_rc_arc_share_spike: encode failed for {mod_name}: {e}");
-            ExitCode::from(2)
-        })?;
-        if bytes.len() > MAX_SNAPSHOT_BYTES {
+        let Some(bytes) =
+            SharedTypecheckCaches::try_encode_typed_snapshot(result.as_ref(), MAX_SNAPSHOT_BYTES)
+                .map_err(|e| {
+                    eprintln!("measure_rc_arc_share_spike: encode failed for {mod_name}: {e}");
+                    ExitCode::from(2)
+                })?
+        else {
             skipped_large += 1;
             eprintln!(
-                "[rc-arc-spike] kind=module-grain-skip mod_name={mod_name} reason=snapshot_bytes={} cap={MAX_SNAPSHOT_BYTES}",
-                bytes.len()
+                "[rc-arc-spike] kind=module-grain-skip mod_name={mod_name} reason=snapshot_bytes>{MAX_SNAPSHOT_BYTES}"
             );
             continue;
-        }
+        };
         let snap_path = out_dir.join(format!("{written}.bin"));
         std::fs::write(&snap_path, bytes.as_slice()).map_err(|e| {
             eprintln!("measure_rc_arc_share_spike: write {:?}: {e}", snap_path);

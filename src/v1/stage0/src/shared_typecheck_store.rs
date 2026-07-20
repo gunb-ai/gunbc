@@ -21,6 +21,30 @@ use std::sync::Arc;
 
 use crate::v1_compiler_infer::TypecheckModuleResult;
 
+struct BoundedEncodeWriter {
+    buf: Vec<u8>,
+    limit: usize,
+    over_limit: bool,
+}
+
+impl std::io::Write for BoundedEncodeWriter {
+    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+        if self.buf.len() + data.len() > self.limit {
+            self.over_limit = true;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "bounded encode limit exceeded",
+            ));
+        }
+        self.buf.extend_from_slice(data);
+        Ok(data.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 /// Cross-worker share shell: typed byte cache + collision registry only.
 /// Construct once per explicit cross-worker run; clone the `Arc<RwLock<_>>` to every worker.
 /// Keys are typed-module CONTENT keys (`std.interface_summary.typed_module_key` — source
@@ -57,6 +81,23 @@ impl SharedTypecheckCaches {
         let bytes = serde_json::to_vec(result)
             .map_err(|e| format!("shared typecheck store encode: {e}"))?;
         Ok(Arc::new(bytes))
+    }
+
+    /// Encode with an output-size cap. Returns `Ok(None)` when JSON would exceed `max_bytes`.
+    pub fn try_encode_typed_snapshot(
+        result: &TypecheckModuleResult,
+        max_bytes: usize,
+    ) -> Result<Option<Arc<Vec<u8>>>, String> {
+        let mut writer = BoundedEncodeWriter {
+            buf: Vec::new(),
+            limit: max_bytes,
+            over_limit: false,
+        };
+        match serde_json::to_writer(&mut writer, result) {
+            Ok(()) => Ok(Some(Arc::new(writer.buf))),
+            Err(e) if writer.over_limit => Ok(None),
+            Err(e) => Err(format!("shared typecheck store encode: {e}")),
+        }
     }
 
     /// Insert pre-encoded bytes under a brief write lock.
