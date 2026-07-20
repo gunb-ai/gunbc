@@ -3499,7 +3499,10 @@ impl ModuleGraphFactsLive {
     /// imports are already covered by `resolved.resolved_imports`, so this returns empty for it
     /// (`adjacency` and `selection_adjacency` agree on such a file — see
     /// `reference_resolution_facts` pass 2).
-    pub(crate) fn reference_only_direct_import_modules(&self, importer_repo_path: &str) -> Vec<String> {
+    pub(crate) fn reference_only_direct_import_modules(
+        &self,
+        importer_repo_path: &str,
+    ) -> Vec<String> {
         let import_targets: HashSet<&str> = self
             .adjacency
             .get(importer_repo_path)
