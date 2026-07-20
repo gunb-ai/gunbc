@@ -50,7 +50,7 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult, entry: &str) {
 
 struct AmortHarness {
     graph: Rc<ResolvedGraph>,
-    source_indices: Rc<im_rc::HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<im::HashMap<String, Rc<NewlineIndex>>>,
 }
 
 impl AmortHarness {

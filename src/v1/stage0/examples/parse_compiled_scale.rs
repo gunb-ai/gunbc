@@ -2,7 +2,7 @@
 //! times COMPILED (native) tokenize+parse of fixed .dag files via the v1
 //! seed's own generated parser, to calibrate the interpretation-tax ratio
 //! against the same files run through v1_interpreter.rs.
-use im_rc::HashMap;
+use im::HashMap;
 use std::time::Instant;
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::v1_std_core::build_newline_index;
