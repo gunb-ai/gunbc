@@ -146,6 +146,8 @@ fn dispatch_client_js() -> String {
   )
 }
 
+data dispatch_client_js_scaffold_note: String = "dispatch_client_js is JS-as-concatenated-string -- a medium-as-string Scaffold INDEPENDENT of the server exec route. Belt B (cool-wolf-720, gunbc serve) retires the exec route in node_http_server_emit, but this CLIENT script SURVIVES: B serves roadmap_page in-process via roadmap_serve and inherits it unchanged. So its dissolution trigger is its own, not the exec route's: dissolves to a modeled browser-emit lane -- JS/TsProgram grammar rows read backward (DESIGN section 4, the same one-grammar-both-directions move as the bash and Node emitters), at which point this string concat becomes emit over modeled nodes. Marked on the carrier here (DESIGN section 6: the mark on the carrier is the authority) rather than in belt B, whose tree does not contain this function."
+
 fn dispatch_client_script() -> MarkupNode {
   el("script", [ txt(dispatch_client_js()) ])
 }
