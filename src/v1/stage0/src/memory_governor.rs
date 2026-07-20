@@ -1097,7 +1097,10 @@ mod tests {
         let mut core = GovCore::new();
         assert_eq!(core.target_width, 1, "a run starts at the width-1 floor");
         note_completion(&mut core, &calm(), &lim, CompletionKind::IncreasePoint);
-        assert_eq!(core.target_width, 2, "a calm increase point lifts the window");
+        assert_eq!(
+            core.target_width, 2,
+            "a calm increase point lifts the window"
+        );
         assert_eq!(core.width_growths, 1);
         // RED control: the same event under creep must NOT be grown through.
         let mut hot_core = GovCore::new();
