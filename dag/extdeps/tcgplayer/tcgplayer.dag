@@ -1,6 +1,6 @@
 module extdeps.tcgplayer.tcgplayer
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import std.types { NonEmptyStr, HttpMethod, AuthScheme, Secret }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
@@ -23,7 +23,7 @@ data structural_coverage_gap_versioned_paths: List<String> = [
 ]
 
 type TcgplayerTokenResponse {
-  access_token: String
+  access_token: Secret
   token_type: String
   expires_in: Int
   userName: String?
