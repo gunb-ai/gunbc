@@ -36,7 +36,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn generic_use_slot_bindings(

@@ -1,1 +1,1 @@
-pub type List<T> = im_rc::Vector<T>;
+pub type List<T> = im::Vector<T>;

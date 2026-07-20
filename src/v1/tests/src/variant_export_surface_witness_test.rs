@@ -4,7 +4,7 @@
 //! RED control: `typecheck_module_isolated` (empty surfaces) must fail on a
 //! re-export chain where the consumer imports a coproduct arm through a proxy.
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
@@ -28,7 +28,7 @@ const REEXPORT: &str = "module test.reexport\nimport test.provider { B }\n";
 const CONSUMER: &str = "module test.consumer\nimport test.reexport { B }\nfn f() -> E { B }\n";
 
 type ResolvedGraphFixture = (
-    Rc<im_rc::Vector<Rc<ResolvedModule>>>,
+    Rc<im::Vector<Rc<ResolvedModule>>>,
     Rc<HashMap<String, Rc<NewlineIndex>>>,
     Rc<InternTable>,
 );
@@ -47,7 +47,7 @@ fn fixture_sources() -> Vec<Rc<SourceFile>> {
         .collect()
 }
 
-fn resolved_module_graph(sources: Rc<im_rc::Vector<Rc<SourceFile>>>) -> ResolvedGraphFixture {
+fn resolved_module_graph(sources: Rc<im::Vector<Rc<SourceFile>>>) -> ResolvedGraphFixture {
     let frontend = front_end_sources(sources);
     let graph = frontend.graph.clone().expect("resolved module graph");
     let source_indices = frontend.newline_indices.iter().cloned().fold(
@@ -72,7 +72,7 @@ fn hard_diagnostic_messages(result: &TypecheckModuleResult) -> Vec<String> {
 }
 
 fn typecheck_resolved_incremental(
-    modules: &im_rc::Vector<Rc<ResolvedModule>>,
+    modules: &im::Vector<Rc<ResolvedModule>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Vec<Rc<TypecheckModuleResult>> {
@@ -106,7 +106,7 @@ fn typecheck_resolved_incremental(
 }
 
 fn consumer_resolved<'a>(
-    modules: &'a im_rc::Vector<Rc<ResolvedModule>>,
+    modules: &'a im::Vector<Rc<ResolvedModule>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> &'a Rc<ResolvedModule> {
     modules
