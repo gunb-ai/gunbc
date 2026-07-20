@@ -258,7 +258,11 @@ fn node_http_dispatch_route_stmt(cfg: BeltDispatchRouteConfig) -> TsStmt {
 }
 
 fn node_http_request_handler_block(dispatch: BeltDispatchRouteConfig?) -> TsStmt {
-  ts_block(stmts: [
+  let dispatch_stmts = match dispatch {
+    Present { value: cfg } => [node_http_dispatch_route_stmt(cfg: cfg)]
+    Absent => []
+  }
+  ts_block(stmts: concat(concat([
     ts_const(
       name: "method",
       value: ts_binop(left: req_member(name: "method"), op: "||", right: ts_lit_str(value: "GET"))
@@ -281,6 +285,7 @@ fn node_http_request_handler_block(dispatch: BeltDispatchRouteConfig?) -> TsStmt
         right: ts_lit_str(value: "/")
       )
     ),
+  ], dispatch_stmts), [
     ts_for_of(
       var_name: "route",
       iterable: ts_ident(name: "routes"),
@@ -371,10 +376,10 @@ fn node_http_request_handler_block(dispatch: BeltDispatchRouteConfig?) -> TsStmt
     ),
     ts_expr_stmt(expr: ts_call(callee: res_member(name: "writeHead"), args: [ts_lit_num(text: "404")])),
     ts_expr_stmt(expr: ts_call(callee: res_member(name: "end"), args: [ts_lit_str(value: "Not Found")])),
-  ])
+  ]))
 }
 
-fn node_http_create_server_stmt() -> TsStmt {
+fn node_http_create_server_stmt(dispatch: BeltDispatchRouteConfig?) -> TsStmt {
   ts_const(
     name: "server",
     value: ts_call(
@@ -382,7 +387,7 @@ fn node_http_create_server_stmt() -> TsStmt {
         object: ts_call(callee: ts_ident(name: "require"), args: [ts_lit_str(value: "http")]),
         property: "createServer"
       ),
-      args: [ts_arrow(params: ["req", "res"], body: node_http_request_handler_block())]
+      args: [ts_arrow(params: ["req", "res"], body: node_http_request_handler_block(dispatch: dispatch))]
     )
   )
 }
@@ -442,7 +447,7 @@ fn emit_node_http_static_server_program(spec: NodeHttpStaticServerSpec) -> TsPro
         name: "routes",
         value: ts_array(elements: emit_static_route_exprs(routes: spec.routes.routes))
       ),
-      node_http_create_server_stmt(),
+      node_http_create_server_stmt(dispatch: spec.dispatch),
       node_http_port_const(port: port),
       node_http_host_const(host: spec.listen.host),
       node_http_listen_stmt(),
@@ -458,6 +463,7 @@ fn gunbhub_node_http_static_server_spec() -> NodeHttpStaticServerSpec {
       host: "0.0.0.0",
       port: 8080,
     },
+    dispatch: Absent,
   }
 }
 
@@ -522,6 +528,19 @@ fn roadmap_dashboard_node_http_static_server_spec() -> NodeHttpStaticServerSpec 
       host: "0.0.0.0",
       port: 8080,
     },
+    dispatch: Present { value: roadmap_dashboard_dispatch_route_config() },
+  }
+}
+
+fn roadmap_dashboard_dispatch_route_config() -> BeltDispatchRouteConfig {
+  BeltDispatchRouteConfig {
+    path_prefix: "/dispatch/",
+    gunbc_bin: "/opt/gunbc/bin/gunbc",
+    repo_cwd: "/opt/gunbc/gunbc",
+    source_roots: ["dag", "src/v2"],
+    entry: "dag/gunbc/roadmap_belt_actuate.dag",
+    function_name: "belt_dispatch_node_cli",
+    env_var: "GUNBC_BELT_NODE_ID",
   }
 }
 
