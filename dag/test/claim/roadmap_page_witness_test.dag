@@ -70,10 +70,50 @@ fn witness_depth_cap_fails_honest() -> Bool {
     && !string_contains(s: expanded, pattern: "depth limit")
 }
 
+fn dispatch_doc_html_for(rn: RoadmapNode) -> String {
+  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  match try_serialize_html_source(node: roadmap_page(doc: doc, merged: [])) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn open_dispatch_node() -> RoadmapNode {
+  gunbc.roadmap_authority.authored(id: "disp1", done: false, content: "dispatch-me")
+}
+
+fn signed_off_dispatch_node() -> RoadmapNode {
+  let base = open_dispatch_node()
+  RoadmapNode {
+    node: base.node,
+    line: base.line,
+    carriers: base.carriers,
+    sizing: base.sizing,
+    owner: base.owner,
+    signoff: gunbc.roadmap_authority.signed(by: "op", works: true, scope_equivalent: true, as_expected: true),
+  }
+}
+
+fn witness_open_node_doc_emits_button_and_script() -> Bool {
+  let h = dispatch_doc_html_for(rn: open_dispatch_node())
+  string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+    && string_contains(s: h, pattern: "data-node=")
+    && string_contains(s: h, pattern: "<script>")
+    && string_contains(s: h, pattern: "fetch('/dispatch/")
+}
+
+fn witness_signed_off_node_doc_has_no_button() -> Bool {
+  let h = dispatch_doc_html_for(rn: signed_off_dispatch_node())
+  !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
+}
+
 test fn roadmap_page_keystone_holds() -> Bool {
   witness_authority_serializes_with_structure()
     && witness_empty_doc_is_minimal_shell()
     && witness_authority_differs_from_empty()
     && witness_depth_cap_fails_honest()
     && witness_bold_title_renders_strong()
+    && witness_open_node_doc_emits_button_and_script()
+    && witness_signed_off_node_doc_has_no_button()
 }
