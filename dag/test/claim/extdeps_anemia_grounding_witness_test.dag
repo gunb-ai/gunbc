@@ -1,31 +1,12 @@
 module test.claim.extdeps_anemia_grounding_witness
 
-import extdeps.git { GitAuthor }
-import extdeps.github.pulls { PullRequest, PullRequestRef, PullReview, ReviewComment, Commented, Open }
-import extdeps.github.github { GitHubUser, User }
-import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket, LandGridArray }
-import extdeps.toolchain.types { Aarch64 }
-import extdeps.cpu.ampere {
-  altra_max_m12830_catalog,
-  ampere_altra_l1_cache_citations,
-  ampere_altra_l1_cache_geometry,
-  ampere_altra_l2_cache_citations,
-  ampere_altra_l2_cache_geometry,
-  ampere_altra_max_l3_cache_citations,
-  ampere_altra_max_l3_cache_geometry,
-}
-import extdeps.vendor.ampere { ampere }
-import gunbc.digest_render { digest_subject }
-import std.measure { watt, watt_count, hardware_thread_count, hertz }
-import std.types { Email, CommitSha, GitRef, FilePath }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data sample_email: Email = "author@example.com"
 data sample_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
 data sample_ref: GitRef = "feature/widgets"
-data sample_path: FilePath = "dag/extdeps/git/git.dag"
+data sample_path: std.types.FilePath = "dag/extdeps/git/git.dag"
 
 fn w_git_author_email_grounded() -> Bool {
   let author = GitAuthor {
@@ -70,13 +51,13 @@ fn w_review_comment_path_grounded() -> Bool {
 }
 
 fn w_digest_subject_survives_grounded_pull_request_ref() -> Bool {
-  let pr = PullRequest {
+  let pr = extdeps.github.pulls.PullRequest {
     number: 42,
     title: "Ground extdeps git/github fields",
     body: none,
-    state: Open,
+    state: extdeps.github.pulls.Open,
     html_url: "https://github.com/mock/pull/42",
-    user: GitHubUser { login: "mock-user", id: 1, type: User },
+    user: GitHubUser { login: "mock-user", id: 1, type: extdeps.github.github.User },
     head: PullRequestRef {
       ref: sample_ref,
       sha: sample_sha,

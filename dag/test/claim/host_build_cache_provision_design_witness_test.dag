@@ -1,32 +1,5 @@
 module test.claim.host_build_cache_provision_design
 
-import std.logic { Bool }
-import extdeps.cache.sccache { sccache_local_id }
-import extdeps.cache.github_actions { gha_actions_cache_id }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.host_effect { ProvisionBuildCache }
-import gunbc.host_build_cache_catalog_gate {
-  provision_build_cache_catalog_gate_verdict,
-  provision_build_cache_unknown_catalog_fixture,
-  ProvisionBuildCacheCatalogRealizable,
-  ProvisionBuildCacheCatalogRefused,
-}
-import gunbc.host_build_cache_provision_script { build_cache_provision_read_back_fails_closed }
-import gunbc.host_build_cache_provision {
-  provision_build_cache_default_effect,
-  provision_build_cache_routes_through_host_effect_apply,
-  daemon_absent_refuses_fail_closed,
-  misconfigured_matches_cited_fragment,
-  provision_build_cache_verdict,
-  provision_build_cache_absorbing_fallback_widen_sketch,
-  build_cache_provision_gate_accepts,
-  DaemonAbsent,
-  DaemonStatsOk,
-  ProvisionConverged,
-  ProvisionRefused,
-  RefusalCatalogUnknown,
-  RefusalDaemonAbsent,
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

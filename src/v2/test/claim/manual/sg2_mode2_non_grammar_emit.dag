@@ -66,6 +66,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data sg2_mode2_fail_text: String = ""
 data sg2_mode2_expected_instantiation_text: String = "Rc<FooBar<X, Y>>"
 data sg2_mode2_expected_perturbed_text: String = "FooBar<X, Y>"

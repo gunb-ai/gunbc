@@ -1,17 +1,11 @@
 module gunbc.tools.ebay_listing
 
-import std.types { NonEmptyStr }
-import std.currency { CurrencyCode, Usd }
-import std.credentials { CredentialSource, EnvVar }
-import extdeps.ebay.ebay { MarketplaceEnum, marketplace_wire_label }
-import extdeps.ebay.oauth
-import extdeps.ebay.inventory
 
-data ebay_client_id_source: CredentialSource = EnvVar { name: "EBAY_CLIENT_ID" }
+data ebay_client_id_source: CredentialSource = std.credentials.EnvVar { name: "EBAY_CLIENT_ID" }
 
-data ebay_client_secret_source: CredentialSource = EnvVar { name: "EBAY_CLIENT_SECRET" }
+data ebay_client_secret_source: CredentialSource = std.credentials.EnvVar { name: "EBAY_CLIENT_SECRET" }
 
-data ebay_refresh_token_source: CredentialSource = EnvVar { name: "EBAY_REFRESH_TOKEN" }
+data ebay_refresh_token_source: CredentialSource = std.credentials.EnvVar { name: "EBAY_REFRESH_TOKEN" }
 
 data default_marketplace: MarketplaceEnum = EbayUs
 

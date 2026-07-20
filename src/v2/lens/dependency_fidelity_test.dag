@@ -1,15 +1,5 @@
 module v2.test.lens_dependency_fidelity.dependency_fidelity_test
 
-import v2.std.logic { Bool }
-import std.algebra { Empty }
-import v2.std.algebra { list_snoc_item }
-import v2.std.node { Node, node_synthetic, TypeNode, Atom }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.lens.unused_parameters { UnusedParameterFact, UnusedParametersFact }
-import v2.lens.dependency_fidelity {
-  input_reachability_verdict,
-  verdict_is_faithful
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

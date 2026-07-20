@@ -1,12 +1,5 @@
 module v2.test.lens_non_fold_residue.non_fold_residue_test
 
-import v2.std.logic { Bool }
-import v2.lens.non_fold_residue {
-  non_fold_residue_clean_holds,
-  non_fold_residue_discovery_roots_follow_authority,
-  non_fold_residue_live_coproduct_universe_count
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

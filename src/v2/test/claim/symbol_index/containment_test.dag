@@ -1,42 +1,5 @@
 module v2.test.claim.symbol_index.containment
 
-import v2.extdeps.languages.dag {
-  dag_grammar_atom,
-  dag_named_edge
-}
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_node }
-import v2.std.collection { Absent, List, Present }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Disj,
-  Edge,
-  Named,
-  Node,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.qualified_name { qualified_name_from_dotted_string, qualified_name_snoc }
-import v2.compiler.symbol_index_fill {
-  symbol_index_fill_containment_node,
-  symbol_index_fill_module_root,
-  symbol_index_fill_module_roots
-}
-import v2.std.symbol_index {
-  GlobalBareHit,
-  GlobalBareLookupAmbiguous,
-  GlobalBareLookupUnbound,
-  SymbolIndex,
-  empty_symbol_index,
-  symbol_index_global_unique_lookup,
-  symbol_index_insert,
-  symbol_index_lexical_lookup,
-  symbol_index_lookup
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

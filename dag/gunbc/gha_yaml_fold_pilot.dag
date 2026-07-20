@@ -1,14 +1,7 @@
 module gunbc.gha_yaml_fold_pilot
 
-import extdeps.github.actions {
-  ActionRef,
-  Job,
-  RunStep,
-  SelfHosted,
-  UsesStep
-}
 
-data gha_fold_pilot_job: Job = Job {
+data gha_fold_pilot_job: extdeps.github.actions.Job = extdeps.github.actions.Job {
   id: "pilot",
   name: Absent,
   runner: SelfHosted { labels: ["self-hosted", "linux"] },

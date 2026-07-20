@@ -1,15 +1,5 @@
 module test.claim.roadmap_page_witness
 
-import gunbc.roadmap_page {
-  roadmap_page,
-  roadmap_page_for_authority,
-  nodes_ul,
-}
-import gunbc.roadmap_document { RoadmapDocument }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge }
-import gunbc.roadmap_authority { authored_merged_prs, authored }
-import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -48,8 +38,8 @@ fn witness_authority_differs_from_empty() -> Bool {
 }
 
 fn depth_chain_html(fuel: Int) -> String {
-  let parent = authored(id: "p", done: false, content: "parent-node")
-  let child = authored(id: "c", done: false, content: "child-node-title")
+  let parent = gunbc.roadmap_authority.authored(id: "p", done: false, content: "parent-node")
+  let child = gunbc.roadmap_authority.authored(id: "c", done: false, content: "child-node-title")
   let edge = RoadmapEdge { child: child.node, parent: parent.node }
   match try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel)) {
     EmitOk { html: h } => h
@@ -58,7 +48,7 @@ fn depth_chain_html(fuel: Int) -> String {
 }
 
 fn bold_title_html() -> String {
-  let rn = authored(id: "bold1", done: false, content: "**bold** item")
+  let rn = gunbc.roadmap_authority.authored(id: "bold1", done: false, content: "**bold** item")
   match try_serialize_html_source(node: nodes_ul(items: [rn], nodes: [rn], edges: [], merged: [], fuel: 0)) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""

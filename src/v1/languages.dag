@@ -1,96 +1,54 @@
 module v1.compiler.languages
 
-import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
-import v1.std.core {
-  BinOp, Add, Sub, Mul, Div, Mod,
-  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
-  LiteralValue
-}
-import std.syntax {
-  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
-  OperatorSpec, SyntaxSpec,
-  AlgebraFieldKind,
-  BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
-  ServiceBody, ResourceBody
-}
+import v1.compiler.artifact { RenderTarget }
 
-import extdeps.languages.rust.syntax { rust_operators, rust_item_forms }
-import extdeps.languages.python.syntax { python_operators, python_item_forms }
-import extdeps.languages.go.syntax { go_operators, go_item_forms }
 import extdeps.languages.dag.syntax { dag_operators }
 
-import extdeps.languages.rust.emit {
-  rust_keywords, rust_container_templates,
-  rust_reserved, rust_reserved_escape_suffix,
-  rust_struct_derives, rust_struct_derives_copy,
-  rust_enum_derives, rust_enum_derives_copy,
-  rust_serde_tag, rust_serde_rename_template,
-  rust_source_extension, rust_source_dir, rust_visibility,
-  rust_string_types,
-  rust_func_keyword, rust_async_prefix, rust_struct_keyword,
-  rust_enum_keyword, rust_type_alias_keyword,
-  rust_param_separator, rust_return_arrow,
-  rust_param_type_sep,
-  rust_module_keyword, rust_import_keyword, rust_import_from_keyword,
-  rust_lambda_template, rust_error_expr_template,
-  rust_list_literal_empty, rust_list_literal_template,
-  rust_null_coalesce_template, rust_error_type_template,
-  rust_type_arg_open, rust_type_arg_close, rust_void_type,
-  rust_tuple_empty, rust_tuple_pair_template, rust_tuple_multi_template, rust_tuple_separator
-}
-
-import extdeps.languages.python.emit {
-  python_keywords,
-  python_reserved, python_reserved_escape_suffix,
-  python_derive_attribute, python_default_value,
-  python_source_extension, python_module_init,
-  python_string_types,
-  python_func_keyword, python_async_prefix, python_struct_keyword,
-  python_enum_keyword, python_type_alias_keyword,
-  python_param_separator, python_return_arrow,
-  python_param_type_sep,
-  python_module_keyword, python_import_keyword, python_import_from_keyword,
-  python_lambda_template, python_error_expr_template,
-  python_list_literal_empty, python_list_literal_template,
-  python_null_coalesce_template, python_error_type_template,
-  python_type_arg_open, python_type_arg_close, python_void_type,
-  python_tuple_empty, python_tuple_pair_template, python_tuple_multi_template, python_tuple_separator
-}
-
-import extdeps.languages.go.emit {
-  go_keywords,
-  go_reserved, go_reserved_escape_suffix,
-  go_manifest_file,
-  go_source_extension,
-  go_string_types,
-  go_func_keyword, go_async_prefix, go_struct_keyword,
-  go_enum_keyword, go_type_alias_keyword,
-  go_param_separator, go_return_arrow,
-  go_param_type_sep,
-  go_module_keyword, go_import_keyword, go_import_from_keyword,
-  go_lambda_template, go_error_expr_template,
-  go_list_literal_empty, go_list_literal_template,
-  go_null_coalesce_template, go_error_type_template,
-  go_type_arg_open, go_type_arg_close, go_void_type,
-  go_tuple_empty, go_tuple_pair_template, go_tuple_multi_template, go_tuple_separator
-}
+import std.syntax { AlgebraFieldKind, BinOp, ItemForm, ItemFormKind, OperatorSpec }
 
 import extdeps.languages.dag.emit {
-  dag_keywords, dag_container_templates,
-  dag_reserved,
-  dag_string_types,
-  dag_func_keyword, dag_async_prefix, dag_struct_keyword,
-  dag_enum_keyword, dag_type_alias_keyword,
-  dag_param_separator, dag_return_arrow,
-  dag_param_type_sep,
-  dag_module_keyword, dag_import_keyword, dag_import_from_keyword,
-  dag_source_extension,
-  dag_lambda_template, dag_error_expr_template,
-  dag_list_literal_empty, dag_list_literal_template,
-  dag_null_coalesce_template, dag_error_type_template,
-  dag_type_arg_open, dag_type_arg_close, dag_void_type,
-  dag_tuple_empty, dag_tuple_pair_template, dag_tuple_multi_template, dag_tuple_separator
+  dag_async_prefix, dag_enum_keyword, dag_error_expr_template, dag_error_type_template, dag_func_keyword, dag_import_from_keyword,
+  dag_import_keyword, dag_lambda_template, dag_list_literal_empty, dag_list_literal_template, dag_module_keyword, dag_null_coalesce_template,
+  dag_param_separator, dag_param_type_sep, dag_reserved, dag_return_arrow, dag_source_extension, dag_struct_keyword,
+  dag_tuple_empty, dag_tuple_multi_template, dag_tuple_pair_template, dag_tuple_separator, dag_type_alias_keyword, dag_type_arg_close,
+  dag_type_arg_open, dag_void_type
 }
+import extdeps.languages.go.emit {
+  go_async_prefix, go_error_expr_template, go_error_type_template, go_import_from_keyword, go_import_keyword, go_keywords,
+  go_lambda_template, go_list_literal_empty, go_list_literal_template, go_null_coalesce_template, go_param_separator, go_param_type_sep,
+  go_reserved, go_reserved_escape_suffix, go_return_arrow, go_string_types, go_tuple_empty, go_tuple_multi_template,
+  go_tuple_pair_template, go_tuple_separator, go_type_arg_close, go_type_arg_open, go_void_type
+}
+import extdeps.languages.go.syntax {
+  go_item_forms, go_operators
+}
+import extdeps.languages.python.emit {
+  python_async_prefix, python_default_value, python_derive_attribute, python_error_expr_template, python_error_type_template, python_import_from_keyword,
+  python_import_keyword, python_keywords, python_lambda_template, python_list_literal_empty, python_list_literal_template, python_module_init,
+  python_null_coalesce_template, python_param_separator, python_param_type_sep, python_reserved, python_reserved_escape_suffix, python_return_arrow,
+  python_source_extension, python_string_types, python_tuple_empty, python_tuple_multi_template, python_tuple_pair_template, python_tuple_separator,
+  python_type_arg_close, python_type_arg_open, python_void_type
+}
+import extdeps.languages.python.syntax {
+  python_item_forms, python_operators
+}
+import extdeps.languages.rust.emit {
+  rust_async_prefix, rust_enum_derives, rust_enum_derives_copy, rust_error_expr_template, rust_error_type_template, rust_import_from_keyword,
+  rust_import_keyword, rust_keywords, rust_lambda_template, rust_list_literal_empty, rust_list_literal_template, rust_null_coalesce_template,
+  rust_param_separator, rust_param_type_sep, rust_reserved, rust_reserved_escape_suffix, rust_return_arrow, rust_serde_rename_template,
+  rust_serde_tag, rust_source_dir, rust_source_extension, rust_string_types, rust_struct_derives, rust_struct_derives_copy,
+  rust_tuple_empty, rust_tuple_multi_template, rust_tuple_pair_template, rust_tuple_separator, rust_type_arg_close, rust_type_arg_open,
+  rust_visibility, rust_void_type
+}
+import extdeps.languages.rust.syntax {
+  rust_item_forms, rust_operators
+}
+
+
+
+
+
+
 
 type ReservedWordStrategy
   = PrefixEscape { prefix: String }

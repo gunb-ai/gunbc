@@ -1,7 +1,5 @@
 module test.claim.ci_render_slowest_hot_style
 
-import gunbc.ci_render { render_slowest_witnesses_box, render_slowest_witnesses_box_default, slowest_witness_row }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

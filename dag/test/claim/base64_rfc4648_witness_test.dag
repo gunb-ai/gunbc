@@ -1,10 +1,5 @@
 module test.claim.base64_rfc4648_witness
 
-import std.logic { Bool }
-import std.integer { UInt8 }
-import std.bytes { bytes_octets, octets_bytes, utf8_encode_bytes }
-import std.encoding { Base64Variant, Standard, UrlSafe, base64_encode, base64_decode, utf8_decode_bytes }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -12,7 +7,7 @@ fn b64_std_of_utf8(s: String) -> String {
   base64_encode(octets: bytes_octets(b: utf8_encode_bytes(s: s)), variant: Standard)
 }
 
-data url_witness_octets: List<UInt8> = [251, 255, 191]
+data url_witness_octets: List<std.integer.UInt8> = [251, 255, 191]
 
 test fn bytes_octets_iso_holds() -> Bool {
   let b = utf8_encode_bytes(s: "foobar")

@@ -1,30 +1,5 @@
 module v2.test.claim.loop_infer_iteration
 
-import v2.compiler.infer {
-  infer,
-  infer_branch_type_atoms_equal,
-  inferred_facts_resolved_type,
-  inferred_facts_witness_for_node,
-  InferredTree
-}
-import v2.extdeps.languages.dag { dag_int_literal_fixture_one, dag_int_literal_fixture_two }
-import v2.compiler.resolve { ResolvedTree }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  ComputationNode,
-  Edge,
-  Loop,
-  Named,
-  Node,
-  Positional,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
-import v2.std.witness { Holds, Violates }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

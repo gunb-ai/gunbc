@@ -1,15 +1,5 @@
 module test.claim.render_surface_witness
 
-import std.render {
-  Document, Block, Leaf, Group, Frame, Line, Span, SpanStyle,
-  RenderCapability, Append,
-}
-import std.symbols { Ascii }
-import extdeps.render.surface {
-  RenderTarget, PlainTerminal, GithubActions, SurfaceEnv,
-  detect_target, group_syntax, resolve_group_syntax, serialize_document,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -21,8 +11,8 @@ fn plain_span(text: String) -> Span {
   Span { text: text, style: SpanStyle { color: none, bold: false, italic: false, symbol: none } }
 }
 
-fn one_line_frame(text: String) -> Frame {
-  Frame {
+fn one_line_frame(text: String) -> std.render.Frame {
+  std.render.Frame {
     lines: [Line { spans: [plain_span(text: text)], indent: 0, max_width: none }],
     cursor_action: Append
   }
@@ -30,8 +20,8 @@ fn one_line_frame(text: String) -> Frame {
 
 data sample_doc: Document = Document {
   blocks: [
-    Group { title: "host effects", frame: one_line_frame(text: "[file] read foo.dag") },
-    Leaf { frame: one_line_frame(text: "PASS some_witness") }
+    std.render.Group { title: "host effects", frame: one_line_frame(text: "[file] read foo.dag") },
+    std.render.Leaf { frame: one_line_frame(text: "PASS some_witness") }
   ]
 }
 

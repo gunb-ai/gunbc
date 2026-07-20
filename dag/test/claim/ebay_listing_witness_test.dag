@@ -1,38 +1,5 @@
 module test.claim.ebay_listing_witness
 
-import extdeps.ebay.ebay {
-  MarketplaceEnum,
-  EbayUs,
-  EbayGb,
-  marketplace_wire_label,
-  parse_marketplace,
-}
-import extdeps.ebay.inventory {
-  ConditionEnum,
-  New,
-  UsedExcellent,
-  ForPartsOrNotWorking,
-  condition_wire_label,
-  parse_condition,
-  FormatTypeEnum,
-  Auction,
-  FixedPrice,
-  format_type_wire_label,
-  parse_format_type,
-}
-import extdeps.ebay.errors {
-  EbayErrorCategory,
-  Request,
-  error_category_wire_label,
-  parse_error_category,
-}
-import extdeps.ebay.oauth {
-  EbayTokenType,
-  UserAccessToken,
-  parse_ebay_token_type,
-}
-import gunbc.tools.ebay_listing { default_marketplace }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

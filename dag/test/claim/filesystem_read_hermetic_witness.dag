@@ -1,6 +1,5 @@
 module test.claim.filesystem_read_hermetic_witness
 
-import extdeps.filesystem.filesystem_io
 
 func witness_read_via_builtin_roundtrip() -> Bool {
   let result = filesystem_read(path: "dag/std/filesystem.dag")

@@ -1,24 +1,5 @@
 module v2.lens.mock_totality
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SubstrateMandatoryTag }
 
-import v2.lens.coverage { Coverage, missing_coverage }
-import v2.std.collection { List }
-import v2.std.algebra { is_empty }
-import v2.std.diagnostic {
-  Correction,
-  Diagnostic,
-  Locus,
-  Outcome,
-  Rejected,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile,
-  diagnostics_singleton,
-  outcome_accepted
-}
-import v2.std.node { Symbol }
 
 fn mock_unhandled_diagnostic() -> Diagnostic {
   Diagnostic {

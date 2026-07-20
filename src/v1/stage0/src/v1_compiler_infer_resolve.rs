@@ -9,8 +9,8 @@ use crate::std_syntax::LiteralValue::LitInt;
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for,
-    lookup_type, lookup_type_by_name, lookup_type_for,
+    authored_name, env_with_type_variable_bindings, is_recursive_type, is_recursive_type_by_name,
+    is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -45,8 +45,8 @@ pub use crate::v1_std_core::{
     make_expr_node, make_field_init_node, make_field_node, make_interp_part_node,
     make_named_expr_node, make_param_node, make_resolved_param_node, make_resource_use_node,
     make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
-    param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
-    resource_use_resource, string_type, transport_request_body, unit_type,
+    param_node_default_value, param_node_name_at, param_node_type_expr, qualified_last_segment,
+    resource_use_name_at, resource_use_resource, string_type, transport_request_body, unit_type,
     with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
@@ -208,7 +208,8 @@ pub fn preserve_nominal_brand_on_resolve(
     if ((((brand_name.clone() != "".to_string())
         && (brand_name.clone() != authored_name_at(source_indices.clone(), structural.clone())))
         && !is_declared_container_alias_spelling(brand_name.clone()))
-        && !is_transparent_primitive_alias_rhs(structural.clone(), source_indices.clone()))
+        && (!is_transparent_primitive_alias_rhs(structural.clone(), source_indices.clone())
+            || is_kernel_type(qualified_last_segment(brand_name.clone()))))
     {
         with_authored_identity(identity.clone(), structural.clone())
     } else {
@@ -261,10 +262,10 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                     && (brand.clone()
                         != authored_name_at(source_indices.clone(), structural.clone())))
                     && !is_declared_container_alias_spelling(brand.clone()))
-                    && !is_transparent_primitive_alias_rhs(
+                    && (!is_transparent_primitive_alias_rhs(
                         structural.clone(),
                         source_indices.clone(),
-                    ))
+                    ) || is_kernel_type(qualified_last_segment(brand.clone()))))
                 {
                     with_authored_identity(n.clone(), structural.clone())
                 } else {
@@ -488,7 +489,36 @@ pub fn substitute_type_slots(
     decl_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
+    substitute_type_slots_scoped(
+        n.clone(),
+        slot_bindings.clone(),
+        decl_name.clone(),
+        source_indices.clone(),
+        false,
+    )
+}
+
+pub fn substitute_type_slots_scoped(
+    n: Rc<Node>,
+    slot_bindings: Rc<HashMap<String, Rc<Node>>>,
+    decl_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    bind_type_variables: bool,
+) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let tv_slot = if bind_type_variables.clone() {
+            match n.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::TypeVariable { id: tv_id, .. }) => {
+                    v1_rt::map_get(&slot_bindings, tv_id.clone())
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if (tv_slot.clone() != None) {
+            return tv_slot.clone().unwrap();
+        }
         let is_slot = (((((n.children.clone().len() as i64) == 0)
             && (n.connective.clone() == Connective::NoConnective))
             && (n.body.clone() == None))
@@ -514,11 +544,12 @@ pub fn substitute_type_slots(
                                     let substituted_args = Rc::new({
                                         let mut __result = Vec::new();
                                         for arg in child.children.clone().iter().cloned() {
-                                            __result.push(substitute_type_slots(
+                                            __result.push(substitute_type_slots_scoped(
                                                 arg.clone(),
                                                 slot_bindings.clone(),
                                                 decl_name.clone(),
                                                 source_indices.clone(),
+                                                bind_type_variables.clone(),
                                             ));
                                         }
                                         __result
@@ -547,11 +578,12 @@ pub fn substitute_type_slots(
                                     })
                                 }
                             } else {
-                                substitute_type_slots(
+                                substitute_type_slots_scoped(
                                     child.clone(),
                                     slot_bindings.clone(),
                                     decl_name.clone(),
                                     source_indices.clone(),
+                                    bind_type_variables.clone(),
                                 )
                             },
                         );
@@ -561,11 +593,12 @@ pub fn substitute_type_slots(
                 let new_inferred = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
                         Some(Rc::new(InferredNode::Resolved {
-                            node: substitute_type_slots(
+                            node: substitute_type_slots_scoped(
                                 rt.clone(),
                                 slot_bindings.clone(),
                                 decl_name.clone(),
                                 source_indices.clone(),
+                                bind_type_variables.clone(),
                             ),
                         }))
                     }
@@ -3163,62 +3196,7 @@ pub fn resolve_item_types(
         } else {
             Rc::new(vec![])
         };
-        let env = tp_names.clone().iter().cloned().fold(
-            env.clone(),
-            |e: Rc<TypeEnv>, tp_name: String| {
-                let tp_binding = Rc::new(TypeBinding {
-                    name: tp_name.clone(),
-                    resolved: Rc::new(Node {
-                        name: tp_name.clone(),
-                        span: kernel_span(tp_name.clone()),
-                        ident_span: Some(kernel_span(tp_name.clone())),
-                        children: Rc::new(vec![]),
-                        connective: Connective::NoConnective,
-                        params: Rc::new(vec![]),
-                        inferred: Some(Rc::new(InferredNode::TypeVariable {
-                            id: tp_name.clone(),
-                        })),
-                        return_cardinality: Cardinality::Required,
-                        uses: Rc::new(vec![]),
-                        body: None,
-                        transport: None,
-                        properties: Rc::new(vec![]),
-                        type_annotation: None,
-                        is_self_recursive: false,
-                        has_non_tail_self_call: false,
-                        match_pattern: None,
-                        expr_data: Rc::new(ExprData::NoExprData),
-                        ident: None,
-                    }),
-                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                });
-                Rc::new(TypeEnv {
-                    bindings: v1_rt::rc_map_insert(
-                        e.bindings.clone(),
-                        intern(e.intern_table.clone(), tp_name.clone()).id.clone(),
-                        tp_binding.clone(),
-                    ),
-                    str_bindings: v1_rt::rc_map_insert(
-                        e.str_bindings.clone(),
-                        tp_name.clone(),
-                        tp_binding.clone(),
-                    ),
-                    ancestry_str_bindings: e.ancestry_str_bindings.clone(),
-                    parents: e.parents.clone(),
-                    recursive_types: e.recursive_types.clone(),
-                    recursive_type_set: e.recursive_type_set.clone(),
-                    inductive_fields: e.inductive_fields.clone(),
-                    source_indices: e.source_indices.clone(),
-                    intern_table: e.intern_table.clone(),
-                    source_visible_names: v1_rt::rc_map_insert(
-                        e.source_visible_names.clone(),
-                        tp_name.clone(),
-                        true,
-                    ),
-                    symbol_index: e.symbol_index.clone(),
-                })
-            },
-        );
+        let env = env_with_type_variable_bindings(env.clone(), tp_names.clone());
         let param_results = Rc::new({
             let mut __result = Vec::new();
             for p in item.params.clone().iter().cloned() {

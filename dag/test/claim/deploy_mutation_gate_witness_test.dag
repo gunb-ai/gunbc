@@ -1,30 +1,5 @@
 module test.claim.deploy_mutation_gate_witness
 
-import std.logic { Bool }
-import std.types { String }
-import std.access { Permit, Deny, decision_meet }
-import gunbc.ci_deploy_access {
-  ci_deploy_srv1_access,
-  deploy_mutation_gate,
-  deploy_access_privileged_fixture_actor,
-  deploy_access_unprivileged_fixture_actor,
-  deploy_access_decision_reason,
-  deploy_access_refusal_prefix,
-}
-import gunbc.ci_deploy_target_host {
-  DeployTargetHostObservation,
-  deploy_target_host_fixture_observation,
-  deploy_target_host_refusal_prefix,
-}
-import gunbc.live_deploy.apply { live_deploy_fold }
-import gunbc.live_deploy.spec { deployment_spec_srv1 }
-import gunbc.host_effect {
-  ShellCommand,
-  LocalShell,
-  host_effect_identity_evidence,
-}
-import std.realization_reconcile { reconciliation_converged, NotConverged, Converged }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -45,8 +20,8 @@ fn srv2_host_observation() -> DeployTargetHostObservation {
 }
 
 fn witness_decision_meet_preserves_left_denial_reason() -> Bool {
-  let left = Deny { reason: Present { value: "host-deny-reason" } }
-  let right = Deny { reason: Present { value: "access-deny-reason" } }
+  let left = std.access.Deny { reason: Present { value: "host-deny-reason" } }
+  let right = std.access.Deny { reason: Present { value: "access-deny-reason" } }
   match decision_meet(a: left, b: right) {
     Deny { reason: r } =>
       match r {
