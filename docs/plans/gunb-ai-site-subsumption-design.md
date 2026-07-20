@@ -37,7 +37,7 @@ Today the product story is forked (§3): the *site* (facts about gunbc, its pale
 
 ### 2a. Ownership and layout
 
-- New module home: `dag/gunbc/site/` (peer of `roadmap_*`): `site_tokens.dag` (materials palette), `site_primitives.dag` (panel/type/SVG vocabulary), `site_content.dag` (copy, install command, deck card facts), `site_page.dag` (index composition), `site_ornament.dag` (derived-ornament generators, §4), `site_emit.dag` (artifact bodies), `site_workflow.dag` (Pages deploy `Workflow`).
+- New module home: `dag/gunbc/site/` (peer of `roadmap_*`): `site_tokens.dag` (materials palette + craft-floor scales), `site_primitives.dag` (panel/type/SVG vocabulary), `site_mark.dag` (the mark spec + its LOD renders, §4e), `site_content.dag` (copy, install command, deck card facts), `site_page.dag` (index composition), `site_ornament.dag` (derived-ornament generators, §4), `site_emit.dag` (artifact bodies), `site_workflow.dag` (Pages deploy `Workflow`).
 - Committed artifacts (all `GeneratedArtifact` rows, drift-gated): `site/index.html`, `site/assets/site.css`, `site/assets/nav.js` (Stage-N residue, §3), `site/assets/mark.svg`, `site/CNAME`, `site/primitives.html` (the design system's witness page — deliberately committed and published at a non-linked path, since it is literally the unit test of the visual language), and `.github/workflows/pages.yml`.
 - Binary icons (favicons, touch/maskable PNGs): **seed-retained asset rows** — committed bytes pinned by a digest row with a declared derivation trigger ("derive from `mark.svg` when a raster-emit handler exists"), never silently hand-editable (the digest row makes drift loud). Do not build a PNG rasterizer for this.
 - `gunb-ai/frontend` archives after cutover (history preserved; `legacy/` moodboard stays reachable there). No mirror, no push-sync — a gunbc-pushes-to-frontend variant was considered and rejected as keeping two authorities alive (§3).
@@ -82,8 +82,8 @@ The frontend `DESIGN.md`'s *structural* discipline survives intact — it is thi
 The current site is *austere* — quiet, recessive, minimal. The brief is **Deco-Gothic**: the 1913–1930 New York high-rise register (Woolworth's terracotta tracery, Chrysler's radiating crown and steel eagles, 40 Wall's pyramidal cap) — verticality, setbacks, engraved density, materials that age well, and ornament that is never idle. Concretely:
 
 - **Composition:** strong vertical spine; sections as *setbacks* (each section slightly narrower / stepped, the ziggurat profile) instead of a uniform column; clipped/chamfered panel corners graduating to stepped-corner profiles at section scale.
-- **Materials (extends, never replaces, the palette):** keep `void`/`stone`/`warm-white`; promote **brass** from rare pivot-accent to the structural metal of the register (rules for where it may appear stay closed); add **verdigris** — oxidized copper, *derived from moss's hue family* per rule 4, carrying moss's "held relation" role at ornamental density — and **limestone** (a lighter stone step for engraved fields). Clay keeps its singular boundary/diagnostic meaning.
-- **Linework:** one stroke weight was the old law; the new register uses a *closed scale* of engraved densities (hairline field / rule / heavy cornice) — still a closed vocabulary, just deeper, exactly like the type scale.
+- **Materials (extends, never replaces, the palette):** keep `void`/`stone`/`warm-white` (operator 2026-07-20: the colors are in the realm — the register changes, the palette holds); promote **brass** from rare pivot-accent to the structural metal of the register (rules for where it may appear stay closed); add **verdigris** — oxidized copper, *derived from moss's hue family* per rule 4, carrying moss's "held relation" role at ornamental density — and **limestone** (a lighter stone step for engraved fields). Clay keeps its singular boundary/diagnostic meaning. And add **light** — not a new hue but a *treatment*: low-saturation luminance halos in the verdigris/moss family over the void ground (operator direction 2026-07-20: soft · glowing · quiet). The anchor image sharpens accordingly: not the Chrysler crown at noon but **the crown lit at night** — the city seen dark, structure visible because it is lit from within.
+- **Linework:** one stroke weight was the old law; the new register uses a *closed scale* of engraved densities (hairline field / rule / heavy cornice) — still a closed vocabulary, just deeper, exactly like the type scale — plus a **lit variant** per weight (core hairline + wide low-alpha halo strokes). This admits gradients **only as emitted light** (halo/bloom around lit geometry, never a surface wash — rule 10's gradient-blob ban stays intact), landed as a rule amendment through the override protocol, with a declared **luminance budget** (a max lit-to-matte ratio per viewport, a committed token row) so the night register can never drift to neon.
 - **Typography:** mono stays the native register for code/receipt/diagnostic. The wordmark and section heads get an **engraved display treatment** (letterspaced small-caps with inline-SVG incised detailing) — this violates the old "no display font" rule and lands through the documented override protocol as a rule amendment, justified structurally (the wordmark is the building's crown, a boundary marker, not body voice).
 - **Gargoyles:** the mark's creature family, perched at *boundary* positions — panel corners of Invariant panels, the 404, the footer cap. A gargoyle appears **only where a boundary/diagnostic exists** (it is a drain spout: it marks where water/failure is channeled out). This keeps rule 1 intact: the ornament *is* the boundary annotation.
 
@@ -94,6 +94,7 @@ Intricacy is admitted **only if computed from a real repo fact** — the design-
 - **Frieze bands** between sections: a repeating relief pattern generated from the actual module dependency graph (nodes/edges of `dag/std` → geometric tracery), regenerated by the same emit that builds the page — the ornament drifts only when the truth does.
 - **Coffered fields / borders:** panel border micro-patterns derived from the content hash of the panel's own facts (a visual `ContentHash` — two panels with identical content carry identical engraving).
 - **The crown:** the hero's Chrysler-style radiating cap generated from the layer DAG (`std ← extdeps ← compiler ← workflow`) — the site's most prominent ornament literally *is* the architecture diagram.
+- **Light is derivation made visible (the glow's rule-1 mapping):** a lit edge is a relation the compiler actually walks; a lit node is a checked fact; a receipt renders as the lit ledger row. Refusal does **not** glow — a boundary (clay) *breaks* the light: a cold, unlit gap in an otherwise-lit path. So the night register reads as a closed semantic: **stone = declared · light = derived · dark gap = refused** — the epistemic chain drawn literally, which is what licenses "the site framed as a glowing DAG" (operator, 2026-07-20) as fact rather than mood.
 - Rule 6 ("no animation unless it clarifies a structural transition") survives with one amendment candidate: light-catching on engraved lines during scroll (a static-geometry highlight, not motion of elements) may qualify as clarifying depth; decided at the moodboard phase, through the override protocol, not silently.
 
 Every generator lands with the same honesty as any emitter: deterministic (same facts → same bytes; the drift gate enforces this for free), and refused-not-faked when a fact it needs is unavailable.
@@ -115,7 +116,20 @@ Two construction rules make depth cheap and honest (§2/§3/§5):
 - **One authority per component, all depths derived.** `render(fact, depth)` is one fold with a depth budget — a component's D0 and D3 are projections of the *same* fact rows, so levels cannot disagree. (The failure this kills is exactly why hand-built sites cannot afford density: the tooltip drifts from the diagram it annotates, and every added level multiplies the drift surface. Here N levels cost one generator.)
 - **All depths ship in the emitted DOM; interaction only reveals.** Hover/expand are CSS states and `<details>` elements — never a fetch, never client-side computation. D0–D2 are fully static; D3 has keyboard parity (`:focus-visible` twins; `<details>` is keyboard-native); JS stays the Stage-N residue. D4 is deliberate, not an easter egg: the audience is compiler engineers, for whom view-source is a second front door — the document leads with a composed comment carrying the emission receipt and a verify command.
 
-### 4e. Component vocabulary (first cut, for the moodboard)
+### 4e. The mark — one graph, every scale (logo rethink, operator 2026-07-20)
+
+The current mark (a rounded-rect creature face) is in the mascot register: it carries no structure, its geometry is not grid-derived, and at 16 px it reads as a blob. **Replace, not refine.** The replacement is a **system, not a drawing**: the mark is a tiny graph *spec* in `site_mark.dag` plus the same `render(fact, depth)` fold as every component (§4d) — which makes rule 7 ("one mark everywhere") literal: favicon = the D0 render, nav = D1, hero = D3. The levels cannot disagree because they are one authority; the logo is the first citizen of the fractal grammar, not an exception to it.
+
+Candidates for the moodboard (each rendered from a spec, judged at 16/24/48/120 px and hero scale):
+
+- **A — Confluence (recommended primary).** The smallest honest DAG: four nodes, fork and re-join (`a → b · a → c · b → d · c → d`). It is the product's whole argument in four nodes — one fact forks into two copies (drift) and must re-join (single authority); the re-join is what gunbc sells. It is also the **diamond property** (confluence) from rewriting theory — derivations agree — so the mark is a theorem, not a doodle. At 16 px: four lit points and four hairlines, reading as a diamond constellation.
+- **B — Crown.** The layer DAG (`std ← extdeps ← compiler ← workflow`) stacked as a setback ziggurat crown — the hero-scale composition. Geometrically, A extruded through four tiers: A and B are one geometry family, not two marks.
+- **C — Keystone.** A single lit node at the apex of an arch of edges — the single authority that holds the structure (remove the keystone and the arch falls). Strong meaning, weaker small-size survival; candidate for section caps rather than primary.
+- **D — Sentinel.** The gargoyle as a constellation — nodes and edges forming the perched silhouette. Reserved for boundary surfaces (404, refusal pages), never the primary (a mascot as primary is exactly the register being left).
+
+Treatment: node points luminous (§4b light), edges hairline; favicon = dark tile + phosphor points. Any generated concept imagery is **direction only** — the landed mark is constructed geometry (all coordinates on one grid, strokes from the closed scale), emitted to `site/assets/mark.svg` and drift-gated like every other artifact.
+
+### 4f. Component vocabulary (first cut, for the moodboard)
 
 Eight components; each must exhibit its **full depth ladder** on `primitives.html` before production use (the frontend repo's primitives-before-pages law, now enforced per-depth). All are compositions of the four panel types plus the §4c ornament generators.
 
@@ -127,12 +141,12 @@ Eight components; each must exhibit its **full depth ladder** on `primitives.htm
 | **Specimen** | fact / code panel | a witnessed `.dag` sample beside its graph, both rendered from the same fact rows → hover a symbol: its type appears and its node/edges highlight in *both* surfaces at once |
 | **Gargoyle** | boundary marker | carved creature at Invariant-panel corners, the 404, the footer cap — generated from the content hash of the diagnostic it channels, so **no two are identical** → hover: what drains here ("non-exhaustive `match` exits through this spout") → expand: the full refusal receipt |
 | **Ledger** | receipt panel | aligned proof rows → digests are real → per-row copyable re-verification command |
-| **Elevator** | nav / scroll spine | floor indicator bound to the setback sections; ↑/↓ keyboard floors — the one component where game-feel is explicit |
+| **Elevator** | nav / scroll spine | the page's **own section graph rendered as a small lit DAG** — the current floor's node glows, visited floors stay faintly lit; ↑/↓ keyboard floors — the one component where game-feel is explicit (the site navigates itself as what it is: a DAG) |
 | **Hallmark** | footer + D4 | maker's mark — "emitted from `dag/gunbc/site` @ hash · gunbc version" — rendered in the footer *and* as the document's leading comment |
 
 The gargoyle family is the procedural-creature move the game register does best: uniqueness is *derived* (diagnostic hash → silhouette parameters), so delight and honesty coincide — a collectible that cannot be minted without a real diagnostic behind it.
 
-### 4f. Page flow (one page; depth is the z-axis, not page count)
+### 4g. Page flow (one page; depth is the z-axis, not page count)
 
 The building supplies the flow — the site gets **deeper, never longer**:
 
@@ -149,18 +163,36 @@ street exit    cornerstone repeated · hallmark
 
 Interaction grammar, closed: **hover = approach · click/focus = enter · Esc = step back**. Every hover reveal has a focus twin; motion is permitted only as a depth transition (the rule-6 amendment candidate: detail resolving on approach clarifies *containment* — a structural transition, not decoration).
 
-### 4g. Two audiences, one authority
+### 4h. Two audiences, one authority
 
 A growing share of visits are agents, not humans. The same `site_content.dag` facts emit an **agent surface** (`llms.txt` + a JSON facts file with digests) beside the human page — one model, two realizations (§2), landed as ordinary `SiteArtifact` rows. The human gets the engraving; the agent gets the ledger. No claim ever has a second copy.
 
-### 4h. Process (unchanged from the frontend repo's own law)
+### 4i. The craft floor (the "amateurish" diagnosis, made unwritable)
+
+Operator verdict on the current site (2026-07-20): cheap/amateurish-looking. The bones are sound — the token derivation and panel discipline are professional structure — so the verdict localizes to a specific, enumerable set of **craft tells**, and every one of them is a *convention-vs-construction* failure (§5): a hand author must remember each rule on every edit; a generator makes the rule a wall. The floor:
+
+| Amateur tell | Construction rule (the wall) |
+|---|---|
+| spacing that is "near" things instead of on a rhythm | one modular spacing scale; every margin/padding is a scale row — off-scale lengths unwritable |
+| flat hierarchy — everything medium-sized, medium-weight (the fear of extremes) | a steep type scale with few steps; each type role pinned to exactly one step |
+| harsh defaults — pure white on pure black, default link blue, default focus rings | every color pair drawn from the `Material` table; contrast ratios computed at emit (craft and a11y are the same check) |
+| mono set at sans size (mono runs optically large) | per-family optical-size ratios as token rows |
+| all-caps without tracking; faked small caps | letterspacing bound to the case treatment inside the type-role row |
+| mixed corner radii and stroke weights | one radius authority; strokes only from the closed §4b scale |
+| muddy borders — neither visible nor invisible | border alphas as derived steps of the material, never hand-picked hexes |
+| unbalanced vector geometry in the mark | §4e — the mark is a grid spec, not a drawing |
+| glow used as decoration (the neon slide) | §4b luminance budget + §4c light-semantics: glow only on derivation geometry |
+
+The point of the table: the operator does not need to become a designer. One good sign-off at the moodboard gate, and the floor holds it everywhere, forever, by construction — **the professional look *is* the enforcement.** (This is also the §1 argument turned on pixels: hand-tuning every page is the amateur *process* regardless of the author's taste; a crafted result at maintained cost requires the rules to live in one place.)
+
+### 4j. Process (unchanged from the frontend repo's own law)
 
 Primitives before pages: the Deco-Gothic register lands first as a **moodboard/workpad** (authored in `dag/gunbc/site/`, emitted to a non-linked path), then `primitives.html` (every material, type role, panel, SVG primitive, ornament generator — each shown at every depth of its ladder — the design system's witness page), then the production `index.html` composed only of primitives that survived there. Operator reviews the register at the moodboard gate before any production page is built — the aesthetic call stays a human sign-off; the plan only guarantees that whatever is signed becomes construction, not convention.
 
 ## 5. Phases (each independently landable; triggers named)
 
-- **Phase 0 — model + moodboard.** `dag/gunbc/site/` module home; `Material` tokens + derivation fns; panel/type/SVG/ornament typed vocabulary; the §4e component rows with their depth ladders (`render(fact, depth)` fold shape); first ornament generators (frieze-from-module-graph, hash-coffering, hash-gargoyle); emit `moodboard.html` + `primitives.html` (every primitive at every depth D0–D3; D4 = its emitted source form) as committed, drift-gated artifacts (published at non-linked paths once Phase 2 lands; reviewable on the srv1/tailnet path before that). **Gate: operator sign-off on the register.** No public-site change.
-- **Phase 1 — the page.** `site_content.dag` (copy, install command, deck card facts with witnessed samples per §3 Stage-D); static card rendering at emit time; all depths shipped in the DOM with CSS-state reveals + focus parity; Stage-N `nav.js` via `TsProgram`; emit `site/index.html` + `site/assets/site.css` + `mark.svg` + `CNAME` + the §4g agent surface; icons as digest-pinned seed-retained rows; a declared page-weight budget row (the all-depths DOM is bounded by a committed byte budget, drift-visible, not a vibe); all on the generated-artifact gate. Site is fully reviewable at the Pages preview URL and on srv1. **Gate: DESIGN-rules lens/review pass + witnessed-sample witnesses green.**
+- **Phase 0 — model + moodboard.** `dag/gunbc/site/` module home; `Material` tokens + derivation fns + the §4i craft-floor scales (spacing · type · stroke · radius · contrast · luminance budget, as typed rows); panel/type/SVG/ornament typed vocabulary; the §4f component rows with their depth ladders (`render(fact, depth)` fold shape); the §4e mark candidates (A–D) rendered from specs at 16/24/48/120 px; first ornament generators (frieze-from-module-graph, hash-coffering, hash-gargoyle); emit `moodboard.html` + `primitives.html` (every primitive at every depth D0–D3; D4 = its emitted source form) as committed, drift-gated artifacts (published at non-linked paths once Phase 2 lands; reviewable on the srv1/tailnet path before that). **Gate: operator sign-off on the register + mark selection.** No public-site change.
+- **Phase 1 — the page.** `site_content.dag` (copy, install command, deck card facts with witnessed samples per §3 Stage-D); static card rendering at emit time; all depths shipped in the DOM with CSS-state reveals + focus parity; Stage-N `nav.js` via `TsProgram`; emit `site/index.html` + `site/assets/site.css` + `mark.svg` + `CNAME` + the §4h agent surface; icons as digest-pinned seed-retained rows; a declared page-weight budget row (the all-depths DOM is bounded by a committed byte budget, drift-visible, not a vibe); all on the generated-artifact gate. Site is fully reviewable at the Pages preview URL and on srv1. **Gate: DESIGN-rules lens/review pass + witnessed-sample witnesses green.**
 - **Phase 2 — hosting subsumption.** `site_workflow.dag` → generated `pages.yml` (drift + parse gate); enable Pages on gunbc; §2c read-back receipt wired (post-deploy + scheduled); §2d cutover runbook executed (org domain verification → detach/attach → receipt green at `https://gunb.ai/`); archive `gunb-ai/frontend`. **This discharges the `2-stateless-frontend` milestone-A receipt shape on the public domain** (the srv1 path stays as the tailnet staging realization of the same allocation spec).
 - **Phase 3 — dissolutions (each on its own trigger).** Stage-J: nav behaviors re-authored as `.dag` fns through the JS/TS TargetModel when bar (c) greens. `css_rule` scaffold: dissolve remaining raw-string props into the typed surface as the site's usage covers them (counted residue, never a blanket rewrite). Icon rasterization: derive PNGs from `mark.svg` if/when a raster handler exists for another consumer. `roadmap_static_site.HtmlIndex`: constructed or deleted once the site artifacts land (it stops being a scaffold either way).
 
