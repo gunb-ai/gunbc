@@ -4155,7 +4155,7 @@ match bare_s.clone() {
                                                         None => error_type(),
                                                     };
                                                     let resolved_type =
-                                                        callable_inferred(callable_type.clone());
+                                                        callable_return_type(callable_type.clone());
                                                     Rc::new(InferResult {
     typed: make_named_expr_node(func_name.clone(), Rc::new(ExprData::ExprCall {
     call_semantics: Some(CallSemantics::PlainCallSemantics),

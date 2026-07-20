@@ -2115,7 +2115,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               Present { value: ct } => ct
               Absent => error_type
             }
-            let resolved_type = callable_inferred(n: callable_type)
+            let resolved_type = callable_return_type(n: callable_type)
             InferResult {
               typed: make_named_expr_node(
                 name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
