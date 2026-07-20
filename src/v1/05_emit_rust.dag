@@ -3199,7 +3199,8 @@ fn module_needs_faithful_carrier_imports(items: List<Node>, corpus_repr: RustCor
   } else {
     module_renders_faithful_text_carrier(items: items, corpus_repr: corpus_repr, shared_types: shared_types, source_indices: source_indices)
     || items |> any(item =>
-      node_tree_references_type_name(n: item, type_name: "FreeMonoid", source_indices: source_indices)
+      node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
+      || node_tree_references_type_name(n: item, type_name: "FreeMonoid", source_indices: source_indices)
       || node_tree_references_type_name(n: item, type_name: "Char", source_indices: source_indices)
       || node_tree_references_type_name(n: item, type_name: "NonEmptyStr", source_indices: source_indices)
       || node_tree_references_type_name(n: item, type_name: "Int", source_indices: source_indices)
@@ -3230,10 +3231,14 @@ fn rust_import_name_already_resolved(imported_names: List<String>, local_type_na
 }
 
 fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_type_names: List<String>, items: List<Node>, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr, shared_types: Set<String>) -> List<String> {
-  let needs_free_monoid = items |> any(item => node_tree_references_type_name(n: item, type_name: "FreeMonoid", source_indices: source_indices))
-    || module_renders_faithful_text_carrier(items: items, corpus_repr: corpus_repr, shared_types: shared_types, source_indices: source_indices)
-  let needs_char = items |> any(item => node_tree_references_type_name(n: item, type_name: "Char", source_indices: source_indices))
-    || module_renders_faithful_text_carrier(items: items, corpus_repr: corpus_repr, shared_types: shared_types, source_indices: source_indices)
+  let needs_free_monoid = items |> any(item =>
+    node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
+    || node_tree_references_type_name(n: item, type_name: "FreeMonoid", source_indices: source_indices)
+  )
+  let needs_char = items |> any(item =>
+    node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
+    || node_tree_references_type_name(n: item, type_name: "Char", source_indices: source_indices)
+  )
   let needs_non_empty_str = items |> any(item => node_tree_references_type_name(n: item, type_name: "NonEmptyStr", source_indices: source_indices))
   let needs_int = items |> any(item => node_tree_references_type_name(n: item, type_name: "Int", source_indices: source_indices))
   let free_monoid = if !needs_free_monoid || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "FreeMonoid") {

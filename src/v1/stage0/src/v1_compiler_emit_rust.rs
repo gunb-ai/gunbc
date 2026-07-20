@@ -3932,7 +3932,8 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         } else {
             Rc::new(vec![])
         };
-        let v2_std_integer_stub = if (corpus_repr_is_faithful(emit_info.corpus_repr.clone())
+        let v2_std_integer_stub = if ((corpus_repr_is_faithful(emit_info.corpus_repr.clone())
+            && module_files_reference_v2_std_integer(module_files.clone()))
             && !module_files_include_v2_std_integer(module_files.clone()))
         {
             Rc::new(vec![emit_v2_std_integer_closure_stub_module()])
@@ -4000,11 +4001,11 @@ pub fn module_files_reference_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool 
     }
 }
 
-pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+pub fn module_files_reference_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool {
     {
         let mut __found = false;
         for f in files.clone().iter().cloned() {
-            if v1_rt::string_contains(&f.path.clone(), "v2_std_text".to_string()) {
+            if v1_rt::string_contains(&f.content.clone(), "v2_std_integer::".to_string()) {
                 __found = true;
                 break;
             }
@@ -4013,16 +4014,41 @@ pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
     }
 }
 
+pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+    {
+        let expected = v1_rt::concat(
+            v1_rt::concat(rust_source_root(), "v2_std_text".to_string()),
+            rust_source_ext(),
+        );
+        {
+            let mut __found = false;
+            for f in files.clone().iter().cloned() {
+                if (f.path.clone() == expected.clone()) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
 pub fn module_files_include_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool {
     {
-        let mut __found = false;
-        for f in files.clone().iter().cloned() {
-            if v1_rt::string_contains(&f.path.clone(), "v2_std_integer".to_string()) {
-                __found = true;
-                break;
+        let expected = v1_rt::concat(
+            v1_rt::concat(rust_source_root(), "v2_std_integer".to_string()),
+            rust_source_ext(),
+        );
+        {
+            let mut __found = false;
+            for f in files.clone().iter().cloned() {
+                if (f.path.clone() == expected.clone()) {
+                    __found = true;
+                    break;
+                }
             }
+            __found
         }
-        __found
     }
 }
 
@@ -4262,10 +4288,19 @@ pub fn emit_module_full(
                     .collect::<Vec<_>>(),
             )
         };
-        let carrier_import_lines = if corpus_repr_is_faithful(emit_info.corpus_repr.clone()) {
+        let carrier_import_lines = if module_needs_faithful_carrier_imports(
+            typed_module.items.clone(),
+            emit_info.corpus_repr.clone(),
+            shared_types.clone(),
+            scope.type_env.clone().source_indices.clone(),
+        ) {
             emit_faithful_text_carrier_import_lines(
                 prelude_imported_names.clone(),
                 local_type_names.clone(),
+                typed_module.items.clone(),
+                scope.type_env.clone().source_indices.clone(),
+                emit_info.corpus_repr.clone(),
+                shared_types.clone(),
             )
         } else {
             Rc::new(vec![])
@@ -7694,18 +7729,24 @@ pub fn node_tree_references_type_name(
     })
 }
 
-pub fn module_needs_freemonoid_import(
+pub fn module_needs_faithful_carrier_imports(
     items: Rc<Vec<Rc<Node>>>,
     corpus_repr: RustCorpusRepr,
+    shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if !corpus_repr_is_faithful(corpus_repr.clone()) {
         false
     } else {
-        {
+        (module_renders_faithful_text_carrier(
+            items.clone(),
+            corpus_repr.clone(),
+            shared_types.clone(),
+            source_indices.clone(),
+        ) || {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if (node_tree_has_faithful_string_leaf(
+                if ((((node_tree_has_faithful_string_leaf(
                     item.clone(),
                     source_indices.clone(),
                     corpus_repr.clone(),
@@ -7713,13 +7754,25 @@ pub fn module_needs_freemonoid_import(
                     item.clone(),
                     "FreeMonoid".to_string(),
                     source_indices.clone(),
+                )) || node_tree_references_type_name(
+                    item.clone(),
+                    "Char".to_string(),
+                    source_indices.clone(),
+                )) || node_tree_references_type_name(
+                    item.clone(),
+                    "NonEmptyStr".to_string(),
+                    source_indices.clone(),
+                )) || node_tree_references_type_name(
+                    item.clone(),
+                    "Int".to_string(),
+                    source_indices.clone(),
                 )) {
                     __found = true;
                     break;
                 }
             }
             __found
-        }
+        })
     }
 }
 
@@ -7803,13 +7856,82 @@ pub fn rust_import_name_already_resolved(
 pub fn emit_faithful_text_carrier_import_lines(
     imported_names: Rc<Vec<String>>,
     local_type_names: Rc<Vec<String>>,
+    items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    corpus_repr: RustCorpusRepr,
+    shared_types: Rc<BTreeSet<String>>,
 ) -> Rc<Vec<String>> {
     {
-        let free_monoid = if rust_import_name_already_resolved(
-            imported_names.clone(),
-            local_type_names.clone(),
-            "FreeMonoid".to_string(),
-        ) {
+        let needs_free_monoid = {
+            let mut __found = false;
+            for item in items.clone().iter().cloned() {
+                if (node_tree_has_faithful_string_leaf(
+                    item.clone(),
+                    source_indices.clone(),
+                    corpus_repr.clone(),
+                ) || node_tree_references_type_name(
+                    item.clone(),
+                    "FreeMonoid".to_string(),
+                    source_indices.clone(),
+                )) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let needs_char = {
+            let mut __found = false;
+            for item in items.clone().iter().cloned() {
+                if (node_tree_has_faithful_string_leaf(
+                    item.clone(),
+                    source_indices.clone(),
+                    corpus_repr.clone(),
+                ) || node_tree_references_type_name(
+                    item.clone(),
+                    "Char".to_string(),
+                    source_indices.clone(),
+                )) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let needs_non_empty_str = {
+            let mut __found = false;
+            for item in items.clone().iter().cloned() {
+                if node_tree_references_type_name(
+                    item.clone(),
+                    "NonEmptyStr".to_string(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let needs_int = {
+            let mut __found = false;
+            for item in items.clone().iter().cloned() {
+                if node_tree_references_type_name(
+                    item.clone(),
+                    "Int".to_string(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let free_monoid = if (!needs_free_monoid.clone()
+            || rust_import_name_already_resolved(
+                imported_names.clone(),
+                local_type_names.clone(),
+                "FreeMonoid".to_string(),
+            )) {
             Rc::new(vec![])
         } else {
             Rc::new(vec![v1_rt::concat(
@@ -7817,11 +7939,12 @@ pub fn emit_faithful_text_carrier_import_lines(
                 "use crate::std_algebra::FreeMonoid;".to_string(),
             )])
         };
-        let char_line = if rust_import_name_already_resolved(
-            imported_names.clone(),
-            local_type_names.clone(),
-            "Char".to_string(),
-        ) {
+        let char_line = if (!needs_char.clone()
+            || rust_import_name_already_resolved(
+                imported_names.clone(),
+                local_type_names.clone(),
+                "Char".to_string(),
+            )) {
             Rc::new(vec![])
         } else {
             Rc::new(vec![v1_rt::concat(
@@ -7829,11 +7952,12 @@ pub fn emit_faithful_text_carrier_import_lines(
                 "use crate::std_types::Char;".to_string(),
             )])
         };
-        let non_empty_str = if rust_import_name_already_resolved(
-            imported_names.clone(),
-            local_type_names.clone(),
-            "NonEmptyStr".to_string(),
-        ) {
+        let non_empty_str = if (!needs_non_empty_str.clone()
+            || rust_import_name_already_resolved(
+                imported_names.clone(),
+                local_type_names.clone(),
+                "NonEmptyStr".to_string(),
+            )) {
             Rc::new(vec![])
         } else {
             Rc::new(vec![v1_rt::concat(
@@ -7841,7 +7965,7 @@ pub fn emit_faithful_text_carrier_import_lines(
                 "use crate::std_types::NonEmptyStr;".to_string(),
             )])
         };
-        let int_line = if {
+        let int_line = if (!needs_int.clone() || {
             let mut __found = false;
             for n in local_type_names.clone().iter().cloned() {
                 if (n.clone() == "Int".to_string()) {
@@ -7850,7 +7974,7 @@ pub fn emit_faithful_text_carrier_import_lines(
                 }
             }
             __found
-        } {
+        }) {
             Rc::new(vec![])
         } else {
             Rc::new(vec![v1_rt::concat(
