@@ -16,8 +16,7 @@ import v1.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_named_expr_node, make_expr_error_node,
-  expr_var_name_at, field_access_base, field_access_field_at, FieldAccessSpine, field_access_spine, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
-  qualified_last_segment, type_name_compatible,
+  expr_var_name_at, field_access_base, field_access_field_at, expr_call_func_at, expr_method_name_at, let_binding_name_at, foreach_variable_at, lambda_param_names_at, record_lit_type_name_at,
   make_arg_node, make_arm_node, arm_pattern, arm_guard, arm_body, make_field_init_node, field_init_node_name_at, field_init_node_value, make_text_part_node, make_interp_part_node,
   map_children, arg_value, arg_name_at,
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
@@ -72,8 +71,7 @@ import v1.compiler.infer_types {
   infer_literal_node, infer_binop_type_node,
   extract_optional_inner_node, for_each_element_type_node,
   resolved_type, child_type_node, is_type_expr_annotation,
-  emit_map_has,
-  callable_return_type
+  emit_map_has
 }
 import v1.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
@@ -89,11 +87,7 @@ import v1.compiler.infer_env {
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
-  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-  qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
-  env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
-  ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name
+  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.content_hash { content_hash_atom, content_hash_tagged, content_hash_combine }
@@ -111,10 +105,8 @@ import std.interface_summary {
 import std.induction {
   InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion,
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, NonIncreasingValue, StrictAxisErased, MixedTop, SubValueUnknown,
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   sub_value_to_evidence, meet_sub_value, join_sub_value, compose_sub_value, compose_sub_value_relations
-}
-import std.computation {
-  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
 }
 import std.termination {
   positive_descent_amount_from_positive_int,
@@ -123,7 +115,7 @@ import std.termination {
 }
 import std.algebra { CollectionSizeEffect, ShrinkEffect }
 import v1.compiler.infer_resolve {
-  resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
+  resolve_node, resolve_item_types, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
   is_user_generic_use_site,
   NodeResolveResult, ItemResolveResult
@@ -158,8 +150,7 @@ import v1.compiler.infer_patterns {
   lookup_variant_in_type, lookup_field_in_variant,
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
-  check_match_exhaustiveness,
-  expand_scrut_type_for_variant_lookup
+  check_match_exhaustiveness
 }
 import v1.compiler.infer_lookup {
   KnownMethodResolution,
@@ -167,8 +158,7 @@ import v1.compiler.infer_lookup {
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
-  lookup_in_scope, lookup_func_sig,
-  global_bare_callable_node
+  lookup_in_scope, lookup_func_sig
 }
 import v1.compiler.infer_access {
   AccessCheckResultNode,
@@ -217,7 +207,6 @@ type InferScope {
   type_env: TypeEnv
   func_env: ResolvedFuncEnv
   locals: Map<String, TypeBinding>
-  body_locals: Map<String, Bool>
   match_bound_names: Map<String, Bool>
   module_name: String
   service_registry: Map<String, List<OpEntry>>
@@ -521,15 +510,6 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
 }
 
 fn variant_owner_node(scope: InferScope, name: String) -> Node? {
-  if contains(name, ".") {
-    match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
-      Present { value: resolved } =>
-        if resolved.connective == Disj && has_child_named(n: resolved, name: qualified_last_segment(name: name), source_indices: scope.type_env.source_indices) {
-          Present { value: resolved }
-        } else { none }
-      Absent => none
-    }
-  } else {
   match map_get(scope.locals, name) {
     Present { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
@@ -543,7 +523,6 @@ fn variant_owner_node(scope: InferScope, name: String) -> Node? {
         Absent => none
       }
     Absent => none
-  }
   }
 }
 
@@ -633,30 +612,6 @@ fn record_lit_expanded_from_expected(type_name: String?, expected: Node?, scope:
   }
 }
 
-fn record_lit_expected_coproduct(expected: Node?, scope: InferScope) -> Node? {
-  match expected {
-    Present { value: exp } =>
-      let resolved = match lookup_type_for(env: scope.type_env, node: exp) {
-        Present { value: r } => r
-        Absent => exp
-      }
-      if (resolved.connective == Disj) { Present { value: resolved } } else { none }
-    Absent => none
-  }
-}
-
-fn record_lit_variant_from_expected(type_name: String?, expected: Node?, scope: InferScope) -> Node? {
-  match type_name {
-    Present { value: tn } =>
-      match record_lit_expected_coproduct(expected: expected, scope: scope) {
-        Present { value: coproduct } =>
-          coproduct.children |> filter(v => authored_name_at(source_indices: scope.type_env.source_indices, node: v) == qualified_last_segment(name: tn)) |> first
-        Absent => none
-      }
-    Absent => none
-  }
-}
-
 fn record_lit_fields_from_expected(type_name: String?, expected: Node?, scope: InferScope) -> List<Node>? {
   match record_lit_expanded_from_expected(type_name: type_name, expected: expected, scope: scope) {
     Present { value: expanded } =>
@@ -672,7 +627,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
     Present { value: tn } =>
       match expected {
         Present { value: exp } =>
-          if type_name_compatible(a: authored_name_at(source_indices: scope.type_env.source_indices, node: exp), b: tn) == false {
+          if authored_name_at(source_indices: scope.type_env.source_indices, node: exp) != tn {
             none
           } else if exp.children |> count == 0 {
             none
@@ -773,34 +728,16 @@ fn module_skips_direct_call_arg_check(module_name: String) -> Bool {
   is_v4 || is_compiler_substrate
 }
 
-fn brand_grounds_transparently_to(name: String, other: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
-  match lookup_type_by_name(env: type_env, name: name) {
-    Present { value: resolved } =>
-      resolved.connective == NoConnective && (resolved.children |> count) == 0 && resolved.inferred != none
-        && match resolved.inferred {
-          Present { value: Resolved { node: target } } =>
-            let target_name = authored_name_at(source_indices: source_indices, node: target)
-            let other_name = authored_name_at(source_indices: source_indices, node: other)
-            (is_kernel_type(name: target_name) && target_name == other_name)
-              || qualified_last_segment(name: target_name) == qualified_last_segment(name: other_name)
-          _ => false
-        }
-    Absent => false
-  }
-}
-
-fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn nominal_call_arg_brand_mismatch(formal: Node, actual: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let formal_name = authored_name_at(source_indices: source_indices, node: formal)
   let actual_name = authored_name_at(source_indices: source_indices, node: actual)
   formal.connective != Arrow && actual.connective != Arrow
     && formal_name != ""
     && actual_name != ""
-    && qualified_last_segment(name: formal_name) != qualified_last_segment(name: actual_name)
+    && formal_name != actual_name
     && structural_carrier_template_name(n: formal, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices)
     && !is_declared_container_alias_spelling(name: formal_name)
     && !is_declared_container_alias_spelling(name: actual_name)
-    && !brand_grounds_transparently_to(name: formal_name, other: actual, type_env: type_env, source_indices: source_indices)
-    && !brand_grounds_transparently_to(name: actual_name, other: formal, type_env: type_env, source_indices: source_indices)
 }
 
 fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -818,7 +755,7 @@ fn kernel_value_declared_type_mismatch(formal: Node, actual: Node, type_env: Typ
       false
     } else {
       let formal_name = authored_name_at(source_indices: source_indices, node: formal_base)
-      if formal_name == "" || qualified_last_segment(name: formal_name) == qualified_last_segment(name: actual_name) || dag_can_cast(source_type: actual_name, target_type: formal_name) {
+      if formal_name == "" || formal_name == actual_name || dag_can_cast(source_type: actual_name, target_type: formal_name) {
         false
       } else if structural_carrier_template_name(n: formal_base, source_indices: source_indices) == structural_carrier_template_name(n: actual, source_indices: source_indices) {
         false
@@ -861,7 +798,7 @@ fn container_element_nominal_brand_mismatch(
               n: child_type_node(ch: formal_ch), env: type_env, module_name: module_name)
             let actual_el = peel_nominal_alias_identity(
               n: child_type_node(ch: actual_ch), env: type_env, module_name: module_name)
-            nominal_call_arg_brand_mismatch(formal: formal_el, actual: actual_el, type_env: type_env, source_indices: source_indices)
+            nominal_call_arg_brand_mismatch(formal: formal_el, actual: actual_el, source_indices: source_indices)
           Absent => false
         }
       Absent => false
@@ -878,35 +815,11 @@ fn direct_call_arg_type_mismatch(
 ) -> Bool {
   if type_node_is_callable(n: formal) || type_node_is_callable(n: actual) { false }
   else {
-    nominal_call_arg_brand_mismatch(formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
+    nominal_call_arg_brand_mismatch(formal: formal, actual: actual, source_indices: source_indices)
       || container_element_nominal_brand_mismatch(
         formal: formal, actual: actual, type_env: type_env, module_name: module_name, source_indices: source_indices)
       || kernel_value_declared_type_mismatch(
         formal: formal, actual: actual, type_env: type_env, source_indices: source_indices)
-  }
-}
-
-fn borrowed_callable_call_type(gnode: Node, typed_args: List<Node>, scope: InferScope) -> Node {
-  let source_indices = scope.type_env.source_indices
-  let base = callable_inferred(n: gnode)
-  let tp_names = fn_type_param_names(item: gnode, source_indices: source_indices)
-  if tp_names |> count == 0 {
-    base
-  } else {
-    let value_params = gnode.params |> filter(p => !param_is_generic_decl(p: p, source_indices: source_indices))
-    let subst = fold(value_params |> enumerate, init: empty_map(), f: (acc, pair) =>
-      let formal_raw = param_node_type_expr(n: pair.second)
-      let param_name = authored_name_at(source_indices: source_indices, node: pair.second)
-      let matched_arg = match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
-        Present { value: named_ta } => Present { value: named_ta }
-        Absent => typed_args |> skip(pair.first) |> first
-      }
-      match matched_arg {
-        Present { value: ta } => unify_generics(formal: formal_raw, actual: resolved_type(n: arg_value(n: ta)), generic_names: tp_names, source_indices: source_indices, acc: acc)
-        Absent => acc
-      }
-    )
-    substitute_generics(n: base, subst: subst, source_indices: source_indices)
   }
 }
 
@@ -1228,14 +1141,10 @@ fn build_params_scope(scope: InferScope, params: List<Node>) -> InferScope {
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
     map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), TypeBinding { name: param_node_name_at(n: p, source_indices: scope.type_env.source_indices), resolved: param_node_type_expr(n: p), provenance: PreservedValue })
   )
-  let new_body_locals = fold(params, init: scope.body_locals, f: (acc, p) =>
-    map_insert(acc, param_node_name_at(n: p, source_indices: scope.type_env.source_indices), true)
-  )
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: new_locals,
-    body_locals: new_body_locals,
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -1249,7 +1158,6 @@ fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: Sub
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
-    body_locals: map_insert(scope.body_locals, name, true),
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -1263,7 +1171,6 @@ fn extend_scope_match_bound(scope: InferScope, name: String, resolved: Node, pro
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: map_insert(scope.locals, name, TypeBinding { name: name, resolved: resolved, provenance: provenance }),
-    body_locals: map_insert(scope.body_locals, name, true),
     match_bound_names: map_insert(scope.match_bound_names, name, true),
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -1276,14 +1183,10 @@ fn extend_scope_with_params(scope: InferScope, params: List<String>) -> InferSco
   let new_locals = fold(params, init: scope.locals, f: (acc, p) =>
     map_insert(acc, p, TypeBinding { name: p, resolved: type_variable_node(id: "lambda_param"), provenance: SubValueUnknown })
   )
-  let new_body_locals = fold(params, init: scope.body_locals, f: (acc, p) =>
-    map_insert(acc, p, true)
-  )
   InferScope {
     type_env: scope.type_env,
     func_env: scope.func_env,
     locals: new_locals,
-    body_locals: new_body_locals,
     match_bound_names: scope.match_bound_names,
     module_name: scope.module_name,
     service_registry: scope.service_registry,
@@ -1435,7 +1338,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         type_env: scope.type_env,
         func_env: scope.func_env,
         locals: scope.locals,
-        body_locals: scope.body_locals,
         match_bound_names: scope.match_bound_names,
         module_name: scope.module_name,
         service_registry: scope.service_registry,
@@ -1455,7 +1357,6 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           type_env: scope.type_env,
           func_env: scope.func_env,
           locals: scope.locals,
-          body_locals: scope.body_locals,
           match_bound_names: scope.match_bound_names,
           module_name: scope.module_name,
           service_registry: scope.service_registry,
@@ -1499,55 +1400,6 @@ fn infer_arg_with_element_type(arg: Node, element_type: Node, scope: InferScope)
   ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: ar.typed, span: arg.span, name_span: arg.span), diagnostics: ar.diagnostics }
 }
 
-fn binding_is_namespace_root_nominal(binding: TypeBinding) -> Bool {
-  binding.resolved.name == binding.name
-    && binding.resolved.connective == NoConnective
-    && (binding.resolved.children |> count) == 0
-}
-
-fn spine_root_is_shadowed(scope: InferScope, root: String) -> Bool {
-  match map_get(scope.locals, root) {
-    Present { value: root_binding } => !binding_is_namespace_root_nominal(binding: root_binding)
-    Absent => false
-  }
-}
-
-fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) -> InferResult? {
-  match field_access_spine(texpr: texpr, source_indices: scope.type_env.source_indices) {
-    Absent => none
-    Present { value: spine } =>
-      match spine_root_is_shadowed(scope: scope, root: spine.root) {
-        true => none
-        false =>
-          match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: spine.dotted) {
-            Absent => none
-            Present { value: decl } =>
-              let raw_value_type = match decl.inferred {
-                Present { value: Resolved { node: rt } } => rt
-                _ => match decl.type_annotation {
-                  Present { value: ann } => ann
-                  Absent => decl
-                }
-              }
-              let value_type = qualify_borrowed_type_names(
-                n: raw_value_type,
-                owner_module_path: qualified_all_but_last(name: spine.dotted),
-                env: scope.type_env,
-                excluded: empty_map()
-              )
-              Present { value: ok_infer(texpr: make_named_expr_node(
-                name: spine.dotted,
-                expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
-                children: [],
-                inferred: Present { value: Resolved { node: value_type } },
-                span: span,
-                name_span: kernel_span(name: spine.dotted)
-              )) }
-          }
-      }
-  }
-}
-
 fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
   match texpr.expr_data {
     ExprLiteral { value: lit } =>
@@ -1589,7 +1441,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               ))
           }
         Absent =>
-          match lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: name) {
+          match lookup_func_sig(func_env: scope.func_env, name: name) {
             Present { value: fsig } =>
               if (fsig.params |> count) == 0 {
                 ok_infer(texpr: make_named_expr_node(
@@ -1611,68 +1463,21 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
                 ))
               }
             Absent =>
-              match lookup_binding_by_name(env: scope.type_env, name: name) {
-                Present { value: gbinding } =>
-                  let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
-                  match scope_parent {
-                    Present { value: scope_enum } =>
-                      ok_infer(texpr: make_named_expr_node(
-                        name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
-                        children: [],
-                        inferred: Present { value: Resolved { node: gbinding.resolved } },
-                        span: span,
-                        name_span: span
-                      ))
-                    Absent =>
-                      let binding_kind = infer_var_binding_kind(scope: scope, name: name)
-                      ok_infer(texpr: make_named_expr_node(
-                        name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: binding_kind } },
-                        children: [],
-                        inferred: Present { value: Resolved { node: gbinding.resolved } },
-                        span: span,
-                        name_span: span
-                      ))
-                  }
-                Absent =>
-                  let expected_variant_enum = match expected {
-                    Present { value: exp } =>
-                      let exp_enum = expand_scrut_type_for_variant_lookup(scrut_node: exp, env: scope.type_env)
-                      match find_child_named(n: exp_enum, name: name, source_indices: scope.type_env.source_indices) {
-                        Present { value: _ } => Present { value: exp_enum }
-                        Absent => none
-                      }
-                    Absent => none
-                  }
-                  match expected_variant_enum {
-                    Present { value: exp_enum } =>
-                      ok_infer(texpr: make_named_expr_node(
-                        name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: authored_name_at(source_indices: scope.type_env.source_indices, node: exp_enum) } } },
-                        children: [],
-                        inferred: Present { value: Resolved { node: exp_enum } },
-                        span: span,
-                        name_span: span
-                      ))
-                    Absent =>
-                      let err_texpr = make_named_expr_node(
-                        name: name,
-                        expr_data: ExprVar { binding_kind: none },
-                        children: [],
-                        inferred: Present { value: Resolved { node: error_type } },
-                        span: span,
-                        name_span: span
-                      )
-                      InferResult {
-                        typed: err_texpr,
-                        diagnostics: [inference_error(
-                          message: concat("undefined variable '", name, "'"),
-                          span: span,
-                          module_name: scope.module_name
-                        )]
-                      }
-                  }
+              let err_texpr = make_named_expr_node(
+                name: name,
+                expr_data: ExprVar { binding_kind: none },
+                children: [],
+                inferred: Present { value: Resolved { node: error_type } },
+                span: span,
+                name_span: span
+              )
+              InferResult {
+                typed: err_texpr,
+                diagnostics: [inference_error(
+                  message: concat("undefined variable '", name, "'"),
+                  span: span,
+                  module_name: scope.module_name
+                )]
               }
           }
       }
@@ -1681,9 +1486,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let field_name = field_access_field_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
       let base_expr = field_access_base(texpr: texpr)
-      match qualified_value_projection(texpr: texpr, scope: scope, span: span) {
-        Present { value: proj } => proj
-        Absent =>
       let base_result = infer_expr(texpr: base_expr, scope: scope, expected: none)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
@@ -1702,9 +1504,8 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       } else {
       let field_type_lookup = lookup_field_type_node(n: resolved_base, field_name: field_name, source_indices: scope.type_env.source_indices)
       match field_type_lookup {
-        Present { value: raw_field_type } =>
+        Present { value: field_type } =>
 
-          let field_type = stamp_field_type_from_decl_params(field_type: raw_field_type, serving_decl: resolved_base, source_indices: scope.type_env.source_indices)
           let field_summary = match field_summary_for_type(base_type: base_rt, env: scope.type_env, field: field_name) {
             Present { value: s } => Present { value: s }
             Absent => field_summary_for_type(base_type: resolved_base, env: scope.type_env, field: field_name)
@@ -1766,14 +1567,13 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           }
       }
       }
-      }
 
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let func_name = expr_call_func_at(texpr: texpr, source_indices: scope.type_env.source_indices)
       let span = texpr.span
       let call_args = texpr.children
 
-      let sig = body_shadow_aware_func_sig(scope: scope, func_name: func_name)
+      let sig = lookup_func_sig(func_env: scope.func_env, name: func_name)
       let sig_params = match sig {
         Present { value: s } => s.params
         Absent => []
@@ -1803,9 +1603,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         } }
       } else {
 
-        let sig_split = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices)
-        let value_params = sig_split.value_params
-        let generic_names = sig_split.generic_names
+        let value_params = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
+        let generic_names = sig_params
+          |> filter(p => param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
+          |> map(p => param_node_name_at(n: p, source_indices: scope.type_env.source_indices))
         let final_state = fold(call_args |> enumerate, init: ArgGenericFoldState { results: [], subst: empty_map() }, f: (st, pair) =>
           let a = pair.second
           let formal_lookup = value_params |> skip(pair.first) |> first
@@ -1842,7 +1643,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           Present { value: s } => substitute_generics(n: s.inferred, subst: call_subst, source_indices: scope.type_env.source_indices)
           Absent => error_type
         }
-        let value_params_for_check = split_sig_params(params: sig_params, source_indices: scope.type_env.source_indices).value_params
+        let value_params_for_check = sig_params |> filter(p => !param_is_generic_decl(p: p, source_indices: scope.type_env.source_indices))
         let arg_compat_diags = if module_skips_direct_call_arg_check(module_name: scope.module_name) { [] } else {
           direct_call_arg_mismatch_diags(
             value_params: value_params_for_check,
@@ -2115,10 +1916,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
               Present { value: ct } => ct
               Absent => error_type
             }
-            let resolved_type = match callable_type.inferred {
-              Present { value: Resolved { node: ret } } => ret
-              _ => error_type
-            }
+            let resolved_type = callable_inferred(n: callable_type)
             InferResult {
               typed: make_named_expr_node(
                 name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
@@ -2134,29 +1932,17 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
             Present { value: ctor_result } => ctor_result
             Absent =>
               let type_match = lookup_type_by_name(env: scope.type_env, name: func_name)
-              let global_bare_callable = match type_match {
-                Present { value: _ } => none
-                Absent => global_bare_callable_node(type_env: scope.type_env, name: func_name)
-              }
               let resolved_type = match type_match {
                 Present { value: tn } => tn
-                Absent => match global_bare_callable {
-                  Present { value: gnode } =>
-                    if (gnode.params |> count) > 0 { borrowed_callable_call_type(gnode: gnode, typed_args: typed_arg_nodes, scope: scope) }
-                    else { callable_return_type(n: gnode) }
-                  Absent => error_type
-                }
+                Absent => error_type
               }
               let call_diags = match type_match {
                 Present { value: _ } => []
-                Absent => match global_bare_callable {
-                  Present { value: _ } => []
-                  Absent => [inference_error(
-                    message: concat("function '", func_name, "' not found in scope"),
-                    span: span,
-                    module_name: scope.module_name
-                  )]
-                }
+                Absent => [inference_error(
+                  message: concat("function '", func_name, "' not found in scope"),
+                  span: span,
+                  module_name: scope.module_name
+                )]
               }
               InferResult {
                 typed: make_named_expr_node(
@@ -2178,34 +1964,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let span = texpr.span
       let recv = method_receiver(texpr: texpr)
       let mc_args = method_arg_nodes(texpr: texpr)
-      let qualified_direct_call = match field_access_spine(texpr: recv, source_indices: scope.type_env.source_indices) {
-        Absent => none
-        Present { value: recv_spine } =>
-          match spine_root_is_shadowed(scope: scope, root: recv_spine.root) {
-            true => none
-            false =>
-              let dotted = concat(recv_spine.dotted, ".", method_name)
-              match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: dotted) {
-                Absent => none
-                Present { value: _ } =>
-                  Present { value: infer_expr(
-                    texpr: make_named_expr_node(
-                      name: dotted,
-                      expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
-                      children: mc_args,
-                      inferred: none,
-                      span: span,
-                      name_span: kernel_span(name: dotted)
-                    ),
-                    scope: scope,
-                    expected: expected
-                  ) }
-              }
-          }
-      }
-      match qualified_direct_call {
-        Present { value: qdc } => qdc
-        Absent =>
       let recv_result = infer_expr(texpr: recv, scope: scope, expected: none)
       let recv_typed = recv_result.typed
       let recv_diags = recv_result.diagnostics
@@ -2275,7 +2033,6 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       InferResult {
         typed: mc_texpr,
         diagnostics: concat(concat(concat(recv_diags, mc_arg_diags), pipe_fb.kernel_diags), concat(method_resolution.diagnostics, mc_template_diags))
-      }
       }
 
     ExprMatch =>
@@ -2634,8 +2391,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       } else { none }
       let body_scope = InferScope {
         type_env: lam_scope.type_env, func_env: lam_scope.func_env,
-        locals: lam_scope.locals, body_locals: lam_scope.body_locals,
-        match_bound_names: lam_scope.match_bound_names,
+        locals: lam_scope.locals, match_bound_names: lam_scope.match_bound_names,
         module_name: lam_scope.module_name, service_registry: lam_scope.service_registry,
         item_registry: lam_scope.item_registry, lambda_param_provenance: empty_map()
       }
@@ -2975,8 +2731,6 @@ fn needs_alias_field_expansion(n: Node, env: TypeEnv) -> Bool {
   }
 }
 
-data call_locals_shadow_note: String = "Body-scope binders shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: body locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate reads body_locals — the strict body-grain subset (let / match pattern / fn+lambda params) of scope.locals — because the module context pre-seeds locals with variant and service census bindings that must NOT eclipse fn sigs (an imported 0-arg fn would lose its sig to its own census row: html_fragment.dag's html_markup_medium() typed as an unresolved primitive). Absent sends the call down the local-callable path exactly as the pre-census seed did. Companion precedence law lives in func_sig_from_global_bare (infer_lookup): the census fallback never serves an algebra method-template name (filter/any/contains/…) — a whole-pool census entry for the UNLOADED v2.std.algebra must not preempt the known-method bridge (main-parity: on main such free calls type through the bridge; a census-served sig typed filter(xs, f) as a plain call to a never-loaded module and the runtime died NoSuchFunction)."
-
 data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). Breaking at the fixpoint returns the same answer the else arm already gives for non-alias shapes: downstream field-access inference reds with a located type error if the shape is genuinely wrong — typed and loud, never fabricated."
 
 fn peel_alias_once_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
@@ -3071,12 +2825,11 @@ fn alias_chain_carrier(n: Node) -> Node {
 fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: String, origin_name: String, seen: Map<String, Bool>, lossy: Bool) -> Node {
   let peeled = if needs_alias_field_expansion(n: n, env: env) { peel_alias_once_for_field_access(n: n, env: env, module_name: module_name) } else { n }
   let carrier = alias_chain_carrier(n: peeled)
-  let carrier_name = if carrier.name != "" { carrier.name } else { authored_name_at(source_indices: env.source_indices, node: carrier) }
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
   let is_record = structural.connective == Conj || structural.connective == Disj
   if is_record {
-    let resolved_record = if record_has_unresolved_param_field(record: structural, env: env) && (carrier.children |> count) > 0 && carrier_name != "" {
-      match lookup_type_by_name(env: env, name: carrier_name) {
+    let resolved_record = if record_has_unresolved_param_field(record: structural, env: env) && (carrier.children |> count) > 0 && carrier.name != "" {
+      match lookup_type_by_name(env: env, name: carrier.name) {
         Present { value: target } =>
           let subst = alias_chain_type_arg_subst(env: env, carrier: carrier, target: target, type_args: carrier.children)
           substitute_generics(n: structural, subst: subst, source_indices: env.source_indices)
@@ -3088,14 +2841,10 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
       nominal_type_ref(name: origin_name)
     } else { resolved_record }
   } else {
-    let next_name = carrier_name
+    let next_name = carrier.name
 
     let is_optional = structural.return_cardinality == CardOptional
-    if is_optional {
-      let expanded_inner = expand_alias_chain_for_field_access(n: with_required_cardinality(n: structural), env: env, module_name: module_name, origin_name: origin_name, seen: seen, lossy: lossy)
-      with_optional_cardinality(n: expanded_inner)
-    } else {
-    let stop = next_name == "" || emit_map_has(m: seen, key: next_name)
+    let stop = is_optional || next_name == "" || emit_map_has(m: seen, key: next_name)
     if stop {
       structural
     } else {
@@ -3113,7 +2862,6 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
           expand_alias_chain_for_field_access(n: next_n, env: env, module_name: module_name, origin_name: origin_name, seen: next_seen, lossy: next_lossy)
         Absent => structural
       }
-    }
     }
   }
 }
@@ -3185,7 +2933,7 @@ fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
 
 data zero_field_variant_tag_reference_frontier_note: String = "P0 field-wall frontier (operator Ruling 1a, 2026-07-15): a ZERO-field literal of a coproduct VARIANT (field_inits empty AND variant_owner_node != none) is sanctioned as a TAG REFERENCE, not a construction — the `discriminant(v: PrefixToken {})` idiom (16+ sites in src/v2/std/compilers/target_model.dag) names a variant to obtain its stable tag identity without materializing a value. Presence checking is skipped for exactly this shape; PARTIAL literals (any field present) stay red, and zero-field literals of NON-variant records (variant_owner_node == none) stay red — so the audit F1 probes (CacheProvider/CostAccount partial literals) are unaffected. This is a decidable structural exemption (not an absorbing fallback: it refuses precisely, never widens on failure). DISSOLVE-ON: a first-class variant-tag carrier that types the discriminant argument position, at which point the exemption is deleted and the sites migrate to the carrier."
 
-data presence_check_census_gate_note: String = "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus) AND for names this module DECLARES LOCALLY. The local carve-out is the one census-ambiguous case that still enforces, and it is read from TypeEnv.str_bindings ONLY: build_type_env sets str_bindings = local_str_bindings (this module's own declarations; the direct-import overlay lands in ancestry_str_bindings), and lookup_binding_by_name_local consults str_bindings FIRST, so a locally-declared name resolves to the local decl deterministically and order-independently - the precedence note's 'locals > kernel > direct-selected > transitive union' with no fork to guess (direct_import_export_precedence_note). The gate must NOT reach lookup_type_by_name here: that walks on into ancestry_str_bindings, i.e. the import-order overlay, which makes the WALL ITSELF order-dependent - the same source text refusing under one import order and passing under the other (reproduced 2026-07-20, target/probe-presencewall ARM SET A: probe.c1 'import a then b' passes while probe.c2 'import b then a' reds on one identical literal), which is exactly the GUESS this gate exists to refuse. Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate."
+data presence_check_census_gate_note: String = "Field-presence enforcement (P0 wall, #6663) stands down when the literal's bare type name is AMBIGUOUS in the corpus-wide census (global_bare, order-independent): with two same-named decls in the closure, every name-keyed template lookup below resolves by overlay-wins import order (a LEDGERED binding fork, see guarded_cache_union_note), so enforcing would GUESS which decl the author meant and red correct literals against the wrong layer's fields (2026-07-16 main-red: v2 nested Monoid/BooleanAlgebra/OrderedRing literals checked against dag/std flat shapes). Skipping on ambiguity is the pre-wall behavior for exactly those names; enforcement stays live for census-unique names (~98 percent of the corpus). Dissolve-on: containment SymbolIndex (namespace lane) makes the expected type scope-resolved; then this gate is dead code and the wall goes total. Ratchet (PR #6709 review, accepted): before the wall goes total, stand-downs become counted out-of-band ledger rows (binding_forks channel shape — LEDGERED, never diagnostics; a red refusal would re-red correct literals), landing with the SymbolIndex work that dissolves this gate."
 
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let struct_fields = match type_name {
@@ -3196,9 +2944,6 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
           match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
             Present { value: fields } => fields
             Absent =>
-              match record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope) {
-                Present { value: variant_node } => variant_node.children
-                Absent =>
               match expected {
                 Present { value: _ } => record_lit_expected_fields(type_name: type_name, scope: scope)
                 Absent =>
@@ -3206,7 +2951,6 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
                     Present { value: fields } => fields
                     Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
                   }
-              }
               }
           }
       }
@@ -3234,14 +2978,11 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
   } else {
     match variant_owner_node(scope: scope, name: tn_str) {
       Present { value: variant_owner } =>
-        match variant_owner.children |> filter(v => authored_name_at(source_indices: si_presence, node: v) == qualified_last_segment(name: tn_str)) |> first {
+        match variant_owner.children |> filter(v => authored_name_at(source_indices: si_presence, node: v) == tn_str) |> first {
           Present { value: variant_node } => variant_node.children
           Absent => []
         }
       Absent =>
-        match record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope) {
-          Present { value: variant_node } => variant_node.children
-          Absent =>
         match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
           Present { value: inst_fields } => inst_fields
           Absent =>
@@ -3255,13 +2996,11 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
               Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
             }
         }
-        }
     }
   }
   let is_zero_field_variant_tag_reference = (field_inits |> count) == 0
     && variant_owner_node(scope: scope, name: tn_str) != none
   let presence_name_is_ambiguous = global_bare_is_ambiguous(env: scope.type_env, name: tn_str)
-    && map_get(scope.type_env.str_bindings, tn_str) == none
   let missing_field_diags = if tn_str == "" || (presence_fields |> count) == 0 || is_zero_field_variant_tag_reference || presence_name_is_ambiguous {
       []
     } else {
@@ -3379,14 +3118,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     }
   } else {
     let type_lookup = lookup_type_by_name(env: scope.type_env, name: type_name.value)
-    let local_variant_parent = match lookup_variant_parent_enum(scope: scope, name: type_name.value) {
-      Present { value: p } => Present { value: p }
-      Absent =>
-        match variant_owner_node(scope: scope, name: type_name.value) {
-          Present { value: owner } => Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: owner) }
-          Absent => none
-        }
-    }
+    let local_variant_parent = lookup_variant_parent_enum(scope: scope, name: type_name.value)
     let effective_lookup = match type_lookup {
       Present { value: _ } => type_lookup
       Absent =>
@@ -3394,31 +3126,12 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         match local_lookup {
           Present { value: local_node } =>
             lookup_type_for(env: scope.type_env, node: local_node)
-          Absent =>
-            match record_lit_variant_from_expected(type_name: type_name, expected: expected, scope: scope) {
-              Present { value: _ } => record_lit_expected_coproduct(expected: expected, scope: scope)
-              Absent => Absent
-            }
+          Absent => Absent
         }
     }
-    let variant_lookup_resolved = match effective_lookup {
+    let raw_resolved = match effective_lookup {
       Present { value: tn } => tn
       Absent => error_type
-    }
-    let type_name_declares_own_type = match lookup_binding_by_name(env: scope.type_env, name: type_name.value) {
-      Present { value: name_binding } =>
-        binding_declares_name(binding: name_binding, name: type_name.value, source_indices: scope.type_env.source_indices)
-      Absent => false
-    }
-    let raw_resolved = match local_variant_parent {
-      Present { value: parent_name } =>
-        if parent_name == "Optional" || type_name_declares_own_type { variant_lookup_resolved } else {
-          match lookup_type_by_name(env: scope.type_env, name: parent_name) {
-            Present { value: parent_decl } => parent_decl
-            Absent => variant_lookup_resolved
-          }
-        }
-      Absent => variant_lookup_resolved
     }
     let expected_optional_parent = Present { value: "Optional" }
     let is_present_ctor = type_name.value == "Present" && local_variant_parent == expected_optional_parent
@@ -3677,7 +3390,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
   match val.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
+      match lookup_func_sig(func_env: ctx.func_env, name: callee) {
         Present { value: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -3695,7 +3408,7 @@ fn build_per_field_for_let(val: Node, binding_name: String, ctx: DescentContext)
       }
     ExprMethodCall { method_semantics: _ } =>
       let callee = expr_method_name_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
+      match lookup_func_sig(func_env: ctx.func_env, name: callee) {
         Present { value: sig } =>
           if sig.output_provenance |> count > 1 {
             let return_type = sig.inferred
@@ -3845,7 +3558,7 @@ fn classify_let_value(val: Node, ctx: DescentContext) -> SubValueRelation? {
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: val, source_indices: ctx.type_env.source_indices)
-      let from_provenance = match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
+      let from_provenance = match lookup_func_sig(func_env: ctx.func_env, name: callee) {
         Present { value: sig } =>
           match sig.output_provenance |> first {
             Present { value: param_map } =>
@@ -4112,7 +3825,7 @@ fn classify_argument(arg_expr: Node, param_name: String, ctx: DescentContext) ->
             ArithmeticDescent { param: _, factor: _ } => inner_rel
             PreservedValue =>
               let callee = expr_call_func_at(texpr: arg_expr, source_indices: ctx.type_env.source_indices)
-              let from_provenance = match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
+              let from_provenance = match lookup_func_sig(func_env: ctx.func_env, name: callee) {
                 Present { value: sig } =>
                   match sig.output_provenance |> first {
                     Present { value: param_map } =>
@@ -4435,7 +4148,7 @@ fn annotate_descent(body: Node, ctx: DescentContext) -> Node {
       let scrut_variant_sig = match scrut.expr_data {
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let callee = expr_call_func_at(texpr: scrut, source_indices: ctx.type_env.source_indices)
-          match lookup_func_sig(func_env: ctx.func_env, type_env: ctx.type_env, name: callee) {
+          match lookup_func_sig(func_env: ctx.func_env, name: callee) {
             Present { value: sig } =>
               if map_keys(sig.variant_provenance) |> count > 0 { Present { value: sig } }
               else { none }
@@ -4911,7 +4624,7 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
 
     ExprMethodCall { method_semantics: ms } =>
       let mname = expr_method_name_at(texpr: expr, source_indices: type_env.source_indices)
-      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_env: func_env, type_env: type_env, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
+      let callee_result = compose_callee_provenance(callee: mname, arg_by_name: method_call_args_by_name(call: expr, func_env: func_env, source_indices: type_env.source_indices), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       if map_keys(callee_result) |> count > 0 { callee_result }
       else {
         let is_shrink = match ms {
@@ -5039,11 +4752,11 @@ fn call_args_by_name(call: Node, source_indices: Map<String, NewlineIndex>) -> M
   )
 }
 
-fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
+fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   let mname = expr_method_name_at(texpr: call, source_indices: source_indices)
   let recv = method_receiver(texpr: call)
   let mc_args = method_arg_nodes(texpr: call)
-  let base = match lookup_func_sig(func_env: func_env, type_env: type_env, name: mname) {
+  let base = match lookup_func_sig(func_env: func_env, name: mname) {
     Present { value: sig } =>
       match sig.params |> first {
         Present { value: first_p } =>
@@ -5062,7 +4775,7 @@ fn method_call_args_by_name(call: Node, func_env: ResolvedFuncEnv, type_env: Typ
 }
 
 fn compose_callee_provenance(callee: String, arg_by_name: Map<String, Node>, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> Map<String, SubValueRelation> {
-  match lookup_func_sig(func_env: func_env, type_env: type_env, name: callee) {
+  match lookup_func_sig(func_env: func_env, name: callee) {
     Present { value: sig } =>
       match sig.output_provenance |> first {
         Present { value: callee_prov } =>
@@ -5313,7 +5026,7 @@ fn collect_variant_constructors(body: Node, parent_enum: String, param_names: Li
       }
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let callee = expr_call_func_at(texpr: body, source_indices: type_env.source_indices)
-      match lookup_func_sig(func_env: func_env, type_env: type_env, name: callee) {
+      match lookup_func_sig(func_env: func_env, name: callee) {
         Present { value: sig } =>
           if authored_name_at(source_indices: type_env.source_indices, node: sig.inferred) == parent_enum
             && (map_keys(sig.variant_provenance) |> count > 0) {
@@ -5727,27 +5440,6 @@ fn type_node_label(n: Node, source_indices: Map<String, NewlineIndex>) -> String
   }
 }
 
-type SigParamSplit {
-  value_params: List<Node>
-  generic_names: List<String>
-}
-
-fn body_shadow_aware_func_sig(scope: InferScope, func_name: String) -> ResolvedFuncSig? {
-  match map_get(scope.body_locals, func_name) {
-    Present { value: _ } => Absent
-    Absent => lookup_func_sig(func_env: scope.func_env, type_env: scope.type_env, name: func_name)
-  }
-}
-
-fn split_sig_params(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> SigParamSplit {
-  SigParamSplit {
-    value_params: params |> filter(p => !param_is_generic_decl(p: p, source_indices: source_indices)),
-    generic_names: params
-      |> filter(p => param_is_generic_decl(p: p, source_indices: source_indices))
-      |> map(p => param_node_name_at(n: p, source_indices: source_indices))
-  }
-}
-
 fn param_is_generic_decl(p: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let pt = param_node_type_expr(n: p)
   let pname = param_node_name_at(n: p, source_indices: source_indices)
@@ -6029,7 +5721,7 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
         }
       }
     )
-    TypeEnv { module_path: module_path,
+    TypeEnv {
       bindings: filtered,
       str_bindings: filtered_str,
       ancestry_str_bindings: filtered_ancestry,
@@ -6049,7 +5741,7 @@ data interface_env_for_import_note: String = "Interface-grain scope parent (S2a 
 
 fn interface_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
   let filtered = type_env_for_import(module_path: module_path, parent_env: parent_env)
-  TypeEnv { module_path: module_path,
+  TypeEnv {
     bindings: filtered.bindings,
     str_bindings: filtered.str_bindings,
     ancestry_str_bindings: filtered.ancestry_str_bindings,
@@ -6069,7 +5761,7 @@ data interface_summary_consumer_note: String = "S2a move 2 increment B (resolver
 data interface_signature_fingerprint_v0_note: String = "Interim v0 export signature fingerprint (export_entry_from_item): name-grain, NOT yet structural type shape. Type/data/service exports fingerprint name + authored_name_at(binding.resolved) under tag v1-interface-sig-v0; fn/func exports fingerprint name + param resolved-type names + return-type authored name under tag v1-interface-fn-sig-v0 (the fn arm landed with the typed-module content key, PR-alpha — before it, fn exports produced NO entry, so a fn-only module's interface_hash was the constant empty rollup and the content key's import term was vacuous; the key's import-term RED control is the discriminating receipt). Two exports whose names and resolved authored-name strings all match still collide even if type STRUCTURE differs; increment-B receipt is binding transitivity (transitive_interface_binding_test), not hash-discriminated deep structure. Structural fingerprint authority: std.interface_summary.interface_summary_v0_dissolution_trigger → export_entry_fingerprint when type-structure hashing lands."
 
 fn interface_env_surface(env: TypeEnv) -> TypeEnv {
-  TypeEnv { module_path: env.module_path,
+  TypeEnv {
     bindings: env.bindings,
     str_bindings: env.str_bindings,
     ancestry_str_bindings: env.ancestry_str_bindings,
@@ -6207,15 +5899,6 @@ fn local_binding_for_item(item: Node, source_indices: Map<String, NewlineIndex>)
       type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
     Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: type_node, provenance: SubValueUnknown } }
-  } else if item.body != none && item.transport == none {
-    let fn_node = Node {
-      name: item.name, span: item.span, ident_span: item.ident_span, children: [],
-      connective: NoConnective, params: item.params, inferred: item.inferred,
-      return_cardinality: item.return_cardinality,
-      uses: [], body: none, transport: none, properties: [],
-      type_annotation: item.type_annotation, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
-    }
-    Present { value: TypeBinding { name: authored_name_at(source_indices: source_indices, node: item), resolved: fn_node, provenance: SubValueUnknown } }
   } else if item.inferred != none && item.params |> count == 0 && item.body == none {
     let alias_node = Node {
       name: item.name, span: item.span, ident_span: item.ident_span, children: [],
@@ -6250,23 +5933,15 @@ fn symbol_index_insert_item(
   item: Node,
   source_indices: Map<String, NewlineIndex>
 ) -> SymbolIndex {
-  let with_decl = match local_binding_for_item(item: item, source_indices: source_indices) {
+  match local_binding_for_item(item: item, source_indices: source_indices) {
     Absent => index
     Present { value: binding } =>
       symbol_index_insert_decl(
         index: index,
-        module_path: module_path,
+        qualified_name: concat(module_path, ".", binding.name),
         binding: binding
       )
   }
-  if item.transport != none && item.children |> count > 0 {
-    symbol_index_insert_service(
-      index: with_decl,
-      name: authored_name_at(source_indices: source_indices, node: item),
-      module_path: module_path,
-      item: item
-    )
-  } else { with_decl }
 }
 
 fn disj_variant_name_count_inc(counts: Map<String, Int>, name: String) -> Map<String, Int> {
@@ -6288,49 +5963,11 @@ fn disj_variant_name_counts(items: List<Node>, source_indices: Map<String, Newli
   )
 }
 
-data census_node_base_note: String = "The census reads only the module NODE, so the node list is its true input: one census over two front ends (resolved closures and parse-grade pool fills). ResolvedModule entry points delegate through census_module_nodes."
-
-fn census_module_nodes(modules: List<ResolvedModule>) -> List<Node> {
-  modules |> map(rm => rm.module)
-}
-
-fn corpus_disj_variant_name_counts_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
-  fold(module_nodes, init: empty_map(), f: (counts, module_node) =>
-    fold(module_items(n: module_node), init: counts, f: (c, item) =>
-      match item.connective {
-        Disj =>
-          fold(item.children, init: c, f: (c2, child) =>
-            disj_variant_name_count_inc(counts: c2, name: authored_name_at(source_indices: source_indices, node: child))
-          )
-        _ => c
-      }
-    )
-  )
-}
-
-fn corpus_disj_variant_name_counts(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
-  corpus_disj_variant_name_counts_nodes(module_nodes: census_module_nodes(modules: modules), source_indices: source_indices)
-}
-
-fn corpus_item_name_counts_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
-  fold(module_nodes, init: empty_map(), f: (counts, module_node) =>
-    fold(module_items(n: module_node), init: counts, f: (c, item) =>
-      disj_variant_name_count_inc(counts: c, name: authored_name_at(source_indices: source_indices, node: item))
-    )
-  )
-}
-
-fn corpus_item_name_counts(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, Int> {
-  corpus_item_name_counts_nodes(module_nodes: census_module_nodes(modules: modules), source_indices: source_indices)
-}
-
 fn symbol_index_insert_unique_disj_variant_aliases(
   index: SymbolIndex,
   module_path: String,
   items: List<Node>,
-  source_indices: Map<String, NewlineIndex>,
-  corpus_variant_counts: Map<String, Int>,
-  corpus_item_counts: Map<String, Int>
+  source_indices: Map<String, NewlineIndex>
 ) -> SymbolIndex {
   let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
   fold(items, init: index, f: (acc, item) =>
@@ -6340,32 +5977,11 @@ fn symbol_index_insert_unique_disj_variant_aliases(
           let vname = authored_name_at(source_indices: source_indices, node: child)
           match map_get(counts, vname) {
             Present { value: 1 } =>
-              match map_get(corpus_variant_counts, vname) {
-                Present { value: 1 } =>
-                  if map_get(corpus_item_counts, vname) != none || overlay_skips_kernel_name(name: vname) {
-                    symbol_index_insert(
-                      index: a2,
-                      qualified_name: concat(module_path, ".", vname),
-                      resolved: item
-                    )
-                  } else {
-                  symbol_index_insert_decl(
-                    index: a2,
-                    module_path: module_path,
-                    binding: TypeBinding {
-                      name: vname,
-                      resolved: item,
-                      provenance: SubValueUnknown
-                    }
-                  )
-                  }
-                _ =>
-                  symbol_index_insert(
-                    index: a2,
-                    qualified_name: concat(module_path, ".", vname),
-                    resolved: item
-                  )
-              }
+              symbol_index_insert(
+                index: a2,
+                qualified_name: concat(module_path, ".", vname),
+                resolved: child
+              )
             _ => a2
           }
         )
@@ -6374,12 +5990,10 @@ fn symbol_index_insert_unique_disj_variant_aliases(
   )
 }
 
-fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let corpus_variant_counts = corpus_disj_variant_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
-  let corpus_item_counts = corpus_item_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
-  fold(module_nodes, init: empty_symbol_index(), f: (index, module_node) =>
-    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
-    let items = module_items(n: module_node)
+fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+  fold(modules, init: empty_symbol_index(), f: (index, mod) =>
+    let module_path = authored_name_at(source_indices: source_indices, node: mod.module)
+    let items = module_items(n: mod.module)
     let with_items = fold(items, init: index, f: (acc, item) =>
       symbol_index_insert_item(
         index: acc,
@@ -6392,314 +6006,12 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
       index: with_items,
       module_path: module_path,
       items: items,
-      source_indices: source_indices,
-      corpus_variant_counts: corpus_variant_counts,
-      corpus_item_counts: corpus_item_counts
+      source_indices: source_indices
     )
   )
 }
 
-fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  build_symbol_index_census_raw_nodes(module_nodes: census_module_nodes(modules: modules), source_indices: source_indices)
-}
-
-data census_borrowed_sig_resolution_note: String = "Borrowed-sig hoist (namespace lane): the census stores raw pre-typecheck fn nodes, so a borrowed generic fn's return leaked bare type-param leaves (T/V/E) and owner-local names into consumers — the local/borrowed asymmetry (locals resolve once per module in resolve_item_types with type params bound as TypeVariables; borrows got the raw node per lookup). Pass 2 resolves each borrowable GENERIC fn signature's return ONCE at census build, in a synthetic env at the OWNER's containment position (module_path = the candidate's declaring module; symbol_index = the completed pass-1 census; type params bound via env_with_type_variable_bindings) — order-independent (resolution reads only the completed raw census, never a partial one), once per decl (never per lookup — the per-lookup variant re-resolved recursive carriers to the depth bound on every call), and staged fail-closed: ANY resolution diagnostic keeps the raw binding, so the consumer-side refusal surface is unchanged (upgraded | raw is a typed frontier, not a widen). Scope: fn sigs with value params (params non-empty; type params may be zero — a NON-generic fn's return can still USE a generic type, e.g. Outcome<Medium<String>>, and needs the same owner-position expansion for variant-payload substitution); 0-arg fns and aliases share a census shape (body stripped) and stay raw pending a discriminator."
-
-fn census_fn_sig_env(census: SymbolIndex, module_path: String, tp_names: List<String>, source_indices: Map<String, NewlineIndex>) -> TypeEnv {
-  let base = TypeEnv {
-    module_path: module_path,
-    bindings: empty_map(),
-    str_bindings: empty_map(),
-    ancestry_str_bindings: empty_map(),
-    parents: [],
-    recursive_types: [],
-    recursive_type_set: empty_map(),
-    inductive_fields: empty_map(),
-    source_indices: source_indices,
-    intern_table: empty_intern_table(),
-    source_visible_names: empty_map(),
-    symbol_index: census
-  }
-  env_with_type_variable_bindings(env: base, tp_names: tp_names)
-}
-
-fn census_binding_is_borrowable_fn_sig(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let node = binding.resolved
-  node.connective == NoConnective
-    && (node.children |> count) == 0
-    && node.body == none
-    && node.transport == none
-    && node.inferred != none
-    && (node.params |> count) > 0
-}
-
-fn census_binding_is_generic_sig(binding: TypeBinding, source_indices: Map<String, NewlineIndex>) -> Bool {
-  census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices)
-    && (fn_type_param_names(item: binding.resolved, source_indices: source_indices) |> count) > 0
-}
-
-fn census_qualify_sig_return_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  let node = binding.resolved
-  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
-  TypeBinding {
-    name: binding.name,
-    resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: empty_map())),
-    provenance: binding.provenance
-  }
-}
-
-fn census_upgrade_sig_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  if census_binding_is_generic_sig(binding: binding, source_indices: source_indices) {
-    let node = binding.resolved
-    match node.inferred {
-      Present { value: Resolved { node: raw_ret } } =>
-        let tp_names = fn_type_param_names(item: node, source_indices: source_indices)
-        let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: tp_names, source_indices: source_indices)
-        let ret_result = resolve_node(n: raw_ret, env: env, module_name: module_path)
-        if (ret_result.diagnostics |> count) == 0 {
-          let preserved = preserve_nominal_brand_on_resolve(identity: raw_ret, structural: ret_result.resolved, brand_name: authored_name_at(source_indices: source_indices, node: raw_ret), source_indices: source_indices)
-          TypeBinding {
-            name: binding.name,
-            resolved: node_with_inferred(n: node, inferred: Present { value: Resolved { node: preserved } }),
-            provenance: binding.provenance
-          }
-        } else { binding }
-      _ => binding
-    }
-  } else { binding }
-}
-
-fn stamp_field_type_from_decl_params(field_type: Node, serving_decl: Node, source_indices: Map<String, NewlineIndex>) -> Node {
-  if (serving_decl.params |> count) == 0 || field_type.inferred != none {
-    field_type
-  } else {
-    let is_bare = (field_type.children |> count) == 0 && field_type.connective == NoConnective && (field_type.params |> count) == 0
-    if is_bare {
-      let nm = type_node_label(n: field_type, source_indices: source_indices)
-      let is_param = fold(
-        serving_decl.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices)),
-        init: false,
-        f: (acc, pn) => acc || pn == nm
-      )
-      if is_param { node_with_inferred(n: field_type, inferred: Present { value: TypeVariable { id: nm } }) } else { field_type }
-    } else { field_type }
-  }
-}
-
-fn stamp_type_param_occurrences(n: Node, param_names: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> Node {
-  let is_bare = (n.children |> count) == 0 && n.connective == NoConnective && (n.params |> count) == 0
-  if is_bare {
-    if n.inferred == none {
-      let nm = type_node_label(n: n, source_indices: source_indices)
-      match map_get(param_names, nm) {
-        Present { value: _ } => node_with_inferred(n: n, inferred: Present { value: TypeVariable { id: nm } })
-        _ => n
-      }
-    } else { n }
-  } else {
-    node_with_children(n: n, children: n.children |> map(c => stamp_type_param_occurrences(n: c, param_names: param_names, source_indices: source_indices)))
-  }
-}
-
-fn census_upgrade_type_decl_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  let node = binding.resolved
-  let param_names = node.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices))
-  let excluded = fold(
-    param_names,
-    init: map_insert(empty_map(), binding.name, true),
-    f: (acc, nm) => map_insert(acc, nm, true)
-  )
-  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: param_names, source_indices: source_indices)
-  TypeBinding {
-    name: binding.name,
-    resolved: qualify_decl_reference_positions(n: node, owner_module_path: module_path, env: env, excluded: excluded),
-    provenance: binding.provenance
-  }
-}
-
-fn census_qualify_leaf_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  let node = binding.resolved
-  let excluded = fold(
-    node.params |> map(p => generic_param_name_at(n: p, source_indices: source_indices)),
-    init: map_insert(empty_map(), binding.name, true),
-    f: (acc, nm) => map_insert(acc, nm, true)
-  )
-  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
-  TypeBinding {
-    name: binding.name,
-    resolved: node_with_inferred(n: node, inferred: qualify_borrowed_inferred(inferred: node.inferred, owner_module_path: module_path, env: env, excluded: excluded)),
-    provenance: binding.provenance
-  }
-}
-
-fn census_upgrade_binding(binding: TypeBinding, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> TypeBinding {
-  if census_binding_is_generic_sig(binding: binding, source_indices: source_indices) {
-    census_upgrade_sig_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
-  } else if census_binding_is_borrowable_fn_sig(binding: binding, source_indices: source_indices) {
-    census_qualify_sig_return_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
-  } else if (binding.resolved.connective != NoConnective) {
-    census_upgrade_type_decl_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
-  } else if binding.resolved.inferred != none {
-    census_qualify_leaf_binding(binding: binding, module_path: module_path, census: census, source_indices: source_indices)
-  } else { binding }
-}
-
-fn census_upgrade_type_expr(raw: Node, env: TypeEnv, module_path: String, source_indices: Map<String, NewlineIndex>) -> Node {
-  if raw.connective != NoConnective && (raw.children |> count) > 0 {
-    let fields2 = raw.children |> map(f =>
-      match f.inferred {
-        Present { value: Resolved { node: ft } } =>
-          node_with_inferred(n: f, inferred: Present { value: Resolved { node: census_upgrade_type_expr(raw: ft, env: env, module_path: module_path, source_indices: source_indices) } })
-        _ => f
-      }
-    )
-    node_with_children(n: raw, children: fields2)
-  } else {
-    let r = resolve_node(n: raw, env: env, module_name: module_path)
-    if (r.diagnostics |> count) == 0 {
-      preserve_nominal_brand_on_resolve(identity: raw, structural: r.resolved, brand_name: authored_name_at(source_indices: source_indices, node: raw), source_indices: source_indices)
-    } else { raw }
-  }
-}
-
-fn census_upgrade_service_item(item: Node, module_path: String, census: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> Node {
-  let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: [], source_indices: source_indices)
-  let ops2 = item.children |> map(c =>
-    match c.inferred {
-      Present { value: Resolved { node: raw_out } } =>
-        node_with_inferred(n: c, inferred: Present { value: Resolved { node: census_upgrade_type_expr(raw: raw_out, env: env, module_path: module_path, source_indices: source_indices) } })
-      _ => c
-    }
-  )
-  node_with_children(n: item, children: ops2)
-}
-
-fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let entry_keys = sorted_map_keys(index.entries)
-  let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
-    match map_get(index.entries, k) {
-      Present { value: node } =>
-        let upgraded = census_upgrade_binding(
-          binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown },
-          module_path: qualified_all_but_last(name: k),
-          census: index,
-          source_indices: source_indices
-        )
-        if upgraded.resolved == node { acc } else { map_insert(acc, k, upgraded.resolved) }
-      Absent => acc
-    }
-  )
-  let bare_keys = sorted_map_keys(index.global_bare)
-  let global2 = fold(bare_keys, init: index.global_bare, f: (acc, k) =>
-    match map_get(index.global_bare, k) {
-      Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-        let b2 = census_upgrade_binding(binding: b, module_path: mp, census: index, source_indices: source_indices)
-        if b2.resolved == b.resolved { acc } else { map_insert(acc, k, GlobalBareUniqueBinding { module_path: mp, binding: b2 }) }
-      Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-        let cands2 = cands |> map(c => GlobalBareCandidate {
-          module_path: c.module_path,
-          binding: census_upgrade_binding(binding: c.binding, module_path: c.module_path, census: index, source_indices: source_indices)
-        })
-        map_insert(acc, k, GlobalBareAmbiguousBinding { candidates: cands2 })
-      Absent => acc
-    }
-  )
-  let service_keys = sorted_map_keys(index.services)
-  let services2 = fold(service_keys, init: index.services, f: (acc, k) =>
-    match map_get(index.services, k) {
-      Present { value: sentry } =>
-        let upgraded = census_upgrade_service_item(item: sentry.item, module_path: sentry.module_path, census: index, source_indices: source_indices)
-        if upgraded == sentry.item { acc } else { map_insert(acc, k, ServiceCensusEntry { module_path: sentry.module_path, item: upgraded }) }
-      Absent => acc
-    }
-  )
-  SymbolIndex { entries: entries2, global_bare: global2, services: services2 }
-}
-
-fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let raw = build_symbol_index_census_raw(modules: modules, source_indices: source_indices)
-  census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
-}
-
-data census_layering_note: String = "Layered census (namespace-resolution-design.md 7.5: fill = whole tree; policy gates lookup, never fill). The closure census is byte-identical to the no-fill build — bare visibility, variant-alias corpus gating, and services stay closure-scoped, so a pool homonym cannot shift what a compiled module's bare names mean (measured on the whole-tree gate: a single whole-pool census vanished bare GET/Persistent/JsonValue across 28 witness rows via the corpus-count gate and unique-to-ambiguous flips). Census-only fill modules are PARSE-GRADE (tokenize + parse, never resolve: fill imports point into the compile closure or another tree view, and resolving fill against a fill-only pool fabricated 797 unresolved-import diagnostics about the view, not the modules) and enter a QUALIFIED-ONLY entries underlay — no bare reach INTO fill is needed because cross-tree references are qualified, the migration direction. The cli_run reconcile additionally underlays each typechecked module's OWN tree-closure bare census (root modules plus import-reached pool modules — gate parity by construction: e.g. dag witnesses' bare LiveTreeDisposition is declared only in v2.std.live_tree but import-reached from the dag tree)."
-
-fn build_symbol_index_census_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let raw = build_symbol_index_census_raw_nodes(module_nodes: module_nodes, source_indices: source_indices)
-  census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
-}
-
-fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> SymbolIndex {
-  let bare_keys = sorted_map_keys(tree.global_bare)
-  let global2 = fold(bare_keys, init: closure.global_bare, f: (acc, k) =>
-    match map_get(acc, k) {
-      Present { value: _ } => acc
-      Absent =>
-        match map_get(tree.global_bare, k) {
-          Present { value: state } => map_insert(acc, k, state)
-          Absent => acc
-        }
-    }
-  )
-  let service_keys = sorted_map_keys(tree.services)
-  let services2 = fold(service_keys, init: closure.services, f: (acc, k) =>
-    match map_get(acc, k) {
-      Present { value: _ } => acc
-      Absent =>
-        match map_get(tree.services, k) {
-          Present { value: entry } => map_insert(acc, k, entry)
-          Absent => acc
-        }
-    }
-  )
-  SymbolIndex { entries: closure.entries, global_bare: global2, services: services2 }
-}
-
-fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let raw = fold(modules, init: empty_symbol_index(), f: (index, module_node) =>
-    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
-    let items = module_items(n: module_node)
-    let with_items = fold(items, init: index, f: (acc, item) =>
-      match local_binding_for_item(item: item, source_indices: source_indices) {
-        Absent => acc
-        Present { value: binding } =>
-          symbol_index_insert(index: acc, qualified_name: concat(concat(module_path, "."), binding.name), resolved: binding.resolved)
-      }
-    )
-    let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
-    fold(items, init: with_items, f: (acc, item) =>
-      match item.connective {
-        Disj =>
-          fold(item.children, init: acc, f: (a2, child) =>
-            let vname = authored_name_at(source_indices: source_indices, node: child)
-            match map_get(counts, vname) {
-              Present { value: 1 } =>
-                symbol_index_insert(index: a2, qualified_name: concat(concat(module_path, "."), vname), resolved: item)
-              _ => a2
-            }
-          )
-        _ => acc
-      }
-    )
-  )
-  census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
-}
-
-fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> SymbolIndex {
-  let fill_keys = sorted_map_keys(fill.entries)
-  let entries2 = fold(fill_keys, init: closure.entries, f: (acc, k) =>
-    match map_get(acc, k) {
-      Present { value: _ } => acc
-      Absent =>
-        match map_get(fill.entries, k) {
-          Present { value: node } => map_insert(acc, k, node)
-          Absent => acc
-        }
-    }
-  )
-  SymbolIndex { entries: entries2, global_bare: closure.global_bare, services: closure.services }
-}
-
-data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded)."
+data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields; ledger arm = the fork row is still recorded)."
 
 fn overlay_skips_kernel_name(name: String) -> Bool {
   is_kernel_type(name: name)
@@ -6767,7 +6079,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let kernel = TypeEnv { bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
@@ -6788,7 +6100,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 
   let param_bindings = fold(module_items(n: module.module), init: empty_map(), f: (acc, item) =>
     let is_type_decl = match map_get(local_bindings, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: item)).id) { Present { value: _ } => true  Absent => false }
-    if item.params |> count > 0 && is_type_decl && item.body == none {
+    if item.params |> count > 0 && is_type_decl {
       let result = fold(item.params, init: acc, f: (pacc, p) =>
         map_insert(pacc, intern(table: intern_table, s: authored_name_at(source_indices: source_indices, node: p)).id, nominal_type_binding(name: authored_name_at(source_indices: source_indices, node: p)))
       )
@@ -6854,11 +6166,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
       fold(imp.specific_names, init: acc, f: (x, n) => map_insert(x, n, true))
     }
   )
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, symbol_index: symbol_index }
+  let unresolved_env = TypeEnv { bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: source_visible_names, symbol_index: symbol_index }
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env
   let resolved_diags = resolved.diagnostics
-  let final_env = TypeEnv { module_path: module_name_str,
+  let final_env = TypeEnv {
     bindings: resolved_env_out.bindings,
     str_bindings: resolved_env_out.str_bindings,
     ancestry_str_bindings: resolved_env_out.ancestry_str_bindings,
@@ -6900,7 +6212,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
-  let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let kernel = TypeEnv { bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let import_parents = flat_map(module.resolved_imports, imp =>
@@ -6965,7 +6277,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
   let ancestry_str_bindings = ancestry_cache.str_bindings
   let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
-  let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let unresolved_env = TypeEnv { bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
     str_bindings: visible_str_bindings,
@@ -7154,51 +6466,6 @@ fn build_local_variants(items: List<Node>, source_indices: Map<String, NewlineIn
   )
 }
 
-fn merge_global_bare_variant_locals(
-  state: VariantFoldState,
-  global_bare: Map<String, GlobalBareLookupState>,
-  source_indices: Map<String, NewlineIndex>,
-  module_name: String
-) -> VariantFoldState {
-  fold(global_bare |> map_keys, init: state, f: (acc, name) =>
-    match map_get(global_bare, name) {
-      Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } =>
-        let owner = binding.resolved
-        if owner.connective == Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
-          match map_get(acc.locals, name) {
-            Present { value: _ } => acc
-            Absent => insert_variant_owner_checked(state: acc, arm_name: name, owner: owner, source_indices: source_indices, module_name: module_name)
-          }
-        } else {
-          acc
-        }
-      _ => acc
-    }
-  )
-}
-
-fn build_global_bare_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, GlobalBareLookupState> {
-  build_symbol_index_census(modules: modules, source_indices: source_indices).global_bare
-}
-
-fn build_global_bare_variant_locals(
-  global_bare: Map<String, GlobalBareLookupState>,
-  source_indices: Map<String, NewlineIndex>
-) -> Map<String, TypeBinding> {
-  fold(global_bare |> map_keys, init: empty_map(), f: (acc, name) =>
-    match map_get(global_bare, name) {
-      Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } =>
-        let owner = binding.resolved
-        if owner.connective == Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
-          map_insert(acc, name, TypeBinding { name: name, resolved: owner, provenance: SubValueUnknown })
-        } else {
-          acc
-        }
-      _ => acc
-    }
-  )
-}
-
 data reexport_chain_authority: String = "A module re-exports its specific-name imports (get_exported_names in v1.compiler.resolve), so `import proxy { B }` where proxy itself imports B is an EXPLICIT import under the §1c ruling — the binder follows the specific-name chain to the defining module's coproduct (the import DAG is acyclic, so the recursion terminates; a chain hop that dead-ends binds nothing and the use site fails closed as UnresolvedType). Glob (is_all) imports bind the target's OWN coproduct arms only — glob re-export pass-through is not modeled here, matching get_exported_names which excludes is_all imports from the export surface."
 
 fn empty_variant_export_surface() -> VariantExportSurface {
@@ -7325,50 +6592,22 @@ fn build_module_context(contributions: List<ItemContribution>,
     module_name: module_name,
     init: VariantFoldState { locals: empty_map(), collision_errors: [] }
   )
-  let variant_fold = merge_global_bare_variant_locals(
-    state: build_imported_variants(
-      resolved_imports: resolved_imports,
-      parent_index: parent_index,
-      variant_surfaces: variant_surfaces,
-      source_indices: env.source_indices,
-      module_name: module_name,
-      init: local_variant_fold
-    ),
-    global_bare: env.symbol_index.global_bare,
+  let variant_fold = build_imported_variants(
+    resolved_imports: resolved_imports,
+    parent_index: parent_index,
+    variant_surfaces: variant_surfaces,
     source_indices: env.source_indices,
-    module_name: module_name
+    module_name: module_name,
+    init: local_variant_fold
   )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
-  let census_scope = fold(env.symbol_index.services |> map_keys, init: InferScopeComponents { svc_registry: empty_map(), svc_locals: empty_map() }, f: (acc, sname) =>
-    match map_get(env.symbol_index.services, sname) {
-      Present { value: sentry } =>
-        let sitem = sentry.item
-        let entries = sitem.children |> map(c =>
-          OpEntry {
-            name: authored_name_at(source_indices: env.source_indices, node: c),
-            outputs: inferred_to_outputs(
-              inferred: qualify_borrowed_inferred(inferred: c.inferred, owner_module_path: sentry.module_path, env: env, excluded: empty_map()),
-              span: c.span,
-              source_indices: env.source_indices
-            ),
-            params: c.params
-          }
-        )
-        let root = namespace_root_from_properties(properties: sitem.properties, name: sname, source_indices: env.source_indices)
-        InferScopeComponents {
-          svc_registry: map_insert(acc.svc_registry, sname, entries),
-          svc_locals: map_insert(acc.svc_locals, root, nominal_type_binding(name: root))
-        }
-      Absent => acc
-    }
-  )
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
     parent_index: parent_index,
     env: env,
-    svc_registry: map_merge(census_scope.svc_registry, local.svc_registry),
-    svc_locals: map_merge(census_scope.svc_locals, local.svc_locals)
+    svc_registry: local.svc_registry,
+    svc_locals: local.svc_locals
   )
   let parent_envs = flat_map(resolved_imports, imp =>
     match map_get(parent_index, imp.module_path) {
@@ -7457,7 +6696,6 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
     type_env: env,
     func_env: ctx.func_env,
     locals: data_locals,
-    body_locals: empty_map(),
     match_bound_names: empty_map(),
     module_name: resolved_module_name,
     service_registry: ctx.svc_registry,
@@ -7594,7 +6832,7 @@ fn topo_resolve_types(
       }
     )
     return EnvResolveResult {
-      env: TypeEnv { module_path: env.module_path, bindings: stuck_accum.bindings, str_bindings: stuck_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, symbol_index: env.symbol_index },
+      env: TypeEnv { bindings: stuck_accum.bindings, str_bindings: stuck_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, symbol_index: env.symbol_index },
       diagnostics: concat(diagnostics, stuck_accum.diagnostics)
     }
   }
@@ -7622,7 +6860,7 @@ fn topo_resolve_types(
 
   topo_resolve_types(
     remaining: next_remaining,
-    env: TypeEnv { module_path: env.module_path, bindings: ready_accum.bindings, str_bindings: ready_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, symbol_index: env.symbol_index },
+    env: TypeEnv { bindings: ready_accum.bindings, str_bindings: ready_accum.str_bindings, ancestry_str_bindings: env.ancestry_str_bindings, parents: env.parents, recursive_types: env.recursive_types, recursive_type_set: env.recursive_type_set, inductive_fields: env.inductive_fields, source_indices: env.source_indices, intern_table: env.intern_table, source_visible_names: env.source_visible_names, symbol_index: env.symbol_index },
     module_name: module_name,
     diagnostics: concat(diagnostics, ready_accum.diagnostics),
     local_names: local_names,
@@ -7767,18 +7005,11 @@ type RealizeState {
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
-  typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
-}
-
-fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> TypedGraph {
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
   )
-  let symbol_index = symbol_index_with_qualified_fill(
-    closure: build_symbol_index_census(modules: graph.modules, source_indices: census_si),
-    fill: build_symbol_index_qualified_fill(modules: census_fill_modules, source_indices: census_si)
-  )
+  let symbol_index = build_symbol_index_census(modules: graph.modules, source_indices: source_indices)
   let state = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
     variant_surfaces: empty_map(),
@@ -7968,7 +7199,7 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
     TypedModule {
       module: m.module,
       items: m.items,
-      type_env: TypeEnv { module_path: m.type_env.module_path,
+      type_env: TypeEnv {
         bindings: m.type_env.bindings,
         str_bindings: rewired.str_bindings,
         ancestry_str_bindings: rewired.ancestry_str_bindings,
@@ -8013,7 +7244,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  TypeEnv { bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
 }
 
 fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
@@ -8044,7 +7275,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     TypedModule {
       module: m.module,
       items: m.items,
-      type_env: TypeEnv { module_path: m.type_env.module_path,
+      type_env: TypeEnv {
         bindings: m.type_env.bindings,
         str_bindings: m.type_env.str_bindings,
         ancestry_str_bindings: m.type_env.ancestry_str_bindings,
@@ -8090,11 +7321,7 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
 }
 
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ResolvedGraph {
-  reconcile_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
-}
-
-fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> ResolvedGraph {
-  let typed = typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: census_fill_modules, census_si: census_si)
+  let typed = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)

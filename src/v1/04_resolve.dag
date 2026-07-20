@@ -1,7 +1,6 @@
 module v1.compiler.infer_resolve
 
 import std.types { SourceSpan, container_param_name }
-
 import v1.std.core {
   Node,
   authored_name_at, NewlineIndex,
@@ -31,19 +30,14 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective,
   CardOptional, no_span,
   unit_type, string_type,
-  default_ident_span, kernel_span, node_name_span, intern,
-  qualified_last_segment
+  default_ident_span, kernel_span, node_name_span, intern
 }
-
 import v1.compiler.infer_types {
   resolved_type, child_type_node, is_type_expr_annotation, node_is_keyed_collection, is_declared_container_alias_spelling
 }
-
 import std.induction { SubValueUnknown }
-
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
-  env_with_type_variable_bindings
+  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
 }
 
 fn is_unit_variant_node(variant: Node) -> Bool {
@@ -136,8 +130,7 @@ fn preserve_nominal_brand_on_resolve(
 ) -> Node {
   if brand_name != "" && brand_name != authored_name_at(source_indices: source_indices, node: structural)
     && !is_declared_container_alias_spelling(name: brand_name)
-    && (!is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices)
-      || is_kernel_type(name: qualified_last_segment(name: brand_name))) {
+    && !is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices) {
     with_authored_identity(identity: identity, structural: structural)
   } else { structural }
 }
@@ -158,8 +151,7 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
       }
       if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
         && !is_declared_container_alias_spelling(name: brand)
-        && (!is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices)
-          || is_kernel_type(name: qualified_last_segment(name: brand))) {
+        && !is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices) {
         with_authored_identity(identity: n, structural: structural)
       } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
@@ -289,17 +281,6 @@ fn is_user_generic_use_site(n: Node, env: TypeEnv) -> Bool {
 }
 
 fn substitute_type_slots(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>) -> Node {
-  substitute_type_slots_scoped(n: n, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: false)
-}
-
-fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_name: String, source_indices: Map<String, NewlineIndex>, bind_type_variables: Bool) -> Node {
-  let tv_slot = if bind_type_variables {
-    match n.inferred {
-      Present { value: TypeVariable { id: tv_id } } => map_get(slot_bindings, tv_id)
-      _ => none
-    }
-  } else { none }
-  if tv_slot != none { return tv_slot.value }
   let is_slot = n.children |> count == 0 && n.connective == NoConnective && n.body == none && n.inferred == none
   if is_slot {
     match map_get(slot_bindings, authored_name_at(source_indices: source_indices, node: n)) {
@@ -310,7 +291,7 @@ fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_
     let new_children = n.children |> map(child =>
       if authored_name_at(source_indices: source_indices, node: child) == decl_name {
         let substituted_args = child.children |> map(arg =>
-          substitute_type_slots_scoped(n: arg, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables)
+          substitute_type_slots(n: arg, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices)
         )
         Node {
           name: child.name, span: child.span, ident_span: child.ident_span, children: substituted_args,
@@ -322,12 +303,12 @@ fn substitute_type_slots_scoped(n: Node, slot_bindings: Map<String, Node>, decl_
           has_non_tail_self_call: child.has_non_tail_self_call, match_pattern: child.match_pattern, expr_data: child.expr_data
         }
       } else {
-        substitute_type_slots_scoped(n: child, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables)
+        substitute_type_slots(n: child, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices)
       }
     )
     let new_inferred = match n.inferred {
       Present { value: Resolved { node: rt } } =>
-        Present { value: Resolved { node: substitute_type_slots_scoped(n: rt, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices, bind_type_variables: bind_type_variables) } }
+        Present { value: Resolved { node: substitute_type_slots(n: rt, slot_bindings: slot_bindings, decl_name: decl_name, source_indices: source_indices) } }
       _ => n.inferred
     }
     Node {
@@ -1009,7 +990,26 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemReso
   let collision_diags = if has_duplicate_type_param_name(names: tp_names) {
     [make_error_node(diagnostic: InternalError { message: concat("type param name collides with a value param in fn '", authored_name_at(source_indices: env.source_indices, node: item), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition."), span: item.span }, module_name: module_name)]
   } else { [] }
-  let env = env_with_type_variable_bindings(env: env, tp_names: tp_names)
+  let env = fold(tp_names, init: env, f: (e, tp_name) =>
+    let tp_binding = TypeBinding {
+      name: tp_name,
+      resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      provenance: SubValueUnknown
+    }
+    TypeEnv {
+      bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, tp_binding),
+      str_bindings: map_insert(e.str_bindings, tp_name, tp_binding),
+      ancestry_str_bindings: e.ancestry_str_bindings,
+      parents: e.parents,
+      recursive_types: e.recursive_types,
+      recursive_type_set: e.recursive_type_set,
+      inductive_fields: e.inductive_fields,
+      source_indices: e.source_indices,
+      intern_table: e.intern_table,
+      source_visible_names: map_insert(e.source_visible_names, tp_name, true),
+      symbol_index: e.symbol_index
+    }
+  )
   let param_results = map(item.params, p => resolve_param(param: p, env: env, module_name: module_name))
   let resolved_params = map(param_results, pr => pr.param)
   let param_diags = flat_map(param_results, pr => pr.diagnostics)

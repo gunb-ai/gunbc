@@ -7,11 +7,8 @@ import v1.std.core {
   make_error_node, module_items, authored_name_at,
   NoConnective, ArityMismatch
 }
-
 import v1.compiler.resolve { ModuleGraph, ResolvedModule }
-
 import std.types { container_expected_arity }
-
 
 type NormalizeResult {
   graph: ModuleGraph

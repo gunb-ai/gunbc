@@ -10,6 +10,7 @@ use self::Ordering::*;
 use crate::std_error_primitives::DivError::*;
 use crate::std_error_primitives::Result::*;
 pub use crate::std_error_primitives::{DivError, Result};
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -1428,39 +1429,6 @@ pub fn partial_function_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             callback_element_position: None,
         }),
     ])
-}
-
-pub fn algebra_method_template_name(name: String) -> bool {
-    {
-        let mut __found = false;
-        for p in Rc::new(vec![
-            AlgebraProfile::OrderedRingProfile,
-            AlgebraProfile::ApproximateFieldProfile,
-            AlgebraProfile::BooleanAlgebraProfile,
-            AlgebraProfile::BooleanAlgebraCollectionProfile,
-            AlgebraProfile::FreeMonoidScalarProfile,
-            AlgebraProfile::FreeMonoidCollectionProfile,
-            AlgebraProfile::PartialFunctionProfile,
-        ])
-        .iter()
-        .cloned()
-        {
-            if {
-                let mut __found = false;
-                for t in algebra_templates_for_profile(p.clone()).iter().cloned() {
-                    if (t.name.clone() == name.clone()) {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            } {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
 }
 
 pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {

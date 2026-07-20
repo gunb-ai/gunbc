@@ -3,6 +3,7 @@
 
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_types::{FilePath, List, Map, SourceSpan};
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -10,9 +11,9 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::CompilerDiagnostic::MissingAnnotation;
 use crate::v1_std_core::ExprData::ExprCall;
-pub use crate::v1_std_core::{authored_name_at, expr_call_func_at, make_error_node, no_span};
 pub use crate::v1_std_core::{
-    CompilerDiagnostic, DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
+    authored_name_at, expr_call_func_at, make_error_node, no_span, CompilerDiagnostic,
+    DeclaredFuncSig, ErrorNode, ExprData, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

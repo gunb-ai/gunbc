@@ -1380,14 +1380,10 @@ impl InterpContext {
         let mut fn_nodes = HashMap::new();
         let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
-            let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
                     fn_nodes.insert(name.clone(), item.clone());
-                    if !module_path.is_empty() {
-                        fn_nodes.insert(format!("{}.{}", module_path, name), item.clone());
-                    }
                 }
                 // Service-item detection is node-local: the item node carries the
                 // `transport` that *defines* it as a service, so `item_kind` of the
@@ -1632,60 +1628,7 @@ pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResul
     Ok(Some(eval_expr(body, &Env::empty(), ctx)?))
 }
 
-thread_local! {
-    static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
-}
-
-/// Bounded execution (§4): a call chain deeper than this is a typed, located
-/// refusal naming the frontier function — never a host stack overflow, which
-/// aborts the whole process and takes every later witness's measurement with it
-/// (measured: a cycle inside live_deploy script assembly under census-resolved
-/// bare names killed batch-2 at entry 214/619). Genuine deep-but-terminating
-/// recursion lives under `stacker::maybe_grow` guards; 100_000 interpreter
-/// frames is far past any legitimate corpus chain.
-const CALL_DEPTH_LIMIT: u32 = 100_000;
-
 fn call_function(
-    ctx: &InterpContext,
-    fn_node: &Rc<Node>,
-    args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
-) -> InterpResult<Value> {
-    let depth = CALL_DEPTH.with(|d| {
-        let v = d.get() + 1;
-        d.set(v);
-        v
-    });
-    let result = call_function_guarded(ctx, fn_node, args, env, depth);
-    CALL_DEPTH.with(|d| d.set(d.get() - 1));
-    result
-}
-
-fn call_function_guarded(
-    ctx: &InterpContext,
-    fn_node: &Rc<Node>,
-    args: &[(Option<String>, Value)],
-    env: &Rc<Env>,
-    depth: u32,
-) -> InterpResult<Value> {
-    if depth > CALL_DEPTH_LIMIT {
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} at fn '{}' — unbounded recursion (a bare-name \
-                 resolution cycle, or a genuinely divergent chain); refused, never a \
-                 host stack overflow",
-                CALL_DEPTH_LIMIT, fn_node.name
-            ),
-        });
-    }
-    // Grow the host stack in slices so DEEP-but-bounded chains below the limit
-    // never abort the process between guard checks.
-    stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
-        call_function_dispatch(ctx, fn_node, args, env)
-    })
-}
-
-fn call_function_dispatch(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     args: &[(Option<String>, Value)],
@@ -2041,10 +1984,9 @@ fn eval_var(
         if ctx.sym_eq(sym, "Zero") {
             return Ok(Value::Int(0));
         }
-        let vn = ctx.resolve(sym);
         return Ok(Value::Variant {
             type_name: ctx.sym(parent_enum),
-            variant_name: ctx.sym(vn.rsplit('.').next().unwrap_or(&vn)),
+            variant_name: sym,
             fields: Rc::new(vec![]),
         });
     }
@@ -2079,57 +2021,6 @@ fn eval_var(
                 return Ok(Value::Fn {
                     node: fn_node.clone(),
                 });
-            }
-        }
-    }
-
-    // Qualified module.member value projection: the flat item_registry is keyed by
-    // bare name, so dotted references resolve through the qualified fn_nodes keys
-    // and classify by the node itself (mirrors the service-item note above).
-    if name.contains('.') {
-        if let Some(fn_node) = ctx.lookup_fn(&name) {
-            match item_kind(fn_node.clone()) {
-                ItemKind::DataItem => {
-                    if let Some(ref body) = fn_node.body {
-                        let key = Rc::as_ptr(fn_node) as usize;
-                        if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
-                            return Ok(v);
-                        }
-                        let v = eval_expr(body, &Env::empty(), ctx)?;
-                        ctx.data_cache.borrow_mut().insert(key, v.clone());
-                        return Ok(v);
-                    }
-                }
-                ItemKind::FuncItem | ItemKind::FnItem => {
-                    return Ok(Value::Fn {
-                        node: fn_node.clone(),
-                    });
-                }
-                _ => {}
-            }
-        }
-        // Qualified unit-variant value (module.Variant): the compile-side projection
-        // resolved the owning coproduct into this node's inferred — reuse that binding
-        // rather than re-looking the name up (single authority; fail-closed otherwise).
-        if let Some(inf) = node.inferred.as_deref() {
-            if let crate::v1_std_core::InferredNode::Resolved { node: ty, .. } = inf {
-                if ty.connective == crate::v1_std_core::Connective::Disj {
-                    let last = name.rsplit('.').next().unwrap_or(&name).to_string();
-                    let arm = ty
-                        .children
-                        .iter()
-                        .find(|c| authored_name_at(ctx.si(), (*c).clone()) == last);
-                    if let Some(arm) = arm {
-                        if arm.children.is_empty() {
-                            let ty_name = authored_name_at(ctx.si(), ty.clone());
-                            return Ok(Value::Variant {
-                                type_name: ctx.sym(&ty_name),
-                                variant_name: ctx.sym(&last),
-                                fields: Rc::new(vec![]),
-                            });
-                        }
-                    }
-                }
             }
         }
     }
@@ -2620,13 +2511,7 @@ fn match_pattern(
                         return Some(bindings);
                     }
                     if *variant_name != ctx.sym(name) {
-                        // Qualified PATTERN spellings (module.Variant) carry the containment
-                        // path; variant identity is the bare arm name, normalized at value
-                        // construction — so only the pattern side needs the last segment.
-                        let pat_last = name.rsplit('.').next().unwrap_or(name);
-                        if *variant_name != ctx.sym(pat_last) {
-                            return None;
-                        }
+                        return None;
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -4247,7 +4132,7 @@ fn eval_record_lit(
         }
         Ok(Value::Variant {
             type_name: ctx.sym(pe),
-            variant_name: ctx.sym(type_name.rsplit('.').next().unwrap_or(&type_name)),
+            variant_name: ctx.sym(&type_name),
             fields: Rc::new(fields),
         })
     } else {
@@ -4720,23 +4605,6 @@ fn eval_algebra_method_inner(
                     Value::Map(m) => Ok(Value::Int(m.len() as i64)),
                     _ => Err(InterpError::TypeError {
                         msg: format!("cannot get length of {}", receiver.type_label()),
-                    }),
-                },
-            },
-        },
-
-        // Known-method bridge parity: infer rewrites bare `is_empty(xs)` on
-        // import-stripped modules into a method call (the census never serves
-        // algebra template names), so eval must implement the same member the
-        // bridge targets — emptiness via the shared length authority above.
-        "is_empty" => match native_len(&receiver) {
-            Some(n) => Ok(Value::Bool(n == 0)),
-            None => match free_monoid_to_vec(&receiver) {
-                Some(items) => Ok(Value::Bool(items.is_empty())),
-                None => match &receiver {
-                    Value::Map(m) => Ok(Value::Bool(m.is_empty())),
-                    _ => Err(InterpError::TypeError {
-                        msg: format!("cannot check is_empty of {}", receiver.type_label()),
                     }),
                 },
             },
@@ -8636,37 +8504,6 @@ fn eval_builtin_inner(
 }
 
 fn apply_closure(
-    closure: &Value,
-    args: &[Value],
-    env: &Rc<Env>,
-    ctx: &InterpContext,
-) -> InterpResult<Value> {
-    // Same bounded-execution guard as call_function — closures are the other
-    // call grain, and a recursion cycle through them never passes call_function.
-    let depth = CALL_DEPTH.with(|d| {
-        let v = d.get() + 1;
-        d.set(v);
-        v
-    });
-    if depth > CALL_DEPTH_LIMIT {
-        CALL_DEPTH.with(|d| d.set(d.get() - 1));
-        return Err(InterpError::TypeError {
-            msg: format!(
-                "call depth exceeded {} in closure application — unbounded recursion \
-                 (a bare-name resolution cycle, or a genuinely divergent chain); \
-                 refused, never a host stack overflow",
-                CALL_DEPTH_LIMIT
-            ),
-        });
-    }
-    let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
-        apply_closure_inner(closure, args, env, ctx)
-    });
-    CALL_DEPTH.with(|d| d.set(d.get() - 1));
-    result
-}
-
-fn apply_closure_inner(
     closure: &Value,
     args: &[Value],
     env: &Rc<Env>,

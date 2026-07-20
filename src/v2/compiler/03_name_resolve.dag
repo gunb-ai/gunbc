@@ -1,5 +1,4 @@
 module v2.compiler.name_resolve
-
 import v2.std.language_model { LanguageModel }
 
 import v2.compiler.symbol_index_fill { symbol_index_fill_module_roots }
@@ -141,7 +140,7 @@ fn admit_export_symbol(
       AdmissionRejected { diagnostics: d }
     AdmissionAccepted { bindings: b, origins: os } =>
 
-      match v2.std.collection.map_get(os, sym) {
+      match map_get(os, sym) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: _ } =>
             AdmissionRejected {
@@ -183,7 +182,7 @@ fn module_root_name_find_fold(
 fn validate_module_roots(roots: FreeMonoid<Node>) -> Outcome<FreeMonoid<Node>> {
   match fold_list(
     xs: roots,
-    empty: ModuleRootsValid { seen: Empty, diagnostics: v2.std.diagnostic.None },
+    empty: ModuleRootsValid { seen: Empty, diagnostics: None },
     cons: fn(acc, root) {
       match acc {
         ModuleRootsDuplicate { diagnostics: d } =>
@@ -246,14 +245,14 @@ fn module_root_find(
 ) -> Outcome<Node> {
   match fold_list(
     xs: roots,
-    empty: Accepted { value: NoPassingCandidate, diagnostics: v2.std.diagnostic.None },
+    empty: Accepted { value: NoPassingCandidate, diagnostics: None },
     cons: fn(acc, root) {
       match acc {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
         Accepted { value: fold_state, diagnostics: _ } =>
           match fold_state {
             ManyPassingCandidates =>
-              Accepted { value: ManyPassingCandidates, diagnostics: v2.std.diagnostic.None }
+              Accepted { value: ManyPassingCandidates, diagnostics: None }
             _ =>
               match qualified_name_from_module_node(root: root) {
                 Rejected { diagnostics: d } =>
@@ -269,7 +268,7 @@ fn module_root_find(
                         }
                       false => fold_state
                     },
-                    diagnostics: v2.std.diagnostic.None
+                    diagnostics: None
                   }
               }
           }
@@ -282,7 +281,7 @@ fn module_root_find(
         NoPassingCandidate =>
           Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_module_not_found) }
         OnePassingCandidate { candidate: root } =>
-          Accepted { value: root, diagnostics: v2.std.diagnostic.None }
+          Accepted { value: root, diagnostics: None }
         ManyPassingCandidates =>
           Rejected { diagnostics: resolve_diagnostics(reason: ^resolve_duplicate_module_name) }
       }
@@ -429,7 +428,7 @@ fn admit_import_entry(
             diagnostics: resolve_diagnostics(reason: ^resolve_import_not_visible)
           }
         ImportVisible =>
-          match v2.std.cross_tree.resolution.cross_tree_edge_decision(
+          match cross_tree_edge_decision(
             index: index,
             from_qn: subject_qn,
             to_qn: import_edge.target,
@@ -666,7 +665,7 @@ fn resolve_with_admission(
     lm: lm,
     roots: roots,
     admission: admission,
-    index: v2.std.cross_tree.resolution.source_root_index_empty(),
+    index: source_root_index_empty(),
     active_roots: Empty,
     policy: default_name_resolution_policy()
   )

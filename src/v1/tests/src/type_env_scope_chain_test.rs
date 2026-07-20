@@ -300,7 +300,6 @@ fn type_env_import_resolves_via_str_bindings_index() {
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
-        module_path: consumer.type_env.module_path.clone(),
     });
     assert!(
         lookup_type_by_name(stripped, "Shared".to_string()).is_none(),
@@ -334,7 +333,6 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
-        module_path: consumer.type_env.module_path.clone(),
     });
     assert!(
         lookup_type_by_name(stripped.clone(), "Shared".to_string()).is_some(),
@@ -352,7 +350,6 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         intern_table: consumer.type_env.intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
-        module_path: consumer.type_env.module_path.clone(),
     });
     assert!(
         lookup_type_by_name(stripped_index, "Shared".to_string()).is_none(),
@@ -515,7 +512,6 @@ fn type_env_std_types_type_variable_filtered_from_import() {
         intern_table: intern_table.clone(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
-        module_path: "stub".to_string(),
     });
     let filtered = type_env_for_import("std.types".to_string(), parent);
     for tv in ["T", "K", "V", "MappedElement", "FoldAccumulator"] {
@@ -628,17 +624,14 @@ fn global_bare_fallback_resolves_when_corpus_wide_unique() {
         source_indices: Rc::new(im_rc::HashMap::new()),
         intern_table,
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        module_path: "probe.consumer".to_string(),
         symbol_index: Rc::new(SymbolIndex {
             entries: Rc::new(im_rc::HashMap::new()),
             global_bare: Rc::new(im_rc::HashMap::from_iter([(
                 "Widget".to_string(),
                 Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
-                    module_path: "probe.def".to_string(),
                     binding: binding.clone(),
                 }),
             )])),
-            services: Rc::new(im_rc::HashMap::new()),
         }),
     });
 
@@ -668,16 +661,12 @@ fn global_bare_fallback_stays_absent_when_corpus_wide_ambiguous() {
         source_indices: Rc::new(im_rc::HashMap::new()),
         intern_table: empty_intern_table(),
         source_visible_names: Rc::new(im_rc::HashMap::new()),
-        module_path: "probe.consumer".to_string(),
         symbol_index: Rc::new(SymbolIndex {
             entries: Rc::new(im_rc::HashMap::new()),
             global_bare: Rc::new(im_rc::HashMap::from_iter([(
                 "Widget".to_string(),
-                Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                    candidates: Rc::new(im_rc::vector![]),
-                }),
+                Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding),
             )])),
-            services: Rc::new(im_rc::HashMap::new()),
         }),
     });
 

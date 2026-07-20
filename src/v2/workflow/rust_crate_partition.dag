@@ -452,9 +452,9 @@ fn assignment_has_scc_split(
       if !module_pair_in_same_scc(edges: module_dag.edges, left: left, right: right) {
         false
       } else {
-        match v2.std.collection.map_get(assignment, left) {
+        match map_get(assignment, left) {
           Accepted { value: Present { value: left_unit }, diagnostics: _ } =>
-            match v2.std.collection.map_get(assignment, right) {
+            match map_get(assignment, right) {
               Accepted { value: Present { value: right_unit }, diagnostics: _ } =>
                 left_unit != right_unit
               Rejected { diagnostics: _ } => false

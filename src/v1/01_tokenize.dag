@@ -1,7 +1,6 @@
 module v1.compiler.tokenize
 
 import std.types { SourceSpan }
-
 import v1.std.core {
   make_file_span,
   Token, TokenShape,
@@ -17,10 +16,7 @@ import v1.std.core {
 }
 
 import extdeps.languages.dag.syntax { dag_keyword_set }
-
 import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
-
-
 
 fn is_keyword_text(text: String) -> Bool {
   match lookup(dag_keyword_set, key: text) {

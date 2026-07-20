@@ -179,30 +179,18 @@ fn variant_reexport_empty_surfaces_red_control() {
         });
 
     let consumer = consumer_resolved(&modules, &source_indices);
-    // Namespace wave-1 dissolved the original perturbation: with variant_surfaces
-    // AND the symbol index both empty, the re-export arm still resolves through
-    // the ancestry global_bare merge built from the typed parent index — the
-    // census layering is the naming authority now, so the full-index isolated
-    // path must be CLEAN (a purity witness, matching pipeline/incremental).
     let isolated = typecheck_module_isolated(
         consumer.clone(),
-        module_index.clone(),
+        module_index,
         source_indices.clone(),
-        intern_table.clone(),
+        intern_table,
     );
     let isolated_msgs = hard_diagnostic_messages(&isolated);
     assert!(
-        isolated_msgs.is_empty(),
-        "isolated typecheck with the full parent index must resolve the re-export arm \
-         via the global_bare merge (wave-1 naming authority), got:\n{}",
+        isolated_msgs
+            .iter()
+            .any(|m| m.contains("'B'") || m.contains("unresolved type 'B'")),
+        "isolated typecheck (empty variant_surfaces) must RED on re-export arm import, got:\n{}",
         isolated_msgs.join("\n")
     );
-    // RED-control debt (2026-07-20): no cheap perturbation reds this shape
-    // anymore. Dropping the PROVIDER from the parent index still typechecks
-    // clean — imported names bind declared-weak (a type variable, no refusal)
-    // when their declaring module is absent, the same L1 unchecked-access
-    // deferral tracked in the typed-debt burndown. A discriminating control
-    // returns when the strict missing-name wall lands; until then the two
-    // asserts above (pipeline/incremental/isolated all clean via the
-    // global_bare merge) are the load-bearing purity witnesses.
 }

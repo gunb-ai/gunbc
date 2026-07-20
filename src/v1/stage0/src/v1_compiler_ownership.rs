@@ -3,6 +3,7 @@
 
 use self::EdgeKind::*;
 use self::OwnershipDecision::*;
+pub use crate::std_types::{FilePath, List, Map, SourceSpan};
 pub use crate::v1_compiler_emit_core_support::to_string;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -19,10 +20,8 @@ pub use crate::v1_std_core::{
     arg_value, arm_body, authored_name_at, expr_call_func_at, expr_method_name_at,
     expr_var_name_at, field_access_base, field_access_field_at, foreach_body, foreach_collection,
     if_condition, if_else_branch, if_then_branch, lambda_body, lambda_param_names_at, let_body,
-    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver,
-};
-pub use crate::v1_std_core::{
-    Cardinality, ExprData, InferredNode, NewlineIndex, Node, VarBindingKind,
+    let_value, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, Cardinality,
+    ExprData, InferredNode, NewlineIndex, Node, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

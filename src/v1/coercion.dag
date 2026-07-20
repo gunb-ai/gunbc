@@ -1,28 +1,21 @@
 module v1.compiler.coercion
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
-
 import std.coercion { TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax }
-
 import std.types { container_template_algebra, canonical_container_names }
-
 import extdeps.languages.rust.types {
   rust_type_checkpoints, rust_algebra_inhabitants, rust_callable,
   rust_optional_template, rust_cast_syntax
 }
-
 import extdeps.languages.python.types {
   python_type_checkpoints, python_algebra_inhabitants, python_callable,
   python_optional_template, python_cast_syntax
 }
-
 import extdeps.languages.go.types {
   go_type_checkpoints, go_algebra_inhabitants, go_callable,
   go_optional_template, go_cast_syntax
 }
-
 import extdeps.languages.dag.types { dag_type_checkpoints }
-
 
 fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
   match target {

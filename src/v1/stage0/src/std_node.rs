@@ -5,6 +5,7 @@ use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape};
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

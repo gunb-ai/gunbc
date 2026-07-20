@@ -1,4 +1,39 @@
 module v2.compiler.symbol_index_fill
+
+import std.algebra { FreeMonoid }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.extdeps.languages.dag {
+  dag_surface_module_header_metadata_edge,
+  qualified_name_from_module_node
+}
+import v2.std.algebra { fold_list, length }
+import v2.std.collection {
+  Absent,
+  Map,
+  Present,
+  empty_map,
+  list_at_optional,
+  map_get,
+  map_insert
+}
+import v2.std.compilers.lexing { symbol_lexeme }
+import v2.std.logic { Int }
+import v2.std.node {
+  Arrow,
+  Conj,
+  Disj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  node_subtree_nodes
+}
+import v2.std.qualified_name { QualifiedName, qualified_name_snoc }
+import v2.std.symbol_index { SymbolIndex, symbol_index_insert }
+
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -112,7 +147,7 @@ fn symbol_index_fill_containment_node(
 }
 
 fn disj_variant_count_of(counts: Map<Symbol, Int>, sym: Symbol) -> Int {
-  match v2.std.collection.map_get(counts, sym) {
+  match map_get(counts, sym) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: n } => n
       Absent => 0

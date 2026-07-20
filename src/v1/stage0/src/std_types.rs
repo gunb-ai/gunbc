@@ -7,8 +7,9 @@ use self::DocSourceKind::*;
 use self::FermiDepth::*;
 use self::HttpMethod::*;
 use self::TopologyNodeKind::*;
-pub use crate::std_algebra::{algebra_type_param_names, kernel_algebra_profile};
-pub use crate::std_algebra::{BooleanAlgebra, FreeMonoid, PartialFunction};
+pub use crate::std_algebra::{
+    algebra_type_param_names, kernel_algebra_profile, BooleanAlgebra, FreeMonoid, PartialFunction,
+};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

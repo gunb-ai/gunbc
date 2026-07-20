@@ -28,13 +28,11 @@ import std.computation {
 }
 import std.induction {
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent,
   cost_constant, cost_poly,
   sub_value_to_evidence, sub_value_to_call_pattern, sub_value_to_lowering_target, catamorphism_bound, derive_bound,
-}
-import std.computation {
-  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
 }
 import v1.std.core {
   Node,

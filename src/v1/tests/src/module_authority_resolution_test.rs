@@ -8,30 +8,21 @@ fn std_types_freebie_no_longer_leaks_types_into_non_importers() {
 
     let result = compile_multi(&[("std_types.dag", std_types), ("leak_probe.dag", leak_probe)]);
 
-    // Namespace-only resolution (wave-1) supersedes this test's original premise: `Shape`
-    // is corpus-globally-unique, so it resolves from anywhere via the census walk — by
-    // design, not via the old std.types freebie base-injection (still gone). The interim
-    // surface is the UnlistedImportUse ADVISORY naming the unlisted use; there must be no
-    // hard UnresolvedType, and no silent resolution either (the advisory is the receipt
-    // that resolution came from the census, not an import).
     let unresolved: Vec<_> = result
         .diagnostics
         .iter()
         .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::UnresolvedType { .. }))
         .collect();
     assert!(
-        unresolved.is_empty(),
-        "globally-unique `Shape` must resolve via the census walk (namespace-only \
-         resolution); got hard diagnostics {:?}",
+        !unresolved.is_empty(),
+        "leak_probe must NOT inherit `Shape` from the std.types freebie \
+         (the implicit base-injection is gone); got diagnostics {:?}",
         diagnostic_messages(&result)
     );
+    let msg = diagnostic_to_message(unresolved[0].diagnostic.clone());
     assert!(
-        diagnostic_messages(&result)
-            .iter()
-            .any(|m| m.starts_with("unlisted import use") && m.contains("Shape")),
-        "census-resolved unlisted use must carry the UnlistedImportUse advisory naming \
-         `Shape`; got {:?}",
-        diagnostic_messages(&result)
+        msg.contains("Shape"),
+        "the unresolved type should name `Shape`: {msg}"
     );
 }
 

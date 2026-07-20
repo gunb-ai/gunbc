@@ -3,8 +3,8 @@
 
 use self::RustCorpusRepr::*;
 use self::TypeRepr::*;
-pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
+pub use crate::std_types::{FilePath, List, Map, Set, SourceSpan};
+pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env, SymbolIndex, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node,
 };
@@ -19,11 +19,8 @@ use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v1_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_name_at,
-    with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
-    NewlineIndex, Node,
+    with_required_cardinality, Cardinality, Connective, FieldAccessStyle, FieldSummary,
+    FieldValueShape, InferredNode, InternTable, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

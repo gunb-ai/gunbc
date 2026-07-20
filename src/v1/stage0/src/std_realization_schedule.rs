@@ -7,12 +7,13 @@ use self::Runnable::*;
 use self::RunnableMemoryClass::*;
 use self::WitnessKind::*;
 use self::WitnessSpan::*;
-pub use crate::std_execution_mode::execution_mode_eq;
-pub use crate::std_execution_mode::ExecutionMode;
 use crate::std_execution_mode::ExecutionMode::Hermetic;
+pub use crate::std_execution_mode::{execution_mode_eq, ExecutionMode};
 use crate::std_measure::Quantity::Time;
-pub use crate::std_measure::{byte_size, byte_size_count, measure_count, time_measure, watt};
-pub use crate::std_measure::{ByteSize, Measure, Quantity, Watt};
+pub use crate::std_measure::{
+    byte_size, byte_size_count, measure_count, time_measure, watt, ByteSize, Measure, Quantity,
+    Watt,
+};
 pub use crate::std_nat::Nat;
 pub use crate::std_pareto::AxisGoal;
 use crate::std_pareto::AxisGoal::*;

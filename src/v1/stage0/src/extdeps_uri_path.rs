@@ -8,6 +8,7 @@ use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::std_http_path::UrlPathToken::{LiteralToken, ParamToken};
 pub use crate::std_http_path::{PathTemplate, UrlPathToken};
+pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

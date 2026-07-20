@@ -3,12 +3,12 @@
 
 use self::ItemKind::*;
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
-pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
-pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
-pub use crate::std_types::SourceSpan;
+pub use crate::std_interface_summary::{
+    interface_summary_rollup, signature_contract, ExportEntry, ExportKind, InterfaceSummary,
+};
+pub use crate::std_types::{FilePath, List, SourceSpan};
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-pub use crate::v1_compiler_infer_env::empty_type_env_cache;
-pub use crate::v1_compiler_infer_env::{TypeEnv, TypeEnvCache};
+pub use crate::v1_compiler_infer_env::{empty_type_env_cache, TypeEnv, TypeEnvCache};
 pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
@@ -21,8 +21,6 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 pub use crate::v1_std_core::{
     authored_name_at, expr_has_non_tail_self_call, expr_has_self_call, make_field_node,
     make_param_node, no_span, node_name_span, param_node_name_at, param_node_type_expr,
-};
-pub use crate::v1_std_core::{
     Cardinality, Connective, ErrorNode, InferredNode, NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;

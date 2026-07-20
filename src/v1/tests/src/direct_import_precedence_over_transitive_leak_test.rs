@@ -13,14 +13,6 @@
 //! fields of the TRUE shape — an env fix that neutered the wall would pass green
 //! arms silently and fail here. Ledger arm: the union conflict row is still
 //! recorded (the fix corrects which binding serves lookups; it does not hide forks).
-//!
-//! Module paths are load-bearing: realleaf sits under the consumer's OWN parent
-//! (forkc.app) and leakleaf under a sibling parent (forkc.other), so nearest-ancestor
-//! containment resolves `Widget` UNIQUELY and the census gate
-//! (presence_check_census_gate_note) does not stand the wall down. Flatten them to a
-//! common parent and the red control silently stops testing the overlay: the name goes
-//! census-ambiguous, the gate suppresses the diagnostic by design, and the arm fails
-//! for a reason that has nothing to do with import precedence.
 
 use std::rc::Rc;
 
@@ -35,17 +27,17 @@ use v1_compiler::v1_rt;
 use v1_compiler::v1_std_core::{authored_name_at, InternTable, NewlineIndex};
 
 // The shape the consumer's import statement selects: Widget { semigroup }.
-const REAL_LEAF: &str = "module forkc.app.realleaf\n\
+const REAL_LEAF: &str = "module forkc.realleaf\n\
     type Widget<T> { semigroup: T }\n";
 
 // A same-named homonym with a DIFFERENT shape: Widget { op }.
-const LEAK_LEAF: &str = "module forkc.other.leakleaf\n\
+const LEAK_LEAF: &str = "module forkc.leakleaf\n\
     type Widget<T> { op: T }\n";
 
 // The carrier: imports the homonym, so its exported flattened cache LEAKS
 // leakleaf's Widget into every downstream union (the v2.std.node role).
-const LEAK_MID: &str = "module forkc.other.leakmid\n\
-    import forkc.other.leakleaf { Widget }\n\
+const LEAK_MID: &str = "module forkc.leakmid\n\
+    import forkc.leakleaf { Widget }\n\
     fn mk_leak() -> Widget<Int> { Widget { op: 1 } }\n";
 
 fn error_messages(result: &v1_compiler::v1_compiler_compile::PipelineResult) -> Vec<String> {
@@ -62,9 +54,9 @@ fn error_messages(result: &v1_compiler::v1_compiler_compile::PipelineResult) -> 
 // demanded `op`; the direct-selected export must win instead.
 #[test]
 fn direct_selected_export_beats_later_transitive_leak() {
-    let entry = "module forkc.app.consumer\n\
-        import forkc.app.realleaf { Widget }\n\
-        import forkc.other.leakmid { mk_leak }\n\
+    let entry = "module forkc.consumer\n\
+        import forkc.realleaf { Widget }\n\
+        import forkc.leakmid { mk_leak }\n\
         fn mk_real() -> Widget<Int> { Widget { semigroup: 3 } }\n";
     let result = compile_multi(&[
         ("realleaf.dag", REAL_LEAF),
@@ -86,9 +78,9 @@ fn direct_selected_export_beats_later_transitive_leak() {
 // GREEN arm (is_all): same precedence when the direct import is unselective.
 #[test]
 fn direct_is_all_export_beats_later_transitive_leak() {
-    let entry = "module forkc.app.consumer\n\
-        import forkc.app.realleaf\n\
-        import forkc.other.leakmid { mk_leak }\n\
+    let entry = "module forkc.consumer\n\
+        import forkc.realleaf\n\
+        import forkc.leakmid { mk_leak }\n\
         fn mk_real() -> Widget<Int> { Widget { semigroup: 3 } }\n";
     let result = compile_multi(&[
         ("realleaf.dag", REAL_LEAF),
@@ -112,9 +104,9 @@ fn direct_is_all_export_beats_later_transitive_leak() {
 // wall (or left the leak winning) cannot pass both.
 #[test]
 fn presence_wall_still_refuses_true_shape_missing_field() {
-    let entry = "module forkc.app.consumer\n\
-        import forkc.app.realleaf { Widget }\n\
-        import forkc.other.leakmid { mk_leak }\n\
+    let entry = "module forkc.consumer\n\
+        import forkc.realleaf { Widget }\n\
+        import forkc.leakmid { mk_leak }\n\
         fn mk_missing() -> Widget<Int> { Widget { } }\n";
     let result = compile_multi(&[
         ("realleaf.dag", REAL_LEAF),
@@ -148,7 +140,7 @@ fn presence_wall_still_refuses_true_shape_missing_field() {
 fn kernel_names_are_not_overridden_by_direct_imports() {
     let str_leaf = "module forkc.strleaf\n\
         type String { chars: Int }\n";
-    let entry = "module forkc.app.consumer\n\
+    let entry = "module forkc.consumer\n\
         import forkc.strleaf { String }\n\
         fn lit() -> String { \"kernel\" }\n";
     let result = compile_multi(&[("strleaf.dag", str_leaf), ("consumer.dag", entry)]);
@@ -168,9 +160,9 @@ fn kernel_names_are_not_overridden_by_direct_imports() {
 // the Widget fork — the fix must not zero the fork's observability.
 #[test]
 fn fork_ledger_still_records_the_leak_conflict() {
-    let entry = "module forkc.app.consumer\n\
-        import forkc.app.realleaf { Widget }\n\
-        import forkc.other.leakmid { mk_leak }\n\
+    let entry = "module forkc.consumer\n\
+        import forkc.realleaf { Widget }\n\
+        import forkc.leakmid { mk_leak }\n\
         fn mk_real() -> Widget<Int> { Widget { semigroup: 3 } }\n";
     let files: &[(&str, &str)] = &[
         ("realleaf.dag", REAL_LEAF),

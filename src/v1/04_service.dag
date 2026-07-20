@@ -1,7 +1,6 @@
 module v1.compiler.infer_service
 
 import std.types { SourceSpan }
-
 import v1.std.core {
   Node,
   Connective, Conj, NoConnective,
@@ -16,16 +15,13 @@ import v1.std.core {
   method_receiver, param_node_type_expr,
   authored_name_at
 }
-
 import v1.compiler.infer_types {
   emit_map_has, nominal_type_ref
 }
-
 import v1.compiler.infer_items {
   ItemInfo, ItemKind, FuncItem, TypedModule,
   inferred_to_outputs
 }
-
 
 type UniqueAccum {
   seen: Map<String, Bool>

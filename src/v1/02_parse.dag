@@ -14,7 +14,7 @@ import v1.std.core {
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn,
   make_expr_node, make_named_expr_node, make_expr_error_node,
-  expr_var_name_at, field_access_field_at, field_access_spine, FieldAccessSpine, expr_call_func_at,
+  expr_var_name_at, field_access_field_at, expr_call_func_at,
   make_arg_node, arg_name_at, arg_value, make_arm_node, make_field_init_node, make_resource_use_node, make_text_part_node, make_interp_part_node,
   MatchPattern, make_field_binding_node, field_binding_pattern,
   Bind, LitPattern, VariantPattern, Wildcard,
@@ -46,11 +46,10 @@ import v1.std.core {
   error_type, is_compiler_error,
   node_name_span, no_span,
   NewlineIndex, authored_name_at, kernel_span,
-  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens,
-  field_access_base
+  InternTable, InternResult, empty_intern_table, intern, pre_intern_tokens
 }
 
-import std.syntax {
+import v1.compiler.languages {
   ItemForm, ItemFormKind, OtherForm, BodyKind,
   ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody,
@@ -3625,25 +3624,6 @@ fn try_postfix(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: Int) -
             }
           }
         }
-        ExprFieldAccess { summary: _ } => {
-          let last_seg = field_access_field_at(texpr: lhs, source_indices: ctx.source_indices)
-          if is_uppercase_start(name: last_seg) && 14 <= min_bp {
-            PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
-          } else {
-            if is_uppercase_start(name: last_seg) {
-              match field_access_spine(texpr: lhs, source_indices: ctx.source_indices) {
-                Present { value: spine } => {
-                  let r = parse_record_literal_named(tokens: tokens, ctx: ctx, name: spine.dotted, span: field_access_chain_span(texpr: lhs), name_span: kernel_span(name: spine.dotted))
-                  if has_err(err: r.err) { return PostfixResult { expr: lhs, changed: false, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-                  PostfixResult { expr: r.expr, changed: true, tokens: r.tokens, ctx: r.ctx, err: none }
-                }
-                Absent => PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
-              }
-            } else {
-              PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
-            }
-          }
-        }
         _ => PostfixResult { expr: lhs, changed: false, tokens: tokens, ctx: ctx, err: none }
       }
     }
@@ -4255,21 +4235,7 @@ fn parse_for(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   ExprResult { expr: for_expr, tokens: r.tokens, ctx: r.ctx, err: none }
 }
 
-fn field_access_chain_span(texpr: Node) -> SourceSpan {
-  match texpr.expr_data {
-    ExprFieldAccess { summary: _ } =>
-      let base_span = field_access_chain_span(texpr: field_access_base(texpr: texpr))
-      let chain_end = match texpr.ident_span { Present { value: is } => is.end  Absent => texpr.span.end }
-      SourceSpan { file: base_span.file, start: base_span.start, end: chain_end }
-    _ => texpr.span
-  }
-}
-
 fn parse_record_literal(tokens: TokenStream, ctx: ParseContext, name: String, span: SourceSpan) -> ExprResult {
-  parse_record_literal_named(tokens: tokens, ctx: ctx, name: name, span: span, name_span: span)
-}
-
-fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: String, span: SourceSpan, name_span: SourceSpan) -> ExprResult {
   let dummy_expr = parse_recovery_placeholder()
   let r = expect(tokens: tokens, expected: ExpectLBrace)
   if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: ctx, err: r.err } }
@@ -4282,7 +4248,7 @@ fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: Stri
   let r2 = expect(tokens: tokens, expected: ExpectRBrace)
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span, name_span: name_span), tokens: r2.tokens, ctx: r.ctx, err: none }
+  ExprResult { expr: make_named_expr_node(name: name, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span, name_span: span), tokens: r2.tokens, ctx: r.ctx, err: none }
 }
 
 fn parse_field_init_list(tokens: TokenStream, ctx: ParseContext) -> FieldInitsResult {

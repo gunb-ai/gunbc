@@ -2,7 +2,6 @@ module wt.a
 
 import wt.common { Flag }
 
-
 fn wt_a_wired(p: Flag) -> Flag {
   p
 }

@@ -3141,8 +3141,34 @@ fn rust_pub_use_braced_equal_prior_covered(line: String, lines: List<String>) ->
   }
 }
 
+fn line_is_braced_crate_use(line: String) -> Bool {
+  rust_use_crate_marker(line: line) != "" && contains(line, "::{")
+}
+
+fn coalesce_same_module_braced_pub_use(lines: List<String>) -> List<String> {
+  let braced = lines |> filter(line => line_is_braced_crate_use(line: line))
+  let other = lines |> filter(line => !line_is_braced_crate_use(line: line))
+  let modules = unique_strings(items: braced |> map(line => rust_pub_use_module_name(line: line)) |> filter(mod_name => mod_name != ""))
+  let coalesced = modules |> map(mod_name =>
+    let mod_lines = braced |> filter(line => rust_pub_use_module_name(line: line) == mod_name)
+    match mod_lines |> first {
+      Present { value: only } =>
+        if mod_lines |> count <= 1 {
+          only
+        } else {
+          let marker = rust_use_crate_marker(line: only)
+          let all_names = unique_strings(items: mod_lines |> flat_map(line => rust_pub_use_braced_names(line: line)))
+          concat(marker, mod_name, "::{", all_names |> join(separator: ", "), "};")
+        }
+      Absent => ""
+    }
+  )
+  concat(other, coalesced |> filter(line => line != ""))
+}
+
 fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
-  let exact = unique_strings(items: lines |> filter(line => line != ""))
+  let coalesced = coalesce_same_module_braced_pub_use(lines: lines)
+  let exact = unique_strings(items: coalesced |> filter(line => line != ""))
   exact |> filter(line =>
     rust_pub_use_singleton_covered(line: line, lines: exact) == false
       && rust_pub_use_braced_subset_covered(line: line, lines: exact) == false
@@ -3151,10 +3177,12 @@ fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
 }
 
 fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>) -> String {
-  if imports |> count == 0 {
+  let supplemental_modules = supplemental_import_module_names(items: supplement_items, type_summaries: emit_info.type_summaries, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+  let explicit_modules = if imports |> count == 0 { [] } else { unique_strings(items: imports |> map(imp => authored_name_at(source_indices: source_indices, node: imp))) }
+  let import_modules = unique_strings(items: concat(explicit_modules, supplemental_modules))
+  if import_modules |> count == 0 {
     ""
   } else {
-    let import_modules = unique_strings(items: imports |> map(imp => authored_name_at(source_indices: source_indices, node: imp)))
     let import_lines = import_modules |> flat_map(import_module =>
       let mod_imports = imports |> filter(imp => authored_name_at(source_indices: source_indices, node: imp) == import_module)
       let mod_name = module_to_filename(name: import_module)
@@ -3245,36 +3273,248 @@ fn node_tree_references_type_name(n: Node, type_name: String, source_indices: Ma
   }
 }
 
+fn physical_type_owner_module_name(rhs_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
+  match typed_modules |> filter(tm =>
+    tm.items |> any(item =>
+      authored_name_at(source_indices: source_indices, node: item) == rhs_name
+      && (is_type_def_item(item: item)
+        || is_type_alias_item(item: item, source_indices: source_indices)
+        || is_type_decl_item(item: item, source_indices: source_indices))
+    )
+  ) |> first {
+    Present { value: tm } => authored_name_at(source_indices: source_indices, node: tm.module)
+    Absent => ""
+  }
+}
+
+fn physical_struct_type_name_p(name: String, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> Bool {
+  match map_get(type_summaries, name) {
+    Present { value: summary } =>
+      match summary.repr {
+        StructRepr => true
+        _ => false
+      }
+    Absent => physical_type_owner_module_name(rhs_name: name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) != ""
+  }
+}
+
+fn node_tree_collect_record_lit_type_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let self_hit = match n.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
+        Present { value: tn } => [tn]
+        Absent => []
+      }
+    _ => []
+  }
+  let child_hits = n.children |> flat_map(child => node_tree_collect_record_lit_type_names(n: child, source_indices: source_indices))
+  let param_hits = n.params |> flat_map(p => node_tree_collect_record_lit_type_names(n: p, source_indices: source_indices))
+  let body_hit = match n.body {
+    Present { value: body } => node_tree_collect_record_lit_type_names(n: body, source_indices: source_indices)
+    Absent => []
+  }
+  let annot_hit = match n.type_annotation {
+    Present { value: ta } => node_tree_collect_record_lit_type_names(n: ta, source_indices: source_indices)
+    Absent => []
+  }
+  concat(self_hit, child_hits, param_hits, body_hit, annot_hit)
+}
+
+fn node_tree_collect_anonymous_record_struct_names(n: Node, type_summaries: Map<String, TypeSummary>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let self_hit = match n.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
+        Present { value: _ } => []
+        Absent =>
+          let lit_field_names = n.children |> map(f => field_init_node_name_at(n: f, source_indices: source_indices))
+          let field_type_hints = fold(n.children, init: empty_map(), f: (acc, f) =>
+            let fname = field_init_node_name_at(n: f, source_indices: source_indices)
+            match field_init_node_value(n: f).inferred {
+              Present { value: Resolved { node: type_node } } =>
+                let hint = authored_name_at(source_indices: source_indices, node: type_node)
+                if hint != "" { map_insert(acc, fname, hint) } else { acc }
+              _ => acc
+            }
+          )
+          match find_struct_name_by_fields(field_names: lit_field_names, field_type_hints: field_type_hints, type_summaries: type_summaries) {
+            Present { value: sn } => [sn]
+            Absent => []
+          }
+      }
+    _ => []
+  }
+  let child_hits = n.children |> flat_map(child => node_tree_collect_anonymous_record_struct_names(n: child, type_summaries: type_summaries, source_indices: source_indices))
+  let param_hits = n.params |> flat_map(p => node_tree_collect_anonymous_record_struct_names(n: p, type_summaries: type_summaries, source_indices: source_indices))
+  let body_hit = match n.body {
+    Present { value: body } => node_tree_collect_anonymous_record_struct_names(n: body, type_summaries: type_summaries, source_indices: source_indices)
+    Absent => []
+  }
+  let annot_hit = match n.type_annotation {
+    Present { value: ta } => node_tree_collect_anonymous_record_struct_names(n: ta, type_summaries: type_summaries, source_indices: source_indices)
+    Absent => []
+  }
+  let field_value_hits = match n.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      n.children |> flat_map(f =>
+        node_tree_collect_anonymous_record_struct_names(n: field_init_node_value(n: f), type_summaries: type_summaries, source_indices: source_indices)
+      )
+    _ => []
+  }
+  concat(self_hit, field_value_hits, child_hits, param_hits, body_hit, annot_hit)
+}
+
+fn type_summary_direct_field_type_names(type_name: String, type_summaries: Map<String, TypeSummary>) -> List<String> {
+  match map_get(type_summaries, type_name) {
+    Present { value: summary } =>
+      match summary.repr {
+        StructRepr => map_values(summary.field_type_map) |> filter(field_type => field_type != "")
+        _ => []
+      }
+    Absent => []
+  }
+}
+
+fn node_tree_collect_module_type_reference_names(n: Node, type_summaries: Map<String, TypeSummary>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let self_hit = if n.inferred != none {
+    let rt = resolved_type(n: n)
+    let name = authored_name_at(source_indices: source_indices, node: rt)
+    if name != "" && !is_container_type(name: name) && (rt.children |> count) == 0 { [name] } else { [] }
+  } else { [] }
+  let record_hits = node_tree_collect_record_lit_type_names(n: n, source_indices: source_indices)
+  let anon_hits = node_tree_collect_anonymous_record_struct_names(n: n, type_summaries: type_summaries, source_indices: source_indices)
+  let child_hits = n.children |> flat_map(child => node_tree_collect_module_type_reference_names(n: child, type_summaries: type_summaries, source_indices: source_indices))
+  let param_hits = n.params |> flat_map(p => node_tree_collect_module_type_reference_names(n: p, type_summaries: type_summaries, source_indices: source_indices))
+  let body_hit = match n.body {
+    Present { value: body } => node_tree_collect_module_type_reference_names(n: body, type_summaries: type_summaries, source_indices: source_indices)
+    Absent => []
+  }
+  let annot_hit = match n.type_annotation {
+    Present { value: ta } => node_tree_collect_module_type_reference_names(n: ta, type_summaries: type_summaries, source_indices: source_indices)
+    Absent => []
+  }
+  let field_value_hits = match n.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
+      n.children |> flat_map(f =>
+        node_tree_collect_module_type_reference_names(n: field_init_node_value(n: f), type_summaries: type_summaries, source_indices: source_indices)
+      )
+    _ => []
+  }
+  unique_strings(items: concat(self_hit, record_hits, anon_hits, field_value_hits, child_hits, param_hits, body_hit, annot_hit))
+}
+
+fn module_import_closure_type_seeds(items: List<Node>, source_indices: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>) -> List<String> {
+  let roots = items |> flat_map(item => match item.type_annotation {
+    Present { value: ta } =>
+      let n = authored_name_at(source_indices: source_indices, node: ta)
+      if n != "" { [n] } else { [] }
+    Absent => []
+  })
+  let field_refs = roots |> flat_map(root => type_summary_direct_field_type_names(type_name: root, type_summaries: type_summaries))
+  let tree_refs = items |> flat_map(item =>
+    let param_refs = item.params |> flat_map(p => node_tree_collect_module_type_reference_names(n: p, type_summaries: type_summaries, source_indices: source_indices))
+    let body_refs = match item.body {
+      Present { value: body } => node_tree_collect_module_type_reference_names(n: body, type_summaries: type_summaries, source_indices: source_indices)
+      Absent => []
+    }
+    concat(param_refs, body_refs)
+  )
+  unique_strings(items: concat(roots, field_refs, tree_refs))
+}
+
+fn import_closure_struct_type_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  transitive_struct_type_names(
+    seeds: module_import_closure_type_seeds(items: items, source_indices: source_indices, type_summaries: type_summaries),
+    type_summaries: type_summaries,
+    typed_modules: typed_modules,
+    source_indices: source_indices,
+    module_index: module_index
+  )
+}
+
+fn import_closure_emittable_type_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  import_closure_struct_type_names(items: items, type_summaries: type_summaries, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    |> filter(type_name => type_name != "" && type_name != "Unit" && !is_kernel_type(name: type_name))
+}
+
+fn emit_import_closure_from_references(items: List<Node>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  unique_strings(items: import_closure_emittable_type_names(items: items, type_summaries: type_summaries, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    |> map(type_name => physical_type_owner_module_name(rhs_name: type_name, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index))
+    |> filter(module_name => module_name != ""))
+}
+
+fn type_summary_struct_field_type_names(type_name: String, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  match map_get(type_summaries, type_name) {
+    Present { value: summary } =>
+      match summary.repr {
+        StructRepr =>
+          map_values(summary.field_type_map) |> filter(field_type =>
+            field_type != ""
+            && physical_struct_type_name_p(name: field_type, type_summaries: type_summaries, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+          )
+        _ => []
+      }
+    Absent => []
+  }
+}
+
+fn transitive_struct_type_names_loop(pending: List<String>, visited: List<String>, acc: List<String>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  if pending |> count == 0 {
+    unique_strings(items: acc)
+  } else {
+    match pending |> first {
+      Present { value: head } =>
+        let rest = pending |> skip(count: 1)
+        if visited |> any(v => v == head) {
+          transitive_struct_type_names_loop(pending: rest, visited: visited, acc: acc, type_summaries: type_summaries, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+        } else {
+          let new_visited = concat(visited, [head])
+          let is_struct = physical_struct_type_name_p(name: head, type_summaries: type_summaries, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+          let new_acc = if is_struct { concat(acc, [head]) } else { acc }
+          let child_seeds = if is_struct { type_summary_struct_field_type_names(type_name: head, type_summaries: type_summaries, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) } else { [] }
+          transitive_struct_type_names_loop(
+            pending: concat(rest, child_seeds),
+            visited: new_visited,
+            acc: new_acc,
+            type_summaries: type_summaries,
+            typed_modules: typed_modules,
+            source_indices: source_indices,
+            module_index: module_index
+          )
+        }
+      Absent => unique_strings(items: acc)
+    }
+  }
+}
+
+fn transitive_struct_type_names(seeds: List<String>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  transitive_struct_type_names_loop(pending: seeds, visited: [], acc: [], type_summaries: type_summaries, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+}
+
+fn module_dag_imports_type_name(import_module: String, type_name: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == import_module) |> first {
+    Present { value: tm } =>
+      module_imports(n: tm.module) |> any(imp =>
+        import_specific_names_at(n: imp, source_indices: source_indices) |> any(n => n == type_name)
+      )
+    Absent => false
+  }
+}
+
+fn supplemental_import_module_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  emit_import_closure_from_references(items: items, type_summaries: type_summaries, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+}
+
 fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, import_module: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   let mod_filename = module_to_filename(name: import_module)
-  unique_strings(items: items
-    |> filter(item => is_data_def_item(item: item))
-    |> flat_map(item => {
-      let type_name = match item.type_annotation {
-        Present { value: ta } => authored_name_at(source_indices: source_indices, node: ta)
-        Absent => ""
-      }
-      if type_name == "" {
-        []
-      } else {
-        match map_get(type_summaries, type_name) {
-          Present { value: summary } =>
-            map_values(summary.field_type_map) |> filter(field_type =>
-              field_type != ""
-              && has_physical_type_def_in_module_filename(rhs_name: field_type, mod_filename: mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-              && match map_get(type_summaries, field_type) {
-                Present { value: ft } =>
-                  match ft.repr {
-                    StructRepr => true
-                    _ => false
-                  }
-                Absent => false
-              }
-            )
-          Absent => []
-        }
-      }
-    }))
+  let closure_types = import_closure_emittable_type_names(items: items, type_summaries: type_summaries, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+  let owned = closure_types |> filter(type_name =>
+    has_physical_type_def_in_module_filename(rhs_name: type_name, mod_filename: mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+  )
+  let reexported = closure_types |> filter(type_name =>
+    has_physical_type_def_in_module_filename(rhs_name: type_name, mod_filename: mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) == false
+    && module_dag_imports_type_name(import_module: import_module, type_name: type_name, typed_modules: typed_modules, source_indices: source_indices)
+  )
+  unique_strings(items: concat(owned, reexported))
 }
 
 fn typed_closure_includes_module_filename(typed_modules: List<TypedModule>, filename: String, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -3807,10 +4047,10 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, cor
           } else if set_contains(shared_types, outer_name) {
             render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
           } else {
-            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
+            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
           }
         } else {
-          render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
+          render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() })
         }
       } else {
         render_rust_type(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, emit_info: empty_emit_graph_info())
@@ -4627,12 +4867,9 @@ fn positional_payload_scrut_type(parent_enum: String?, variant_name: String, fie
   }
 }
 
-data optional_pattern_unknown_parent_note: String = "Present/Absent patterns with an UNRESOLVED parent enum lower to Some/None (kernel Optional): a bare Present/Absent struct pattern is never valid emitted Rust (no bare variant of that name exists in any emitted scope), so the raw fallback arm could only ever produce a compile error. A modeled optional carrier (e.g. OptionalNode) still resolves its parent via pattern_parent_enum and takes the qualified path; only the parent-unknown residue (an unstamped scrutinee, e.g. a let-in-lambda pipeline) reroutes."
-
 fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let resolved_parent = pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
-  let optional_variant = is_optional_variant_name(name: name)
-    && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
+  let optional_variant = is_optional_variant_name(name: name) && is_optional_parent(parent_enum: resolved_parent)
   let rust_name = if optional_variant {
     if name == "Present" { "Some" } else { "None" }
   } else { name }
@@ -4856,8 +5093,7 @@ fn emit_pattern_rc_aware(pattern: MatchPattern, path_prefix: List<String>, rc_an
 
 fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindings: List<Node>, path_prefix: List<String>, rc_analysis: RcPatternAnalysis, shared_types: Set<String>, scrut_type: String, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   let resolved_parent = pattern_parent_enum(name: name, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
-  let optional_variant = is_optional_variant_name(name: name)
-    && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
+  let optional_variant = is_optional_variant_name(name: name) && is_optional_parent(parent_enum: resolved_parent)
   let rust_name = if optional_variant {
     if name == "Present" { "Some" } else { "None" }
   } else { name }
@@ -8773,7 +9009,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>, corpus
 }
 
 fn rust_test_signature_comment(projection: TestProjection, corpus_repr: RustCorpusRepr) -> String {
-  let stub_env = TypeEnv { module_path: "", bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: projection.source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let stub_env = TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: projection.source_indices, intern_table: empty_intern_table(), source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
   let params_str = projection.params
     |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), corpus_repr: corpus_repr, source_indices: projection.source_indices, variant_to_enum: empty_map(), env: stub_env)))
     |> join(separator: ", ")

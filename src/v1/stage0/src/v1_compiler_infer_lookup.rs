@@ -6,32 +6,25 @@ use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{
-    algebra_method_template_name, algebra_templates_for_profile, kernel_algebra_profile,
+    algebra_templates_for_profile, kernel_algebra_profile, AlgebraFieldTemplate,
+    AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
 };
-pub use crate::std_algebra::{
-    AlgebraFieldTemplate, AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
-};
-pub use crate::std_induction::SubValueRelation;
-use crate::std_induction::SubValueRelation::*;
+pub use crate::std_types::{FilePath, List, Map, SourceSpan};
 pub use crate::v1_compiler_infer_emit_info::{
     build_enum_field_summaries, build_struct_field_summaries,
 };
-use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, borrowed_generic_param_names, global_bare_nearest_ancestor_candidate,
-    is_recursive_type, lookup_binding_by_name, lookup_binding_by_name_local, lookup_type,
-    lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+    authored_name, is_recursive_type, lookup_type, lookup_type_for, SymbolIndex, TypeBinding,
+    TypeEnv,
 };
-pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_method::infer_builtin_call_type;
-pub use crate::v1_compiler_infer_service::check_service_method_call_node;
-pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
-pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
-pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
+pub use crate::v1_compiler_infer_service::{
+    check_service_method_call_node, OpEntry, ServiceMethodResult,
+};
+pub use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, is_declared_container_alias_spelling,
-    kernel_profile_lookup, make_container_type, method_receiver_element_node,
-    node_is_keyed_collection, node_is_set_collection, nominal_type_ref, normalize_access_type_node,
+    make_container_type, method_receiver_element_node, node_is_keyed_collection,
+    node_is_set_collection, nominal_type_ref, normalize_access_type_node,
     reground_alias_carrier_identity,
 };
 use crate::v1_rt;
@@ -47,12 +40,10 @@ use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
 pub use crate::v1_std_core::{
-    authored_name_at, error_type, find_child_named, has_child_named, param_node_type_expr,
-    with_optional_cardinality, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,
-    InferredNode, MethodSemantics, NewlineIndex, Node,
+    authored_name_at, find_child_named, has_child_named, param_node_type_expr,
+    with_optional_cardinality, with_required_cardinality, Cardinality, Connective, ErrorNode,
+    FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, InternTable, MethodSemantics,
+    NewlineIndex, Node,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -87,187 +78,8 @@ pub fn lookup_in_scope(
     }
 }
 
-pub fn lookup_func_sig(
-    func_env: Rc<ResolvedFuncEnv>,
-    type_env: Rc<TypeEnv>,
-    name: String,
-) -> Option<Rc<ResolvedFuncSig>> {
-    match lookup_resolved_sig(func_env.clone(), name.clone()) {
-        Some(sig) => Some(sig.clone()),
-        None => func_sig_from_global_bare(type_env.clone(), name.clone()),
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BorrowedCensusDecl {
-    pub owner_module_path: String,
-    pub node: Rc<Node>,
-}
-
-pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<BorrowedCensusDecl>> {
-    if v1_rt::contains(name.clone(), ".".to_string()) {
-        match symbol_index_lookup(type_env.symbol_index.clone(), name.clone()) {
-            Some(node) => Some(Rc::new(BorrowedCensusDecl {
-                owner_module_path: qualified_all_but_last(name.clone()),
-                node: node.clone(),
-            })),
-            None => None,
-        }
-    } else {
-        match v1_rt::map_get(
-            &type_env.symbol_index.clone().global_bare.clone(),
-            name.clone(),
-        )
-        .as_deref()
-        .cloned()
-        {
-            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                module_path: mp,
-                binding: b,
-                ..
-            }) => Some(Rc::new(BorrowedCensusDecl {
-                owner_module_path: mp.clone(),
-                node: b.resolved.clone(),
-            })),
-            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                candidates: cands, ..
-            }) => match global_bare_nearest_ancestor_candidate(
-                type_env.module_path.clone(),
-                cands.clone(),
-            ) {
-                Some(cand) => Some(Rc::new(BorrowedCensusDecl {
-                    owner_module_path: cand.module_path.clone(),
-                    node: cand.binding.clone().resolved.clone(),
-                })),
-                None => None,
-            },
-            None => None,
-        }
-    }
-}
-
-pub fn census_reserved_method_name_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn func_sig_from_global_bare(
-    type_env: Rc<TypeEnv>,
-    name: String,
-) -> Option<Rc<ResolvedFuncSig>> {
-    {
-        if algebra_method_template_name(name.clone()) {
-            return None;
-        }
-        match infer_builtin_call_type(name.clone()) {
-            Some(_) => None,
-            None => {
-                let borrowed = match lookup_binding_by_name_local(type_env.clone(), name.clone()) {
-                    Some(binding) => Some(Rc::new(BorrowedCensusDecl {
-                        owner_module_path: type_env.module_path.clone(),
-                        node: binding.resolved.clone(),
-                    })),
-                    None => borrowed_census_decl(type_env.clone(), name.clone()),
-                };
-                match borrowed.clone() {
-                    Some(bd) => {
-                        let node = bd.node.clone();
-                        match ((((node.params.clone().len() as i64) > 0)
-                            || (node.inferred.clone() != None))
-                            || (node.type_annotation.clone() != None))
-                        {
-                            false => None,
-                            true => {
-                                let excluded = borrowed_generic_param_names(
-                                    node.params.clone(),
-                                    type_env.source_indices.clone(),
-                                );
-                                let raw_return = match node.inferred.clone().as_deref().cloned() {
-                                    Some(InferredNode::Resolved { node: inferred, .. }) => {
-                                        inferred.clone()
-                                    }
-                                    _ => match node.type_annotation.clone() {
-                                        Some(ann) => ann.clone(),
-                                        None => error_type(),
-                                    },
-                                };
-                                if (bd.owner_module_path.clone() == type_env.module_path.clone()) {
-                                    Some(Rc::new(ResolvedFuncSig {
-                                        name: name.clone(),
-                                        params: node.params.clone(),
-                                        inferred: raw_return.clone(),
-                                        is_async: false,
-                                        output_provenance: Rc::new(vec![]),
-                                        variant_provenance: v1_rt::rc_empty_map::<
-                                            String,
-                                            Rc<
-                                                HashMap<
-                                                    String,
-                                                    Rc<HashMap<String, Rc<SubValueRelation>>>,
-                                                >,
-                                            >,
-                                        >(
-                                        ),
-                                    }))
-                                } else {
-                                    {
-                                        let qualified_return = qualify_borrowed_type_names(
-                                            raw_return.clone(),
-                                            bd.owner_module_path.clone(),
-                                            type_env.clone(),
-                                            excluded.clone(),
-                                        );
-                                        Some(Rc::new(ResolvedFuncSig {
-                                            name: name.clone(),
-                                            params: node.params.clone(),
-                                            inferred: qualified_return.clone(),
-                                            is_async: false,
-                                            output_provenance: Rc::new(vec![]),
-                                            variant_provenance: v1_rt::rc_empty_map::<
-                                                String,
-                                                Rc<
-                                                    HashMap<
-                                                        String,
-                                                        Rc<HashMap<String, Rc<SubValueRelation>>>,
-                                                    >,
-                                                >,
-                                            >(
-                                            ),
-                                        }))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    None => None,
-                }
-            }
-        }
-    }
-}
-
-pub fn global_bare_callable_node(type_env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
-    {
-        if algebra_method_template_name(name.clone()) {
-            return None;
-        }
-        match lookup_binding_by_name(type_env.clone(), name.clone()) {
-            Some(binding) => {
-                if (((binding.resolved.clone().params.clone().len() as i64) > 0)
-                    || (binding.resolved.clone().inferred.clone() != None))
-                {
-                    Some(binding.resolved.clone())
-                } else {
-                    None
-                }
-            }
-            None => None,
-        }
-    }
+pub fn lookup_func_sig(func_env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
+    lookup_resolved_sig(func_env.clone(), name.clone())
 }
 
 pub fn lookup_field_type_node(
@@ -788,10 +600,10 @@ pub fn lookup_structural_method(
                         );
                         match base_result.clone() {
                             Some(mfr) => {
-                                let profile = kernel_profile_lookup(authored_name_at(
-                                    source_indices.clone(),
-                                    receiver_type.clone(),
-                                ));
+                                let profile = v1_rt::map_get(
+                                    &kernel_algebra_profile(),
+                                    authored_name_at(source_indices.clone(), receiver_type.clone()),
+                                );
                                 let template_match = match profile.clone() {
                                     Some(p) => {
                                         let templates = algebra_templates_for_profile(p.clone());

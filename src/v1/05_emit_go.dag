@@ -45,38 +45,28 @@ import v1.std.core {
 }
 
 import v1.compiler.artifact { RenderTarget, Go }
-
 import extdeps.languages.go.emit { go_reserved, go_reserved_escape_suffix }
-
 import v1.compiler.languages {
   scaffold_for_target, TestConventions, ItemKeywords, test_conventions_for_target,
   is_string_like, CaseVisibility
 }
-
 import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name }
-
 import v1.compiler.infer_types { resolved_type, normalize_access_type_node, node_is_keyed_collection }
-
 import v1.compiler.infer_method {
 }
-
 import v1.compiler.infer_sigs { ResolvedFuncSig, ResolvedFuncEnv }
-
 import v1.compiler.infer_items {
   ResolvedGraph, TypedModule,
   ItemInfo
 }
-
 import v1.compiler.infer_service {
   is_typed_service_call_receiver, extract_typed_service_name
 }
-
 import v1.compiler.infer {
   InferScope,
   build_params_scope, extend_scope,
   expr_span
 }
-
 import std.induction { SubValueUnknown }
 
 import v1.compiler.runtime_go { go_runtime_source }
@@ -111,7 +101,6 @@ import v1.compiler.emit {
   emit_tco_unified, emit_unified_pattern, test_file_path, emit_unified_typed_func_body,
   emit_unified_service_def, emit_unified_operation_method, emit_unified_transport_dispatch
 }
-
 import v1.compiler.emit_core_support {
   EmitResult, TestProjection,
   escape_json_string, module_to_filename, make_indent,
@@ -126,10 +115,6 @@ import v1.compiler.emit_core_support {
   is_function_item, is_data_def_item, is_service_def_item,
   is_resource_def_item, extract_test_projections
 }
-
-
-
-
 
 fn go_emit_module_root() -> String { "generated" }
 

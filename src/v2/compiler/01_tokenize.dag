@@ -146,7 +146,7 @@ fn lex_match_char_pred(pred: fn(Char) -> Bool, source: String) -> LexMatchResult
             true =>
               match string_tail(s: source) {
                 TailFound { tail: rest } =>
-                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: c, tail: std.algebra.Empty } }
+                  LexMatchAccepted { remaining: rest, lexeme: Cons { head: c, tail: Empty } }
                 TailAbsent => LexMatchRejected
               }
             false => LexMatchRejected
@@ -231,7 +231,7 @@ fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
     pattern: lex_rule_pattern(rule: rule),
     algebra: LexPatternFold {
       empty: LexMatchThunk { apply: fn(s) {
-        LexMatchAccepted { remaining: s, lexeme: std.algebra.Empty }
+        LexMatchAccepted { remaining: s, lexeme: Empty }
       } },
       literal: fn(text) {
         LexMatchThunk { apply: fn(s) {
@@ -293,14 +293,14 @@ fn lex_rule_thunk(rule: LexRule) -> LexMatchThunk {
             LexMatchAccepted { remaining: rest, lexeme: lex } =>
               LexMatchAccepted { remaining: rest, lexeme: lex }
             LexMatchRejected =>
-              LexMatchAccepted { remaining: s, lexeme: std.algebra.Empty }
+              LexMatchAccepted { remaining: s, lexeme: Empty }
           }
         } }
       },
       repeat: fn(elem_r) {
 
         LexMatchThunk { apply: fn(s) {
-          let result = lex_repeat_loop(elem_r: elem_r, init: RepeatState { remaining: s, lexeme: std.algebra.Empty, done: false })
+          let result = lex_repeat_loop(elem_r: elem_r, init: RepeatState { remaining: s, lexeme: Empty, done: false })
           LexMatchAccepted { remaining: result.remaining, lexeme: result.lexeme }
         } }
       },
@@ -354,7 +354,7 @@ fn lex_try_compiled(compiled: CompiledLexRule, source: String) -> LexRuleApply {
 fn lex_compile_rules(rules: List<LexRule>) -> List<CompiledLexRule> {
   let reversed = fold_list(
     xs: rules,
-    empty: std.algebra.Empty,
+    empty: Empty,
     cons: fn(acc, rule) {
       Cons { head: CompiledLexRule { rule: rule, thunk: lex_rule_thunk(rule: rule) }, tail: acc }
     }
@@ -419,7 +419,7 @@ type LexWalkAcc {
 fn lex_walk_init(src: String, file: Symbol, rules: LexRuleSet) -> LexWalkAcc {
   LexWalkAcc {
     remaining: src,
-    tokens: std.algebra.Empty,
+    tokens: Empty,
     pos: 0,
     done: false,
     error: false,
@@ -530,9 +530,9 @@ fn lex_walk(source: String, file: Symbol, rules: LexRuleSet) -> Outcome<TokenStr
   )
   let at = Textual { file: file, extent: ByteRange { start: result.pos, end: result.pos } }
   if result.error {
-    v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
+    Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e1_unrecognized_char_diagnostic(at: at)) }
   } else {
-    v2.std.diagnostic.Accepted { value: token_stream_new(all: result.tokens.reverse()), diagnostics: v2.std.diagnostic.None }
+    Accepted { value: token_stream_new(all: result.tokens.reverse()), diagnostics: None }
   }
 }
 
@@ -544,9 +544,9 @@ fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream>
   match rules {
     VoidLexRules =>
       if is_empty(xs: text) {
-        v2.std.diagnostic.Accepted { value: token_stream_empty(), diagnostics: v2.std.diagnostic.None }
+        Accepted { value: token_stream_empty(), diagnostics: None }
       } else {
-        v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
+        Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
     ModeledLexRules { root: rule_set } =>
       lex_walk(source: text, file: file, rules: rule_set)

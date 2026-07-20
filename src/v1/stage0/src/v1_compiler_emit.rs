@@ -12,8 +12,9 @@ use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
-pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{container_template_algebra, is_container_type};
+pub use crate::std_types::{
+    container_template_algebra, is_container_type, FilePath, List, Map, SourceSpan,
+};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
@@ -28,21 +29,19 @@ pub use crate::v1_compiler_emit_core_support::{
     is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
     make_indent, module_to_filename, sanitize_service_name, service_var_name, test_function_name,
     to_lower_char, to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper,
-    to_upper_char, unique_strings,
+    to_upper_char, unique_strings, EmitResult, TestProjection,
 };
-pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
-pub use crate::v1_compiler_infer::InferScope;
-pub use crate::v1_compiler_infer::{build_params_scope, extend_scope};
+pub use crate::v1_compiler_infer::{build_params_scope, extend_scope, InferScope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
-pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
-pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{
+    authored_name, empty_symbol_index, GlobalBareLookupState, SymbolIndex, TypeBinding, TypeEnv,
+};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
-    extract_typed_service_name, is_typed_service_call_receiver,
+    extract_typed_service_name, is_typed_service_call_receiver, OpEntry, UniqueAccum,
 };
-pub use crate::v1_compiler_infer_service::{OpEntry, UniqueAccum};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
@@ -65,13 +64,11 @@ use crate::v1_compiler_languages::VisibilitySpec::{CaseVisibility, KeywordVisibi
 pub use crate::v1_compiler_languages::{
     binop_symbol, canonical_emoji_char_escape, is_string_like, language_spec_for_target,
     service_method_depth, service_methods_inside_class, service_receiver_str, service_return_str,
-    service_self_param, target_keyword, test_conventions_for_target, wrap_shared_type,
-};
-pub use crate::v1_compiler_languages::{
-    BlockSyntax, CharSanitization, EscapePair, ExpressionSemantics, IfValueForm, ImportRule,
-    ImportTrigger, InterpStyle, LanguageSpec, MatchValueForm, NamingCase, RecordLitSyntax,
-    ReservedWordStrategy, ServiceFieldTemplates, StringInterpSyntax, TcoSyntax, TestConventions,
-    TestNameStyle, VariantPatternSyntax, VisibilitySpec,
+    service_self_param, target_keyword, test_conventions_for_target, wrap_shared_type, BlockSyntax,
+    CharSanitization, EscapePair, ExpressionSemantics, IfValueForm, ImportRule, ImportTrigger,
+    InterpStyle, LanguageSpec, MatchValueForm, NamingCase, RecordLitSyntax, ReservedWordStrategy,
+    ServiceFieldTemplates, StringInterpSyntax, TcoSyntax, TestConventions, TestNameStyle,
+    VariantPatternSyntax, VisibilitySpec,
 };
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -109,12 +106,9 @@ pub use crate::v1_std_core::{
     method_receiver, module_imports, module_items, operation_modifier_name,
     param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
     return_value, slice_base, slice_end, slice_start, transport_has_auth, tuple_type_name,
-    unaryop_operand, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
-    UnaryOpKind, VarBindingKind,
+    unaryop_operand, with_required_cardinality, Cardinality, Connective, DeclaredFuncSig,
+    ErrorNode, ExprData, FieldAccessStyle, FieldSummary, InferredNode, InternTable, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, StringPart, TextFile, UnaryOpKind, VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -574,7 +568,6 @@ pub fn emit_simple_string_interp(
 pub fn empty_emit_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: Rc::new(TypeEnv {
-            module_path: "".to_string(),
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
@@ -593,7 +586,6 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
             parents: Rc::new(vec![]),
         }),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        body_locals: v1_rt::rc_empty_map::<String, bool>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: "".to_string(),
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
@@ -607,7 +599,6 @@ pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
         type_env: typed_module.type_env.clone(),
         func_env: typed_module.func_env.clone(),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        body_locals: v1_rt::rc_empty_map::<String, bool>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
@@ -656,7 +647,7 @@ pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
-    lookup_func_sig(scope.func_env.clone(), scope.type_env.clone(), name.clone())
+    lookup_func_sig(scope.func_env.clone(), name.clone())
 }
 
 pub fn typed_named_arg_matches(

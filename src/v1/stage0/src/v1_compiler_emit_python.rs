@@ -5,7 +5,7 @@ pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{BinOp, LiteralValue};
-pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{FilePath, List, Map, SourceSpan};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Python;
 pub use crate::v1_compiler_emit::{
@@ -26,9 +26,8 @@ pub use crate::v1_compiler_emit::{
     has_nested_records_node, has_service_items, is_null_coalesce, is_tco_eligible, lookup_item,
     module_emit_scope, order_typed_call_args, scope_after_expr, seed_bindings,
     service_fallback_transport, service_field_ctors, service_field_decls, test_file_path,
-    typed_named_arg_matches,
+    typed_named_arg_matches, BlockEmitState, InterpPart, ServiceFieldSet,
 };
-pub use crate::v1_compiler_emit::{BlockEmitState, InterpPart, ServiceFieldSet};
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
     capitalize_first, escape_json_string, escape_string_literal_body, extract_test_projections,
@@ -36,13 +35,10 @@ pub use crate::v1_compiler_emit_core_support::{
     is_type_alias_item, is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper,
     language_spec, make_indent, module_to_filename, sanitize_service_name, service_var_name,
     test_function_name, to_lower_char, to_screaming_snake, to_snake, to_string, to_string_helper,
-    to_upper_char, unique_strings,
+    to_upper_char, unique_strings, EmitResult, TestProjection,
 };
-pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
-pub use crate::v1_compiler_infer::InferScope;
-pub use crate::v1_compiler_infer::{build_params_scope, expr_span, extend_scope};
-pub use crate::v1_compiler_infer_env::authored_name;
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer::{build_params_scope, expr_span, extend_scope, InferScope};
+pub use crate::v1_compiler_infer_env::{authored_name, SymbolIndex, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -53,8 +49,8 @@ pub use crate::v1_compiler_infer_types::{
 };
 pub use crate::v1_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, test_conventions_for_target,
+    ItemKeywords, TestConventions,
 };
-pub use crate::v1_compiler_languages::{ItemKeywords, TestConventions};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -87,12 +83,10 @@ pub use crate::v1_std_core::{
     method_arg_nodes, method_receiver, module_imports, module_items, param_node_name_at,
     param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
     return_value, slice_base, slice_end, slice_start, transport_auth_header_name, transport_env,
-    transport_has_auth, transport_headers, with_required_cardinality,
-};
-pub use crate::v1_std_core::{
-    Cardinality, Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary,
-    InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
-    UnaryOpKind, VarBindingKind,
+    transport_has_auth, transport_headers, with_required_cardinality, Cardinality, Connective,
+    DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary, InferredNode, InternTable,
+    MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile, UnaryOpKind,
+    VarBindingKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
