@@ -122,11 +122,21 @@ fn tg_gate_progress_row(spec: PlanGateSpec) -> MarkupNode {
   ])
 }
 
+fn tg_is_bar_gate(g: PlanGate) -> Bool {
+  match g {
+    GateEmitterFixedPoint => true
+    GateHonestFrontier => true
+    GateLedgerGreen => true
+    GateDeletion => false
+  }
+}
+
 fn three_gate_progress_markup() -> MarkupNode {
   el_class("section", "three-gate-progress",
     concat(
       [ el("h2", [ txt("v1-delete bar: three gates") ]) ],
-      map(v1_deletion_gates, spec => tg_gate_progress_row(spec: spec))))
+      map(filter(v1_deletion_gates, spec => tg_is_bar_gate(g: spec.gate)),
+          spec => tg_gate_progress_row(spec: spec))))
 }
 
 fn txt(s: String) -> MarkupNode { TextNode { text: s } }
