@@ -6906,9 +6906,15 @@ pub fn infer_record_lit(
                     Some(tn) => tn.clone(),
                     None => error_type(),
                 };
+                let variant_lookup_is_own_declaration =
+                    (((variant_lookup_resolved.children.clone().len() as i64) > 0)
+                        || (variant_lookup_resolved.connective.clone()
+                            != Connective::NoConnective));
                 let raw_resolved = match local_variant_parent.clone() {
                     Some(parent_name) => {
-                        if (parent_name.clone() == "Optional".to_string()) {
+                        if ((parent_name.clone() == "Optional".to_string())
+                            || variant_lookup_is_own_declaration.clone())
+                        {
                             variant_lookup_resolved.clone()
                         } else {
                             match lookup_type_by_name(scope.type_env.clone(), parent_name.clone()) {
