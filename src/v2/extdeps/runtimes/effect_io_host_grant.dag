@@ -35,6 +35,8 @@ data effect_io_host_http_authority: String = "effect-io.local"
 
 data effect_io_host_storage_service: String = "effect-io-storage"
 
+data effect_io_host_file_backend_tree_note: String = "FileResourceBackend projects onto CodeNameTree as the interim namespace home for the content-addressed effect-io file store — Hash identity is not a code name, but CodeNameTree keeps backends disjoint under position_under until a dedicated content-addressed NamespaceTree variant is grounded."
+
 fn effect_io_host_backend_write_root(backend: EffectIoResourceBackend) -> NamespacePosition {
   match backend {
     FileResourceBackend =>
