@@ -7528,19 +7528,30 @@ pub fn handle_serve(
 /// Read one HTTP/1.1 request: request line + headers (only Content-Length is
 /// consumed) + exactly Content-Length body bytes. Anything else is a typed
 /// Err → 400. No keep-alive, no chunked bodies, no TLS (tailscale serve
-/// terminates HTTPS in front).
+/// terminates HTTPS in front). Both halves are byte-bounded: the head
+/// (request line + headers) at MAX_HEAD cumulative, the body at MAX_BODY,
+/// with the underlying stream capped via Read::take so no read path can
+/// allocate past head+body even before the typed checks fire.
 fn serve_read_request(
     stream: &mut std::net::TcpStream,
 ) -> Result<(String, String, String), String> {
     use std::io::{BufRead, Read};
+    const MAX_HEAD: usize = 16 << 10;
+    const MAX_BODY: usize = 1 << 20;
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(10)))
         .map_err(|e| format!("set_read_timeout: {}", e))?;
-    let mut reader = std::io::BufReader::new(stream);
+    let mut reader = std::io::BufReader::new((&mut *stream).take((MAX_HEAD + MAX_BODY) as u64));
     let mut request_line = String::new();
-    reader
+    let mut head_bytes = reader
         .read_line(&mut request_line)
         .map_err(|e| format!("read request line: {}", e))?;
+    if head_bytes > MAX_HEAD {
+        return Err(format!(
+            "request line of {} bytes exceeds the {} byte serve head limit",
+            head_bytes, MAX_HEAD
+        ));
+    }
     let mut parts = request_line.split_whitespace();
     let method = parts.next().ok_or("empty request line")?.to_string();
     let target = parts.next().ok_or("missing request target")?.to_string();
@@ -7559,6 +7570,13 @@ fn serve_read_request(
         if n == 0 {
             return Err("connection closed before end of headers".to_string());
         }
+        head_bytes += n;
+        if head_bytes > MAX_HEAD {
+            return Err(format!(
+                "headers of {} bytes exceed the {} byte serve head limit",
+                head_bytes, MAX_HEAD
+            ));
+        }
         let line = line.trim_end();
         if line.is_empty() {
             break;
@@ -7572,7 +7590,6 @@ fn serve_read_request(
             }
         }
     }
-    const MAX_BODY: usize = 1 << 20;
     if content_length > MAX_BODY {
         return Err(format!(
             "body of {} bytes exceeds the {} byte serve limit",

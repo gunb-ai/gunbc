@@ -17,7 +17,7 @@ import gunbc.roadmap_belt_actuate {
   DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
 }
 import extdeps.http.server {
-  ServeHttpResponse,
+  ServeHttpRequest, ServeHttpResponse,
   ServedRouteTable,
   RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
   serve_select_route,
@@ -73,13 +73,17 @@ fn witness_dispatch_get_folds_405() -> Bool {
   }
 }
 
+fn fixture_request(method: HttpMethod, path: String) -> ServeHttpRequest {
+  ServeHttpRequest { method: method, path: path, body: "" }
+}
+
 fn witness_unknown_path_folds_404_response() -> Bool {
-  let r = roadmap_serve_selection_response(sel: NoRouteMatched)
+  let r = roadmap_serve_selection_response(sel: NoRouteMatched, request: fixture_request(method: GET, path: "/nope"))
   r.status == 404
 }
 
 fn witness_405_response_carries_allowed() -> Bool {
-  let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] })
+  let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"))
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 
