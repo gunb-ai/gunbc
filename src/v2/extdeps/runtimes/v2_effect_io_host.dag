@@ -20,6 +20,11 @@ import std.execution_mode {
   Hermetic,
   execution_mode_is_wet_dispatch
 }
+import v2.extdeps.runtimes.effect_io_host_grant {
+  effect_io_host_write_admissible,
+  effect_io_host_envelope,
+}
+import std.effect_grant { Admitted, EffectOutsideGrant, Envelope }
 import v2.std.collection { Absent, List, Map }
 import v2.std.diagnostic {
   Accepted,
@@ -65,6 +70,7 @@ type EffectIoHostHandlerBundle {
   declared_backend: EffectIoResourceBackend
   backend_context: EffectIoHostBackendContext
   mode: ExecutionMode
+  write_envelope: Envelope
   fixture: EffectIoFixtureStore
   handlers: EffectHandlerBinding
 }
@@ -74,8 +80,17 @@ type V4EffectIoHostRuntime {
   declared_backend: EffectIoResourceBackend
   backend_context: EffectIoHostBackendContext
   mode: ExecutionMode
+  write_envelope: Envelope
   fixture_store: EffectIoFixtureStore
   handlers: EffectHandlerBinding
+}
+
+fn effect_io_host_write_outside_grant_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^effect_io_host_write_outside_grant,
+    at: node_locus(node: effect_io_pure_operation_node()),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
 }
 
 fn effect_io_host_deferred_diagnostic(reason: Symbol) -> Diagnostic {
@@ -159,26 +174,29 @@ fn effect_io_host_dispatch_read(
 fn effect_io_host_dispatch_write(
   backend: EffectIoResourceBackend,
   host_ctx: EffectIoHostBackendContext,
-  mode: ExecutionMode,
+  write_envelope: Envelope,
   request: EffectRequest
 ) -> Outcome<RuntimeValue> {
   match effect_io_pure_locator_from_args(backend: backend, args: request.arguments) {
     Holds { value: locator } =>
       match effect_io_pure_write_payload_from_args(args: request.arguments) {
         Holds { value: payload } =>
-          if execution_mode_is_wet_dispatch(mode: mode) {
-            match host_ctx {
-              HostFileContext { context: ctx } =>
-                effect_io_host_file_write(ctx: ctx, locator: locator, payload: payload)
-              HostHttpContext { context: ctx } =>
-                effect_io_host_http_write(ctx: ctx, locator: locator, payload: payload)
-              HostStorageContext { context: ctx } =>
-                effect_io_host_storage_write(ctx: ctx, locator: locator, payload: payload)
-            }
-          } else {
-            outcome_rejected(
-              d: effect_io_host_deferred_diagnostic(reason: ^effect_io_host_hermetic_write_rejected)
-            )
+          match effect_io_host_write_admissible(
+            env: write_envelope,
+            backend: backend,
+            locator: locator
+          ) {
+            EffectOutsideGrant { verb: v, target: t, frame: f } =>
+              outcome_rejected(d: effect_io_host_write_outside_grant_diagnostic())
+            Admitted { via_root: r } =>
+              match host_ctx {
+                HostFileContext { context: ctx } =>
+                  effect_io_host_file_write(ctx: ctx, locator: locator, payload: payload)
+                HostHttpContext { context: ctx } =>
+                  effect_io_host_http_write(ctx: ctx, locator: locator, payload: payload)
+                HostStorageContext { context: ctx } =>
+                  effect_io_host_storage_write(ctx: ctx, locator: locator, payload: payload)
+              }
           }
         Violates { diagnostic: d } => Rejected { diagnostics: diagnostics_singleton(d: d) }
       }
@@ -192,10 +210,12 @@ fn effect_io_host_handler_binding(
   mode: ExecutionMode,
   fixture: EffectIoFixtureStore
 ) -> EffectIoHostHandlerBundle {
+  let write_envelope = effect_io_host_envelope(mode: mode, backend: backend)
   EffectIoHostHandlerBundle {
     declared_backend: backend,
     backend_context: host_ctx,
     mode: mode,
+    write_envelope: write_envelope,
     fixture: fixture,
     handlers: EffectHandlerBinding {
       read_resource: EffectHandler {
@@ -214,7 +234,7 @@ fn effect_io_host_handler_binding(
           effect_io_host_dispatch_write(
             backend: backend,
             host_ctx: host_ctx,
-            mode: mode,
+            write_envelope: write_envelope,
             request: request
           )
         }
@@ -282,6 +302,7 @@ fn effect_io_host_runtime(
     declared_backend: bundle.declared_backend,
     backend_context: bundle.backend_context,
     mode: bundle.mode,
+    write_envelope: bundle.write_envelope,
     fixture_store: bundle.fixture,
     handlers: bundle.handlers
   }

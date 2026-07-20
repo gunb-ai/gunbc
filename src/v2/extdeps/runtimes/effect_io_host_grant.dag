@@ -1,0 +1,128 @@
+module v2.extdeps.runtimes.effect_io_host_grant
+
+import std.types { String, List, Bool }
+import std.execution_mode {
+  ExecutionMode,
+  execution_mode_is_wet_dispatch
+}
+import std.effect_grant {
+  Verb, Write,
+  UriTree, ServiceOpTree, CodeNameTree,
+  NamespacePosition,
+  RealTransport,
+  LifecycleByConvention,
+  Grant, Envelope,
+  EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
+}
+import std.materialization_ladder { Frame, SharedStateFrame }
+import v2.extdeps.runtimes.v2_effect_io_pure {
+  EffectIoResourceBackend,
+  EffectIoResourceLocator,
+  FileResourceBackend,
+  HttpResourceBackend,
+  StorageResourceBackend,
+  effect_io_pure_backends_match,
+}
+
+data effect_io_host_grant_note: String = "P-B effect-io host write grant authority (docs/plans/effect-namespace-grants.md 6): dissolves the hand-rolled execution_mode_is_wet_dispatch blanket write refusal in v2.extdeps.runtimes.v2_effect_io_host.effect_io_host_dispatch_write into std.effect_grant.admit_effect. The write Envelope is fixed at runtime construction (effect_io_host_handler_binding) — dispatch never re-reads ExecutionMode; admit_effect is the sole write gate on the carried envelope. EffectIoResourceLocator carries a content-Hash identity projected onto the cited backend tree with locator.identity as the terminal segment. Hermetic runtimes carry zero Write grants; wet runtimes grant Write on the declared backend subtree (frame-wide real-transport ownership — any locator under that subtree is admitted by construction, which is the honest wet semantics). Backend/locator mismatch is a located EffectOutsideGrant before admit_effect. dissolve-on = P-C selects handler bindings per grant instead of per-process mode."
+
+data effect_io_host_frame: Frame = Frame {
+  name: "effect-io-host",
+  kind: SharedStateFrame
+}
+
+data effect_io_host_http_authority: String = "effect-io.local"
+
+data effect_io_host_storage_service: String = "effect-io-storage"
+
+fn effect_io_host_backend_write_root(backend: EffectIoResourceBackend) -> NamespacePosition {
+  match backend {
+    FileResourceBackend =>
+      NamespacePosition {
+        tree: CodeNameTree,
+        path: ["effect-io", "file"]
+      }
+    HttpResourceBackend =>
+      NamespacePosition {
+        tree: UriTree,
+        path: [effect_io_host_http_authority]
+      }
+    StorageResourceBackend =>
+      NamespacePosition {
+        tree: ServiceOpTree { service: effect_io_host_storage_service },
+        path: [effect_io_host_storage_service]
+      }
+  }
+}
+
+fn effect_io_host_locator_position(
+  backend: EffectIoResourceBackend,
+  locator: EffectIoResourceLocator
+) -> NamespacePosition {
+  match backend {
+    FileResourceBackend =>
+      NamespacePosition {
+        tree: CodeNameTree,
+        path: ["effect-io", "file", locator.identity]
+      }
+    HttpResourceBackend =>
+      NamespacePosition {
+        tree: UriTree,
+        path: [effect_io_host_http_authority, locator.identity]
+      }
+    StorageResourceBackend =>
+      NamespacePosition {
+        tree: ServiceOpTree { service: effect_io_host_storage_service },
+        path: [effect_io_host_storage_service, locator.identity]
+      }
+  }
+}
+
+fn effect_io_host_hermetic_envelope() -> Envelope {
+  Envelope {
+    frame: effect_io_host_frame,
+    grants: []
+  }
+}
+
+fn effect_io_host_wet_envelope(backend: EffectIoResourceBackend) -> Envelope {
+  Envelope {
+    frame: effect_io_host_frame,
+    grants: [
+      Grant {
+        verb: Write,
+        root: effect_io_host_backend_write_root(backend: backend),
+        binding: RealTransport,
+        lifecycle: LifecycleByConvention
+      },
+    ]
+  }
+}
+
+fn effect_io_host_envelope(
+  mode: ExecutionMode,
+  backend: EffectIoResourceBackend
+) -> Envelope {
+  if execution_mode_is_wet_dispatch(mode: mode) {
+    effect_io_host_wet_envelope(backend: backend)
+  } else {
+    effect_io_host_hermetic_envelope()
+  }
+}
+
+fn effect_io_host_write_admissible(
+  env: Envelope,
+  backend: EffectIoResourceBackend,
+  locator: EffectIoResourceLocator
+) -> EffectAdmission {
+  let target = effect_io_host_locator_position(backend: backend, locator: locator)
+  if !effect_io_pure_backends_match(left: locator.backend, right: backend) {
+    EffectOutsideGrant {
+      verb: Write,
+      target: target,
+      frame: env.frame
+    }
+  } else {
+    admit_effect(env: env, verb: Write, target: target)
+  }
+}

@@ -114,7 +114,7 @@ test fn effect_io_host_hermetic_write_fail_closed_holds() -> Bool {
     handler: handler,
     request: effect_io_pure_write_request(args: [mode_resource_b(), mode_payload()])
   ) {
-    Rejected { diagnostics: _ } => true
+    Rejected { diagnostics: d } => d.head.reason == ^effect_io_host_write_outside_grant
     Accepted { value: _, diagnostics: _ } => false
   }
 }

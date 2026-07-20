@@ -290,6 +290,12 @@ fn resolve_process_workspace_root() -> PathBuf {
 
 /// Repo-relative path under [`process_workspace_root`]. Fail-closed: returns a typed refusal
 /// when `path` is not under the runtime root — never widens to cwd-relative or absolute keys.
+///
+/// Authority: modeled by `gunbc.cli_run_repo_grant` (`cli_run_repo_path_admissible`);
+/// witness: `dag/test/claim/cli_run_repo_grant_witness_test.dag`.
+/// 🟡 dissolve-on: HAND-RUST gate retires when cli_run.rs Chunk F lands
+/// (docs/plans/cli-run-reconcile-defork.md) — refusal becomes `EffectOutsideGrant` from the
+/// single grant row, not a parallel string check.
 fn repo_relative_path(path: &Path) -> Result<String, String> {
     let ws = process_workspace_root();
     path.strip_prefix(&ws)
@@ -731,6 +737,39 @@ mod process_workspace_root_tests {
         let _ = repo_relative_path_normalized(Path::new(
             "no-such-dir/no-such-file-gunbc-red-control.dag",
         ));
+    }
+}
+
+/// Pins HAND-RUST `repo_relative_path` against `gunbc.cli_run_repo_grant` on the same
+/// fixture spellings. Witness: `dag/test/claim/cli_run_repo_grant_hand_rust_equivalence_witness_test.dag`.
+#[cfg(test)]
+mod cli_run_repo_grant_equivalence_tests {
+    use super::{process_workspace_root, repo_relative_path};
+    use std::path::Path;
+
+    #[test]
+    fn cli_run_repo_grant_equivalence_contained_admits() {
+        let root = process_workspace_root();
+        let rel = Path::new("dag/std/effect_grant.dag");
+        let abs = root.join(rel);
+        if !abs.is_file() {
+            return;
+        }
+        let got = repo_relative_path(&abs).expect("contained path under workspace");
+        assert_eq!(got, "dag/std/effect_grant.dag");
+    }
+
+    #[test]
+    fn cli_run_repo_grant_equivalence_absolute_outside_refuses() {
+        assert!(repo_relative_path(Path::new("/etc/passwd")).is_err());
+    }
+
+    #[test]
+    fn cli_run_repo_grant_equivalence_parent_segment_refuses() {
+        assert!(
+            repo_relative_path(Path::new("../outside.dag")).is_err(),
+            "parent-segment relative spelling must refuse"
+        );
     }
 }
 
