@@ -262,10 +262,22 @@ fn run_module_grain_produce(
     let cache = export_typed_cache_for_spike(&index);
     drop(index);
 
-    let mut tc_by_mod: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
-    for (mod_name, ns) in records {
-        tc_by_mod.insert(mod_name, ns);
+    const MAX_SNAPSHOT_BYTES: usize = 50_000_000;
+    let mut tc_by_key: std::collections::HashMap<String, (String, u64)> =
+        std::collections::HashMap::new();
+    for (mod_name, typed_key, ns) in records {
+        tc_by_key.insert(typed_key, (mod_name, ns));
     }
+
+    let mut candidates = Vec::new();
+    for (typed_key, result) in cache {
+        if let Some((mod_name, ns)) = tc_by_key.get(&typed_key) {
+            if *ns > 0 {
+                candidates.push((typed_key, mod_name.clone(), *ns, result));
+            }
+        }
+    }
+    candidates.sort_by(|a, b| b.2.cmp(&a.2));
 
     let out_dir = module_grain_out_dir();
     let _ = std::fs::remove_dir_all(&out_dir);
@@ -274,36 +286,53 @@ fn run_module_grain_produce(
         ExitCode::from(2)
     })?;
 
-    let mut rows_out: Vec<String> = Vec::new();
-    let take = sample_size.min(cache.len());
-    for (i, (typed_key, result)) in cache.into_iter().take(take).enumerate() {
-        let mod_name = result.typed.module.name.clone();
-        let typecheck_ns = tc_by_mod.get(&mod_name).copied().unwrap_or(0);
+    let manifest_path = out_dir.join("manifest.jsonl");
+    let mut manifest = std::fs::File::create(&manifest_path).map_err(|e| {
+        eprintln!("measure_rc_arc_share_spike: create manifest: {e}");
+        ExitCode::from(2)
+    })?;
+    use std::io::Write;
+
+    let mut written = 0usize;
+    let mut skipped_large = 0usize;
+    for (typed_key, mod_name, typecheck_ns, result) in candidates {
+        if written >= sample_size {
+            break;
+        }
         let bytes = SharedTypecheckCaches::encode_typed_snapshot(result.as_ref()).map_err(|e| {
             eprintln!("measure_rc_arc_share_spike: encode failed for {mod_name}: {e}");
             ExitCode::from(2)
         })?;
-        let snap_path = out_dir.join(format!("{i}.bin"));
+        if bytes.len() > MAX_SNAPSHOT_BYTES {
+            skipped_large += 1;
+            eprintln!(
+                "[rc-arc-spike] kind=module-grain-skip mod_name={mod_name} reason=snapshot_bytes={} cap={MAX_SNAPSHOT_BYTES}",
+                bytes.len()
+            );
+            continue;
+        }
+        let snap_path = out_dir.join(format!("{written}.bin"));
         std::fs::write(&snap_path, bytes.as_slice()).map_err(|e| {
             eprintln!("measure_rc_arc_share_spike: write {:?}: {e}", snap_path);
             ExitCode::from(2)
         })?;
-        rows_out.push(format!(
-            "{{\"typed_key\":{},\"mod_name\":{},\"typecheck_ns\":{typecheck_ns},\"snapshot_path\":{}}}",
+        let line = format!(
+            "{{\"typed_key\":{},\"mod_name\":{},\"typecheck_ns\":{typecheck_ns},\"snapshot_path\":{}}}\n",
             serde_json::to_string(&typed_key).unwrap(),
             serde_json::to_string(&mod_name).unwrap(),
             serde_json::to_string(snap_path.to_string_lossy().as_ref()).unwrap(),
-        ));
+        );
+        manifest.write_all(line.as_bytes()).map_err(|_| ExitCode::from(2))?;
+        written += 1;
     }
 
-    let manifest_path = out_dir.join("manifest.jsonl");
-    std::fs::write(&manifest_path, rows_out.join("\n")).map_err(|e| {
-        eprintln!("measure_rc_arc_share_spike: write manifest: {e}");
-        ExitCode::from(2)
-    })?;
+    if written == 0 {
+        eprintln!("[rc-arc-spike] kind=blocked measurement=module-grain-produce encoded=0");
+        return Err(ExitCode::from(2));
+    }
 
     eprintln!(
-        "[rc-arc-spike] kind=module-grain-produce discovery_entries={entries} discovery_rows={rows} sampled_modules={take} manifest={}",
+        "[rc-arc-spike] kind=module-grain-produce discovery_entries={entries} discovery_rows={rows} sampled_modules={written} skipped_large={skipped_large} manifest={}",
         manifest_path.display()
     );
 

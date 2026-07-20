@@ -4143,7 +4143,7 @@ fn new_multi_entry_index_shell(
 static TYPECHECK_COMPUTE_COUNT: AtomicUsize = AtomicUsize::new(0);
 // rc-arc spike: per-module cold typecheck timings on cache-miss path only.
 static SPIKE_MODULE_TYPECHECK_RECORDING: AtomicBool = AtomicBool::new(false);
-static SPIKE_MODULE_TYPECHECK_RECORDS: Mutex<Vec<(String, u64)>> = Mutex::new(Vec::new());
+static SPIKE_MODULE_TYPECHECK_RECORDS: Mutex<Vec<(String, String, u64)>> = Mutex::new(Vec::new());
 
 // Union-resolve receipt tests reset/read the process-wide counter; `cargo test` runs
 // `#[test]` fns in parallel by default — serialize those oracles (not production use).
@@ -4176,8 +4176,8 @@ pub fn spike_set_module_typecheck_recording(on: bool) {
     }
 }
 
-/// Take recorded per-module cold typecheck durations (module name, nanoseconds).
-pub fn spike_take_module_typecheck_records() -> Vec<(String, u64)> {
+/// Take recorded per-module cold typecheck durations (module name, typed key, nanoseconds).
+pub fn spike_take_module_typecheck_records() -> Vec<(String, String, u64)> {
     std::mem::take(
         &mut *SPIKE_MODULE_TYPECHECK_RECORDS
             .lock()
@@ -4185,12 +4185,12 @@ pub fn spike_take_module_typecheck_records() -> Vec<(String, u64)> {
     )
 }
 
-fn spike_maybe_record_module_typecheck(mod_name: &str, elapsed_ns: u64) {
+fn spike_maybe_record_module_typecheck(mod_name: &str, typed_key: &str, elapsed_ns: u64) {
     if SPIKE_MODULE_TYPECHECK_RECORDING.load(Ordering::SeqCst) {
         SPIKE_MODULE_TYPECHECK_RECORDS
             .lock()
             .expect("spike module typecheck records lock poisoned")
-            .push((mod_name.to_string(), elapsed_ns));
+            .push((mod_name.to_string(), typed_key.to_string(), elapsed_ns));
     }
 }
 
@@ -5385,6 +5385,7 @@ fn reconcile_with_typed_cache(
                     let module_tc_elapsed = module_tc_started.elapsed();
                     spike_maybe_record_module_typecheck(
                         &mod_name,
+                        &typed_key,
                         module_tc_elapsed.as_nanos() as u64,
                     );
                     resolve_stage_slot_add(|s| s.typecheck_compute += module_tc_elapsed.as_nanos());
