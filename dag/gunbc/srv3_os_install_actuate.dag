@@ -2,7 +2,7 @@ module gunbc.srv3_os_install_actuate
 
 
 data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {
-  reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is long-running foreground."
+  reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is a held session via host_effect_apply (systemd transient units)."
 }
 
 data srv3_os_install_actuate_shell_runner_scaffold: Disposition = Scaffold {

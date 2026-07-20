@@ -1,6 +1,6 @@
 module extdeps.cloud.gcp.sts
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import std.types { NonEmptyStr, HttpMethod, AuthScheme, Secret }
 import extdeps.cloud.gcp.errors { GcpErrorShape, GcpOAuth2ErrorShape }
 import extdeps.github.errors { GitHubErrorShape }
 
@@ -19,7 +19,7 @@ type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
 type RequestedTokenType = RequestAccessToken | RequestIdToken
 
 type StsTokenResponse {
-  access_token: String
+  access_token: Secret
   issued_token_type: String
   token_type: String
   expires_in: Int
