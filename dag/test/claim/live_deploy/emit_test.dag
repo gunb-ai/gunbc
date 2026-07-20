@@ -116,7 +116,10 @@ fn witness_dependency_ensure_is_idempotent() -> Bool {
 fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "sudo bash")
-    && string_contains(s: sh, pattern: "rsync -a --delete --exclude /target ./ /opt/gunbc/gunbc/")
+    && string_contains(s: sh, pattern: "rsync -a --delete --exclude /target --exclude /.git ./ /opt/gunbc/gunbc/")
+    && string_contains(s: sh, pattern: "rsync -a ./.git/ /opt/gunbc/gunbc/.git/")
+    && !string_contains(s: sh, pattern: "--delete ./.git/")
+    && !string_contains(s: sh, pattern: "--exclude /target ./ ")
     && string_contains(s: sh, pattern: "sudo -n install -m 0755 target/release/gunbc /opt/gunbc/bin/gunbc")
     && string_contains(s: sh, pattern: "chown -R briansrls:briansrls /opt/gunbc/gunbc")
     && string_contains(s: sh, pattern: "sudo -n install -d -m 0755 /opt/gunbc/dispatch-worktrees")

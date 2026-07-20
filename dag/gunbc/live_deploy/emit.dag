@@ -190,7 +190,7 @@ fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   }
 }
 
-data emit_root_principal_note: String = "The deploy principal on srv1 is ROOT (actions-runner unit User=root, parent-lane verification 2026-07-20), mirrored from the operator-approved manual provisioning: the tree rsync (incl .git — the belt's `git worktree add` requires a real repo) and the chown-to-service-user run BARE, requiring the root principal and NO new sudoers grant; the sudo -n prefix stays only on the ops in the historical minimal grant set (apt-get/install/systemctl/tailscale), where it is redundant-but-harmless under root and load-bearing for any future unprivileged principal. The former install_d_shared_setup_latent_coupling marker fired as designed: /opt/gunbc now has MULTIPLE owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer."
+data emit_root_principal_note: String = "The deploy principal on srv1 is ROOT (actions-runner unit User=root, parent-lane verification 2026-07-20), mirrored from the operator-approved manual provisioning: the tree rsyncs (working tree + additive .git — the belt's `git worktree add` requires a real repo; see apply_tree_split_sync_note) and the chown-to-service-user run BARE, requiring the root principal and NO new sudoers grant; the sudo -n prefix stays only on the ops in the historical minimal grant set (apt-get/install/systemctl/tailscale), where it is redundant-but-harmless under root and load-bearing for any future unprivileged principal. The former install_d_shared_setup_latent_coupling marker fired as designed: /opt/gunbc now has MULTIPLE owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer."
 
 fn chown_service_user_step(spec: DeploymentSpec, path: String) -> PipelineStep {
   deploy_raw(command: join([
@@ -198,11 +198,14 @@ fn chown_service_user_step(spec: DeploymentSpec, path: String) -> PipelineStep {
   ], ""))
 }
 
+data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy."
+
 fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
   match art.kind {
     GunbcSourceTree => [
       deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc"),
-      deploy_raw(command: concat("rsync -a --delete --exclude /target ./ ", concat(art.path as String, "/"))),
+      deploy_raw(command: concat("rsync -a --delete --exclude /target --exclude /.git ./ ", concat(art.path as String, "/"))),
+      deploy_raw(command: concat("rsync -a ./.git/ ", concat(art.path as String, "/.git/"))),
       chown_service_user_step(spec: spec, path: art.path as String),
     ]
     ServeBinary => [
