@@ -70,6 +70,8 @@ import v1.compiler.languages {
 }
 import v1.compiler.runtime_rust { rust_runtime_source }
 import v1.compiler.compiler_tests_rust { compiler_tests_source }
+import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
+import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
 import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 
 import std.types { is_container_type, is_kernel_type }
@@ -1816,41 +1818,14 @@ fn module_files_include_v2_std_integer(files: List<TextFile>) -> Bool {
 fn emit_v2_std_integer_closure_stub_module() -> TextFile {
   TextFile {
     path: concat(rust_source_root(), "v2_std_integer", rust_source_ext()),
-    content: concat(
-      "// Generated closure stub — dissolve-on: derive from emitted ref set\n",
-      "// Source module: v2.std.integer (closure stub; std_algebra + std_nat only)\n\n",
-      "use std::rc::Rc;\n",
-      "use crate::std_algebra::GroupCompletion;\n",
-      "use crate::std_nat::Nat;\n\n",
-      "pub type Int = GroupCompletion<Rc<Nat>>;\n"
-    )
+    content: closure_stub_v2_std_integer_source()
   }
 }
 
 fn emit_v2_std_text_closure_stub_module() -> TextFile {
   TextFile {
     path: concat(rust_source_root(), "v2_std_text", rust_source_ext()),
-    content: concat(
-      "// Generated closure stub — dissolve-on: derive from emitted ref set\n",
-      "// Source module: v2.std.text (closure stub; std_algebra + std_types only)\n\n",
-      "use std::rc::Rc;\n",
-      "use crate::std_algebra::FreeMonoid::", "{", "Cons, Empty", "}", ";\n",
-      "use crate::std_types::Char;\n\n",
-      "pub type String = Rc<crate::std_algebra::FreeMonoid<Char>>;\n\n",
-      "pub fn host_string_text_from_rust_host(host: std::string::String) -> String ", "{\n",
-      "    host.chars().fold(Rc::new(Empty), |acc, ch| Rc::new(Cons ", "{", " head: Rc::new(ch as i64), tail: acc ", "}", "))\n",
-      "}\n\n",
-      "pub fn host_string_text_to_rust_host(text: String) -> std::string::String ", "{\n",
-      "    match &*text ", "{\n",
-      "        Empty => std::string::String::new(),\n",
-      "        Cons ", "{", " head, tail ", "}", " => ", "{\n",
-      "            let mut s = host_string_text_to_rust_host(tail.clone());\n",
-      "            s.insert(0, char::from_u32(**head as u32).unwrap_or(char::from_u32(0).unwrap()));\n",
-      "            s\n",
-      "        ", "}\n",
-      "    ", "}\n",
-      "}\n"
-    )
+    content: closure_stub_v2_std_text_source()
   }
 }
 
