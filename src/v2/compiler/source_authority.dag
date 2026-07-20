@@ -168,16 +168,15 @@ fn source_ref_for_storage_path(path: String) -> SourceRef {
   }
 }
 
-data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact: the 27 hand FrontierQualifiedModuleBinding rows and the host-side build_module_path_index both project from here, else two authorities remain (§3). Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
+data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact: the 27 hand FrontierQualifiedModuleBinding rows and the host-side build_module_path_index both project from here, else two authorities remain (§3). Task 4 repointed the host producer through v1_compiler_parse (src/v1/stage0/src/module_path_index); DeclarationScanned deleted. Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
 
 type ModuleStorageProvenance
   = ParsedFromSource { artifact: Artifact, span_index: SpanIndex }
-  | DeclarationScanned { artifact: Artifact }
   | ProducedByBehavior { producer: Symbol }
 
-data module_storage_declaration_scanned_note: String = "DeclarationScanned records a binding whose module name was read off the DECLARATION LINE, not parsed. The live host producer (build_module_path_index, src/v1/stage0/src/cli_run.rs) derives the mapping via extract_module_path — a substring scan taking the first non-blank, non-comment line starting with 'module ' — so it has no spans and no parse ever ran for those rows. Emitting them as ParsedFromSource would FABRICATE parse provenance with a synthesized span_index standing where real spans belong (§5 fabricated plausible output), and it would defeat the coproduct's entire job, which is to be honest about where a binding came from. Widening span_index to Optional was rejected for the same reason it is a named recurring failure mode: parsed-but-spanless and never-parsed would collapse into one shape (an Option meaning >2 things). Because the scan and the parser are DIFFERENT code paths, they can disagree — and this arm is what makes that disagreement visible to consumers rather than assumed away."
+data module_storage_host_parse_note: String = "Task 4 (module-identity-storage-binding-design.md Phase 1): the host producer build_module_path_index (src/v1/stage0/src/module_path_index) routes through v1_compiler_parse::parse — the same bootstrap parse path the in-graph oracle uses at the module-name grain — so host rows are ParsedFromSource, not a parallel substring scan. DeclarationScanned was deleted with this repoint: it existed only to record honestly that extract_module_path never parsed; keeping it after the repoint would be a second way to say the same thing (§3). Bootstrap host emission records ident_span byte ranges in span_index via span_index_record; full OccurrenceId mint parity with v2.compiler.parse's stamp pipeline is a named follow-on (dissolve-on: v1 bootstrap parse stamps NodeOccurrenceId the way parse_production_prepared does)."
 
-data module_storage_declaration_scanned_dissolution_trigger: String = "dissolve-on: the host producer routing through the real parse path (src/v1/stage0/src/v1_compiler_parse.rs parse_module, which already carries mod_name + its span) instead of extract_module_path. At that point rows upgrade to ParsedFromSource with REAL spans and DeclarationScanned is DELETED — not kept as a second way to say the same thing. Staged deliberately, not deferred vaguely: routing the bootstrap producer through the parser is surgery on the bootstrap path with an unmeasured cost profile and needs its own measured lane (parent ruling 2026-07-18)."
+data module_storage_bootstrap_span_note: String = "Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5)."
 
 type ModuleStorageBinding {
   module: QualifiedName
@@ -586,14 +585,18 @@ fn module_storage_produced_binding(
   }
 }
 
-fn module_storage_scanned_binding(
+fn module_storage_parsed_binding(
   module: QualifiedName,
   artifact: Artifact,
+  span_index: SpanIndex,
   source_root: SourceRootRef
 ) -> ModuleStorageBinding {
   ModuleStorageBinding {
     module: module,
-    provenance: DeclarationScanned { artifact: artifact },
+    provenance: ParsedFromSource {
+      artifact: artifact,
+      span_index: span_index
+    },
     source_root: source_root
   }
 }
@@ -601,8 +604,6 @@ fn module_storage_scanned_binding(
 fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<String> {
   match binding.provenance {
     ParsedFromSource { artifact: a, span_index: _ } =>
-      optional_present(value: a.file_path)
-    DeclarationScanned { artifact: a } =>
       optional_present(value: a.file_path)
     ProducedByBehavior { producer: _ } =>
       optional_absent()
@@ -638,7 +639,7 @@ data module_storage_supply_dissolution_trigger: String = "dissolve-on: host-effe
 
 data module_storage_projection_note: String = "Both requested directions are queries against ONE table (design §2). file → graph region: given a path, the module parsed from it. module → file(s): given a module reference, its current storage — needed ONLY at host boundaries; user code and tool .dag reference modules and never see paths. A produced module answers Absent for storage, which is a real answer, not a miss."
 
-data module_storage_agreement_note: String = "The host transport is SCANNED and the in-graph derivation PARSES, so 'do they agree?' is a REAL question, not a restatement — extract_module_path takes the first non-blank non-comment line starting with 'module ', while the parser reads the module declaration through the grammar, and the two are different code paths that can diverge. This is the check that pins the transport to the model: it is what stops the host handler from quietly becoming a rival authority (§3) and it is the reason DeclarationScanned exists as its own arm rather than being folded into ParsedFromSource. A row present in the oracle whose path the host resolves to a DIFFERENT module is a genuine divergence; a row the host does not carry at all is a COVERAGE gap, and the two are reported separately rather than collapsed into one boolean, because their remedies differ."
+data module_storage_agreement_note: String = "After task 4 both the host transport and the in-graph oracle derive module names through parse — the host via v1_compiler_parse at the bootstrap boundary, the oracle via parse_module_prepared in-graph. module_storage_host_agrees_with_oracle therefore checks structural parity of the binding TABLE (module identity + storage path per row), not two different extraction code paths. Divergence still means a real authority disagreement; coverage gaps still mean the host index lacks a row the oracle carries. The witness remains the pin that keeps the host handler a transport of the modeled op rather than a rival authority (§3)."
 
 type ModuleStorageAgreement
   = ModuleStorageAgrees

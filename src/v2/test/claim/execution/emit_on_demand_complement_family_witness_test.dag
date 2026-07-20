@@ -1,0 +1,334 @@
+module v2.test.execution.emit_on_demand_complement_family_witness
+
+import std.logic { Bool }
+import std.types { ContentHash, String }
+import std.measure { ByteSize, byte_size }
+import std.materialization_ladder {
+  CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, SpacePacked, provider_row,
+}
+import std.artifact_store {
+  ArtifactStore, StoreReady, StoreRefusedEviction, store_over_provider, store_put,
+}
+import std.realization { Share, Recompute }
+import std.realize_pack {
+  BudgetUnreadable, PackedWidth, MaturationReserve, BudgetRefused,
+}
+import std.emit_on_demand {
+  SourceArtifact, NativeArtifact,
+  emit_on_demand_key, emit_on_demand_lookup,
+  materialization_for_lookup, EmitOnDemandHit, EmitOnDemandMiss,
+  interpreter_surviving_roles_bounded,
+}
+import v2.std.emit_on_demand { witness_family_realize_width }
+import extdeps.realization.emit_on_demand_host {
+  native_cache_workspace_root, emit_on_demand_evict_native_cache,
+}
+import v2.compiler.emit { emit }
+import extdeps.communication.medium { Medium }
+import v2.compiler.emit_host {
+  emit_host_octets_byte_string,
+  run_emit_host_cached,
+  run_test_claim_emit_vs_eval,
+}
+import v2.compiler.eval {
+  Inputs,
+  inputs_for_emit_host,
+  inferred_tree_digest,
+}
+import v2.compiler.infer { InferredTree }
+import v2.extdeps.languages.dag {
+  dag_complement_arrow_with_body_fixture,
+  dag_complement_arrow_with_body_swapped_arms_fixture,
+}
+import v2.extdeps.languages.rust_test { rust_logic_complement_target_model_staging }
+import v2.test.execution.emit_host_complement_equals_eval {
+  emit_complement_eval_tree_for,
+  emit_complement_eval_subject,
+  emit_complement_eval_subgraph_node,
+  emit_complement_eval_verdict_is_pass,
+  emit_complement_eval_verdict_is_semantic_mismatch,
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.host_run { HostLogicalRun }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data emit_on_demand_complement_family_note: String = "Witness-realization lane 2 (witness_family_fanout): emit_host_complement family — P3 ACCEPT witnesses mirroring emit_on_demand_kernel_witness_test.dag. complement(True) -> False via shared octet codec ([0,0,0,0,0])."
+
+data complement_wet_quarantine_admission_note: String = "Phase 0(b) QuarantineProbeExpectRed (gunbc.ci_layer_roots known_red_probe_entries): wet P3 ACCEPT subtests agreement/native-cold/native-warm/native-cold-then-warm/content-change-cold-rebuild EXPECT RED on main until emit_host_complement transport lands — falsifier probe batch consumer, greening is counted un-quarantine. Pure subtests: OfflineLocalRecipe via test/claim/execution/ exclusion. Owner: swift-stag-662; coordinate lane 3 (jolly-dove-581) if transport defect is shared."
+
+data complement_family_cache_root: String = "/tmp/gunbc_emit_on_demand_complement"
+data complement_family_emitter: String = "v2.compiler.emit"
+data complement_family_provider: CacheProvider = provider_row(
+  id: "emit-on-demand-complement",
+  scope: [],
+  coverage: CoversAllComputations,
+  tier: ArtifactTier { keying: ContentKeyed },
+  eviction: SpacePacked { budget: "complement native cache" }
+)
+
+fn complement_family_primary_tree() -> InferredTree {
+  emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_fixture)
+}
+
+fn complement_family_alt_tree() -> InferredTree {
+  emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)
+}
+
+fn complement_family_native_key_for(tree: InferredTree) -> ContentHash {
+  emit_on_demand_key(
+    closure_digest: inferred_tree_digest(tree: tree),
+    emitter_identity: complement_family_emitter,
+    target_language: "rust",
+    grain: NativeArtifact
+  )
+}
+
+fn complement_family_test_store() -> ArtifactStore {
+  match store_over_provider(provider: complement_family_provider, budget: byte_size(count: 1000000)) {
+    StoreReady { store: s } => s
+    StoreRefusedEviction { provider_id: _, declared: _ } =>
+      ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+  }
+}
+
+test fn emit_on_demand_complement_grain_keys_differ_holds() -> Bool {
+  let digest = inferred_tree_digest(tree: complement_family_primary_tree())
+  let source = emit_on_demand_key(
+    closure_digest: digest,
+    emitter_identity: complement_family_emitter,
+    target_language: "rust",
+    grain: SourceArtifact
+  )
+  let native = emit_on_demand_key(
+    closure_digest: digest,
+    emitter_identity: complement_family_emitter,
+    target_language: "rust",
+    grain: NativeArtifact
+  )
+  (source == native) == false
+}
+
+test fn emit_on_demand_complement_materialize_recompute_on_miss_holds() -> Bool {
+  let lookup = emit_on_demand_lookup(
+    store: complement_family_test_store(),
+    key: complement_family_native_key_for(tree: complement_family_primary_tree())
+  )
+  match lookup {
+    EmitOnDemandMiss => materialization_for_lookup(lookup: lookup) == Recompute
+    EmitOnDemandHit { receipt: _ } => false
+  }
+}
+
+test fn emit_on_demand_complement_interpreter_roles_bounded_holds() -> Bool {
+  interpreter_surviving_roles_bounded()
+}
+
+test fn emit_on_demand_complement_schedule_refuses_unreadable_budget_holds() -> Bool {
+  let tree = complement_family_primary_tree()
+  match witness_family_realize_width(
+    bound_bytes: byte_size(count: 25),
+    budget: BudgetUnreadable,
+    witness_root: tree.root,
+    independence_override: 4
+  ) {
+    BudgetRefused => true
+    PackedWidth { width: _ } => false
+    MaturationReserve { width: _ } => false
+  }
+}
+
+fn complement_family_fixture_inputs() -> Inputs {
+  inputs_for_emit_host(
+    claim_input_root: emit_complement_eval_subgraph_node,
+    expected_eval_root: emit_complement_eval_subgraph_node,
+    claim_pin: ^emit_complement_eval_evaluator_pin
+  )
+}
+
+fn complement_family_cached_run_with_source(
+  workspace: String,
+  tree: InferredTree,
+  source: Medium<String>,
+  expect_compile_skipped: Bool
+) -> Bool {
+  match run_emit_host_cached(
+    workspace_dir: workspace,
+    target: rust_logic_complement_target_model_staging(),
+    source: source,
+    fixture_inputs: complement_family_fixture_inputs()
+  ) {
+    Accepted { value: receipt, diagnostics: _ } =>
+      match receipt.logical_run {
+        Accepted {
+          value: HostLogicalRun { stdout: stdout },
+          diagnostics: None
+        } =>
+          receipt.compile_skipped == expect_compile_skipped
+            && stdout.bytes == emit_host_octets_byte_string(octets: [0, 0, 0, 0, 0])
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn complement_family_cache_root_for(test_id: String) -> String {
+  concat(complement_family_cache_root, "/", test_id)
+}
+
+fn complement_family_evict_and_workspace(test_id: String, tree: InferredTree) -> String {
+  let key = complement_family_native_key_for(tree: tree)
+  let root = complement_family_cache_root_for(test_id: test_id)
+  let _evict = emit_on_demand_evict_native_cache(cache_root: root, key: key)
+  native_cache_workspace_root(cache_root: root, key: key)
+}
+
+fn complement_family_cached_run_checks(
+  workspace: String,
+  tree: InferredTree,
+  expect_compile_skipped: Bool
+) -> Bool {
+  match emit(tree: tree, target: rust_logic_complement_target_model_staging()) {
+    Accepted { value: source, diagnostics: _ } =>
+      complement_family_cached_run_with_source(
+        workspace: workspace,
+        tree: tree,
+        source: source,
+        expect_compile_skipped: expect_compile_skipped
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn complement_family_cached_cold_then_warm(workspace: String, tree: InferredTree) -> Bool {
+  match emit(tree: tree, target: rust_logic_complement_target_model_staging()) {
+    Accepted { value: source, diagnostics: _ } =>
+      complement_family_cached_run_with_source(
+        workspace: workspace,
+        tree: tree,
+        source: source,
+        expect_compile_skipped: false
+      )
+        && complement_family_cached_run_with_source(
+          workspace: workspace,
+          tree: tree,
+          source: source,
+          expect_compile_skipped: true
+        )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_on_demand_complement_closure_keys_differ_for_distinct_trees_holds() -> Bool {
+  (complement_family_native_key_for(tree: complement_family_primary_tree()) == complement_family_native_key_for(tree: complement_family_alt_tree())) == false
+}
+
+test fn emit_on_demand_complement_native_content_change_cold_rebuild_holds() -> Bool {
+  let shared_parent = complement_family_cache_root_for(test_id: "content_change_miss")
+  let tree_primary = complement_family_primary_tree()
+  let tree_alt = complement_family_alt_tree()
+  let key_primary = complement_family_native_key_for(tree: tree_primary)
+  let key_alt = complement_family_native_key_for(tree: tree_alt)
+  if key_primary == key_alt {
+    false
+  } else {
+    let workspace_primary = native_cache_workspace_root(
+      cache_root: shared_parent,
+      key: key_primary
+    )
+    let _evict_primary = emit_on_demand_evict_native_cache(
+      cache_root: shared_parent,
+      key: key_primary
+    )
+    let _evict_alt = emit_on_demand_evict_native_cache(
+      cache_root: shared_parent,
+      key: key_alt
+    )
+    let warmed = complement_family_cached_cold_then_warm(
+      workspace: workspace_primary,
+      tree: tree_primary
+    )
+    let workspace_alt = native_cache_workspace_root(
+      cache_root: shared_parent,
+      key: key_alt
+    )
+    warmed
+      && complement_family_cached_run_checks(
+        workspace: workspace_alt,
+        tree: tree_alt,
+        expect_compile_skipped: false
+      )
+  }
+}
+
+test fn emit_on_demand_complement_agreement_holds() -> Bool {
+  emit_complement_eval_verdict_is_pass(
+    run: run_test_claim_emit_vs_eval(
+      subject: emit_complement_eval_subject(tree: complement_family_primary_tree()),
+      target: rust_logic_complement_target_model_staging()
+    )
+  )
+}
+
+test fn emit_on_demand_complement_wrong_fixture_refuses_holds() -> Bool {
+  emit_complement_eval_verdict_is_semantic_mismatch(
+    run: run_test_claim_emit_vs_eval(
+      subject: emit_complement_eval_subject(tree: complement_family_alt_tree()),
+      target: rust_logic_complement_target_model_staging()
+    )
+  )
+}
+
+test fn emit_on_demand_complement_native_cold_holds() -> Bool {
+  let tree = complement_family_primary_tree()
+  let workspace = complement_family_evict_and_workspace(test_id: "native_cold", tree: tree)
+  complement_family_cached_run_checks(
+    workspace: workspace,
+    tree: tree,
+    expect_compile_skipped: false
+  )
+}
+
+test fn emit_on_demand_complement_native_warm_holds() -> Bool {
+  let tree = complement_family_primary_tree()
+  let workspace = complement_family_evict_and_workspace(test_id: "native_warm", tree: tree)
+  complement_family_cached_cold_then_warm(workspace: workspace, tree: tree)
+}
+
+test fn emit_on_demand_complement_native_cold_then_warm_holds() -> Bool {
+  let tree = complement_family_primary_tree()
+  let workspace = complement_family_evict_and_workspace(
+    test_id: "native_cold_then_warm",
+    tree: tree
+  )
+  complement_family_cached_cold_then_warm(workspace: workspace, tree: tree)
+}
+
+test fn emit_on_demand_complement_materialize_share_on_hit_holds() -> Bool {
+  let tree = complement_family_primary_tree()
+  let key = complement_family_native_key_for(tree: tree)
+  let put = store_put(store: complement_family_test_store(), key: key, artifact_bytes: byte_size(count: 64))
+  let lookup = emit_on_demand_lookup(store: put.store, key: key)
+  match lookup {
+    EmitOnDemandHit { receipt: r } =>
+      r.compile_skipped
+        && materialization_for_lookup(lookup: lookup) == Share
+    EmitOnDemandMiss => false
+  }
+}
+
+test fn emit_on_demand_complement_family_witnesses() -> Bool {
+  emit_on_demand_complement_grain_keys_differ_holds()
+    && emit_on_demand_complement_materialize_recompute_on_miss_holds()
+    && emit_on_demand_complement_interpreter_roles_bounded_holds()
+    && emit_on_demand_complement_schedule_refuses_unreadable_budget_holds()
+    && emit_on_demand_complement_closure_keys_differ_for_distinct_trees_holds()
+    && emit_on_demand_complement_agreement_holds()
+    && emit_on_demand_complement_wrong_fixture_refuses_holds()
+    && emit_on_demand_complement_native_content_change_cold_rebuild_holds()
+    && emit_on_demand_complement_native_cold_holds()
+    && emit_on_demand_complement_native_warm_holds()
+    && emit_on_demand_complement_native_cold_then_warm_holds()
+    && emit_on_demand_complement_materialize_share_on_hit_holds()
+}
