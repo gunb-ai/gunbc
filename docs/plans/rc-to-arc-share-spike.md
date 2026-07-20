@@ -85,6 +85,20 @@ Full discovery roster: **73 entries**, **299 rows**.
 
 ~55 s warm, **~1.51 GiB** peak — the retention shape after resolving all discovery entries on one worker index.
 
+Per-field shallow accounting (shell + keys only — **not** payload bodies; peak RSS is authoritative):
+
+```
+[rc-arc-spike] kind=index-field field=typed_module_cache bucket=shareable bytes=49400 entries=517
+[rc-arc-spike] kind=index-field field=parse_cache bucket=per_worker_residue bytes=66730 entries=517
+[rc-arc-spike] kind=index-field field=resolved_graph_memo bucket=per_worker_residue bytes=5864 entries=73
+[rc-arc-spike] kind=index-field field=intern_table bucket=per_worker_residue bytes=507672 entries=21153
+[rc-arc-spike] kind=index-field field=normalize_diag_cache bucket=per_worker_residue bytes=59562 entries=517
+[rc-arc-spike] kind=index-field field=ownership_diag_cache bucket=per_worker_residue bytes=59562 entries=517
+[rc-arc-spike] kind=index-summary shareable_bytes=49400 residue_bytes=699390 total_accounted_bytes=748790 typed_module_cache_entries=517 serde_transport_bytes=0 peak_rss_bytes=1617641472
+```
+
+**Shareable vs residue (shallow shells):** 49 400 B shareable map shell vs 699 390 B residue shells — **misleading for crossover** because shallow residue excludes parse/typed payloads while peak RSS (~1.61 GiB) captures them. **517 typed modules** cached after full discovery warm.
+
 ### 3.5 Width-scaling worker object (`--mode width-scaling-worker --max-width 2`)
 
 ```
