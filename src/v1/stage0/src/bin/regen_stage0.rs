@@ -169,8 +169,9 @@ fn finish_verify_checks(input: VerifyFinishInput<'_>) -> Result<(), String> {
         preserve_fresh_dir,
     } = input;
     let fresh_src = fresh_dir.join("src");
+    let normalize_work_dir = fresh_dir.join(".verify-normalize");
     let verify_result = time_phase(phases, "verify_stage0_matches", || {
-        verify_stage0_matches(stage0_src, &fresh_src)
+        verify_stage0_matches(stage0_src, &fresh_src, &normalize_work_dir)
     });
     if let Err(message) = verify_result {
         let changed_generated_files = changed_registered_outputs(&fresh_src, stage0_src)?;
@@ -765,6 +766,26 @@ struct HandVerifyReport {
     unverifiable: Vec<String>,
 }
 
+fn rustfmt_normalize_file(
+    content: &str,
+    work_dir: &Path,
+    file_name: &str,
+) -> Result<String, String> {
+    let path = work_dir.join(file_name);
+    fs::write(&path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
+    let output = Command::new("rustfmt")
+        .arg("--edition")
+        .arg("2021")
+        .arg(&path)
+        .output()
+        .map_err(|e| format!("spawn rustfmt for {}: {e}", path.display()))?;
+    if output.status.success() {
+        fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
 /// rustfmt `content` standalone (edition 2021), returning the formatted text. Emitting to
 /// stdout leaves no file behind. Returns Err with rustfmt's stderr when the content does not
 /// parse, and with the spawn/IO error when rustfmt cannot be run at all -- callers keep those
@@ -1100,7 +1121,13 @@ fn direct_rs_file_names(dir: &Path) -> Result<BTreeSet<String>, String> {
     Ok(files)
 }
 
-fn verify_stage0_matches(committed_src: &Path, fresh_src: &Path) -> Result<(), String> {
+fn verify_stage0_matches(
+    committed_src: &Path,
+    fresh_src: &Path,
+    normalize_work_dir: &Path,
+) -> Result<(), String> {
+    fs::create_dir_all(normalize_work_dir)
+        .map_err(|e| format!("create {}: {e}", normalize_work_dir.display()))?;
     let mut mismatches = Vec::new();
     for file_name in GENERATED_STAGE0_FILES {
         let committed = committed_src.join(file_name);
@@ -1109,8 +1136,27 @@ fn verify_stage0_matches(committed_src: &Path, fresh_src: &Path) -> Result<(), S
             .map_err(|e| format!("read committed {}: {e}", committed.display()))?;
         let fresh_text = fs::read_to_string(&fresh)
             .map_err(|e| format!("read fresh {}: {e}", fresh.display()))?;
-        if committed_text != fresh_text {
-            mismatches.push((*file_name).to_string());
+        if committed_text == fresh_text {
+            continue;
+        }
+        match (
+            rustfmt_normalize_file(
+                &committed_text,
+                normalize_work_dir,
+                &format!("committed-{file_name}"),
+            ),
+            rustfmt_normalize_file(
+                &fresh_text,
+                normalize_work_dir,
+                &format!("fresh-{file_name}"),
+            ),
+        ) {
+            (Ok(committed_norm), Ok(fresh_norm)) => {
+                if committed_norm != fresh_norm {
+                    mismatches.push((*file_name).to_string());
+                }
+            }
+            _ => mismatches.push((*file_name).to_string()),
         }
     }
     // Structured divergence-count contract for the regen_divergence ratchet (#6352, two-job split):
