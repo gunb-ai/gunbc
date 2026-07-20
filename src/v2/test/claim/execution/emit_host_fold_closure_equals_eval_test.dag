@@ -21,7 +21,7 @@ import v2.test.emit.fold_call_closure_fixture {
 }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
 import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.collection { List, Map, list_at_optional }
+import v2.std.collection { List, Map, list_at_optional, list_nth }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -57,9 +57,13 @@ import v2.std.runtime {
   InterpretationStructureWitness,
   LoopInterpreter,
   MatchInterpreter,
+  RuntimeAggregate,
   RuntimeClosure,
+  RuntimeClosureValue,
   RuntimePrimitive,
   RuntimePrimitiveValue,
+  RuntimeReference,
+  RuntimeUnit,
   RuntimeValue,
   TransformInterpreter,
   ValueInterpreter
@@ -74,7 +78,7 @@ import v2.std.verification {
   Tier3,
   manual_claim_anchor
 }
-import v2.std.witness { Holds, Witness }
+import v2.std.witness { Holds, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -179,20 +183,36 @@ fn emit_fold_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> O
 
 data emit_fold_eval_closure_arg_note: String = "The closure operand is read from the EVALUATED argument list (the RuntimeClosure the eval walk materialized for transform child 3), not re-walked from the node AST. This is what makes the interpreted leg genuinely exercise structural closure-arg evaluation: if eval fails to produce a closure value at position 3, this refuses rather than silently falling back to an AST read that would pass without eval ever having evaluated the closure."
 
-fn emit_fold_eval_closure_arg(args: List<RuntimeValue>, node: Node) -> Outcome<Node> {
-  match list_at_optional(xs: args, index: 2) {
-    Present { value: arg } =>
-      match arg {
-        RuntimeClosure { value: c } => outcome_accepted(value: c.arrow)
-        _ =>
-          outcome_rejected(
-            d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_not_closure, node: node)
-          )
-      }
-    Absent =>
+fn emit_fold_eval_closure_arrow_of(v: RuntimeValue, node: Node) -> Outcome<Node> {
+  match v {
+    RuntimeClosure { value: c } => outcome_accepted(value: c.arrow)
+    RuntimePrimitive { value: _ } =>
       outcome_rejected(
-        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_absent, node: node)
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_not_closure, node: node)
       )
+    RuntimeAggregate { value: _ } =>
+      outcome_rejected(
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_not_closure, node: node)
+      )
+    RuntimeReference { value: _ } =>
+      outcome_rejected(
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_not_closure, node: node)
+      )
+    RuntimeUnit { value: _ } =>
+      outcome_rejected(
+        d: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_not_closure, node: node)
+      )
+  }
+}
+
+fn emit_fold_eval_closure_arg(args: List<RuntimeValue>, node: Node) -> Outcome<Node> {
+  match list_nth(
+    xs: args,
+    wanted: 2,
+    absent: emit_fold_eval_diagnostic(reason: ^emit_fold_eval_closure_arg_absent, node: node)
+  ) {
+    Holds { value: arg } => emit_fold_eval_closure_arrow_of(v: arg, node: node)
+    Violates { diagnostic: d } => outcome_rejected(d: d)
   }
 }
 
