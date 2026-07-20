@@ -306,9 +306,9 @@ fn run_module_grain_produce(
         let Some(bytes) =
             SharedTypecheckCaches::try_encode_typed_snapshot(result.as_ref(), MAX_SNAPSHOT_BYTES)
                 .map_err(|e| {
-                    eprintln!("measure_rc_arc_share_spike: encode failed for {mod_name}: {e}");
-                    ExitCode::from(2)
-                })?
+                eprintln!("measure_rc_arc_share_spike: encode failed for {mod_name}: {e}");
+                ExitCode::from(2)
+            })?
         else {
             skipped_large += 1;
             eprintln!(
