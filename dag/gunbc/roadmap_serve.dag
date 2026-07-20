@@ -12,6 +12,7 @@ import extdeps.uri_path {
 }
 import extdeps.http.server {
   HttpContentType, TextHtmlUtf8, TextPlainUtf8, ApplicationJsonUtf8,
+  ServeHttpRequest,
   ServeHttpResponse,
   ServeWireResponse, serve_wire_response,
   ServedRoute, StaticRoute, DynamicRoute,
@@ -183,7 +184,9 @@ fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpR
   }
 }
 
-fn roadmap_serve_invoke(handler: RoadmapServeHandler, params: List<PathParamBinding>) -> ServeHttpResponse {
+data serve_invoke_request_note: String = "Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was formerly accepted at the seam and dropped before invoke, so a future body-reading POST handler would have silently seen the empty string — a latent widen). No handler consumes request.body today; when one does, the plumbing is already honest, and ServeHttpRequest gains its executing consumer here instead of sitting inert in extdeps."
+
+fn roadmap_serve_invoke(handler: RoadmapServeHandler, params: List<PathParamBinding>, request: ServeHttpRequest) -> ServeHttpResponse {
   match handler {
     RoadmapDailyPageHandler => serve_page_response(page: roadmap_daily_workspace_page_for_authority())
     RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority())
@@ -206,9 +209,9 @@ fn http_method_label_join(methods: List<HttpMethod>) -> String {
   }), ", ")
 }
 
-fn roadmap_serve_selection_response(sel: RouteSelection<RoadmapServeHandler>) -> ServeHttpResponse {
+fn roadmap_serve_selection_response(sel: RouteSelection<RoadmapServeHandler>, request: ServeHttpRequest) -> ServeHttpResponse {
   match sel {
-    SelectedDynamic { handler: h, params: ps } => roadmap_serve_invoke(handler: h, params: ps)
+    SelectedDynamic { handler: h, params: ps } => roadmap_serve_invoke(handler: h, params: ps, request: request)
     SelectedStatic { route: r } =>
       ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
     MethodNotAllowed { allowed: ms } =>
@@ -222,7 +225,7 @@ fn roadmap_serve_selection_response(sel: RouteSelection<RoadmapServeHandler>) ->
   }
 }
 
-fn roadmap_serve_respond(method_label: String, path: String) -> ServeHttpResponse {
+fn roadmap_serve_respond(method_label: String, path: String, body: String) -> ServeHttpResponse {
   match parse_http_method_label(label: method_label) {
     UnknownMethod { label: l } =>
       serve_text_response(
@@ -245,12 +248,13 @@ fn roadmap_serve_respond(method_label: String, path: String) -> ServeHttpRespons
           )
         RoadmapServeTable { table: t } =>
           roadmap_serve_selection_response(
-            sel: serve_select_route(table: t, method: m, path: path)
+            sel: serve_select_route(table: t, method: m, path: path),
+            request: ServeHttpRequest { method: m, path: path, body: body },
           )
       }
   }
 }
 
 fn roadmap_serve_handle(method: String, path: String, body: String) -> ServeWireResponse {
-  serve_wire_response(r: roadmap_serve_respond(method_label: method, path: path))
+  serve_wire_response(r: roadmap_serve_respond(method_label: method, path: path, body: body))
 }
