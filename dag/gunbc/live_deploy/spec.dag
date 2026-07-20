@@ -1,11 +1,11 @@
 module gunbc.live_deploy.spec
 
-import std.types { String, NonEmptyStr, List, Int, Bool }
+import std.types { String, NonEmptyStr, List, Int, Bool, FilePath }
 import std.os.types { NobleNumbat2404Lts, OsPackageManager }
 import extdeps.os.ubuntu { ubuntu_distribution_catalog_row }
 import extdeps.apt {
   package_tailscale,
-  package_nodejs,
+  package_tmux,
 }
 import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.fleet_intent_network {
@@ -13,21 +13,29 @@ import gunbc.fleet_intent_network {
   fleet_intent_network,
   operator_host_srv1,
 }
-import gunbc.node_http_server_emit {
-  roadmap_dashboard_node_http_static_server_spec,
+import gunbc.host_layout {
+  srv1_gunbc_repo_root,
+  srv1_gunbc_serve_binary,
+  srv1_dispatch_worktree_root,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
 import gunbc.ownership { Ownership, Owned, Ensured }
 
+data live_deploy_spec_belt_b_note: String = "Belt B membership (docs/plans/gunbc-served-dashboard-design.md section 5; srv1 provisioning facts settled by parent lane 2026-07-20): the service is `gunbc serve` (the seed binary), not an emitted node server.js, so the members flip — ServeBinary + GunbcSourceTree + DispatchWorktreeRoot in (paths from the ONE gunbc.host_layout authority the belt also projects), ServerScript and the NodeJsPackage dependency out (the Ensured nodejs is never torn down — R5; the stale /opt/gunbc/server.js file is left inert on disk and reaped when belt A's interim retires). Deploy principal is ROOT (actions-runner unit User=root, verified on srv1), so tree-sync and chown run bare — no new sudoers grant; the flipped unit runs User=briansrls (claude auth exists only under briansrls, so a root-run belt would spawn unauthed dead sessions)."
+
+data gunbc_service_user: NonEmptyStr = "briansrls"
+
 type OwnedArtifactKind =
-    ServerScript
+    ServeBinary
+  | GunbcSourceTree
+  | DispatchWorktreeRoot
   | SystemdUnit
   | TailscaleServeMapping
 
 type EnsuredDependencyKind =
     TailscalePackage
-  | NodeJsPackage
+  | TmuxPackage
 
 type DeploymentArtifactStep {
   kind: OwnedArtifactKind
@@ -60,18 +68,13 @@ type DeploymentHostTarget {
 
 type DeploymentServiceConfig {
   unit_name: NonEmptyStr
-  server_path: NonEmptyStr
+  serve_binary: NonEmptyStr
+  repo_root: NonEmptyStr
+  service_user: NonEmptyStr
   listen: HttpServerListenConfig
 }
 
-type DeploymentSpec {
-  target: DeploymentHostTarget
-  steps: List<DeploymentStep>
-  service: DeploymentServiceConfig
-}
-
 data gunbc_roadmap_unit_name: NonEmptyStr = "gunbc-roadmap.service"
-data gunbc_roadmap_server_path: NonEmptyStr = "/opt/gunbc/server.js"
 data gunbc_roadmap_systemd_unit_path: NonEmptyStr = "/etc/systemd/system/gunbc-roadmap.service"
 data tailscale_serve_owned_path: NonEmptyStr = "tailscale-serve"
 
@@ -79,9 +82,13 @@ fn srv1_os_package_manager() -> OsPackageManager {
   ubuntu_distribution_catalog_row(distro: NobleNumbat2404Lts).package_manager
 }
 
+data deployment_apply_order_note: String = "Apply order is dependency-honest: the tree lands before the binary (the binary serves that tree), both before the worktree root (belt spawns target it), all before the unit (ExecStart references binary + tree), and the tailscale mapping last (routes to a live service). Retract is the reverse, with DispatchWorktreeRoot torn down by rmdir — LOUD failure when worktrees exist, so a retract cannot silently destroy live agent sessions (a construction-level refusal, not a check)."
+
 fn deployment_owned_steps() -> List<DeploymentArtifactStep> {
   [
-    DeploymentArtifactStep { kind: ServerScript, path: gunbc_roadmap_server_path },
+    DeploymentArtifactStep { kind: GunbcSourceTree, path: srv1_gunbc_repo_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: ServeBinary, path: srv1_gunbc_serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: srv1_dispatch_worktree_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
     DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
   ]
@@ -90,7 +97,7 @@ fn deployment_owned_steps() -> List<DeploymentArtifactStep> {
 fn deployment_ensured_steps() -> List<DeploymentDependencyStep> {
   [
     DeploymentDependencyStep { kind: TailscalePackage, package: package_tailscale },
-    DeploymentDependencyStep { kind: NodeJsPackage, package: package_nodejs },
+    DeploymentDependencyStep { kind: TmuxPackage, package: package_tmux },
   ]
 }
 
@@ -105,7 +112,9 @@ fn deployment_owned_steps_retract_order() -> List<DeploymentArtifactStep> {
   [
     DeploymentArtifactStep { kind: TailscaleServeMapping, path: tailscale_serve_owned_path },
     DeploymentArtifactStep { kind: SystemdUnit, path: gunbc_roadmap_systemd_unit_path },
-    DeploymentArtifactStep { kind: ServerScript, path: gunbc_roadmap_server_path },
+    DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: srv1_dispatch_worktree_root as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: ServeBinary, path: srv1_gunbc_serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep { kind: GunbcSourceTree, path: srv1_gunbc_repo_root as String as NonEmptyStr },
   ]
 }
 
@@ -120,11 +129,15 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
 }
 
 fn deployment_service_config() -> DeploymentServiceConfig {
-  let spec = roadmap_dashboard_node_http_static_server_spec()
   DeploymentServiceConfig {
     unit_name: gunbc_roadmap_unit_name,
-    server_path: gunbc_roadmap_server_path,
-    listen: spec.listen,
+    serve_binary: srv1_gunbc_serve_binary as String as NonEmptyStr,
+    repo_root: srv1_gunbc_repo_root as String as NonEmptyStr,
+    service_user: gunbc_service_user,
+    listen: HttpServerListenConfig {
+      host: "0.0.0.0",
+      port: 8080,
+    },
   }
 }
 
@@ -134,6 +147,12 @@ fn deployment_spec_srv1() -> DeploymentSpec {
     steps: deployment_steps_apply_order(),
     service: deployment_service_config(),
   }
+}
+
+type DeploymentSpec {
+  target: DeploymentHostTarget
+  steps: List<DeploymentStep>
+  service: DeploymentServiceConfig
 }
 
 fn deployment_plan_host_identity(spec: DeploymentSpec) -> String {
