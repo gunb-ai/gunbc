@@ -3922,7 +3922,11 @@ pub fn load_sources_for_entry(
 /// result: the builtin's own gate still refuses, typed and located (that
 /// refusal is exactly how this row was found — `interp_recorded_fixture`'s
 /// nested replay, CI 29722434993).
-const BUILTIN_REQUIRED_SERVICE_KEYS: &[(&str, &str)] = &[("filesystem_read", "Filesystem.Read")];
+/// Pairs are (builtin identifier, SERVICES-CENSUS key). The census key is the
+/// service's authored name (`Filesystem`, or a dotted one like `cron.Tab`) —
+/// NOT the interpreter's `service_ops` operation key (`Filesystem.Read`), which
+/// appends the operation.
+const BUILTIN_REQUIRED_SERVICE_KEYS: &[(&str, &str)] = &[("filesystem_read", "Filesystem")];
 
 /// Bare (non-dotted) identifiers in `content`, split by whether any occurrence
 /// sits in CALL POSITION (immediately followed by `(`). The split is the pull
