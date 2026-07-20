@@ -97,10 +97,10 @@ data v1_deletion_dependencies: List<PlanDependency> = [
   PlanDependency { before: ^ci_floor_cutover, after: ^v1_quarantine },
   PlanDependency { before: ^unresolved_error_diagnosis, after: ^v1_quarantine },
   PlanDependency { before: ^trigger_renegotiation, after: ^v1_quarantine },
-  PlanDependency { before: ^ledger_projection, after: ^v1_delete },
-  PlanDependency { before: ^cold_parity_receipt, after: ^v1_delete },
-  PlanDependency { before: ^compile_clean_parity_receipt, after: ^v1_delete },
-  PlanDependency { before: ^regen_fixed_point_receipt, after: ^v1_delete },
+  PlanDependency { before: ^ledger_projection, after: ^ci_floor_cutover },
+  PlanDependency { before: ^cold_parity_receipt, after: ^ci_floor_cutover },
+  PlanDependency { before: ^compile_clean_parity_receipt, after: ^ci_floor_cutover },
+  PlanDependency { before: ^regen_fixed_point_receipt, after: ^ci_floor_cutover },
   PlanDependency { before: ^v1_quarantine, after: ^v1_delete }
 ]
 
