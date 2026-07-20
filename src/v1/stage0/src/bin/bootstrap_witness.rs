@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::process::ExitCode;
 use std::rc::Rc;
 
@@ -53,7 +53,7 @@ where
     cold.output().expect("failed to spawn cargo cold retry")
 }
 
-fn tokenize_for_parse(source: &str) -> Rc<im_rc::Vector<Rc<v1_compiler::v1_std_core::Token>>> {
+fn tokenize_for_parse(source: &str) -> Rc<im::Vector<Rc<v1_compiler::v1_std_core::Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 

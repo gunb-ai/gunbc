@@ -33,7 +33,7 @@ fn cssl_repo_path(root: String, rel: String) -> String {
 
 fn cssl_v1_compiled_cargo_deps_block(root: String) -> String {
   concat(
-    "[dependencies]\nim-rc = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
+    "[dependencies]\nim = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
     concat(root, "/src/v1/stage0\" }\n")
   )
 }

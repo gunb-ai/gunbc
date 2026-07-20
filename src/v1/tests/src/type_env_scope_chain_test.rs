@@ -69,8 +69,8 @@ fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
 }
 
 fn typed_module_by_name<'a>(
-    modules: &'a im_rc::Vector<Rc<TypedModule>>,
-    source_indices: &Rc<im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    modules: &'a im::Vector<Rc<TypedModule>>,
+    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
     name: &str,
 ) -> &'a Rc<TypedModule> {
     modules
@@ -81,7 +81,7 @@ fn typed_module_by_name<'a>(
 
 fn assert_rc_identity_across_import_chain(
     graph: &ResolvedGraph,
-    source_indices: &Rc<im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
+    source_indices: &Rc<im::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
 ) {
     let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.type_env_rc_definer");
     let use_mod = typed_module_by_name(&graph.modules, source_indices, "test.type_env_rc_consumer");
@@ -109,7 +109,7 @@ fn collect_binding_ptrs(
     }
 }
 
-fn unique_binding_ptr_count_modules(modules: &im_rc::Vector<Rc<TypedModule>>) -> usize {
+fn unique_binding_ptr_count_modules(modules: &im::Vector<Rc<TypedModule>>) -> usize {
     let mut ptrs = HashSet::new();
     for m in modules.iter() {
         collect_binding_ptrs(&m.type_env, &mut ptrs);
@@ -290,15 +290,15 @@ fn type_env_import_resolves_via_str_bindings_index() {
 
     let stripped = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
-        str_bindings: Rc::new(im_rc::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im_rc::HashMap::new()),
+        str_bindings: Rc::new(im::HashMap::new()),
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
         parents: consumer.type_env.parents.clone(),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
-        source_visible_names: Rc::new(im_rc::HashMap::new()),
+        source_visible_names: Rc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         module_path: consumer.type_env.module_path.clone(),
     });
@@ -326,13 +326,13 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         bindings: consumer.type_env.bindings.clone(),
         str_bindings: consumer.type_env.str_bindings.clone(),
         ancestry_str_bindings: consumer.type_env.ancestry_str_bindings.clone(),
-        parents: Rc::new(im_rc::vector![]),
+        parents: Rc::new(im::vector![]),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
-        source_visible_names: Rc::new(im_rc::HashMap::new()),
+        source_visible_names: Rc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         module_path: consumer.type_env.module_path.clone(),
     });
@@ -342,15 +342,15 @@ fn type_env_dropped_parent_chain_fails_lookup() {
     );
     let stripped_index = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
-        str_bindings: Rc::new(im_rc::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im_rc::HashMap::new()),
-        parents: Rc::new(im_rc::vector![]),
+        str_bindings: Rc::new(im::HashMap::new()),
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
+        parents: Rc::new(im::vector![]),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
-        source_visible_names: Rc::new(im_rc::HashMap::new()),
+        source_visible_names: Rc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         module_path: consumer.type_env.module_path.clone(),
     });
@@ -491,29 +491,29 @@ fn type_env_std_types_type_variable_filtered_from_import() {
     let t_id = intern(intern_table.clone(), "T".to_string()).id;
     let int_id = intern(intern_table.clone(), "Int".to_string()).id;
     let parent = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
-        bindings: Rc::new(im_rc::HashMap::from_iter([
+        bindings: Rc::new(im::HashMap::from_iter([
             (t_id, t_binding.clone()),
             (int_id, int_binding.clone()),
         ])),
-        str_bindings: Rc::new(im_rc::HashMap::from_iter([
+        str_bindings: Rc::new(im::HashMap::from_iter([
             ("T".to_string(), t_binding),
             ("Int".to_string(), int_binding),
         ])),
-        ancestry_str_bindings: Rc::new(im_rc::HashMap::new()),
-        parents: Rc::new(im_rc::vector![]),
-        recursive_types: Rc::new(im_rc::vector![]),
-        recursive_type_set: Rc::new(im_rc::HashMap::new()),
-        inductive_fields: Rc::new(im_rc::HashMap::new()),
-        source_indices: Rc::new(im_rc::HashMap::from_iter([(
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
+        parents: Rc::new(im::vector![]),
+        recursive_types: Rc::new(im::vector![]),
+        recursive_type_set: Rc::new(im::HashMap::new()),
+        inductive_fields: Rc::new(im::HashMap::new()),
+        source_indices: Rc::new(im::HashMap::from_iter([(
             "stub.dag".to_string(),
             Rc::new(v1_compiler::v1_std_core::NewlineIndex {
                 file: "stub.dag".to_string(),
-                offsets: Rc::new(im_rc::vector![0]),
-                char_codes: Rc::new(im_rc::vector![]),
+                offsets: Rc::new(im::vector![0]),
+                char_codes: Rc::new(im::vector![]),
             }),
         )])),
         intern_table: intern_table.clone(),
-        source_visible_names: Rc::new(im_rc::HashMap::new()),
+        source_visible_names: Rc::new(im::HashMap::new()),
         symbol_index: v1_compiler::v1_compiler_infer_env::empty_symbol_index(),
         module_path: "stub".to_string(),
     });
@@ -618,27 +618,27 @@ fn global_bare_fallback_resolves_when_corpus_wide_unique() {
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
     });
     let env = Rc::new(TypeEnv {
-        bindings: Rc::new(im_rc::HashMap::new()),
-        str_bindings: Rc::new(im_rc::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im_rc::HashMap::new()),
-        parents: Rc::new(im_rc::vector![]),
-        recursive_types: Rc::new(im_rc::vector![]),
-        recursive_type_set: Rc::new(im_rc::HashMap::new()),
-        inductive_fields: Rc::new(im_rc::HashMap::new()),
-        source_indices: Rc::new(im_rc::HashMap::new()),
+        bindings: Rc::new(im::HashMap::new()),
+        str_bindings: Rc::new(im::HashMap::new()),
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
+        parents: Rc::new(im::vector![]),
+        recursive_types: Rc::new(im::vector![]),
+        recursive_type_set: Rc::new(im::HashMap::new()),
+        inductive_fields: Rc::new(im::HashMap::new()),
+        source_indices: Rc::new(im::HashMap::new()),
         intern_table,
-        source_visible_names: Rc::new(im_rc::HashMap::new()),
+        source_visible_names: Rc::new(im::HashMap::new()),
         module_path: "probe.consumer".to_string(),
         symbol_index: Rc::new(SymbolIndex {
-            entries: Rc::new(im_rc::HashMap::new()),
-            global_bare: Rc::new(im_rc::HashMap::from_iter([(
+            entries: Rc::new(im::HashMap::new()),
+            global_bare: Rc::new(im::HashMap::from_iter([(
                 "Widget".to_string(),
                 Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
                     module_path: "probe.def".to_string(),
                     binding: binding.clone(),
                 }),
             )])),
-            services: Rc::new(im_rc::HashMap::new()),
+            services: Rc::new(im::HashMap::new()),
         }),
     });
 
@@ -658,26 +658,26 @@ fn global_bare_fallback_stays_absent_when_corpus_wide_ambiguous() {
     use v1_compiler::v1_std_core::empty_intern_table;
 
     let env = Rc::new(TypeEnv {
-        bindings: Rc::new(im_rc::HashMap::new()),
-        str_bindings: Rc::new(im_rc::HashMap::new()),
-        ancestry_str_bindings: Rc::new(im_rc::HashMap::new()),
-        parents: Rc::new(im_rc::vector![]),
-        recursive_types: Rc::new(im_rc::vector![]),
-        recursive_type_set: Rc::new(im_rc::HashMap::new()),
-        inductive_fields: Rc::new(im_rc::HashMap::new()),
-        source_indices: Rc::new(im_rc::HashMap::new()),
+        bindings: Rc::new(im::HashMap::new()),
+        str_bindings: Rc::new(im::HashMap::new()),
+        ancestry_str_bindings: Rc::new(im::HashMap::new()),
+        parents: Rc::new(im::vector![]),
+        recursive_types: Rc::new(im::vector![]),
+        recursive_type_set: Rc::new(im::HashMap::new()),
+        inductive_fields: Rc::new(im::HashMap::new()),
+        source_indices: Rc::new(im::HashMap::new()),
         intern_table: empty_intern_table(),
-        source_visible_names: Rc::new(im_rc::HashMap::new()),
+        source_visible_names: Rc::new(im::HashMap::new()),
         module_path: "probe.consumer".to_string(),
         symbol_index: Rc::new(SymbolIndex {
-            entries: Rc::new(im_rc::HashMap::new()),
-            global_bare: Rc::new(im_rc::HashMap::from_iter([(
+            entries: Rc::new(im::HashMap::new()),
+            global_bare: Rc::new(im::HashMap::from_iter([(
                 "Widget".to_string(),
                 Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                    candidates: Rc::new(im_rc::vector![]),
+                    candidates: Rc::new(im::vector![]),
                 }),
             )])),
-            services: Rc::new(im_rc::HashMap::new()),
+            services: Rc::new(im::HashMap::new()),
         }),
     });
 
