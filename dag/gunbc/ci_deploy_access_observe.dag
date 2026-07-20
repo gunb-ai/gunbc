@@ -1,17 +1,8 @@
 module gunbc.ci_deploy_access_observe
 
-import std.types { NonEmptyStr, String, Bool, List }
-import std.access { AccessDecision, Permit, Deny, decision_meet }
-import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
-import extdeps.diagnostic.ssh { ssh_session_exec_script }
-import gunbc.host_effect {
-  HostEffect,
-  ShellCommand,
-  LocalShell,
-  SshShell,
-  EmitArtifactThenThinRun,
-}
+import std.types { NonEmptyStr, Bool, List }
+import std.access { AccessDecision, decision_meet }
+import gunbc.host_effect { HostEffect, ShellCommand, ReadEffectivePosixPrincipal, SudoNopasswdExecuteProbe }
 import v2.std.effect_plan { EffectPlan, EffectPlanStep, Do }
 import v2.std.orchestration { FailFast }
 import v2.std.algebra { list_snoc_item }
@@ -20,10 +11,8 @@ import gunbc.ci_deploy_access {
   DeployAccessActor,
   PrivilegedCommand,
   deploy_access_check,
-  deploy_access_principal_line,
-  deploy_access_whoami_probe_script,
-  deploy_access_sudo_probe_script,
-  deploy_access_refusal_prefix,
+  deploy_access_read_principal_effect,
+  deploy_access_sudo_probe_effect,
   deploy_target_proof_from_access,
 }
 import gunbc.ci_deploy_target_host {
@@ -31,13 +20,14 @@ import gunbc.ci_deploy_target_host {
   deploy_target_host_check,
   deploy_target_host_check_observed,
 }
+import gunbc.host_effect_realize { deploy_access_check_observed }
 
 fn deploy_access_privileged_probe_step(cmd: PrivilegedCommand) -> EffectPlanStep<HostEffect> {
-  Do { effect: ShellCommand { script: deploy_access_sudo_probe_script(cmd: cmd) } }
+  Do { effect: deploy_access_sudo_probe_effect(cmd: cmd) }
 }
 
 fn deploy_access_preflight_probe_steps(access: DeployAccess) -> List<EffectPlanStep<HostEffect>> {
-  let whoami_step = Do { effect: ShellCommand { script: deploy_access_whoami_probe_script() } }
+  let whoami_step = Do { effect: deploy_access_read_principal_effect() }
   let with_whoami = list_snoc_item(xs: [], item: whoami_step)
   fold(
     access.privileged_commands,
@@ -53,84 +43,71 @@ fn deploy_access_preflight_plan(access: DeployAccess) -> EffectPlan<HostEffect> 
   }
 }
 
-type DeployAccessShellProbe {
-  success: Bool
-  stdout: String
-}
-
-fn deploy_access_run_shell_probe(access: DeployAccess, script: String) -> DeployAccessShellProbe {
-  match access.transport {
-    LocalShell => {
-      let result = shell.Exec.Run(script: transport_script_from_body(body: script))
-      DeployAccessShellProbe { success: result.success, stdout: result.stdout }
-    }
-    SshShell { ssh_host: h } =>
-      if script == "" {
-        DeployAccessShellProbe {
-          success: false,
-          stdout: "deploy_access_observe: empty shell script over SshShell; fail-closed",
-        }
-      } else {
-        let result = ssh_session_exec_script(host: h, script: script)
-        DeployAccessShellProbe { success: result.success, stdout: result.stdout }
-      }
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      DeployAccessShellProbe {
-        success: false,
-        stdout: "deploy_access_observe: shell probe cannot use EmitArtifactThenThinRun transport; typed mismatch",
-      }
+fn deploy_access_preflight_plan_step_effect(step: EffectPlanStep<HostEffect>) -> HostEffect? {
+  match step {
+    Do { effect: e } => Present { value: e }
+    If { cond: _, then_: _, else_: _ } => Absent
+    For { binder: _, over: _, body: _ } => Absent
+    While { cond: _, body: _ } => Absent
+    BoundedPoll { max_attempts: _, body: _, success: _ } => Absent
+    Retry { body: _, escalations: _, on_exhausted: _ } => Absent
+    Let { name: _, value: _ } => Absent
+    Call { callee: _, args: _ } => Absent
   }
 }
 
-fn deploy_access_observed_principal(access: DeployAccess) -> NonEmptyStr? {
-  let result = deploy_access_run_shell_probe(
-    access: access,
-    script: deploy_access_whoami_probe_script()
-  )
-  deploy_access_principal_line(success: result.success, stdout: result.stdout)
+fn deploy_access_effect_is_typed_probe(effect: HostEffect) -> Bool {
+  match effect {
+    ReadEffectivePosixPrincipal {} => true
+    SudoNopasswdExecuteProbe { command_path: _, check_argv: _ } => true
+    ShellCommand { script: _ } => false
+    RedfishAction { action: _ } => false
+    ConvergePlan { policy: _ } => false
+    Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => false
+    OsInstallActuatorToolchainEnsure {} => false
+    ProvisionBuildCache { catalog_id: _ } => false
+    SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => false
+    Srv3InstallReconcileObserve { include_git_meta: _ } => false
+    DurableApprovalGrantRecord => false
+    DurableApprovalGrantRead => false
+    Srv3InstallMediaFetch => false
+    Srv3SeededInstallMediaRemaster => false
+    Srv3SeededInstallMediaToolchainEnsure => false
+    Srv3SolConsoleCapture => false
+    Srv3BmcwebSessionLogin => false
+    Srv3BmcwebTokenExtract => false
+    Srv3NbdProxyServe { intent: _, lease_key: _ } => false
+    Srv3BootOnceReadBackSleep => false
+    Srv3ReceiptEmit { lines: _ } => false
+  }
 }
 
-fn deploy_access_sudo_check_cmd(access: DeployAccess, cmd: PrivilegedCommand) -> Bool {
-  deploy_access_run_shell_probe(
-    access: access,
-    script: deploy_access_sudo_probe_script(cmd: cmd)
-  ).success
-}
-
-fn deploy_access_sudo_all_granted(access: DeployAccess) -> Bool {
+fn deploy_access_preflight_plan_uses_typed_probes(plan: EffectPlan<HostEffect>) -> Bool {
   fold(
-    access.privileged_commands,
+    plan.steps,
     init: true,
-    f: (acc, cmd) => if !acc { false } else { deploy_access_sudo_check_cmd(access: access, cmd: cmd) }
+    f: (acc, step) =>
+      if !acc {
+        false
+      } else {
+        match deploy_access_preflight_plan_step_effect(step: step) {
+          Present { value: effect } => deploy_access_effect_is_typed_probe(effect: effect)
+          Absent => false
+        }
+      }
   )
 }
 
-fn deploy_access_observed_actor(access: DeployAccess) -> DeployAccessActor? {
-  match deploy_access_observed_principal(access: access) {
-    Present { value: observed_name } =>
-      Present {
-        value: DeployAccessActor {
-          observed_name: observed_name,
-          sudo_granted: deploy_access_sudo_all_granted(access: access),
-        }
+fn deploy_access_preflight_plan_first_effect(plan: EffectPlan<HostEffect>) -> HostEffect? {
+  fold(
+    plan.steps,
+    init: Absent,
+    f: (acc, step) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => deploy_access_preflight_plan_step_effect(step: step)
       }
-    Absent => Absent
-  }
-}
-
-fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
-  match deploy_access_observed_actor(access: access) {
-    Present { value: actor } => deploy_access_check(access: access, actor: actor)
-    Absent =>
-      Deny {
-        reason: Present {
-          value: concat(
-            deploy_access_refusal_prefix,
-            " — could not observe principal (whoami failed)"
-          )
-        }
-      }
-  }
+  )
 }
 
 fn deploy_mutation_gate_observed(access: DeployAccess) -> AccessDecision {

@@ -24,8 +24,8 @@ import gunbc.ci_deploy_access {
 }
 import gunbc.ci_deploy_access_observe {
   deploy_mutation_gate,
-  deploy_access_check_observed,
 }
+import gunbc.host_effect_realize { deploy_access_check_observed }
 import gunbc.ci_deploy_target_host {
   DeployTargetHostObservation,
   deploy_target_ssh_proof_structurally_valid,

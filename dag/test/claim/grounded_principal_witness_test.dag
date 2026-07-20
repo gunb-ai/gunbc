@@ -123,6 +123,33 @@ fn witness_deploy_preflight_plan_has_whoami_plus_privileged_probes() -> Bool {
   plan.steps.count() == 6
 }
 
+fn witness_deploy_preflight_plan_uses_typed_probes() -> Bool {
+  deploy_access_preflight_plan_uses_typed_probes(
+    plan: deploy_access_preflight_plan(access: ci_deploy_srv1_access)
+  )
+}
+
+fn witness_deploy_preflight_plan_first_step_reads_principal() -> Bool {
+  match deploy_access_preflight_plan_first_effect(
+    plan: deploy_access_preflight_plan(access: ci_deploy_srv1_access)
+  ) {
+    Present { value: effect } =>
+      match effect {
+        ReadEffectivePosixPrincipal {} => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_deploy_preflight_plan_shell_command_red() -> Bool {
+  let poisoned = EffectPlan {
+    steps: [Do { effect: ShellCommand { script: "whoami" } }],
+    on_failure: FailFast,
+  }
+  !deploy_access_preflight_plan_uses_typed_probes(plan: poisoned)
+}
+
 fn witness_deploy_grant_admits_apt_get_probe() -> Bool {
   match deploy_access_grant_admits_probe(
     access: ci_deploy_srv1_access,
@@ -170,6 +197,9 @@ test fn grounded_principal_witnesses() -> Bool {
     && witness_operator_grounded_access_gate_permits()
     && witness_deploy_authorization_query_grounds_expected_principal()
     && witness_deploy_preflight_plan_has_whoami_plus_privileged_probes()
+    && witness_deploy_preflight_plan_uses_typed_probes()
+    && witness_deploy_preflight_plan_first_step_reads_principal()
+    && witness_deploy_preflight_plan_shell_command_red()
     && witness_deploy_grant_admits_apt_get_probe()
     && witness_deploy_grant_refuses_outside_envelope()
     && witness_posix_sudo_grant_materializes_execute_grant()

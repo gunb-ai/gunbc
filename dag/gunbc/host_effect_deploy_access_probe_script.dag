@@ -1,0 +1,29 @@
+module gunbc.host_effect_deploy_access_probe_script
+
+import std.types { String, NonEmptyStr }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data host_effect_deploy_access_probe_script_dissolution_trigger: String = "🟡 dissolve-on: host_effect_deploy_access_probe_script — concat-built bash bodies for ReadEffectivePosixPrincipal and SudoNopasswdExecuteProbe realize-layer transport (Wave B shell→dag reference); DISSOLVES WHEN bash-emit (#5828 / shell-emission slice0) realizes these probes through typed argv invocations / grammar-emitted nodes and the script builders retire without concat-built transport strings."
+
+data host_effect_deploy_access_probe_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_effect_deploy_access_probe_script",
+    decl_name: "host_effect_deploy_access_probe_script_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data host_effect_read_effective_posix_principal_script_body: String = "whoami"
+
+fn host_effect_read_effective_posix_principal_script() -> String {
+  host_effect_read_effective_posix_principal_script_body
+}
+
+fn host_effect_sudo_nopasswd_execute_probe_script(command_path: NonEmptyStr, check_argv: NonEmptyStr) -> String {
+  concat(
+    concat(concat("sudo -n ", command_path as String), " "),
+    check_argv as String
+  )
+}

@@ -34,6 +34,8 @@ type HostEffect =
   | OsInstallActuatorToolchainEnsure {}
   | ProvisionBuildCache { catalog_id: CacheInterfaceId }
   | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
+  | ReadEffectivePosixPrincipal {}
+  | SudoNopasswdExecuteProbe { command_path: NonEmptyStr, check_argv: NonEmptyStr }
   | Srv3InstallReconcileObserve { include_git_meta: Bool }
   | DurableApprovalGrantRecord
   | DurableApprovalGrantRead

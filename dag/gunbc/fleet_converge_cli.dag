@@ -57,6 +57,8 @@ fn converge_cli_applied_knob_count(intent: HostEffectIntent, fallback: Int) -> I
     ShellCommand { script: _ } => fallback
     RedfishAction { action: _ } => fallback
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => fallback
+    ReadEffectivePosixPrincipal {} => fallback
+    SudoNopasswdExecuteProbe { command_path: _, check_argv: _ } => fallback
     Srv3InstallDiagnosticObserve { bmc: _, port: _, iso_path: _, iso_content_hash: _ } => fallback
     OsInstallActuatorToolchainEnsure {} => fallback
     ProvisionBuildCache { catalog_id: _ } => fallback
