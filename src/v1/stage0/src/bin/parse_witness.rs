@@ -8,7 +8,7 @@
 
 use im::HashMap;
 use std::process::ExitCode;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::workspace_root;
@@ -34,18 +34,18 @@ fn read_v2_file(relative_path: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e))
 }
 
-fn tokenize(source: &str) -> Rc<im::Vector<Rc<Token>>> {
+fn tokenize(source: &str) -> Arc<im::Vector<Arc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 
-fn parse_source(source: &str) -> Rc<ParseResult> {
+fn parse_source(source: &str) -> Arc<ParseResult> {
     let tokens =
         v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string());
     let source_index =
         v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert("test.dag".to_string(), source_index);
-    v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices))
+    v1_compiler::v1_compiler_parse::parse(tokens, Arc::new(source_indices))
 }
 
 fn assert_parses(source: &str, label: &str) {
@@ -101,16 +101,16 @@ fn median_tokenize_secs(source: &str) -> (f64, usize) {
     (samples[RUNS / 2], last_len)
 }
 
-fn tokenizer_source_ref(source: &str) -> Rc<SourceRef> {
-    let chars = Rc::new(source.chars().map(|c| c as i64).collect::<im::Vector<_>>());
-    Rc::new(SourceRef {
+fn tokenizer_source_ref(source: &str) -> Arc<SourceRef> {
+    let chars = Arc::new(source.chars().map(|c| c as i64).collect::<im::Vector<_>>());
+    Arc::new(SourceRef {
         file: "tokenizer_lookup_flat.v3".to_string(),
         text: source.to_string(),
         source_chars: chars,
     })
 }
 
-fn source_code_point_chars_walked(source: &Rc<SourceRef>, pos: i64, lookups: usize) -> u64 {
+fn source_code_point_chars_walked(source: &Arc<SourceRef>, pos: i64, lookups: usize) -> u64 {
     reset_text_lookup_chars_walked();
     for _ in 0..lookups {
         let _ = source_code_point(source.clone(), pos);
@@ -119,8 +119,8 @@ fn source_code_point_chars_walked(source: &Rc<SourceRef>, pos: i64, lookups: usi
 }
 
 fn source_text_at_chars_walked(
-    index: &Rc<v1_compiler::v1_std_core::NewlineIndex>,
-    span: &Rc<SourceSpan>,
+    index: &Arc<v1_compiler::v1_std_core::NewlineIndex>,
+    span: &Arc<SourceSpan>,
     lookups: usize,
 ) -> u64 {
     reset_text_lookup_chars_walked();
@@ -130,7 +130,7 @@ fn source_text_at_chars_walked(
     take_text_lookup_chars_walked()
 }
 
-fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Rc<SourceSpan>>) {
+fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Arc<SourceSpan>>) {
     let filler = "§".repeat(pad);
     let mut source = String::from("module pad_test\n");
     let mut spans = Vec::with_capacity(k);
@@ -144,7 +144,7 @@ fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Rc<SourceSp
         let start = source.chars().count() as i64;
         source.push_str(&name);
         let end = source.chars().count() as i64;
-        spans.push(Rc::new(SourceSpan {
+        spans.push(Arc::new(SourceSpan {
             file: file.clone(),
             start,
             end,
@@ -155,8 +155,8 @@ fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Rc<SourceSp
 }
 
 fn total_source_text_at_chars_walked(
-    index: &Rc<v1_compiler::v1_std_core::NewlineIndex>,
-    spans: &[Rc<SourceSpan>],
+    index: &Arc<v1_compiler::v1_std_core::NewlineIndex>,
+    spans: &[Arc<SourceSpan>],
     lookups_per_span: usize,
 ) -> u64 {
     reset_text_lookup_chars_walked();
@@ -582,12 +582,12 @@ fn source_text_at_lookup_flat_in_file_size() {
     let index = build_newline_index("lookup_flat.dag".to_string(), source.clone());
     let char_len = source.chars().count() as i64;
     let tail = char_len - 4;
-    let head_span = Rc::new(SourceSpan {
+    let head_span = Arc::new(SourceSpan {
         file: "lookup_flat.dag".to_string(),
         start: 0,
         end: 4,
     });
-    let tail_span = Rc::new(SourceSpan {
+    let tail_span = Arc::new(SourceSpan {
         file: "lookup_flat.dag".to_string(),
         start: tail,
         end: tail + 4,
@@ -715,12 +715,12 @@ fn parser_scales_linearly_with_token_count() {
 
     let start = Instant::now();
     let _small_result =
-        v1_compiler::v1_compiler_parse::parse(small_tokens.clone(), Rc::new(im::HashMap::new()));
+        v1_compiler::v1_compiler_parse::parse(small_tokens.clone(), Arc::new(im::HashMap::new()));
     let small_time = start.elapsed();
 
     let start = Instant::now();
     let _large_result =
-        v1_compiler::v1_compiler_parse::parse(large_tokens.clone(), Rc::new(im::HashMap::new()));
+        v1_compiler::v1_compiler_parse::parse(large_tokens.clone(), Arc::new(im::HashMap::new()));
     let large_time = start.elapsed();
 
     let token_ratio = large_tokens.len() as f64 / small_tokens.len() as f64;

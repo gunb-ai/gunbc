@@ -20,18 +20,18 @@ pub use crate::v1_std_core::{Connective, ErrorNode, ExprData, InferredNode, Matc
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn is_import_slot_node(n: Rc<Node>) -> bool {
+pub fn is_import_slot_node(n: Arc<Node>) -> bool {
     (import_is_all(n.clone())
         || (((((n.params.clone().len() as i64) == 0) && (n.ident_span.clone() != None))
             && (n.body.clone() == None))
-            && (n.expr_data.clone() == Rc::new(ExprData::NoExprData))))
+            && (n.expr_data.clone() == Arc::new(ExprData::NoExprData))))
 }
 
-pub fn is_module_shell_node(n: Rc<Node>) -> bool {
+pub fn is_module_shell_node(n: Arc<Node>) -> bool {
     (((((((n.inferred.clone() == None)
-        && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
+        && (n.expr_data.clone() == Arc::new(ExprData::NoExprData)))
         && (n.connective.clone() == Connective::NoConnective))
         && (n.body.clone() == None))
         && (n.transport.clone() == None))
@@ -48,7 +48,7 @@ pub fn is_module_shell_node(n: Rc<Node>) -> bool {
         })
 }
 
-pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
+pub fn dag_node_is_resolved_identity_shell(node: Arc<Node>) -> bool {
     match (*node.expr_data.clone()).clone() {
         ExprData::NoExprData => match node.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: _, .. }) => {
@@ -62,7 +62,7 @@ pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
     }
 }
 
-pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
+pub fn dag_node_collection_anchor(mut node: Arc<Node>) -> Arc<Node> {
     loop {
         if dag_node_is_resolved_identity_shell(node.clone()) {
             match node.inferred.clone().as_deref().cloned() {
@@ -81,7 +81,7 @@ pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn dag_node_key(node: Rc<Node>) -> String {
+pub fn dag_node_key(node: Arc<Node>) -> String {
     {
         let anchor = dag_node_collection_anchor(node.clone());
         if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0)) {
@@ -110,28 +110,28 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
     }
 }
 
-pub fn dag_node_fingerprint(node: Rc<Node>) -> String {
+pub fn dag_node_fingerprint(node: Arc<Node>) -> String {
     dag_node_surface_fingerprint_memo(dag_node_collection_anchor(node.clone()))
 }
 
 pub fn dag_collect_nodes_list(
-    nodes: Rc<Vec<Rc<Node>>>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
-    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+    nodes: Arc<Vec<Arc<Node>>>,
+    slots: Arc<HashMap<String, Arc<DagCollectSlot>>>,
+    collision_errors: Arc<Vec<Arc<ErrorNode>>>,
+) -> Arc<HashMap<String, Arc<DagCollectSlot>>> {
     nodes.clone().iter().cloned().fold(
         slots.clone(),
-        |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, n: Rc<Node>| {
+        |s: Arc<HashMap<String, Arc<DagCollectSlot>>>, n: Arc<Node>| {
             dag_collect_insert_slots(n.clone(), s, collision_errors.clone())
         },
     )
 }
 
 pub fn dag_collect_optional_node(
-    value: Option<Rc<Node>>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
-    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+    value: Option<Arc<Node>>,
+    slots: Arc<HashMap<String, Arc<DagCollectSlot>>>,
+    collision_errors: Arc<Vec<Arc<ErrorNode>>>,
+) -> Arc<HashMap<String, Arc<DagCollectSlot>>> {
     match value.clone() {
         Some(inner) => {
             dag_collect_insert_slots(inner.clone(), slots.clone(), collision_errors.clone())
@@ -141,10 +141,10 @@ pub fn dag_collect_optional_node(
 }
 
 pub fn dag_collect_inferred(
-    value: Option<Rc<InferredNode>>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
-    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+    value: Option<Arc<InferredNode>>,
+    slots: Arc<HashMap<String, Arc<DagCollectSlot>>>,
+    collision_errors: Arc<Vec<Arc<ErrorNode>>>,
+) -> Arc<HashMap<String, Arc<DagCollectSlot>>> {
     match value.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
             dag_collect_insert_slots(n.clone(), slots.clone(), collision_errors.clone())
@@ -154,17 +154,17 @@ pub fn dag_collect_inferred(
 }
 
 pub fn dag_collect_match_pattern(
-    pattern: Rc<MatchPattern>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
-    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+    pattern: Arc<MatchPattern>,
+    slots: Arc<HashMap<String, Arc<DagCollectSlot>>>,
+    collision_errors: Arc<Vec<Arc<ErrorNode>>>,
+) -> Arc<HashMap<String, Arc<DagCollectSlot>>> {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind { name: _, .. } => slots,
         MatchPattern::LitPattern { value: _, .. } => slots,
         MatchPattern::VariantPattern { field_bindings, .. } => {
             field_bindings.clone().iter().cloned().fold(
                 slots,
-                |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, fb: Rc<Node>| {
+                |s: Arc<HashMap<String, Arc<DagCollectSlot>>>, fb: Arc<Node>| {
                     dag_collect_insert_slots(fb.clone(), s, collision_errors.clone())
                 },
             )
@@ -174,10 +174,10 @@ pub fn dag_collect_match_pattern(
 }
 
 pub fn dag_collect_node_tree(
-    node: Rc<Node>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
-    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+    node: Arc<Node>,
+    slots: Arc<HashMap<String, Arc<DagCollectSlot>>>,
+    collision_errors: Arc<Vec<Arc<ErrorNode>>>,
+) -> Arc<HashMap<String, Arc<DagCollectSlot>>> {
     {
         let slots = dag_collect_nodes_list(
             node.children.clone(),
@@ -223,10 +223,10 @@ pub fn dag_collect_node_tree(
 }
 
 pub fn dag_collect_insert_slots(
-    node: Rc<Node>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
-    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+    node: Arc<Node>,
+    slots: Arc<HashMap<String, Arc<DagCollectSlot>>>,
+    collision_errors: Arc<Vec<Arc<ErrorNode>>>,
+) -> Arc<HashMap<String, Arc<DagCollectSlot>>> {
     {
         let anchor = dag_node_collection_anchor(node.clone());
         let key = dag_node_key(anchor.clone());
@@ -246,7 +246,7 @@ pub fn dag_collect_insert_slots(
                     v1_rt::rc_map_insert(
                         slots.clone(),
                         key.clone(),
-                        Rc::new(DagCollectSlot {
+                        Arc::new(DagCollectSlot {
                             key: key.clone(),
                             fp: fp.clone(),
                             node: anchor.clone(),
@@ -261,10 +261,10 @@ pub fn dag_collect_insert_slots(
 }
 
 pub fn dag_collect_from_module(
-    module: Rc<TypedModule>,
-    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
-    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
+    module: Arc<TypedModule>,
+    slots: Arc<HashMap<String, Arc<DagCollectSlot>>>,
+    collision_errors: Arc<Vec<Arc<ErrorNode>>>,
+) -> Arc<HashMap<String, Arc<DagCollectSlot>>> {
     {
         let slots = dag_collect_insert_slots(
             module.module.clone(),
@@ -273,20 +273,20 @@ pub fn dag_collect_from_module(
         );
         module.items.clone().iter().cloned().fold(
             slots.clone(),
-            |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, item: Rc<Node>| {
+            |s: Arc<HashMap<String, Arc<DagCollectSlot>>>, item: Arc<Node>| {
                 dag_collect_insert_slots(item.clone(), s, collision_errors.clone())
             },
         )
     }
 }
 
-pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
+pub fn collect_dag_nodes(typed: Arc<ResolvedGraph>) -> Arc<DagCollectAcc> {
     {
         let _memo_reset = dag_collect_fp_memo_reset();
-        let collision_errors = Rc::new(vec![]);
+        let collision_errors = Arc::new(vec![]);
         let slots = typed.modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<DagCollectSlot>>(),
-            |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, m: Rc<TypedModule>| {
+            v1_rt::rc_empty_map::<String, Arc<DagCollectSlot>>(),
+            |s: Arc<HashMap<String, Arc<DagCollectSlot>>>, m: Arc<TypedModule>| {
                 dag_collect_from_module(m.clone(), s, collision_errors.clone())
             },
         );

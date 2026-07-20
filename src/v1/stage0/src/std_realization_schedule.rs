@@ -25,7 +25,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
@@ -38,15 +38,15 @@ pub enum CostBasis {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
-    pub time: Rc<Measure<(), S, Nat>>,
+    pub time: Arc<Measure<(), S, Nat>>,
     pub space: ByteSize,
     pub power: Watt,
     pub basis: CostBasis,
     pub _phantom: std::marker::PhantomData<S>,
 }
 
-pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
-    Rc::new(CostAccount {
+pub fn cost_account_predicted_zero<S>() -> Arc<CostAccount<S>> {
+    Arc::new(CostAccount {
         time: time_measure(0),
         space: byte_size(0),
         power: watt(0),
@@ -55,8 +55,8 @@ pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     })
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Nat>>) -> Rc<CostAccount<S>> {
-    Rc::new(CostAccount {
+pub fn cost_account_measured<S>(time: Arc<Measure<(), S, Nat>>) -> Arc<CostAccount<S>> {
+    Arc::new(CostAccount {
         time: time.clone(),
         space: byte_size(0),
         power: watt(0),
@@ -65,13 +65,13 @@ pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Nat>>) -> Rc<CostAccount
     })
 }
 
-pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
+pub fn cost_account_time_count<S>(account: Arc<CostAccount<S>>) -> Nat {
     measure_count(account.time.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RealizationObjective {
-    pub goals: Rc<Vec<AxisGoal>>,
+    pub goals: Arc<Vec<AxisGoal>>,
 }
 
 #[derive(
@@ -93,10 +93,10 @@ pub struct WitnessSeam {
 #[serde(tag = "_variant")]
 pub enum WitnessSpan {
     SpanUndeclared,
-    SpanSeams { seams: Rc<Vec<Rc<WitnessSeam>>> },
+    SpanSeams { seams: Arc<Vec<Arc<WitnessSeam>>> },
 }
 impl WitnessSpan {
-    pub fn seams(&self) -> Rc<Vec<Rc<WitnessSeam>>> {
+    pub fn seams(&self) -> Arc<Vec<Arc<WitnessSeam>>> {
         match self {
             WitnessSpan::SpanUndeclared => panic!("no seams on unit variant"),
             WitnessSpan::SpanSeams { seams: __val, .. } => __val.clone(),
@@ -181,8 +181,8 @@ pub fn runnable_memory_class_eq(left: RunnableMemoryClass, right: RunnableMemory
 }
 
 pub fn runnable_resource_profile_eq(
-    left: Rc<RunnableResourceProfile>,
-    right: Rc<RunnableResourceProfile>,
+    left: Arc<RunnableResourceProfile>,
+    right: Arc<RunnableResourceProfile>,
 ) -> bool {
     ((((left.heavy_whole_tree_resolve.clone() == right.heavy_whole_tree_resolve.clone())
         && (left.spawns_host_compiler.clone() == right.spawns_host_compiler.clone()))
@@ -190,8 +190,8 @@ pub fn runnable_resource_profile_eq(
         && execution_mode_eq(left.execution_mode.clone(), right.execution_mode.clone()))
 }
 
-pub fn runnable_resource_profile_negligible() -> Rc<RunnableResourceProfile> {
-    Rc::new(RunnableResourceProfile {
+pub fn runnable_resource_profile_negligible() -> Arc<RunnableResourceProfile> {
+    Arc::new(RunnableResourceProfile {
         heavy_whole_tree_resolve: false,
         spawns_host_compiler: false,
         memory: runnable_memory_negligible(),
@@ -204,8 +204,8 @@ pub fn runnable_resource_profile(
     spawns_host_compiler: bool,
     memory: RunnableMemoryClass,
     execution_mode: ExecutionMode,
-) -> Rc<RunnableResourceProfile> {
-    Rc::new(RunnableResourceProfile {
+) -> Arc<RunnableResourceProfile> {
+    Arc::new(RunnableResourceProfile {
         heavy_whole_tree_resolve: heavy_whole_tree_resolve.clone(),
         spawns_host_compiler: spawns_host_compiler.clone(),
         memory: memory.clone(),
@@ -213,18 +213,18 @@ pub fn runnable_resource_profile(
     })
 }
 
-pub fn runnable_excludes_corpus_co_residence(profile: Rc<RunnableResourceProfile>) -> bool {
+pub fn runnable_excludes_corpus_co_residence(profile: Arc<RunnableResourceProfile>) -> bool {
     match profile.memory.clone() {
         RunnableMemoryClass::RunnableMemoryNegligible => false,
         RunnableMemoryClass::RunnableMemorySubstantial => true,
     }
 }
 
-pub fn runnable_heavy_whole_tree_resolve(profile: Rc<RunnableResourceProfile>) -> bool {
+pub fn runnable_heavy_whole_tree_resolve(profile: Arc<RunnableResourceProfile>) -> bool {
     profile.heavy_whole_tree_resolve.clone()
 }
 
-pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
+pub fn runnable_profile(r: Arc<Runnable>) -> Arc<RunnableResourceProfile> {
     match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
         Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
@@ -234,7 +234,7 @@ pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
     }
 }
 
-pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
+pub fn runnable_forbids_corpus_co_residence(r: Arc<Runnable>) -> bool {
     match (*r.clone()).clone() {
         Runnable::RunnableDiscoveryBatch { .. } => false,
         Runnable::RunnableSingleClaim { profile: p, .. } => {
@@ -285,16 +285,16 @@ pub enum Runnable {
     RunnableSingleClaim {
         entry: String,
         function: String,
-        profile: Rc<RunnableResourceProfile>,
+        profile: Arc<RunnableResourceProfile>,
     },
     RunnableDiscoveryBatch {
-        source_roots: Rc<Vec<String>>,
-        scan_dirs: Rc<Vec<String>>,
-        explicit_entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
+        source_roots: Arc<Vec<String>>,
+        scan_dirs: Arc<Vec<String>>,
+        explicit_entries: Arc<Vec<Arc<ScheduleWitnessEntry>>>,
         node_frontier_selection: NodeFrontierSelection,
-        exclude_substrings: Rc<Vec<String>>,
-        discovery_scope_dirs: Rc<Vec<String>>,
-        profile: Rc<RunnableResourceProfile>,
+        exclude_substrings: Arc<Vec<String>>,
+        discovery_scope_dirs: Arc<Vec<String>>,
+        profile: Arc<RunnableResourceProfile>,
     },
     RunnableKernelWorkload {
         fused_op_count: i64,
@@ -309,7 +309,7 @@ pub fn node_frontier_selection_applied(sel: NodeFrontierSelection) -> bool {
     }
 }
 
-pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
+pub fn runnable_selection_applied(r: Arc<Runnable>) -> bool {
     match (*r.clone()).clone() {
         Runnable::RunnableDiscoveryBatch {
             node_frontier_selection: sel,
@@ -322,18 +322,18 @@ pub fn runnable_selection_applied(r: Rc<Runnable>) -> bool {
     }
 }
 
-pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
+pub type Schedule = Arc<Vec<Arc<Vec<Arc<Runnable>>>>>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RealizationPlan<S> {
     pub target: ContentHash,
-    pub objective: Rc<RealizationObjective>,
+    pub objective: Arc<RealizationObjective>,
     pub schedule: Schedule,
-    pub total: Rc<CostAccount<S>>,
+    pub total: Arc<CostAccount<S>>,
     pub _phantom: std::marker::PhantomData<S>,
 }
 
-pub fn runnable_step_label(r: Rc<Runnable>) -> String {
+pub fn runnable_step_label(r: Arc<Runnable>) -> String {
     match (*r.clone()).clone() {
         Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
         Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
@@ -343,29 +343,32 @@ pub fn runnable_step_label(r: Rc<Runnable>) -> String {
     }
 }
 
-pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
+pub fn schedule_batch_contains_label(batch: Arc<Vec<Arc<Runnable>>>, target: String) -> bool {
     batch
         .clone()
         .iter()
         .cloned()
-        .fold(false, |acc: bool, r: Rc<Runnable>| {
+        .fold(false, |acc: bool, r: Arc<Runnable>| {
             (acc || (runnable_step_label(r.clone()) == target.clone()))
         })
 }
 
 pub fn schedule_generates_same_batch_count<S>(
-    left: Rc<RealizationPlan<S>>,
-    right: Rc<RealizationPlan<S>>,
+    left: Arc<RealizationPlan<S>>,
+    right: Arc<RealizationPlan<S>>,
 ) -> bool {
     ((left.schedule.clone().len() as i64) == (right.schedule.clone().len() as i64))
 }
 
-pub fn schedule_witness_entry_eq(a: Rc<ScheduleWitnessEntry>, b: Rc<ScheduleWitnessEntry>) -> bool {
+pub fn schedule_witness_entry_eq(
+    a: Arc<ScheduleWitnessEntry>,
+    b: Arc<ScheduleWitnessEntry>,
+) -> bool {
     (((a.entry.clone() == b.entry.clone()) && (a.function.clone() == b.function.clone()))
         && witness_kind_eq(a.kind.clone(), b.kind.clone()))
 }
 
-pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> bool {
+pub fn string_list_eq(mut left: Arc<Vec<String>>, mut right: Arc<Vec<String>>) -> bool {
     loop {
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
             break false;
@@ -380,9 +383,9 @@ pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> 
                 } else {
                     {
                         let __tco_0 =
-                            Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                            Arc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
                         let __tco_1 =
-                            Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                            Arc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
                         left = __tco_0;
                         right = __tco_1;
                         continue;
@@ -394,8 +397,8 @@ pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> 
 }
 
 pub fn schedule_witness_entry_list_eq(
-    mut left: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-    mut right: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
+    mut left: Arc<Vec<Arc<ScheduleWitnessEntry>>>,
+    mut right: Arc<Vec<Arc<ScheduleWitnessEntry>>>,
 ) -> bool {
     loop {
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
@@ -408,8 +411,8 @@ pub fn schedule_witness_entry_list_eq(
                     break false;
 } else {
                     {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                        let __tco_0 = Arc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = Arc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 left = __tco_0;
 right = __tco_1;
 continue;
@@ -420,7 +423,7 @@ continue;
     }
 }
 
-pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
+pub fn runnable_eq(left: Arc<Runnable>, right: Arc<Runnable>) -> bool {
     match (*left.clone()).clone() {
         Runnable::RunnableSingleClaim {
             entry: le,
@@ -490,8 +493,8 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
 }
 
 pub fn runnable_batch_eq(
-    mut left: Rc<Vec<Rc<Runnable>>>,
-    mut right: Rc<Vec<Rc<Runnable>>>,
+    mut left: Arc<Vec<Arc<Runnable>>>,
+    mut right: Arc<Vec<Arc<Runnable>>>,
 ) -> bool {
     loop {
         if ((left.clone().len() as i64) != (right.clone().len() as i64)) {
@@ -504,8 +507,8 @@ pub fn runnable_batch_eq(
                     break false;
 } else {
                     {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                        let __tco_0 = Arc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = Arc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 left = __tco_0;
 right = __tco_1;
 continue;
@@ -528,8 +531,8 @@ pub fn schedule_eq(mut left: Schedule, mut right: Schedule) -> bool {
                     break false;
 } else {
                     {
-                        let __tco_0 = Rc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                        let __tco_0 = Arc::new(left.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = Arc::new(right.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 left = __tco_0;
 right = __tco_1;
 continue;
@@ -541,7 +544,7 @@ continue;
 }
 
 pub fn schedule_generates_identical_schedule<S>(
-    plan: Rc<RealizationPlan<S>>,
+    plan: Arc<RealizationPlan<S>>,
     schedule: Schedule,
 ) -> bool {
     schedule_eq(plan.schedule.clone(), schedule.clone())

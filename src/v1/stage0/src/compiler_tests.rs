@@ -65,11 +65,11 @@ mod compiler_tests {
     /// Build SourceFile vec from discovered .dag files.
     fn source_files_from(
         pairs: &[(String, String)],
-    ) -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
+    ) -> Vec<std::sync::Arc<crate::v1_compiler_compile::SourceFile>> {
         pairs
             .iter()
             .map(|(path, content)| {
-                std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                     path: path.clone(),
                     content: content.clone(),
                 })
@@ -77,7 +77,10 @@ mod compiler_tests {
             .collect()
     }
 
-    fn parse_module_or_panic(path: &str, content: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
+    fn parse_module_or_panic(
+        path: &str,
+        content: &str,
+    ) -> std::sync::Arc<crate::v1_std_core::Node> {
         let tokens = tokenize(content.to_string(), path.to_string());
         let mut source_indices = HashMap::new();
         source_indices.insert(
@@ -86,7 +89,7 @@ mod compiler_tests {
         );
         let parsed = crate::v1_compiler_parse::parse_with_table(
             tokens.clone(),
-            std::rc::Rc::new(source_indices),
+            std::sync::Arc::new(source_indices),
             crate::v1_std_core::empty_intern_table(),
         );
         if let Some(err) = parsed.result.error.as_ref() {
@@ -135,17 +138,17 @@ mod compiler_tests {
     fn resolve_source_closure(
         entry_pairs: Vec<(String, String)>,
         roots: &[&str],
-    ) -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
+    ) -> Vec<std::sync::Arc<crate::v1_compiler_compile::SourceFile>> {
         let index = build_source_index(roots);
         let mut seen =
-            HashMap::<String, std::rc::Rc<crate::v1_compiler_compile::SourceFile>>::new();
+            HashMap::<String, std::sync::Arc<crate::v1_compiler_compile::SourceFile>>::new();
         let mut queue = Vec::new();
 
         for (path, content) in entry_pairs {
             let module_path = module_path_from_source(&path, &content);
             seen.insert(
                 module_path,
-                std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                     path: path.clone(),
                     content: content.clone(),
                 }),
@@ -161,7 +164,7 @@ mod compiler_tests {
                 if let Some((path, file_content)) = index.get(&module_path).cloned() {
                     seen.insert(
                         module_path,
-                        std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                        std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                             path: path.clone(),
                             content: file_content.clone(),
                         }),
@@ -177,7 +180,7 @@ mod compiler_tests {
     }
 
     /// Build the self-compile source closure from src/v1 entry modules with dag as a dependency pool.
-    fn self_compile_sources() -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
+    fn self_compile_sources() -> Vec<std::sync::Arc<crate::v1_compiler_compile::SourceFile>> {
         resolve_source_closure(discover_dag_files("src/v1"), &["src/v1", "dag"])
     }
 
@@ -235,7 +238,8 @@ mod compiler_tests {
             "module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
         );
-        let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+        let result =
+            crate::v1_compiler_parse::parse(tokens, std::sync::Arc::new(im::HashMap::new()));
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
@@ -262,8 +266,10 @@ mod compiler_tests {
                     last.shape
                 );
 
-                let result =
-                    crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im::HashMap::new()));
+                let result = crate::v1_compiler_parse::parse(
+                    tokens,
+                    std::sync::Arc::new(im::HashMap::new()),
+                );
 
                 assert!(
                     result.module.is_some(),
@@ -287,11 +293,11 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(16 * 1024 * 1024)
             .spawn(|| {
-                let source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let source = std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo { x: Int, name: String }\nfn add(a: Int, b: Int) -> Int { a + b }\n".to_string(),
                 });
-                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let result = crate::v1_compiler_compile::compile_sources(std::sync::Arc::new(im::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
 
                 assert!(
                     !result.files.is_empty(),
@@ -328,20 +334,20 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_a = std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_a.dag".to_string(),
                     content: "module module_a\ntype Widget { x: String }\ntype Gadget { y: String }\n".to_string(),
                 });
-                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_b = std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_b.dag".to_string(),
                     content: "module module_b\nimport module_a { Gadget }\nfn use_widget(w: Widget) -> Widget { w }\n".to_string(),
                 });
-                let module_c = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_c = std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_c.dag".to_string(),
                     content: "module module_c\nimport module_a { Widget }\nfn use_widget(w: Widget) -> Widget { w }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![module_a, module_b, module_c]),
+                    std::sync::Arc::new(im::vector![module_a, module_b, module_c]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let unlisted: Vec<_> = result.diagnostics.iter()
@@ -373,16 +379,16 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_a = std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_a.dag".to_string(),
                     content: "module module_a\ntype Sealed sole_constructor { x: String }\nfn make_sealed(v: String) -> Sealed { Sealed { x: v } }\n".to_string(),
                 });
-                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_b = std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_b.dag".to_string(),
                     content: "module module_b\nimport module_a { Sealed }\nfn bad_ctor(v: String) -> Sealed { Sealed { x: v } }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![module_a, module_b]),
+                    std::sync::Arc::new(im::vector![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
@@ -426,16 +432,16 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
-                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_a = std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_a.dag".to_string(),
                     content: "module module_a\ntype FieldlessFoo sole_constructor { }\nfn make_fieldless() -> FieldlessFoo { FieldlessFoo { } }\nfn identity(f: FieldlessFoo) -> FieldlessFoo { f }\n".to_string(),
                 });
-                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                let module_b = std::sync::Arc::new(crate::v1_compiler_compile::SourceFile {
                     path: "module_b.dag".to_string(),
                     content: "module module_b\nimport module_a { FieldlessFoo }\nfn bad_ctor() -> FieldlessFoo { FieldlessFoo { } }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(im::vector![module_a, module_b]),
+                    std::sync::Arc::new(im::vector![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
@@ -475,7 +481,7 @@ mod compiler_tests {
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
                 let entry_pairs = discover_dag_files("dag/extdeps/llm");
-                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dag"]).into());
+                let sources = std::sync::Arc::new(resolve_source_closure(entry_pairs, &["dag"]).into());
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
                     crate::v1_compiler_artifact::RenderTarget::Rust,
@@ -518,7 +524,7 @@ mod compiler_tests {
                     );
                     let result = crate::v1_compiler_parse::parse(
                         tokens,
-                        std::rc::Rc::new(im::HashMap::new()),
+                        std::sync::Arc::new(im::HashMap::new()),
                     );
                     assert!(
                         result.module.is_some(),
@@ -544,7 +550,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = std::rc::Rc::new(self_compile_sources().into());
+                let sources = std::sync::Arc::new(self_compile_sources().into());
                 let result = crate::v1_compiler_compile::resolve_sources(sources);
 
                 let errors: Vec<_> = result
@@ -576,8 +582,8 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources: std::rc::Rc<im::Vector<_>> =
-                    std::rc::Rc::new(self_compile_sources().into());
+                let sources: std::sync::Arc<im::Vector<_>> =
+                    std::sync::Arc::new(self_compile_sources().into());
                 let source_count = sources.len();
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
@@ -633,7 +639,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = std::rc::Rc::new(self_compile_sources().into());
+                let sources = std::sync::Arc::new(self_compile_sources().into());
 
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
@@ -989,38 +995,38 @@ mod compiler_tests {
 
     fn shaped_type_node(
         name: &str,
-        children: Vec<std::rc::Rc<crate::v1_std_core::Node>>,
-    ) -> std::rc::Rc<crate::v1_std_core::Node> {
+        children: Vec<std::sync::Arc<crate::v1_std_core::Node>>,
+    ) -> std::sync::Arc<crate::v1_std_core::Node> {
         let span = crate::v1_std_core::make_span(0, name.len() as i64);
-        std::rc::Rc::new(crate::v1_std_core::Node {
+        std::sync::Arc::new(crate::v1_std_core::Node {
             name: name.to_string(),
             ident: None,
             span: span.clone(),
             ident_span: Some(span),
-            children: std::rc::Rc::new(children.into()),
+            children: std::sync::Arc::new(children.into()),
             connective: crate::v1_std_core::Connective::NoConnective,
-            params: std::rc::Rc::new(im::Vector::new()),
+            params: std::sync::Arc::new(im::Vector::new()),
             inferred: None,
             return_cardinality: crate::v1_std_core::Cardinality::Required,
-            uses: std::rc::Rc::new(im::Vector::new()),
+            uses: std::sync::Arc::new(im::Vector::new()),
             body: None,
             transport: None,
-            properties: std::rc::Rc::new(im::Vector::new()),
+            properties: std::sync::Arc::new(im::Vector::new()),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
             match_pattern: None,
-            expr_data: std::rc::Rc::new(crate::v1_std_core::ExprData::NoExprData),
+            expr_data: std::sync::Arc::new(crate::v1_std_core::ExprData::NoExprData),
         })
     }
 
-    fn named_type_node(name: &str) -> std::rc::Rc<crate::v1_std_core::Node> {
+    fn named_type_node(name: &str) -> std::sync::Arc<crate::v1_std_core::Node> {
         shaped_type_node(name, Vec::new())
     }
 
     #[test]
     fn rust_btree_set_ord_eligibility_requires_nominal_carrier_shape() {
-        let source_indices = std::rc::Rc::new(HashMap::new());
+        let source_indices = std::sync::Arc::new(HashMap::new());
         let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
         let symbol = named_type_node("Symbol");
         let diff_id = shaped_type_node("DiffId", vec![symbol.clone()]);
@@ -1200,7 +1206,7 @@ mod compiler_tests {
                         crate::v1_rt::rc_map_insert(
                             crate::v1_rt::rc_empty_map::<
                                 String,
-                                std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                                std::sync::Arc<crate::v1_std_core::NewlineIndex>,
                             >(),
                             si.file.clone(),
                             si.clone(),
@@ -1237,7 +1243,7 @@ mod compiler_tests {
                 let resolve_si = sources.iter().fold(
                     crate::v1_rt::rc_empty_map::<
                         String,
-                        std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                        std::sync::Arc<crate::v1_std_core::NewlineIndex>,
                     >(),
                     |acc, s| {
                         crate::v1_rt::rc_map_insert(
@@ -1251,7 +1257,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules.into()),
+                    std::sync::Arc::new(modules.into()),
                     resolve_si,
                 );
                 let resolve_total = t_stage.elapsed();
@@ -1270,7 +1276,7 @@ mod compiler_tests {
 
                 let t_stage = Instant::now();
                 let source_indices = sources.iter().fold(
-                    HashMap::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>::new(),
+                    HashMap::<String, std::sync::Arc<crate::v1_std_core::NewlineIndex>>::new(),
                     |mut acc, source| {
                         acc.insert(
                             source.path.clone(),
@@ -1284,7 +1290,7 @@ mod compiler_tests {
                 );
                 let typed = crate::v1_compiler_infer::reconcile(
                     graph,
-                    std::rc::Rc::new(source_indices),
+                    std::sync::Arc::new(source_indices),
                     intern_table_p.clone(),
                 );
                 let reconcile_total = t_stage.elapsed();
@@ -1392,7 +1398,7 @@ mod compiler_tests {
                         crate::v1_rt::rc_map_insert(
                             crate::v1_rt::rc_empty_map::<
                                 String,
-                                std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                                std::sync::Arc<crate::v1_std_core::NewlineIndex>,
                             >(),
                             si.file.clone(),
                             si.clone(),
@@ -1413,7 +1419,7 @@ mod compiler_tests {
                 let resolve_si = sources.iter().fold(
                     crate::v1_rt::rc_empty_map::<
                         String,
-                        std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                        std::sync::Arc<crate::v1_std_core::NewlineIndex>,
                     >(),
                     |acc, s| {
                         crate::v1_rt::rc_map_insert(
@@ -1427,7 +1433,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules.into()),
+                    std::sync::Arc::new(modules.into()),
                     resolve_si,
                 );
                 let resolve_elapsed = t.elapsed();
@@ -1463,7 +1469,7 @@ mod compiler_tests {
                 let source_indices = newline_indices.iter().cloned().fold(
                     crate::v1_rt::rc_empty_map::<
                         String,
-                        std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                        std::sync::Arc<crate::v1_std_core::NewlineIndex>,
                     >(),
                     |acc, index| {
                         crate::v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
@@ -1533,7 +1539,7 @@ mod compiler_tests {
 
                 // 6. Emit
                 let artifact_plan = crate::v1_compiler_compile::default_artifact_plan(
-                    std::rc::Rc::new(
+                    std::sync::Arc::new(
                         typed
                             .modules
                             .iter()
@@ -1647,7 +1653,7 @@ mod compiler_tests {
                         crate::v1_rt::rc_map_insert(
                             crate::v1_rt::rc_empty_map::<
                                 String,
-                                std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                                std::sync::Arc<crate::v1_std_core::NewlineIndex>,
                             >(),
                             si.file.clone(),
                             si.clone(),
@@ -1665,7 +1671,7 @@ mod compiler_tests {
                 let resolve_si = sources.iter().fold(
                     crate::v1_rt::rc_empty_map::<
                         String,
-                        std::rc::Rc<crate::v1_std_core::NewlineIndex>,
+                        std::sync::Arc<crate::v1_std_core::NewlineIndex>,
                     >(),
                     |acc, s| {
                         crate::v1_rt::rc_map_insert(
@@ -1679,7 +1685,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules.into()),
+                    std::sync::Arc::new(modules.into()),
                     resolve_si,
                 );
                 let setup_time = t0.elapsed();
@@ -1693,10 +1699,10 @@ mod compiler_tests {
 
                 let mut mi_raw = HashMap::<
                     String,
-                    std::rc::Rc<crate::v1_compiler_infer_items::TypedModule>,
+                    std::sync::Arc<crate::v1_compiler_infer_items::TypedModule>,
                 >::new();
-                let source_indices = std::rc::Rc::new(sources.iter().fold(
-                    HashMap::<String, std::rc::Rc<crate::v1_std_core::NewlineIndex>>::new(),
+                let source_indices = std::sync::Arc::new(sources.iter().fold(
+                    HashMap::<String, std::sync::Arc<crate::v1_std_core::NewlineIndex>>::new(),
                     |mut acc, source| {
                         acc.insert(
                             source.path.clone(),
@@ -1710,7 +1716,7 @@ mod compiler_tests {
                 ));
                 let mut variant_surfaces = crate::v1_rt::rc_empty_map::<
                     String,
-                    std::rc::Rc<crate::v1_compiler_infer::VariantExportSurface>,
+                    std::sync::Arc<crate::v1_compiler_infer::VariantExportSurface>,
                 >();
 
                 for resolved in graph.modules.iter() {
@@ -1721,7 +1727,7 @@ mod compiler_tests {
 
                     eprint!("  {:>35} ({:>3} items) ... ", name, item_count);
 
-                    let module_index = std::rc::Rc::new(mi_raw.clone());
+                    let module_index = std::sync::Arc::new(mi_raw.clone());
 
                     let t_unres = Instant::now();
                     let _unres = crate::v1_compiler_infer::build_type_env_unresolved(

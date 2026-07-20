@@ -68,8 +68,8 @@ fn optional_shared_type_return_renders_option_rc_signature() {
     let emitted = emit(source);
     let sig = return_sig(&emitted, "maybe_node");
     assert!(
-        sig.contains("Option<") && sig.contains("Rc<"),
-        "a `-> Node?` return on a shared type must render `Option<Rc<..>>`, got:\n{sig}"
+        sig.contains("Option<") && sig.contains("Arc<"),
+        "a `-> Node?` return on a shared type must render `Option<Arc<..>>`, got:\n{sig}"
     );
 }
 
@@ -79,7 +79,7 @@ fn non_optional_shared_type_return_stays_bare_rc() {
     let emitted = emit(source);
     let sig = return_sig(&emitted, "always_node");
     assert!(
-        sig.contains("Rc<") && !sig.contains("Option<"),
-        "a non-optional `-> Node` must render bare `Rc<..>` without Option, got:\n{sig}"
+        sig.contains("Arc<") && !sig.contains("Option<"),
+        "a non-optional `-> Node` must render bare `Arc<..>` without Option, got:\n{sig}"
     );
 }

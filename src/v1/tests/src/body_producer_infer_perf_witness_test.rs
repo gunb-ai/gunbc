@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 
@@ -22,13 +22,13 @@ fn source_roots() -> [std::path::PathBuf; 2] {
     [ws.join("src/v2"), ws.join("dag")]
 }
 
-fn sources_for(entry: &str) -> Vec<Rc<SourceFile>> {
+fn sources_for(entry: &str) -> Vec<Arc<SourceFile>> {
     let ws = workspace_root();
     let content = std::fs::read_to_string(ws.join(entry)).expect("read entry");
     resolve_imports_transitively_with_source_roots(entry, &content, &source_roots())
 }
 
-fn sources_for_inline(entry: &str, content: &str) -> Vec<Rc<SourceFile>> {
+fn sources_for_inline(entry: &str, content: &str) -> Vec<Arc<SourceFile>> {
     resolve_imports_transitively_with_source_roots(entry, content, &source_roots())
 }
 
@@ -46,7 +46,7 @@ fn non_complexity_errors(
 #[test]
 fn body_producer_infer_perf_witness_resolves_clean() {
     let sources = sources_for(ENTRY);
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     let errs = non_complexity_errors(&resolved);
     assert!(
         errs.is_empty() && resolved.graph.is_some(),
@@ -60,7 +60,7 @@ fn body_producer_infer_perf_witness_wrong_type_still_rejects() {
         "src/v2/test/claim/manual/pbp_body_producer_wrong_type_repro.dag",
         WRONG_TYPE_SRC,
     );
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     let errs = non_complexity_errors(&resolved);
     assert!(
         !errs.is_empty(),

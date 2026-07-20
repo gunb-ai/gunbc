@@ -5,7 +5,7 @@
 //! re-export chain where the consumer imports a coproduct arm through a proxy.
 
 use im::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
 use v1_compiler::v1_compiler_infer::{
@@ -28,12 +28,12 @@ const REEXPORT: &str = "module test.reexport\nimport test.provider { B }\n";
 const CONSUMER: &str = "module test.consumer\nimport test.reexport { B }\nfn f() -> E { B }\n";
 
 type ResolvedGraphFixture = (
-    Rc<im::Vector<Rc<ResolvedModule>>>,
-    Rc<HashMap<String, Rc<NewlineIndex>>>,
-    Rc<InternTable>,
+    Arc<im::Vector<Arc<ResolvedModule>>>,
+    Arc<HashMap<String, Arc<NewlineIndex>>>,
+    Arc<InternTable>,
 );
 
-fn fixture_sources() -> Vec<Rc<SourceFile>> {
+fn fixture_sources() -> Vec<Arc<SourceFile>> {
     resolve_imports_transitively("consumer.dag", CONSUMER)
         .into_iter()
         .chain(resolve_imports_transitively("provider.dag", PROVIDER))
@@ -47,11 +47,11 @@ fn fixture_sources() -> Vec<Rc<SourceFile>> {
         .collect()
 }
 
-fn resolved_module_graph(sources: Rc<im::Vector<Rc<SourceFile>>>) -> ResolvedGraphFixture {
+fn resolved_module_graph(sources: Arc<im::Vector<Arc<SourceFile>>>) -> ResolvedGraphFixture {
     let frontend = front_end_sources(sources);
     let graph = frontend.graph.clone().expect("resolved module graph");
     let source_indices = frontend.newline_indices.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
         |acc, si| v1_rt::rc_map_insert(acc, si.file.clone(), si),
     );
     let norm = normalize_graph(graph, source_indices.clone());
@@ -72,12 +72,13 @@ fn hard_diagnostic_messages(result: &TypecheckModuleResult) -> Vec<String> {
 }
 
 fn typecheck_resolved_incremental(
-    modules: &im::Vector<Rc<ResolvedModule>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    intern_table: Rc<InternTable>,
-) -> Vec<Rc<TypecheckModuleResult>> {
-    let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
-    let mut variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>> = v1_rt::rc_empty_map();
+    modules: &im::Vector<Arc<ResolvedModule>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    intern_table: Arc<InternTable>,
+) -> Vec<Arc<TypecheckModuleResult>> {
+    let mut module_index: Arc<HashMap<String, Arc<TypedModule>>> = v1_rt::rc_empty_map();
+    let mut variant_surfaces: Arc<HashMap<String, Arc<VariantExportSurface>>> =
+        v1_rt::rc_empty_map();
     let mut results = Vec::new();
     for resolved in modules {
         let tc = typecheck_module(
@@ -106,9 +107,9 @@ fn typecheck_resolved_incremental(
 }
 
 fn consumer_resolved<'a>(
-    modules: &'a im::Vector<Rc<ResolvedModule>>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> &'a Rc<ResolvedModule> {
+    modules: &'a im::Vector<Arc<ResolvedModule>>,
+    source_indices: &Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> &'a Arc<ResolvedModule> {
     modules
         .iter()
         .find(|m| authored_name_at(source_indices.clone(), m.module.clone()) == "test.consumer")
@@ -134,7 +135,7 @@ fn variant_reexport_chain_full_pipeline_is_clean() {
 
 #[test]
 fn variant_reexport_incremental_surfaces_match_full_pipeline_fingerprint() {
-    let sources = Rc::new(fixture_sources().into());
+    let sources = Arc::new(fixture_sources().into());
     let pipeline = compile_multi(&[
         ("provider.dag", PROVIDER),
         ("reexport.dag", REEXPORT),
@@ -158,7 +159,7 @@ fn variant_reexport_incremental_surfaces_match_full_pipeline_fingerprint() {
 
 #[test]
 fn variant_reexport_empty_surfaces_red_control() {
-    let sources = Rc::new(fixture_sources().into());
+    let sources = Arc::new(fixture_sources().into());
     let (modules, source_indices, intern_table) = resolved_module_graph(sources);
 
     let incremental =
@@ -168,7 +169,7 @@ fn variant_reexport_empty_surfaces_red_control() {
             .is_empty(),
         "incremental path must be clean before RED control"
     );
-    let module_index: Rc<HashMap<String, Rc<TypedModule>>> = incremental
+    let module_index: Arc<HashMap<String, Arc<TypedModule>>> = incremental
         .iter()
         .map(|tc| {
             let path = authored_name_at(source_indices.clone(), tc.typed.module.clone());

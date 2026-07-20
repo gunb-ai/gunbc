@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_interpreter::{ExecutionMode, Value};
@@ -34,9 +34,9 @@ fn witness_bash_stdin_executes_body() -> Bool {
 
 fn run_wet(entry: &str) -> Value {
     let roots = crate::helpers::v2_layer_roots();
-    let sources: Vec<Rc<SourceFile>> =
+    let sources: Vec<Arc<SourceFile>> =
         resolve_imports_transitively_with_source_roots("shell_stdin_wet_test.dag", SOURCE, &roots);
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     let graph = resolved
         .graph
         .as_ref()

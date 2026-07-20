@@ -87,7 +87,7 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceFile {
@@ -97,39 +97,39 @@ pub struct SourceFile {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PipelineResult {
-    pub files: Rc<Vec<Rc<TextFile>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub complexity: Rc<ComplexityReport>,
-    pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
-    pub artifact_plan: Rc<ArtifactPlan>,
-    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub files: Arc<Vec<Arc<TextFile>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
+    pub complexity: Arc<ComplexityReport>,
+    pub ownership: Arc<Vec<Arc<OwnershipProof>>>,
+    pub artifact_plan: Arc<ArtifactPlan>,
+    pub newline_indices: Arc<Vec<Arc<NewlineIndex>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendResult {
-    pub graph: Option<Rc<ModuleGraph>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
-    pub intern_table: Rc<InternTable>,
+    pub graph: Option<Arc<ModuleGraph>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
+    pub newline_indices: Arc<Vec<Arc<NewlineIndex>>>,
+    pub intern_table: Arc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendAccum {
-    pub parse_results: Rc<Vec<Rc<ParseResult>>>,
-    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
-    pub intern_table: Rc<InternTable>,
+    pub parse_results: Arc<Vec<Arc<ParseResult>>>,
+    pub newline_indices: Arc<Vec<Arc<NewlineIndex>>>,
+    pub intern_table: Arc<InternTable>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontendPrepared {
-    pub tokens: Rc<Vec<Rc<Token>>>,
-    pub newline_index: Rc<NewlineIndex>,
+    pub tokens: Arc<Vec<Arc<Token>>>,
+    pub newline_index: Arc<NewlineIndex>,
 }
 
-pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> {
-    Rc::new({
+pub fn extract_func_entries(typed: Arc<ResolvedGraph>) -> Arc<Vec<Arc<FuncEntry>>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for m in Rc::new({
+        for m in Arc::new({
             let mut __result = Vec::new();
             for m in typed.modules.clone().iter().cloned() {
                 if {
@@ -151,9 +151,9 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
         .cloned()
         {
             __result.extend(
-                (*Rc::new({
+                (*Arc::new({
                     let mut __result = Vec::new();
-                    for item in Rc::new({
+                    for item in Arc::new({
                         let mut __result = Vec::new();
                         for item in m.items.clone().iter().cloned() {
                             if (item.body.clone() != None) {
@@ -165,7 +165,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                     .iter()
                     .cloned()
                     {
-                        __result.push(Rc::new(FuncEntry {
+                        __result.push(Arc::new(FuncEntry {
                             name: authored_name_at(
                                 m.type_env.clone().source_indices.clone(),
                                 item.clone(),
@@ -187,14 +187,14 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
     })
 }
 
-pub fn build_recursion_context(typed: Rc<ResolvedGraph>) -> RecursionContext {
+pub fn build_recursion_context(typed: Arc<ResolvedGraph>) -> RecursionContext {
     RecursionContext {}
 }
 
-pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>> {
-    Rc::new({
+pub fn module_ownership_proofs(m: Arc<TypedModule>) -> Arc<Vec<Arc<OwnershipProof>>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for item in Rc::new({
+        for item in Arc::new({
             let mut __result = Vec::new();
             for item in m.items.clone().iter().cloned() {
                 if (item.body.clone() != None) {
@@ -217,10 +217,10 @@ pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>
     })
 }
 
-pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<OwnershipProof>>> {
-    Rc::new({
+pub fn extract_ownership_proofs(typed: Arc<ResolvedGraph>) -> Arc<Vec<Arc<OwnershipProof>>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for m in Rc::new({
+        for m in Arc::new({
             let mut __result = Vec::new();
             for m in typed.modules.clone().iter().cloned() {
                 if {
@@ -247,12 +247,12 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
     })
 }
 
-pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
+pub fn ownership_diagnostics(proofs: Arc<Vec<Arc<OwnershipProof>>>) -> Arc<Vec<Arc<ErrorNode>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for proof in proofs.clone().iter().cloned() {
             __result.extend(
-                (*Rc::new({
+                (*Arc::new({
                     let mut __result = Vec::new();
                     for decision in proof.decisions.clone().iter().cloned() {
                         __result.extend(
@@ -262,8 +262,8 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
                                     consumer_count: count,
                                     sites,
                                     ..
-                                } => Rc::new(vec![make_error_node(
-                                    Rc::new(CompilerDiagnostic::OwnershipViolation {
+                                } => Arc::new(vec![make_error_node(
+                                    Arc::new(CompilerDiagnostic::OwnershipViolation {
                                         binding: binding.clone(),
                                         fn_name: proof.func_name.clone(),
                                         consumers: count.clone(),
@@ -271,7 +271,7 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
                                     }),
                                     proof.func_name.clone(),
                                 )]),
-                                _ => Rc::new(vec![]),
+                                _ => Arc::new(vec![]),
                             })
                             .iter()
                             .cloned(),
@@ -290,7 +290,7 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
-    pub census_only_sources: Rc<Vec<Rc<SourceFile>>>,
+    pub census_only_sources: Arc<Vec<Arc<SourceFile>>>,
 }
 
 pub fn census_only_sources_note() -> String {
@@ -302,17 +302,17 @@ pub fn census_only_sources_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
-    Rc::new(CompilePipelineOptions {
+pub fn default_compile_pipeline_options() -> Arc<CompilePipelineOptions> {
+    Arc::new(CompilePipelineOptions {
         analyze_complexity: false,
-        census_only_sources: Rc::new(vec![]),
+        census_only_sources: Arc::new(vec![]),
     })
 }
 
 pub fn run_complexity_analysis(
-    typed: Rc<ResolvedGraph>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<ComplexityReport> {
+    typed: Arc<ResolvedGraph>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+) -> Arc<ComplexityReport> {
     {
         let func_entries = extract_func_entries(typed.clone());
         let recursion_ctx = build_recursion_context(typed.clone());
@@ -324,12 +324,12 @@ pub fn run_complexity_analysis(
     }
 }
 
-pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
+pub fn complexity_diagnostics(complexity: Arc<ComplexityReport>) -> Arc<Vec<Arc<ErrorNode>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for v in complexity.violations.clone().iter().cloned() {
             __result.push(make_error_node(
-                Rc::new(CompilerDiagnostic::ComplexityUnknown {
+                Arc::new(CompilerDiagnostic::ComplexityUnknown {
                     func_name: v.func_name.clone(),
                     reason: v.reason.clone(),
                     span: v.span.clone(),
@@ -341,16 +341,16 @@ pub fn complexity_diagnostics(complexity: Rc<ComplexityReport>) -> Rc<Vec<Rc<Err
     })
 }
 
-pub fn empty_artifact_plan() -> Rc<ArtifactPlan> {
-    Rc::new(ArtifactPlan {
-        artifacts: Rc::new(vec![]),
-        boundaries: Rc::new(vec![]),
+pub fn empty_artifact_plan() -> Arc<ArtifactPlan> {
+    Arc::new(ArtifactPlan {
+        artifacts: Arc::new(vec![]),
+        boundaries: Arc::new(vec![]),
     })
 }
 
-pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
+pub fn compile_bundle_error(message: String) -> Arc<ErrorNode> {
     make_error_node(
-        Rc::new(CompilerDiagnostic::InternalError {
+        Arc::new(CompilerDiagnostic::InternalError {
             message: message.clone(),
             span: no_span(),
         }),
@@ -358,7 +358,7 @@ pub fn compile_bundle_error(message: String) -> Rc<ErrorNode> {
     )
 }
 
-pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<EmitResult> {
+pub fn emit_artifact(typed: Arc<ResolvedGraph>, artifact: Arc<Artifact>) -> Arc<EmitResult> {
     match artifact.target.clone() {
         RenderTarget::Rust => emit_rust(typed.clone()),
         RenderTarget::Python => emit_python(typed.clone()),
@@ -367,7 +367,7 @@ pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<Emi
     }
 }
 
-pub fn json_list(items: Rc<Vec<String>>) -> String {
+pub fn json_list(items: Arc<Vec<String>>) -> String {
     v1_rt::concat(
         v1_rt::concat("[".to_string(), items.clone().join(&", ".to_string())),
         "]".to_string(),
@@ -381,9 +381,9 @@ pub fn json_optional_string(value: Option<String>) -> String {
     }
 }
 
-pub fn dag_node_missing_ref_error(node: Rc<Node>) -> Rc<ErrorNode> {
+pub fn dag_node_missing_ref_error(node: Arc<Node>) -> Arc<ErrorNode> {
     make_error_node(
-        Rc::new(CompilerDiagnostic::InternalError {
+        Arc::new(CompilerDiagnostic::InternalError {
             message: v1_rt::concat(
                 v1_rt::concat(
                     "dag artifact: node missing from nodes table (key=".to_string(),
@@ -398,41 +398,41 @@ pub fn dag_node_missing_ref_error(node: Rc<Node>) -> Rc<ErrorNode> {
 }
 
 pub fn dag_emit_check_ref_target(
-    node: Rc<Node>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+    node: Arc<Node>,
+    key_to_id: Arc<HashMap<String, String>>,
+) -> Arc<Vec<Arc<ErrorNode>>> {
     match v1_rt::map_get(&key_to_id, dag_node_key(node.clone())) {
-        Some(_) => Rc::new(vec![]),
-        None => Rc::new(vec![dag_node_missing_ref_error(node.clone())]),
+        Some(_) => Arc::new(vec![]),
+        None => Arc::new(vec![dag_node_missing_ref_error(node.clone())]),
     }
 }
 
 pub fn dag_emit_check_optional_ref_target(
-    value: Option<Rc<Node>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+    value: Option<Arc<Node>>,
+    key_to_id: Arc<HashMap<String, String>>,
+) -> Arc<Vec<Arc<ErrorNode>>> {
     match value.clone() {
         Some(inner) => dag_emit_check_ref_target(inner.clone(), key_to_id.clone()),
-        None => Rc::new(vec![]),
+        None => Arc::new(vec![]),
     }
 }
 
 pub fn dag_emit_check_inferred_ref_target(
-    value: Option<Rc<InferredNode>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+    value: Option<Arc<InferredNode>>,
+    key_to_id: Arc<HashMap<String, String>>,
+) -> Arc<Vec<Arc<ErrorNode>>> {
     match value.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
             dag_emit_check_ref_target(n.clone(), key_to_id.clone())
         }
-        _ => Rc::new(vec![]),
+        _ => Arc::new(vec![]),
     }
 }
 
 pub fn dag_emit_check_node_refs(
-    node: Rc<Node>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
+    node: Arc<Node>,
+    key_to_id: Arc<HashMap<String, String>>,
+) -> Arc<Vec<Arc<ErrorNode>>> {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -441,9 +441,9 @@ pub fn dag_emit_check_node_refs(
                         v1_rt::concat(
                             v1_rt::concat(
                                 if is_import_statement_node(node.clone()) {
-                                    Rc::new(vec![])
+                                    Arc::new(vec![])
                                 } else {
-                                    Rc::new({
+                                    Arc::new({
                                         let mut __result = Vec::new();
                                         for c in node.children.clone().iter().cloned() {
                                             __result.extend(
@@ -459,9 +459,9 @@ pub fn dag_emit_check_node_refs(
                                     })
                                 },
                                 if is_module_shell_node(node.clone()) {
-                                    Rc::new(vec![])
+                                    Arc::new(vec![])
                                 } else {
-                                    Rc::new({
+                                    Arc::new({
                                         let mut __result = Vec::new();
                                         for p in node.params.clone().iter().cloned() {
                                             __result.extend(
@@ -477,7 +477,7 @@ pub fn dag_emit_check_node_refs(
                                     })
                                 },
                             ),
-                            Rc::new({
+                            Arc::new({
                                 let mut __result = Vec::new();
                                 for u in node.uses.clone().iter().cloned() {
                                     __result.extend(
@@ -493,7 +493,7 @@ pub fn dag_emit_check_node_refs(
                     ),
                     dag_emit_check_optional_ref_target(node.transport.clone(), key_to_id.clone()),
                 ),
-                Rc::new({
+                Arc::new({
                     let mut __result = Vec::new();
                     for p in node.properties.clone().iter().cloned() {
                         __result.extend(
@@ -512,10 +512,10 @@ pub fn dag_emit_check_node_refs(
 }
 
 pub fn dag_emit_ref_errors(
-    order: Rc<Vec<Rc<Node>>>,
-    key_to_id: Rc<HashMap<String, String>>,
-) -> Rc<Vec<Rc<ErrorNode>>> {
-    Rc::new({
+    order: Arc<Vec<Arc<Node>>>,
+    key_to_id: Arc<HashMap<String, String>>,
+) -> Arc<Vec<Arc<ErrorNode>>> {
+    Arc::new({
         let mut __result = Vec::new();
         for n in order.clone().iter().cloned() {
             __result.extend(
@@ -528,8 +528,8 @@ pub fn dag_emit_ref_errors(
     })
 }
 
-pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, String>> {
-    Rc::new(
+pub fn build_dag_key_to_id(order: Arc<Vec<Arc<Node>>>) -> Arc<HashMap<String, String>> {
+    Arc::new(
         order
             .clone()
             .iter()
@@ -542,7 +542,7 @@ pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Strin
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, pair: (i64, Rc<Node>)| {
+        |acc: Arc<HashMap<String, String>>, pair: (i64, Arc<Node>)| {
             v1_rt::rc_map_insert(
                 acc,
                 dag_node_key(pair.1.clone()),
@@ -552,16 +552,18 @@ pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Strin
     )
 }
 
-pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
+pub fn dag_graph_source_indices(
+    typed: Arc<ResolvedGraph>,
+) -> Arc<HashMap<String, Arc<NewlineIndex>>> {
     typed.modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+        |acc: Arc<HashMap<String, Arc<NewlineIndex>>>, m: Arc<TypedModule>| {
             v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
         },
     )
 }
 
-pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
+pub fn serialize_node_ref(node: Arc<Node>, key_to_id: Arc<HashMap<String, String>>) -> String {
     match v1_rt::map_get(&key_to_id, dag_node_key(node.clone())) {
         Some(id) => v1_rt::concat(
             v1_rt::concat("{\"$ref\": ".to_string(), json_quote(id.clone())),
@@ -572,8 +574,8 @@ pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>
 }
 
 pub fn json_optional_node_ref(
-    value: Option<Rc<Node>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    value: Option<Arc<Node>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     match value.clone() {
         Some(inner) => serialize_node_ref(inner.clone(), key_to_id.clone()),
@@ -582,8 +584,8 @@ pub fn json_optional_node_ref(
 }
 
 pub fn json_optional_inferred_node_ref(
-    value: Option<Rc<InferredNode>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    value: Option<Arc<InferredNode>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     match value.clone() {
         Some(inner) => serialize_inferred_node_ref(inner.clone(), key_to_id.clone()),
@@ -591,7 +593,7 @@ pub fn json_optional_inferred_node_ref(
     }
 }
 
-pub fn json_optional_span(value: Option<Rc<SourceSpan>>) -> String {
+pub fn json_optional_span(value: Option<Arc<SourceSpan>>) -> String {
     match value.clone() {
         Some(inner) => serialize_span(inner.clone()),
         None => "null".to_string(),
@@ -630,7 +632,7 @@ pub fn field_value_shape_name(value: FieldValueShape) -> String {
     }
 }
 
-pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
+pub fn var_binding_kind_name(value: Arc<VarBindingKind>) -> String {
     match (*value.clone()).clone() {
         VarBindingKind::LocalValueBinding => "LocalValueBinding".to_string(),
         VarBindingKind::FunctionValueBinding => "FunctionValueBinding".to_string(),
@@ -682,7 +684,7 @@ pub fn unary_op_name(value: UnaryOpKind) -> String {
     }
 }
 
-pub fn serialize_span(span: Rc<SourceSpan>) -> String {
+pub fn serialize_span(span: Arc<SourceSpan>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -696,8 +698,8 @@ pub fn serialize_span(span: Rc<SourceSpan>) -> String {
 }
 
 pub fn serialize_import_node(
-    imp: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    imp: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let names_json = if import_is_all(imp.clone()) {
@@ -706,7 +708,7 @@ pub fn serialize_import_node(
             v1_rt::concat(
                 v1_rt::concat(
                     "{\"kind\": \"ImportSpecific\", \"names\": ".to_string(),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for v in import_specific_names_at(imp.clone(), source_indices.clone())
                             .iter()
@@ -742,7 +744,7 @@ pub fn serialize_import_node(
     }
 }
 
-pub fn serialize_field_summary(summary: Rc<FieldSummary>) -> String {
+pub fn serialize_field_summary(summary: Arc<FieldSummary>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -758,7 +760,7 @@ pub fn serialize_field_summary(summary: Rc<FieldSummary>) -> String {
     )
 }
 
-pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
+pub fn serialize_literal(value: Arc<LiteralValue>) -> String {
     match (*value.clone()).clone() {
         LiteralValue::LitStr { value: inner, .. } => v1_rt::concat(
             v1_rt::concat(
@@ -800,8 +802,8 @@ pub fn serialize_literal(value: Rc<LiteralValue>) -> String {
 }
 
 pub fn serialize_field_binding(
-    binding: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    binding: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -825,8 +827,8 @@ pub fn serialize_field_binding(
 }
 
 pub fn serialize_match_pattern(
-    pattern: Rc<MatchPattern>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    pattern: Arc<MatchPattern>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind { name: inner, .. } => v1_rt::concat(
@@ -863,7 +865,7 @@ pub fn serialize_match_pattern(
                     ),
                     ", \"field_bindings\": ".to_string(),
                 ),
-                json_list(Rc::new({
+                json_list(Arc::new({
                     let mut __result = Vec::new();
                     for fb in field_bindings.clone().iter().cloned() {
                         __result.push(serialize_field_binding(fb.clone(), source_indices.clone()));
@@ -878,9 +880,9 @@ pub fn serialize_match_pattern(
 }
 
 pub fn serialize_named_arg(
-    arg: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    arg: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -898,9 +900,9 @@ pub fn serialize_named_arg(
 }
 
 pub fn serialize_match_arm(
-    arm: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    arm: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -927,9 +929,9 @@ pub fn serialize_match_arm(
 }
 
 pub fn serialize_field_init(
-    field_init: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    field_init: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -950,9 +952,9 @@ pub fn serialize_field_init(
 }
 
 pub fn serialize_string_part(
-    part: Rc<StringPart>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    part: Arc<StringPart>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     match (*part.clone()).clone() {
         StringPart::Text { value: inner, .. } => v1_rt::concat(
@@ -986,9 +988,9 @@ pub fn serialize_call_semantics(value: Option<CallSemantics>) -> String {
 }
 
 pub fn serialize_method_semantics(
-    value: Option<Rc<MethodSemantics>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    value: Option<Arc<MethodSemantics>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     match value.clone().as_deref().cloned() {
         Some(MethodSemantics::PlainMethodSemantics) => {
@@ -1027,7 +1029,7 @@ pub fn serialize_method_semantics(
                     ),
                     ", \"op_params\": ".to_string(),
                 ),
-                json_list(Rc::new({
+                json_list(Arc::new({
                     let mut __result = Vec::new();
                     for p in op_params.clone().iter().cloned() {
                         __result.push(serialize_param(
@@ -1055,7 +1057,7 @@ pub fn serialize_recursion_shape(shape: RecursionShape) -> String {
     }
 }
 
-pub fn serialize_inductive_field(field: Rc<InductiveField>) -> String {
+pub fn serialize_inductive_field(field: Arc<InductiveField>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1083,7 +1085,7 @@ pub fn serialize_inductive_field(field: Rc<InductiveField>) -> String {
     )
 }
 
-pub fn serialize_positive_descent_amount(steps: Rc<PositiveDescentAmount>) -> String {
+pub fn serialize_positive_descent_amount(steps: Arc<PositiveDescentAmount>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*steps.clone()).clone() {
             PositiveDescentAmount::OneStep => "{\"_variant\": \"OneStep\"}".to_string(),
@@ -1098,7 +1100,7 @@ pub fn serialize_positive_descent_amount(steps: Rc<PositiveDescentAmount>) -> St
     })
 }
 
-pub fn serialize_proportional_divisor(d: Rc<ProportionalDivisor>) -> String {
+pub fn serialize_proportional_divisor(d: Arc<ProportionalDivisor>) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d.clone()).clone() {
         ProportionalDivisor::DivideByTwo => "{\"_variant\": \"DivideByTwo\"}".to_string(),
         ProportionalDivisor::StrictlyLarger { inner: i, .. } => v1_rt::concat(
@@ -1111,7 +1113,7 @@ pub fn serialize_proportional_divisor(d: Rc<ProportionalDivisor>) -> String {
     })
 }
 
-pub fn serialize_shrink_factor(factor: Rc<ShrinkFactor>) -> String {
+pub fn serialize_shrink_factor(factor: Arc<ShrinkFactor>) -> String {
     match (*factor.clone()).clone() {
         ShrinkFactor::UnitShrink => "{\"_variant\": \"UnitShrink\"}".to_string(),
         ShrinkFactor::ConstantShrink { steps: s, .. } => v1_rt::concat(
@@ -1131,7 +1133,7 @@ pub fn serialize_shrink_factor(factor: Rc<ShrinkFactor>) -> String {
     }
 }
 
-pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
+pub fn serialize_sub_value_relation(rel: Arc<SubValueRelation>) -> String {
     match (*rel.clone()).clone() {
         SubValueRelation::StrictSubValue {
             field: f,
@@ -1184,9 +1186,9 @@ pub fn serialize_sub_value_relation(rel: Rc<SubValueRelation>) -> String {
     }
 }
 
-pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> String {
+pub fn serialize_descent_evidence(de: Option<Arc<Vec<Arc<SubValueRelation>>>>) -> String {
     match de.clone() {
-        Some(evidence) => json_list(Rc::new({
+        Some(evidence) => json_list(Arc::new({
             let mut __result = Vec::new();
             for rel in evidence.clone().iter().cloned() {
                 __result.push(serialize_sub_value_relation(rel.clone()));
@@ -1198,9 +1200,9 @@ pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> 
 }
 
 pub fn serialize_expr_data(
-    expr_node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    expr_node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     {
         let ch = expr_node.children.clone();
@@ -1286,7 +1288,7 @@ pub fn serialize_expr_data(
                             ),
                             ", \"children\": ".to_string(),
                         ),
-                        json_list(Rc::new({
+                        json_list(Arc::new({
                             let mut __result = Vec::new();
                             for c in ch.clone().iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1324,7 +1326,7 @@ pub fn serialize_expr_data(
                             ),
                             ", \"children\": ".to_string(),
                         ),
-                        json_list(Rc::new({
+                        json_list(Arc::new({
                             let mut __result = Vec::new();
                             for c in ch.clone().iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1359,7 +1361,7 @@ pub fn serialize_expr_data(
                             ),
                             ", \"children\": ".to_string(),
                         ),
-                        json_list(Rc::new({
+                        json_list(Arc::new({
                             let mut __result = Vec::new();
                             for c in ch.clone().iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1392,7 +1394,7 @@ pub fn serialize_expr_data(
                         ),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1411,7 +1413,7 @@ pub fn serialize_expr_data(
                         ),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1428,7 +1430,7 @@ pub fn serialize_expr_data(
                         v1_rt::concat(
                             v1_rt::concat(
                                 "{\"kind\": \"ExprLambda\", \"params\": ".to_string(),
-                                json_list(Rc::new({
+                                json_list(Arc::new({
                                     let mut __result = Vec::new();
                                     for p in params.clone().iter().cloned() {
                                         __result.push(json_quote(p.clone()));
@@ -1438,7 +1440,7 @@ pub fn serialize_expr_data(
                             ),
                             ", \"children\": ".to_string(),
                         ),
-                        json_list(Rc::new({
+                        json_list(Arc::new({
                             let mut __result = Vec::new();
                             for c in ch.clone().iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1458,7 +1460,7 @@ pub fn serialize_expr_data(
                         ),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1488,7 +1490,7 @@ pub fn serialize_expr_data(
                             ),
                             ", \"children\": ".to_string(),
                         ),
-                        json_list(Rc::new({
+                        json_list(Arc::new({
                             let mut __result = Vec::new();
                             for c in ch.clone().iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1510,7 +1512,7 @@ pub fn serialize_expr_data(
                             ),
                             ", \"children\": ".to_string(),
                         ),
-                        json_list(Rc::new({
+                        json_list(Arc::new({
                             let mut __result = Vec::new();
                             for c in ch.clone().iter().cloned() {
                                 __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1527,7 +1529,7 @@ pub fn serialize_expr_data(
                         "{\"kind\": \"ExprMatch\"".to_string(),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1543,7 +1545,7 @@ pub fn serialize_expr_data(
                         "{\"kind\": \"ExprIf\"".to_string(),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1559,7 +1561,7 @@ pub fn serialize_expr_data(
                         "{\"kind\": \"ExprListLit\"".to_string(),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1575,7 +1577,7 @@ pub fn serialize_expr_data(
                         "{\"kind\": \"ExprStringInterp\"".to_string(),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1591,7 +1593,7 @@ pub fn serialize_expr_data(
                         "{\"kind\": \"ExprBlock\"".to_string(),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1607,7 +1609,7 @@ pub fn serialize_expr_data(
                         "{\"kind\": \"ExprCast\"".to_string(),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1623,7 +1625,7 @@ pub fn serialize_expr_data(
                         "{\"kind\": \"ExprIndex\"".to_string(),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1639,7 +1641,7 @@ pub fn serialize_expr_data(
                         "{\"kind\": \"ExprSlice\"".to_string(),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1655,7 +1657,7 @@ pub fn serialize_expr_data(
                         "{\"kind\": \"ExprReturn\"".to_string(),
                         ", \"children\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for c in ch.clone().iter().cloned() {
                             __result.push(serialize_node_ref(c.clone(), key_to_id.clone()));
@@ -1670,8 +1672,8 @@ pub fn serialize_expr_data(
 }
 
 pub fn serialize_inferred_node_ref(
-    inferred: Rc<InferredNode>,
-    key_to_id: Rc<HashMap<String, String>>,
+    inferred: Arc<InferredNode>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     match (*inferred.clone()).clone() {
         InferredNode::Resolved { node: node, .. } => v1_rt::concat(
@@ -1705,9 +1707,9 @@ pub fn serialize_inferred_node_ref(
 }
 
 pub fn serialize_resource_use(
-    resource_use: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    resource_use: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -1737,9 +1739,9 @@ pub fn serialize_resource_use(
 }
 
 pub fn serialize_field(
-    field: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    field: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -1795,9 +1797,9 @@ pub fn serialize_field(
 }
 
 pub fn serialize_param(
-    param: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    param: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -1835,22 +1837,22 @@ pub fn serialize_param(
     )
 }
 
-pub fn is_import_statement_node(n: Rc<Node>) -> bool {
+pub fn is_import_statement_node(n: Arc<Node>) -> bool {
     (import_is_all(n.clone())
         || (((((n.children.clone().len() as i64) > 0) && (n.body.clone() == None))
-            && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
+            && (n.expr_data.clone() == Arc::new(ExprData::NoExprData)))
             && ((n.params.clone().len() as i64) == 0)))
 }
 
 pub fn serialize_node_params_json(
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     if is_module_shell_node(node.clone()) {
         "[]".to_string()
     } else {
-        json_list(Rc::new({
+        json_list(Arc::new({
             let mut __result = Vec::new();
             for param in node.params.clone().iter().cloned() {
                 __result.push(serialize_param(
@@ -1865,8 +1867,8 @@ pub fn serialize_node_params_json(
 }
 
 pub fn serialize_module_imports_json(
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
 ) -> String {
     {
         let imports = module_imports(node.clone());
@@ -1883,7 +1885,7 @@ pub fn serialize_module_imports_json(
                 }
                 __all
             } {
-                json_list(Rc::new({
+                json_list(Arc::new({
                     let mut __result = Vec::new();
                     for imp in imports.clone().iter().cloned() {
                         __result.push(serialize_import_node(imp.clone(), source_indices.clone()));
@@ -1898,21 +1900,21 @@ pub fn serialize_module_imports_json(
 }
 
 pub fn serialize_node_record(
-    node: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    node: Arc<Node>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
-    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), node.clone()))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("{\"name\": ".to_string(), json_quote(authored_name_at(source_indices.clone(), node.clone()))), ", \"imports\": ".to_string()), serialize_module_imports_json(node.clone(), source_indices.clone())), ", \"span\": ".to_string()), serialize_span(node.span.clone())), ", \"ident_span\": ".to_string()), json_optional_span(node.ident_span.clone())), ", \"children\": ".to_string()), json_list(Arc::new({ let mut __result = Vec::new(); for child in node.children.clone().iter().cloned() { __result.push(serialize_node_ref(child.clone(), key_to_id.clone())); } __result }))), ", \"connective\": ".to_string()), match node.connective.clone() {
     Connective::Conj => json_quote(connective_name(Connective::Conj)),
     Connective::Disj => json_quote(connective_name(Connective::Disj)),
     Connective::NoConnective => "null".to_string(),
     Connective::Arrow => json_quote(connective_name(Connective::Arrow)),
-}), ", \"params\": ".to_string()), serialize_node_params_json(node.clone(), source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), source_indices.clone(), key_to_id.clone())), "}".to_string())
+}), ", \"params\": ".to_string()), serialize_node_params_json(node.clone(), source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Arc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Arc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), source_indices.clone(), key_to_id.clone())), "}".to_string())
 }
 
 pub fn serialize_typed_module(
-    module: Rc<TypedModule>,
-    key_to_id: Rc<HashMap<String, String>>,
+    module: Arc<TypedModule>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
     v1_rt::concat(
         v1_rt::concat(
@@ -1925,7 +1927,7 @@ pub fn serialize_typed_module(
                         ),
                         ", \"items\": ".to_string(),
                     ),
-                    json_list(Rc::new({
+                    json_list(Arc::new({
                         let mut __result = Vec::new();
                         for item in module.items.clone().iter().cloned() {
                             __result.push(serialize_node_ref(item.clone(), key_to_id.clone()));
@@ -1935,9 +1937,9 @@ pub fn serialize_typed_module(
                 ),
                 ", \"item_registry_keys\": ".to_string(),
             ),
-            json_list(Rc::new({
+            json_list(Arc::new({
                 let mut __result = Vec::new();
-                for k in Rc::new(v1_rt::map_keys(&module.item_registry.clone()))
+                for k in Arc::new(v1_rt::map_keys(&module.item_registry.clone()))
                     .iter()
                     .cloned()
                 {
@@ -1951,13 +1953,13 @@ pub fn serialize_typed_module(
 }
 
 pub fn serialize_dag_nodes_table(
-    order: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    key_to_id: Rc<HashMap<String, String>>,
+    order: Arc<Vec<Arc<Node>>>,
+    source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    key_to_id: Arc<HashMap<String, String>>,
 ) -> String {
-    Rc::new({
+    Arc::new({
         let mut __result = Vec::new();
-        for pair in Rc::new(
+        for pair in Arc::new(
             order
                 .clone()
                 .iter()
@@ -1982,7 +1984,7 @@ pub fn serialize_dag_nodes_table(
     .join(&", ".to_string())
 }
 
-pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
+pub fn serialize_diagnostic(diagnostic: Arc<ErrorNode>) -> String {
     {
         let severity = "error".to_string();
         v1_rt::concat(
@@ -2021,13 +2023,13 @@ pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
     }
 }
 
-pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
+pub fn emit_dag_artifact(typed: Arc<ResolvedGraph>) -> Arc<EmitResult> {
     {
         let collected = collect_dag_nodes(typed.clone());
         let _ = v1_rt::trace_mark("compile.emit.dag.collect.done".to_string());
         if ((collected.collision_errors.clone().len() as i64) > 0) {
-            return Rc::new(EmitResult {
-                files: Rc::new(vec![]),
+            return Arc::new(EmitResult {
+                files: Arc::new(vec![]),
                 diagnostics: collected.collision_errors.clone(),
             });
         }
@@ -2035,15 +2037,15 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let key_to_id = build_dag_key_to_id(order.clone());
         let ref_errors = dag_emit_ref_errors(order.clone(), key_to_id.clone());
         if ((ref_errors.clone().len() as i64) > 0) {
-            return Rc::new(EmitResult {
-                files: Rc::new(vec![]),
+            return Arc::new(EmitResult {
+                files: Arc::new(vec![]),
                 diagnostics: ref_errors.clone(),
             });
         }
         let source_indices = dag_graph_source_indices(typed.clone());
         let nodes_json =
             serialize_dag_nodes_table(order.clone(), source_indices.clone(), key_to_id.clone());
-        let modules_json = Rc::new({
+        let modules_json = Arc::new({
             let mut __result = Vec::new();
             for m in typed.modules.clone().iter().cloned() {
                 __result.push(serialize_typed_module(m.clone(), key_to_id.clone()));
@@ -2051,7 +2053,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             __result
         })
         .join(&", ".to_string());
-        let diagnostics_json = Rc::new({
+        let diagnostics_json = Arc::new({
             let mut __result = Vec::new();
             for d in typed.diagnostics.clone().iter().cloned() {
                 __result.push(serialize_diagnostic(d.clone()));
@@ -2059,9 +2061,9 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             __result
         })
         .join(&", ".to_string());
-        let item_registry_json = Rc::new({
+        let item_registry_json = Arc::new({
             let mut __result = Vec::new();
-            for k in Rc::new(v1_rt::map_keys(&typed.item_registry.clone()))
+            for k in Arc::new(v1_rt::map_keys(&typed.item_registry.clone()))
                 .iter()
                 .cloned()
             {
@@ -2096,17 +2098,17 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             "],\n  \"files\": []\n}".to_string(),
         );
         let _ = v1_rt::trace_mark("compile.emit.dag.serialize.done".to_string());
-        Rc::new(EmitResult {
-            files: Rc::new(vec![Rc::new(TextFile {
+        Arc::new(EmitResult {
+            files: Arc::new(vec![Arc::new(TextFile {
                 path: "dag-artifact.json".to_string(),
                 content: json.clone(),
             })]),
-            diagnostics: Rc::new(vec![]),
+            diagnostics: Arc::new(vec![]),
         })
     }
 }
 
-pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn boundary_ref_error(names: Arc<Vec<String>>, ref_name: String) -> Arc<Vec<Arc<ErrorNode>>> {
     if {
         let mut __found = false;
         for n in names.clone().iter().cloned() {
@@ -2117,9 +2119,9 @@ pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc
         }
         __found
     } {
-        Rc::new(vec![])
+        Arc::new(vec![])
     } else {
-        Rc::new(vec![compile_bundle_error(v1_rt::concat(
+        Arc::new(vec![compile_bundle_error(v1_rt::concat(
             v1_rt::concat(
                 "boundary references unknown artifact '".to_string(),
                 ref_name.clone(),
@@ -2129,16 +2131,16 @@ pub fn boundary_ref_error(names: Rc<Vec<String>>, ref_name: String) -> Rc<Vec<Rc
     }
 }
 
-pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn validate_boundaries(plan: Arc<ArtifactPlan>) -> Arc<Vec<Arc<ErrorNode>>> {
     {
-        let names = Rc::new({
+        let names = Arc::new({
             let mut __result = Vec::new();
             for a in plan.artifacts.clone().iter().cloned() {
                 __result.push(a.name.clone());
             }
             __result
         });
-        Rc::new({
+        Arc::new({
             let mut __result = Vec::new();
             for b in plan.boundaries.clone().iter().cloned() {
                 __result.extend(
@@ -2157,12 +2159,12 @@ pub fn validate_boundaries(plan: Rc<ArtifactPlan>) -> Rc<Vec<Rc<ErrorNode>>> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmittableGraph {
-    pub graph: Rc<ResolvedGraph>,
+    pub graph: Arc<ResolvedGraph>,
 }
 
-pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<EmittableGraph>> {
+pub fn emittable_graph(resolved: Arc<ResolvedPipelineResult>) -> Option<Arc<EmittableGraph>> {
     {
-        let blocking = Rc::new({
+        let blocking = Arc::new({
             let mut __result = Vec::new();
             for d in resolved.diagnostics.clone().iter().cloned() {
                 if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
@@ -2175,7 +2177,7 @@ pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<Emitta
             None
         } else {
             match resolved.graph.clone() {
-                Some(typed) => Some(Rc::new(EmittableGraph {
+                Some(typed) => Some(Arc::new(EmittableGraph {
                     graph: typed.clone(),
                 })),
                 None => None,
@@ -2184,80 +2186,80 @@ pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<Emitta
     }
 }
 
-pub fn emittable_graph_from_graph(typed: Rc<ResolvedGraph>) -> Rc<EmittableGraph> {
-    Rc::new(EmittableGraph {
+pub fn emittable_graph_from_graph(typed: Arc<ResolvedGraph>) -> Arc<EmittableGraph> {
+    Arc::new(EmittableGraph {
         graph: typed.clone(),
     })
 }
 
 pub fn emit_from_artifact_plan(
-    emittable: Rc<EmittableGraph>,
-    artifact_plan: Rc<ArtifactPlan>,
-) -> Rc<EmitResult> {
+    emittable: Arc<EmittableGraph>,
+    artifact_plan: Arc<ArtifactPlan>,
+) -> Arc<EmitResult> {
     {
         let typed = emittable.graph.clone();
         if ((artifact_plan.artifacts.clone().len() as i64) == 0) {
-            return Rc::new(EmitResult {
-                files: Rc::new(vec![]),
-                diagnostics: Rc::new(vec![compile_bundle_error(
+            return Arc::new(EmitResult {
+                files: Arc::new(vec![]),
+                diagnostics: Arc::new(vec![compile_bundle_error(
                     "compile_sources planned no artifacts".to_string(),
                 )]),
             });
         }
         let boundary_diags = validate_boundaries(artifact_plan.clone());
         if ((boundary_diags.clone().len() as i64) > 0) {
-            return Rc::new(EmitResult {
-                files: Rc::new(vec![]),
+            return Arc::new(EmitResult {
+                files: Arc::new(vec![]),
                 diagnostics: boundary_diags.clone(),
             });
         }
-        let results = Rc::new({
+        let results = Arc::new({
             let mut __result = Vec::new();
             for artifact in artifact_plan.artifacts.clone().iter().cloned() {
                 __result.push(emit_artifact(typed.clone(), artifact.clone()));
             }
             __result
         });
-        let all_files = Rc::new({
+        let all_files = Arc::new({
             let mut __result = Vec::new();
             for r in results.clone().iter().cloned() {
                 __result.extend((*r.files.clone()).iter().cloned());
             }
             __result
         });
-        let all_diags = Rc::new({
+        let all_diags = Arc::new({
             let mut __result = Vec::new();
             for r in results.clone().iter().cloned() {
                 __result.extend((*r.diagnostics.clone()).iter().cloned());
             }
             __result
         });
-        Rc::new(EmitResult {
+        Arc::new(EmitResult {
             files: all_files.clone(),
             diagnostics: all_diags.clone(),
         })
     }
 }
 
-pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc<ErrorNode>>> {
+pub fn collect_diagnostics(parse_results: Arc<Vec<Arc<ParseResult>>>) -> Arc<Vec<Arc<ErrorNode>>> {
     parse_results.clone().iter().cloned().fold(
-        Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<ErrorNode>>>, pr: Rc<ParseResult>| match pr.error.clone() {
+        Arc::new(vec![]),
+        |acc: Arc<Vec<Arc<ErrorNode>>>, pr: Arc<ParseResult>| match pr.error.clone() {
             Some(diag) => v1_rt::rc_list_push(acc.clone(), diag.clone()),
             None => acc.clone(),
         },
     )
 }
 
-pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult> {
+pub fn front_end_sources(sources: Arc<Vec<Arc<SourceFile>>>) -> Arc<FrontendResult> {
     {
-        let prepared = Rc::new({
+        let prepared = Arc::new({
             let mut __result = Vec::new();
             for s in sources.clone().iter().cloned() {
                 __result.push({
                     let tokens = tokenize(s.content.clone(), s.path.clone());
                     let si = build_newline_index(s.path.clone(), s.content.clone());
-                    Rc::new(FrontendPrepared {
+                    Arc::new(FrontendPrepared {
                         tokens: tokens.clone(),
                         newline_index: si.clone(),
                     })
@@ -2267,27 +2269,27 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         });
         let intern_table = prepared.clone().iter().cloned().fold(
             empty_intern_table(),
-            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
+            |t: Arc<InternTable>, p: Arc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
         );
         let parsed = prepared.clone().iter().cloned().fold(
-            Rc::new(FrontendAccum {
-                parse_results: Rc::new(vec![]),
-                newline_indices: Rc::new(vec![]),
+            Arc::new(FrontendAccum {
+                parse_results: Arc::new(vec![]),
+                newline_indices: Arc::new(vec![]),
                 intern_table: intern_table.clone(),
             }),
-            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
+            |acc: Arc<FrontendAccum>, p: Arc<FrontendPrepared>| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let parsed = parse_with_table(
                         p.tokens.clone(),
                         v1_rt::rc_map_insert(
-                            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                             p.newline_index.clone().file.clone(),
                             p.newline_index.clone(),
                         ),
                         acc.intern_table,
                     );
-                    Rc::new(FrontendAccum {
+                    Arc::new(FrontendAccum {
                         parse_results: v1_rt::rc_list_push(
                             acc.parse_results,
                             parsed.result.clone(),
@@ -2304,13 +2306,13 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         let parse_results = parsed.parse_results.clone();
         let newline_indices = parsed.newline_indices.clone();
         let parse_diagnostics = collect_diagnostics(parse_results.clone());
-        let modules = Rc::new({
+        let modules = Arc::new({
             let mut __result = Vec::new();
             for p in parse_results.clone().iter().cloned() {
                 __result.extend(
                     (*match p.module.clone() {
-                        Some(m) => Rc::new(vec![m.clone()]),
-                        None => Rc::new(vec![]),
+                        Some(m) => Arc::new(vec![m.clone()]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -2319,13 +2321,13 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             __result
         });
         let source_indices = newline_indices.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, si: Rc<NewlineIndex>| {
+            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+            |acc: Arc<HashMap<String, Arc<NewlineIndex>>>, si: Arc<NewlineIndex>| {
                 v1_rt::rc_map_insert(acc, si.file.clone(), si.clone())
             },
         );
         let graph = resolve_modules(modules.clone(), source_indices.clone());
-        Rc::new(FrontendResult {
+        Arc::new(FrontendResult {
             graph: Some(graph.clone()),
             diagnostics: v1_rt::concat(parse_diagnostics.clone(), graph.diagnostics.clone()),
             newline_indices: newline_indices.clone(),
@@ -2336,9 +2338,9 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CensusFillParse {
-    pub modules: Rc<Vec<Rc<Node>>>,
-    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+    pub modules: Arc<Vec<Arc<Node>>>,
+    pub newline_indices: Arc<Vec<Arc<NewlineIndex>>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
 }
 
 pub fn parse_census_fill_note() -> String {
@@ -2350,15 +2352,15 @@ pub fn parse_census_fill_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
+pub fn parse_census_fill_sources(sources: Arc<Vec<Arc<SourceFile>>>) -> Arc<CensusFillParse> {
     {
-        let prepared = Rc::new({
+        let prepared = Arc::new({
             let mut __result = Vec::new();
             for s in sources.clone().iter().cloned() {
                 __result.push({
                     let tokens = tokenize(s.content.clone(), s.path.clone());
                     let si = build_newline_index(s.path.clone(), s.content.clone());
-                    Rc::new(FrontendPrepared {
+                    Arc::new(FrontendPrepared {
                         tokens: tokens.clone(),
                         newline_index: si.clone(),
                     })
@@ -2368,27 +2370,27 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
         });
         let intern_table = prepared.clone().iter().cloned().fold(
             empty_intern_table(),
-            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
+            |t: Arc<InternTable>, p: Arc<FrontendPrepared>| pre_intern_tokens(p.tokens.clone(), t),
         );
         let parsed = prepared.clone().iter().cloned().fold(
-            Rc::new(FrontendAccum {
-                parse_results: Rc::new(vec![]),
-                newline_indices: Rc::new(vec![]),
+            Arc::new(FrontendAccum {
+                parse_results: Arc::new(vec![]),
+                newline_indices: Arc::new(vec![]),
                 intern_table: intern_table.clone(),
             }),
-            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
+            |acc: Arc<FrontendAccum>, p: Arc<FrontendPrepared>| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let parsed = parse_with_table(
                         p.tokens.clone(),
                         v1_rt::rc_map_insert(
-                            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                            v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                             p.newline_index.clone().file.clone(),
                             p.newline_index.clone(),
                         ),
                         acc.intern_table,
                     );
-                    Rc::new(FrontendAccum {
+                    Arc::new(FrontendAccum {
                         parse_results: v1_rt::rc_list_push(
                             acc.parse_results,
                             parsed.result.clone(),
@@ -2403,13 +2405,13 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
             },
         );
         let parse_results = parsed.parse_results.clone();
-        let modules = Rc::new({
+        let modules = Arc::new({
             let mut __result = Vec::new();
             for p in parse_results.clone().iter().cloned() {
                 __result.extend(
                     (*match p.module.clone() {
-                        Some(m) => Rc::new(vec![m.clone()]),
-                        None => Rc::new(vec![]),
+                        Some(m) => Arc::new(vec![m.clone()]),
+                        None => Arc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -2417,7 +2419,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
             }
             __result
         });
-        Rc::new(CensusFillParse {
+        Arc::new(CensusFillParse {
             modules: modules.clone(),
             newline_indices: parsed.newline_indices.clone(),
             diagnostics: collect_diagnostics(parse_results.clone()),
@@ -2425,20 +2427,20 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
     }
 }
 
-pub fn resolve_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CompileResult> {
+pub fn resolve_sources(sources: Arc<Vec<Arc<SourceFile>>>) -> Arc<CompileResult> {
     {
         let frontend = front_end_sources(sources.clone());
-        Rc::new(CompileResult {
-            files: Rc::new(vec![]),
+        Arc::new(CompileResult {
+            files: Arc::new(vec![]),
             diagnostics: frontend.diagnostics.clone(),
         })
     }
 }
 
 pub fn compile_sources(
-    sources: Rc<Vec<Rc<SourceFile>>>,
+    sources: Arc<Vec<Arc<SourceFile>>>,
     target: RenderTarget,
-) -> Rc<PipelineResult> {
+) -> Arc<PipelineResult> {
     compile_sources_with_options(
         sources.clone(),
         target.clone(),
@@ -2447,10 +2449,10 @@ pub fn compile_sources(
 }
 
 pub fn compile_sources_with_options(
-    sources: Rc<Vec<Rc<SourceFile>>>,
+    sources: Arc<Vec<Arc<SourceFile>>>,
     target: RenderTarget,
-    options: Rc<CompilePipelineOptions>,
-) -> Rc<PipelineResult> {
+    options: Arc<CompilePipelineOptions>,
+) -> Arc<PipelineResult> {
     emit_resolved_for_target(
         compile_to_resolved_with_options(sources.clone(), options.clone()),
         target.clone(),
@@ -2458,11 +2460,11 @@ pub fn compile_sources_with_options(
 }
 
 pub fn interpreter_blocking_diagnostic_messages(
-    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
+    diagnostics: Arc<Vec<Arc<ErrorNode>>>,
+) -> Arc<Vec<String>> {
+    Arc::new({
         let mut __result = Vec::new();
-        for d in Rc::new({
+        for d in Arc::new({
             let mut __result = Vec::new();
             for d in diagnostics.clone().iter().cloned() {
                 if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
@@ -2504,7 +2506,7 @@ pub fn interpreter_blocking_diagnostic_messages(
     })
 }
 
-pub fn stage0_self_compile_refusal_message(result: Rc<PipelineResult>) -> Option<String> {
+pub fn stage0_self_compile_refusal_message(result: Arc<PipelineResult>) -> Option<String> {
     {
         let hard_messages = interpreter_blocking_diagnostic_messages(result.diagnostics.clone());
         if ((hard_messages.clone().len() as i64) > 0) {
@@ -2530,46 +2532,46 @@ pub fn stage0_self_compile_refusal_message(result: Rc<PipelineResult>) -> Option
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedPipelineResult {
-    pub graph: Option<Rc<ResolvedGraph>>,
-    pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    pub complexity: Rc<ComplexityReport>,
-    pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
-    pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
+    pub graph: Option<Arc<ResolvedGraph>>,
+    pub diagnostics: Arc<Vec<Arc<ErrorNode>>>,
+    pub source_indices: Arc<HashMap<String, Arc<NewlineIndex>>>,
+    pub complexity: Arc<ComplexityReport>,
+    pub ownership: Arc<Vec<Arc<OwnershipProof>>>,
+    pub newline_indices: Arc<Vec<Arc<NewlineIndex>>>,
 }
 
-pub fn compile_to_resolved(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<ResolvedPipelineResult> {
+pub fn compile_to_resolved(sources: Arc<Vec<Arc<SourceFile>>>) -> Arc<ResolvedPipelineResult> {
     compile_to_resolved_with_options(sources.clone(), default_compile_pipeline_options())
 }
 
 pub fn compile_to_resolved_discovery_corpus_advisory(
-    sources: Rc<Vec<Rc<SourceFile>>>,
-) -> Rc<ResolvedPipelineResult> {
+    sources: Arc<Vec<Arc<SourceFile>>>,
+) -> Arc<ResolvedPipelineResult> {
     compile_to_resolved(sources.clone())
 }
 
 pub fn compile_to_resolved_with_options(
-    sources: Rc<Vec<Rc<SourceFile>>>,
-    options: Rc<CompilePipelineOptions>,
-) -> Rc<ResolvedPipelineResult> {
+    sources: Arc<Vec<Arc<SourceFile>>>,
+    options: Arc<CompilePipelineOptions>,
+) -> Arc<ResolvedPipelineResult> {
     {
         let _ = v1_rt::trace_mark("compile.frontend.begin".to_string());
         let frontend = front_end_sources(sources.clone());
         let _ = v1_rt::trace_mark("compile.frontend.done".to_string());
         let newline_indices = frontend.newline_indices.clone();
         match frontend.graph.clone() {
-            None => Rc::new(ResolvedPipelineResult {
+            None => Arc::new(ResolvedPipelineResult {
                 graph: None,
                 diagnostics: frontend.diagnostics.clone(),
-                source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+                source_indices: v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
                 complexity: empty_complexity_report(),
-                ownership: Rc::new(vec![]),
+                ownership: Arc::new(vec![]),
                 newline_indices: newline_indices.clone(),
             }),
             Some(graph) => {
                 let source_indices = newline_indices.clone().iter().cloned().fold(
-                    v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
+                    v1_rt::rc_empty_map::<String, Arc<NewlineIndex>>(),
+                    |acc: Arc<HashMap<String, Arc<NewlineIndex>>>, index: Arc<NewlineIndex>| {
                         v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
@@ -2579,7 +2581,7 @@ pub fn compile_to_resolved_with_options(
                 let fill = parse_census_fill_sources(options.census_only_sources.clone());
                 let census_si = fill.newline_indices.clone().iter().cloned().fold(
                     source_indices.clone(),
-                    |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, index: Rc<NewlineIndex>| {
+                    |acc: Arc<HashMap<String, Arc<NewlineIndex>>>, index: Arc<NewlineIndex>| {
                         v1_rt::rc_map_insert(acc, index.file.clone(), index.clone())
                     },
                 );
@@ -2600,13 +2602,13 @@ pub fn compile_to_resolved_with_options(
                 let complexity_diags = if options.analyze_complexity.clone() {
                     complexity_diagnostics(complexity.clone())
                 } else {
-                    Rc::new(vec![])
+                    Arc::new(vec![])
                 };
                 let all_diags = v1_rt::concat(typed_diags.clone(), complexity_diags.clone());
                 let ownership = extract_ownership_proofs(typed.clone());
                 let ownership_diags = ownership_diagnostics(ownership.clone());
                 let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
-                Rc::new(ResolvedPipelineResult {
+                Arc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(
@@ -2632,12 +2634,12 @@ pub fn compile_to_resolved_with_options(
 }
 
 pub fn emit_resolved_for_target(
-    resolved: Rc<ResolvedPipelineResult>,
+    resolved: Arc<ResolvedPipelineResult>,
     target: RenderTarget,
-) -> Rc<PipelineResult> {
+) -> Arc<PipelineResult> {
     match emittable_graph(resolved.clone()) {
-        None => Rc::new(PipelineResult {
-            files: Rc::new(vec![]),
+        None => Arc::new(PipelineResult {
+            files: Arc::new(vec![]),
             diagnostics: resolved.diagnostics.clone(),
             complexity: resolved.complexity.clone(),
             ownership: resolved.ownership.clone(),
@@ -2647,7 +2649,7 @@ pub fn emit_resolved_for_target(
         Some(emittable) => {
             let typed = emittable.graph.clone();
             let artifact_plan = default_artifact_plan(
-                Rc::new({
+                Arc::new({
                     let mut __result = Vec::new();
                     for m in typed.modules.clone().iter().cloned() {
                         __result.push(authored_name_at(
@@ -2664,7 +2666,7 @@ pub fn emit_resolved_for_target(
             let _ = v1_rt::trace_mark("compile.emit.done".to_string());
             let emit_files = emit_result.files.clone();
             let emit_diags = emit_result.diagnostics.clone();
-            let emit_errors = Rc::new({
+            let emit_errors = Arc::new({
                 let mut __result = Vec::new();
                 for d in emit_diags.clone().iter().cloned() {
                     if is_error_diagnostic(d.diagnostic.clone()) {
@@ -2674,11 +2676,11 @@ pub fn emit_resolved_for_target(
                 __result
             });
             let final_files = if ((emit_errors.clone().len() as i64) > 0) {
-                Rc::new(vec![])
+                Arc::new(vec![])
             } else {
                 emit_files.clone()
             };
-            Rc::new(PipelineResult {
+            Arc::new(PipelineResult {
                 files: final_files.clone(),
                 diagnostics: v1_rt::concat(resolved.diagnostics.clone(), emit_diags.clone()),
                 complexity: resolved.complexity.clone(),

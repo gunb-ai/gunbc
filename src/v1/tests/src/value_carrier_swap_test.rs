@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
 use v1_compiler::v1_interpreter::{self, Value};
@@ -24,7 +24,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 
 fn run_bool(src: &str, entry: &str) {
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     match v1_interpreter::run(graph, resolved.source_indices.clone(), entry) {
@@ -98,7 +98,7 @@ fn build() -> List<Int> {{ concat([{nums}], [0]) }}
 "#
     );
     let sources = resolve_imports_transitively("test.dag", &src);
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved.graph.as_ref().expect("graph");
     let first =
@@ -107,7 +107,7 @@ fn build() -> List<Int> {{ concat([{nums}], [0]) }}
         v1_interpreter::run(graph, resolved.source_indices.clone(), "build").expect("second build");
     match (&first, &second) {
         (Value::List(a), Value::List(b)) => {
-            assert!(!Rc::ptr_eq(a, b), "two runs must build distinct handles");
+            assert!(!Arc::ptr_eq(a, b), "two runs must build distinct handles");
             assert_eq!(a.len(), SCALE + 1);
         }
         other => panic!("expected two Lists, got {other:?}"),

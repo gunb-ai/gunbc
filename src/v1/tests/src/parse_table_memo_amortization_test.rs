@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
@@ -17,13 +17,13 @@ fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
 }
 
-fn sources_for_entry(entry: &str) -> Vec<Rc<SourceFile>> {
+fn sources_for_entry(entry: &str) -> Vec<Arc<SourceFile>> {
     let entry_content = std::fs::read_to_string(workspace_root().join(entry))
         .unwrap_or_else(|e| panic!("read {entry}: {e}"));
     resolve_imports_transitively_with_source_roots(entry, &entry_content, &v2_source_roots())
         .iter()
         .map(|s| {
-            Rc::new(SourceFile {
+            Arc::new(SourceFile {
                 path: s.path.clone(),
                 content: s.content.clone(),
             })
@@ -31,7 +31,7 @@ fn sources_for_entry(entry: &str) -> Vec<Rc<SourceFile>> {
         .collect()
 }
 
-fn amort_sources() -> Vec<Rc<SourceFile>> {
+fn amort_sources() -> Vec<Arc<SourceFile>> {
     sources_for_entry(AMORT_ENTRY)
 }
 
@@ -49,13 +49,13 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult, entry: &str) {
 }
 
 struct AmortHarness {
-    graph: Rc<ResolvedGraph>,
-    source_indices: Rc<im::HashMap<String, Rc<NewlineIndex>>>,
+    graph: Arc<ResolvedGraph>,
+    source_indices: Arc<im::HashMap<String, Arc<NewlineIndex>>>,
 }
 
 impl AmortHarness {
     fn new() -> Self {
-        let resolved = compile_to_resolved(Rc::new(amort_sources().into()));
+        let resolved = compile_to_resolved(Arc::new(amort_sources().into()));
         assert_resolved_ok(&resolved, AMORT_ENTRY);
         Self {
             graph: resolved.graph.clone().expect("graph"),
@@ -92,12 +92,12 @@ impl AmortHarness {
 }
 
 fn run_witness_on_sources(
-    sources: Vec<Rc<SourceFile>>,
+    sources: Vec<Arc<SourceFile>>,
     entry: &str,
     function: &str,
     budget: Duration,
 ) -> v1_interpreter::InterpContext {
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_to_resolved(Arc::new(sources.into()));
     assert_resolved_ok(&resolved, entry);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = v1_interpreter::InterpContext::new(

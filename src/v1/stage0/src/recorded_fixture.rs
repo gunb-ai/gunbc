@@ -2,6 +2,7 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -280,7 +281,7 @@ impl RecordedFixtureStore {
 }
 
 pub fn service_inputs_fixture_json(
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     param_env: &crate::v1_interpreter::Env,
     ctx: &InterpContext,
 ) -> Result<serde_json::Value, FixtureError> {
@@ -299,7 +300,7 @@ pub fn service_inputs_fixture_json(
 }
 
 pub fn content_hash_service_inputs(
-    op_node: &Rc<Node>,
+    op_node: &Arc<Node>,
     param_env: &crate::v1_interpreter::Env,
     ctx: &InterpContext,
 ) -> String {
@@ -521,7 +522,7 @@ pub fn value_from_fixture_json(
     }
 }
 
-pub fn operation_result_type_name(op_node: &Rc<Node>, ctx: &InterpContext) -> String {
+pub fn operation_result_type_name(op_node: &Arc<Node>, ctx: &InterpContext) -> String {
     match op_node.inferred.as_deref() {
         Some(crate::v1_std_core::InferredNode::Resolved { node }) => {
             authored_name_at(ctx.source_indices(), node.clone())

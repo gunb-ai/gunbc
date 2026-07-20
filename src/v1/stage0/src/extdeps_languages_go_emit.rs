@@ -12,25 +12,25 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "go.dev/ref/spec".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
-pub fn go_keywords() -> Rc<HashMap<String, String>> {
+pub fn go_keywords() -> Arc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Arc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
@@ -39,15 +39,15 @@ pub fn go_keywords() -> Rc<HashMap<String, String>> {
             __m.insert("or".to_string(), "||".to_string());
             __m.insert("not".to_string(), "!".to_string());
             __m.insert("div".to_string(), "/".to_string());
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, String>>| c.clone())
 }
 
-pub fn go_container_templates() -> Rc<HashMap<String, String>> {
+pub fn go_container_templates() -> Arc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<String, String>> = {
+        static CACHED: Arc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "[]{0}".to_string());
             __m.insert("set".to_string(), "map[{0}]struct{}".to_string());
@@ -56,19 +56,19 @@ pub fn go_container_templates() -> Rc<HashMap<String, String>> {
             __m.insert("free_monoid".to_string(), "[]{0}".to_string());
             __m.insert("partial_function".to_string(), "map[{0}]{1}".to_string());
             __m.insert("boolean_algebra".to_string(), "bool".to_string());
-            Rc::new(__m)
+            Arc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
+    CACHED.with(|c: &Arc<HashMap<String, String>>| c.clone())
 }
 
-pub fn go_reserved() -> Rc<Vec<String>> {
+pub fn go_reserved() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["break".to_string(), "case".to_string(), "chan".to_string(), "const".to_string(), "continue".to_string(), "default".to_string(), "defer".to_string(), "else".to_string(), "fallthrough".to_string(), "for".to_string(), "func".to_string(), "go".to_string(), "goto".to_string(), "if".to_string(), "import".to_string(), "interface".to_string(), "map".to_string(), "package".to_string(), "range".to_string(), "return".to_string(), "select".to_string(), "struct".to_string(), "switch".to_string(), "type".to_string(), "var".to_string(), "bool".to_string(), "byte".to_string(), "complex64".to_string(), "complex128".to_string(), "error".to_string(), "float32".to_string(), "float64".to_string(), "int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "rune".to_string(), "string".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string(), "true".to_string(), "false".to_string(), "iota".to_string(), "nil".to_string(), "append".to_string(), "cap".to_string(), "close".to_string(), "complex".to_string(), "copy".to_string(), "delete".to_string(), "imag".to_string(), "len".to_string(), "make".to_string(), "new".to_string(), "panic".to_string(), "print".to_string(), "println".to_string(), "real".to_string(), "recover".to_string()])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec!["break".to_string(), "case".to_string(), "chan".to_string(), "const".to_string(), "continue".to_string(), "default".to_string(), "defer".to_string(), "else".to_string(), "fallthrough".to_string(), "for".to_string(), "func".to_string(), "go".to_string(), "goto".to_string(), "if".to_string(), "import".to_string(), "interface".to_string(), "map".to_string(), "package".to_string(), "range".to_string(), "return".to_string(), "select".to_string(), "struct".to_string(), "switch".to_string(), "type".to_string(), "var".to_string(), "bool".to_string(), "byte".to_string(), "complex64".to_string(), "complex128".to_string(), "error".to_string(), "float32".to_string(), "float64".to_string(), "int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "rune".to_string(), "string".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string(), "true".to_string(), "false".to_string(), "iota".to_string(), "nil".to_string(), "append".to_string(), "cap".to_string(), "close".to_string(), "complex".to_string(), "copy".to_string(), "delete".to_string(), "imag".to_string(), "len".to_string(), "make".to_string(), "new".to_string(), "panic".to_string(), "print".to_string(), "println".to_string(), "real".to_string(), "recover".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
 pub fn go_reserved_escape_suffix() -> String {
@@ -197,29 +197,29 @@ pub fn go_source_extension() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn go_string_types() -> Rc<Vec<String>> {
+pub fn go_string_types() -> Arc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<String>> = {
-            Rc::new(vec!["String".to_string(), "Secret".to_string()])
+        static CACHED: Arc<Vec<String>> = {
+            Arc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<String>>| c.clone())
 }
 
-pub fn go_simple_method_specs() -> Rc<Vec<Rc<SimpleMethodSpec>>> {
+pub fn go_simple_method_specs() -> Arc<Vec<Arc<SimpleMethodSpec>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<SimpleMethodSpec>>> = {
+        static CACHED: Arc<Vec<Arc<SimpleMethodSpec>>> = {
             serde_json::from_value(serde_json::json!([{"method_name": "count", "template": "len({recv})", "wraps_result": false}, {"method_name": "join", "template": "strings.Join({recv}, {arg})", "wraps_result": false}, {"method_name": "split", "template": "strings.Split({recv}, {arg})", "wraps_result": false}, {"method_name": "string_contains", "template": "strings.Contains({recv}, {arg})", "wraps_result": false}, {"method_name": "filter", "template": "v2rt.Filter({recv}, {arg})", "wraps_result": false}, {"method_name": "any", "template": "v2rt.Any({recv}, {arg})", "wraps_result": false}, {"method_name": "all", "template": "v2rt.All({recv}, {arg})", "wraps_result": false}, {"method_name": "flat_map", "template": "v2rt.FlatMap({recv}, {arg})", "wraps_result": false}, {"method_name": "skip", "template": "{recv}[{arg}:]", "wraps_result": false}, {"method_name": "take", "template": "{recv}[:{arg}]", "wraps_result": false}, {"method_name": "sort_by", "template": "v2rt.SortBy({recv}, {arg})", "wraps_result": false}, {"method_name": "append", "template": "append({recv}, {arg})", "wraps_result": false}]))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<Vec<Rc<SimpleMethodSpec>>>| c.clone())
+    CACHED.with(|c: &Arc<Vec<Arc<SimpleMethodSpec>>>| c.clone())
 }
 
-pub fn go_method_templates_flat() -> Rc<HashMap<String, String>> {
+pub fn go_method_templates_flat() -> Arc<HashMap<String, String>> {
     go_simple_method_specs().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, spec: Rc<SimpleMethodSpec>| {
+        |acc: Arc<HashMap<String, String>>, spec: Arc<SimpleMethodSpec>| {
             v1_rt::rc_map_insert(acc, spec.method_name.clone(), spec.template.clone())
         },
     )

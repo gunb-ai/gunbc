@@ -18,20 +18,20 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
-use std::rc::Rc;
+use std::sync::Arc;
 
-pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+pub fn extdeps_external_authority_anchor() -> Arc<ExternalAuthority> {
     thread_local! {
-            static CACHED: Rc<ExternalAuthority> = {
-                Rc::new(ExternalAuthority {
-        uri: Rc::new(Uri {
+            static CACHED: Arc<ExternalAuthority> = {
+                Arc::new(ExternalAuthority {
+        uri: Arc::new(Uri {
         scheme: UriScheme::Https,
         locator: "semver.org/".to_string(),
     }),
     })
             };
         }
-    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+    CACHED.with(|c: &Arc<ExternalAuthority>| c.clone())
 }
 
 pub type SemVerIdentity = NonEmptyStr;
@@ -50,15 +50,15 @@ pub struct SemVerVersion {
     pub major: NonNegativeInt,
     pub minor: NonNegativeInt,
     pub patch: NonNegativeInt,
-    pub pre_release: Rc<Vec<Rc<SemVerIdentifier>>>,
-    pub build: Rc<Vec<Rc<SemVerIdentifier>>>,
+    pub pre_release: Arc<Vec<Arc<SemVerIdentifier>>>,
+    pub build: Arc<Vec<Arc<SemVerIdentifier>>>,
 }
 
 pub fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
     nat_compare(a.clone(), b.clone())
 }
 
-pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier>) -> Ordering {
+pub fn semver_compare_identifier(a: Arc<SemVerIdentifier>, b: Arc<SemVerIdentifier>) -> Ordering {
     match (*a.clone()).clone() {
         SemVerIdentifier::SemVerNumericIdentifier { value: av, .. } => match (*b.clone()).clone() {
             SemVerIdentifier::SemVerNumericIdentifier { value: bv, .. } => {
@@ -86,8 +86,8 @@ pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier
 }
 
 pub fn semver_compare_identifiers(
-    mut a: Rc<Vec<Rc<SemVerIdentifier>>>,
-    mut b: Rc<Vec<Rc<SemVerIdentifier>>>,
+    mut a: Arc<Vec<Arc<SemVerIdentifier>>>,
+    mut b: Arc<Vec<Arc<SemVerIdentifier>>>,
 ) -> Ordering {
     loop {
         if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
@@ -101,8 +101,8 @@ pub fn semver_compare_identifiers(
                 } else {
                     match semver_compare_identifier(a.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of semver_compare_identifier (empty Optional at runtime)"), b.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of semver_compare_identifier (empty Optional at runtime)")) {
     Ordering::Equal => { {
-                        let __tco_0 = Rc::new(a.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-let __tco_1 = Rc::new(b.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+                        let __tco_0 = Arc::new(a.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = Arc::new(b.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
 a = __tco_0;
 b = __tco_1;
 continue;
@@ -116,8 +116,8 @@ continue;
 }
 
 pub fn semver_compare_pre_release(
-    a: Rc<Vec<Rc<SemVerIdentifier>>>,
-    b: Rc<Vec<Rc<SemVerIdentifier>>>,
+    a: Arc<Vec<Arc<SemVerIdentifier>>>,
+    b: Arc<Vec<Arc<SemVerIdentifier>>>,
 ) -> Ordering {
     if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
         Ordering::Equal
@@ -134,7 +134,7 @@ pub fn semver_compare_pre_release(
     }
 }
 
-pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
+pub fn semver_compare(a: Arc<SemVerVersion>, b: Arc<SemVerVersion>) -> Ordering {
     match semver_compare_non_negative_int(a.major.clone(), b.major.clone()) {
         Ordering::Equal => {
             match semver_compare_non_negative_int(a.minor.clone(), b.minor.clone()) {
@@ -153,15 +153,15 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
     }
 }
 
-pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
+pub fn semver_identifier_label(id: Arc<SemVerIdentifier>) -> String {
     match (*id.clone()).clone() {
         SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => format!("{}", v.clone()),
         SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s.clone(),
     }
 }
 
-pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
-    Rc::new({
+pub fn semver_identifiers_label(ids: Arc<Vec<Arc<SemVerIdentifier>>>) -> String {
+    Arc::new({
         let mut __result = Vec::new();
         for id in ids.clone().iter().cloned() {
             __result.push(semver_identifier_label(id.clone()));
@@ -171,7 +171,7 @@ pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
     .join(&".".to_string())
 }
 
-pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
+pub fn semver_version_label(v: Arc<SemVerVersion>) -> String {
     {
         let core = v1_rt::concat(
             (v.major.clone()).to_string(),
@@ -205,7 +205,7 @@ pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
     }
 }
 
-pub fn semver_to_version_identity(v: Rc<SemVerVersion>) -> NonEmptyStr {
+pub fn semver_to_version_identity(v: Arc<SemVerVersion>) -> NonEmptyStr {
     semver_version_label(v.clone())
 }
 
@@ -221,13 +221,13 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
     }
 }
 
-pub fn semver_scheme() -> Rc<VersionScheme> {
+pub fn semver_scheme() -> Arc<VersionScheme> {
     thread_local! {
-            static CACHED: Rc<VersionScheme> = {
-                Rc::new(VersionScheme {
-        compare: Rc::new(semver_identity_compare),
+            static CACHED: Arc<VersionScheme> = {
+                Arc::new(VersionScheme {
+        compare: Arc::new(semver_identity_compare),
     })
             };
         }
-    CACHED.with(|c: &Rc<VersionScheme>| c.clone())
+    CACHED.with(|c: &Arc<VersionScheme>| c.clone())
 }

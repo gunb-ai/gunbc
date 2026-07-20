@@ -11,7 +11,7 @@
 //! they live in the seed test surface; they migrate with the kernel when its
 //! dissolve-on (binary-medium emission rows) fires.
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use v1_compiler::resolved_graph_cache::{
     node_keyed_graph_decode, node_keyed_graph_encode, node_keyed_graph_row_facts,
@@ -21,7 +21,7 @@ use v1_compiler::v1_rt;
 
 struct FixtureNode {
     label: String,
-    children: Vec<Rc<FixtureNode>>,
+    children: Vec<Arc<FixtureNode>>,
 }
 
 impl NodeKeyedGraphEncode for FixtureNode {
@@ -29,11 +29,11 @@ impl NodeKeyedGraphEncode for FixtureNode {
         self.label.as_bytes().to_vec()
     }
 
-    fn graph_children(&self) -> Vec<Rc<Self>> {
+    fn graph_children(&self) -> Vec<Arc<Self>> {
         self.children.clone()
     }
 
-    fn rebuild(local_payload: &[u8], children: Vec<Rc<Self>>) -> Result<Self, String> {
+    fn rebuild(local_payload: &[u8], children: Vec<Arc<Self>>) -> Result<Self, String> {
         Ok(FixtureNode {
             label: String::from_utf8(local_payload.to_vec())
                 .map_err(|e| format!("fixture label not utf8: {e}"))?,
@@ -43,20 +43,20 @@ impl NodeKeyedGraphEncode for FixtureNode {
 }
 
 /// root -> {a, b}; a -> c; b -> c, with `c` one shared `Rc` at both parents.
-fn diamond() -> Rc<FixtureNode> {
-    let c = Rc::new(FixtureNode {
+fn diamond() -> Arc<FixtureNode> {
+    let c = Arc::new(FixtureNode {
         label: "c-shared-leaf".to_string(),
         children: vec![],
     });
-    let a = Rc::new(FixtureNode {
+    let a = Arc::new(FixtureNode {
         label: "a".to_string(),
         children: vec![c.clone()],
     });
-    let b = Rc::new(FixtureNode {
+    let b = Arc::new(FixtureNode {
         label: "b-mid".to_string(),
         children: vec![c],
     });
-    Rc::new(FixtureNode {
+    Arc::new(FixtureNode {
         label: "root-node".to_string(),
         children: vec![a, b],
     })
@@ -74,7 +74,7 @@ fn encode_diamond() -> Vec<u8> {
 /// The RED-control decode: rebuild every child ref as a FRESH `Rc` (a tree
 /// decode with no hash-consing) — exactly the un-sharing failure class the
 /// codec ruling forbids. The ptr-eq witness must fail against this.
-fn decode_unshared_from(rows: &[NodeKeyedGraphRowFacts], root: &str) -> Rc<FixtureNode> {
+fn decode_unshared_from(rows: &[NodeKeyedGraphRowFacts], root: &str) -> Arc<FixtureNode> {
     let row = rows
         .iter()
         .find(|r| r.content_hash == root)
@@ -84,10 +84,10 @@ fn decode_unshared_from(rows: &[NodeKeyedGraphRowFacts], root: &str) -> Rc<Fixtu
         .iter()
         .map(|child| decode_unshared_from(rows, child))
         .collect();
-    Rc::new(FixtureNode::rebuild(&row.payload, children).expect("fixture rebuilds"))
+    Arc::new(FixtureNode::rebuild(&row.payload, children).expect("fixture rebuilds"))
 }
 
-fn decoded_diamond_root(bytes: &[u8]) -> Rc<FixtureNode> {
+fn decoded_diamond_root(bytes: &[u8]) -> Arc<FixtureNode> {
     let decoded = node_keyed_graph_decode::<FixtureNode>(bytes).expect("diamond decodes");
     assert_eq!(decoded.entries.len(), 1);
     assert_eq!(decoded.entries[0].0, store_entry_key("diamond-entry"));
@@ -108,7 +108,7 @@ fn decode_rebuilds_sharing_with_unshared_red_control() {
     let a = &root.children[0];
     let b = &root.children[1];
     assert!(
-        Rc::ptr_eq(&a.children[0], &b.children[0]),
+        Arc::ptr_eq(&a.children[0], &b.children[0]),
         "hash-consed decode must rebuild the shared subtree as ONE Rc"
     );
 
@@ -121,7 +121,7 @@ fn decode_rebuilds_sharing_with_unshared_red_control() {
     let unshared = decode_unshared_from(&rows, &root_hash);
     assert_eq!(unshared.children[0].children[0].label, "c-shared-leaf");
     assert!(
-        !Rc::ptr_eq(
+        !Arc::ptr_eq(
             &unshared.children[0].children[0],
             &unshared.children[1].children[0]
         ),
@@ -143,16 +143,16 @@ fn reencode_is_byte_identical() {
 fn equal_content_distinct_allocations_intern_to_one_row() {
     // Two SEPARATE Rc allocations with identical content: interning is by
     // content hash, so one row lands — and the decode then shares them.
-    let leaf_one = Rc::new(FixtureNode {
+    let leaf_one = Arc::new(FixtureNode {
         label: "same-content".to_string(),
         children: vec![],
     });
-    let leaf_two = Rc::new(FixtureNode {
+    let leaf_two = Arc::new(FixtureNode {
         label: "same-content".to_string(),
         children: vec![],
     });
-    assert!(!Rc::ptr_eq(&leaf_one, &leaf_two));
-    let root = Rc::new(FixtureNode {
+    assert!(!Arc::ptr_eq(&leaf_one, &leaf_two));
+    let root = Arc::new(FixtureNode {
         label: "root".to_string(),
         children: vec![leaf_one, leaf_two],
     });
@@ -162,7 +162,7 @@ fn equal_content_distinct_allocations_intern_to_one_row() {
     assert_eq!(rows.len(), 2);
     let decoded = node_keyed_graph_decode::<FixtureNode>(&bytes).expect("decodes");
     let decoded_root = &decoded.entries[0].1;
-    assert!(Rc::ptr_eq(
+    assert!(Arc::ptr_eq(
         &decoded_root.children[0],
         &decoded_root.children[1]
     ));

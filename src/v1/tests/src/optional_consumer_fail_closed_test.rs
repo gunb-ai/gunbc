@@ -1,8 +1,8 @@
 //! Residual first-Option family (Route-A): a genuinely OPTIONAL value (`-> T?`, e.g.
 //! the modeled `first` which returns `OptionalOf<T>`) flowing into a NON-optional
 //! consumer parameter is the model hole the renderer fix could not absorb (the
-//! signature now renders `Option<T>` faithfully, so the mismatch `expected Rc<T>,
-//! found Option<Rc<T>>` is exposed at the call site, not hidden).
+//! signature now renders `Option<T>` faithfully, so the mismatch `expected Arc<T>,
+//! found Option<Arc<T>>` is exposed at the call site, not hidden).
 //!
 //! The emitter resolves this by construction at exactly those sites — and ONLY those
 //! sites — with a §5 FAIL-CLOSED unwrap: a located `.expect("fail-closed: ...")` that
