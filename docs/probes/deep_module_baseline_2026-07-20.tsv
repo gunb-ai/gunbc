@@ -1,0 +1,15 @@
+# Deep-module probe baseline (04_infer + 06_translate + 05_emit family)
+# main_head=982bc0bc40b7  probed_at=2026-07-20T05:43:52Z  CSSL_STD_SEED_LINK=1  shim=empty
+# gunbc_sha256_prefix=b4a18d44623e210f  cssl_assemble_sha256_prefix=214e954194db0f89
+# probe: scripts/curated_cargo_probe_one.sh (calm-boar invocation contract)
+# orchestrator: scripts/run_deep_module_baseline_probes.sh
+# SUMMARY: 8/8 refuse FreeMonoid-only (E0425); 0 HARNESS_ARTIFACT_std_dup; 0 Gate_A — post-#6911 baseline for deep_module_lanes fan-out
+module	branch_head	cssl_std_seed_link	shim_lib_rel	emit	cargo	first_error	mapped_gate	verdict	probe_notes
+src/v2/compiler/04_infer.dag	982bc0bc40b7	1		49 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer (deep lane 1)
+src/v2/compiler/06_translate.dag	982bc0bc40b7	1		57 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer (deep lane 2)
+src/v2/compiler/05_emit.dag	982bc0bc40b7	1		58 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer (deep lane 3 core)
+src/v2/compiler/05_emit_orchestration.dag	982bc0bc40b7	1		66 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer (deep lane 3 orchestration)
+src/v2/compiler/emit_host.dag	982bc0bc40b7	1		83 files emitted, 1 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer (05_emit family)
+src/v2/compiler/emit_module.dag	982bc0bc40b7	1		59 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer (05_emit family)
+src/v2/compiler/emit_produced.dag	982bc0bc40b7	1		68 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer (05_emit family)
+src/v2/compiler/emit_semantic_decl.dag	982bc0bc40b7	1		59 files emitted, 0 diagnostics	refuse	error[E0425]: cannot find type `FreeMonoid` in this scope	namespace_resolution	CONFIRMED-namespace	LIVE — FreeMonoid-only layer (05_emit family)
