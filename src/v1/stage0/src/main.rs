@@ -77,6 +77,25 @@ enum Commands {
         #[arg(long)]
         host: String,
     },
+
+    /// Long-running HTTP server: compile once, then answer each request by
+    /// calling ONE .dag entry `fn(method, path, body) -> ServeWireResponse`.
+    /// The seam is parse/write only — routing and handlers live in .dag.
+    Serve {
+        /// Source root directories (searched recursively for .dag files)
+        #[arg(long = "source-root")]
+        source_roots: Vec<String>,
+        /// Entry `.dag` file: load only this module and its transitive imports
+        #[arg(long)]
+        entry: String,
+        /// Handler function: fn(method: String, path: String, body: String) -> ServeWireResponse
+        #[arg(long)]
+        function: String,
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        #[arg(long, default_value = "8080")]
+        port: u16,
+    },
 }
 
 /// Recursively find all .dag files under a directory.
@@ -526,6 +545,16 @@ fn main() {
 
         Commands::Converge { host } => {
             cli_run::handle_converge(host);
+        }
+
+        Commands::Serve {
+            source_roots,
+            entry,
+            function,
+            host,
+            port,
+        } => {
+            cli_run::handle_serve(source_roots, entry, function, host, port);
         }
     };
 }

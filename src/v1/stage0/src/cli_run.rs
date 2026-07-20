@@ -7405,6 +7405,233 @@ pub fn handle_run_with_options(
     });
 }
 
+/// `gunbc serve` — the thin host seam for the gunbc-served dashboard
+/// (docs/plans/gunbc-served-dashboard-design.md). Compile the entry closure
+/// ONCE, then answer each HTTP request by calling ONE .dag function
+/// `fn(method, path, body) -> ServeWireResponse`. The seam is socket
+/// accept + minimal HTTP/1.1 parse + response write ONLY — routing and
+/// every handler live in .dag (the same altitude as WitnessBin.Run's argv
+/// seam). Sequential by design: one request at a time serializes the
+/// belt's observe-before-spawn window by construction, so two concurrent
+/// dispatch clicks cannot both observe the session absent.
+pub fn handle_serve(
+    source_roots: Vec<String>,
+    entry_file: String,
+    function: String,
+    host: String,
+    port: u16,
+) {
+    if source_roots.is_empty() {
+        eprintln!("error: provide at least one --source-root");
+        std::process::exit(1);
+    }
+    let sources = match load_sources_for_entry(&source_roots, &entry_file) {
+        Ok(sources) => sources,
+        Err(msg) => {
+            eprintln!("error: {}", msg);
+            std::process::exit(1);
+        }
+    };
+    eprintln!("resolved {} sources", sources.len());
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+    let has_errors = result
+        .diagnostics
+        .iter()
+        .any(|d| is_interpreter_blocking_diagnostic(d.diagnostic.clone()));
+    if has_errors {
+        for d in result.diagnostics.iter() {
+            if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+                eprintln!("error: {}", diagnostic_to_message(d.diagnostic.clone()));
+            }
+        }
+        std::process::exit(1);
+    }
+    let graph = match result.graph.as_ref() {
+        Some(g) => g,
+        None => {
+            eprintln!("error: compilation produced no graph");
+            std::process::exit(1);
+        }
+    };
+    let ctx = v1_interpreter::InterpContext::new(
+        graph,
+        result.source_indices.clone(),
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let listener = std::net::TcpListener::bind((host.as_str(), port))
+        .unwrap_or_else(|e| panic!("failed to bind {}:{}: {}", host, port, e));
+    eprintln!("gunbc serve listening on {}:{} -> {}()", host, port, function);
+    v1_interpreter::with_active_context(&ctx, || {
+        for stream in listener.incoming() {
+            let mut stream = match stream {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("serve: accept error: {}", e);
+                    continue;
+                }
+            };
+            match serve_read_request(&mut stream) {
+                Err(reason) => serve_write_response(
+                    &mut stream,
+                    400,
+                    "text/plain; charset=utf-8",
+                    &format!("bad request: {}\n", reason),
+                ),
+                Ok((method, path, body)) => {
+                    let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
+                        (
+                            Some("method".to_string()),
+                            v1_interpreter::Value::Str(method),
+                        ),
+                        (Some("path".to_string()), v1_interpreter::Value::Str(path)),
+                        (Some("body".to_string()), v1_interpreter::Value::Str(body)),
+                    ];
+                    match v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true) {
+                        Err(e) => serve_write_response(
+                            &mut stream,
+                            500,
+                            "text/plain; charset=utf-8",
+                            &format!("handler error: {}\n", e),
+                        ),
+                        Ok(val) => match serve_wire_fields(&val, &ctx) {
+                            Some((status, content_type, resp_body)) => serve_write_response(
+                                &mut stream,
+                                status,
+                                &content_type,
+                                &resp_body,
+                            ),
+                            None => serve_write_response(
+                                &mut stream,
+                                500,
+                                "text/plain; charset=utf-8",
+                                &format!(
+                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
+                                    ctx.format_value(&val)
+                                ),
+                            ),
+                        },
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Read one HTTP/1.1 request: request line + headers (only Content-Length is
+/// consumed) + exactly Content-Length body bytes. Anything else is a typed
+/// Err → 400. No keep-alive, no chunked bodies, no TLS (tailscale serve
+/// terminates HTTPS in front).
+fn serve_read_request(stream: &mut std::net::TcpStream) -> Result<(String, String, String), String> {
+    use std::io::{BufRead, Read};
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .map_err(|e| format!("set_read_timeout: {}", e))?;
+    let mut reader = std::io::BufReader::new(stream);
+    let mut request_line = String::new();
+    reader
+        .read_line(&mut request_line)
+        .map_err(|e| format!("read request line: {}", e))?;
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().ok_or("empty request line")?.to_string();
+    let target = parts.next().ok_or("missing request target")?.to_string();
+    if !target.starts_with('/') {
+        return Err(format!("request target must be origin-form, got {:?}", target));
+    }
+    let mut content_length: usize = 0;
+    loop {
+        let mut line = String::new();
+        let n = reader
+            .read_line(&mut line)
+            .map_err(|e| format!("read header: {}", e))?;
+        if n == 0 {
+            return Err("connection closed before end of headers".to_string());
+        }
+        let line = line.trim_end();
+        if line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                content_length = value
+                    .trim()
+                    .parse()
+                    .map_err(|e| format!("bad Content-Length: {}", e))?;
+            }
+        }
+    }
+    const MAX_BODY: usize = 1 << 20;
+    if content_length > MAX_BODY {
+        return Err(format!(
+            "body of {} bytes exceeds the {} byte serve limit",
+            content_length, MAX_BODY
+        ));
+    }
+    let mut body_bytes = vec![0u8; content_length];
+    reader
+        .read_exact(&mut body_bytes)
+        .map_err(|e| format!("read body: {}", e))?;
+    let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
+    Ok((method, target, body))
+}
+
+fn serve_write_response(
+    stream: &mut std::net::TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &str,
+) {
+    use std::io::Write;
+    let reason = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        409 => "Conflict",
+        500 => "Internal Server Error",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        _ => "",
+    };
+    let response = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        status,
+        reason,
+        content_type,
+        body.len(),
+        body
+    );
+    if let Err(e) = stream.write_all(response.as_bytes()) {
+        eprintln!("serve: write error: {}", e);
+    }
+}
+
+/// Read back the .dag handler's ServeWireResponse record. None = wrong shape
+/// (surfaced as a typed 500 by the caller, never a fabricated response).
+fn serve_wire_fields(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Option<(u16, String, String)> {
+    if let v1_interpreter::Value::Record { type_name, fields } = val {
+        if !ctx.sym_eq(*type_name, "ServeWireResponse") {
+            return None;
+        }
+        let status = match ctx.field(fields, "status") {
+            Some(v1_interpreter::Value::Int(n)) if (100..=599).contains(n) => *n as u16,
+            _ => return None,
+        };
+        let content_type = match ctx.field(fields, "content_type_label") {
+            Some(v1_interpreter::Value::Str(s)) => s.clone(),
+            _ => return None,
+        };
+        let body = match ctx.field(fields, "body") {
+            Some(v1_interpreter::Value::Str(s)) => s.clone(),
+            _ => return None,
+        };
+        return Some((status, content_type, body));
+    }
+    None
+}
+
 enum ExitClass {
     Success,
     Failure { code: i32, reason: Option<String> },

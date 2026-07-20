@@ -122,6 +122,22 @@ type ServeHttpResponse {
   body: String
 }
 
+data serve_wire_response_note: String = "The WIRE projection of ServeHttpResponse — the shape the host accept-loop seam reads back from the one .dag entry it calls (gunbc serve). Status is the bare Int and content type the wire label String so the seam never touches a modeled enum; the modeled ServeHttpResponse stays the authority and this record is its one-way projection (serve_wire_response), never authored directly by handlers."
+
+type ServeWireResponse {
+  status: Int
+  content_type_label: String
+  body: String
+}
+
+fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
+  ServeWireResponse {
+    status: r.status,
+    content_type_label: http_content_type_wire_label(content_type: r.content_type),
+    body: r.body,
+  }
+}
+
 data served_route_sum_note: String = "The dynamic extension of ServedStaticRoute (DESIGN 2: one concept, every breadth — a static body is the degenerate handler, embedded not re-modeled). H is the consumer's handler vocabulary: extdeps owns the route SHAPE and the pure selection fold below; it cannot and does not name any concrete handler — naming them here would point the import arrow backward (DESIGN 3: dispatch lives peripheral, the interface stays realization-free). INVOKING a selected handler is therefore the instantiating module's job, never this module's."
 
 type ServedRoute<H>
