@@ -4029,7 +4029,7 @@ pub fn v2_std_text_closure_stub_source() -> String {
                 v1_rt::concat(
                     v1_rt::concat(
                         "            let mut s = host_string_text_to_rust_host(tail.clone());\n".to_string(),
-                        "            s.insert(0, char::from_u32(**head as u32).unwrap_or('\\0'));\n".to_string(),
+                        "            s.insert(0, char::from_u32(**head as u32).unwrap_or(char::from_u32(0).unwrap()));\n".to_string(),
                     ),
                     "            s\n".to_string(),
                 ),

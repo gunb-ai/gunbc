@@ -1820,7 +1820,7 @@ data v2_std_text_closure_stub_source: String = concat(
   "        Empty => std::string::String::new(),\n",
   "        Cons { head, tail } => {\n",
   "            let mut s = host_string_text_to_rust_host(tail.clone());\n",
-  "            s.insert(0, char::from_u32(**head as u32).unwrap_or('\\0'));\n",
+  "            s.insert(0, char::from_u32(**head as u32).unwrap_or(char::from_u32(0).unwrap()));\n",
   "            s\n",
   "        }\n",
   "    }\n",
