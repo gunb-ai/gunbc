@@ -1,5 +1,36 @@
 module v2.lens.enforcement.lens_module_gate
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.module_graph { ModuleDeclarationFact }
+import v2.lens.registry {
+  Bound, LensIdV0, Unbound, lens_registry_v0,
+  Complexity, ComplexityAccumulatorCopy, ComplexityLinearityAudit,
+  ComplexityLowering, Cost, Coverage, DependencyFidelity, Discrimination, DispositionRedundancy,
+  DocReachability, DuplicateComputation, EffectReach, ExtdepsExternalAuthority, ExtdepsShapeTransportPolicy,
+  FactCardinality, FactDensity, FnFamily, Grounding, HostLanguageTransportScript,
+  MetaExecConfinement,
+  IdenticalVariantPayload, InertCarrier, InertLens, IntentLinearity, InterfaceSummary,
+  LanguagesConsumerCensus, LayeringImports, LeafModelVerification, LiveReadClassification,
+  MachineShape, MockTotality, MutationAdequacy, NonFoldResidue,
+  RealizationVocabularyContainment, ScheduleLens, SimulatedRelationship, StructuralSimilarity,
+  Subsumption, Synthesis, TestMigrationDebt, UnitModeling, Vacuity, Visibility, WiringLiveness,
+  WitnessCostLocality, Determinism, UnusedParameters, StructuralResolution, TableDecisionTree,
+  Parallelism, EffectEnumeration, Idempotency, Provenance
+}
+import v2.lens.registry.completeness {
+  lens_registry_completeness_bound_module_paths,
+  lens_registry_completeness_consolidated_roster,
+  lens_registry_completeness_is_candidate,
+  lens_registry_completeness_live_facts,
+  lens_registry_completeness_unenrolled_count_from_facts
+}
+import std.disposition { RealizationDispatch }
+import v2.std.algebra { any, contains, count_where, filter, fold_list, list_head, list_snoc_item, HeadFound, HeadAbsent }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
