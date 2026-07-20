@@ -4291,7 +4291,6 @@ pub fn emit_module_full(
         let carrier_import_lines = if module_needs_faithful_carrier_imports(
             typed_module.items.clone(),
             emit_info.corpus_repr.clone(),
-            shared_types.clone(),
             scope.type_env.clone().source_indices.clone(),
         ) {
             emit_faithful_text_carrier_import_lines(
@@ -7729,10 +7728,87 @@ pub fn node_tree_references_type_name(
     })
 }
 
+pub fn module_item_has_faithful_string_leaf(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    corpus_repr: RustCorpusRepr,
+) -> bool {
+    {
+        let annotation_hit = match item.type_annotation.clone() {
+            Some(ta) => node_tree_has_faithful_string_leaf(
+                ta.clone(),
+                source_indices.clone(),
+                corpus_repr.clone(),
+            ),
+            None => false,
+        };
+        let params_hit = {
+            let mut __found = false;
+            for p in item.params.clone().iter().cloned() {
+                if node_tree_has_faithful_string_leaf(
+                    p.clone(),
+                    source_indices.clone(),
+                    corpus_repr.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let body_hit = match item.body.clone() {
+            Some(body) => node_tree_has_faithful_string_leaf(
+                body.clone(),
+                source_indices.clone(),
+                corpus_repr.clone(),
+            ),
+            None => false,
+        };
+        ((annotation_hit.clone() || params_hit.clone()) || body_hit.clone())
+    }
+}
+
+pub fn module_item_references_type_name(
+    item: Rc<Node>,
+    type_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (((node_tree_references_type_name(item.clone(), type_name.clone(), source_indices.clone())
+        || match item.type_annotation.clone() {
+            Some(ta) => node_tree_references_type_name(
+                ta.clone(),
+                type_name.clone(),
+                source_indices.clone(),
+            ),
+            None => false,
+        })
+        || {
+            let mut __found = false;
+            for p in item.params.clone().iter().cloned() {
+                if node_tree_references_type_name(
+                    p.clone(),
+                    type_name.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        })
+        || match item.body.clone() {
+            Some(body) => node_tree_references_type_name(
+                body.clone(),
+                type_name.clone(),
+                source_indices.clone(),
+            ),
+            None => false,
+        })
+}
+
 pub fn module_needs_faithful_carrier_imports(
     items: Rc<Vec<Rc<Node>>>,
     corpus_repr: RustCorpusRepr,
-    shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if !corpus_repr_is_faithful(corpus_repr.clone()) {
@@ -7741,28 +7817,23 @@ pub fn module_needs_faithful_carrier_imports(
         (module_renders_faithful_text_carrier(
             items.clone(),
             corpus_repr.clone(),
-            shared_types.clone(),
             source_indices.clone(),
         ) || {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if ((((node_tree_has_faithful_string_leaf(
-                    item.clone(),
-                    source_indices.clone(),
-                    corpus_repr.clone(),
-                ) || node_tree_references_type_name(
+                if (((module_item_references_type_name(
                     item.clone(),
                     "FreeMonoid".to_string(),
                     source_indices.clone(),
-                )) || node_tree_references_type_name(
+                ) || module_item_references_type_name(
                     item.clone(),
                     "Char".to_string(),
                     source_indices.clone(),
-                )) || node_tree_references_type_name(
+                )) || module_item_references_type_name(
                     item.clone(),
                     "NonEmptyStr".to_string(),
                     source_indices.clone(),
-                )) || node_tree_references_type_name(
+                )) || module_item_references_type_name(
                     item.clone(),
                     "Int".to_string(),
                     source_indices.clone(),
@@ -7779,45 +7850,19 @@ pub fn module_needs_faithful_carrier_imports(
 pub fn module_renders_faithful_text_carrier(
     items: Rc<Vec<Rc<Node>>>,
     corpus_repr: RustCorpusRepr,
-    shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if (!corpus_repr_is_faithful(corpus_repr.clone())
-        || !v1_rt::set_contains(&shared_types, "FreeMonoid".to_string()))
-    {
+    if !corpus_repr_is_faithful(corpus_repr.clone()) {
         false
     } else {
         {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if ((match item.type_annotation.clone() {
-                    Some(ta) => node_tree_has_faithful_string_leaf(
-                        ta.clone(),
-                        source_indices.clone(),
-                        corpus_repr.clone(),
-                    ),
-                    None => false,
-                } || {
-                    let mut __found = false;
-                    for p in item.params.clone().iter().cloned() {
-                        if node_tree_has_faithful_string_leaf(
-                            p.clone(),
-                            source_indices.clone(),
-                            corpus_repr.clone(),
-                        ) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }) || match item.body.clone() {
-                    Some(body) => node_tree_has_faithful_string_leaf(
-                        body.clone(),
-                        source_indices.clone(),
-                        corpus_repr.clone(),
-                    ),
-                    None => false,
-                }) {
+                if module_item_has_faithful_string_leaf(
+                    item.clone(),
+                    source_indices.clone(),
+                    corpus_repr.clone(),
+                ) {
                     __found = true;
                     break;
                 }
@@ -7865,11 +7910,11 @@ pub fn emit_faithful_text_carrier_import_lines(
         let needs_free_monoid = {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if (node_tree_has_faithful_string_leaf(
+                if (module_item_has_faithful_string_leaf(
                     item.clone(),
                     source_indices.clone(),
                     corpus_repr.clone(),
-                ) || node_tree_references_type_name(
+                ) || module_item_references_type_name(
                     item.clone(),
                     "FreeMonoid".to_string(),
                     source_indices.clone(),
@@ -7883,11 +7928,11 @@ pub fn emit_faithful_text_carrier_import_lines(
         let needs_char = {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if (node_tree_has_faithful_string_leaf(
+                if (module_item_has_faithful_string_leaf(
                     item.clone(),
                     source_indices.clone(),
                     corpus_repr.clone(),
-                ) || node_tree_references_type_name(
+                ) || module_item_references_type_name(
                     item.clone(),
                     "Char".to_string(),
                     source_indices.clone(),
@@ -7901,7 +7946,7 @@ pub fn emit_faithful_text_carrier_import_lines(
         let needs_non_empty_str = {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if node_tree_references_type_name(
+                if module_item_references_type_name(
                     item.clone(),
                     "NonEmptyStr".to_string(),
                     source_indices.clone(),
@@ -7915,7 +7960,7 @@ pub fn emit_faithful_text_carrier_import_lines(
         let needs_int = {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if node_tree_references_type_name(
+                if module_item_references_type_name(
                     item.clone(),
                     "Int".to_string(),
                     source_indices.clone(),

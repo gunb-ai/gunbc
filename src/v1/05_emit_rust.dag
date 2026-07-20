@@ -1928,7 +1928,6 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let carrier_import_lines = if module_needs_faithful_carrier_imports(
     items: typed_module.items,
     corpus_repr: emit_info.corpus_repr,
-    shared_types: shared_types,
     source_indices: scope.type_env.source_indices
   ) {
     emit_faithful_text_carrier_import_lines(
@@ -3193,36 +3192,47 @@ fn node_tree_references_type_name(n: Node, type_name: String, source_indices: Ma
   }
 }
 
-fn module_needs_faithful_carrier_imports(items: List<Node>, corpus_repr: RustCorpusRepr, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn module_item_has_faithful_string_leaf(item: Node, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr) -> Bool {
+  node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
+    || item.params |> any(p => node_tree_has_faithful_string_leaf(n: p, source_indices: source_indices, corpus_repr: corpus_repr))
+    || match item.body {
+      Present { value: body } => node_tree_has_faithful_string_leaf(n: body, source_indices: source_indices, corpus_repr: corpus_repr)
+      Absent => false
+    }
+}
+
+fn module_item_references_type_name(item: Node, type_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  node_tree_references_type_name(n: item, type_name: type_name, source_indices: source_indices)
+    || match item.type_annotation {
+      Present { value: ta } => node_tree_references_type_name(n: ta, type_name: type_name, source_indices: source_indices)
+      Absent => false
+    }
+    || item.params |> any(p => node_tree_references_type_name(n: p, type_name: type_name, source_indices: source_indices))
+    || match item.body {
+      Present { value: body } => node_tree_references_type_name(n: body, type_name: type_name, source_indices: source_indices)
+      Absent => false
+    }
+}
+
+fn module_needs_faithful_carrier_imports(items: List<Node>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> Bool {
   if !corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     false
   } else {
-    module_renders_faithful_text_carrier(items: items, corpus_repr: corpus_repr, shared_types: shared_types, source_indices: source_indices)
+    module_renders_faithful_text_carrier(items: items, corpus_repr: corpus_repr, source_indices: source_indices)
     || items |> any(item =>
-      node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
-      || node_tree_references_type_name(n: item, type_name: "FreeMonoid", source_indices: source_indices)
-      || node_tree_references_type_name(n: item, type_name: "Char", source_indices: source_indices)
-      || node_tree_references_type_name(n: item, type_name: "NonEmptyStr", source_indices: source_indices)
-      || node_tree_references_type_name(n: item, type_name: "Int", source_indices: source_indices)
+      module_item_references_type_name(item: item, type_name: "FreeMonoid", source_indices: source_indices)
+      || module_item_references_type_name(item: item, type_name: "Char", source_indices: source_indices)
+      || module_item_references_type_name(item: item, type_name: "NonEmptyStr", source_indices: source_indices)
+      || module_item_references_type_name(item: item, type_name: "Int", source_indices: source_indices)
     )
   }
 }
 
-fn module_renders_faithful_text_carrier(items: List<Node>, corpus_repr: RustCorpusRepr, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  if !corpus_repr_is_faithful(corpus_repr: corpus_repr) || !set_contains(shared_types, "FreeMonoid") {
+fn module_renders_faithful_text_carrier(items: List<Node>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if !corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     false
   } else {
-    items |> any(item =>
-      match item.type_annotation {
-        Present { value: ta } => node_tree_has_faithful_string_leaf(n: ta, source_indices: source_indices, corpus_repr: corpus_repr)
-        Absent => false
-      }
-      || item.params |> any(p => node_tree_has_faithful_string_leaf(n: p, source_indices: source_indices, corpus_repr: corpus_repr))
-      || match item.body {
-        Present { value: body } => node_tree_has_faithful_string_leaf(n: body, source_indices: source_indices, corpus_repr: corpus_repr)
-        Absent => false
-      }
-    )
+    items |> any(item => module_item_has_faithful_string_leaf(item: item, source_indices: source_indices, corpus_repr: corpus_repr))
   }
 }
 
@@ -3232,15 +3242,15 @@ fn rust_import_name_already_resolved(imported_names: List<String>, local_type_na
 
 fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_type_names: List<String>, items: List<Node>, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr, shared_types: Set<String>) -> List<String> {
   let needs_free_monoid = items |> any(item =>
-    node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
-    || node_tree_references_type_name(n: item, type_name: "FreeMonoid", source_indices: source_indices)
+    module_item_has_faithful_string_leaf(item: item, source_indices: source_indices, corpus_repr: corpus_repr)
+    || module_item_references_type_name(item: item, type_name: "FreeMonoid", source_indices: source_indices)
   )
   let needs_char = items |> any(item =>
-    node_tree_has_faithful_string_leaf(n: item, source_indices: source_indices, corpus_repr: corpus_repr)
-    || node_tree_references_type_name(n: item, type_name: "Char", source_indices: source_indices)
+    module_item_has_faithful_string_leaf(item: item, source_indices: source_indices, corpus_repr: corpus_repr)
+    || module_item_references_type_name(item: item, type_name: "Char", source_indices: source_indices)
   )
-  let needs_non_empty_str = items |> any(item => node_tree_references_type_name(n: item, type_name: "NonEmptyStr", source_indices: source_indices))
-  let needs_int = items |> any(item => node_tree_references_type_name(n: item, type_name: "Int", source_indices: source_indices))
+  let needs_non_empty_str = items |> any(item => module_item_references_type_name(item: item, type_name: "NonEmptyStr", source_indices: source_indices))
+  let needs_int = items |> any(item => module_item_references_type_name(item: item, type_name: "Int", source_indices: source_indices))
   let free_monoid = if !needs_free_monoid || rust_import_name_already_resolved(imported_names: imported_names, local_type_names: local_type_names, name: "FreeMonoid") {
     []
   } else {
