@@ -7902,7 +7902,7 @@ data tool_results: List<AnthropicChatMessage> = [
     content: [
       UserToolResultBlock {
         tool_use_id: "toolu_text",
-        content: ToolResultText { text: "15 degrees" },
+        content: ToolResultText("15 degrees"),
         is_error: none
       },
       UserToolResultBlock {
