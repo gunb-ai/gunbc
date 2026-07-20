@@ -74,6 +74,39 @@ fn wire_fixed_main_row(main_text: String) -> EmitHostRuntimeRow {
   }
 }
 
+fn wire_escaping_row() -> EmitHostRuntimeRow {
+  EmitHostRuntimeRow {
+    transport: HostTransportDescriptor {
+      identity: ^emit_host_wire_probe_escaping,
+      workspace: [
+        WorkspaceFile {
+          path: "../escape.rs",
+          content: FixedText { text: "fn main() {}" }
+        }
+      ],
+      build: [],
+      run: ProcessInvocation {
+        program: HostToolProgram { executable: "cargo" },
+        args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
+      },
+      runtime_value_codec: FixedWidthBytes { width: 5 }
+    },
+    runtime_primitive_type: wire_probe_node()
+  }
+}
+
+test fn emit_host_transport_outside_grant_refuses_holds() -> Bool {
+  match run_host_process(
+    row: wire_escaping_row(),
+    target: rust_target_model_staging(),
+    source: wire_source(),
+    fixture_inputs: wire_inputs()
+  ) {
+    Rejected { diagnostics: r } => r.head.reason == ^emit_host_transport_outside_grant
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
 test fn emit_host_transport_green_run_holds() -> Bool {
   match run_emit_host(
     target: rust_target_model_staging(),
@@ -147,7 +180,8 @@ test fn emit_host_row_bound_executable_identity_discriminates_holds() -> Bool {
 }
 
 test fn emit_host_transport_wire_all_holds() -> Bool {
-  emit_host_transport_green_run_holds()
+  emit_host_transport_outside_grant_refuses_holds()
+    && emit_host_transport_green_run_holds()
     && emit_host_transport_nonzero_exit_refuses_holds()
     && emit_host_transport_byte_width_mismatch_refuses_holds()
     && emit_host_row_bound_executable_identity_holds()

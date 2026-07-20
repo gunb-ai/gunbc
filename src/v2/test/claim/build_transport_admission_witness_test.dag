@@ -10,17 +10,19 @@ import std.effect_grant {
 import v2.std.host_transport {
   HostTransportDescriptor, WorkspaceFile, WorkspaceContent, EmittedSource,
   ProcessInvocation, HostToolProgram, ProducedProgram,
+  InvocationArg, WorkspacePath,
   RuntimeValueCodec, SignedI32Le,
 }
-import v2.workflow.build_transport_admission {
+import v2.compiler.build_transport_admission {
   build_transport_admissible,
   build_transport_rel_position,
+  rel_path_is_workspace_contained,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data build_transport_admission_witness_note: String = "Discriminating witnesses for the P-B build-transport admission decision (v2.workflow.build_transport_admission). A well-formed build transport (workspace-relative emitted files, a declared host toolchain, a workspace-produced run program) is Admitted; a transport whose workspace file escapes its subtree (a `..` path or an absolute path) is a located EffectOutsideGrant, never widened (DESIGN 5). The refusal arm is the RED control: if the escape projection or admit_effect check were dropped, admits_escaping_write would flip. The projection helper is exercised directly so the containment boundary is pinned independent of the fold."
+data build_transport_admission_witness_note: String = "Discriminating witnesses for the P-B build-transport admission decision (v2.compiler.build_transport_admission). A well-formed build transport (workspace-relative emitted files, a declared host toolchain, a workspace-produced run program) is Admitted; a transport whose workspace file escapes its subtree (a `..` path or an absolute path) is a located EffectOutsideGrant, never widened (DESIGN 5). The refusal arm is the RED control: if the escape projection or admit_effect check were dropped, admits_escaping_write would flip. The projection helper is exercised directly so the containment boundary is pinned independent of the fold. Containment is SEGMENT-decomposed (review 39707): a `..` PATH SEGMENT escapes, but a bare `..` substring inside a filename (foo..bar) does not -- pinned by build_transport_admits_dotdot_substring. Build/run reads cover the invocation ARGS too (review 39684): a WorkspacePath/ProducedArtifact arg that escapes is refused -- pinned by build_transport_refuses_escaping_arg."
 
 fn well_formed_build() -> ProcessInvocation {
   ProcessInvocation {
@@ -51,6 +53,31 @@ fn transport_with_workspace_path(p: String) -> HostTransportDescriptor {
 data well_formed_transport: HostTransportDescriptor = transport_with_workspace_path(p: "fixture.c")
 data escaping_transport: HostTransportDescriptor = transport_with_workspace_path(p: "../etc/passwd")
 data absolute_transport: HostTransportDescriptor = transport_with_workspace_path(p: "/etc/passwd")
+data dotdot_substring_transport: HostTransportDescriptor = transport_with_workspace_path(p: "foo..bar")
+
+fn build_with_arg(a: InvocationArg) -> ProcessInvocation {
+  ProcessInvocation {
+    program: HostToolProgram { executable: "cc" },
+    args: [a]
+  }
+}
+
+fn transport_with_build(b: ProcessInvocation) -> HostTransportDescriptor {
+  HostTransportDescriptor {
+    identity: ^build_transport_admission_sample,
+    workspace: [WorkspaceFile { path: "fixture.c", content: emitted }],
+    build: [b],
+    run: well_formed_run(),
+    runtime_value_codec: SignedI32Le
+  }
+}
+
+data escaping_arg_transport: HostTransportDescriptor = transport_with_build(
+  b: build_with_arg(a: WorkspacePath { path: "../escape" })
+)
+data contained_arg_transport: HostTransportDescriptor = transport_with_build(
+  b: build_with_arg(a: WorkspacePath { path: "fixture.c" })
+)
 
 fn is_admitted(a: EffectAdmission) -> Bool {
   match a {
@@ -83,6 +110,19 @@ test fn build_transport_refusal_is_located() -> Bool {
     EffectOutsideGrant { verb: v, target: t, frame: f } => verb_eq(a: v, b: Write)
     Admitted { via_root: r } => false
   }
+}
+
+test fn build_transport_admits_dotdot_substring() -> Bool {
+  is_admitted(a: build_transport_admissible(transport: dotdot_substring_transport))
+    && rel_path_is_workspace_contained(p: "foo..bar")
+    && !rel_path_is_workspace_contained(p: "../escape")
+    && !rel_path_is_workspace_contained(p: "a/../b")
+    && !rel_path_is_workspace_contained(p: "a/..")
+}
+
+test fn build_transport_refuses_escaping_arg() -> Bool {
+  is_refused(a: build_transport_admissible(transport: escaping_arg_transport))
+    && is_admitted(a: build_transport_admissible(transport: contained_arg_transport))
 }
 
 test fn build_transport_projection_boundary() -> Bool {
