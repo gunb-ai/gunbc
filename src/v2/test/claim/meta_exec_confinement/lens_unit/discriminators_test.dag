@@ -1,0 +1,89 @@
+module v2.test.meta_exec_confinement.lens_unit.discriminators
+
+import v2.lens.layering_imports { LayerImportFact }
+import v2.lens.meta_exec_confinement {
+  meta_exec_leak_count_canonical,
+  meta_exec_roster_stale_count,
+  meta_exec_roster_sound,
+  target_meta_exec_module
+}
+import v2.std.collection { List }
+import v2.std.layer { LayerPrefixStd, LayerPrefixExtdeps }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data fresh_leak_facts: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/gunbc/_perturb_meta_exec_consumer.dag",
+    import_module: target_meta_exec_module
+  }
+]
+
+test fn fresh_non_edge_import_is_leak_holds() -> Bool {
+  meta_exec_leak_count_canonical(facts: fresh_leak_facts) == 1
+}
+
+data edge_import_facts: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerPrefixExtdeps,
+    path: "dag/tools/dag_compile_clean_transport.dag",
+    import_module: target_meta_exec_module
+  }
+]
+
+test fn realization_edge_import_is_not_leak_holds() -> Bool {
+  meta_exec_leak_count_canonical(facts: edge_import_facts) == 0
+}
+
+data rostered_import_facts: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/gunbc/ci_deploy_access.dag",
+    import_module: target_meta_exec_module
+  }
+]
+
+test fn rostered_consumer_import_is_not_leak_holds() -> Bool {
+  meta_exec_leak_count_canonical(facts: rostered_import_facts) == 0
+}
+
+data de_rostered_import_facts: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/gunbc/_perturb_de_rostered_meta_exec.dag",
+    import_module: target_meta_exec_module
+  }
+]
+
+test fn de_rostered_consumer_import_is_leak_holds() -> Bool {
+  meta_exec_leak_count_canonical(facts: de_rostered_import_facts) == 1
+}
+
+data non_exec_import_facts: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/gunbc/_perturb_shell_only.dag",
+    import_module: "extdeps.shell"
+  }
+]
+
+test fn non_exec_import_is_not_leak_holds() -> Bool {
+  meta_exec_leak_count_canonical(facts: non_exec_import_facts) == 0
+}
+
+data stale_roster: List<String> = [
+  "dag/gunbc/ci_deploy_access.dag",
+  "dag/gunbc/_perturb_stale_meta_exec_roster.dag"
+]
+
+data live_leak_paths: List<String> = [
+  "dag/gunbc/ci_deploy_access.dag"
+]
+test fn roster_stale_entry_red_holds() -> Bool {
+  meta_exec_roster_stale_count(roster: stale_roster, live_leak_paths: live_leak_paths) == 1
+    && !meta_exec_roster_sound(roster: stale_roster, live_leak_paths: live_leak_paths)
+}
