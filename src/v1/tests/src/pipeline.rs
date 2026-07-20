@@ -9461,10 +9461,10 @@ fn dump_complexity_report() {
     let result = v1_compiler::v1_compiler_compile::compile_sources_with_options(
         Rc::new(all_sources.into()),
         RenderTarget::Rust,
-        v1_compiler::v1_compiler_compile::CompilePipelineOptions {
+        Rc::new(v1_compiler::v1_compiler_compile::CompilePipelineOptions {
             analyze_complexity: true,
             census_only_sources: Rc::new(im_rc::Vector::new()),
-        },
+        }),
     );
 
     let cx = &result.complexity;

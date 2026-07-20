@@ -346,12 +346,25 @@ dependency edge (Rule-1 end-state). First concrete census rows from the PR-2 ref
 collecting every unresolved-name error.
 
 **PR-5b import-line strip (interim host bridge).** Deletes `import` lines from
-`src/v2/workflow/**` and `src/v2/extdeps/**` while bare refs stay; v1 host keeps compile
-working via seed-retained hand-Rust (`CLI_RUN_NAMESPACE_IMPORT_SYNTHESIS_SCAFFOLD_MARKER` in
-`src/v1/stage0/src/cli_run.rs` — origin/main import replay at compile time **fail-closed** when
-`git show` refuses, bare-export closure for module-graph facts and inert-lens hygiene). **Dissolve-on:**
-`^migrate_when_namespace_only_resolution_lands` (terminal step 5 above — delete import
-grammar; container.member references become the sole dependency authority).
+`src/v2/workflow/**` and `src/v2/extdeps/**` while bare refs stay; the v1 host keeps
+compile and witness execution working via the **census bare-reference closure**
+(`extend_with_bare_reference_closure` in `src/v1/stage0/src/cli_run.rs`): an
+import-stripped module's bare names resolve through the per-tree census (own tree
+first, whole pool on miss — the same layering typecheck lookup uses), and each
+resolved name pulls its declaring module into the entry closure. Precision guards,
+both declaration-grain: names the referencing file itself binds anywhere (params,
+named-arg keys, `let`/`data` binders) never pull, and a name whose resolved
+declaration is a `test fn`/`test data` row never pulls (an execution root is not a
+dependency). A pulled module missing from module-graph-facts provenance refuses
+loudly. An earlier draft of this paragraph described a git-show import-replay
+scaffold (`CLI_RUN_NAMESPACE_IMPORT_SYNTHESIS_SCAFFOLD_MARKER`) that was never
+built — the census closure above is the mechanism that actually shipped, and the
+known residue (the reference producer over-collects; the closure is a second
+authority beside the compile-clean import closure) is tracked as the
+reference-derived dependency-edge lane, the same lane that dissolves this bridge.
+**Dissolve-on:** `^migrate_when_namespace_only_resolution_lands` (terminal step 5
+above — delete import grammar; container.member references become the sole
+dependency authority).
 
 ## 9. Open / to-verify
 
