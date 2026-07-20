@@ -1,0 +1,231 @@
+module test.claim.http_serve_route_witness
+
+import extdeps.http.server {
+  HttpContentType, TextHtmlUtf8, ApplicationJsonUtf8,
+  ServedStaticRoute,
+  ServedRoute, StaticRoute, DynamicRoute,
+  ServedRouteTable,
+  RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
+  serve_select_route,
+}
+import extdeps.uri_path {
+  ParsedPathTemplate,
+  MalformedPathTemplate,
+  parse_path_template,
+  PathParamBinding,
+}
+import gunbc.node_http_server_emit { emit_path_template_regex_source }
+import std.http_path { PathTemplate }
+import std.types { String, Bool, List, Int, HttpMethod, GET, POST }
+
+type ProbeHandler
+  = ProbePage
+  | ProbeDispatch
+
+fn tpl(raw: String) -> PathTemplate {
+  match parse_path_template(raw: raw) {
+    ParsedPathTemplate { template: t } => t
+    MalformedPathTemplate { raw: _, segment: _, reason: _ } => PathTemplate { tokens: [] }
+  }
+}
+
+fn probe_table() -> ServedRouteTable<ProbeHandler> {
+  ServedRouteTable {
+    routes: [
+      DynamicRoute { method: GET, path_pattern: tpl(raw: "/"), handler: ProbePage },
+      StaticRoute { route: ServedStaticRoute {
+        method: GET,
+        path_pattern: tpl(raw: "/healthz"),
+        body: "ok",
+        content_type: TextHtmlUtf8,
+        status_on_hit: 200,
+      } },
+      DynamicRoute { method: POST, path_pattern: tpl(raw: "/dispatch/\{node_id\}"), handler: ProbeDispatch },
+    ]
+  }
+}
+
+fn selected_dynamic_is(sel: RouteSelection<ProbeHandler>, want_dispatch: Bool) -> Bool {
+  match sel {
+    SelectedDynamic { handler: h, params: _ } =>
+      match h {
+        ProbePage => !want_dispatch
+        ProbeDispatch => want_dispatch
+      }
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+fn selection_param(sel: RouteSelection<ProbeHandler>, name: String) -> String {
+  match sel {
+    SelectedDynamic { handler: _, params: ps } =>
+      fold(ps, init: "", f: (acc, p) => if p.name == name { p.value } else { acc })
+    SelectedStatic { route: _ } => ""
+    MethodNotAllowed { allowed: _ } => ""
+    NoRouteMatched => ""
+  }
+}
+
+fn witness_root_selects_page_handler() -> Bool {
+  selected_dynamic_is(sel: serve_select_route(table: probe_table(), method: GET, path: "/"), want_dispatch: false)
+}
+
+fn witness_static_row_selects_static() -> Bool {
+  match serve_select_route(table: probe_table(), method: GET, path: "/healthz") {
+    SelectedStatic { route: r } => r.body == "ok" && r.status_on_hit == 200
+    SelectedDynamic { handler: _, params: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+fn witness_dispatch_post_binds_param() -> Bool {
+  let sel = serve_select_route(table: probe_table(), method: POST, path: "/dispatch/2-cd-transport")
+  selected_dynamic_is(sel: sel, want_dispatch: true)
+    && selection_param(sel: sel, name: "node_id") == "2-cd-transport"
+}
+
+fn witness_wrong_method_folds_405_with_allowed() -> Bool {
+  match serve_select_route(table: probe_table(), method: GET, path: "/dispatch/x") {
+    MethodNotAllowed { allowed: ms } =>
+      count(ms) == 1 && any(ms, m => m == POST)
+    SelectedStatic { route: _ } => false
+    SelectedDynamic { handler: _, params: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+fn witness_unknown_path_folds_404() -> Bool {
+  match serve_select_route(table: probe_table(), method: GET, path: "/nope") {
+    NoRouteMatched => true
+    SelectedStatic { route: _ } => false
+    SelectedDynamic { handler: _, params: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+  }
+}
+
+fn witness_first_match_wins_on_overlap() -> Bool {
+  let overlap = ServedRouteTable {
+    routes: [
+      DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/\{x\}"), handler: ProbePage },
+      DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/b"), handler: ProbeDispatch },
+    ]
+  }
+  selected_dynamic_is(sel: serve_select_route(table: overlap, method: GET, path: "/a/b"), want_dispatch: false)
+}
+
+data regex_parity_note: String = "The one-grammar-both-directions agreement witness (parent review note 2, 2026-07-20): the BACKWARD reading (emit_path_template_regex_source) is re-ingested by a test-local interpreter of exactly the restricted regex language that emitter produces (anchors ^ $, segments joined by escaped slash, literal segments with JS metachar escapes, param segments as the nonempty [^/]+ class), and both directions are executed over one shared path corpus asserting IDENTICAL accept verdicts per path. If either direction drifts (the emitter changes its segment grammar, or match_path_template changes normalization), this witness reds — the agreement is proven by execution, not by the two functions reading the same-looking rows."
+
+fn regex_unescape_literal(s: String) -> String {
+  let s1 = join(split(s: s, delimiter: "\\."), ".")
+  let s2 = join(split(s: s1, delimiter: "\\+"), "+")
+  let s3 = join(split(s: s2, delimiter: "\\?"), "?")
+  let s4 = join(split(s: s3, delimiter: "\\*"), "*")
+  let s5 = join(split(s: s4, delimiter: "\\("), "(")
+  let s6 = join(split(s: s5, delimiter: "\\)"), ")")
+  let s7 = join(split(s: s6, delimiter: "\\^"), "^")
+  let s8 = join(split(s: s7, delimiter: "\\$"), "$")
+  let s9 = join(split(s: s8, delimiter: "\\["), "[")
+  let s10 = join(split(s: s9, delimiter: "\\]"), "]")
+  let s11 = join(split(s: s10, delimiter: "\\\{"), "\{")
+  let s12 = join(split(s: s11, delimiter: "\\\}"), "\}")
+  let s13 = join(split(s: s12, delimiter: "\\|"), "|")
+  let s14 = join(split(s: s13, delimiter: "\\\\"), "\\")
+  s14
+}
+
+fn strip_prefix_or(s: String, prefix: String) -> String {
+  if starts_with(s: s, prefix: prefix) {
+    substring(s: s, start: string_length(s: prefix), end: string_length(s: s))
+  } else {
+    s
+  }
+}
+
+fn strip_suffix_or(s: String, suffix: String) -> String {
+  let n = string_length(s: s)
+  let k = string_length(s: suffix)
+  if n >= k && substring(s: s, start: n - k, end: n) == suffix {
+    substring(s: s, start: 0, end: n - k)
+  } else {
+    s
+  }
+}
+
+data regex_param_class_sentinel: String = "PARAM_SEGMENT_SENTINEL"
+
+fn regex_source_accepts(re: String, path: String) -> Bool {
+  if re == "^\\/$" {
+    path == "/"
+  } else {
+    let stripped = strip_suffix_or(s: strip_prefix_or(s: strip_prefix_or(s: re, prefix: "^"), prefix: "\\/"), suffix: "$")
+    let inner = join(split(s: stripped, delimiter: "[^\\/]+"), regex_param_class_sentinel)
+    let re_segs = inner |> split(delimiter: "\\/")
+    let path_inner = strip_prefix_or(s: path, prefix: "/")
+    let path_segs = path_inner |> split(delimiter: "/")
+    if !starts_with(s: path, prefix: "/") {
+      false
+    } else if count(re_segs) != count(path_segs) {
+      false
+    } else {
+      let pairs = zip_accept(re_segs: re_segs, path_segs: path_segs)
+      pairs
+    }
+  }
+}
+
+fn zip_accept(re_segs: List<String>, path_segs: List<String>) -> Bool {
+  match re_segs |> first {
+    Absent => true
+    Present { value: rs } =>
+      match path_segs |> first {
+        Absent => false
+        Present { value: ps } => {
+          let head_ok = if rs == regex_param_class_sentinel {
+            !(ps == "")
+          } else {
+            regex_unescape_literal(s: rs) == ps && !(ps |> contains("/"))
+          }
+          head_ok && zip_accept(re_segs: re_segs |> skip(1), path_segs: path_segs |> skip(1))
+        }
+      }
+  }
+}
+
+fn parity_corpus() -> List<String> {
+  ["/", "/roadmap", "/roadmap/", "/dispatch", "/dispatch/abc", "/dispatch/abc/d", "/dispatch//x", "/nope", "/healthz"]
+}
+
+fn matcher_accepts(template: PathTemplate, path: String) -> Bool {
+  match extdeps.uri_path.match_path_template(template: template, path: path) {
+    extdeps.uri_path.PathMatched { params: _ } => true
+    extdeps.uri_path.PathNotMatched => false
+  }
+}
+
+fn parity_on_template(raw: String) -> Bool {
+  let t = tpl(raw: raw)
+  let re = emit_path_template_regex_source(template: t)
+  fold(parity_corpus(), init: true, f: (acc, p) =>
+    acc && (matcher_accepts(template: t, path: p) == regex_source_accepts(re: re, path: p))
+  )
+}
+
+fn witness_forward_backward_agreement() -> Bool {
+  parity_on_template(raw: "/")
+    && parity_on_template(raw: "/roadmap")
+    && parity_on_template(raw: "/healthz")
+    && parity_on_template(raw: "/dispatch/\{node_id\}")
+}
+
+test fn http_serve_route_witnesses() -> Bool {
+  witness_root_selects_page_handler()
+    && witness_static_row_selects_static()
+    && witness_dispatch_post_binds_param()
+    && witness_wrong_method_folds_405_with_allowed()
+    && witness_unknown_path_folds_404()
+    && witness_first_match_wins_on_overlap()
+    && witness_forward_backward_agreement()
+}

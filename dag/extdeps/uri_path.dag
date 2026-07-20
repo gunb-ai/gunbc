@@ -69,6 +69,67 @@ fn parse_segment_tokens(seg: String) -> PathSegmentTokensResult {
   }
 }
 
+type PathParamBinding {
+  name: String
+  value: String
+}
+
+type PathTemplateMatch
+  = PathMatched { params: List<PathParamBinding> }
+  | PathNotMatched
+
+data match_path_template_note: String = "The FORWARD reading of the same PathTemplate rows gunbc.node_http_server_emit.emit_path_template_regex_source reads BACKWARD into a JS regex (DESIGN 4: one grammar, both directions — a matcher and an emitted matcher are two directions over one row set, never two authorities). Parity contract with that regex, kept strict so the two realizations agree on every input: one token = one path segment joined by '/' (LiteralToken == segment text; ParamToken binds any NON-EMPTY segment, the [^/]+ class); the empty template matches exactly the root path '/'; a trailing slash is a mismatch (the regex anchors with $); an interior empty segment ('//') never matches any token (a Literal is never empty by parse construction, a Param requires non-empty). Query strings are stripped before matching, mirroring parse_path_template's own '?' strip."
+
+fn match_path_segments(path_only: String) -> List<String> {
+  if path_only == "/" || path_only == "" {
+    []
+  } else {
+    let raw_segs = path_only |> split(delimiter: "/")
+    match raw_segs |> first {
+      Present { value: lead } =>
+        if lead == "" { raw_segs |> skip(1) } else { raw_segs }
+      Absent => raw_segs
+    }
+  }
+}
+
+fn match_path_tokens(tokens: List<UrlPathToken>, segs: List<String>) -> PathTemplateMatch {
+  match tokens |> first {
+    Absent =>
+      match segs |> first {
+        Absent => PathMatched { params: [] }
+        Present { value: _ } => PathNotMatched
+      }
+    Present { value: tok } =>
+      match segs |> first {
+        Absent => PathNotMatched
+        Present { value: seg } =>
+          match match_path_tokens(tokens: tokens |> skip(1), segs: segs |> skip(1)) {
+            PathNotMatched => PathNotMatched
+            PathMatched { params: ps } =>
+              match tok {
+                LiteralToken { text: t } =>
+                  if t == seg { PathMatched { params: ps } } else { PathNotMatched }
+                ParamToken { name: n } =>
+                  if seg == "" {
+                    PathNotMatched
+                  } else {
+                    PathMatched { params: concat([PathParamBinding { name: n, value: seg }], ps) }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn match_path_template(template: PathTemplate, path: String) -> PathTemplateMatch {
+  let path_only = match path |> split(delimiter: "?") |> first {
+    Present { value: p } => p
+    Absent => path
+  }
+  match_path_tokens(tokens: template.tokens, segs: match_path_segments(path_only: path_only))
+}
+
 fn parse_path_template(raw: String) -> PathTemplateParseResult {
   let path_only = match raw |> split(delimiter: "?") |> first {
     Present { value: p } => p

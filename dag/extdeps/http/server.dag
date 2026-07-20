@@ -4,6 +4,11 @@ import std.http_path { PathTemplate }
 import std.types { HttpMethod, HttpStatus, Port }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.uri_path {
+  PathParamBinding,
+  PathTemplateMatch, PathMatched, PathNotMatched,
+  match_path_template,
+}
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -103,4 +108,97 @@ type ServedStaticRoute {
 
 type ServedStaticRouteTable {
   routes: List<ServedStaticRoute>
+}
+
+type ServeHttpRequest {
+  method: HttpMethod
+  path: String
+  body: String
+}
+
+type ServeHttpResponse {
+  status: HttpStatus
+  content_type: HttpContentType
+  body: String
+}
+
+data served_route_sum_note: String = "The dynamic extension of ServedStaticRoute (DESIGN 2: one concept, every breadth — a static body is the degenerate handler, embedded not re-modeled). H is the consumer's handler vocabulary: extdeps owns the route SHAPE and the pure selection fold below; it cannot and does not name any concrete handler — naming them here would point the import arrow backward (DESIGN 3: dispatch lives peripheral, the interface stays realization-free). INVOKING a selected handler is therefore the instantiating module's job, never this module's."
+
+type ServedRoute<H>
+  = StaticRoute { route: ServedStaticRoute }
+  | DynamicRoute { method: HttpMethod, path_pattern: PathTemplate, handler: H }
+
+type ServedRouteTable<H> {
+  routes: List<ServedRoute<H>>
+}
+
+type RouteSelection<H>
+  = SelectedStatic { route: ServedStaticRoute }
+  | SelectedDynamic { handler: H, params: List<PathParamBinding> }
+  | MethodNotAllowed { allowed: List<HttpMethod> }
+  | NoRouteMatched
+
+fn served_route_method<H>(r: ServedRoute<H>) -> HttpMethod {
+  match r {
+    StaticRoute { route: s } => s.method
+    DynamicRoute { method: m, path_pattern: _, handler: _ } => m
+  }
+}
+
+fn served_route_pattern<H>(r: ServedRoute<H>) -> PathTemplate {
+  match r {
+    StaticRoute { route: s } => s.path_pattern
+    DynamicRoute { method: _, path_pattern: p, handler: _ } => p
+  }
+}
+
+data serve_select_route_note: String = "Selection is a TOTAL pure fold — every request folds to exactly one RouteSelection arm, no absorbing default (DESIGN 5). First (method AND path) match wins, in table order. A path that matches some route's template only under a different method folds to MethodNotAllowed carrying the allowed set — the same 405-with-Allow semantics the emitted Node realization implements over the same rows (gunbc.node_http_server_emit.node_http_request_handler_block); two realizations, one row authority. Nothing matched at all is NoRouteMatched (the 404 arm). Method-mismatch scan reuses the SAME match_path_template call as selection — one matcher, both questions."
+
+fn serve_route_hit<H>(r: ServedRoute<H>, method: HttpMethod, path: String) -> RouteSelection<H> {
+  if !(served_route_method(r: r) == method) {
+    NoRouteMatched
+  } else {
+    match match_path_template(template: served_route_pattern(r: r), path: path) {
+      PathNotMatched => NoRouteMatched
+      PathMatched { params: ps } =>
+        match r {
+          StaticRoute { route: s } => SelectedStatic { route: s }
+          DynamicRoute { method: _, path_pattern: _, handler: h } =>
+            SelectedDynamic { handler: h, params: ps }
+        }
+    }
+  }
+}
+
+fn serve_allowed_methods<H>(table: ServedRouteTable<H>, path: String) -> List<HttpMethod> {
+  table.routes
+    |> filter(r => match match_path_template(template: served_route_pattern(r: r), path: path) {
+      PathMatched { params: _ } => true
+      PathNotMatched => false
+    })
+    |> map(r => served_route_method(r: r))
+}
+
+fn serve_select_route<H>(table: ServedRouteTable<H>, method: HttpMethod, path: String) -> RouteSelection<H> {
+  let hit = fold(table.routes, init: NoRouteMatched, f: (acc, r) =>
+    match acc {
+      SelectedStatic { route: _ } => acc
+      SelectedDynamic { handler: _, params: _ } => acc
+      MethodNotAllowed { allowed: _ } => acc
+      NoRouteMatched => serve_route_hit(r: r, method: method, path: path)
+    }
+  )
+  match hit {
+    NoRouteMatched => {
+      let allowed = serve_allowed_methods(table: table, path: path)
+      if count(allowed) == 0 {
+        NoRouteMatched
+      } else {
+        MethodNotAllowed { allowed: allowed }
+      }
+    }
+    SelectedStatic { route: _ } => hit
+    SelectedDynamic { handler: _, params: _ } => hit
+    MethodNotAllowed { allowed: _ } => hit
+  }
 }
