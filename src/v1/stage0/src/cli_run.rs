@@ -17207,6 +17207,7 @@ mod reference_edge_producer_tests {
     }
 
     fn dependency_edges_from_value(
+        ctx: &crate::v1_interpreter::InterpContext,
         value: &crate::v1_interpreter::Value,
     ) -> Vec<(String, String)> {
         let list = match value {
@@ -17216,22 +17217,14 @@ mod reference_edge_producer_tests {
         list.iter()
             .map(|item| match item {
                 crate::v1_interpreter::Value::Record { fields, .. } => {
-                    let path = fields
-                        .iter()
-                        .find(|(k, _)| k.as_ref() == "path")
-                        .map(|(_, v)| match v {
-                            crate::v1_interpreter::Value::Str(s) => s.clone(),
-                            other => panic!("path field: {other}"),
-                        })
-                        .expect("path");
-                    let target = fields
-                        .iter()
-                        .find(|(k, _)| k.as_ref() == "target_module")
-                        .map(|(_, v)| match v {
-                            crate::v1_interpreter::Value::Str(s) => s.clone(),
-                            other => panic!("target_module field: {other}"),
-                        })
-                        .expect("target_module");
+                    let path = match ctx.field(fields, "path") {
+                        Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
+                        other => panic!("path field: {other:?}"),
+                    };
+                    let target = match ctx.field(fields, "target_module") {
+                        Some(crate::v1_interpreter::Value::Str(s)) => s.clone(),
+                        other => panic!("target_module field: {other:?}"),
+                    };
                     (path, target)
                 }
                 other => panic!("expected Record edge, got {other}"),
@@ -17274,12 +17267,9 @@ mod reference_edge_producer_tests {
                 .any(|e| e.path.contains(from_sub) && e.import_module == to_mod)
         };
         let has_host_ref_edge = |from_sub: &str, to_mod: &str| {
-            reference_edges_as_import_facts(
-                &reference_resolution_facts(&pool, &pool, &[]),
-                true,
-            )
-            .iter()
-            .any(|e| e.path.contains(from_sub) && e.import_module == to_mod)
+            reference_edges_as_import_facts(&reference_resolution_facts(&pool, &pool, &[]), true)
+                .iter()
+                .any(|e| e.path.contains(from_sub) && e.import_module == to_mod)
         };
 
         // RED control: import-only producer cannot see a reference-only dependency.
@@ -17313,7 +17303,8 @@ mod reference_edge_producer_tests {
             ),
         ];
         let dag_edges = dependency_edges_from_value(
-            &interp::run_in_context_with_args(
+            &ctx,
+            &v1_interpreter::run_in_context_with_args(
                 &ctx,
                 "dependency_resolution_facts_live",
                 &args,
