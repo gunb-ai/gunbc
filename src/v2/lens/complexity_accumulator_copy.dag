@@ -1,18 +1,5 @@
 module v2.lens.complexity_accumulator_copy
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SubstrateMandatoryTag }
-import v2.lens.cost {
-  PolynomialCost,
-  SizeVariable,
-  SymbolicCost,
-  polynomial_degree_two
-}
-import v2.lens.cost.copied_port_citations { copied_port_index_of }
-import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
 
 type PortReading
   = PortBareName { name: Symbol }
@@ -23,7 +10,7 @@ type PortReading
 data port_mentions_note: String = "PortComputedExpression carries the value identifiers the expression MENTIONS (collected by the same walk that decides the 0/1/many identifier split - one authority). Without the payload, a carrier buried inside a non-call computed argument (Wrapped { inner: acc }) reaching an UNREGISTERED combiner was a silent false-clean: the reading destroyed the occurrence at construction time, any_port_carries_carrier saw nothing, and no descendant call capture existed to catch it. Mentions make the unregistered-combiner arm fail closed: intersect(mentions, carriers) => ^combiner_unregistered_carrier_reaches. BindsComputed carries the same payload with the RHS's raw mentions (depth-1; see mentions_depth_note in the analyze module for why bind-time substitution was priced and deferred to Stage B). The collector itself is the linear accumulator-threading walk and earns one honest ^combiner_unregistered_carrier_reaches refusal from this lens (see roster_lens_traversal_ceiling_note in the roster gate) - linearity wins over lens-greenness per the bare-minimum-cost rule."
 
 type Finding
-  = Poly2Suspect { at: Node, cost: SymbolicCost }
+  = Poly2Suspect { at: Node, cost: v2.lens.cost.SymbolicCost }
   | Unclassifiable { at: Node, cause: Symbol }
 
 fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
@@ -32,7 +19,7 @@ fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
   })
 }
 
-fn poly_two_cost(n: Node) -> SymbolicCost {
+fn poly_two_cost(n: Node) -> v2.lens.cost.SymbolicCost {
   PolynomialCost {
     variable: SizeVariable { source: n },
     degree: polynomial_degree_two()
@@ -136,7 +123,7 @@ fn classify_call(
   ports: List<PortReading>,
   carriers: List<Symbol>
 ) -> Optional<Finding> {
-  match copied_port_index_of(combiner: combiner) {
+  match v2.lens.cost.copied_port_citations.copied_port_index_of(combiner: combiner) {
     Absent =>
       if any_port_carries_carrier(ports: ports, carriers: carriers) {
         some_finding(f: Unclassifiable { at: at, cause: ^combiner_unregistered_carrier_reaches })

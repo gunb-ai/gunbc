@@ -1,13 +1,5 @@
 module v2.test.parse.parse_token_first_empty_semantics
 
-import std.algebra { Cons, Empty }
-import v2.compiler.parse { parse_token_first }
-import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.compilers.lexing { Token }
-import v2.std.logic { Bool }
-import v2.std.node { Symbol }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

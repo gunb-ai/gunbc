@@ -1,20 +1,5 @@
 module test.claim.compile_source_model_witness
 
-import gunbc.compile_source_model {
-  SourceRootRole,
-  StrictPoolIndex,
-  PrimaryPrecedencePoolIndex,
-  EntrySourceRoot,
-  DependencyPoolRoot,
-  dependency_pool_index_from_flag,
-  source_root_role,
-  pool_fill_only_for_role,
-  compile_entry_source_root_index,
-  skip_pool_module_when_indexed,
-  duplicate_module_path_across_index_is_error,
-  duplicate_module_path_within_root_scan_is_error
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,13 +1,5 @@
 module test.claim.github_mergeable_state_witness
 
-import extdeps.github.mergeable_state {
-  MergeableState,
-  Mergeable,
-  Conflicting,
-  parse_mergeable_state,
-  mergeable_state_wire_label,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

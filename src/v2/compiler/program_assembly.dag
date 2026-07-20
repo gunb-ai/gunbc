@@ -1,47 +1,8 @@
 module v2.compiler.program_assembly
-
-import v2.compiler.name_resolve {
-  Admission,
-  resolve_with_admission,
-  resolve_with_admission_grounded,
-  validate_module_roots
-}
-import v2.compiler.normalize { normalize }
-import v2.compiler.parse { PreparedGrammar, parse_module, parse_module_prepared, prepare_grammar }
-import v2.compiler.source_authority {
-  DagSourceReadWitness,
-  SourceRootIngest,
-  source_authority_diagnostic,
-  source_root_set_from_ingest,
-}
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag { qualified_name_from_module_node }
-import v2.std.cross_tree.resolution {
-  SourceRootIndex,
-  source_root_index_empty,
-  source_root_index_insert
-}
-import v2.std.language_model { LanguageModel }
-import std.algebra { Empty, FreeMonoid }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.artifact { SourceFile }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostics,
-  NonEmptyDiagnostics,
-  None,
-  Outcome,
-  Rejected,
-  bind_outcome,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.node { Node }
-
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
       roots: FreeMonoid<Node>,
-      index: SourceRootIndex
+      index: v2.std.cross_tree.resolution.SourceRootIndex
     }
   | ProgramAssemblyFoldFailed {
       diagnostics: NonEmptyDiagnostics

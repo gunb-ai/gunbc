@@ -1,33 +1,5 @@
 module v2.compiler.body_producer_forward
 
-import std.algebra { Cons, Empty }
-import v2.extdeps.languages.dag {
-  dag_translation_rules_node,
-  parse_production_emitted_identity_optional
-}
-import v2.std.algebra { fold_list, length, list_append }
-import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  Accepted,
-  Rejected,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.grammar { grammar_relation_row_forward_production_selection }
-import v2.std.node {
-  Atom,
-  ComputationNode,
-  Node,
-  Symbol,
-  TypeNode,
-  node_synthetic
-}
-
 data body_producer_forward_note: String = "General body producer forward fold (general-body-producer-design §3, wave2_prep_design §3): production-identity-keyed GrammarRelationRow selection at the normalize/body-producer seam — the forward reading of the same rows the emitter reads backward. First consumer of ObligationForwardDeterminism (exactly-one row per surface identity) and the production-identity selection helper grammar_relation_row_forward_production_selection. Behavior lowering (match/if/let/loop/…) dispatches through body_lower_fold in v2.compiler.body_lowering_fold until Slice 4 deletes that interim module wholesale. dissolve-on: body_lowering_fold.dag absent — this module owns the full forward slot-map apply."
 
 type BodyProducerForwardRow {
@@ -71,7 +43,7 @@ fn body_producer_forward_rows() -> List<BodyProducerForwardRow> {
             head: body_producer_forward_row_let_expr,
             tail: Cons {
               head: body_producer_forward_row_loop_expr,
-              tail: Empty
+              tail: std.algebra.Empty
             }
           }
         }
@@ -87,7 +59,7 @@ fn body_producer_forward_row_count() -> Int {
 fn body_producer_forward_surface_identities() -> List<Symbol> {
   fold_list(
     xs: body_producer_forward_rows(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       list_append(left: acc, right: [row.surface_identity])
     }

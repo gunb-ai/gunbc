@@ -1,5 +1,6 @@
 module gunbc.session_lease
 
+
 import std.types { String, NonEmptyStr, Int, Bool }
 import std.upsert_decision {
   ObservationVerdict,
@@ -14,6 +15,8 @@ import std.upsert_decision {
   Apply,
   Refuse,
 }
+
+
 
 type ProcessPortScope {
   listen_port: Int
@@ -100,7 +103,7 @@ fn decision_for_process_port_verdict(
 fn classify_process_port_upsert(
   scope: ProcessPortScope,
   obs: ProcessPortObservation,
-) -> UpsertClassification<ProcessLeasePlan> {
+) -> std.upsert_decision.UpsertClassification<ProcessLeasePlan> {
   let verdict = classify_process_port(scope: scope, obs: obs)
   UpsertClassification {
     verdict: verdict,

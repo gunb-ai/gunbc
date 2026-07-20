@@ -180,7 +180,7 @@ fn sugar_pipe_sequence_variant_optional(node: Node) -> Node? {
 
 fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
   if is_empty_conj_root(n: spine) {
-    Empty
+    std.algebra.Empty
   } else {
     match sugar_sequence_pair_optional(node: spine) {
       Present { value: pair } =>
@@ -192,17 +192,17 @@ fn sugar_collect_pipe_chain_variants(spine: Node) -> FreeMonoid<Node> {
             )
           Absent => sugar_collect_pipe_chain_variants(spine: pair.right)
         }
-      Absent => Empty
+      Absent => std.algebra.Empty
     }
   }
 }
 
 fn sugar_all_coproduct_variants(captured: Node) -> FreeMonoid<Node> {
   match sugar_sequence_pair_optional(node: captured) {
-    Absent => Empty
+    Absent => std.algebra.Empty
     Present { value: pair } =>
       list_append(
-        left: Cons { head: pair.left, tail: Empty },
+        left: Cons { head: pair.left, tail: std.algebra.Empty },
         right: sugar_collect_pipe_chain_variants(spine: pair.right)
       )
   }
@@ -249,7 +249,7 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<Edge> {
 fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoid<Edge>> {
   fold_list(
     xs: variants,
-    empty: outcome_accepted(Empty),
+    empty: outcome_accepted(std.algebra.Empty),
     cons: fn(acc_outcome, variant) {
       bind_outcome(o: acc_outcome, f: fn(edges) {
         bind_outcome(o: sugar_variant_to_disj_edge(variant_node: variant), f: fn(edge) {

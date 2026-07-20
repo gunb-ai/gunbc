@@ -1,52 +1,5 @@
 module gunbc.srv3_os_install_reconcile_apply
 
-import gunbc.srv3_host_effect_apply {
-  srv3_host_effect_observe_read_apply,
-  srv3_durable_approval_grant_read_apply,
-  srv3_boot_once_read_back_sleep_apply,
-  srv3_emit_typed_receipt,
-  srv3_typed_receipt_from_lines,
-  srv3_shell_stdout_from_apply,
-  srv3_reconciliation_failure_reason,
-  srv3_reconciliation_to_process_exit,
-}
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr, Timestamp }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.resources { Network }
-import gunbc.srv3_os_install_diagnostic {
-  srv3_os_install_attempt_intent,
-  parse_srv3_install_debug_observation,
-}
-import gunbc.srv3_os_install_reconcile {
-  reconcile_srv3_os_install,
-  srv3_held_lease_from_serve,
-  parse_durable_approval_grant_file,
-  parse_observed_at_from_stdout,
-  workflow_approval_from_durable_grant,
-  boot_once_apply_read_back_ok,
-  consumed_grant_after_boot_once,
-}
-import gunbc.srv3_os_install_reconcile_types {
-  srv3_install_reconcile_default_disk,
-}
-import gunbc.srv3_os_install_reconcile_receipt {
-  srv3_install_reconcile_full_receipt,
-  srv3_install_reconcile_apply_receipt,
-  effect_step_receipt_for_boot_once,
-  durable_grant_is_active,
-}
-import gunbc.srv3_boot_once_cd { srv3_boot_once_cd_gated }
-import std.temporal_effect {
-  NoPriorReceipt,
-  PriorReceipt,
-  PlanApply,
-  PlanAwaitApproval,
-  PlanRefuse,
-  PlanNoop,
-  EffectApplied,
-}
 
 data srv3_os_install_reconcile_apply_shell_runner_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -66,7 +19,7 @@ fn process_exit_succeeded(exit: ProcessExit) -> Bool {
 }
 
 func srv3_os_install_reconcile_apply() -> ProcessExit
-  uses net: Network
+  uses net: std.resources.Network
 {
   let intent = srv3_os_install_attempt_intent
   let grant_r = srv3_durable_approval_grant_read_apply()

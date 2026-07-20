@@ -1,28 +1,5 @@
 module gunbc.ci_materialization_gate
 
-import std.types { Bool, Int, List, String }
-import std.materialization_ladder {
-  FrameDemand, CacheProvider, LadderVerdict,
-  AuthoredDuplication, DeadComputation, AcceptedEffectIsTheUse,
-  Discharged, RefusedNoProvider, RefusedScopeTooNarrow, RefusedExistenceKeyed,
-  RefusedUnmodeledWorldRead, ExemptFreshEffect, AcceptedBelowCostFloor, AcceptedSingleRecompute,
-  RefusedNatureConflict,
-  materialization_ladder, materialization_ladder_holds,
-  verdict_is_discharged_by, verdict_is_refused_no_provider,
-  verdict_is_accepted_single_recompute,
-  no_cache_providers
-}
-import gunbc.ci_materialization {
-  ci_cache_providers, ci_cost_floor_exempt_step_names,
-  ci_sccache_provider_id,
-  workflow_run_demands, workflow_scripts_named, step_run_script,
-  workflow_uses_steps_count, workflow_run_steps_count
-}
-import gunbc.ci_workflow { ci_workflow, ci_floor_peak_pre_step, ci_floor_peak_post_step }
-import gunbc.ci_spec {
-  DeployStage, gunbc_ci_deploy_stages, gunbc_ci_deploy_invoke
-}
-import v2.workflow.ci_release_build_emit { ci_release_build_script }
 
 data ci_materialization_gate_note: String = "The live binding: the ladder run over the ACTUAL emitted workflow (gunbc.ci_workflow data row), never a fixture copy of it. Demands, exemption identities, and fresh-effect scripts are all resolved against the same authority the ci.yml is emitted from, so a workflow edit that introduces cross-job duplication without a covering provider reds the enrolled witness in the same CI run that would have paid the duplication. Post-fold reality (ci_regen job folded into the ci job 2026-07-11): the workflow now has a SINGLE building job, so the release build is one demand -> AcceptedSingleRecompute (state 5: a single undeclared demand needs no provider, a cache there is dead weight), and the ladder holds WITH AND WITHOUT the sccache provider. The cross-job duplication the ladder refutes is now carried as the discriminating RED control by the synthetic placement_grain witness (two independently-building jobs -> AuthoredDuplication/RefusedNoProvider), which the live witness's demand==1 / discharged==0 pins guard against reintroducing. Fresh effects: the floor cgroup-peak measurement scripts (a memory.peak read is a new fact each run, never memoizable — the rust_tests cgroup-peak measurement was the prior subject; it retired with the rust_tests job 2026-07-11, and the ci-job floor peak pre/post reads are the same measurement category) and every deploy stage script (a deploy is the effect being the use); all resolved by projection, not copied strings."
 

@@ -1,19 +1,6 @@
 module v2.test.program_assembly.real_ingest
 import v2.compiler.source_authority { source_root_coverage_is_complete }
 
-import v2.compiler.name_resolve { validate_module_roots }
-import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.algebra { length }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.text { string_is_empty }
-import v2.test.workflow.host_source_root_ingest_manifest {
-  host_source_root_ingest,
-  host_source_root_ingest_content_hash,
-  host_source_root_ingest_coverage_receipt
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

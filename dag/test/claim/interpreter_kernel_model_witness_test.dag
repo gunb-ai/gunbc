@@ -1,18 +1,5 @@
 module test.claim.interpreter_kernel_model_witness
 
-import gunbc.interpreter_kernel_model {
-  PureEvalAuthority,
-  PinnedHostPhysics,
-  v1_interpreter_hybrid_seed_file,
-  is_pure_eval_authority_module,
-  is_pinned_host_physics_stage0_file,
-  interpreter_kernel_d_phase_is_pure_eval_emit_wired,
-  v1_interpreter_not_classified_as_pinned_host_physics,
-  seam_class_for_authority_module,
-  seam_class_for_pinned_basename,
-  hybrid_seed_file_is_seam_unclassified
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

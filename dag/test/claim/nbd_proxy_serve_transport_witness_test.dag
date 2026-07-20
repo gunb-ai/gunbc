@@ -1,35 +1,5 @@
 module test.claim.nbd_proxy_serve_transport
 
-import std.logic { Bool }
-import std.types { NonEmptyStr }
-import std.disposition { Scaffold, Terminal }
-import extdeps.bmc.webui.nbd_proxy {
-  VmSlotIndexEndpoint,
-  bmcweb_nbd_proxy_ws_path,
-}
-import extdeps.bmc.webui.nbd_proxy_serve {
-  nbd_proxy_serve_transport_intent,
-  nbd_proxy_serve_websocat_argv_leading_tool_is_websocat,
-  nbd_proxy_serve_nbdkit_argv_includes_iso,
-  nbd_proxy_serve_has_no_shell_supervision_grammar,
-  nbd_proxy_serve_argv_surface_contains_supervision_marker,
-  nbd_proxy_serve_systemd_realization_dissolution_trigger,
-  nbd_proxy_serve_nbdkit_unit_name,
-  nbd_proxy_serve_websocat_unit_name,
-  nbd_proxy_serve_cited_tool_names,
-  bmcweb_session_login_argv,
-  bmcweb_session_login_curl_args,
-  bmcweb_session_token_env_ref,
-  srv3_nbd_proxy_local_port,
-  nbd_proxy_serve_requires_host_as_nbd_server,
-}
-import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
-import extdeps.tools.curl { curl_cli_tool }
-import extdeps.tools.websocat { websocat_cli_tool }
-import extdeps.tools.nbdkit { nbdkit_cli_tool }
-import extdeps.tools.socat { socat_cli_tool }
-import gunbc.srv3_os_install_reconcile_types { srv3_nbd_proxy_lease_key }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -43,7 +13,7 @@ test fn nbd_proxy_serve_argv_is_typed_not_shell_supervision_program() -> Bool {
     session_token: bmcweb_session_token_env_ref,
     ws_path: bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0),
     iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-arm64.iso",
-    local_nbd_port: srv3_nbd_proxy_local_port,
+    local_nbd_port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port,
   )
   nbd_proxy_serve_websocat_argv_leading_tool_is_websocat(intent: intent)
     && nbd_proxy_serve_nbdkit_argv_includes_iso(intent: intent)

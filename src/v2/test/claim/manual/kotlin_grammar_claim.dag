@@ -24,6 +24,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn kotlin_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^kotlin_claim_bool_true } }, children: [],

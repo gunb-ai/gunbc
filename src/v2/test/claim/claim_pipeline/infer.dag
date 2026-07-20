@@ -15,6 +15,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
+
 data spine_infer_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_infer_module } },
   children: [],

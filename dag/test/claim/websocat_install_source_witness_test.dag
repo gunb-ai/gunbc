@@ -1,14 +1,5 @@
 module test.claim.websocat_install_source
 
-import std.logic { Bool }
-import extdeps.tools { SourceGitHubRelease }
-import extdeps.tools.websocat {
-  websocat_cli_tool,
-  websocat_github_repo,
-  websocat_github_tag,
-  websocat_install_path,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,33 +1,5 @@
 module test.claim.merge_admission_producer_witness
 
-import gunbc.merge_admission {
-  MergeAdmissionReceipt,
-  Success,
-  Failure,
-  current_gate_roster_hash,
-  mint_merge_admission_receipt,
-}
-import gunbc.merge_admission_produce {
-  merge_admission_receipt_schema,
-  merge_admission_receipt_rel_path,
-  render_receipt_wire,
-  parse_receipt_wire,
-  stamp_floor_receipt,
-  floor_exit_to_check_conclusion,
-  floor_disposition_to_check_conclusion,
-  merge_admission_floor_disposition_documentation_only_skipped,
-  merge_admission_stamp_documentation_only_skip_policy,
-  ci_floor_stamp_merge_admission_script,
-  merge_admission_stamp_invoke,
-  shell_stdout_line,
-}
-import tools.merge_admission_stamp {
-  merge_admission_stamp_missing_floor_exit_is_failure,
-  merge_admission_stamp_non_pr_omits_pr_number,
-}
-import extdeps.github.checks { check_conclusion_wire_label, Skipped }
-import std.types { ContentHash }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -70,11 +42,11 @@ test fn stamp_missing_floor_exit_policy_is_fail_closed() -> Bool {
 }
 
 test fn floor_exit_zero_maps_to_success() -> Bool {
-  floor_exit_to_check_conclusion(exit_code: 0) == Success
+  floor_exit_to_check_conclusion(exit_code: 0) == extdeps.github.checks.Success
 }
 
 test fn floor_exit_nonzero_maps_to_failure() -> Bool {
-  floor_exit_to_check_conclusion(exit_code: 1) == Failure
+  floor_exit_to_check_conclusion(exit_code: 1) == extdeps.github.checks.Failure
 }
 
 test fn merge_admission_stamp_invoke_uses_v1_tool_source_root() -> Bool {
@@ -88,7 +60,7 @@ test fn documentation_only_disposition_maps_to_skipped() -> Bool {
   match floor_disposition_to_check_conclusion(
     disposition: merge_admission_floor_disposition_documentation_only_skipped
   ) {
-    Present { value: conclusion } => conclusion == Skipped
+    Present { value: conclusion } => conclusion == extdeps.github.checks.Skipped
     Absent => false
   }
 }
@@ -114,7 +86,7 @@ test fn wire_roundtrip_preserves_admission_fields() -> Bool {
     Present { value: parsed } =>
       (parsed.base_tree_hash == scenario_base)
         && (parsed.gate_roster_hash == current_gate_roster_hash)
-        && (parsed.conclusion == Success)
+        && (parsed.conclusion == extdeps.github.checks.Success)
         && (parsed.head_sha == scenario_head)
         && match parsed.pr_number {
           Present { value: n } => n == 5933
@@ -149,7 +121,7 @@ test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
   match parse_receipt_wire(text: wire) {
     Present { value: parsed } =>
       match parsed.pr_number {
-        Absent => parsed.conclusion == Success
+        Absent => parsed.conclusion == extdeps.github.checks.Success
         Present { value: _ } => false
       }
     Absent => false
@@ -169,7 +141,7 @@ test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
       match parsed.pr_number {
         Absent =>
           (parsed.base_tree_hash == scenario_base)
-            && (parsed.conclusion == Success)
+            && (parsed.conclusion == extdeps.github.checks.Success)
             && (parsed.head_sha == scenario_head)
         Present { value: _ } => false
       }
@@ -185,7 +157,7 @@ test fn stamp_non_pr_event_omits_fabricated_pr_number() -> Bool {
 }
 
 test fn red_floor_stamps_failure_conclusion() -> Bool {
-  red_receipt.conclusion == Failure
+  red_receipt.conclusion == extdeps.github.checks.Failure
 }
 
 test fn receipt_schema_and_path_are_stable() -> Bool {

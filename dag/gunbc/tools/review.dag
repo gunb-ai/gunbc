@@ -1,16 +1,9 @@
 module gunbc.tools.review
 
-import extdeps.cron.schedule_model { CronSchedule, Wildcard, Step, render_cron_schedule }
-import gunbc.tools.cron_tag { upsert_tagged_cron_tab }
-import extdeps.github.pulls
-import std.types { CommitSha }
-import extdeps.llm.anthropic
-import extdeps.llm.anthropic_rest
-import extdeps.shell.exec { transport_script_from_body }
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: CronSchedule = CronSchedule {
-  minute: Step { start: 0, step: 10 },
+  minute: extdeps.cron.schedule_model.Step { start: 0, step: 10 },
   hour: Wildcard,
   day_of_month: Wildcard,
   month: Wildcard,
@@ -128,7 +121,7 @@ func review_cycle(
     auth_token: "",
     owner: owner,
     repo: repo,
-    state: Open
+    state: extdeps.github.pulls.Open
   )
 
   results = for pr in open_prs.pulls {

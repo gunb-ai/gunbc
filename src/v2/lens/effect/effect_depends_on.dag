@@ -57,6 +57,7 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
+
 data effect_child: Node = claim_atom_node(s: ^effect_child_symbol)
 
 data effect_root: Node = Node {

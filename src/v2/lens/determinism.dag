@@ -30,7 +30,7 @@ fn map_keys_leak_source() -> DeclarationRef {
 data determinism_root_map_keys: DeterminismRoot = DeterminismRoot {
   signature: ^map_keys,
   source: map_keys_leak_source(),
-  citation: "map_keys iterates hash-ordered keys (src/v1/runtime_rust.dag:176), a host-nondeterministic root; sorted_map_keys is its deterministic sibling. Grounds the single NonDeterministic leaf; unregistered callees contribute Deterministic at the within-function boundary (map_keys is always a readable atom, never missed). Extend with clock/entropy roots when Phase B grounds kind:Observation."
+  citation: "map_keys iterates hash-ordered keys (src/v1/runtime_rust.dag:176), a host-nondeterministic root; sorted_map_keys is its deterministic sibling. Grounds the single std.determinism.NonDeterministic leaf; unregistered callees contribute std.determinism.Deterministic at the within-function boundary (map_keys is always a readable atom, never missed). Extend with clock/entropy roots when Phase B grounds kind:Observation."
 }
 
 data determinism_root_registry: List<DeterminismRoot> = [
@@ -60,21 +60,21 @@ fn node_callee_symbol(n: Node) -> Optional<Symbol> {
   }
 }
 
-fn local_determinism_axis(n: Node) -> Determinism {
+fn local_determinism_axis(n: Node) -> std.determinism.Determinism {
   match node_callee_symbol(n: n) {
     Present { value: sym } => match determinism_root_for_symbol(registry: determinism_root_registry, s: sym) {
-      Present { value: root } => NonDeterministic { source: root.source }
-      Absent => Deterministic
+      Present { value: root } => std.determinism.NonDeterministic { source: root.source }
+      Absent => std.determinism.Deterministic
     }
-    Absent => Deterministic
+    Absent => std.determinism.Deterministic
   }
 }
 
-fn determinism_axis_fold_step(acc: Determinism, _: Edge, child: Determinism) -> Determinism {
-  determinism_compose(outer: acc, inner: child)
+fn determinism_axis_fold_step(acc: std.determinism.Determinism, _: Edge, child: std.determinism.Determinism) -> std.determinism.Determinism {
+  std.determinism.determinism_compose(outer: acc, inner: child)
 }
 
-fn determinism_axis_for_node(n: Node) -> Determinism {
+fn determinism_axis_for_node(n: Node) -> std.determinism.Determinism {
   fold_node(
     n: n,
     algebra: NodeFold {
@@ -84,8 +84,8 @@ fn determinism_axis_for_node(n: Node) -> Determinism {
   )
 }
 
-fn determinism_fact_for_node(signature: Symbol, n: Node) -> DeterminismFact {
-  DeterminismFact {
+fn determinism_fact_for_node(signature: Symbol, n: Node) -> v2.std.determinism.DeterminismFact {
+  v2.std.determinism.DeterminismFact {
     signature: signature,
     classification: determinism_axis_for_node(n: n)
   }
@@ -99,11 +99,11 @@ fn determinism_leak_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
-fn determinism_contract_witness(signature: Symbol, n: Node) -> Witness<DeterminismFact> {
+fn determinism_contract_witness(signature: Symbol, n: Node) -> Witness<v2.std.determinism.DeterminismFact> {
   let fact = determinism_fact_for_node(signature: signature, n: n)
   match fact.classification {
-    NonDeterministic { source: _ } => Violates { diagnostic: determinism_leak_diagnostic(n: n) }
-    Deterministic => Holds { value: fact }
+    std.determinism.NonDeterministic { source: _ } => Violates { diagnostic: determinism_leak_diagnostic(n: n) }
+    std.determinism.Deterministic => Holds { value: fact }
   }
 }
 
@@ -111,8 +111,8 @@ data compile_gate_law: String = "The determinism lens as a compile citizen (mirr
 
 fn local_determinism_findings(n: Node) -> List<Diagnostic> {
   match local_determinism_axis(n: n) {
-    NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
-    Deterministic => []
+    std.determinism.NonDeterministic { source: _ } => [determinism_leak_diagnostic(n: n)]
+    std.determinism.Deterministic => []
   }
 }
 

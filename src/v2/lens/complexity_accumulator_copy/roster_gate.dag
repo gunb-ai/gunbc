@@ -1,25 +1,5 @@
 module v2.lens.complexity_accumulator_copy.roster_gate
 
-import extdeps.filesystem.filesystem_io
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { ValidatedGrammarRoot, grammar_validate_for_parse, parse_production }
-import v2.compiler.normalize { normalize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.lens.complexity_accumulator_copy { Finding }
-import v2.lens.complexity_accumulator_copy.analyze {
-  accumulator_copy_findings,
-  finding_is_refusal,
-  finding_is_suspect
-}
-import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.compilers.lexing { LexRules, token_stream_remaining }
-import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.grammar { ModeledGrammar, ParseGrammar, VoidGrammar }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.text { String }
 
 data offline_roster_gate_claim_batch_recipe: String = "Operator-ruled OFFLINE (NOT CI discovery-enrolled; witness_exclusion_substrings row claim/complexity/accumulator_copy_roster_gate in gunbc.ci_layer_roots — owned by #6452, not duplicated on #6440). Serial wet claim_batch only — do not codify GUNBC_EVAL_MEMO=0 in CI; diagnostic local runs may set it. Std tranche (PR #6440): claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_change_dag_zero_suspects_within_ratchet --claim-run --wet && claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/complexity/accumulator_copy_roster_gate_std_test.dag --function roster_std_render_repeat_string_bootstrap_within_ratchet --claim-run --wet. Prior roster carriers: accumulator_copy_roster_gate_test.dag, accumulator_copy_roster_gate_swift_test.dag, accumulator_copy_roster_gate_lean_bash_test.dag (same --claim-run --wet shape, per-test-fn entry/function)."
 

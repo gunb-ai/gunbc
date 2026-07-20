@@ -1,9 +1,5 @@
 module test.claim.filesystem_entry_kind_witness
 
-import std.filesystem.types { EntryKind }
-import extdeps.filesystem.posix { posix_entry_kind, S_IFREG, S_IFLNK, S_IFSOCK }
-import extdeps.filesystem.ntfs { ntfs_entry_kind, NormalFile, SymlinkReparse, MountPointReparse }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

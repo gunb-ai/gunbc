@@ -13,6 +13,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data ambiguous_leaf_a: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ambiguous_leaf_a_symbol } },
   children: [],

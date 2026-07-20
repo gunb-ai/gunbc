@@ -1,8 +1,5 @@
 module v2.test.claim.algebra.freemonoid_first_skip_witness
 
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { HeadAbsent, HeadFound, list_head, skip }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

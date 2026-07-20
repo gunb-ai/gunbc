@@ -18,6 +18,7 @@ import v2.std.dependency {
 }
 import v2.std.diagnostic { Accepted, None }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+
 data refinement_subject_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^refinement_subject_symbol } },
   children: [],

@@ -40,6 +40,7 @@ import v2.std.verification {
   EqualsClaim,
   manual_claim_anchor
 }
+
 fn validation_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^validation_bool_true } }, children: [],

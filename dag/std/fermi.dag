@@ -1,7 +1,5 @@
 module std.fermi
 
-import std.algebra { BoundedLattice }
-import std.types { FermiDepth, Milliseconds }
 
 fn fermi_ordinal(depth: FermiDepth) -> Int {
   match depth {

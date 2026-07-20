@@ -1,16 +1,5 @@
 module v2.test.long.wave1_gate1_general_body_producer_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.test.claim.body_lowering.wave1_gate1_normalize_add_helpers {
-  wave1_gate1_normalized_add_resolves_holds,
-  wave1_gate1_normalized_add_yields_arrow_transform_holds,
-  wave1_gate1_resolved_add_arrow_transform_holds
-}
-import v2.test.execution.emit_host_classical_not_ingested_equals_eval {
-  ingested_classical_not_arrow_has_match_holds,
-  ingested_classical_not_resolves_holds
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

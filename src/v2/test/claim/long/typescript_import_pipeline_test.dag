@@ -1,39 +1,5 @@
 module v2.test.long.typescript_import_pipeline
 
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.compiler.parse { parse }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.translate {
-  target_serialize_source_from_model,
-  translate_import_production_to_carrier
-}
-import v2.extdeps.languages.dag {
-  dag_language_model,
-  parse_production_emitted_identity_optional
-}
-import v2.extdeps.languages.typescript {
-  ts_target_model_node,
-  ts_lex
-}
-import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, optional_absent, optional_present }
-import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.logic { Bool }
-import v2.std.node { Node, Symbol }
-import v2.std.text { String }
-import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

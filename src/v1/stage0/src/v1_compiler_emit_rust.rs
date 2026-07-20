@@ -9443,6 +9443,7 @@ pub fn render_rust_type_with_applied_binding(
                                         source_indices.clone(),
                                         v1_rt::rc_empty_map::<String, String>(),
                                         Rc::new(TypeEnv {
+                                            module_path: "".to_string(),
                                             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
                                             str_bindings: v1_rt::rc_empty_map::<
                                                 String,
@@ -9480,6 +9481,7 @@ pub fn render_rust_type_with_applied_binding(
                                 source_indices.clone(),
                                 v1_rt::rc_empty_map::<String, String>(),
                                 Rc::new(TypeEnv {
+                                    module_path: "".to_string(),
                                     bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
                                     str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                                     ancestry_str_bindings: v1_rt::rc_empty_map::<
@@ -12227,6 +12229,15 @@ pub fn positional_payload_scrut_type(
     }
 }
 
+pub fn optional_pattern_unknown_parent_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Present/Absent patterns with an UNRESOLVED parent enum lower to Some/None (kernel Optional): a bare Present/Absent struct pattern is never valid emitted Rust (no bare variant of that name exists in any emitted scope), so the raw fallback arm could only ever produce a compile error. A modeled optional carrier (e.g. OptionalNode) still resolves its parent via pattern_parent_enum and takes the qualified path; only the parent-unknown residue (an unstamped scrutinee, e.g. a let-in-lambda pipeline) reroutes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn emit_variant_pattern(
     name: String,
     parent_enum: Option<String>,
@@ -12244,8 +12255,8 @@ pub fn emit_variant_pattern(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let optional_variant =
-            (is_optional_variant_name(name.clone()) && is_optional_parent(resolved_parent.clone()));
+        let optional_variant = (is_optional_variant_name(name.clone())
+            && (is_optional_parent(resolved_parent.clone()) || (resolved_parent.clone() == None)));
         let rust_name = if optional_variant.clone() {
             if (name.clone() == "Present".to_string()) {
                 "Some".to_string()
@@ -12898,8 +12909,8 @@ pub fn emit_variant_pattern_rc_aware(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let optional_variant =
-            (is_optional_variant_name(name.clone()) && is_optional_parent(resolved_parent.clone()));
+        let optional_variant = (is_optional_variant_name(name.clone())
+            && (is_optional_parent(resolved_parent.clone()) || (resolved_parent.clone() == None)));
         let rust_name = if optional_variant.clone() {
             if (name.clone() == "Present".to_string()) {
                 "Some".to_string()
@@ -25378,6 +25389,7 @@ pub fn rust_test_signature_comment(
 ) -> String {
     {
         let stub_env = Rc::new(TypeEnv {
+            module_path: "".to_string(),
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),

@@ -1,16 +1,5 @@
 module v2.test.lens_affected_set.node_precision
 
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.lens.affected_set { AffectedSetReading, FrontierDependency, affected_set_reading }
-import v2.std.change { DependencyDependent, DependencySource }
-import v2.std.dependency { Contains, DependencyView }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts,
-  claim_inferred_tree
-}
 data affected_set_leaf: Node = claim_atom_node(s: ^affected_set_leaf_symbol)
 
 data affected_set_mid: Node = Node {

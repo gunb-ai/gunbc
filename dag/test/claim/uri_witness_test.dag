@@ -1,15 +1,5 @@
 module test.claim.uri_witness
 
-import extdeps.uri {
-  Uri,
-  Http,
-  Https,
-  File,
-  uri_is_url,
-  uri_scheme_is_http
-}
-import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

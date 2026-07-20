@@ -1,13 +1,5 @@
 module v2.test.long.wave1_gate1_a1_symbol_index_body_producer_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.test.claim.body_lowering.wave1_gate1_a1_symbol_index_helpers {
-  wave1_gate1_a1_domain_param_list_walk_holds,
-  wave1_gate1_a1_ingest_param_domain_parity_holds,
-  wave1_gate1_a1_real_ingest_lowers_holds,
-  wave1_gate1_a1_symbol_index_frontend_parity_holds
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

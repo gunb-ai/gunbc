@@ -1,0 +1,63 @@
+module test.claim.frame_boundary_simulated_witness_test
+
+import std.types { Bool, String, List }
+import std.effect_grant {
+  NamespaceTree, FilesystemPathTree, UriTree,
+  LifecycleByConstruction, LifecycleByConvention,
+  namespace_tree_eq,
+}
+import std.frame_boundary {
+  BoundaryAdmission, BoundaryMaterialized, BoundaryUnmaterialized,
+  boundary_admits,
+}
+import extdeps.realization.frame_boundary_simulated { simulated_boundary }
+
+data frame_boundary_simulated_witness_note: String = "Discriminating witnesses for the Simulated boundary handler (extdeps.realization.frame_boundary_simulated). Simulated closes exactly the layers it is handed, at LifecycleByConvention -- so it SATISFIES the spec for those layers (boundary_admits -> Materialized) and NEVER over-claims: a layer it was not handed stays uncovered and refuses (the RED). It also never reports LifecycleByConstruction, so a native run requiring the strong grade will not be greened by convention -- pinned by grade_is_convention."
+
+data require_network: List<NamespaceTree> = [UriTree]
+
+fn is_materialized_convention(a: BoundaryAdmission) -> Bool {
+  match a {
+    BoundaryMaterialized { grade: g } =>
+      match g {
+        LifecycleByConvention => true
+        LifecycleByConstruction => false
+      }
+    BoundaryUnmaterialized { tree: t } => false
+  }
+}
+
+fn is_unmaterialized_for(a: BoundaryAdmission, tree: NamespaceTree) -> Bool {
+  match a {
+    BoundaryMaterialized { grade: g } => false
+    BoundaryUnmaterialized { tree: t } => namespace_tree_eq(a: t, b: tree)
+  }
+}
+
+test fn simulated_boundary_satisfies_spec() -> Bool {
+  is_materialized_convention(
+    a: boundary_admits(
+      required_trees: require_network,
+      provided: simulated_boundary(trees: require_network)
+    )
+  )
+}
+
+test fn simulated_boundary_closes_only_given_layers() -> Bool {
+  is_unmaterialized_for(
+    a: boundary_admits(
+      required_trees: require_network,
+      provided: simulated_boundary(trees: [FilesystemPathTree])
+    ),
+    tree: UriTree
+  )
+}
+
+test fn simulated_boundary_grade_is_convention() -> Bool {
+  is_materialized_convention(
+    a: boundary_admits(
+      required_trees: [UriTree, FilesystemPathTree],
+      provided: simulated_boundary(trees: [UriTree, FilesystemPathTree])
+    )
+  )
+}
