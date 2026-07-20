@@ -38,7 +38,6 @@ import v2.std.runtime {
   Return,
   RuntimeAggregate,
   RuntimeClosure,
-  RuntimeClosureValue,
   RuntimePrimitive,
   RuntimeReference,
   RuntimeUnit,
@@ -2199,40 +2198,6 @@ fn eval_fold_callee_reference_child_state(
   }
 }
 
-data eval_closure_argument_note: String = "A closure passed as a runtime argument is an Arrow TypeNode in argument position (fold's transform child 3). Its value is the closure itself — the captured arrow plus the environment it closes over — NOT the value of its body, whose parameters (fold acc/h) are unbound until the callee applies it. So the walk materializes RuntimeClosure here and does not descend into the arrow's children; descending would evaluate the body against an environment that cannot bind its parameters. This is the same structural-child seam as eval_fold_is_callee_reference_edge (a child the walk must not value-evaluate), at edge grain so an Arrow in CALLEE or root position still evaluates normally — only a runtime-argument edge is a closure. Carrier is the existing v2.std.runtime authority (RuntimeClosureValue); no literal-atom roster is extended."
-
-fn eval_fold_is_closure_argument_edge(
-  parent: Node,
-  progress: EvalProgress,
-  edge: Edge
-) -> Bool {
-  eval_edge_is_runtime_argument(parent: parent, progress: progress, edge: edge)
-    && eval_node_is_arrow(node: edge.target)
-}
-
-fn eval_fold_closure_argument_child_state(
-  edge: Edge,
-  tree: InferredTree,
-  environment: EvaluationEnvironment
-) -> EvalFoldState {
-  EvalFoldState {
-    node: edge.target,
-    progress: Interpreted,
-    structural: eval_structural_node_for_eval(tree: tree, node: edge.target),
-    child_values: Accepted { value: empty_runtime_values(), diagnostics: None },
-    value: Accepted {
-      value: RuntimeClosure {
-        value: RuntimeClosureValue {
-          arrow_type: edge.target,
-          arrow: edge.target,
-          environment: environment
-        }
-      },
-      diagnostics: None
-    }
-  }
-}
-
 fn eval_fold_child_for_edge(
   acc: EvalFoldState,
   edge: Edge,
@@ -2248,16 +2213,6 @@ fn eval_fold_child_for_edge(
     edge: edge
   ) {
     eval_fold_callee_reference_child_state(edge: edge, tree: tree)
-  } else if eval_fold_is_closure_argument_edge(
-    parent: acc.node,
-    progress: acc.progress,
-    edge: edge
-  ) {
-    eval_fold_closure_argument_child_state(
-      edge: edge,
-      tree: tree,
-      environment: environment
-    )
   } else {
     eval_fold_tree(
       n: edge.target,
