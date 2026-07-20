@@ -1,4 +1,4 @@
-use im_rc::HashMap;
+use im::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -11,7 +11,7 @@ type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
 /// Parse-only module items for one `.dag` file (no resolve). Shared substrate for
 /// `decl_facts(roots)` (#5966) and emit-only corpus audits.
 pub struct ParsedDagFile {
-    pub items: Rc<im_rc::Vector<Rc<Node>>>,
+    pub items: Rc<im::Vector<Rc<Node>>>,
     pub source_indices: SourceIndices,
 }
 
@@ -34,6 +34,6 @@ pub fn parse_dag_file(path: &Path) -> Option<ParsedDagFile> {
     })
 }
 
-pub fn parse_file(path: &Path) -> Option<(Rc<im_rc::Vector<Rc<Node>>>, SourceIndices)> {
+pub fn parse_file(path: &Path) -> Option<(Rc<im::Vector<Rc<Node>>>, SourceIndices)> {
     parse_dag_file(path).map(|parsed| (parsed.items, parsed.source_indices))
 }

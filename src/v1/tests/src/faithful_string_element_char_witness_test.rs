@@ -1,4 +1,4 @@
-use im_rc::OrdSet as BTreeSet;
+use im::OrdSet as BTreeSet;
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_emit_rust::{

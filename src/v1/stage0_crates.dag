@@ -221,7 +221,7 @@ fn stage0_crate_boundary_emit_refusal_message(
 fn stage0_foundation_runtime_dependencies() -> List<CargoDependency> {
   [
     CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
-    CargoDependency { name: "im-rc", source: RegistryDep { version: "15.1", features: ["serde"] } },
+    CargoDependency { name: "im", source: RegistryDep { version: "15.1", features: ["serde"] } },
     CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
     CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } },
     CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", features: [] } },
@@ -232,7 +232,7 @@ fn stage0_foundation_runtime_dependencies() -> List<CargoDependency> {
 fn stage0_emit_shell_registry_dependencies() -> List<CargoDependency> {
   [
     CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
-    CargoDependency { name: "im-rc", source: RegistryDep { version: "15.1", features: ["serde"] } },
+    CargoDependency { name: "im", source: RegistryDep { version: "15.1", features: ["serde"] } },
     CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } }
   ]
 }
