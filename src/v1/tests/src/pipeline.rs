@@ -1359,6 +1359,56 @@ fn front_end_resilience_partial_graph_excludes_only_the_broken_module() {
 }
 
 #[test]
+fn pool_parse_heads_only_does_not_prefill_parse_cache() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, parse_cache_contains_path_for_test, resolve_entry_with_index,
+    };
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc_pool_heads_only_{}_{}",
+            std::process::id(),
+            stamp
+        ));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let root = dir.to_string_lossy().into_owned();
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&dir);
+    };
+
+    let huge_body = format!(
+        "module huge\nfn big() -> Int {{\n{}\n}}\n",
+        (0..50_000).map(|i| format!("  let x{i} = {i}\n")).collect::<String>()
+    );
+    std::fs::write(dir.join("huge.dag"), huge_body).expect("write huge.dag");
+    std::fs::write(
+        dir.join("entry.dag"),
+        "module entry\nfn main() -> Int { 0 }\n",
+    )
+    .expect("write entry.dag");
+    let entry_path = dir.join("entry.dag").to_string_lossy().into_owned();
+    let huge_path = dir.join("huge.dag").to_string_lossy().into_owned();
+
+    let index = build_multi_entry_index(std::slice::from_ref(&root));
+    resolve_entry_with_index(&index, &entry_path)
+        .expect("entry must resolve after heads-only pool census");
+    assert!(
+        !parse_cache_contains_path_for_test(&index, &huge_path),
+        "pool census must not retain full-body ASTs in parse_cache for uncompiled pool modules"
+    );
+    assert!(
+        parse_cache_contains_path_for_test(&index, &entry_path),
+        "closure resolve must still cache full bodies for compiled modules"
+    );
+    cleanup();
+}
+
+#[test]
 fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     use std::time::{SystemTime, UNIX_EPOCH};
     use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};

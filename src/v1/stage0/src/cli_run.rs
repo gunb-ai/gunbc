@@ -27,7 +27,7 @@ use crate::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
     expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
-    inferred_to_node, intern, is_discovery_corpus_advisory_typecheck_diagnostic,
+    empty_node_list, inferred_to_node, intern, is_discovery_corpus_advisory_typecheck_diagnostic,
     is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span,
@@ -4772,6 +4772,12 @@ pub fn build_multi_entry_index_with_shared_caches(
     )
 }
 
+/// Test-only: whether `parse_cache` holds a path (pool census must not pre-fill it).
+#[cfg(test)]
+pub fn parse_cache_contains_path_for_test(index: &MultiEntryIndex, path: &str) -> bool {
+    index.parse_cache.borrow().contains_key(path)
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
@@ -4807,35 +4813,43 @@ struct PoolParse {
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-/// Shared singleton so every stripped fn decl keeps `body.is_some()` for
+/// Shared per-thread marker so every stripped fn decl keeps `body.is_some()` for
 /// `local_binding_for_item`'s fn discriminator without retaining real bodies.
-static STRIPPED_FN_BODY_MARKER: OnceLock<Rc<Node>> = OnceLock::new();
+thread_local! {
+    static STRIPPED_FN_BODY_MARKER: Rc<Node> = Rc::new(Node {
+        name: String::new(),
+        span: no_span(),
+        ident_span: None,
+        children: empty_node_list(),
+        connective: Connective::NoConnective,
+        params: empty_node_list(),
+        inferred: None,
+        return_cardinality: Cardinality::Required,
+        uses: empty_node_list(),
+        body: None,
+        transport: None,
+        properties: empty_node_list(),
+        type_annotation: None,
+        is_self_recursive: false,
+        has_non_tail_self_call: false,
+        match_pattern: None,
+        expr_data: Rc::new(ExprData::NoExprData),
+        ident: None,
+    });
+}
 
 fn stripped_fn_body_marker() -> Rc<Node> {
-    STRIPPED_FN_BODY_MARKER
-        .get_or_init(|| {
-            Rc::new(Node {
-                name: String::new(),
-                span: no_span(),
-                ident_span: None,
-                children: Rc::new(vec![]),
-                connective: Connective::NoConnective,
-                params: Rc::new(vec![]),
-                inferred: None,
-                return_cardinality: Cardinality::Required,
-                uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
-                properties: Rc::new(vec![]),
-                type_annotation: None,
-                is_self_recursive: false,
-                has_non_tail_self_call: false,
-                match_pattern: None,
-                expr_data: Rc::new(ExprData::NoExprData),
-                ident: None,
-            })
-        })
-        .clone()
+    STRIPPED_FN_BODY_MARKER.with(Rc::clone)
+}
+
+fn census_heads_children(children: &Rc<im::Vector<Rc<Node>>>) -> Rc<im::Vector<Rc<Node>>> {
+    Rc::new(
+        children
+            .iter()
+            .cloned()
+            .map(census_heads_module_item)
+            .collect(),
+    )
 }
 
 fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
@@ -4848,16 +4862,10 @@ fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
     } else {
         None
     };
-    let children = if item.connective != Connective::NoConnective {
-        Rc::new(
-            item.children
-                .iter()
-                .cloned()
-                .map(census_heads_module_item)
-                .collect::<Vec<_>>(),
-        )
-    } else {
+    let children = if item.children.is_empty() {
         item.children.clone()
+    } else {
+        census_heads_children(&item.children)
     };
     Rc::new(Node {
         name: item.name.clone(),
@@ -4868,7 +4876,7 @@ fn census_heads_module_item(item: Rc<Node>) -> Rc<Node> {
         params: item.params.clone(),
         inferred: item.inferred.clone(),
         return_cardinality: item.return_cardinality.clone(),
-        uses: Rc::new(vec![]),
+        uses: empty_node_list(),
         body,
         transport: item.transport.clone(),
         properties: item.properties.clone(),
@@ -4891,13 +4899,13 @@ fn census_heads_module_node(module: Rc<Node>) -> Rc<Node> {
                 .iter()
                 .cloned()
                 .map(census_heads_module_item)
-                .collect::<Vec<_>>(),
+                .collect(),
         ),
         connective: module.connective.clone(),
         params: module.params.clone(),
         inferred: module.inferred.clone(),
         return_cardinality: module.return_cardinality.clone(),
-        uses: Rc::new(vec![]),
+        uses: empty_node_list(),
         body: None,
         transport: module.transport.clone(),
         properties: module.properties.clone(),
@@ -6001,7 +6009,7 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
             .get(&module_path)
             .cloned()
             .expect("pool path came from source_files keys");
-        let (module, nl_index) = parse_module_node_from_index_source(index, source)?;
+        let (module, nl_index) = parse_module_heads_for_pool_census(index, source)?;
         let file = nl_index.file.clone();
         combined_si.insert(file.clone(), nl_index);
         nodes_by_file.push((file, module));
