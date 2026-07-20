@@ -21,6 +21,7 @@ import v2.test.lens_ownership.resource_dependency {
   ownership_claim_tree,
   ownership_resource_dependency_claim_passes
 }
+
 fn ownership_claim_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_pass_symbol } },

@@ -1,8 +1,5 @@
 module test.claim.dag_collect_fingerprint_witness_test
 
-import tools.dag_collect_fingerprint_witness_transport { run_dag_collect_fingerprint_witness }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

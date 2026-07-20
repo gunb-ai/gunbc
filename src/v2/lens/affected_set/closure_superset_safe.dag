@@ -1,18 +1,5 @@
 module v2.test.lens_affected_set.closure_superset_safe
 
-import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
-import v2.lens.affected_set_examples { affected_set_claim_failure_node }
-import v2.std.algebra { contains, for_all }
-import v2.std.dependency { Contains, DependencyView }
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.test.lens_affected_set.closure_deep_chain {
-  closure_deep_chain_dependency_reading,
-  closure_deep_chain_n01,
-  closure_deep_chain_n02,
-  closure_deep_chain_n03,
-  closure_deep_chain_root
-}
 
 fn closure_frontier_node_eq(left: Node, right: Node) -> Bool {
   left == right

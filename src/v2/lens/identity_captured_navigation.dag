@@ -1,9 +1,5 @@
 module v2.lens.identity_captured_navigation
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
-import v2.std.integer { Int }
-import v2.std.node { Node, Symbol }
 
 data identity_captured_navigation_bug_class_note: String = "The grammar wraps every parsed production in a TypeNode\{Conj\} carrying two labeled edges: ^grammar_production_identity_node_projection (a bare Atom TAG, meaningful only for identity/dispatch comparison, never a value) and ^grammar_production_captured_node_projection (the real parsed VALUE subtree). The single sanctioned reader for the identity edge is v2.extdeps.languages.dag.parse_production_emitted_identity_optional, which immediately collapses the identity edge's target Node down to a bare Optional<Symbol> via node_atom_identity_optional - the raw identity Node itself never escapes that function. This lens catches any OTHER navigation to the identity edge (via find_named_child(root: _, name: ^grammar_production_identity_node_projection)) whose result is not immediately and solely reduced through node_atom_identity_optional before flowing onward - a class of defect that would otherwise silently produce a semantically-meaningless bare Atom exactly where real content was expected."
 

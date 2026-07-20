@@ -1,5 +1,7 @@
 module v1.compiler.infer_lookup
 
+import std.induction { SubValueRelation }
+
 import v1.std.core {
   Node, param_node_type_expr,
   authored_name_at, NewlineIndex, find_child_named, has_child_named,
@@ -13,13 +15,16 @@ import v1.std.core {
   Connective, Conj, Disj, NoConnective,
   ErrorNode,
 
-  CardOptional
+  CardOptional,
+  error_type
 }
+
 import std.algebra {
   CollectionSizeEffect, CostShape, AlgebraFieldTemplate,
   AlgebraTypeTemplate, ReceiverSelf, ContainerOf, ContainerSource, SameAsReceiver, Named,
-  kernel_algebra_profile, algebra_templates_for_profile
+  kernel_algebra_profile, algebra_templates_for_profile, algebra_method_template_name
 }
+
 import v1.compiler.infer_types {
   child_type_node,
   make_container_type,
@@ -27,22 +32,30 @@ import v1.compiler.infer_types {
   normalize_access_type_node, node_is_keyed_collection, node_is_set_collection,
   method_receiver_element_node,
   emit_map_has,
-  enrich_kernel_type, is_declared_container_alias_spelling, reground_alias_carrier_identity
+  enrich_kernel_type, is_declared_container_alias_spelling, reground_alias_carrier_identity,
+  kernel_profile_lookup
 }
+
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
-  is_recursive_type, lookup_type, lookup_type_for
+  is_recursive_type, lookup_type, lookup_type_for,
+  GlobalBareLookupState, borrowed_generic_param_names, global_bare_nearest_ancestor_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup
 }
+
 import v1.compiler.infer_emit_info {
   build_struct_field_summaries, build_enum_field_summaries
 }
+
 import v1.compiler.infer_sigs {
   ResolvedFuncSig, ResolvedFuncEnv, lookup_resolved_sig
 }
+
 import v1.compiler.infer_service {
   OpEntry, ServiceMethodResult,
   check_service_method_call_node
 }
+
+import v1.compiler.infer_method { infer_builtin_call_type }
 
 fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
@@ -68,8 +81,104 @@ fn lookup_in_scope(locals: Map<String, TypeBinding>, name: String) -> Node? {
   }
 }
 
-fn lookup_func_sig(func_env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
-  lookup_resolved_sig(env: func_env, name: name)
+fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
+  match lookup_resolved_sig(env: func_env, name: name) {
+    Present { value: sig } => Present { value: sig }
+    Absent => func_sig_from_global_bare(type_env: type_env, name: name)
+  }
+}
+
+type BorrowedCensusDecl {
+  owner_module_path: String
+  node: Node
+}
+
+fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDecl? {
+  if contains(name, ".") {
+    match symbol_index_lookup(index: type_env.symbol_index, qualified_name: name) {
+      Present { value: node } =>
+        Present { value: BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }
+      Absent => none
+    }
+  } else {
+    match map_get(type_env.symbol_index.global_bare, name) {
+      Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+        Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+      Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+        match global_bare_nearest_ancestor_candidate(env_module_path: type_env.module_path, candidates: cands) {
+          Present { value: cand } =>
+            Present { value: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
+          Absent => none
+        }
+      Absent => none
+    }
+  }
+}
+
+data census_reserved_method_name_note: String = "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback."
+
+fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> ResolvedFuncSig? {
+  if algebra_method_template_name(name: name) {
+    return none
+  }
+  match infer_builtin_call_type(name: name) {
+    Present { value: _ } => none
+    Absent =>
+  let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
+    Present { value: binding } =>
+      Present { value: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
+    Absent => borrowed_census_decl(type_env: type_env, name: name)
+  }
+  match borrowed {
+    Present { value: bd } =>
+      let node = bd.node
+      match (node.params |> count) > 0 || node.inferred != none || node.type_annotation != none {
+        false => Absent
+        true =>
+        let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
+        let raw_return = match node.inferred {
+          Present { value: Resolved { node: inferred } } => inferred
+          _ => match node.type_annotation {
+            Present { value: ann } => ann
+            Absent => error_type
+          }
+        }
+        if bd.owner_module_path == type_env.module_path {
+          Present { value: ResolvedFuncSig {
+            name: name,
+            params: node.params,
+            inferred: raw_return,
+            is_async: false,
+            output_provenance: [],
+            variant_provenance: empty_map()
+          } }
+        } else {
+          let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
+          Present { value: ResolvedFuncSig {
+            name: name,
+            params: node.params,
+            inferred: qualified_return,
+            is_async: false,
+            output_provenance: [],
+            variant_provenance: empty_map()
+          } }
+        }
+      }
+    Absent => Absent
+  }
+  }
+}
+
+fn global_bare_callable_node(type_env: TypeEnv, name: String) -> Node? {
+  if algebra_method_template_name(name: name) {
+    return none
+  }
+  match lookup_binding_by_name(env: type_env, name: name) {
+    Present { value: binding } =>
+      if (binding.resolved.params |> count) > 0 || binding.resolved.inferred != none { Present { value: binding.resolved } }
+      else { none }
+    Absent => none
+  }
 }
 
 fn lookup_field_type_node(n: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
@@ -339,7 +448,7 @@ fn lookup_structural_method(receiver_type: Node, method_name: String, source_ind
       let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       match base_result {
         Present { value: mfr } =>
-          let profile = kernel_algebra_profile |> get(authored_name_at(source_indices: source_indices, node: receiver_type))
+          let profile = kernel_profile_lookup(name: authored_name_at(source_indices: source_indices, node: receiver_type))
           let template_match = match profile {
             Present { value: p } =>
               let templates = algebra_templates_for_profile(profile: p)

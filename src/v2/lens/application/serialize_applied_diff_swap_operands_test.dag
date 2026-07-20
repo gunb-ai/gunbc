@@ -1,37 +1,5 @@
 module v2.test.lens_application.serialize_applied_diff_swap_operands
 
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.source_authority {
-    deterministic_dag_source_serializer_witness
-}
-import v2.lens.application_serializer {
-  serialize_diff_as_source_patch
-}
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.dag {
-  dag_fixture_emitted_add_fn,
-  dag_fixture_emitted_loop_fn,
-  dag_loop_arrow_with_body_wrong_value_fixture,
-  dag_loop_body_wrong_value_node,
-  dag_loop_target_model,
-  dag_target_model
-}
-import v2.lens.application { apply_diff }
-import v2.std.compilers.target_model { TargetModel }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Diff, Edit, Path }
-import v2.std.witness { Holds, Violates }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

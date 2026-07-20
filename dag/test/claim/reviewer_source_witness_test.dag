@@ -1,9 +1,5 @@
 module test.claim.reviewer_source_witness_test
 
-import gunbc.review_verdict { LlmReviewProvider, Reviewer, reviewer_source }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { NonEmptyStr }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

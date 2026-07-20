@@ -92,7 +92,7 @@ fn inhabitant_facts_node_from_inhabitant(inhabitant: Node) -> Outcome<Node> {
         Rejected { diagnostics: _ } =>
           match find_named_child(root: edge.target, name: ^facts_field_std_projection) {
             Accepted { value: _, diagnostics: _ } =>
-              Accepted { value: edge.target, diagnostics: None }
+              Accepted { value: edge.target, diagnostics: v2.std.diagnostic.None }
             Rejected { diagnostics: _ } => acc
           }
       }
@@ -354,7 +354,7 @@ fn neutralize_edges_for_target(
     init: Accepted { value: Empty, diagnostics: None },
     f: fn(acc, edge) {
       match acc {
-        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: rebuilt_edges, diagnostics: ad } =>
           bind_outcome(
             o: neutralize_node_for_target(node: edge.target, target: target),

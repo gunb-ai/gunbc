@@ -1,6 +1,5 @@
 module gunbc.interpreter_kernel_model
 
-import std.types { List, String, Bool }
 
 type InterpreterSeamClass
   = PureEvalAuthority

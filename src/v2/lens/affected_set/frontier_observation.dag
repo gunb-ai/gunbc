@@ -1,14 +1,10 @@
 module v2.test.lens_affected_set.frontier_observation
 
-import v2.lens.affected_set { ChangedSubgraphFrontier, ExclusionKey, FailClosed, FrontierDecision, ReExecFrontier }
-import v2.std.collection { Absent, Present, map_get }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
 
 fn frontier_decision_matches(frontier: ReExecFrontier, key: ExclusionKey, expected: FrontierDecision) -> Bool {
   match frontier {
     ChangedSubgraphFrontier { boundary_exclusions: _, decisions: decisions } =>
-      match map_get(decisions, key) {
+      match v2.std.collection.map_get(decisions, key) {
         Accepted { value: opt, diagnostics: _ } =>
           match opt {
             Present { value: decision } => decision == expected

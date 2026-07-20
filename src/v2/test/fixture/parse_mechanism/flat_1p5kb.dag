@@ -1,7 +1,5 @@
 module synthetic.parse_mechanism.flat_1p5kb
 
-import v2.std.logic { Bool }
-import v2.std.nat { Nat }
 
 fn flat_0(x: Nat) -> Nat { x }
 fn flat_1(x: Nat) -> Nat { x }

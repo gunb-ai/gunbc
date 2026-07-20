@@ -1,17 +1,5 @@
 module v2.test.claim.affected_set_disposition_both_axes
 
-import v2.std.logic { Bool }
-import v2.workflow.affected_set_floor_runner {
-  DiffPathsProduced,
-  FrontierProduced,
-  RunWitness,
-  SkipAssumedGreen,
-  Refused,
-  floor_kernel_would_skip,
-  floor_witness_run_disposition
-}
-import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

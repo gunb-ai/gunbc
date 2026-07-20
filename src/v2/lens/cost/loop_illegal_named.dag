@@ -25,6 +25,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Violates }
+
 data loop_illegal_named_body_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_illegal_named_body_atom } },
   children: [],

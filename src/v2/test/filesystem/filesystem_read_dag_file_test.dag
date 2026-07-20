@@ -1,8 +1,5 @@
 module v2.test.filesystem.filesystem_read_dag_file
 
-import extdeps.filesystem.filesystem_io
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

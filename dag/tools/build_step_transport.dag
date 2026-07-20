@@ -1,5 +1,6 @@
 module tools.build_step_transport
 
+
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.git
@@ -21,6 +22,8 @@ import tools.host_prelude {
   witness_bin_readiness_is_ready,
   witness_bin_release_path
 }
+
+
 
 data bst_typed_transport_doc: String = "Build-artifact corruption-probe transport, typed. Each receipt is a composition of typed service operations (shell.Mktemp.Dir, Filesystem.Write, gunbc.WitnessBin.Run on /bin/chmod and claim_executor --verify-build-artifacts, shell.Remove.RecursiveForce) - no bash is serialized or executed. The former verifications_script serialize_bash harness dissolved with the flip: the probe exercises the same claim_executor verification path the CI floor uses, so the spelling-drift class between substrate shell AST and production verification is unwritable (DESIGN 5, construction over validation)."
 

@@ -1,25 +1,5 @@
 module gunbc.host_identity_observation
 
-import std.types { String, NonEmptyStr, Bool }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.host_effect {
-  ShellCommand,
-  NodeControlPlane,
-  host_effect_read_evidence,
-  HostEffectTransport,
-  HostEffectIntent,
-  HostEffectEvidence,
-  ShellEffectApplied,
-  ConvergePlanApplied,
-}
-import gunbc.host_effect_realize { host_effect_apply }
-import std.realization_reconcile {
-  Reconciliation,
-  Converged,
-  NotConverged,
-  reconciliation_converged,
-}
 
 data host_identity_short_hostname_script: String = "hostname -s 2>/dev/null || hostname"
 
@@ -42,7 +22,7 @@ type HostIdentityObservation {
   probed_at: NonEmptyStr
 }
 
-data gunbc_host_identity_observation_scope_disposition: Disposition = Terminal {
+data gunbc_host_identity_observation_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "Slice-1 typed fixture/read carrier: hostname -s over host_effect transport -> HostIdentityObservation. Does NOT subsume gunbc.ci_deploy_target_host.deploy_target_host_observed_hostname (direct shell.Exec) — that path dissolves when live deploy routes target-host proof through this carrier."
 }
 

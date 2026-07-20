@@ -1,42 +1,5 @@
 module v2.test.fixture.task_manager_demo
 
-import v2.extdeps.formats.sql {
-  SqlColumnConstraints,
-  SqlColumnDefault,
-  SqlColumnDefaultAbsent,
-  SqlColumnDefinition,
-  SqlCreateTable,
-  SqlDataType,
-  SqlIdentifier,
-  SqlRegularIdentifier,
-  SqlSchemaOperation,
-  SqlTableDefinition,
-  SqlTypeCharacterLargeObject
-}
-import std.algebra { FreeMonoid, Empty }
-import v2.std.collection { Absent, optional_present }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  ShortCircuit,
-  StageDiagnosticPolicy,
-  Unavailable,
-  append_outcome_value,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.network { NetworkAddress, UriAuthority, UriHost, rfc3986_host_abnf }
-import v2.std.node { Node, Symbol }
-import v2.std.text { String }
-import v2.extdeps.coordination {
-  Endpoint, EndpointRef, LanguageRef, FrameworkRef, HostedByFramework, NoFramework,
-  WireContract, WireContractFacts, CoordinationBind, BindRef,
-  Http, RequestReply, ImmediateSettlement, NoReplicaConvergence,
-  DeploymentUnit
-}
 
 type TaskId {
   identity: Symbol

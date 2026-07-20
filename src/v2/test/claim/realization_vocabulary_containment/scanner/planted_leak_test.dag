@@ -1,14 +1,5 @@
 module v2.test.realization_vocabulary_containment.scanner.planted_leak
 
-import v2.lens.layering_imports { layer_import_facts_live }
-import v2.lens.realization_vocabulary_containment {
-  realization_vocab_containment_holds_canonical,
-  realization_vocab_leak_count_canonical
-}
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

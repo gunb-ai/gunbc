@@ -1,5 +1,6 @@
 module v2.std.symbol_index
 
+
 import v2.std.algebra { is_empty }
 import v2.std.collection {
   Absent,
@@ -44,7 +45,7 @@ fn empty_symbol_index() -> SymbolIndex {
 }
 
 fn symbol_index_lookup(index: SymbolIndex, qualified_path: QualifiedName) -> Optional<Node> {
-  match map_get(index.entries, qualified_path) {
+  match v2.std.collection.map_get(index.entries, qualified_path) {
     Accepted { value: opt, diagnostics: _ } => opt
     Rejected { diagnostics: _ } => optional_absent()
   }
@@ -58,7 +59,7 @@ fn symbol_index_track_global_bare(
   match qualified_name_last_segment(qn: qualified_path) {
     Absent => index
     Present { value: leaf } =>
-      match map_get(index.global_bare, leaf) {
+      match v2.std.collection.map_get(index.global_bare, leaf) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: GlobalBareAmbiguous } => index
           Present { value: GlobalBareUnique { node: existing, path: existing_path } } =>
@@ -106,7 +107,7 @@ fn symbol_index_insert(index: SymbolIndex, qualified_path: QualifiedName, resolv
 }
 
 fn symbol_index_global_unique_lookup(index: SymbolIndex, name: Symbol) -> GlobalBareLookup {
-  match map_get(index.global_bare, name) {
+  match v2.std.collection.map_get(index.global_bare, name) {
     Accepted { value: opt, diagnostics: _ } => match opt {
       Present { value: GlobalBareUnique { node: n, path: _ } } => GlobalBareHit { node: n }
       Present { value: GlobalBareAmbiguous } => GlobalBareLookupAmbiguous
