@@ -1,0 +1,10 @@
+module test.claim.sigprobe.twin_p
+
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn twin_sig(a: Bool) -> Bool {
+  a
+}
