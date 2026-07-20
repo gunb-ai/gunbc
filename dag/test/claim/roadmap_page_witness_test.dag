@@ -70,10 +70,35 @@ fn witness_depth_cap_fails_honest() -> Bool {
     && !string_contains(s: expanded, pattern: "depth limit")
 }
 
+fn dispatch_doc_html(done: Bool) -> String {
+  let n = gunbc.roadmap_authority.authored(id: "disp1", done: done, content: "dispatch-me")
+  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [n], edges: []) ] }
+  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  match try_serialize_html_source(node: roadmap_page(doc: doc, merged: [])) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn witness_open_node_doc_emits_button_and_script() -> Bool {
+  let h = dispatch_doc_html(done: false)
+  string_contains(s: h, pattern: "class=\"dispatch-btn\"")
+    && string_contains(s: h, pattern: "data-node=")
+    && string_contains(s: h, pattern: "<script>")
+    && string_contains(s: h, pattern: "fetch('/dispatch/")
+}
+
+fn witness_done_node_doc_has_no_button() -> Bool {
+  let h = dispatch_doc_html(done: true)
+  !string_contains(s: h, pattern: "dispatch-btn")
+}
+
 test fn roadmap_page_keystone_holds() -> Bool {
   witness_authority_serializes_with_structure()
     && witness_empty_doc_is_minimal_shell()
     && witness_authority_differs_from_empty()
     && witness_depth_cap_fails_honest()
     && witness_bold_title_renders_strong()
+    && witness_open_node_doc_emits_button_and_script()
+    && witness_done_node_doc_has_no_button()
 }

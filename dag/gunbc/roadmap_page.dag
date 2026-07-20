@@ -1,5 +1,6 @@
 module gunbc.roadmap_page
 
+import std.types { list_length }
 import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
 import std.markdown_markup { markdown_inlines_to_markup_nodes }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
@@ -278,6 +279,15 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
   let main_children = concat(lead, secs)
+  let body_base = [
+    el("header", [ el("h1", [ txt("gunbc — roadmap") ]) ]),
+    el_class("main", "roadmap", main_children),
+  ]
+  let body_children = if list_length(main_children) == 0 {
+    body_base
+  } else {
+    concat(body_base, [ dispatch_client_script() ])
+  }
   ElementNode {
     tag: "html",
     attrs: [],
@@ -287,11 +297,7 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
         el("style", [ txt(roadmap_css()) ]),
         el("title", [ txt("gunbc — roadmap") ]),
       ]),
-      el("body", [
-        el("header", [ el("h1", [ txt("gunbc — roadmap") ]) ]),
-        el_class("main", "roadmap", main_children),
-        dispatch_client_script(),
-      ]),
+      el("body", body_children),
     ],
   }
 }
