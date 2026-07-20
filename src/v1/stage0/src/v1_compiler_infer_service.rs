@@ -293,7 +293,7 @@ pub fn expand_transitive_services(
 pub fn check_service_field_access_node(
     base_type: Rc<Node>,
     field: String,
-    service_registry: Rc<HashMap<String, Rc<List>>>,
+    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     if ((base_type.connective.clone() == Connective::NoConnective)
@@ -320,7 +320,7 @@ pub fn check_service_field_access_node(
 pub fn check_service_method_call_node(
     receiver_type: Rc<Node>,
     method: String,
-    service_registry: Rc<HashMap<String, Rc<List>>>,
+    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<ServiceMethodResult>> {
     if ((receiver_type.connective.clone() == Connective::NoConnective)

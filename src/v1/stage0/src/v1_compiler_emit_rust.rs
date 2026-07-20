@@ -857,7 +857,7 @@ pub fn render_rust_phantom_opaque_applied_type_arg(
     imports: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     module_name: String,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -1103,8 +1103,9 @@ pub fn render_rust_decl_type(
         match applied_overlay.clone() {
             Some(applied) => {
                 let outer_name = authored_name_at(source_indices.clone(), n.clone());
-                if ((((((outer_name.clone() != "".to_string())
+                if (((((((outer_name.clone() != "".to_string())
                     && (outer_name.clone() != "fn".to_string()))
+                    && !is_container_type(outer_name.clone()))
                     && (n.connective.clone() == Connective::NoConnective))
                     && ((n.children.clone().len() as i64) == 0))
                     && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
@@ -1468,25 +1469,13 @@ pub fn render_rust_fn_sig_type(
                             env.clone(),
                         )
                     } else {
-                        if is_container_type(name.clone()) {
-                            render_rust_decl_type(
-                                n.clone(),
-                                Rc::new(vec![]),
-                                shared_types.clone(),
-                                corpus_repr.clone(),
-                                source_indices.clone(),
-                                variant_to_enum.clone(),
-                                env.clone(),
-                            )
-                        } else {
-                            render_rust_fn_sig_type_applied_binding(
-                                n.clone(),
-                                shared_types.clone(),
-                                corpus_repr.clone(),
-                                source_indices.clone(),
-                                env.clone(),
-                            )
-                        }
+                        render_rust_fn_sig_type_applied_binding(
+                            n.clone(),
+                            shared_types.clone(),
+                            corpus_repr.clone(),
+                            source_indices.clone(),
+                            env.clone(),
+                        )
                     }
                 }
             }
@@ -1510,8 +1499,9 @@ pub fn render_rust_fn_sig_type_applied_binding(
             if ((applied.children.clone().len() as i64) > 0) {
                 {
                     let outer_name = authored_name_at(source_indices.clone(), n.clone());
-                    if ((((((outer_name.clone() != "".to_string())
+                    if (((((((outer_name.clone() != "".to_string())
                         && (outer_name.clone() != "fn".to_string()))
+                        && !is_container_type(outer_name.clone()))
                         && (n.connective.clone() == Connective::NoConnective))
                         && ((n.children.clone().len() as i64) == 0))
                         && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
@@ -1579,7 +1569,7 @@ pub fn render_rust_alias_rhs_type(
     imports: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     module_name: String,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
     variant_to_enum: Rc<HashMap<String, String>>,
@@ -2468,7 +2458,7 @@ pub fn item_binding_is_named(env: Rc<TypeEnv>, node: Rc<Node>, name: String) -> 
 pub fn resolve_wire_serde_policy_for_coproduct(
     wire_contract_item: Option<Rc<Node>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    data_items: Rc<HashMap<String, Rc<List>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
 ) -> Rc<RustEnumWireSerde> {
     resolve_wire_serde_policy_for_coproduct_seen(
         wire_contract_item.clone(),
@@ -2482,7 +2472,7 @@ pub fn resolve_wire_serde_policy_for_coproduct(
 pub fn resolve_wire_serde_policy_for_coproduct_seen(
     mut wire_contract_item: Option<Rc<Node>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut data_items: Rc<HashMap<String, Rc<List>>>,
+    mut data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     mut seen_aliases: Rc<HashMap<String, bool>>,
     mut fuel: i64,
 ) -> Rc<RustEnumWireSerde> {
@@ -2991,10 +2981,10 @@ pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
 }
 
 pub fn insert_scoped_data_item(
-    scoped: Rc<HashMap<String, Rc<List>>>,
+    scoped: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     name: String,
     item: Rc<Node>,
-) -> Rc<HashMap<String, Rc<List>>> {
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
     {
         let existing = match v1_rt::map_get(&scoped, name.clone()) {
             Some(entries) => entries.clone(),
@@ -3011,7 +3001,7 @@ pub fn insert_scoped_data_item(
 pub fn build_scoped_data_item_index(
     typed_module: Rc<TypedModule>,
     data_items: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<HashMap<String, Rc<List>>> {
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
     {
         let module_name = authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
@@ -3085,11 +3075,11 @@ pub fn build_scoped_data_item_index(
 }
 
 pub fn augment_scoped_data_item_index_with_imports(
-    scoped: Rc<HashMap<String, Rc<List>>>,
+    scoped: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     imports: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     data_items: Rc<HashMap<String, Rc<Node>>>,
-) -> Rc<HashMap<String, Rc<List>>> {
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
     imports.clone().iter().cloned().fold(
         scoped.clone(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
@@ -4151,7 +4141,9 @@ pub fn emit_module(
     }
 }
 
-pub fn build_module_export_sets(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Map>>> {
+pub fn build_module_export_sets(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
     modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
         |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, tm: Rc<TypedModule>| {
@@ -4181,7 +4173,7 @@ pub fn emit_module_full(
     shared_types: Rc<BTreeSet<String>>,
     svc_module_map: Rc<HashMap<String, String>>,
     data_items: Rc<HashMap<String, Rc<Node>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Rc<TextFile> {
@@ -4518,7 +4510,7 @@ pub fn is_import_graph_type_name(
     import_module: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
@@ -4835,7 +4827,7 @@ pub fn type_name_is_rust_importable_in_module(
     module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
@@ -4884,7 +4876,7 @@ pub fn imported_name_is_non_emittable_type(
     import_module: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
@@ -4922,7 +4914,7 @@ pub fn name_in_transitive_export_surface(
     name: String,
     module_name: String,
     visited: Rc<Vec<String>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
@@ -4998,7 +4990,7 @@ pub fn reexport_source_module_name(
     name: String,
     import_module: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
@@ -5018,7 +5010,7 @@ pub fn reexport_source_module_name_with_visited(
     mut import_module: String,
     mut visited: Rc<Vec<String>>,
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<String, Rc<Map>>>,
+    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
@@ -5200,7 +5192,7 @@ pub fn import_module_enum_scope(
     import_module: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
@@ -5332,7 +5324,7 @@ pub fn enum_physically_defined_in_module(
 pub fn wildcard_import_pool_surface_names(
     module_name: String,
     visited: Rc<Vec<String>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
@@ -5406,7 +5398,7 @@ pub fn wildcard_import_pool_surface_names(
 
 pub fn wildcard_reexport_surface_names(
     import_module: String,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
@@ -5454,7 +5446,7 @@ pub fn graph_type_import_module_filename(
     import_module: String,
     mod_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> String {
@@ -5485,7 +5477,7 @@ pub fn variant_defining_module_filename_for_import(
     mut variant_name: String,
     mut import_module: String,
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<String, Rc<Map>>>,
+    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut fallback: String,
     mut module_index: Rc<ModuleIndex>,
@@ -5535,7 +5527,7 @@ pub fn variant_parent_defining_module_filename(
     variant_name: String,
     import_module: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     fallback: String,
@@ -5583,7 +5575,7 @@ pub fn explicit_import_source_module_for_name(
     name: String,
     import_module: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
@@ -5681,7 +5673,7 @@ pub fn reexport_variant_parent_in_import_module(
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<String, Rc<Map>>>,
+    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut module_index: Rc<ModuleIndex>,
 ) -> Option<String> {
@@ -5745,7 +5737,7 @@ pub fn alias_rhs_rust_qualify_module_filename(
     imports: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
@@ -5801,7 +5793,7 @@ pub fn alias_rhs_base_module_filename(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     scope: Rc<InferScope>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
 ) -> String {
@@ -5847,7 +5839,7 @@ pub fn alias_rhs_base_module_from_import_or_registry(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     local_mod: String,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
 ) -> String {
@@ -5997,7 +5989,7 @@ pub fn type_item_has_rust_nominal_shell_authority(
     imports: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
@@ -6091,7 +6083,7 @@ pub fn rhs_base_has_rust_type_authority_in_module(
     mut scope: Rc<InferScope>,
     mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<String, Rc<Map>>>,
+    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut module_index: Rc<ModuleIndex>,
 ) -> bool {
@@ -6195,7 +6187,7 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
     imports: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
@@ -6376,7 +6368,7 @@ pub fn is_emittable_parametric_type_alias_item(
     imports: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
@@ -6423,7 +6415,7 @@ pub fn import_variant_parent_for_name(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
     imported_enums: Rc<Vec<String>>,
@@ -6500,7 +6492,7 @@ pub fn emit_specific_import_block(
     emit_info: Rc<EmitGraphInfo>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     local_names: Rc<Vec<String>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
@@ -7453,7 +7445,7 @@ pub fn emit_imports(
     emit_info: Rc<EmitGraphInfo>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     local_names: Rc<Vec<String>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
@@ -7959,10 +7951,10 @@ pub fn emit_typed_item(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
-    data_items: Rc<HashMap<String, Rc<List>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     module_items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
-    export_sets: Rc<HashMap<String, Rc<Map>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
 ) -> String {
@@ -8510,7 +8502,7 @@ pub fn emit_type_def_from_connective(
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
-    data_items: Rc<HashMap<String, Rc<List>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     module_items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
 ) -> String {
@@ -25267,7 +25259,7 @@ pub fn to_workflow_func(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     data_body_index: Rc<HashMap<String, Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    read_only_params_index: Rc<HashMap<String, Rc<Set>>>,
+    read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 ) -> Rc<WorkflowFunc> {
     {
         let item_name = authored_name_at(source_indices.clone(), item.clone());
@@ -25341,7 +25333,7 @@ pub fn is_workflow_item(
 pub fn collect_workflow_funcs(
     modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    read_only_params_index: Rc<HashMap<String, Rc<Set>>>,
+    read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 ) -> Rc<Vec<Rc<WorkflowFunc>>> {
     {
         let data_body_index = build_data_body_index(modules.clone());

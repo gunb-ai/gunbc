@@ -659,7 +659,7 @@ pub fn resolve_known_method_node(
     receiver_type: Rc<Node>,
     method_name: String,
     fold_accumulator_type: Option<Rc<Node>>,
-    service_registry: Rc<HashMap<String, Rc<List>>>,
+    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KnownMethodResolution> {
     {

@@ -7,7 +7,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
-use crate::module_path_index::{parse_module_binding, ParsedModuleBinding};
 use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
@@ -934,69 +933,7 @@ fn module_path_collision_panic_message(
 }
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
-    let key = source_roots
-        .iter()
-        .map(|r| anchor_source_root(r))
-        .collect::<Vec<_>>()
-        .join("\u{1f}");
-    MODULE_PATH_INDEX_CACHE.with(|cache| {
-        if let Some(index) = cache.borrow().get(&key) {
-            return index.clone();
-        }
-        let index = build_module_path_index_uncached(source_roots);
-        cache.borrow_mut().insert(key, index.clone());
-        index
-    })
-}
-
-fn build_module_path_index_uncached(source_roots: &[String]) -> HashMap<String, String> {
     let mut index: HashMap<String, String> = HashMap::new();
-    for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
-        let rel = module_index_path_key(path);
-        if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
-            return;
-        }
-        insert_module_path(&mut index, &binding.module_path, rel);
-    });
-    index
-}
-
-#[derive(Clone)]
-struct ModuleBindingManifestRow {
-    module_path: String,
-    rel_path: String,
-    root_variant: String,
-    ident_span: Rc<SourceSpan>,
-}
-
-fn witness_layer_root_spelling(root: &str) -> String {
-    let p = Path::new(root);
-    if p.is_absolute() {
-        repo_relative_path_normalized(p)
-    } else {
-        root.trim_start_matches("./")
-            .trim_end_matches('/')
-            .to_string()
-    }
-}
-
-fn insert_module_path(index: &mut HashMap<String, String>, module_path: &str, rel: String) {
-    if let Some(existing) = index.get(module_path) {
-        if existing != &rel && !same_canonical_file(existing, &rel) {
-            panic!(
-                "{}",
-                module_path_collision_panic_message(module_path, existing, &rel)
-            );
-        }
-        return;
-    }
-    index.insert(module_path.to_string(), rel);
-}
-
-fn for_each_parsed_module_binding(
-    source_roots: &[String],
-    mut visit: impl FnMut(usize, &Path, ParsedModuleBinding),
-) {
     for (root_idx, root) in source_roots.iter().enumerate() {
         let anchored_root = anchor_source_root(root);
         let root_path = Path::new(&anchored_root);
@@ -1004,64 +941,26 @@ fn for_each_parsed_module_binding(
         collect_dag_files(root_path, &mut dag_files);
         for path in dag_files {
             let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-                panic!(
-                    "for_each_parsed_module_binding: failed to read {:?}: {}",
-                    path, e
-                )
+                panic!("build_module_path_index: failed to read {:?}: {}", path, e)
             });
-            let binding = match parse_module_binding(&path, &content) {
-                Ok(Some(binding)) => binding,
-                Ok(None) => continue,
-                Err(msg) => panic!("for_each_parsed_module_binding: {msg}"),
-            };
-            visit(root_idx, &path, binding);
+            if let Some(module_path) = extract_module_path(&content) {
+                let rel = module_index_path_key(&path);
+                if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
+                    continue;
+                }
+                if let Some(existing) = index.get(&module_path) {
+                    if existing != &rel && !same_canonical_file(existing, &rel) {
+                        panic!(
+                            "{}",
+                            module_path_collision_panic_message(&module_path, existing, &rel)
+                        );
+                    }
+                }
+                index.insert(module_path.clone(), rel);
+            }
         }
     }
-}
-
-fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBindingManifestRow> {
-    let root_variants: Vec<String> = source_roots
-        .iter()
-        .map(|root| {
-            let rel_root = witness_layer_root_spelling(root);
-            source_root_ref_variant_for_root(&rel_root)
-                .unwrap_or_else(|e| panic!("collect_module_binding_manifest_rows: {e}"))
-        })
-        .collect();
-    let mut rows_by_module: std::collections::HashMap<String, ModuleBindingManifestRow> =
-        std::collections::HashMap::new();
-    for_each_parsed_module_binding(source_roots, |root_idx, path, binding| {
-        let rel = module_index_path_key(path);
-        if manifest_stub_superseded_by_overlay(&rel, source_roots, root_idx) {
-            return;
-        }
-        if let Some(existing) = rows_by_module.get(&binding.module_path) {
-            if existing.rel_path != rel && !same_canonical_file(&existing.rel_path, &rel) {
-                panic!(
-                    "{}",
-                    module_path_collision_panic_message(
-                        &binding.module_path,
-                        &existing.rel_path,
-                        &rel
-                    )
-                );
-            }
-            return;
-        }
-        rows_by_module.insert(
-            binding.module_path.clone(),
-            ModuleBindingManifestRow {
-                module_path: binding.module_path,
-                rel_path: rel,
-                root_variant: root_variants[root_idx].clone(),
-                ident_span: binding.ident_span,
-            },
-        );
-    });
-    let mut rows: Vec<ModuleBindingManifestRow> =
-        rows_by_module.into_iter().map(|(_, row)| row).collect();
-    rows.sort_by(|a, b| a.module_path.cmp(&b.module_path));
-    rows
+    index
 }
 
 /// Resolve `import` statements transitively for an in-memory (not-on-disk) entry source
@@ -3156,16 +3055,6 @@ mod compile_clean_via_index_verdict_equivalence {
 }
 
 thread_local! {
-    static MODULE_PATH_INDEX_CACHE: RefCell<HashMap<String, HashMap<String, String>>> =
-        RefCell::new(HashMap::new());
-}
-
-#[cfg(test)]
-pub(crate) fn reset_module_path_index_cache_for_test() {
-    MODULE_PATH_INDEX_CACHE.with(|cache| cache.borrow_mut().clear());
-}
-
-thread_local! {
     static MODULE_GRAPH_FACTS_CACHE: RefCell<HashMap<String, ModuleGraphFactsLive>> =
         RefCell::new(HashMap::new());
 }
@@ -3173,7 +3062,6 @@ thread_local! {
 #[cfg(test)]
 pub(crate) fn reset_module_graph_facts_cache_for_test() {
     MODULE_GRAPH_FACTS_CACHE.with(|cache| cache.borrow_mut().clear());
-    reset_module_path_index_cache_for_test();
 }
 
 fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphFactsLive {
@@ -9725,6 +9613,13 @@ pub(crate) enum DeclaredSourceRefAxis {
     Untouched,
 }
 
+fn storage_path_to_module_index(source_roots: &[String]) -> HashMap<String, String> {
+    build_module_path_index(source_roots)
+        .into_iter()
+        .map(|(module, path)| (path, module))
+        .collect()
+}
+
 fn parse_source_ref_storage_path_from_rhs(rhs: &str) -> Option<String> {
     if let Some(rest) = rhs.split_once("path:") {
         let rest = rest.1.trim_start();
@@ -9912,15 +9807,6 @@ fn declared_source_refs_axis_for_paths(
     DeclaredSourceRefAxis::Untouched
 }
 
-fn path_to_module_from_declaration_facts(
-    nodes: &[ModuleDeclarationFactRaw],
-) -> HashMap<String, String> {
-    nodes
-        .iter()
-        .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
-        .collect()
-}
-
 pub(crate) fn declared_source_refs_axis_for_entry(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
@@ -9928,7 +9814,7 @@ pub(crate) fn declared_source_refs_axis_for_entry(
     touched_paths: &[String],
 ) -> DeclaredSourceRefAxis {
     let declared_paths = declared_source_ref_paths_for_entry(entry_path, facts);
-    let path_to_module = path_to_module_from_declaration_facts(&facts.nodes);
+    let path_to_module = storage_path_to_module_index(source_roots);
     declared_source_refs_axis_for_paths(
         &declared_paths,
         &path_to_module,
@@ -10949,31 +10835,7 @@ pub fn run_discovery_corpus_with_options(
             // warmed for calibration + floor runner). Spawning a worker thread duplicates the
             // whole-tree index on a second thread-local cache — ~2× retention that OOM'd CI
             // batch-2 discovery (runs 29372308568 / 29373433928). Cross-worker store arms only
-            // when plural workers run (below).
-            //
-            // This width read is deliberately SAMPLED ONCE, and at width 1 that makes the
-            // window an absorbing state for this pool: the only path that grows it (a slot
-            // completion) lives past the branch below, so the governor's AIMD controller is
-            // not reachable from the corpus. That is a real defect in the controller — and
-            // un-latching it is nonetheless a MEASURED LOSS, so the latch stays until the
-            // cost it hides is gone. Same branch, same 621 entry-groups, same .rs-forced
-            // whole-tree path: serial 11.75min GREEN (CI 29707161743 — max_width_reached=1,
-            // admissions=1, peak 6.97 GB) vs un-latched 47min+ without finishing (CI
-            // 29714863168), vs un-latched with per-unit window growth OOM-killed at
-            // 101.6 GB in 11min (CI 29710324768).
-            //
-            // The reason is Amdahl, not a bug: a worker's front cost is its own whole-tree
-            // index build (~10.7 GB, minutes) and the entire corpus is ~12 minutes of work,
-            // so every added worker costs more setup than the parallelism it buys. Width is
-            // not worth reaching for while the index is per-worker; the governor's job here
-            // is to be correct when it IS reachable — see `CompletionKind` in
-            // `memory_governor`, where the window tracks landed worker cost and never the
-            // unit-completion rate.
-            // 🟡 dissolve-on: Rc→Arc retires the width gate — sharing the index removes the
-            // per-worker front cost, which is the thing that makes width unprofitable. Priced
-            // FIRST by the share spike (docs/plans/cross-worker-typecheck-share-design.md §9
-            // open decision 2), because that design's §7 warns a shared store also INCREASES
-            // co-resident retention: the win is a crossover in width, not a given.
+            // when plural workers run (below). 🟡 dissolve-on: Rc→Arc retires the width gate.
             if spawn_target_width <= 1 {
                 eprintln!(
                     "run_discovery_corpus: width=1 inline drain — reusing process_shared_index (no worker duplicate index)"
@@ -14451,14 +14313,13 @@ fn emit_source_root_ref_import(records: &[SourceRootReadRecord]) -> String {
 /// `v2.compiler.source_authority.module_storage_bindings_for_source_roots`.
 ///
 /// This is a TRANSPORT of that modeled op, not a rival authority. It carries zero
-/// independent policy: it serializes the same parse-derived rows as `build_module_path_index`
-/// via `collect_module_binding_manifest_rows` (shared `for_each_parsed_module_binding` walk),
+/// independent policy: it serializes what `build_module_path_index` already derived,
 /// which is the one host producer the module-identity design says must be repointed —
 /// so supplying the rows and repointing the producer are the same motion.
 ///
-/// Rows are `ParsedFromSource`: `build_module_path_index` routes through
-/// `v1_compiler_parse::parse` (src/v1/stage0/src/module_path_index), the bootstrap
-/// parse path — not `extract_module_path` substring scan (task 4 repoint).
+/// Rows are `DeclarationScanned`, never `ParsedFromSource`: `build_module_path_index`
+/// derives the mapping via `extract_module_path`, a substring scan with no spans and no
+/// parse. Emitting them as parsed would fabricate provenance (DESIGN.md §5).
 ///
 /// Unlike the source-root ingest manifest this carries NO source text — the binding needs
 /// module <-> path only. That is what lets it scale past `MANIFEST_INLINE_LIST_MAX`, which
@@ -14475,21 +14336,30 @@ pub fn emit_module_storage_binding_manifest(
             .map_err(|e| format!("failed to create manifest parent {:?}: {}", parent, e))?;
     }
 
-    let mut rows = collect_module_binding_manifest_rows(source_roots);
-    rows.sort_by(|a, b| a.module_path.cmp(&b.module_path));
+    // Per-root so each row records its own SourceRootRef, reusing build_module_path_index
+    // rather than introducing a second walker (which would be the fork this repoint removes).
+    let mut rows: Vec<(String, String, String)> = Vec::new();
+    for root in source_roots {
+        let root_variant = source_root_ref_variant_for_root(root)?;
+        let index = build_module_path_index(std::slice::from_ref(root));
+        let mut entries: Vec<(String, String)> = index.into_iter().collect();
+        // build_module_path_index returns a HashMap; sort so the emitted manifest is
+        // deterministic (byte-identical across runs on unchanged inputs).
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        for (module_path, rel) in entries {
+            rows.push((module_path, rel, root_variant.clone()));
+        }
+    }
 
     let mut out = String::new();
     out.push_str("module v2.test.workflow.host_module_binding_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  ModuleStorageIndex,\n");
-    out.push_str("  module_storage_parsed_binding\n");
+    out.push_str("  module_storage_scanned_binding\n");
     out.push_str("}\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import std.algebra { Cons, Empty }\n");
-    out.push_str("import v2.std.diagnostic { ByteRange, Textual }\n");
     out.push_str("import v2.std.integer { Int }\n");
-    out.push_str("import v2.std.node { MintedOccurrence, OccurrenceId }\n");
-    out.push_str("import v2.std.provenance { FromSource, span_index_empty, span_index_record }\n");
     out.push_str("import v2.std.qualified_name { qualified_name_from_string_segments }\n");
     out.push_str(&emit_module_binding_source_root_import(&rows));
     out.push('\n');
@@ -14507,8 +14377,8 @@ pub fn emit_module_storage_binding_manifest(
 /// Import exactly the `SourceRootRef` constructors the rows reference (mirrors
 /// `emit_source_root_ref_import`; an unreferenced constructor import is an unlisted-import
 /// error, and a referenced-but-unimported one fails to resolve).
-fn emit_module_binding_source_root_import(rows: &[ModuleBindingManifestRow]) -> String {
-    let mut names: Vec<&str> = rows.iter().map(|r| r.root_variant.as_str()).collect();
+fn emit_module_binding_source_root_import(rows: &[(String, String, String)]) -> String {
+    let mut names: Vec<&str> = rows.iter().map(|(_, _, v)| v.as_str()).collect();
     names.sort_unstable();
     names.dedup();
     if names.is_empty() {
@@ -14546,27 +14416,17 @@ fn emit_module_binding_qualified_name(module_path: &str) -> Result<String, Strin
     ))
 }
 
-fn emit_module_binding_span_index(span: &SourceSpan, file_symbol: &str) -> String {
-    let start = span.start.max(0);
-    let end = span.end.max(start);
-    let occurrence_id = start.max(1);
-    format!(
-        "span_index_record(\n  index: span_index_empty(),\n  id: MintedOccurrence {{ id: OccurrenceId {{ value: {occurrence_id} }} }},\n  event: FromSource {{ locus: Textual {{ file: {file_symbol}, extent: ByteRange {{ start: {start}, end: {end} }} }} }}\n)"
-    )
-}
-
-fn emit_module_binding_row(row: &ModuleBindingManifestRow) -> Result<String, String> {
-    let qn = emit_module_binding_qualified_name(&row.module_path)?;
-    let artifact_id = source_root_ingest_artifact_id_for_path(&row.rel_path);
-    let span_index = emit_module_binding_span_index(&row.ident_span, &artifact_id);
+fn emit_module_binding_row(row: &(String, String, String)) -> Result<String, String> {
+    let (module_path, rel, root_variant) = row;
+    let qn = emit_module_binding_qualified_name(module_path)?;
+    let artifact_id = source_root_ingest_artifact_id_for_path(rel);
     Ok(format!(
-        "module_storage_parsed_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  span_index: {span_index},\n  source_root: {}\n)",
-        dag_manifest_scalar_escape(&row.rel_path)?,
-        row.root_variant
+        "module_storage_scanned_binding(\n  module: {qn},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  source_root: {root_variant}\n)",
+        dag_manifest_scalar_escape(rel)?
     ))
 }
 
-fn emit_module_binding_monoid(rows: &[ModuleBindingManifestRow]) -> Result<String, String> {
+fn emit_module_binding_monoid(rows: &[(String, String, String)]) -> Result<String, String> {
     let mut nodes: Vec<String> = rows
         .iter()
         .map(emit_module_binding_row)
@@ -19271,7 +19131,6 @@ mod module_path_index_tests {
             vec![
                 "dag/test/claim".to_string(),
                 "src/v2/test/claim/manual".to_string(),
-                "src/v2/test/claim/emit".to_string(),
             ],
             "live authority scan-dir value drifted"
         );

@@ -47,7 +47,7 @@ pub struct SccCycleAcc {
     pub has_cycle: bool,
 }
 
-pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<List>>> {
+pub fn seed_adjacency_map(names: Rc<Vec<String>>) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     names.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
         |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| {
@@ -128,7 +128,7 @@ pub fn build_adjacency_views(
 pub fn forward_adjacency(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
-) -> Rc<HashMap<String, Rc<List>>> {
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     build_adjacency_views(names.clone(), graph.clone())
         .forward
         .clone()
@@ -137,7 +137,7 @@ pub fn forward_adjacency(
 pub fn reverse_adjacency(
     names: Rc<Vec<String>>,
     graph: Rc<CallGraph>,
-) -> Rc<HashMap<String, Rc<List>>> {
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     build_adjacency_views(names.clone(), graph.clone())
         .reverse
         .clone()
@@ -145,7 +145,7 @@ pub fn reverse_adjacency(
 
 pub fn dfs_finish_order(
     node: String,
-    adjacency: Rc<HashMap<String, Rc<List>>>,
+    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     acc: Rc<DfsFinishAcc>,
 ) -> Rc<DfsFinishAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -178,7 +178,7 @@ pub fn dfs_finish_order(
 
 pub fn dfs_collect_component(
     node: String,
-    adjacency: Rc<HashMap<String, Rc<List>>>,
+    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     acc: Rc<SccComponentAcc>,
 ) -> Rc<SccComponentAcc> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
