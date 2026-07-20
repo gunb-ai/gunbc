@@ -694,6 +694,24 @@ impl MemoryGovernor {
         }
     }
 
+    /// A unit of work completed WITHOUT holding an admission slot: the discovery pump's
+    /// width-1 inline lane, which runs a group against an index already resident on the
+    /// pump thread and so claims no worker-sized residency (`active` is denominated in
+    /// worker-sized claims — the quantity `measured_worker_share` calibrates).
+    ///
+    /// It is still an additive-increase point, and a sound one: `note_completion` re-reads
+    /// the signals and grows ONLY when they are calm, and `memory.current`/PSI/swap include
+    /// the pump thread's bytes whether or not it held a slot. So the growth is gated on the
+    /// same evidence as a worker's completion; what differs is only the slot bookkeeping.
+    ///
+    /// Without this, width 1 is an absorbing state: the inline lane is reached only while
+    /// the window is 1, and nothing inside it could lift the window off 1 (CI run
+    /// 29707161743 — a whole 621-group floor at max_width_reached=1 on a 125 GB budget).
+    /// 🟡 dissolve-on: Rc→Arc makes the index shareable, retiring the inline lane entirely.
+    pub fn note_inline_unit_complete(&self) {
+        self.note_unit_complete_growth();
+    }
+
     fn note_first_cost_paid(&self) {
         let sig = self.source.read();
         let mut core = self.core.lock().unwrap();

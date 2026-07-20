@@ -10858,40 +10858,32 @@ pub fn run_discovery_corpus_with_options(
                 if abort.load(Ordering::SeqCst) || queue.lock().unwrap().is_empty() {
                     break;
                 }
-                // One admission poll per iteration; the granted slot is then spent either
-                // inline on this thread (window == 1) or on a spawned worker (window > 1).
-                match governor.try_admit() {
-                    crate::memory_governor::AdmitDecision::Admit { .. } => {}
-                    crate::memory_governor::AdmitDecision::Hold(_) => {
-                        std::thread::sleep(std::time::Duration::from_millis(150));
-                        continue;
-                    }
-                }
                 // Window == 1: drain ONE group inline on the pump thread reusing
                 // `process_shared_index` (already warmed for calibration + the floor runner).
                 // Spawning a worker here would duplicate the whole-tree index on a second
-                // thread-local cache — ~2× retention that OOM'd CI batch-2 discovery (runs
-                // 29372308568 / 29373433928).
+                // thread-local cache — the index is Rc-based and per-worker, measured at
+                // ~10.7 GB on this corpus, which is the ~2× retention that OOM'd CI batch-2
+                // discovery (runs 29372308568 / 29373433928).
                 //
-                // The width read is per GROUP, never latched for the pool: the granted slot's
-                // completion is the governor's additive-increase point, so a calm inline group
-                // is precisely what LIFTS the window off 1. Sampling it once made width 1 an
-                // ABSORBING state — the only path that could grow the window (a slot
-                // completion) lived inside the branch that only ran once the window had
-                // already grown, so the AIMD controller was unreachable for the corpus and
-                // every floor ran serially (CI run 29707161743: 621 entry-groups, 125 GB
+                // The width read is per GROUP, never latched for the pool. Sampling it once
+                // made width 1 an ABSORBING state: the only path that could grow the window
+                // (a slot completion) lived inside the branch that only ran once the window
+                // had already grown, so the AIMD controller was unreachable for the corpus
+                // and every floor ran serially (CI run 29707161743: 621 entry-groups, 125 GB
                 // budget, max_width_reached=1, admissions=1, width_growths=1, peak 6.97 GB —
                 // 5.6% of the pipe, zero creep, zero back-offs).
+                //
+                // This lane takes NO admission slot: it claims no worker-sized residency (it
+                // runs against an index that is already resident on this thread), and the
+                // `active` count is denominated in worker-sized claims — the very quantity
+                // `measured_worker_share` calibrates. Counting it as a worker would conflate
+                // two residency classes and serialize the pump behind gate units that hold
+                // slots for their whole lifetime. Its bytes are NOT invisible to the
+                // governor: `memory.current`/PSI/swap already include this thread, so the
+                // creep and hard arms inside `note_inline_unit_complete` gate the growth on
+                // the same signals as any other completion.
                 // 🟡 dissolve-on: Rc→Arc retires the width gate and this inline lane with it.
                 if governor.current_target_width() <= 1 {
-                    // The slot was granted by try_admit above; the guard owns the release.
-                    let mut slot =
-                        crate::memory_governor::AdmittedSlot::from_admitted(governor.clone());
-                    // This lane pays NO front-loaded admission cost: the index it runs against
-                    // is this thread's, already resident. Settling the pacing debt at once
-                    // keeps the ramp honest — a debt no allocation will ever land would freeze
-                    // admissions behind a cost that is already paid.
-                    slot.note_first_cost_paid();
                     let Some(group_rows) = queue.lock().unwrap().pop_front() else {
                         break;
                     };
@@ -10922,9 +10914,12 @@ pub fn run_discovery_corpus_with_options(
                         Ok(summary) => {
                             summaries.push(summary);
                             inline_groups += 1;
-                            // The additive-increase point: a calm completion grows the window,
-                            // so the next iteration can dispatch wide.
-                            slot.note_unit_complete();
+                            // The additive-increase point: a completion observed calm grows
+                            // the window, so the next iteration dispatches wide. At most one
+                            // such growth fires per collapse-to-1 episode — the very next
+                            // iteration reads target_width > 1 and leaves this lane — so the
+                            // window cannot run away ahead of realized concurrency here.
+                            governor.note_inline_unit_complete();
                         }
                         Err(e) => {
                             abort.store(true, Ordering::SeqCst);
@@ -10933,6 +10928,13 @@ pub fn run_discovery_corpus_with_options(
                         }
                     }
                     continue;
+                }
+                match governor.try_admit() {
+                    crate::memory_governor::AdmitDecision::Admit { .. } => {}
+                    crate::memory_governor::AdmitDecision::Hold(_) => {
+                        std::thread::sleep(std::time::Duration::from_millis(150));
+                        continue;
+                    }
                 }
                 if !announced_wide {
                     announced_wide = true;
