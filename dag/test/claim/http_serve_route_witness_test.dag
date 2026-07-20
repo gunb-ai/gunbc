@@ -12,10 +12,9 @@ import extdeps.uri_path {
   ParsedPathTemplate,
   MalformedPathTemplate,
   parse_path_template,
-  PathParamBinding,
 }
+import std.http_path { PathTemplate, PathParamBinding }
 import gunbc.node_http_server_emit { emit_path_template_regex_source }
-import std.http_path { PathTemplate }
 import std.types { String, Bool, List, Int, HttpMethod, GET, POST }
 
 type ProbeHandler

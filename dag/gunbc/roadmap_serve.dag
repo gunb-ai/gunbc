@@ -1,7 +1,7 @@
 module gunbc.roadmap_serve
 
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST }
-import std.http_path { PathTemplate }
+import std.http_path { PathTemplate, PathParamBinding, path_param_value }
 import std.markup { MarkupNode }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -9,7 +9,6 @@ import extdeps.uri_path {
   ParsedPathTemplate,
   MalformedPathTemplate,
   parse_path_template,
-  PathParamBinding,
 }
 import extdeps.http.server {
   HttpContentType, TextHtmlUtf8, TextPlainUtf8, ApplicationJsonUtf8,
@@ -120,14 +119,10 @@ fn belt_dispatch_response(r: BeltDispatchResult) -> ServeHttpResponse {
   )
 }
 
-fn serve_param_value(params: List<PathParamBinding>, name: String) -> String {
-  fold(params, init: "", f: (acc, p) => if p.name == name { p.value } else { acc })
-}
-
 data serve_dispatch_param_note: String = "The node_id param is bound by the route template, so an empty value is unreachable by construction (match_path_template refuses empty segments); the empty-check below is the typed backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN 5: an unreachable arm refuses, never fabricates)."
 
 fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
-  let node_id = serve_param_value(params: params, name: "node_id")
+  let node_id = path_param_value(params: params, name: "node_id")
   if node_id == "" {
     serve_text_response(
       status: 400,
