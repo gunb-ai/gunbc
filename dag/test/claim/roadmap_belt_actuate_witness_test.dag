@@ -263,6 +263,31 @@ fn witness_find_node_misses() -> Bool {
   !is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "z"))
 }
 
+fn owned_node(id: String, owner: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: [1], title: id, description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    owner: owner,
+    signoff: Unsigned,
+  }
+}
+
+fn found_owner(l: BeltNodeLookup) -> String {
+  match l {
+    NodeFound { node: n } => n.owner
+    NodeMissing => ""
+  }
+}
+
+fn witness_find_node_first_wins_on_duplicate() -> Bool {
+  found_owner(l: belt_find_node_in(
+    nodes: [owned_node(id: "dup", owner: "first"), owned_node(id: "dup", owner: "second")],
+    node_id: "dup",
+  )) == "first"
+}
+
 fn witness_node_session_live_true() -> Bool {
   belt_node_session_live(live: [live_session(node_id: "a", verdict: Converged)], node_id: "a")
 }
@@ -302,6 +327,7 @@ test fn roadmap_belt_actuate_witnesses() -> Bool {
     && witness_uuid_rfc4122_shape()
     && witness_find_node_hits()
     && witness_find_node_misses()
+    && witness_find_node_first_wins_on_duplicate()
     && witness_node_session_live_true()
     && witness_node_session_live_false()
     && witness_dispatch_result_ok_spawned_and_live()

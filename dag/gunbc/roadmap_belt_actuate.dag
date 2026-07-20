@@ -441,7 +441,10 @@ type BeltNodeLookup
 fn belt_find_node_in(nodes: List<RoadmapNode>, node_id: String) -> BeltNodeLookup {
   let matches = nodes |> filter(n => n.node == node_id)
   fold(matches, init: NodeMissing, f: fn(acc, n) {
-    NodeFound { node: n }
+    match acc {
+      NodeFound { node: _ } => acc
+      NodeMissing => NodeFound { node: n }
+    }
   })
 }
 
