@@ -259,7 +259,8 @@ fn run_module_grain_produce(
     emit_timing_point("module-grain-warm", warm_ms, peak_rss_vhwm_bytes());
 
     let records = spike_take_module_typecheck_records();
-    let cache = export_typed_cache_for_spike(&index);
+    let cache: std::collections::HashMap<_, _> =
+        export_typed_cache_for_spike(&index).into_iter().collect();
     drop(index);
 
     const MAX_SNAPSHOT_BYTES: usize = 50_000_000;
