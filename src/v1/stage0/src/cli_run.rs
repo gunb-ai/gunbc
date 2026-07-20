@@ -2923,10 +2923,6 @@ pub struct ModuleGraphFactsLive {
     // state `entry_file_touched_via_import_closure` may refuse on. Every other edgeless entry has
     // a known-empty dependency set and a precise `{self}` closure.
     reference_unaccounted: HashSet<String>,
-    // Workspace-relative path → dotted module name, precomputed once per facts build: the
-    // reference-derived content-key term (`reference_only_direct_import_modules`) needs to
-    // translate `selection_adjacency`'s path-keyed targets into module names per query.
-    path_to_module: HashMap<String, String>,
 }
 
 #[cfg(test)]
@@ -3018,9 +3014,6 @@ mod typed_module_content_key_tests {
         "module k.imp\nfn base() -> Int { 10 }\nfn extra() -> Int { 1 }\n";
     const DEPENDENT_MODULE: &str =
         "module k.dep\nimport k.imp { base }\nfn wit() -> Bool { base() == 10 }\n";
-    // No `import` line: a namespace-wave-1 stripped module (PR #6848) that resolves `base`
-    // through the corpus-wide bare-name census instead of a declared import.
-    const DEPENDENT_MODULE_STRIPPED: &str = "module k.dep\nfn wit() -> Bool { base() == 10 }\n";
 
     struct Fixture {
         dir: std::path::PathBuf,
@@ -3041,26 +3034,6 @@ mod typed_module_content_key_tests {
             fs::create_dir_all(&dir).expect("create fixture dir");
             fs::write(dir.join("imp.dag"), IMPORT_MODULE).expect("write imp.dag");
             fs::write(dir.join("dep.dag"), DEPENDENT_MODULE).expect("write dep.dag");
-            let roots = vec![dir.to_string_lossy().into_owned()];
-            let entry = dir.join("dep.dag").to_string_lossy().into_owned();
-            Fixture { dir, roots, entry }
-        }
-
-        /// Same shape as `new`, but `dep.dag` is import-less (stripped) and depends on
-        /// `k.imp.base` only through the bare-name census — the PR #6848 case
-        /// `typed_module_content_key`'s reference-derived term now covers.
-        fn new_stripped(tag: &str) -> Fixture {
-            use std::sync::atomic::{AtomicU64, Ordering};
-            static SEQ: AtomicU64 = AtomicU64::new(0);
-            let seq = SEQ.fetch_add(1, Ordering::SeqCst);
-            let dir = workspace_root().join("target").join(format!(
-                "typed-module-content-key-{tag}-{}-{seq}",
-                std::process::id()
-            ));
-            let _ = fs::remove_dir_all(&dir);
-            fs::create_dir_all(&dir).expect("create fixture dir");
-            fs::write(dir.join("imp.dag"), IMPORT_MODULE).expect("write imp.dag");
-            fs::write(dir.join("dep.dag"), DEPENDENT_MODULE_STRIPPED).expect("write dep.dag");
             let roots = vec![dir.to_string_lossy().into_owned()];
             let entry = dir.join("dep.dag").to_string_lossy().into_owned();
             Fixture { dir, roots, entry }
@@ -3149,41 +3122,6 @@ mod typed_module_content_key_tests {
                 after_edit, 1,
                 "body-only import edit: import recomputes, dependent stays warm \
                  (interface-grain minimality, signed decision 1)"
-            );
-        });
-    }
-
-    /// The stripped-module discriminating RED (namespace wave 1, PR #6848 follow-up): a
-    /// dependent with NO `import` line reaches its provider only through the corpus-wide
-    /// bare-name census (`selection_adjacency`'s reference-derived edges). Before this fix
-    /// `typed_module_content_key` only folded `resolved.resolved_imports` — empty here — so
-    /// the dependent's key was invariant under the provider's export-surface change and it
-    /// served a STALE typed result (0 computes). This is the same control as
-    /// `import_interface_term_recomputes_dependent` above, over a stripped dependent instead
-    /// of an import-bearing one.
-    #[test]
-    fn reference_derived_interface_term_recomputes_stripped_dependent() {
-        with_typecheck_compute_count_receipt(|| {
-            let fx = Fixture::new_stripped("stripped-reference-term");
-            let store = new_shared_typecheck_caches();
-
-            let cold = computes_with_store(&store, &fx.roots, &fx.entry);
-            assert_eq!(
-                cold, 2,
-                "cold resolve computes both closure modules (imp pulled in via bare-reference \
-                 closure loading)"
-            );
-
-            // Export-surface edit: a new exported fn changes k.imp's interface rollup, exactly
-            // as `import_interface_term_recomputes_dependent` — but dep.dag has no import line.
-            fx.rewrite_import(IMPORT_MODULE_SURFACE_EDIT);
-            let after_edit = computes_with_store(&store, &fx.roots, &fx.entry);
-            assert_eq!(
-                after_edit, 2,
-                "a provider export-surface change must recompute a STRIPPED dependent too: \
-                 the content key must consume the reference-derived import term, not just \
-                 `resolved_imports` (DESIGN §5 — a stale serve here is cache impurity, and a \
-                 provider fix in place is a wrong-answer-forever, not a cold-cache-once)"
             );
         });
     }
@@ -3432,10 +3370,6 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         .iter()
         .map(|n| workspace_relative_repo_path(&n.path))
         .collect();
-    let path_to_module: HashMap<String, String> = nodes
-        .iter()
-        .map(|n| (workspace_relative_repo_path(&n.path), n.module.clone()))
-        .collect();
     ModuleGraphFactsLive {
         edges,
         nodes,
@@ -3443,7 +3377,6 @@ fn build_module_graph_facts_live_uncached(pool_roots: &[String]) -> ModuleGraphF
         selection_adjacency,
         declared_paths,
         reference_unaccounted,
-        path_to_module,
     }
 }
 
@@ -4940,7 +4873,6 @@ fn typed_module_content_key(
     resolved: &Rc<v1_compiler_resolve::ResolvedModule>,
     mod_name: &str,
     interface_hash_by_name: &std::collections::HashMap<String, String>,
-    closure_names: &std::collections::HashSet<&str>,
 ) -> Result<String, String> {
     let file = &resolved.module.span.file;
     let source_hash = index
@@ -4966,42 +4898,6 @@ fn typed_module_content_key(
                      '{mod_name}' has no interface hash yet — imports must be typechecked \
                      (or cache-served) before their dependents are keyed",
                     import.module_path
-                )
-            })?;
-        import_hashes.push_back(hash);
-    }
-    // Stripped (no `import` line) modules resolve their dependencies through the corpus-wide
-    // bare-name census instead — real cross-module dependencies that `resolved_imports` above
-    // cannot see (PR #6848, namespace wave 1: 815/2301 modules). Without this term a stripped
-    // dependent's content key is invariant under a provider's export-surface change, which is
-    // cache impurity (DESIGN §5/recurring-failure-modes: key on declared-input content). The
-    // reference-only targets come from the SAME `selection_adjacency` authority affected-set
-    // selection already consumes (DESIGN §3: no second edge producer), strict-tier only
-    // (Qualified + UniqueBare — an AmbiguousBare homonym is not a declared dependency).
-    let file_rel = workspace_relative_repo_path(file);
-    for ref_mod in index
-        .module_graph_facts
-        .reference_only_direct_import_modules(&file_rel)
-    {
-        // The loader is deliberately import-only (build_module_graph_facts_live_uncached):
-        // selection_adjacency's reference-derived edges are census-wide and tuned for the
-        // affected-set consumer's tolerance of an over-connected false positive, not as a
-        // hard dependency authority. A target this resolve's closure never loaded cannot
-        // have influenced this compile's typed result, so it is not a term in this key —
-        // mirroring module_schedule_batches's existing dangling-edge tolerance, not an
-        // absorbing fallback (DESIGN §5): the exclusion is structurally forced, not a
-        // substitute for a precision we failed to compute.
-        if !closure_names.contains(ref_mod.as_str()) {
-            continue;
-        }
-        let hash = interface_hash_by_name
-            .get(&ref_mod)
-            .cloned()
-            .ok_or_else(|| {
-                format!(
-                    "typed-module content key refused: reference-derived dependency '{ref_mod}' \
-                     of stripped module '{mod_name}' has no interface hash yet — its bare-name \
-                     dependencies must be typechecked (or cache-served) before it is keyed"
                 )
             })?;
         import_hashes.push_back(hash);
@@ -5595,14 +5491,13 @@ fn check_module_source_identity_map(
 fn module_schedule_batches(
     modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     module_names: &[String],
-    index: &MultiEntryIndex,
 ) -> Vec<Vec<usize>> {
     let position: HashMap<&str, usize> = module_names
         .iter()
         .enumerate()
         .map(|(i, name)| (name.as_str(), i))
         .collect();
-    let mut edges: Vec<(usize, usize)> = modules
+    let edges: Vec<(usize, usize)> = modules
         .iter()
         .enumerate()
         .flat_map(|(i, resolved)| {
@@ -5614,23 +5509,6 @@ fn module_schedule_batches(
                 .collect::<Vec<_>>()
         })
         .collect();
-    // Stripped modules' bare-name dependencies (`selection_adjacency` minus `adjacency`, the
-    // same reference-derived term `typed_module_content_key` now folds into the content key)
-    // must precede their dependent in the schedule too, or the content-key fail-closed refuse
-    // fires on a dependency whose interface hash simply hasn't been produced yet — an ordering
-    // gap, not a missing term. A dangling reference target (outside this closure) is not a
-    // schedule edge, matching the declared-import case above.
-    for (i, resolved) in modules.iter().enumerate() {
-        let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        for dep_name in index
-            .module_graph_facts
-            .reference_only_direct_import_modules(&decl_file)
-        {
-            if let Some(&src) = position.get(dep_name.as_str()) {
-                edges.push((src, i));
-            }
-        }
-    }
     schedule_batches_from_edges(modules.len(), &edges)
 }
 
@@ -5789,53 +5667,29 @@ fn finish_resolved_graph_assembly(
 fn try_reconcile_all_cache_hits(
     closure_modules: &[Rc<v1_compiler_resolve::ResolvedModule>],
     closure_names: &[String],
-    schedule: &[Vec<usize>],
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
 ) -> Result<Option<Rc<ResolvedGraph>>, String> {
-    // Pass 1 — DEPENDENCY order (`schedule`, the same antichain batches the dispatch loop
-    // below uses): a stripped module's reference-derived dependencies are not guaranteed to
-    // precede it in `closure_modules`'s resolver order (that DFS only follows declared
-    // imports), so deriving the content key in resolver order can ask for an as-yet-unfilled
-    // reference-derived interface hash — an ordering gap, not a real miss. Walking dependency
-    // order first fills `interface_hash_by_name` correctly and lets the probe still fail
-    // closed (return `Ok(None)`) on a genuine store miss.
-    let mut interface_hash_by_name: std::collections::HashMap<String, String> =
-        std::collections::HashMap::with_capacity(closure_modules.len());
-    let closure_name_set: std::collections::HashSet<&str> =
-        closure_names.iter().map(|s| s.as_str()).collect();
-    let mut results: Vec<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>> =
-        vec![None; closure_modules.len()];
-    for &slot in schedule.iter().flatten() {
-        let resolved = &closure_modules[slot];
-        let mod_name = &closure_names[slot];
-        let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
-        check_index_module_source_identity(index, mod_name, &decl_file)?;
-        let typed_key = typed_module_content_key(
-            index,
-            resolved,
-            mod_name,
-            &interface_hash_by_name,
-            &closure_name_set,
-        )?;
-        let Some(tc_result) = index_get_typed(index, &typed_key)? else {
-            return Ok(None);
-        };
-        note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
-        results[slot] = Some(tc_result);
-    }
-
-    // Pass 2 — resolver's ORIGINAL order, assembling the `ResolvedGraph` byte-identically to
-    // the legacy serial fold (module order is an output-shape invariant, not just a schedule
-    // convenience — see `reconcile_with_typed_cache`'s S2a move 2 comment).
     let mut modules_vec = im::Vector::new();
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> =
         Vec::with_capacity(closure_modules.len() * 2);
     let mut same_tree_fork_count: usize = 0;
     let mut cross_tree_fork_count: usize = 0;
     let empty_parent_diags = Rc::new(im::Vector::new());
-    for tc_result in results.into_iter() {
-        let tc_result = tc_result.expect("every slot filled by the dependency-order pass above");
+    let mut interface_hash_by_name: std::collections::HashMap<String, String> =
+        std::collections::HashMap::with_capacity(closure_modules.len());
+
+    for (resolved, mod_name) in closure_modules.iter().zip(closure_names.iter()) {
+        let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+        {
+            check_index_module_source_identity(index, mod_name, &decl_file)?;
+        }
+        let typed_key =
+            typed_module_content_key(index, resolved, mod_name, &interface_hash_by_name)?;
+        let Some(tc_result) = index_get_typed(index, &typed_key)? else {
+            return Ok(None);
+        };
+        note_interface_hash(&mut interface_hash_by_name, mod_name, &tc_result);
         modules_vec.push_back(tc_result.typed.clone());
         diag_chunks.push(empty_parent_diags.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
@@ -6185,23 +6039,20 @@ fn reconcile_with_typed_cache(
         .iter()
         .map(|m| authored_name_at(source_indices.clone(), m.module.clone()))
         .collect();
-    let schedule = module_schedule_batches(&closure_modules, &closure_names, index);
     if let Some(assembled) = try_reconcile_all_cache_hits(
         &closure_modules,
         &closure_names,
-        &schedule,
         source_indices.clone(),
         index,
     )? {
         return Ok(assembled);
     }
+    let schedule = module_schedule_batches(&closure_modules, &closure_names);
     // Interface hashes of processed modules, for dependents' content keys — filled in
     // batch order (a batch's imports all live in earlier batches), read by
     // `typed_module_content_key` at each module's store lookup.
     let mut interface_hash_by_name: std::collections::HashMap<String, String> =
         std::collections::HashMap::with_capacity(closure_modules.len());
-    let closure_name_set: std::collections::HashSet<&str> =
-        closure_names.iter().map(|s| s.as_str()).collect();
     let mut dispatched: Vec<
         Option<(
             Rc<im::Vector<Rc<ErrorNode>>>,
@@ -6228,13 +6079,8 @@ fn reconcile_with_typed_cache(
             {
                 check_index_module_source_identity(index, &mod_name, &decl_file)?;
             }
-            let typed_key = typed_module_content_key(
-                index,
-                &resolved,
-                &mod_name,
-                &interface_hash_by_name,
-                &closure_name_set,
-            )?;
+            let typed_key =
+                typed_module_content_key(index, &resolved, &mod_name, &interface_hash_by_name)?;
             let cached = index_get_typed(index, &typed_key)?;
             let was_cache_hit = cached.is_some();
             let parent_diags = if was_cache_hit {
