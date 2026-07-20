@@ -1,6 +1,21 @@
 module v2.test.program_assembly.real_ingest
 import v2.compiler.source_authority { source_root_coverage_is_complete }
 
+import v2.compiler.name_resolve { validate_module_roots }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.text { string_is_empty }
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_source_root_ingest,
+  host_source_root_ingest_content_hash,
+  host_source_root_ingest_coverage_receipt
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data real_ingest_test_import_restoration_note: String = "Main-red repair (2026-07-20): #6848 landed this file referencing module_roots_from_source_root_ingest, validate_module_roots, dag_language_model, LiveTreeDisposition/SubstrateInputsOnly, and the host_source_root_ingest manifest triple without importing any of them - unresolved-type/undefined-variable errors that failed whole-tree typecheck and cascaded into batch 4 (source_root_ingest_gate_passes). Restoring the imports is a TEMPORARY fix, not the end state: v1's dependency-pool pull (resolve_transitively_with_seen in src/v1/stage0/src/main.rs) walks import lines to build the compiled set, so a same-tree provider with no import edge silently drops out even when it lives in the resolved corpus. Dissolves-at: pool-pull becomes reference-driven (consumer reachability, not import-line text-walk) - at that point an explicit import is no longer load-bearing for inclusion and this note goes with it."
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

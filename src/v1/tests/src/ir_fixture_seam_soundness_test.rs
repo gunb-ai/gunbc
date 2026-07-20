@@ -54,10 +54,10 @@ fn resolved_pipeline_from_cached(cached: CachedResolvedGraph) -> Rc<ResolvedPipe
     );
     Rc::new(ResolvedPipelineResult {
         graph: Some(cached.graph),
-        diagnostics: Rc::new(im_rc::vector![]),
+        diagnostics: Rc::new(im::vector![]),
         source_indices: cached.source_indices,
         complexity: empty_complexity_report(),
-        ownership: Rc::new(im_rc::vector![]),
+        ownership: Rc::new(im::vector![]),
         newline_indices: Rc::new(newline_indices.iter().cloned().collect()),
     })
 }

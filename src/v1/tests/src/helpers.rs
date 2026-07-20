@@ -32,7 +32,7 @@ pub fn v2_layer_roots() -> Vec<std::path::PathBuf> {
     vec![ws.join("src/v2"), ws.join("dag")]
 }
 
-pub fn tokenize(source: &str) -> Rc<im_rc::Vector<Rc<Token>>> {
+pub fn tokenize(source: &str) -> Rc<im::Vector<Rc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 
@@ -45,7 +45,7 @@ pub fn parse_source_named(filename: &str, source: &str) -> Rc<ParseResult> {
         v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), filename.to_string());
     let source_index =
         v1_compiler::v1_std_core::build_newline_index(filename.to_string(), source.to_string());
-    let mut source_indices = im_rc::HashMap::new();
+    let mut source_indices = im::HashMap::new();
     source_indices.insert(filename.to_string(), source_index);
     v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices))
 }
@@ -89,7 +89,7 @@ pub fn assert_parses_strict(relative_path: &str) {
     );
 }
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::sync::OnceLock;
 
 fn build_module_index_for_roots(
