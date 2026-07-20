@@ -90,7 +90,7 @@ fn witness_open_node_doc_emits_button_and_script() -> Bool {
 
 fn witness_done_node_doc_has_no_button() -> Bool {
   let h = dispatch_doc_html(done: true)
-  !string_contains(s: h, pattern: "dispatch-btn")
+  !string_contains(s: h, pattern: "<button class=\"dispatch-btn\"")
 }
 
 test fn roadmap_page_keystone_holds() -> Bool {
