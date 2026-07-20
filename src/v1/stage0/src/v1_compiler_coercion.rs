@@ -2,29 +2,22 @@
 // Source module: v1.compiler.coercion
 
 use self::CoercionAssertion::*;
-pub use crate::extdeps_languages_dag_types::{
-    dag_type_checkpoints, CallableRepr, CastSyntax, Present,
-};
+pub use crate::extdeps_languages_dag_types::dag_type_checkpoints;
 pub use crate::extdeps_languages_go_types::{
     go_algebra_inhabitants, go_callable, go_cast_syntax, go_optional_template, go_type_checkpoints,
-    Present,
 };
 pub use crate::extdeps_languages_python_types::{
     python_algebra_inhabitants, python_callable, python_cast_syntax, python_optional_template,
-    python_type_checkpoints, Present,
+    python_type_checkpoints,
 };
 pub use crate::extdeps_languages_rust_types::{
     rust_algebra_inhabitants, rust_callable, rust_cast_syntax, rust_optional_template,
-    rust_type_checkpoints, Present,
+    rust_type_checkpoints,
 };
-pub use crate::std_coercion::Present;
 pub use crate::std_coercion::{CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint};
-pub use crate::std_types::{
-    canonical_container_names, container_template_algebra, CallableRepr, CastSyntax, Present,
-};
+pub use crate::std_types::{canonical_container_names, container_template_algebra};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
-pub use crate::v1_compiler_artifact::{CallableRepr, CastSyntax, Present};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

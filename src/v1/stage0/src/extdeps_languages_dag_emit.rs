@@ -2,7 +2,6 @@
 // Source module: extdeps.languages.dag.emit
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-pub use crate::extdeps_uri::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::v1_rt;

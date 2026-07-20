@@ -2989,42 +2989,82 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
   }
 }
 
-fn rust_pub_use_module_name(line: String) -> String {
-  let prefix_parts = line |> split(delimiter: "pub use crate::")
-  match prefix_parts |> skip(1) |> first {
-    Present { value: rest } =>
-      match rest |> split(delimiter: "::") |> first {
-        Present { value: mod_name } => mod_name
-        Absent => ""
-      }
-    Absent => ""
-  }
-}
-
-fn rust_pub_use_singleton_name(line: String) -> String {
-  if contains(line, "pub use crate::") && !contains(line, "::{") && !contains(line, "::*;") {
-    let prefix_parts = line |> split(delimiter: "pub use crate::")
-    match prefix_parts |> skip(1) |> first {
-      Present { value: rest } =>
-        match rest |> split(delimiter: "::") |> skip(1) |> first {
-          Present { value: name_part } =>
-            match name_part |> split(delimiter: ";") |> first {
-              Present { value: name } => name
-              Absent => ""
-            }
-          Absent => ""
-        }
-      Absent => ""
-    }
+fn rust_use_crate_marker(line: String) -> String {
+  if contains(line, "pub use crate::") {
+    "pub use crate::"
+  } else if contains(line, "use crate::") {
+    "use crate::"
   } else {
     ""
   }
 }
 
+fn rust_use_after_crate(line: String) -> String {
+  let marker = rust_use_crate_marker(line: line)
+  if marker == "" {
+    ""
+  } else {
+    match line |> split(delimiter: marker) |> skip(1) |> first {
+      Present { value: rest } => rest
+      Absent => ""
+    }
+  }
+}
+
+fn rust_pub_use_module_name(line: String) -> String {
+  let rest = rust_use_after_crate(line: line)
+  if rest == "" {
+    ""
+  } else if contains(rest, "::{") {
+    match rest |> split(delimiter: "::{") |> first {
+      Present { value: path } => path
+      Absent => ""
+    }
+  } else if contains(rest, "::*") {
+    match rest |> split(delimiter: "::*") |> first {
+      Present { value: path } => path
+      Absent => ""
+    }
+  } else {
+    match rest |> split(delimiter: ";") |> first {
+      Present { value: without_semi } =>
+        let segments = without_semi |> split(delimiter: "::")
+        let seg_count = segments |> count
+        if seg_count <= 1 {
+          ""
+        } else {
+          segments |> fold(init: { idx: 0, path: "" }, f: (acc, seg) =>
+            if acc.idx < seg_count - 1 {
+              let next = if acc.path == "" { seg } else { concat(acc.path, "::", seg) }
+              { idx: acc.idx + 1, path: next }
+            } else { acc }
+          ).path
+        }
+      Absent => ""
+    }
+  }
+}
+
+fn rust_pub_use_singleton_name(line: String) -> String {
+  let rest = rust_use_after_crate(line: line)
+  if rest == "" || contains(rest, "::{") || contains(rest, "::*") {
+    ""
+  } else {
+    match rest |> split(delimiter: ";") |> first {
+      Present { value: without_semi } =>
+        let segments = without_semi |> split(delimiter: "::")
+        match segments |> last {
+          Present { value: name } => name
+          Absent => ""
+        }
+      Absent => ""
+    }
+  }
+}
+
 fn rust_pub_use_braced_names(line: String) -> List<String> {
-  if contains(line, "pub use crate::") && contains(line, "::{") {
-    let prefix_parts = line |> split(delimiter: "::{")
-    match prefix_parts |> skip(1) |> first {
+  if contains(line, "::{") && rust_use_crate_marker(line: line) != "" {
+    match line |> split(delimiter: "::{") |> skip(1) |> first {
       Present { value: rest } =>
         match rest |> split(delimiter: "}") |> first {
           Present { value: names } => names |> split(delimiter: ", ")

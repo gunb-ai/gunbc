@@ -5,17 +5,13 @@ use self::CargoDepSource::*;
 use self::CargoTarget::*;
 use self::RustEdition::*;
 use self::TestHarness::*;
-pub use crate::extdeps_cargo_version::FilePathParts;
 pub use crate::extdeps_cargo_version::{
     CargoPackageVersion, CargoToolVersionFloor, CargoVersionRequirement,
 };
 pub use crate::extdeps_external_authority::ExternalAuthority;
-pub use crate::extdeps_external_authority::FilePathParts;
 use crate::extdeps_uri::UriScheme::Https;
-pub use crate::extdeps_uri::{ExternalAuthority, FilePathParts};
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_types::FilePathParts;
-pub use crate::std_types::{ExternalAuthority, Uri};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

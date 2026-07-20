@@ -6,19 +6,18 @@ use self::IterationDimension::*;
 use self::IterationPrimitive::*;
 use self::ShrinkFactor::*;
 use self::SizeBound::*;
+pub use crate::std_algebra::kernel_algebra_profile;
 pub use crate::std_algebra::AlgebraProfile;
 use crate::std_algebra::AlgebraProfile::{
     ApproximateFieldProfile, BooleanAlgebraCollectionProfile, BooleanAlgebraProfile,
     FreeMonoidCollectionProfile, FreeMonoidScalarProfile, OrderedRingProfile,
     PartialFunctionProfile,
 };
-pub use crate::std_algebra::{kernel_algebra_profile, Present};
-pub use crate::std_iteration::Present;
+pub use crate::std_termination::positive_descent_count;
 use crate::std_termination::DescentEvidence::DescentUnknown;
 use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
 use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 use crate::std_termination::RankingDimension::*;
-pub use crate::std_termination::{positive_descent_count, Present};
 pub use crate::std_termination::{
     DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
 };

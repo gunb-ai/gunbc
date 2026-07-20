@@ -4,28 +4,10 @@
 use self::DescentSizeExpr::*;
 pub use crate::std_algebra::CollectionSizeEffect;
 use crate::std_algebra::CollectionSizeEffect::ShrinkEffect;
-pub use crate::std_algebra::{
-    DeclaredFuncSig, EmitGraphInfo, EmitInfoBuildState, ExportEntry, FieldSummary,
-    GuardedTypeEnvCacheMerge, InductiveField, InterfaceSummary, ItemInfo, KernelTypeBuild,
-    ModuleInterface, Node, OpEntry, Present, ResolvedFuncEnv, ResolvedFuncSig, ResolvedGraph,
-    SourceSpan, TypeBinding, TypeEnv, TypeEnvCache, TypedGraph, TypedModule,
-};
-pub use crate::std_coercion::{
-    dag_can_cast, is_dag_cast_domain_type, DeclaredFuncSig, EmitGraphInfo, EmitInfoBuildState,
-    ExportEntry, FieldSummary, GuardedTypeEnvCacheMerge, InductiveField, InterfaceSummary,
-    ItemInfo, KernelTypeBuild, ModuleInterface, Node, OpEntry, Present, ResolvedFuncEnv,
-    ResolvedFuncSig, ResolvedGraph, SourceSpan, TypeBinding, TypeEnv, TypeEnvCache, TypedGraph,
-    TypedModule,
-};
+pub use crate::std_coercion::{dag_can_cast, is_dag_cast_domain_type};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-pub use crate::std_content_hash::{
-    content_hash_atom, content_hash_combine, content_hash_tagged, DeclaredFuncSig, EmitGraphInfo,
-    EmitInfoBuildState, ExportEntry, FieldSummary, GuardedTypeEnvCacheMerge, InductiveField,
-    InterfaceSummary, ItemInfo, KernelTypeBuild, ModuleInterface, Node, OpEntry, Present,
-    ResolvedFuncEnv, ResolvedFuncSig, ResolvedGraph, SourceSpan, TypeBinding, TypeEnv,
-    TypeEnvCache, TypedGraph, TypedModule,
-};
+pub use crate::std_content_hash::{content_hash_atom, content_hash_combine, content_hash_tagged};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -33,30 +15,15 @@ use crate::std_induction::SubValueRelation::{
     ArithmeticDescent, IteratedSubValue, MixedTop, NonIncreasingValue, PreservedValue,
     StrictAxisErased, StrictSubValue, SubValueUnknown,
 };
-use crate::std_induction::SubValueRelation::{ArithmeticDescent, IteratedSubValue, StrictSubValue};
 pub use crate::std_induction::{
     compose_sub_value, compose_sub_value_relations, join_sub_value, meet_sub_value,
-    sub_value_to_evidence, DeclaredFuncSig, EmitGraphInfo, EmitInfoBuildState, ExportEntry,
-    FieldSummary, GuardedTypeEnvCacheMerge, InterfaceSummary, ItemInfo, KernelTypeBuild,
-    ModuleInterface, Node, OpEntry, Present, ResolvedFuncEnv, ResolvedFuncSig, ResolvedGraph,
-    SourceSpan, TypeBinding, TypeEnv, TypeEnvCache, TypedGraph, TypedModule,
+    sub_value_to_evidence,
 };
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 use crate::std_interface_summary::ExportKind::{ExportData, ExportFn, ExportService, ExportType};
-pub use crate::std_interface_summary::{
-    interface_summary_rollup, signature_contract, DeclaredFuncSig, EmitGraphInfo,
-    EmitInfoBuildState, FieldSummary, GuardedTypeEnvCacheMerge, InductiveField, ItemInfo,
-    KernelTypeBuild, ModuleInterface, Node, OpEntry, Present, ResolvedFuncEnv, ResolvedFuncSig,
-    ResolvedGraph, SourceSpan, TypeBinding, TypeEnv, TypeEnvCache, TypedGraph, TypedModule,
-};
+pub use crate::std_interface_summary::{interface_summary_rollup, signature_contract};
 pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary};
-pub use crate::std_node::{
-    compiler_inductive_fields, compiler_recursive_types, DeclaredFuncSig, EmitGraphInfo,
-    EmitInfoBuildState, ExportEntry, FieldSummary, GuardedTypeEnvCacheMerge, InterfaceSummary,
-    ItemInfo, KernelTypeBuild, ModuleInterface, Node, OpEntry, Present, ResolvedFuncEnv,
-    ResolvedFuncSig, ResolvedGraph, SourceSpan, TypeBinding, TypeEnv, TypeEnvCache, TypedGraph,
-    TypedModule,
-};
+pub use crate::std_node::{compiler_inductive_fields, compiler_recursive_types};
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -66,41 +33,18 @@ pub use crate::std_termination::PositiveDescentAmount;
 use crate::std_termination::PositiveDescentAmount::OneStep;
 pub use crate::std_termination::{
     positive_descent_amount_from_positive_int, proportional_divisor_from_int_at_least_two,
-    DeclaredFuncSig, EmitGraphInfo, EmitInfoBuildState, ExportEntry, FieldSummary,
-    GuardedTypeEnvCacheMerge, InductiveField, InterfaceSummary, ItemInfo, KernelTypeBuild,
-    ModuleInterface, Node, OpEntry, Present, ResolvedFuncEnv, ResolvedFuncSig, ResolvedGraph,
-    SourceSpan, TypeBinding, TypeEnv, TypeEnvCache, TypedGraph, TypedModule,
 };
-pub use crate::std_types::{
-    container_param_name, DeclaredFuncSig, EmitGraphInfo, EmitInfoBuildState, ExportEntry,
-    FieldSummary, GuardedTypeEnvCacheMerge, InductiveField, InterfaceSummary, ItemInfo,
-    KernelTypeBuild, ModuleInterface, Node, OpEntry, Present, ResolvedFuncEnv, ResolvedFuncSig,
-    ResolvedGraph, TypeBinding, TypeEnv, TypeEnvCache, TypedGraph, TypedModule,
-};
+pub use crate::std_types::container_param_name;
 pub use crate::std_types::{ContentHash, NonEmptyStr, SourceSpan};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
-pub use crate::v1_compiler_infer_access::{
-    check_index_access_node, check_slice_access_node, DeclaredFuncSig, EmitGraphInfo,
-    EmitInfoBuildState, ExportEntry, FieldSummary, GuardedTypeEnvCacheMerge, InductiveField,
-    InterfaceSummary, ItemInfo, KernelTypeBuild, ModuleInterface, OpEntry, Present,
-    ResolvedFuncEnv, ResolvedFuncSig, ResolvedGraph, TypeBinding, TypeEnv, TypeEnvCache,
-    TypedGraph, TypedModule,
-};
-pub use crate::v1_compiler_infer_cycle::{
-    detect_type_cycles_kahn, DeclaredFuncSig, EmitGraphInfo, EmitInfoBuildState, ExportEntry,
-    FieldSummary, GuardedTypeEnvCacheMerge, InductiveField, InterfaceSummary, ItemInfo,
-    KernelTypeBuild, ModuleInterface, Node, OpEntry, Present, ResolvedFuncEnv, ResolvedFuncSig,
-    ResolvedGraph, SourceSpan, TypeEnv, TypeEnvCache, TypedGraph, TypedModule,
-};
+pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
+pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
 use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
     close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_env,
-    lookup_emit_type_summary, DeclaredFuncSig, ExportEntry, GuardedTypeEnvCacheMerge,
-    InductiveField, InterfaceSummary, ItemInfo, KernelTypeBuild, ModuleInterface, OpEntry, Present,
-    ResolvedFuncEnv, ResolvedFuncSig, ResolvedGraph, SourceSpan, TypeBinding, TypeEnvCache,
-    TypedGraph, TypedModule,
+    lookup_emit_type_summary,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, RustCorpusRepr, TypeRepr, TypeSummary,
@@ -113,10 +57,7 @@ pub use crate::v1_compiler_infer_env::{
     inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
     lookup_type_by_name, lookup_type_for, merge_inductive_fields, merge_type_env_cache,
     merge_type_env_cache_guarded, put_inductive_field, put_inductive_field_cross,
-    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl, DeclaredFuncSig,
-    EmitGraphInfo, EmitInfoBuildState, ExportEntry, FieldSummary, InterfaceSummary, ItemInfo,
-    KernelTypeBuild, ModuleInterface, OpEntry, Present, ResolvedFuncEnv, ResolvedFuncSig,
-    ResolvedGraph, TypedGraph, TypedModule,
+    str_bindings_from_bindings, symbol_index_insert, symbol_index_insert_decl,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareLookupState, GuardedTypeEnvCacheMerge, SymbolIndex, TypeBinding, TypeEnv,
@@ -125,11 +66,7 @@ pub use crate::v1_compiler_infer_env::{
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
-pub use crate::v1_compiler_infer_items::{
-    inferred_to_outputs, item_kind, DeclaredFuncSig, EmitInfoBuildState, FieldSummary,
-    GuardedTypeEnvCacheMerge, InductiveField, KernelTypeBuild, OpEntry, Present, ResolvedFuncSig,
-    TypeBinding,
-};
+pub use crate::v1_compiler_infer_items::{inferred_to_outputs, item_kind};
 pub use crate::v1_compiler_infer_items::{
     ItemInfo, ItemKind, ModuleInterface, ResolvedGraph, TypedGraph, TypedModule,
 };
@@ -138,51 +75,31 @@ pub use crate::v1_compiler_infer_lookup::{
     field_summary_for_type, lookup_coproduct_common_field_node, lookup_field_type_node,
     lookup_func_sig, lookup_in_scope, map_key_type_in_env, map_value_type_in_env,
     product_field_result_type, resolve_known_method_node, resolve_method_receiver_type,
-    resolve_scrutinee_type_node, set_element_type_in_env, DeclaredFuncSig, EmitGraphInfo,
-    EmitInfoBuildState, ExportEntry, GuardedTypeEnvCacheMerge, InductiveField, InterfaceSummary,
-    ItemInfo, KernelTypeBuild, ModuleInterface, Present, ResolvedGraph, SourceSpan, TypeEnvCache,
-    TypedGraph, TypedModule,
+    resolve_scrutinee_type_node, set_element_type_in_env,
 };
 pub use crate::v1_compiler_infer_method::{
     builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type,
-    witness_of_element, DeclaredFuncSig, EmitGraphInfo, EmitInfoBuildState, ExportEntry,
-    FieldSummary, GuardedTypeEnvCacheMerge, InductiveField, InterfaceSummary, ItemInfo,
-    KernelTypeBuild, ModuleInterface, OpEntry, Present, ResolvedFuncEnv, ResolvedFuncSig,
-    ResolvedGraph, TypeBinding, TypeEnv, TypeEnvCache, TypedGraph, TypedModule,
+    witness_of_element,
 };
-use crate::v1_compiler_infer_patterns::PatternSubject::PatternDynamic;
+use crate::v1_compiler_infer_patterns::PatternSubject::*;
 pub use crate::v1_compiler_infer_patterns::{
     check_match_exhaustiveness, lookup_field_in_variant, lookup_result_subject,
     lookup_variant_in_type, pattern_binding_type, pattern_subject_from_inferred,
-    pattern_subject_from_node, DeclaredFuncSig, EmitGraphInfo, EmitInfoBuildState, ExportEntry,
-    FieldSummary, GuardedTypeEnvCacheMerge, InductiveField, InterfaceSummary, ItemInfo,
-    KernelTypeBuild, ModuleInterface, OpEntry, Present, ResolvedFuncEnv, ResolvedFuncSig,
-    ResolvedGraph, TypeBinding, TypeEnvCache, TypedGraph, TypedModule,
+    pattern_subject_from_node,
 };
 pub use crate::v1_compiler_infer_patterns::{NodeLookupResult, PatternSubject};
 pub use crate::v1_compiler_infer_resolve::{
     is_user_generic_use_site, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
-    resolve_generic_use_decl, resolve_item_types, resolve_node, DeclaredFuncSig, EmitGraphInfo,
-    EmitInfoBuildState, ExportEntry, FieldSummary, GuardedTypeEnvCacheMerge, InductiveField,
-    InterfaceSummary, ItemInfo, KernelTypeBuild, ModuleInterface, OpEntry, Present,
-    ResolvedFuncEnv, ResolvedFuncSig, ResolvedGraph, TypeEnvCache, TypedGraph, TypedModule,
+    resolve_generic_use_decl, resolve_item_types, resolve_node,
 };
 pub use crate::v1_compiler_infer_resolve::{ItemResolveResult, NodeResolveResult};
 pub use crate::v1_compiler_infer_service::{
     check_service_field_access_node, check_service_method_call_node, collect_called_func_names,
     collect_typed_service_calls, expand_transitive_services, extract_typed_service_name,
-    is_typed_service_call_receiver, service_op_entry, DeclaredFuncSig, EmitGraphInfo,
-    EmitInfoBuildState, ExportEntry, FieldSummary, GuardedTypeEnvCacheMerge, InductiveField,
-    InterfaceSummary, KernelTypeBuild, ModuleInterface, Present, ResolvedFuncEnv, ResolvedFuncSig,
-    ResolvedGraph, TypeBinding, TypeEnv, TypeEnvCache, TypedGraph,
+    is_typed_service_call_receiver, service_op_entry,
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult, UniqueAccum};
-pub use crate::v1_compiler_infer_sigs::{
-    flatten_parent_envs, resolve_func_sigs, EmitGraphInfo, EmitInfoBuildState, ExportEntry,
-    FieldSummary, GuardedTypeEnvCacheMerge, InductiveField, InterfaceSummary, ItemInfo,
-    KernelTypeBuild, ModuleInterface, OpEntry, Present, ResolvedGraph, SourceSpan, TypeBinding,
-    TypeEnv, TypeEnvCache, TypedGraph, TypedModule,
-};
+pub use crate::v1_compiler_infer_sigs::{flatten_parent_envs, resolve_func_sigs};
 pub use crate::v1_compiler_infer_sigs::{ResolveFuncSigsResult, ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::KernelTypeBuild;
 pub use crate::v1_compiler_infer_types::{
@@ -194,16 +111,7 @@ pub use crate::v1_compiler_infer_types::{
     node_is_set_collection, node_type_compatible, node_type_deps, node_type_equals,
     node_type_shape, nominal_type_ref, normalize_access_type_node, prefer_specific_type,
     resolve_type_variables_from_template, resolved_type, structural_carrier_template_name,
-    template_return_has_variables, template_return_is_receiver_self, DeclaredFuncSig,
-    EmitGraphInfo, EmitInfoBuildState, ExportEntry, FieldSummary, GuardedTypeEnvCacheMerge,
-    InductiveField, InterfaceSummary, ItemInfo, ModuleInterface, OpEntry, Present, ResolvedFuncEnv,
-    ResolvedFuncSig, ResolvedGraph, TypeBinding, TypeEnv, TypeEnvCache, TypedGraph, TypedModule,
-};
-pub use crate::v1_compiler_resolve::{
-    DeclaredFuncSig, EmitGraphInfo, EmitInfoBuildState, ExportEntry, FieldSummary,
-    GuardedTypeEnvCacheMerge, InductiveField, InterfaceSummary, ItemInfo, KernelTypeBuild,
-    ModuleInterface, OpEntry, Present, ResolvedFuncEnv, ResolvedFuncSig, ResolvedGraph, SourceSpan,
-    TypeBinding, TypeEnv, TypeEnvCache, TypedGraph, TypedModule,
+    template_return_has_variables, template_return_is_receiver_self,
 };
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_rt;
@@ -216,19 +124,11 @@ use crate::v1_std_core::CompilerDiagnostic::{
     FieldNotFound, InternalError, MissingField, SoleConstructorViolation, TypeMismatch,
     UnresolvedType, VariantCollision,
 };
-use crate::v1_std_core::CompilerDiagnostic::{
-    FieldNotFound, InternalError, MissingField, SoleConstructorViolation, TypeMismatch,
-    UnresolvedType, VariantCollision,
-};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
     ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
     ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
-};
-use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprCall, ExprFieldAccess, ExprLiteral, ExprMethodCall, ExprRecordLit, ExprUnaryOp,
-    ExprVar,
 };
 use crate::v1_std_core::ExprErrorKind::{InternalExprError, ParseRecoveryError, SemanticExprError};
 use crate::v1_std_core::FieldAccessStyle::{
@@ -236,8 +136,6 @@ use crate::v1_std_core::FieldAccessStyle::{
 };
 use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v1_std_core::MatchPattern::VariantPattern;
 use crate::v1_std_core::MatchPattern::{Bind, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
@@ -268,10 +166,6 @@ pub use crate::v1_std_core::{
     param_node_name_at, param_node_type_expr, record_lit_type_name_at, resource_use_name_at,
     resource_use_resource, return_value, slice_base, slice_end, slice_start, string_type,
     unaryop_operand, unit_type, with_optional_cardinality, with_required_cardinality,
-    EmitGraphInfo, EmitInfoBuildState, ExportEntry, GuardedTypeEnvCacheMerge, InductiveField,
-    InterfaceSummary, ItemInfo, KernelTypeBuild, ModuleInterface, OpEntry, Present,
-    ResolvedFuncEnv, ResolvedFuncSig, ResolvedGraph, TypeBinding, TypeEnv, TypeEnvCache,
-    TypedGraph, TypedModule,
 };
 pub use crate::v1_std_core::{
     CallSemantics, Cardinality, CompilerDiagnostic, Connective, DeclaredFuncEnv, DeclaredFuncSig,

@@ -5,28 +5,26 @@ use crate::std_algebra::AlgebraTypeTemplate::{ContainerOf, ReceiverSelf};
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
 use crate::std_algebra::CostShape::*;
-pub use crate::std_algebra::{
-    algebra_templates_for_profile, kernel_algebra_profile, FieldSummary, Present,
-};
+pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
 };
 pub use crate::v1_compiler_infer_emit_info::{
-    build_enum_field_summaries, build_struct_field_summaries, Present,
+    build_enum_field_summaries, build_struct_field_summaries,
 };
 pub use crate::v1_compiler_infer_env::{
-    authored_name, is_recursive_type, lookup_type, lookup_type_for, FieldSummary, Present,
+    authored_name, is_recursive_type, lookup_type, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_service::{check_service_method_call_node, FieldSummary, Present};
+pub use crate::v1_compiler_infer_service::check_service_method_call_node;
 pub use crate::v1_compiler_infer_service::{OpEntry, ServiceMethodResult};
-pub use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, FieldSummary, Present};
+pub use crate::v1_compiler_infer_sigs::lookup_resolved_sig;
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, enrich_kernel_type, is_declared_container_alias_spelling,
     make_container_type, method_receiver_element_node, node_is_keyed_collection,
     node_is_set_collection, nominal_type_ref, normalize_access_type_node,
-    reground_alias_carrier_identity, FieldSummary, Present,
+    reground_alias_carrier_identity,
 };
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -42,7 +40,7 @@ use crate::v1_std_core::MethodSemantics::{
 };
 pub use crate::v1_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_type_expr,
-    with_optional_cardinality, with_required_cardinality, Present,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, ErrorNode, FieldAccessStyle, FieldSummary, FieldValueShape,

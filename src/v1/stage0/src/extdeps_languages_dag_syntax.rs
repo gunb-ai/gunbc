@@ -2,9 +2,7 @@
 // Source module: extdeps.languages.dag.syntax
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-pub use crate::extdeps_external_authority::{ItemForm, OperatorSpec, SyntaxSpec};
 use crate::extdeps_uri::UriScheme::Https;
-pub use crate::extdeps_uri::{ExternalAuthority, ItemForm, OperatorSpec, SyntaxSpec};
 pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
@@ -19,7 +17,6 @@ use crate::std_syntax::LiteralValue::{LitBool, LitNull};
 pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, SyntaxSpec,
 };
-pub use crate::std_syntax::{ExternalAuthority, Uri};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

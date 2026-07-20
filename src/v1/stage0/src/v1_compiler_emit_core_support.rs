@@ -3,22 +3,18 @@
 
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::*;
-pub use crate::v1_compiler_artifact::UniqueAccum;
 pub use crate::v1_compiler_infer_items::ResolvedGraph;
-pub use crate::v1_compiler_infer_items::UniqueAccum;
 pub use crate::v1_compiler_infer_service::UniqueAccum;
-pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type, UniqueAccum};
+pub use crate::v1_compiler_infer_types::{emit_map_has, resolved_type};
 use crate::v1_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
-pub use crate::v1_compiler_languages::{
-    language_spec_for_target, test_conventions_for_target, UniqueAccum,
-};
+pub use crate::v1_compiler_languages::{language_spec_for_target, test_conventions_for_target};
 pub use crate::v1_compiler_languages::{LanguageSpec, TestNameStyle};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Connective::NoConnective;
-pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at, UniqueAccum};
+pub use crate::v1_std_core::{authored_name_at, field_init_node_name_at};
 pub use crate::v1_std_core::{Connective, ErrorNode, NewlineIndex, Node, TextFile};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

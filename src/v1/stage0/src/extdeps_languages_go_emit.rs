@@ -2,11 +2,9 @@
 // Source module: extdeps.languages.go.emit
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-pub use crate::extdeps_uri::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_emit_model::SimpleMethodSpec;
-pub use crate::std_emit_model::{ExternalAuthority, Uri};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

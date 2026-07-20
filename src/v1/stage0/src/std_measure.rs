@@ -4,8 +4,6 @@
 use self::Quantity::*;
 use self::Scale::*;
 pub use crate::std_nat::Nat;
-pub use crate::std_nat::Present;
-pub use crate::std_types::Present;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

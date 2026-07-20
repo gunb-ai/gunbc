@@ -5,30 +5,20 @@ use self::BackendCapability::*;
 use self::ExprCategory::*;
 use self::FuncBodyShape::*;
 use self::TcoExprShape::*;
-pub use crate::extdeps_languages_go_emit::{
-    go_method_templates_flat, InferScope, Present, ResolvedFuncEnv, TypeEnv,
-};
-pub use crate::extdeps_languages_python_emit::{
-    python_method_templates_flat, InferScope, Present, ResolvedFuncEnv, TypeEnv,
-};
-pub use crate::extdeps_languages_rust_emit::{
-    rust_method_templates, InferScope, Present, ResolvedFuncEnv, TypeEnv,
-};
+pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
+pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
+pub use crate::extdeps_languages_rust_emit::rust_method_templates;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
-pub use crate::std_induction::{InferScope, Present, ResolvedFuncEnv, TypeEnv};
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{
-    container_template_algebra, is_container_type, InferScope, Present, ResolvedFuncEnv, TypeEnv,
-};
+pub use crate::std_types::{container_template_algebra, is_container_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
-pub use crate::v1_compiler_artifact::{InferScope, Present, ResolvedFuncEnv, TypeEnv};
 pub use crate::v1_compiler_coercion::{
     can_cast, coerce_container_template, coerce_primitive_type, literal_suffix, render_cast,
-    target_callable, target_optional_template, InferScope, Present, ResolvedFuncEnv, TypeEnv,
+    target_callable, target_optional_template,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_named_template_nested, apply_type_template1, apply_type_template2,
@@ -38,33 +28,27 @@ pub use crate::v1_compiler_emit_core_support::{
     is_type_alias_return_node, is_type_decl_item, is_type_def_item, is_upper, language_spec,
     make_indent, module_to_filename, sanitize_service_name, service_var_name, test_function_name,
     to_lower_char, to_pascal, to_screaming_snake, to_snake, to_string, to_string_helper,
-    to_upper_char, unique_strings, InferScope, Present, ResolvedFuncEnv, TypeEnv,
+    to_upper_char, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
-pub use crate::v1_compiler_infer::{build_params_scope, extend_scope, Present};
+pub use crate::v1_compiler_infer::{build_params_scope, extend_scope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
-pub use crate::v1_compiler_infer_emit_info::{InferScope, Present, ResolvedFuncEnv};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
-pub use crate::v1_compiler_infer_env::{
-    authored_name, empty_symbol_index, InferScope, Present, ResolvedFuncEnv,
-};
+pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_items::{InferScope, Present};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
-pub use crate::v1_compiler_infer_lookup::{lookup_func_sig, InferScope, Present};
+pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
-    extract_typed_service_name, is_typed_service_call_receiver, InferScope, Present,
-    ResolvedFuncEnv, TypeEnv,
+    extract_typed_service_name, is_typed_service_call_receiver,
 };
 pub use crate::v1_compiler_infer_service::{OpEntry, UniqueAccum};
-pub use crate::v1_compiler_infer_sigs::{InferScope, Present, TypeEnv};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, for_each_element_type_node,
     is_declared_container_alias_spelling, is_unit_like, node_is_collection,
     node_is_element_collection, node_is_keyed_collection, normalize_access_type_node,
-    resolved_type, InferScope, Present, ResolvedFuncEnv, TypeEnv,
+    resolved_type,
 };
 use crate::v1_compiler_languages::CharSanitization::{EmojiEscape, NoCharSanitization};
 use crate::v1_compiler_languages::IfValueForm::{ConditionalTernary, IfExpression, IfStatement};
@@ -81,8 +65,7 @@ use crate::v1_compiler_languages::VisibilitySpec::{CaseVisibility, KeywordVisibi
 pub use crate::v1_compiler_languages::{
     binop_symbol, canonical_emoji_char_escape, is_string_like, language_spec_for_target,
     service_method_depth, service_methods_inside_class, service_receiver_str, service_return_str,
-    service_self_param, target_keyword, test_conventions_for_target, wrap_shared_type, InferScope,
-    Present, ResolvedFuncEnv, TypeEnv,
+    service_self_param, target_keyword, test_conventions_for_target, wrap_shared_type,
 };
 pub use crate::v1_compiler_languages::{
     BlockSyntax, CharSanitization, EscapePair, ExpressionSemantics, IfValueForm, ImportRule,
@@ -126,7 +109,7 @@ pub use crate::v1_std_core::{
     method_receiver, module_imports, module_items, operation_modifier_name,
     param_node_default_value, param_node_name_at, param_node_type_expr, record_lit_type_name_at,
     return_value, slice_base, slice_end, slice_start, transport_has_auth, tuple_type_name,
-    unaryop_operand, with_required_cardinality, InferScope, Present, ResolvedFuncEnv, TypeEnv,
+    unaryop_operand, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, DeclaredFuncSig, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,

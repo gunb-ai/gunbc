@@ -4,19 +4,18 @@
 use self::AliasKind::*;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
-pub use crate::std_induction::{Node, Present, TypeBinding, TypeEnv};
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitInt;
+pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::{container_param_name, Node, Present, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_env::{
     authored_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for,
-    lookup_type, lookup_type_by_name, lookup_type_for, Present,
+    lookup_type, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, is_type_expr_annotation,
-    node_is_keyed_collection, resolved_type, Present, TypeBinding, TypeEnv,
+    node_is_keyed_collection, resolved_type,
 };
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -26,21 +25,14 @@ use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
     ArityMismatch, InternalError, UnlistedImportUse, UnresolvedType,
 };
-use crate::v1_std_core::CompilerDiagnostic::{
-    ArityMismatch, InternalError, UnlistedImportUse, UnresolvedType,
-};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
     ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
     ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
 };
-use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprCall, ExprMethodCall, ExprRecordLit, ExprUnaryOp,
-};
 use crate::v1_std_core::ExprErrorKind::SemanticExprError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
-use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::Wildcard;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 pub use crate::v1_std_core::{
@@ -55,7 +47,7 @@ pub use crate::v1_std_core::{
     make_text_part_node, make_transport_node, map_children, no_span, node_name_span,
     param_node_default_value, param_node_name_at, param_node_type_expr, resource_use_name_at,
     resource_use_resource, string_type, transport_request_body, unit_type,
-    with_optional_cardinality, with_required_cardinality, Present, TypeBinding, TypeEnv,
+    with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,

@@ -2,7 +2,6 @@
 // Source module: extdeps.cargo_version
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-pub use crate::extdeps_uri::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::extdeps_version_semver::{SemVerConstraint, SemVerIdentity};

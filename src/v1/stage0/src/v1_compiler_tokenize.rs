@@ -2,11 +2,10 @@
 // Source module: v1.compiler.tokenize
 
 use self::StringScanResult::*;
-pub use crate::extdeps_languages_dag_syntax::{dag_keyword_set, Token};
+pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
 pub use crate::std_types::SourceSpan;
-pub use crate::std_types::Token;
+pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
 pub use crate::v1_compiler_languages::EmojiCharEscape;
-pub use crate::v1_compiler_languages::{canonical_emoji_char_escape, Token};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

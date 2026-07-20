@@ -2,9 +2,7 @@
 // Source module: extdeps.languages.python.syntax
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-pub use crate::extdeps_external_authority::{ItemForm, OperatorSpec, Present};
 use crate::extdeps_uri::UriScheme::Https;
-pub use crate::extdeps_uri::{ExternalAuthority, ItemForm, OperatorSpec, Present};
 pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::std_syntax::AlgebraFieldKind::{AlgQuotient, AlgReciprocal};
 use crate::std_syntax::BinOp::{
@@ -17,7 +15,6 @@ use crate::std_syntax::ItemFormKind::{
 pub use crate::std_syntax::{
     AlgebraFieldKind, BinOp, BodyKind, ItemForm, ItemFormKind, OperatorSpec,
 };
-pub use crate::std_syntax::{ExternalAuthority, Present, Uri};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

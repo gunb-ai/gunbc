@@ -19,9 +19,9 @@ pub use crate::extdeps_languages_dag_emit::{
     dag_module_keyword, dag_null_coalesce_template, dag_param_separator, dag_param_type_sep,
     dag_reserved, dag_return_arrow, dag_source_extension, dag_string_types, dag_struct_keyword,
     dag_tuple_empty, dag_tuple_multi_template, dag_tuple_pair_template, dag_tuple_separator,
-    dag_type_alias_keyword, dag_type_arg_close, dag_type_arg_open, dag_void_type, Present,
+    dag_type_alias_keyword, dag_type_arg_close, dag_type_arg_open, dag_void_type,
 };
-pub use crate::extdeps_languages_dag_syntax::{dag_operators, Present};
+pub use crate::extdeps_languages_dag_syntax::dag_operators;
 pub use crate::extdeps_languages_go_emit::{
     go_async_prefix, go_enum_keyword, go_error_expr_template, go_error_type_template,
     go_func_keyword, go_import_from_keyword, go_import_keyword, go_keywords, go_lambda_template,
@@ -30,9 +30,8 @@ pub use crate::extdeps_languages_go_emit::{
     go_reserved_escape_suffix, go_return_arrow, go_source_extension, go_string_types,
     go_struct_keyword, go_tuple_empty, go_tuple_multi_template, go_tuple_pair_template,
     go_tuple_separator, go_type_alias_keyword, go_type_arg_close, go_type_arg_open, go_void_type,
-    Present,
 };
-pub use crate::extdeps_languages_go_syntax::{go_item_forms, go_operators, Present};
+pub use crate::extdeps_languages_go_syntax::{go_item_forms, go_operators};
 pub use crate::extdeps_languages_python_emit::{
     python_async_prefix, python_default_value, python_derive_attribute, python_enum_keyword,
     python_error_expr_template, python_error_type_template, python_func_keyword,
@@ -43,9 +42,8 @@ pub use crate::extdeps_languages_python_emit::{
     python_source_extension, python_string_types, python_struct_keyword, python_tuple_empty,
     python_tuple_multi_template, python_tuple_pair_template, python_tuple_separator,
     python_type_alias_keyword, python_type_arg_close, python_type_arg_open, python_void_type,
-    Present,
 };
-pub use crate::extdeps_languages_python_syntax::{python_item_forms, python_operators, Present};
+pub use crate::extdeps_languages_python_syntax::{python_item_forms, python_operators};
 pub use crate::extdeps_languages_rust_emit::{
     rust_async_prefix, rust_container_templates, rust_enum_derives, rust_enum_derives_copy,
     rust_enum_keyword, rust_error_expr_template, rust_error_type_template, rust_func_keyword,
@@ -56,9 +54,9 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_source_dir, rust_source_extension, rust_string_types, rust_struct_derives,
     rust_struct_derives_copy, rust_struct_keyword, rust_tuple_empty, rust_tuple_multi_template,
     rust_tuple_pair_template, rust_tuple_separator, rust_type_alias_keyword, rust_type_arg_close,
-    rust_type_arg_open, rust_visibility, rust_void_type, Present,
+    rust_type_arg_open, rust_visibility, rust_void_type,
 };
-pub use crate::extdeps_languages_rust_syntax::{rust_item_forms, rust_operators, Present};
+pub use crate::extdeps_languages_rust_syntax::{rust_item_forms, rust_operators};
 use crate::std_syntax::AlgebraFieldKind::*;
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
@@ -69,12 +67,10 @@ use crate::std_syntax::BodyKind::{
 use crate::std_syntax::ItemFormKind::{
     EnumForm, FuncForm, ModuleForm, OtherForm, StructForm, TypeAliasForm,
 };
-pub use crate::std_syntax::Present;
 pub use crate::std_syntax::{
     AlgebraFieldKind, BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec,
 };
 pub use crate::std_syntax::{BinOp, LiteralValue};
-pub use crate::v1_compiler_artifact::Present;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 use crate::v1_rt;
@@ -82,7 +78,6 @@ use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::LiteralValue::*;
-pub use crate::v1_std_core::Present;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

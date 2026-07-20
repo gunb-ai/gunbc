@@ -3,17 +3,13 @@
 
 use self::SemVerIdentifier::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
-pub use crate::extdeps_uri::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::extdeps_version::{VersionConstraint, VersionIdentity, VersionScheme};
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
-pub use crate::std_algebra::{ExternalAuthority, Uri};
 pub use crate::std_integer::NonNegativeInt;
-pub use crate::std_integer::{ExternalAuthority, Uri};
-pub use crate::std_nat::{nat_compare, ExternalAuthority, Uri};
-pub use crate::std_types::{ExternalAuthority, Uri};
+pub use crate::std_nat::nat_compare;
 pub use crate::std_types::{List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::Witness;

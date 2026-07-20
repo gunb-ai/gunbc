@@ -2,14 +2,11 @@
 // Source module: extdeps.version
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
-pub use crate::extdeps_uri::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::*;
-pub use crate::std_algebra::{ExternalAuthority, Uri};
 pub use crate::std_types::NonEmptyStr;
-pub use crate::std_types::{ExternalAuthority, Uri};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
