@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::process::ExitCode;
 use std::rc::Rc;
 

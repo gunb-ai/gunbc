@@ -1,12 +1,5 @@
 module v2.test.long.pipeline_stage_add_pick_relationship
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import v2.std.logic { Bool }
-import v2.test.compiler.pipeline.stage_bridge {
-  pipeline_normalize_add_relationship_holds,
-  pipeline_normalize_pick_then_arm_magnitude_relationship_holds,
-  pipeline_parse_add_relationship_holds
-}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

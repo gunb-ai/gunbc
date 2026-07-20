@@ -15,10 +15,9 @@ use crate::std_computation::CallPattern::{
     ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
 };
 use crate::std_computation::IterationDimension::{ArithmeticRepeat, CollectionFold, TreeDescent};
-pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
 pub use crate::std_computation::{lower_call_pattern, size_bound_param, type_iteration_dimension};
-pub use crate::std_computation::{CallPattern, IterationDimension, LoweringTarget};
+pub use crate::std_computation::{CallPattern, IterationDimension, LoweringTarget, ShrinkFactor};
 pub use crate::std_graph::{
     build_call_graph_from_proof_edges, dfs_collect_component, dfs_finish_order, forward_adjacency,
     graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, reverse_adjacency,
@@ -96,7 +95,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -8102,6 +8101,7 @@ pub struct StructuralBoundResult {
 pub struct ComplexityReport {
     pub function_classes: Rc<HashMap<String, String>>,
     pub space_classes: Rc<HashMap<String, String>>,
+    pub function_space_bytes: Rc<HashMap<String, i64>>,
     pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
     pub structural_bounds: Rc<Vec<Rc<StructuralBoundResult>>>,
 }
@@ -8110,6 +8110,7 @@ pub fn empty_complexity_report() -> Rc<ComplexityReport> {
     Rc::new(ComplexityReport {
         function_classes: v1_rt::rc_empty_map::<String, String>(),
         space_classes: v1_rt::rc_empty_map::<String, String>(),
+        function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
         violations: Rc::new(vec![]),
         structural_bounds: Rc::new(vec![]),
     })
@@ -8853,6 +8854,7 @@ pub struct TopoBuildAcc {
     pub table: Rc<CostInternTable>,
     pub classes: Rc<HashMap<String, String>>,
     pub space_classes: Rc<HashMap<String, String>>,
+    pub function_space_bytes: Rc<HashMap<String, i64>>,
     pub violations: Rc<Vec<Rc<ComplexityViolation>>>,
     pub fan_in: Rc<HashMap<String, i64>>,
     pub processed: Rc<HashMap<String, bool>>,
@@ -10198,6 +10200,7 @@ pub fn build_complexity_report(
                 table: empty_cost_intern_table(),
                 classes: v1_rt::rc_empty_map::<String, String>(),
                 space_classes: v1_rt::rc_empty_map::<String, String>(),
+                function_space_bytes: v1_rt::rc_empty_map::<String, i64>(),
                 violations: Rc::new(vec![]),
                 fan_in: fan_in.clone(),
                 processed: v1_rt::rc_empty_map::<String, bool>(),
@@ -10229,6 +10232,18 @@ pub fn build_complexity_report(
                         func_name.clone(),
                         space_class_str.clone(),
                     );
+                    let space_bytes_opt = cost_account_space_from_summary(
+                        sr.summary.clone(),
+                        v1_rt::rc_empty_map::<String, i64>(),
+                    );
+                    let new_function_space_bytes = match space_bytes_opt.clone() {
+                        Some(bs) => v1_rt::rc_map_insert(
+                            acc.function_space_bytes.clone(),
+                            func_name.clone(),
+                            byte_size_count(bs.clone()),
+                        ),
+                        None => acc.function_space_bytes.clone(),
+                    };
                     let new_processed =
                         v1_rt::rc_map_insert(acc.processed.clone(), func_name.clone(), true);
                     let new_violations = if is_unknown_cost(sr.summary.clone().work.clone()) {
@@ -10293,6 +10308,7 @@ pub fn build_complexity_report(
                         table: final_table.clone(),
                         classes: new_classes.clone(),
                         space_classes: new_space_classes.clone(),
+                        function_space_bytes: new_function_space_bytes.clone(),
                         violations: new_violations.clone(),
                         fan_in: new_fan_in.clone(),
                         processed: new_processed.clone(),
@@ -10305,6 +10321,7 @@ pub fn build_complexity_report(
         Rc::new(ComplexityReport {
             function_classes: result.classes.clone(),
             space_classes: result.space_classes.clone(),
+            function_space_bytes: result.function_space_bytes.clone(),
             violations: result.violations.clone(),
             structural_bounds: structural_bounds.clone(),
         })

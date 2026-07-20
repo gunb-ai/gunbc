@@ -1,4 +1,7 @@
 module v2.test.claim.workflow.provenance_fail_closed_contract
+import v2.compiler.source_authority { source_root_coverage_is_complete }
+
+import v2.compiler.source_authority { source_root_coverage_is_complete }
 
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
@@ -34,7 +37,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data scout_manifest_provenance_live: Bool = host_source_root_ingest_coverage_receipt.coverage_complete && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0) && (length(xs: host_source_root_ingest) > 0)
+data scout_manifest_provenance_live: Bool = source_root_coverage_is_complete(coverage: host_source_root_ingest_coverage_receipt.coverage) && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0) && (length(xs: host_source_root_ingest) > 0)
 
 data scout_unrelated_frontier_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^scout_unrelated_frontier_symbol } },

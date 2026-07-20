@@ -1,0 +1,97 @@
+module test.claim.host_effect_plan_witness
+
+import std.logic { Bool }
+import gunbc.host_effect {
+  NodeControlPlane, HostOs,
+  host_effect_identity_evidence,
+  LocalShell,
+}
+import gunbc.host_effect_plan {
+  HostEffectPlan, HostEffectPlanContext,
+  host_effect_plan_apply,
+}
+import v2.std.effect_plan {
+  EffectPlan,
+  If,
+  effect_plan_orchestration_succession_dissolve_on,
+}
+import v2.std.orchestration {
+  FailFast,
+  ExitZero,
+  Run,
+  orchestration_to_effect_plan_dissolve_on,
+}
+import v2.std.collection { Absent }
+import std.realization_reconcile { reconciliation_converged }
+import gunbc.fleet_intent { srv1_host }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data hermetic_witness_home_doc: String = "Hermetic-safe Wave A2 host_effect_plan_apply witnesses: control-flow and empty-plan refusal arms only (no shell.Exec.Run). Shell converge/failure/sequential poles live in host_effect_plan_real_execution_witness_test.dag (Wet bin batch)."
+
+fn witness_host_os_target() -> NodeControlPlane {
+  HostOs { node: srv1_host }
+}
+
+fn witness_plan_ctx() -> HostEffectPlanContext {
+  HostEffectPlanContext {
+    target: witness_host_os_target(),
+    evidence: host_effect_identity_evidence,
+    transport: LocalShell,
+  }
+}
+
+fn witness_empty_plan() -> HostEffectPlan {
+  EffectPlan { steps: [], on_failure: FailFast }
+}
+
+fn witness_if_control_flow_plan() -> HostEffectPlan {
+  EffectPlan {
+    steps: [
+      If {
+        cond: ExitZero {
+          run: Run { command: "true", env: [], redirect: Absent, capture: Absent }
+        },
+        then_: EffectPlan { steps: [], on_failure: FailFast },
+        else_: Absent,
+      },
+    ],
+    on_failure: FailFast,
+  }
+}
+
+fn witness_empty_plan_refuses_fail_closed() -> Bool {
+  !reconciliation_converged(r: host_effect_plan_apply(
+    plan: witness_empty_plan(),
+    ctx: witness_plan_ctx(),
+  ))
+}
+
+fn witness_control_flow_step_refuses_fail_closed() -> Bool {
+  !reconciliation_converged(r: host_effect_plan_apply(
+    plan: witness_if_control_flow_plan(),
+    ctx: witness_plan_ctx(),
+  ))
+}
+
+fn witness_orchestration_to_effect_plan_dissolve_on_present() -> Bool {
+  string_contains(
+    s: orchestration_to_effect_plan_dissolve_on,
+    pattern: "dissolve-on: v2.std.orchestration",
+  )
+}
+
+fn witness_effect_plan_orchestration_succession_dissolve_on_present() -> Bool {
+  string_contains(
+    s: effect_plan_orchestration_succession_dissolve_on,
+    pattern: "dissolve-on: v2.std.orchestration parallel",
+  )
+}
+
+test fn host_effect_plan_witness_holds() -> Bool {
+  witness_empty_plan_refuses_fail_closed()
+    && witness_control_flow_step_refuses_fail_closed()
+    && witness_orchestration_to_effect_plan_dissolve_on_present()
+    && witness_effect_plan_orchestration_succession_dissolve_on_present()
+}

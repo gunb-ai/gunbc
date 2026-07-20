@@ -1,37 +1,5 @@
 module v2.test.tokenize.lex_match_thunk_claims
 
-import v2.std.text { String }
-import v2.std.logic { Bool }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { is_empty }
-import v2.std.compilers.lexing {
-  BlockCommentTextChar,
-  CharClassPattern,
-  CharPattern,
-  ChoicePattern,
-  DelimitedPattern,
-  DigitChar,
-  EmptyPattern,
-  KeywordPattern,
-  LiteralPattern,
-  OneOrMorePattern,
-  OptionalPattern,
-  RepeatPattern,
-  SequencePattern,
-  TriviaRule
-}
-import v2.compiler.tokenize {
-  LexRuleNoMatch,
-  LexRuleToken,
-  LexRuleTrivia,
-  lex_try_rule
-}
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

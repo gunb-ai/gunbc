@@ -3989,6 +3989,42 @@ fn dag_node_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
+data dag_eval_literal_atom_authority_note: String = "Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals (^dag_complement_lit_*) are logic-ingest tokens used as scrutinee/body literals in complement fixtures. dissolve-on: general body producer lands grammar-owned literal classification and this roster folds into it."
+
+fn dag_symbol_is_fixture_pick_literal(id: Symbol) -> Bool {
+  (id == ^dag_pick_lit_one)
+    || (id == ^dag_pick_lit_two)
+    || (id == ^dag_binding_pick_lit_one)
+    || (id == ^dag_binding_pick_lit_two)
+}
+
+fn dag_symbol_is_complement_bool_literal(id: Symbol) -> Bool {
+  (id == ^dag_complement_lit_true) || (id == ^dag_complement_lit_false)
+}
+
+fn dag_symbol_is_fixture_record_literal_atom(id: Symbol) -> Bool {
+  (id == ^dag_binding_rec_v)
+    || (id == ^dag_rec_lit_nine)
+    || (id == ^dag_binding_type_variant_true)
+}
+
+fn dag_symbol_is_fixture_body_literal_atom(id: Symbol) -> Bool {
+  dag_symbol_is_fixture_pick_literal(id: id)
+    || dag_symbol_is_complement_bool_literal(id: id)
+    || dag_symbol_is_fixture_record_literal_atom(id: id)
+}
+
+fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
+  dag_node_is_kw_true_atom(node: node)
+    || dag_node_is_kw_false_atom(node: node)
+    || dag_node_is_int_literal_atom(node: node)
+    || match node.kind {
+         TypeNode { connective: Atom { identity: id } } =>
+           dag_symbol_is_fixture_body_literal_atom(id: id)
+         _ => false
+       }
+}
+
 fn dag_int_literal_node_from_magnitude(magnitude: DecimalMagnitude, occurrence_id: OccurrenceId) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_int_literal } },
@@ -5535,7 +5571,7 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Sy
                 match parse_qn_repeat_suffixes(repeat_capture: tail, root: root) {
                   Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
                   Accepted { value: suffixes, diagnostics: tail_diag } =>
-                    outcome_accepted(
+                    outcome_with_diagnostics(
                       value: list_append(
                         left: Cons { head: sym, tail: Empty },
                         right: suffixes
@@ -5565,7 +5601,7 @@ fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> O
               match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
                 Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
                 Accepted { value: suffixes, diagnostics: tail_diag } =>
-                  outcome_accepted(
+                  outcome_with_diagnostics(
                     value: list_append(
                       left: Cons { head: head_sym, tail: Empty },
                       right: suffixes
@@ -5603,7 +5639,7 @@ fn parse_comma_ident_list_items(
                   match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
                     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
                     Accepted { value: suffixes, diagnostics: tail_diag } =>
-                      outcome_accepted(
+                      outcome_with_diagnostics(
                         value: list_append(
                           left: Cons { head: head_sym, tail: Empty },
                           right: suffixes

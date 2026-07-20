@@ -33,6 +33,7 @@ import v2.workflow.bootstrap {
   seed_capability_language_model,
   v2_stage0_hash
 }
+
 fn bootstrap_footprint_anchor_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^bootstrap_footprint_anchor_fail_atom } },

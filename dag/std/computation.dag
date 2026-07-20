@@ -15,6 +15,7 @@ import std.algebra {
   kernel_algebra_profile
 }
 
+
 type SizeBound
   = CollectionSize { param: String }
   | ParserStreamSize { witness: String }

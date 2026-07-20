@@ -42,6 +42,7 @@ type EmitHostRunReceipt {
   logical_run: Outcome<HostLogicalRun>
   stderr_bytes: ByteString
   build_log: BuildLog
+  compile_skipped: Bool
 }
 
 fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: ByteString) -> Outcome<HostLogicalRun> {

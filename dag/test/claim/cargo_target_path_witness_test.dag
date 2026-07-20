@@ -1,25 +1,5 @@
 module test.claim.cargo_target_path
 
-import std.logic { Bool }
-import std.types { String, List, FilePathParts }
-import extdeps.cargo {
-  CargoTarget,
-  Lib,
-  Bin,
-  CargoTest,
-  Example,
-  Bench,
-  cargo_target_source_path,
-  rust_module_candidate_paths,
-  RustEdition,
-  Edition2015,
-  Edition2018,
-  Edition2021,
-  Edition2024,
-  rust_edition_str,
-  default_rust_edition
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

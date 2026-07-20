@@ -13,7 +13,7 @@
 #![deny(unreachable_patterns)]
 #![recursion_limit = "256"]
 
-use im_rc::{OrdSet as BTreeSet, Vector as Vec};
+use im::{OrdSet as BTreeSet, Vector as Vec};
 
 pub mod cli_run;
 pub mod coproduct_reflection;
@@ -76,6 +76,8 @@ pub mod usv_pilot_v2_std_algebra;
 pub mod usv_pilot_v2_std_collection;
 pub mod usv_pilot_v2_std_node;
 pub mod v1_compiler_artifact;
+pub mod v1_compiler_closure_stub_v2_std_integer_rust;
+pub mod v1_compiler_closure_stub_v2_std_text_rust;
 pub mod v1_compiler_coercion;
 pub mod v1_compiler_compile;
 pub mod v1_compiler_compiler_tests_rust;

@@ -1,11 +1,5 @@
 module v2.test.fixture.derivable_coercion_task_id
 
-import v2.std.model_core {
-  ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisSurfaceSpelling
-}
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.witness { StructuralPropertyWitness }
 
 fn task_id_inhabitant_atom(id: Symbol) -> Node {
   Node {
@@ -20,7 +14,7 @@ fn task_id_semantic_core_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
           representation: ^task_id_encoding_opaque_symbol,
           carrier: ^task_id_carrier_symbol_identity
@@ -36,11 +30,11 @@ fn task_id_encoding_core_node(representation: Symbol, carrier: Symbol) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: ^task_id_encoding_core_field_representation },
+        label: v2.std.node.Named { name: ^task_id_encoding_core_field_representation },
         target: task_id_inhabitant_atom(id: representation)
       },
       Edge {
-        label: Named { name: ^task_id_encoding_core_field_carrier },
+        label: v2.std.node.Named { name: ^task_id_encoding_core_field_carrier },
         target: task_id_inhabitant_atom(id: carrier)
       }
     ],
@@ -53,14 +47,14 @@ fn task_id_layer_inhabitant(surface_nickname: Symbol) -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
           representation: ^task_id_encoding_opaque_symbol,
           carrier: ^task_id_carrier_symbol_identity
         )
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: task_id_inhabitant_atom(id: surface_nickname)
       }
     ],
@@ -85,14 +79,14 @@ fn account_id_wrong_inhabitant_node() -> Node {
     kind: TypeNode { connective: Conj },
     children: [
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
+        label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
           representation: ^account_id_encoding_numeric,
           carrier: ^account_id_carrier_machine_int
         )
       },
       Edge {
-        label: Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
+        label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: task_id_inhabitant_atom(id: ^account_id_nickname_surface)
       }
     ],

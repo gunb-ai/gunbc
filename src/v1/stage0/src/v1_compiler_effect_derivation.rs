@@ -7,7 +7,7 @@ use crate::extdeps_uri_path::PathTemplateParseResult::{MalformedPathTemplate, Pa
 use crate::std_effects::CompositionVerdict::{BrokenBy, IdempotentComposition};
 use crate::std_effects::DeriveOpEffectResult::{DerivedEffect, MalformedPathInput};
 use crate::std_effects::EffectShape::{
-    AppendEffect, CreateEffect, DeleteEffect, ReadEffect, UpsertEffect,
+    AppendEffect, CreateEffect, DeleteEffect, ExecuteEffect, ReadEffect, UpsertEffect,
 };
 use crate::std_effects::IdempotencyEvidence::{IdentityEffect, LatticeEffect, NonIdempotent};
 use crate::std_effects::KeySource::{CompositeKey, InputField, PathParam};
@@ -32,7 +32,7 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn re_export_derive_op_effect(

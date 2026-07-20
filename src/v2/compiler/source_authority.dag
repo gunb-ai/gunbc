@@ -40,6 +40,8 @@ import v2.std.diagnostic {
 import v2.std.grammar { ParseTree }
 import v2.std.node { Node, Symbol, canonicalize_node_strip_provenance }
 import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, RealizationDispatch, Scaffold }
 import v2.std.collection { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
 import v2.std.cross_tree.resolution { source_root_set_insert }
@@ -48,6 +50,7 @@ import v2.std.compilers.target_model { TargetModel }
 import extdeps.communication.fidelity_carriers { medium_section_equal }
 import extdeps.communication.medium { DecodeFidelity, Medium }
 import v2.compiler.translate { target_serialize_source_from_model }
+import std.types { ContentHash }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
 
@@ -76,10 +79,43 @@ type DagSourceReadWitness {
 
 type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
 
+data source_root_coverage_note: String = "The manifest emitter inlines the FULL Lossless source text of every read, so it carries a corpus-protection cap (MANIFEST_INLINE_LIST_MAX). Past that cap it elided the ENTIRE row list to Empty — and said nothing. That is an absorbing fallback (DESIGN section 5): the carrier silently became ⊤-as-ignorance while every consumer read it as ⊤-as-answer, 'this source root has no reads'. A receipt that then hardcoded coverage_complete: true over that Empty carrier made the lie unfalsifiable, and the compiler-closure ingest gate rode it green over ZERO rows.
+
+So the elision is now a TYPED, COUNTED refusal rather than a Bool. SourceRootManifestElided names both numbers that matter — how many reads there were and what cap rejected them — so the deficit's SIZE is visible at every consumer instead of being inferable only by subtracting two counts. A Bool could say 'incomplete'; it could not say 'ninety-one reads met a cap of sixty-four', which is the fact that tells you whether the remedy is a bigger cap or a different carrier.
+
+Measured instance at the time of writing: the src/v2/compiler/00_compile.dag closure is 91 reads against a cap of 64, so its manifest carries Empty. That is the real deficit this typing exposes; the carrier redesign that fixes it (rows referencing source by ref/hash instead of inlining text) is its own designed lane."
+
+type SourceRootCoverage
+  = SourceRootCoverageComplete
+  | SourceRootManifestElided { read_count: Int, cap: Int }
+  | SourceRootRowsMissing { read_count: Int, produced_row_count: Int }
+  | SourceRootManifestAbsent
+
 type SourceRootProvenanceCoverageReceipt {
   ingest_read_count: Int
   produced_row_count: Int
-  coverage_complete: Bool
+  coverage: SourceRootCoverage
+}
+
+data source_root_coverage_arms_note: String = "THREE arms, not two, because the two producers fail for different reasons and their remedies differ. SourceRootManifestElided is the HOST emitter's refusal: a declared cap rejected the whole row list, and the fix is a bigger cap or a carrier that does not inline source text. SourceRootRowsMissing is the IN-GRAPH derivation's refusal: produced rows do not match reads with NO cap involved, which means rows were lost somewhere and the fix is finding that bug. Collapsing them would have forced the in-graph derivation to name a cap it does not have — fabricating a number to satisfy a shape (DESIGN section 5). Distinct causes, distinct arms, each carrying only numbers its own producer actually knows.
+
+A fourth arm, SourceRootManifestAbsent, is the COMMITTED STUB's state: no host manifest has been supplied at this source root yet. It is not Complete (that would be a vacuous truth over zero rows, exactly the shape a witness can ride green while proving nothing), it is not RowsMissing (nothing was read, so 0 against 0 is not a shortfall), and it is not Elided (no cap rejected anything). Its remedy is different too: run the emitting gate, or order the overlay root after the stub. The stub previously said coverage_complete: false, which was fail-closed but mute about which of these four it meant."
+
+data source_root_coverage_is_complete_note: String = "A DELIBERATE one-question projection, not a dissolution back to the Bool this coproduct replaced (review 39781 raised exactly this, and the distinction is worth stating precisely).
+
+What it answers: 'is coverage complete?' — nothing else. It discards WHICH deficit occurred, and that discard is correct at its call sites, which are all ASSERTIONS: a witness asserting complete coverage needs a boolean, and inlining the same four-arm match at each of them would be four copies of one decision (DESIGN section 2). The predicate is the DRY form of a fact the coproduct still owns.
+
+What it is NOT: the old coverage_complete field. That was the receipt's ONLY representation of coverage, so a consumer had no way to learn the cause — the information did not exist anywhere. Now the cause is carried on the receipt, and any consumer that needs it matches SourceRootCoverage directly and gets read_count, cap, or produced_row_count. Nothing is lost; one caller-chosen question is answered.
+
+It carries no Disposition because it is not a scaffold: there is no future state in which this becomes wrong, so there is no honest dissolution trigger to declare, and inventing one would be a scaffold marker that can never fire (DESIGN section 6 — every scaffold lands with a named trigger, which equally means a non-scaffold must not fake one). The rule it must keep: this predicate may never become the only way to read coverage. If a consumer ever needs the reason and reaches for a Bool instead, that consumer is wrong, not this projection."
+
+fn source_root_coverage_is_complete(coverage: SourceRootCoverage) -> Bool {
+  match coverage {
+    SourceRootCoverageComplete => true
+    SourceRootManifestElided { read_count: _, cap: _ } => false
+    SourceRootRowsMissing { read_count: _, produced_row_count: _ } => false
+    SourceRootManifestAbsent => false
+  }
 }
 
 type SourceIrArtifactProvenance {
@@ -88,11 +124,59 @@ type SourceIrArtifactProvenance {
   span_index: SpanIndex
 }
 
-data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact: the 27 hand FrontierQualifiedModuleBinding rows and the host-side build_module_path_index both project from here, else two authorities remain (§3). Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
+data source_ref_authority_note: String = "Stage 0 of docs/plans/ingest-manifest-source-ref-carrier-design.md §6: the typed reference to a STORAGE REALIZATION. Declared here, with the path⇄module binding authority, because both the ingest-manifest rows and the later Phase-3 host-effect boundary must consume ONE spelling — established before it has two consumers rather than reconciled after them (§3).
+
+What it names is deliberately NOT a module. A manifest row is a host-boundary artifact about files the host read, and only host boundaries project paths, so a path-shaped ref is correct exactly there; module identity, where one exists, is the DERIVED fact ModuleStorageBinding already owns and is JOINED to a ref, never fused into it. A ModuleRef | FileRef coproduct was rejected for that reason: it would fuse the two facts this lane exists to keep apart (parent ruling 2026-07-19).
+
+This is a TYPE DECLARATION ONLY. The effect-boundary enforcement that makes bare-string file dependencies unwritable is Phase 3 and does not land here."
+
+data source_ref_no_fidelity_note: String = "SourceRef carries NO DecodeFidelity field, and that is a modeling decision rather than an omission. Fidelity is a property of a DECODE — how faithfully bytes became a value — and it already has a single authority in Medium<R> { carried, fidelity } (dag/extdeps/communication/medium.dag). A ref decodes nothing; it names a location. A fidelity ON the ref would therefore assert how faithfully something decodes BEFORE any read established it (§5 fabricated plausible output), and would stand a second fidelity authority beside Medium's (§3).
+
+The requirement that a row declare its fidelity is real and is ALREADY SATISFIED: DagSourceReadWitness holds source: Medium<String>, which carries it. The constraint this places on the later carrier migration — the stage-4 read-through must return Medium<String>, never a bare String, or the Lossless boundary silently goes undeclared — is recorded as named constraint C1 in the design note, because that failure produces nothing red at the diff."
+
+data source_ref_seed_homonym_note: String = "NAME COLLISION, deliberate and marked. src/v1/01_tokenize.dag:53 declares a DIFFERENT type also called SourceRef — a tokenizer input handle { file, text, source_chars } that CARRIES the source bytes. The two are inverted on the exact axis this type turns on: that one contains the source, this one exists precisely so rows do not.
+
+The seed's use is itself the nickname violation (a ref that carries everything references nothing), so the correct name goes to the correct use rather than the correct use being renamed around a misnomer — renaming here would invert which use is authoritative and fork this spelling from the design docs' at the moment of declaration (§3; parent ruling 2026-07-19). No hard collision exists: the two resolve by subtree, and the fork-prevention wall keys on identical variant payloads, which two differently-shaped records do not trigger.
+
+dissolve-on: the v1 tokenizer being next touched or deleted, at which point the seed's type is renamed to SourceBuffer — the honest name for a thing holding bytes. The v1_delete milestone discharges this naturally. The note is homed HERE rather than in src/v1/01_tokenize.dag so that an inert marker costs zero touches on a load-bearing v1 pipeline stage, and anyone about to collide with the name finds it by grepping the name itself."
+
+type SourceRef {
+  path: String
+  source_root: SourceRootRef
+  content_hash: ContentHash
+}
+
+data source_ref_selection_unpinned_note: String = "Selection-grain placeholder hash for declared SourceRef rows (docs/plans/declared-source-ref-selection-design.md §7): content-hash-as-selection-key belongs to the resolve-cost lane, not this task. Rows carry the field for shape compatibility with the eventual pinned authority; selection today keys on storage path resolved through ModuleStorageIndex only."
+
+fn source_ref_path(ref: SourceRef) -> String {
+  ref.path
+}
+
+fn source_root_for_storage_path(path: String) -> SourceRootRef {
+  if starts_with(s: path, prefix: "src/") {
+    V2Tree
+  } else {
+    DagTree
+  }
+}
+
+fn source_ref_for_storage_path(path: String) -> SourceRef {
+  SourceRef {
+    path: path,
+    source_root: source_root_for_storage_path(path: path),
+    content_hash: "selection-unpinned" as ContentHash
+  }
+}
+
+data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact: the 27 hand FrontierQualifiedModuleBinding rows and the host-side build_module_path_index both project from here, else two authorities remain (§3). Task 4 repointed the host producer through v1_compiler_parse (src/v1/stage0/src/module_path_index); DeclarationScanned deleted. Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
 
 type ModuleStorageProvenance
   = ParsedFromSource { artifact: Artifact, span_index: SpanIndex }
   | ProducedByBehavior { producer: Symbol }
+
+data module_storage_host_parse_note: String = "Task 4 (module-identity-storage-binding-design.md Phase 1): the host producer build_module_path_index (src/v1/stage0/src/module_path_index) routes through v1_compiler_parse::parse — the same bootstrap parse path the in-graph oracle uses at the module-name grain — so host rows are ParsedFromSource, not a parallel substring scan. DeclarationScanned was deleted with this repoint: it existed only to record honestly that extract_module_path never parsed; keeping it after the repoint would be a second way to say the same thing (§3). Bootstrap host emission records ident_span byte ranges in span_index via span_index_record; full OccurrenceId mint parity with v2.compiler.parse's stamp pipeline is a named follow-on (dissolve-on: v1 bootstrap parse stamps NodeOccurrenceId the way parse_production_prepared does)."
+
+data module_storage_bootstrap_span_note: String = "Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5)."
 
 type ModuleStorageBinding {
   module: QualifiedName
@@ -501,6 +585,22 @@ fn module_storage_produced_binding(
   }
 }
 
+fn module_storage_parsed_binding(
+  module: QualifiedName,
+  artifact: Artifact,
+  span_index: SpanIndex,
+  source_root: SourceRootRef
+) -> ModuleStorageBinding {
+  ModuleStorageBinding {
+    module: module,
+    provenance: ParsedFromSource {
+      artifact: artifact,
+      span_index: span_index
+    },
+    source_root: source_root
+  }
+}
+
 fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<String> {
   match binding.provenance {
     ParsedFromSource { artifact: a, span_index: _ } =>
@@ -510,7 +610,86 @@ fn module_storage_binding_file_path(binding: ModuleStorageBinding) -> Optional<S
   }
 }
 
+data module_storage_supply_op_note: String = "THE MODELED OP (docs/plans/module-identity-storage-binding-design.md §2; parent ruling 2026-07-18). Inputs: source roots. Output: ModuleStorageBinding rows — module, path, provenance — and deliberately NO source text: the binding never needed file CONTENTS, only module ⇄ path, which is why this is a different carrier from SourceRootIngest (whose witnesses inline the full Lossless source of every file and are therefore capped at corpus-protection scale). This declaration is the INTERFACE; the host is ONE HANDLER of it at the effect boundary (§2 Realization; §3's interface/transport split — the transport is not a fact about the binding). The handler carries ZERO independent policy: it records what the one parse pipeline already computed, which is precisely why repointing the host producer and supplying the rows are the SAME motion rather than two derivations to reconcile."
+
+data module_storage_supply_cost_note: String = "Why a host handler rather than deriving in-graph: module_storage_bindings_from_ingest re-parses every module, measured at ~6.5s of eval per module. That is fine at ORACLE scale (a handful of modules, off the gate path) and impossible at consumer scale — the frontier needs ~35 modules and compile-clean scope thousands. The host already knows (module, path) from its own parse, so re-deriving it in-graph is duplicated work (§2) as well as slow. The in-graph derivation is therefore retained as the ORACLE that pins this transport to the model, never as the consumer path."
+
+data module_storage_supply_unbound_body_note: String = "The body REFUSES rather than recursing. This declaration is an interface whose realization is a host handler; until host-effect emission binds it, an in-graph caller must be told so, loudly and at once.
+
+It was previously written as an unconditional self-call — fn f(x) { f(x: x) } — which is the shape a host-bound stub takes when the host is expected to intercept before the body ever runs. That is true for the inert_lens stubs, which ARE registered in the interpreter dispatch tables (v1_interpreter.rs), so their bodies are unreachable. It is NOT true here: this op has no dispatch registration, so the body is genuinely reachable and a caller would spin instead of stopping. A hang is the weakest possible failure arm — it is not even a stop, it just never answers, and DESIGN section 5 wants a located refusal (a bounded 'forever' is not an 'unknown' error). Flagged non-blocking by reviews 39741 and 39773; fixed here because the seam was open anyway.
+
+No in-graph caller exists today, so this changes no behavior — it changes what happens the first time one does."
+
+fn module_storage_bindings_for_source_roots(source_roots: FreeMonoid<String>) -> Outcome<ModuleStorageIndex> {
+  outcome_rejected(
+    d: source_authority_diagnostic(reason: ^module_storage_supply_host_dispatch_required)
+  )
+}
+
+data module_storage_bindings_for_source_roots_host_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.compiler.source_authority",
+    decl_name: "module_storage_bindings_for_source_roots",
+    field: WholeDeclaration
+  }
+}
+
+data module_storage_supply_dissolution_trigger: String = "dissolve-on: host-effect emission (witness-realization lane). The host handler for module_storage_bindings_for_source_roots is hand-written Rust at the effect boundary TODAY; when host-effect emission lands, the producer is EMITTED from this .dag model instead, and the hand handler retires. Declared here rather than left implicit so the scaffold cannot linger unmarked (§6: every scaffold lands with a named dissolution trigger). Until then the consistency witness is what keeps the handler honest to this interface, in two enrolled halves: the LIVE half (v2.test.long.module_binding_host_consistency, on the module-binding supply gate's wet cadence) asserts host-emitted rows == module_storage_bindings_from_ingest over the same sources, and the DISCRIMINATING half (v2.test.claim.module_storage_binding, per-PR fast lane, zero parse cost) pins the comparator itself with perturbed rows — module_storage_agreement_reports_divergent_on_wrong_module and module_storage_agreement_reports_uncovered_on_missing_row both go RED if module_storage_host_agrees_with_oracle ever regresses to answering ModuleStorageAgrees unconditionally, which is the exact way the live half would go vacuously green (review 39735)."
+
 data module_storage_projection_note: String = "Both requested directions are queries against ONE table (design §2). file → graph region: given a path, the module parsed from it. module → file(s): given a module reference, its current storage — needed ONLY at host boundaries; user code and tool .dag reference modules and never see paths. A produced module answers Absent for storage, which is a real answer, not a miss."
+
+data module_storage_agreement_note: String = "After task 4 both the host transport and the in-graph oracle derive module names through parse — the host via v1_compiler_parse at the bootstrap boundary, the oracle via parse_module_prepared in-graph. module_storage_host_agrees_with_oracle therefore checks structural parity of the binding TABLE (module identity + storage path per row), not two different extraction code paths. Divergence still means a real authority disagreement; coverage gaps still mean the host index lacks a row the oracle carries. The witness remains the pin that keeps the host handler a transport of the modeled op rather than a rival authority (§3)."
+
+type ModuleStorageAgreement
+  = ModuleStorageAgrees
+  | ModuleStorageDivergent { path: String }
+  | ModuleStorageUncovered { path: String }
+
+fn module_storage_agreement_for_binding(
+  oracle_binding: ModuleStorageBinding,
+  host: ModuleStorageIndex
+) -> ModuleStorageAgreement {
+  match module_storage_binding_file_path(binding: oracle_binding) {
+    Absent => ModuleStorageAgrees
+    Present { value: p } =>
+      match module_storage_module_for_path(index: host, file_path: p) {
+        Absent => ModuleStorageUncovered { path: p }
+        Present { value: host_module } =>
+          if host_module == module_storage_binding_module(binding: oracle_binding) {
+            ModuleStorageAgrees
+          } else {
+            ModuleStorageDivergent { path: p }
+          }
+      }
+  }
+}
+
+fn module_storage_agreement_step(
+  acc: ModuleStorageAgreement,
+  oracle_binding: ModuleStorageBinding,
+  host: ModuleStorageIndex
+) -> ModuleStorageAgreement {
+  match acc {
+    ModuleStorageAgrees =>
+      module_storage_agreement_for_binding(oracle_binding: oracle_binding, host: host)
+    ModuleStorageDivergent { path: p } => ModuleStorageDivergent { path: p }
+    ModuleStorageUncovered { path: p } => ModuleStorageUncovered { path: p }
+  }
+}
+
+fn module_storage_host_agrees_with_oracle(
+  oracle: ModuleStorageIndex,
+  host: ModuleStorageIndex
+) -> ModuleStorageAgreement {
+  fold_list(
+    xs: oracle,
+    empty: ModuleStorageAgrees,
+    cons: fn(acc, oracle_binding) {
+      module_storage_agreement_step(acc: acc, oracle_binding: oracle_binding, host: host)
+    }
+  )
+}
 
 fn module_storage_module_for_path(
   index: ModuleStorageIndex,
@@ -636,7 +815,14 @@ fn source_root_provenance_coverage_receipt(
   SourceRootProvenanceCoverageReceipt {
     ingest_read_count: length(xs: ingest),
     produced_row_count: length(xs: produced),
-    coverage_complete: length(xs: ingest) == length(xs: produced)
+    coverage: if length(xs: ingest) == length(xs: produced) {
+      SourceRootCoverageComplete
+    } else {
+      SourceRootRowsMissing {
+        read_count: length(xs: ingest),
+        produced_row_count: length(xs: produced)
+      }
+    }
   }
 }
 

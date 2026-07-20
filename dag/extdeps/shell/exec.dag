@@ -1,0 +1,66 @@
+module extdeps.shell.exec
+
+import std.types { String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.os.exec_arg_limit { host_exec_arg_max_strlen }
+import std.measure { ByteSize }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  }
+}
+
+type TransportScript = String where brand("TransportScript")
+
+data shell_exec_run_stdin_route_note: String = "shell.Exec.Run transport: argv is fixed [bash, -s]; the script input is routed through the transport stdin field. Large payloads belong here — they never become a single argv token, so they do not encounter the Linux per-argument exec ceiling modeled in extdeps.os.exec_arg_limit.host_exec_arg_max_strlen (deploy Part A / #6711)."
+
+data shell_exec_check_argv_embed_note: String = "shell.Exec.Check transport: argv is [sh, -c, command] — the entire command string is ONE argv element. On Linux hosts this is the surface that hits execve(2) MAX_ARG_STRLEN (extdeps.os.exec_arg_limit.host_exec_arg_max_strlen): an oversized embed fails E2BIG (opaque os error 7) unless the interpreter refuses first at dispatch_shell (InterpError::ArgvExceedsHostArgMax). Prefer Run for payloads approaching the per-argument ceiling."
+
+data shell_exec_transport_ceiling_authority: ByteSize = host_exec_arg_max_strlen
+
+fn transport_script_from_body(body: String) -> TransportScript {
+  body as TransportScript
+}
+
+service shell.Exec {
+  operation Run {
+    input { script: TransportScript }
+
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+
+    transport shell {
+      argv: ["bash", "-s"]
+      stdin: script
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Script failed"
+    }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "", stderr: "" } "hermetic shell.Exec.Run success"
+    }
+  }
+
+  operation Check {
+    input { command: TransportScript }
+    output { exists: Bool from "exit_success" }
+    readonly
+
+    transport shell { argv: ["sh", "-c", "{command}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Command failed"
+    }
+    mock_response {
+      0 => { exists: true } "hermetic shell.Exec.Check success"
+    }
+  }
+}

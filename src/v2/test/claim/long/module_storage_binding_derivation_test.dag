@@ -19,7 +19,6 @@ import v2.std.text { String }
 import std.algebra { Cons, Empty }
 
 data msb_qualified_name_collision_note: String = "QualifiedName values here are constructed directly from Cons/Empty. Historical: the constructor name qualified_name_from_segment_list was FORKED across std/extdeps (FreeMonoid<Symbol> vs Outcome<QualifiedName>) when this witness was authored; that fork was DISSOLVED in this integration wave by renaming apart — qualified_name_from_string_segments (std, List<String>) vs qualified_name_from_symbol_segments (extdeps dag parse, List<Symbol> -> Outcome). Direct construction is retained here so the witness stays independent of either helper."
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data msb_claim_note: String = "Phase 1 discriminating witnesses for the path⇄module binding authority (docs/plans/module-identity-storage-binding-design.md §2). GREEN: the binding is DERIVED from parse — nothing here authors the module name, it is read back out of the parsed module node, so a fixture whose text says one thing and whose declared path says another cannot agree by construction. REDs: the duplicate-module case refuses (the modeled form of the host collision panic, enforcing the live 1:1 binding), and the underivable-name case refuses instead of dropping the row — the pre-Phase-1 program_assembly derivation silently kept the root and left the index unchanged there, so the module went invisible (§5: a failure arm refuses, never widens)."

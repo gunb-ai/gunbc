@@ -20,6 +20,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data projection_test_section: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^projection_section_symbol } },
   children: [],

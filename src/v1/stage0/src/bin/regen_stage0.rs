@@ -1,4 +1,4 @@
-use im_rc::HashMap;
+use im::HashMap;
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
@@ -84,6 +84,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_types.rs",
     "v1_compiler_artifact.rs",
     "v1_compiler_coercion.rs",
+    "v1_compiler_closure_stub_v2_std_integer_rust.rs",
+    "v1_compiler_closure_stub_v2_std_text_rust.rs",
     "v1_compiler_compile.rs",
     "v1_compiler_compiler_tests_rust.rs",
     "v1_compiler_complexity.rs",

@@ -26,6 +26,7 @@ data witness_exclusion_substrings: List<String> = [
   "host_source_root_ingest_manifest.dag",
   "program_assembly/real_ingest_test.dag",
   "self_host/compiler_closure_emit_from_ingest_test.dag",
+  "self_host/crate_layout_witness_test.dag",
   "unified_test_claim_substrate_equivalence.dag",
   "ci_exclusion_proof_test.dag",
   "test/claim/execution/",
@@ -35,6 +36,7 @@ data witness_exclusion_substrings: List<String> = [
   "enforcement_live_witness_test.dag",
   "lever_a_local_receipt_witness",
   "host_effect_apply_witness_test.dag",
+  "host_effect_plan_real_execution_witness_test.dag",
   "deploy_access_privilege_witness_test.dag",
   "ci_deploy_observed_wet_test.dag",
   "random_bytes_csprng_witness_test.dag",
@@ -80,6 +82,7 @@ data witness_exclusion_substrings: List<String> = [
   "srv3_install_media_fetch_real_execution_witness_test.dag",
   "srv3_seeded_install_media_real_execution_witness_test.dag",
   "http_client_get_real_execution_witness_test.dag",
+  "roadmap_belt_actuate_witness_test.dag",
   "host_build_cache_provision_real_execution_witness_test.dag"
 ]
 
@@ -91,6 +94,7 @@ data witness_admission_offline_exclusion_substrings: List<String> = [
   "enforcement_live_witness_test.dag",
   "lever_a_local_receipt_witness",
   "host_effect_apply_witness_test.dag",
+  "host_effect_plan_real_execution_witness_test.dag",
   "deploy_access_privilege_witness_test.dag",
   "ci_deploy_observed_wet_test.dag",
   "random_bytes_csprng_witness_test.dag",
@@ -107,6 +111,7 @@ data witness_admission_offline_exclusion_substrings: List<String> = [
   "host_source_root_ingest_manifest.dag",
   "program_assembly/real_ingest_test.dag",
   "self_host/compiler_closure_emit_from_ingest_test.dag",
+  "self_host/crate_layout_witness_test.dag",
   "unified_test_claim_substrate_equivalence.dag"
 ]
 
@@ -115,6 +120,16 @@ data witness_admission_fixture_exclusion_substrings: List<String> = [
 ]
 
 data witness_admission_offline_note: String = "Phase 0(b) admission invariant (module-identity-storage-binding): operator-ruled OFFLINE exclusion substrings whose witness rows carry OfflineLocalRecipe consumers — documented local recipes in the paired exclusion notes (wet_integration_offline_note, enforcement_coverage_exclusion_note, accumulator_copy_roster_gate_exclusion_note, identity_captured_navigation_roster_gate_exclusion_note, lever_a_local_receipt_witness_exclusion_note, long_lane_exclusion_note). Dissolves when each row graduates to a scheduled CI consumer or deletes."
+
+data crate_layout_transport_exclusion_note: String = "self_host/crate_layout_witness_test.dag is excluded from hermetic discovery and consumed by v2.workflow.module_binding_supply_transport (run_module_binding_supply_gate, reached from source_root_ingest_gate) — the same posture as its siblings program_assembly/real_ingest_test.dag and self_host/compiler_closure_emit_from_ingest_test.dag, which are transport-run for the same reason.
+
+WHY: as of task 3 these witnesses project off the derived ModuleStorageIndex, and the live index exists only inside that transport's overlay. Run hermetically they read host_module_bindings = Empty and REFUSE — correct behaviour, wrong lane.
+
+DO NOT give this file bin_witness_wet_entries rows. That was tried and it is the wrong roster: a bin_wet row makes the fn an EXPLICIT discovery entry, which BYPASSES the exclusion above and runs it hermetically in batch 3, where it refuses and reds. The tell in that failure is diagnostic — projection_refuses_on_absent_index PASSED while the other two failed, which is precisely Empty-index behaviour rather than a broken projection.
+
+Local recipe: gunbc run --source-root src/v2 --source-root dag --entry src/v2/workflow/module_binding_supply_transport.dag --function run_module_binding_supply_gate --claim-run
+
+Dissolve-on: the crate-layout artifact moves to host-driven generation with the index supplied at the boundary — then the hand rows, the parity witness, and this exclusion delete together."
 
 data witness_admission_fixture_note: String = "Phase 0(b): floor_skip control fixtures excluded at dir grain — consumers are explicit rosters in floor_skip_discovery_witness, not the discovery corpus. Dissolves when fixture-home policy changes."
 
@@ -130,14 +145,17 @@ data known_red_probe_entries: List<ScheduleWitnessEntry> = [
   probe_red(entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag", f: "logic_join_truth_table"),
   probe_red(entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag", f: "logic_truth_tables_all"),
   probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_emit_ingest_round_trip_holds"),
-  probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_prose_holds")
+  probe_red(entry: "src/v2/test/claim/manual/english_emit_add_test.dag", f: "english_emit_add_prose_holds"),
+  probe_red(entry: "src/v2/test/claim/self_host/compiler_closure_emit_from_ingest_test.dag", f: "compiler_closure_scoped_ingest_module_count_ok_holds")
 ]
 
 data long_lane_exclusion_note: String = "test/claim/long/ is the LONG-test home (operator 5-second rule, 2026-07-12; authority + enforcement: gunbc_ci_fast_lane_rule_note / gunbc_ci_fast_lane_witness_eval_budget in v2.workflow.ci_floor_plan): a witness whose own eval reaches 5s does not run in per-PR discovery — the executor's cooperative eval deadline REDs it by name (EvalBudgetExceeded), and the fix is moving its file here (dag/test/claim/long/, src/v2/test/claim/long/), where discovery excludes it at dir grain and it runs via the local recipe (claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>) or the scheduled lane's future enrollment. First residents (receipted): s1_closure_receipt_test (whole-closure re-parse through the interpreted v2 frontend, 90+min eval, the run-29183446733 wedge class) and self_host_module_emit_derisk_test (~31s/witness). Unlike the roster exclusions above, membership here is a HOME, not a per-file ruling: the 5s deadline makes an over-budget fast-lane witness unwritable-in-place, so the roster cannot silently grow stale (§5 construction over validation). Dissolve-on: per-witness declared cost envelopes (witness-cost-locality admission law) subsume the dir grain."
 
 data wet_integration_offline_note: String = "Four wet-integration entries above (host_effect_apply, deploy_access_privilege, ci_deploy_observed_wet, random_bytes_csprng) are OFFLINE per the hermetic-floor posture (operator 2026-07-11: integration-style witnesses must not run regularly; CI runs hermetic/mocked behavior checks). Each performs genuinely live host effects the hermetic envelope refuses by construction: host_effect_apply drives real LocalShell/SSH host effects (the 133s row atop the slow-witness census), deploy_access_privilege applies privileged shell mutations through fixture actors, ci_deploy_observed_wet shells whoami + sudo -n, random_bytes_csprng reads host entropy. Hermetic duals stay discovered where they exist (the ci_deploy split keeps the pure half; deploy_access_check(access, actor) is the mock-shaped dual). Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry <entry> per file. Dissolve-on: the scheduled (nightly) lane un-darkens and admits wet integration rows under its own budget — then these four enroll there as declared execution rows and the exclusion rows delete."
 
-data known_red_frontier_note: String = "Two entries above (logic_ground_truth_test, english_emit_add_test) are the KNOWN-RED FRONTIER: witnesses red on main for feature gaps owned by named lanes, exposed per-PR only when a whole-corpus-affecting diff (like the 2026-07-12 interpreter change) selects the entire tree. They are RED CONTROLS for their lanes, not broken tests — deleting them would discard the discriminating input; leaving them discovered reds every wide PR on debts those PRs did not create. So they sit here as declared, countable rows (the typed self-host-frontier pattern applied to witnesses), each with its diagnosis and dissolve-on. logic_ground_truth_test (4 witnesses): the v1 resolver does not bind imported bare variant constructors in EXPRESSION position (import v2.std.logic { True } then gt_complement(a: True) -> undefined variable: True; patterns-via-scrutinee work) — the namespace-only-resolution lane's containment SymbolIndex covers exactly this class; dissolve-on: that lane lands imported-variant value bindings, these four run green, the entry deletes. english_emit_add_test (1 witness): the english-language emit-ingest round trip returns false undiagnosed (S2 emit family); dissolve-on: the S2 behavioral-closure lane greens it locally, the entry deletes. Local recipe per file: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>. This roster must not grow silently: a new known-red admission requires the same per-file diagnosis + owner + dissolve-on in this note, and an entry whose witness runs green locally is stale and deletes."
+data known_red_frontier_note: String = "Two entries above (logic_ground_truth_test, english_emit_add_test) are the KNOWN-RED FRONTIER: witnesses red on main for feature gaps owned by named lanes, exposed per-PR only when a whole-corpus-affecting diff (like the 2026-07-12 interpreter change) selects the entire tree. They are RED CONTROLS for their lanes, not broken tests — deleting them would discard the discriminating input; leaving them discovered reds every wide PR on debts those PRs did not create. So they sit here as declared, countable rows (the typed self-host-frontier pattern applied to witnesses), each with its diagnosis and dissolve-on. logic_ground_truth_test (4 witnesses): the v1 resolver does not bind imported bare variant constructors in EXPRESSION position (import v2.std.logic { True } then gt_complement(a: True) -> undefined variable: True; patterns-via-scrutinee work) — the namespace-only-resolution lane's containment SymbolIndex covers exactly this class; dissolve-on: that lane lands imported-variant value bindings, these four run green, the entry deletes. english_emit_add_test (1 witness): the english-language emit-ingest round trip returns false undiagnosed (S2 emit family); dissolve-on: the S2 behavioral-closure lane greens it locally, the entry deletes. Local recipe per file: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>. compiler_closure_emit_from_ingest_test (1 witness, compiler_closure_scoped_ingest_module_count_ok_holds, admitted 2026-07-19): it asserts COMPLETE ingest coverage for the src/v2/compiler/00_compile.dag closure. That closure is 91 source reads and the manifest emitter inlines the full Lossless text of every row, so it exceeds MANIFEST_INLINE_LIST_MAX (64) and the emitted carrier is legitimately Empty. The witness was GREEN until 2026-07-19 only because the receipt fabricated its own numbers — produced_row_count was emitted as read_count and coverage_complete was hardcoded true, so it asserted complete coverage over an empty carrier and could never go red. Making the receipt honest (the elision is now the typed, counted SourceRootManifestElided { read_count, cap }) turned a fabricated green into a true red. It is admitted here rather than deleted because it is the discriminating input for the carrier deficit: when the carrier can hold 91 rows, this witness greens by itself and that greening is the un-quarantine event. Its gate did not go vacuous — compiler_closure_ingest_receipt_describes_carrier_holds replaced it as the live claim (the receipt must describe the carrier that landed, falsifiable at any corpus size). Owner: wise-bee-768 / the module-identity storage-binding lane. Dissolve-on: manifest rows carry a source ref plus content hash instead of inlined text, the parse oracle reads through the ref with hash verification, the cap stops binding, this witness greens and the row deletes. emit_host_fold_closure_equals_eval_test (UN-QUARANTINED 2026-07-20, smart-hawk-154 / witness-realization lane 3): three probe_red rows deleted — the eval walk now materializes RuntimeClosure for an Arrow TypeNode in runtime-argument position (eval_fold_is_closure_argument_edge / eval_fold_closure_argument_child_state in 05_eval.dag), so the closure at transform child 3 of fold_fixture_param_call_body evaluates to a real closure value instead of falling through eval_type_node_atom's non-Atom arm into allocate_literal and refusing (BuildFailed). The dissolve-on condition was met as written: emit_host_fold_closure_equals_eval_holds greens wet against the real fold body subgraph, with no empty Value-behavior ComputationNode stub — the interpreted leg reads the closure from the EVALUATED argument list rather than re-walking the node AST, so eval is genuinely exercised. The (a) agreement leg is restored to the family aggregate as emit_on_demand_fold_closure_agreement_holds, routed through run_test_claim_emit_vs_eval so it compares both legs rather than reading the native cached path as its own oracle. No literal-atom roster was extended (dag_symbol_is_fixture_body_literal_atom and v2_evaluator untouched), per the PR 6879 diagnosis-table tripwire. Local recipe: claim_batch --wet --source-root src/v2 --source-root dag --entry src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag --function <name>. emit_on_demand_field_access_family_witness_test + emit_on_demand_complement_family_witness_test (UN-QUARANTINED 2026-07-20, witty-owl-841 / eval-repair arc): ten probe_red rows deleted — dag_node_is_eval_literal_atom (dag.dag single authority for complement/pick/record fixture literals) plus eval_type_node_atom bind-miss→allocate_literal (interpretation-owned fixture params) and non-Atom TypeNode→allocate_literal (Conj variant scrutinee) repair the lane-2 equals_eval BuildFailed roots; emit_host_complement_equals_eval_all_holds, emit_host_field_access_equals_eval_all_holds, and wet agreement witnesses green locally. Pure subtests in the same files stay OfflineLocalRecipe via test/claim/execution/ exclusion. emit_host_meet_join_equals_eval_test (meet/join, cross-lane receipt 2026-07-20): shares complement literal root — emit_host_meet_equals_eval_holds, emit_host_join_equals_eval_holds, emit_host_meet_join_equals_eval_all_holds green wet locally; no probe_red rows ever admitted (pre-red was family-note debt only, deleted). emit_host_variant_construct_equals_eval_test (variant_construct byproduct): non-Atom TypeNode→allocate_literal closes eval_rejected_bind_key_absent on Conj scrutinee — emit_host_variant_construct_equals_eval_holds + _all_holds green wet locally; no probe_red rows (deferred root repaired by consolidation, not a separate quarantine admission).
+
+This roster must not grow silently: a new known-red admission requires the same per-file diagnosis + owner + dissolve-on in this note, and an entry whose witness runs green locally is stale and deletes."
 
 data bin_witness_wet_note: String = "The remaining excluded entries are the BIN-EXECUTION witness class: their test fns run compiled seed witness binaries via tools.host_prelude.run_witness_bin (git.Core.Toplevel to locate the checkout, shell.Test.IsExecutable against target/release build artifacts, then process execution) — host effects on non-commit-deterministic inputs, so the hermetic envelope refuses them by construction (audit 2026-07-12: every refusal typed as IsExecutable / Run / IsNonEmpty / Dir; the pure fns that merely read transport modules pass hermetically and stay discovered). They carry core per-PR compiler coverage, so unlike the offline four they DO keep running on every PR — as the declared bin-witness wet batch (bin_witness_wet_entries below, a Wet-profiled explicit-entry batch in v2.workflow.ci_floor_plan), never as silently-wet discovery rows. EXCEPTION (Wave 2, 2026-07-15): emit->compile->run->equals-seed self-host behavioral receipts (Gate-4 std/logic first) moved to the falsifier nightly Wet follow-on batch (falsifier_self_host_wet_entries) — per-PR stays hermetic/mocked for that class; the falsifier is the proven template lane. Dissolve-on: these files migrate under the execution-corpus scope prefix and enroll as ExecutionWitnessKind rows in gunbc.commit_workflow; then this roster and its exclusion rows delete."
 
@@ -163,6 +181,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_golden_length_matches_declared_count_holds"),
   bin_wet(entry: "dag/test/claim/emit_host_typed_smoke_test.dag", f: "emit_host_content_equality_discriminates_count_identical_bytes_holds"),
   bin_wet(entry: "dag/test/claim/build_artifact_corruption_probe_witness_test.dag", f: "build_artifact_corruption_probe_holds"),
+  bin_wet(entry: "dag/test/claim/build_artifact_corruption_probe_witness_test.dag", f: "witness_bin_readiness_arms_are_discriminating"),
   bin_wet(entry: "dag/test/claim/floor_skip_discovery_witness_test.dag", f: "floor_skip_discovery_keystone_holds"),
   bin_wet(entry: "dag/test/claim/interp_recorded_fixture_witness_test.dag", f: "interp_recorded_fixture_keystone_holds"),
   bin_wet(entry: "dag/test/claim/parse_test.dag", f: "parse_witness_floor_holds"),
@@ -178,6 +197,7 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_run_witness_bin_unbuildable_red_control_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_positive_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_is_nonempty_zero_byte_red_control_holds"),
+  bin_wet(entry: "dag/test/claim/roadmap_belt_actuate_witness_test.dag", f: "roadmap_belt_actuate_witnesses"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_gunbc_cli_run_claim_holds"),
   bin_wet(entry: "dag/test/claim/typed_witness_invocation_test.dag", f: "typed_claim_executor_verify_build_artifacts_red_control_holds"),
   bin_wet(entry: "dag/test/claim/v1_dag_parse_witness_test.dag", f: "v1_dag_parse_witnesses"),
@@ -199,7 +219,8 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/srv3_seeded_install_media_real_execution_witness_test.dag", f: "install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_roundtrip_by_real_execution"),
   bin_wet(entry: "dag/test/claim/http_client_get_real_execution_witness_test.dag", f: "http_client_get_missing_target_red_control_by_real_execution"),
-  bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution")
+  bin_wet(entry: "dag/test/claim/host_build_cache_provision_real_execution_witness_test.dag", f: "provision_read_back_failure_not_converged_by_real_execution"),
+  bin_wet(entry: "dag/test/claim/host_effect_plan_real_execution_witness_test.dag", f: "host_effect_plan_shell_witness_holds_by_real_execution")
 ]
 
 data floor_skip_control_fixture_exclusion_note: String = "test/fixture/floor_skip/ is excluded from tree-wide discovery at DIR grain (parent ruling 2026-07-11: a fixture that WANTS witness enrollment is mis-homed by definition, and file-grain exclusion invites the next control fixture to repeat the landmine). These fixtures exist to be driven by floor_skip_discovery_witness's explicit rosters, not as corpus witnesses: falsifier_divergence_control_test.dag carries a BY-DESIGN red row (falsifier_red_control_holds returns false to prove the divergence attribution channel), so any completed full-corpus run - the nightly falsifier, or a PR whose diff touches its import closure - would red on a row whose red is the control's specification, and a permanent by-design divergence would also make the falsifier's 8-clean-window retirement criterion unsatisfiable; live_tree_declared_test.dag declares ReadsLiveTree as a control, so as a corpus row it would be a permanent never-skip cost with no enforcement value. Genuine corpus witnesses that were mis-homed here have been re-homed under test/claim/ (provenance_fail_closed_contract_test, live_tree_collision_test). Explicit-roster runs (the floor_skip bin) are unaffected: witness exclusions apply to discovery only."

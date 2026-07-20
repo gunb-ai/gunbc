@@ -1,7 +1,5 @@
 module v2.test.claim.fold_list_generic_instantiation
 
-import std.algebra { Cons, Empty }
-import v2.std.algebra { fold_list, fold_list_right }
 
 type Rec { v: Int }
 

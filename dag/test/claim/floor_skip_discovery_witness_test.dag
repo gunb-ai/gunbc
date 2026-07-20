@@ -1,8 +1,5 @@
 module test.claim.floor_skip_discovery_witness_test
 
-import tools.floor_skip_discovery_witness_transport { run_floor_skip_discovery_witness }
-import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

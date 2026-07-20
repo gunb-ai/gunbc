@@ -6,7 +6,7 @@ import extdeps.cargo_build
 import extdeps.git
 import extdeps.gunbc
 import std.logic { Bool }
-import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 data peh_doc: String = "Wave 2 Band A (parse_engine_hooks self-emit): seed-linked behavioral receipt mirroring tools.self_host_use_site_verdict_behavioral_transport. Emit ONLY v2.compiler.parse_engine_hooks via gunbc compile --entry; compile the gunbc-emitted entry module in a v1_compiled driver crate linked against the v1-compiler seed path dependency. Seed-retained import dep (v2.std.node Symbol surface) is NOT re-emitted — minimal typed shim under dag/tools/self_host_parse_engine_hooks_shims/ supplies the ABI until v2.std.node self-emits on its own lane (DESIGN section 7 typed frontier). Behavioral bar: cargo-green witness pairs v1_compiled::v2_compiler_parse_engine_hooks (gunbc-emitted rs, not overwritten) with v1_compiler::v2_compiler_parse_engine_hooks (plain + --inject-fault RED) plus supplementary claim-run on parse_engine_hooks_test. Shim bytes read via Filesystem.Read at run time (provenance)."
 
@@ -34,7 +34,7 @@ fn peh_repo_path(root: String, rel: String) -> String {
 
 fn peh_cargo_toml(root: String) -> String {
   concat(
-    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim-rc = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
+    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
     concat(root, "/src/v1/stage0\" }\n")
   )
 }
@@ -47,7 +47,7 @@ fn peh_behavioral_receipt_holds() -> Bool {
   let driver_read = Filesystem.Read(path: peh_repo_path(root: root.path, rel: peh_shim_driver_rel))
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
   let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
   let emit = gunbc.WitnessBin.Run(
     workdir: root.path,

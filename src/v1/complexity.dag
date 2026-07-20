@@ -28,11 +28,13 @@ import std.computation {
 }
 import std.induction {
   SubValueRelation, StrictSubValue, IteratedSubValue, ArithmeticDescent, PreservedValue, SubValueUnknown,
-  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink,
   CostBound, ConstantBound, AtomicBound, ForeverBound, ErrorBound,
   AtomicCost, PolyCost, PolynomialExponent,
   cost_constant, cost_poly,
   sub_value_to_evidence, sub_value_to_call_pattern, sub_value_to_lowering_target, catamorphism_bound, derive_bound,
+}
+import std.computation {
+  ShrinkFactor, UnitShrink, ConstantShrink, ProportionalShrink
 }
 import v1.std.core {
   Node,
@@ -3758,6 +3760,7 @@ type StructuralBoundResult {
 type ComplexityReport {
   function_classes: Map<String, String>
   space_classes: Map<String, String>
+  function_space_bytes: Map<String, Int>
   violations: List<ComplexityViolation>
   structural_bounds: List<StructuralBoundResult>
 }
@@ -3766,6 +3769,7 @@ fn empty_complexity_report() -> ComplexityReport {
   ComplexityReport {
     function_classes: empty_map(),
     space_classes: empty_map(),
+    function_space_bytes: empty_map(),
     violations: [],
     structural_bounds: []
   }
@@ -4126,6 +4130,7 @@ type TopoBuildAcc {
   table: CostInternTable
   classes: Map<String, String>
   space_classes: Map<String, String>
+  function_space_bytes: Map<String, Int>
   violations: List<ComplexityViolation>
   fan_in: Map<String, Int>
 
@@ -4800,6 +4805,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
     table: empty_cost_intern_table(),
     classes: empty_map(),
     space_classes: empty_map(),
+    function_space_bytes: empty_map(),
     violations: [],
     fan_in: fan_in,
     processed: empty_map()
@@ -4811,6 +4817,11 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let new_classes = map_insert(acc.classes, func_name, class_str)
         let space_class_str = classify_complexity(expr: space_of(work: sr.summary.work))
         let new_space_classes = map_insert(acc.space_classes, func_name, space_class_str)
+        let space_bytes_opt = cost_account_space_from_summary(summary: sr.summary, size_env: empty_map())
+        let new_function_space_bytes = match space_bytes_opt {
+          Present { value: bs } => map_insert(acc.function_space_bytes, func_name, byte_size_count(b: bs))
+          Absent => acc.function_space_bytes
+        }
         let new_processed = map_insert(acc.processed, func_name, true)
 
         let new_violations = if is_unknown_cost(expr: sr.summary.work) {
@@ -4842,7 +4853,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
         let final_table = if self_fan_in <= 0 {
           evict_summary(table: evicted_table, func_name: func_name)
         } else { evicted_table }
-        TopoBuildAcc { table: final_table, classes: new_classes, space_classes: new_space_classes, violations: new_violations, fan_in: new_fan_in, processed: new_processed }
+        TopoBuildAcc { table: final_table, classes: new_classes, space_classes: new_space_classes, function_space_bytes: new_function_space_bytes, violations: new_violations, fan_in: new_fan_in, processed: new_processed }
       Absent => acc
     }
   })
@@ -4851,6 +4862,7 @@ fn build_complexity_report(func_entries: List<FuncEntry>, recursion_ctx: Recursi
   ComplexityReport {
     function_classes: result.classes,
     space_classes: result.space_classes,
+    function_space_bytes: result.function_space_bytes,
     violations: result.violations,
     structural_bounds: structural_bounds
   }

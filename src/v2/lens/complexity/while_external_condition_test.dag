@@ -1,31 +1,5 @@
 module v2.test.lens_complexity.while_external_condition
 
-import v2.lens.complexity {
-  ComplexityBound,
-  complexity_lens,
-  unknown_complexity_with_diagnostic
-}
-import v2.lens.cost { SymbolicCost, UnknownCost, cost_lens }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Unavailable,
-  node_locus
-}
-import v2.std.node {
-  Atom,
-  ComputationNode,
-  Edge,
-  Loop,
-  Node,
-  Positional,
-  Symbol,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.logic { Bool }
-import v2.std.witness { Holds, Violates, Witness }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

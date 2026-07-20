@@ -1,14 +1,5 @@
 module v2.test.manual.language_model_dissolution
 
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.model_core { model_core_first_primitive_substrate, bool_model_core }
-import v2.std.compilers.lexing { lex_rules_to_node, VoidLexRules }
-import v2.std.grammar { grammar_to_node, VoidGrammar }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.extdeps.languages.swift { swift_primitive_language_model }
-import v2.extdeps.languages.go { go_language_model }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

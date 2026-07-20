@@ -1,16 +1,9 @@
 module gunbc.tools.review
 
-import extdeps.cron.schedule_model { CronSchedule, Wildcard, Step, render_cron_schedule }
-import gunbc.tools.cron_tag { upsert_tagged_cron_tab }
-import extdeps.github.pulls
-import std.types { CommitSha }
-import extdeps.llm.anthropic
-import extdeps.llm.anthropic_rest
-import extdeps.shell
 
 data default_model: String = "claude-sonnet-4-6-20250929"
 data cron_schedule: CronSchedule = CronSchedule {
-  minute: Step { start: 0, step: 10 },
+  minute: extdeps.cron.schedule_model.Step { start: 0, step: 10 },
   hour: Wildcard,
   day_of_month: Wildcard,
   month: Wildcard,
@@ -73,10 +66,10 @@ func review_pr(
     pull_number: pr_number
   )
   design = shell.Exec.Run(
-    script: "cd ~/gunbc && git fetch origin {pr.pr.head.ref} 2>/dev/null; git show origin/{pr.pr.head.ref}:DESIGN.md 2>/dev/null || echo '(not found)'"
+    script: transport_script_from_body(body: "cd ~/gunbc && git fetch origin {pr.pr.head.ref} 2>/dev/null; git show origin/{pr.pr.head.ref}:DESIGN.md 2>/dev/null || echo '(not found)'")
   )
   algebra_ref = shell.Exec.Run(
-    script: "cd ~/gunbc && git show origin/{pr.pr.head.ref}:dag/std/algebra.dag 2>/dev/null || echo '(not found)'"
+    script: transport_script_from_body(body: "cd ~/gunbc && git show origin/{pr.pr.head.ref}:dag/std/algebra.dag 2>/dev/null || echo '(not found)'")
   )
 
   system_prompt = build_system_prompt(
@@ -128,7 +121,7 @@ func review_cycle(
     auth_token: "",
     owner: owner,
     repo: repo,
-    state: Open
+    state: extdeps.github.pulls.Open
   )
 
   results = for pr in open_prs.pulls {

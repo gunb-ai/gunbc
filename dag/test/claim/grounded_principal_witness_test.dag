@@ -1,46 +1,5 @@
 module test.claim.grounded_principal_witness
 
-import std.types { NonEmptyStr, Bool }
-import gunbc.fleet_posix_accounts {
-  FleetAccountCiRunner,
-  FleetAccountOperator,
-  FleetAccountRoot,
-  GroundedPosixPrincipal,
-  PosixAccountDeclaredProbe,
-  fleet_posix_principal,
-  grounded_posix_principal_name,
-  fleet_posix_account_from_name,
-  fleet_posix_account_exists,
-  posix_declared_probe_names_principal,
-  fleet_operator_email,
-  fleet_operator_gcp_iam_member,
-}
-import gunbc.ci_deploy_access {
-  ci_deploy_srv1_access,
-  ci_deploy_srv1_operator_access,
-  deploy_preflight_shell_header,
-  deploy_access_apt_get_binary_path,
-  deploy_access_apt_get_privileged_command,
-  grounded_principal_privileged_commands,
-  srv1_live_deploy_privileged_commands,
-  deploy_access_preflight_script,
-  deploy_access_privileged_fixture_actor,
-  deploy_mutation_gate,
-  Permit,
-  Deny,
-}
-import gunbc.ci_deploy_target_host {
-  DeployTargetHostObservation,
-  deploy_target_host_fixture_observation,
-}
-import gunbc.host_identity_access { host_identity_operator_principal_name }
-import gunbc.tailscale_acl_phase2_credential {
-  tailscale_acl_operator_email,
-  operator_principal_member,
-  operator_tailscale_acl_secret_bindings,
-}
-import extdeps.github.expressions { context_name, Runner }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -159,6 +118,18 @@ fn witness_deploy_preflight_script_is_dash_safe() -> Bool {
     && string_contains(s: script, pattern: deploy_preflight_shell_header)
 }
 
+fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
+  let projected = posix_sudo_grant_to_effect_grant(
+    g: PosixSudoGrant { command_path: fleet_apt_get_binary_path, check_argv: "--help" }
+  )
+  let expected = filesystem_position(path: ["usr", "bin", "apt-get"])
+  let root = grant_root(g: projected)
+  verb_eq(a: grant_verb(g: projected), b: verb_of_effect_shape(shape: ExecuteEffect))
+    && verb_eq(a: grant_verb(g: projected), b: Execute)
+    && position_under(target: expected, root: root)
+    && position_under(target: root, root: expected)
+}
+
 test fn grounded_principal_witnesses() -> Bool {
   witness_runner_fiction_not_in_roster()
     && witness_ghrunner_is_ci_deploy_principal()
@@ -173,4 +144,5 @@ test fn grounded_principal_witnesses() -> Bool {
     && witness_ci_runner_grounded_access_gate_permits()
     && witness_operator_grounded_access_gate_permits()
     && witness_deploy_preflight_script_is_dash_safe()
+    && witness_posix_sudo_grant_materializes_execute_grant()
 }

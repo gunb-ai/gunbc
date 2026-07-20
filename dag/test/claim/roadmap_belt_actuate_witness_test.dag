@@ -1,0 +1,335 @@
+module test.claim.roadmap_belt_actuate_witness
+
+import std.types { String, Int, List, Bool }
+import gunbc.roadmap_model {
+  RoadmapNodeId,
+  RoadmapNode,
+  IntricacyHigh, VolumeMedium,
+  PrsMerged,
+  Sized,
+}
+import gunbc.roadmap_status { DerivableLine, Unsigned }
+import gunbc.roadmap_dispatch_actuator {
+  HostExecArgv,
+  host_exec_argv,
+  DispatchLiveSession,
+}
+import gunbc.roadmap_belt { DispatchMember, DesiredMember, ObservedMember }
+import std.upsert_decision { ObservationVerdict, Converged }
+import gunbc.roadmap_belt_actuate {
+  BeltExecOutcome, ExecOk, ExecFailed, ExecRefused,
+  belt_exec,
+  belt_exec_all,
+  BeltSpawnOutcome, Spawned, SpawnFailed,
+  BeltTeardownOutcome, ReapedSession, TeardownFailed,
+  belt_actuate_spawn_member,
+  belt_actuate_teardown_member,
+  BeltObserve, Observed, ObserveRefused,
+  belt_observe_from_result,
+  belt_spawn_session_uuid,
+  BeltNodeLookup, NodeFound, NodeMissing,
+  belt_find_node_in,
+  belt_node_session_live,
+  BeltDispatchResult, DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
+  DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
+  belt_dispatch_result_ok,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn nid(s: String) -> RoadmapNodeId { s }
+
+fn ready_node(id: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: [1], title: id, description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSession {
+  DispatchLiveSession {
+    session_name: "gunbc-dispatch-{node_id}",
+    node_id: node_id,
+    windows: 1,
+    lease_verdict: verdict,
+  }
+}
+
+fn is_exec_ok(o: BeltExecOutcome) -> Bool {
+  match o {
+    ExecOk { stdout: _ } => true
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn exec_ok_stdout_contains(o: BeltExecOutcome, pattern: String) -> Bool {
+  match o {
+    ExecOk { stdout: out } => string_contains(s: out, pattern: pattern)
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn is_exec_failed(o: BeltExecOutcome) -> Bool {
+  match o {
+    ExecFailed { program: _, exit_code: _, stderr: _ } => true
+    ExecOk { stdout: _ } => false
+    ExecRefused { program: _, reason: _ } => false
+  }
+}
+
+fn is_exec_refused(o: BeltExecOutcome) -> Bool {
+  match o {
+    ExecRefused { program: _, reason: _ } => true
+    ExecOk { stdout: _ } => false
+    ExecFailed { program: _, exit_code: _, stderr: _ } => false
+  }
+}
+
+fn is_spawn_failed(o: BeltSpawnOutcome) -> Bool {
+  match o {
+    SpawnFailed { node_id: _, step: _, detail: _ } => true
+    Spawned { node_id: _, session_name: _ } => false
+  }
+}
+
+fn is_teardown_failed(o: BeltTeardownOutcome) -> Bool {
+  match o {
+    TeardownFailed { session_name: _, detail: _ } => true
+    ReapedSession { session_name: _ } => false
+  }
+}
+
+fn witness_exec_ok_runs_echo() -> Bool {
+  let o = belt_exec(cmd: host_exec_argv(program: "echo", args: ["belt-ok"]), workdir: "/")
+  is_exec_ok(o: o) && exec_ok_stdout_contains(o: o, pattern: "belt-ok")
+}
+
+fn witness_exec_refuses_missing_program() -> Bool {
+  let o = belt_exec(
+    cmd: host_exec_argv(program: "belt-nonexistent-program-xyz", args: []),
+    workdir: "/",
+  )
+  is_exec_refused(o: o)
+}
+
+fn witness_exec_fails_on_nonzero_exit() -> Bool {
+  let o = belt_exec(cmd: host_exec_argv(program: "false", args: []), workdir: "/")
+  is_exec_failed(o: o)
+}
+
+fn witness_exec_all_runs_every_step_when_ok() -> Bool {
+  let o = belt_exec_all(
+    cmds: [
+      host_exec_argv(program: "echo", args: ["first"]),
+      host_exec_argv(program: "echo", args: ["second"]),
+    ],
+    workdir: "/",
+  )
+  is_exec_ok(o: o) && exec_ok_stdout_contains(o: o, pattern: "second")
+}
+
+fn witness_exec_all_short_circuits_after_failure() -> Bool {
+  let o = belt_exec_all(
+    cmds: [
+      host_exec_argv(program: "false", args: []),
+      host_exec_argv(program: "echo", args: ["should-not-run"]),
+    ],
+    workdir: "/",
+  )
+  is_exec_failed(o: o) && !exec_ok_stdout_contains(o: o, pattern: "should-not-run")
+}
+
+fn witness_exec_all_fails_on_later_step() -> Bool {
+  let o = belt_exec_all(
+    cmds: [
+      host_exec_argv(program: "echo", args: ["ok"]),
+      host_exec_argv(program: "false", args: []),
+    ],
+    workdir: "/",
+  )
+  is_exec_failed(o: o)
+}
+
+fn witness_spawn_member_refuses_observed_shape() -> Bool {
+  let m = ObservedMember { node_id: "z", session: live_session(node_id: "z", verdict: Converged) }
+  is_spawn_failed(o: belt_actuate_spawn_member(m: m, workdir: "/"))
+}
+
+fn witness_teardown_member_refuses_desired_shape() -> Bool {
+  let m = DesiredMember { node_id: "a", node: ready_node(id: "a") }
+  is_teardown_failed(o: belt_actuate_teardown_member(m: m))
+}
+
+fn observe_live_count(o: BeltObserve) -> Int {
+  match o {
+    Observed { live: live } => count(live)
+    ObserveRefused { reason: _ } => -1
+  }
+}
+
+fn is_observe_refused(o: BeltObserve) -> Bool {
+  match o {
+    ObserveRefused { reason: _ } => true
+    Observed { live: _ } => false
+  }
+}
+
+fn witness_observe_parses_live_on_success() -> Bool {
+  observe_live_count(o: belt_observe_from_result(
+    success: true,
+    stdout: "gunbc-dispatch-a: 1 windows",
+    stderr: "",
+  )) == 1
+}
+
+fn witness_observe_empty_on_no_server() -> Bool {
+  observe_live_count(o: belt_observe_from_result(
+    success: false,
+    stdout: "",
+    stderr: "no server running on /tmp/tmux-1000/default",
+  )) == 0
+}
+
+fn witness_observe_empty_on_no_sessions() -> Bool {
+  observe_live_count(o: belt_observe_from_result(
+    success: false,
+    stdout: "",
+    stderr: "no sessions",
+  )) == 0
+}
+
+fn witness_observe_refuses_permission_error() -> Bool {
+  is_observe_refused(o: belt_observe_from_result(
+    success: false,
+    stdout: "",
+    stderr: "error connecting to /tmp/tmux-1000/default (Permission denied)",
+  ))
+}
+
+fn witness_observe_refuses_empty_stderr_failure() -> Bool {
+  is_observe_refused(o: belt_observe_from_result(
+    success: false,
+    stdout: "",
+    stderr: "",
+  ))
+}
+
+fn uuid_char(u: String, i: Int) -> String {
+  substring(s: u, start: i, end: i + 1)
+}
+
+fn witness_uuid_deterministic() -> Bool {
+  let a = belt_spawn_session_uuid(node_id: "5-regen-cutover")
+  let b = belt_spawn_session_uuid(node_id: "5-regen-cutover")
+  a == b
+}
+
+fn witness_uuid_distinct_nodes() -> Bool {
+  let a = belt_spawn_session_uuid(node_id: "node-a")
+  let b = belt_spawn_session_uuid(node_id: "node-b")
+  !(a == b)
+}
+
+fn witness_uuid_rfc4122_shape() -> Bool {
+  let u = belt_spawn_session_uuid(node_id: "5-regen-cutover")
+  string_length(s: u) == 36
+    && uuid_char(u: u, i: 8) == "-"
+    && uuid_char(u: u, i: 13) == "-"
+    && uuid_char(u: u, i: 18) == "-"
+    && uuid_char(u: u, i: 23) == "-"
+    && uuid_char(u: u, i: 14) == "4"
+    && uuid_char(u: u, i: 19) == "8"
+}
+
+fn is_node_found(l: BeltNodeLookup) -> Bool {
+  match l {
+    NodeFound { node: _ } => true
+    NodeMissing => false
+  }
+}
+
+fn witness_find_node_hits() -> Bool {
+  is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "b"))
+}
+
+fn witness_find_node_misses() -> Bool {
+  !is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "z"))
+}
+
+fn owned_node(id: String, owner: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: [1], title: id, description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    owner: owner,
+    signoff: Unsigned,
+  }
+}
+
+fn found_owner(l: BeltNodeLookup) -> String {
+  match l {
+    NodeFound { node: n } => n.owner
+    NodeMissing => ""
+  }
+}
+
+fn witness_find_node_first_wins_on_duplicate() -> Bool {
+  found_owner(l: belt_find_node_in(
+    nodes: [owned_node(id: "dup", owner: "first"), owned_node(id: "dup", owner: "second")],
+    node_id: "dup",
+  )) == "first"
+}
+
+fn witness_node_session_live_true() -> Bool {
+  belt_node_session_live(live: [live_session(node_id: "a", verdict: Converged)], node_id: "a")
+}
+
+fn witness_node_session_live_false() -> Bool {
+  !belt_node_session_live(live: [live_session(node_id: "a", verdict: Converged)], node_id: "b")
+}
+
+fn witness_dispatch_result_ok_spawned_and_live() -> Bool {
+  belt_dispatch_result_ok(r: DispatchSpawned { node_id: "a", session_name: "gunbc-dispatch-a" })
+    && belt_dispatch_result_ok(r: DispatchAlreadyLive { node_id: "a", session_name: "gunbc-dispatch-a" })
+}
+
+fn witness_dispatch_result_refusals_not_ok() -> Bool {
+  !belt_dispatch_result_ok(r: DispatchNodeNotFound { node_id: "a" })
+    && !belt_dispatch_result_ok(r: DispatchNodeAlreadyDone { node_id: "a" })
+    && !belt_dispatch_result_ok(r: DispatchObserveRefused { node_id: "a", reason: "x" })
+    && !belt_dispatch_result_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x" })
+}
+
+test fn roadmap_belt_actuate_witnesses() -> Bool {
+  witness_exec_ok_runs_echo()
+    && witness_exec_refuses_missing_program()
+    && witness_exec_fails_on_nonzero_exit()
+    && witness_exec_all_runs_every_step_when_ok()
+    && witness_exec_all_short_circuits_after_failure()
+    && witness_exec_all_fails_on_later_step()
+    && witness_spawn_member_refuses_observed_shape()
+    && witness_teardown_member_refuses_desired_shape()
+    && witness_observe_parses_live_on_success()
+    && witness_observe_empty_on_no_server()
+    && witness_observe_empty_on_no_sessions()
+    && witness_observe_refuses_permission_error()
+    && witness_observe_refuses_empty_stderr_failure()
+    && witness_uuid_deterministic()
+    && witness_uuid_distinct_nodes()
+    && witness_uuid_rfc4122_shape()
+    && witness_find_node_hits()
+    && witness_find_node_misses()
+    && witness_find_node_first_wins_on_duplicate()
+    && witness_node_session_live_true()
+    && witness_node_session_live_false()
+    && witness_dispatch_result_ok_spawned_and_live()
+    && witness_dispatch_result_refusals_not_ok()
+}

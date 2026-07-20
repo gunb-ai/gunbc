@@ -1,12 +1,12 @@
 module test.claim.effect_grant_witness_test
 
 import std.types { Bool, String, List }
-import std.effects { ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, PostAlways, PathParam }
+import std.effects { ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect, PostAlways, PathParam }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import std.effect_grant {
-  Verb, Read, Write, verb_of_effect_shape, verb_eq,
+  Verb, Read, Write, Execute, verb_of_effect_shape, verb_eq,
   NamespaceTree, FilesystemPathTree, UriTree, ServiceOpTree,
-  NamespacePosition, position_under,
+  NamespacePosition, position_under, filesystem_position,
   HandlerBinding, RealTransport, Replay,
   LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,
   Grant, Envelope,
@@ -57,6 +57,24 @@ data write_only_env: Envelope = Envelope {
   grants: [workspace_write_grant]
 }
 
+data usr_bin_root: NamespacePosition = filesystem_position(path: ["usr", "bin"])
+
+data apt_get_target: NamespacePosition = filesystem_position(path: ["usr", "bin", "apt-get"])
+
+data other_bin_target: NamespacePosition = filesystem_position(path: ["usr", "sbin", "other"])
+
+data execute_only_grant: Grant = Grant {
+  verb: Execute,
+  root: usr_bin_root,
+  binding: RealTransport,
+  lifecycle: LifecycleByConstruction
+}
+
+data execute_only_env: Envelope = Envelope {
+  frame: test_frame,
+  grants: [execute_only_grant]
+}
+
 data empty_env: Envelope = Envelope {
   frame: test_frame,
   grants: []
@@ -82,7 +100,9 @@ test fn effect_grant_verb_coarsening_witnesses() -> Bool {
     && verb_eq(a: verb_of_effect_shape(shape: DeleteEffect { key_source: PathParam { param: "id" } }), b: Write)
     && verb_eq(a: verb_of_effect_shape(shape: CreateEffect { cause: PostAlways }), b: Write)
     && verb_eq(a: verb_of_effect_shape(shape: AppendEffect), b: Write)
+    && verb_eq(a: verb_of_effect_shape(shape: ExecuteEffect), b: Execute)
     && !verb_eq(a: verb_of_effect_shape(shape: ReadEffect), b: Write)
+    && !verb_eq(a: verb_of_effect_shape(shape: ExecuteEffect), b: Write)
 }
 
 test fn effect_grant_position_under_witnesses() -> Bool {
@@ -101,6 +121,25 @@ test fn effect_grant_admission_witnesses() -> Bool {
     && is_refused(a: admit_effect(env: write_only_env, verb: Read, target: workspace_file))
     && is_refused(a: admit_effect(env: write_only_env, verb: Write, target: bmc_uri))
     && is_refused(a: admit_effect(env: empty_env, verb: Write, target: workspace_file))
+}
+
+test fn effect_grant_execute_admission_witnesses() -> Bool {
+  is_admitted(a: admit_effect(env: execute_only_env, verb: Execute, target: apt_get_target))
+    && is_refused(a: admit_effect(env: execute_only_env, verb: Execute, target: other_bin_target))
+    && is_refused(a: admit_effect(env: execute_only_env, verb: Write, target: apt_get_target))
+    && is_refused(a: admit_effect(env: execute_only_env, verb: Read, target: apt_get_target))
+    && is_refused(a: admit_effect(env: write_only_env, verb: Execute, target: apt_get_target))
+    && is_refused(a: admit_effect(env: empty_env, verb: Execute, target: apt_get_target))
+}
+
+test fn effect_grant_execute_refusal_is_located_witnesses() -> Bool {
+  match admit_effect(env: execute_only_env, verb: Execute, target: other_bin_target) {
+    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+      verb_eq(a: v, b: Execute)
+        && position_under(target: other_bin_target, root: t)
+        && position_under(target: t, root: other_bin_target)
+    Admitted { via_root: r } => false
+  }
 }
 
 test fn effect_grant_refusal_is_located_witnesses() -> Bool {
@@ -145,7 +184,17 @@ test fn effect_grant_bounding_witnesses() -> Bool {
       lifecycle: LifecycleByConvention
     }]
   }
+  let child_widens_execute = Envelope {
+    frame: frame_named(name: "child"),
+    grants: [Grant {
+      verb: Execute,
+      root: NamespacePosition { tree: FilesystemPathTree, path: ["usr", "bin", "apt-get"] },
+      binding: RealTransport,
+      lifecycle: LifecycleByConstruction
+    }]
+  }
   envelope_bounded_by(child: child_ok, parent: parent)
     && !envelope_bounded_by(child: child_widens_tree, parent: parent)
     && !envelope_bounded_by(child: child_widens_verb, parent: parent)
+    && !envelope_bounded_by(child: child_widens_execute, parent: parent)
 }

@@ -19,23 +19,4 @@ type WitnessAdmissionRefusal
   = WitnessAdmissionHolds
   | UnexecutedDeferredWitness { entry: String, function: String }
 
-data witness_admission_predicate_dissolution_note: String = "🟡 dissolve-on: witness_consumer_cadence_is_live and witness_admission_refusal_is_holds are mechanical single-arm Bool projections over closed sums (review 39758 on #6883, disposition sharp-bee-290) — DISSOLVES WHEN the admission workflow stabilizes and consumers match the sums directly, at which point delete both fns; do not add new consumers of these projections."
-
-fn witness_consumer_cadence_is_live(cadence: WitnessConsumerCadence) -> Bool {
-  match cadence {
-    NoConsumer => false
-    DiscoverySelection => true
-    FalsifierSelfHostWet => true
-    BinWitnessWet => true
-    QuarantineProbeExpectRed => true
-    OfflineLocalRecipe => true
-    FixtureExplicitRoster => true
-  }
-}
-
-fn witness_admission_refusal_is_holds(refusal: WitnessAdmissionRefusal) -> Bool {
-  match refusal {
-    WitnessAdmissionHolds => true
-    UnexecutedDeferredWitness { entry: _, function: _ } => false
-  }
-}
+data witness_admission_predicate_dissolution_note: String = "witness_consumer_cadence_is_live / witness_admission_refusal_is_holds dissolved per review 39760 — workflow and tests match the coproducts directly (integration 39758 scaffold superseded on this branch)."

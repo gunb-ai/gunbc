@@ -1,6 +1,5 @@
 module gunbc.output_policy
 
-import std.types { Bool, Int, String }
 
 type Verbosity = Quiet | Normal | Verbose
 

@@ -3,6 +3,8 @@ module v2.compiler.emit_host
 import v2.compiler.emit { emit }
 import v2.compiler.emit_module { emit_module }
 import v2.compiler.infer { InferredTree }
+import v2.compiler.build_transport_admission { build_transport_admissible }
+import std.effect_grant { Admitted, EffectOutsideGrant }
 import v2.compiler.eval {
   Inputs,
   TestClaimEvalSubject,
@@ -21,6 +23,7 @@ import v2.std.collection { List, optional_present }
 import v2.std.host_transport {
   ByteString,
   EmitHostRuntimeRow,
+  HostTransportDescriptor,
   EmittedSource,
   EmittedWithSuffix,
   FixedText,
@@ -75,7 +78,6 @@ import v2.std.verdict {
   Verdict,
   Pass,
   Deferred,
-  SemanticMismatch,
   verdict_build_failed,
   verdict_run_failed,
   verdict_semantic_mismatch
@@ -111,6 +113,14 @@ fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
   }
 }
 
+fn emit_host_transport_outside_grant_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^emit_host_transport_outside_grant,
+    at: port_locus(port: ^emit_host_transport_port),
+    correction: None
+  }
+}
+
 fn emit_host_build_failed_diagnostic(at: Node) -> Diagnostic {
   Diagnostic {
     reason: ^emit_host_build_failed,
@@ -138,7 +148,8 @@ fn emit_host_receipt_from_source(
   exit: HostExit,
   stdout_bytes: ByteString,
   stderr_bytes: ByteString,
-  build_log: BuildLog
+  build_log: BuildLog,
+  compile_skipped: Bool
 ) -> EmitHostRunReceipt {
   EmitHostRunReceipt {
     target: target,
@@ -146,7 +157,8 @@ fn emit_host_receipt_from_source(
     exit: exit,
     logical_run: host_logical_run_from_exit(exit: exit, stdout_bytes: stdout_bytes),
     stderr_bytes: stderr_bytes,
-    build_log: build_log
+    build_log: build_log,
+    compile_skipped: compile_skipped
   }
 }
 
@@ -269,8 +281,64 @@ fn run_host_process(
   source: Medium<String>,
   fixture_inputs: Inputs
 ) -> Outcome<EmitHostRunReceipt> {
+  run_host_process_with_cache(
+    workspace_dir: "",
+    row: row,
+    target: target,
+    source: source,
+    fixture_inputs: fixture_inputs,
+    use_cache: false
+  )
+}
+
+fn run_host_process_cached(
+  workspace_dir: String,
+  row: EmitHostRuntimeRow,
+  target: TargetModel,
+  source: Medium<String>,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  run_host_process_with_cache(
+    workspace_dir: workspace_dir,
+    row: row,
+    target: target,
+    source: source,
+    fixture_inputs: fixture_inputs,
+    use_cache: true
+  )
+}
+
+fn run_host_process_with_cache(
+  workspace_dir: String,
+  row: EmitHostRuntimeRow,
+  target: TargetModel,
+  source: Medium<String>,
+  fixture_inputs: Inputs,
+  use_cache: Bool
+) -> Outcome<EmitHostRunReceipt> {
   let _inputs = fixture_inputs
   let transport = row.transport
+  match build_transport_admissible(transport: transport) {
+    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+      outcome_rejected(d: emit_host_transport_outside_grant_diagnostic())
+    Admitted { via_root: r } =>
+      run_host_process_admitted(
+        workspace_dir: workspace_dir,
+        transport: transport,
+        target: target,
+        source: source,
+        use_cache: use_cache
+      )
+  }
+}
+
+fn run_host_process_admitted(
+  workspace_dir: String,
+  transport: HostTransportDescriptor,
+  target: TargetModel,
+  source: Medium<String>,
+  use_cache: Bool
+) -> Outcome<EmitHostRunReceipt> {
   bind_outcome(
     o: build_invocation_argvs(builds: transport.build),
     f: fn(builds) {
@@ -286,7 +354,16 @@ fn run_host_process(
               }
             }
           )
-          let result = emit_host_run_transport(files: files, build: builds, run: run_argv)
+          let result = if use_cache {
+            emit_host_run_transport_cached(
+              workspace_dir: workspace_dir,
+              files: files,
+              build: builds,
+              run: run_argv
+            )
+          } else {
+            emit_host_run_transport(files: files, build: builds, run: run_argv)
+          }
           let exit = HostExit {
             outcome: Accepted {
               value: if result.success {
@@ -304,7 +381,8 @@ fn run_host_process(
               exit: exit,
               stdout_bytes: emit_host_octets_byte_string(octets: result.stdout_octets),
               stderr_bytes: emit_host_octets_byte_string(octets: result.stderr_octets),
-              build_log: BuildLog { lines: result.build_log }
+              build_log: BuildLog { lines: result.build_log },
+              compile_skipped: result.compile_skipped
             ),
             diagnostics: None
           }
@@ -323,6 +401,26 @@ fn run_emit_host(
     o: runtime_row_from_target(target: target),
     f: fn(row) {
       run_host_process(
+        row: row,
+        target: target,
+        source: source,
+        fixture_inputs: fixture_inputs
+      )
+    }
+  )
+}
+
+fn run_emit_host_cached(
+  workspace_dir: String,
+  target: TargetModel,
+  source: Medium<String>,
+  fixture_inputs: Inputs
+) -> Outcome<EmitHostRunReceipt> {
+  bind_outcome(
+    o: runtime_row_from_target(target: target),
+    f: fn(row) {
+      run_host_process_cached(
+        workspace_dir: workspace_dir,
         row: row,
         target: target,
         source: source,

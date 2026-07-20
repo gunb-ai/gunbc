@@ -19,7 +19,7 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
+use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -30,6 +30,16 @@ pub enum EffectShape<K> {
     DeleteEffect { key_source: K },
     CreateEffect { cause: Rc<CreateCause<K>> },
     AppendEffect,
+    ExecuteEffect,
+}
+
+pub fn execute_effect_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ExecuteEffect is the invoke-nature EffectShape variant (process/binary execution at a grounded filesystem position). NOT derived from HTTP methods; grounded by deploy-preflight displaced cost (sudo -n <binary> probes, whoami). std.effect_grant.verb_of_effect_shape coarsens it to Verb.Execute -- the verb is never minted without a shape arm (DESIGN 3). dissolve-on = none (landed authority).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -102,6 +112,7 @@ pub fn is_idempotent_effect(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool {
             CreateCause::KeylessFallback { method: method, .. } => false,
         },
         EffectShape::AppendEffect => false,
+        EffectShape::ExecuteEffect => false,
     }
 }
 
@@ -132,7 +143,17 @@ pub fn create_effect_is_dedupable(shape: Rc<EffectShape<Rc<KeySource>>>) -> bool
             CreateCause::PostAlways => false,
             CreateCause::KeylessFallback { method: method, .. } => false,
         },
-        _ => false,
+        EffectShape::ReadEffect => false,
+        EffectShape::UpsertEffect {
+            key_source: key_source,
+            ..
+        } => false,
+        EffectShape::DeleteEffect {
+            key_source: key_source,
+            ..
+        } => false,
+        EffectShape::AppendEffect => false,
+        EffectShape::ExecuteEffect => false,
     }
 }
 
@@ -152,12 +173,32 @@ pub fn create_double_init_collapsible(
                         CreateCause::KeylessFallback { method: method, .. } => false,
                     }
                 }
-                _ => false,
+                EffectShape::ReadEffect => false,
+                EffectShape::UpsertEffect {
+                    key_source: key_source,
+                    ..
+                } => false,
+                EffectShape::DeleteEffect {
+                    key_source: key_source,
+                    ..
+                } => false,
+                EffectShape::AppendEffect => false,
+                EffectShape::ExecuteEffect => false,
             },
             CreateCause::PostAlways => false,
             CreateCause::KeylessFallback { method: method, .. } => false,
         },
-        _ => false,
+        EffectShape::ReadEffect => false,
+        EffectShape::UpsertEffect {
+            key_source: key_source,
+            ..
+        } => false,
+        EffectShape::DeleteEffect {
+            key_source: key_source,
+            ..
+        } => false,
+        EffectShape::AppendEffect => false,
+        EffectShape::ExecuteEffect => false,
     }
 }
 
@@ -345,7 +386,19 @@ pub fn check_modifier_vs_derivation(
     reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
 }),
 },
-    _ => Rc::new(ModifierAgreement::Disagrees {
+    EffectShape::ReadEffect => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+    EffectShape::UpsertEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+    EffectShape::DeleteEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+    EffectShape::AppendEffect => Rc::new(ModifierAgreement::Disagrees {
+    reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
+}),
+    EffectShape::ExecuteEffect => Rc::new(ModifierAgreement::Disagrees {
     reason: "derivation says non-idempotent but modifier declares idempotent".to_string(),
 }),
 }
@@ -359,7 +412,11 @@ pub fn check_modifier_vs_derivation(
     CreateCause::PostAlways => Rc::new(ModifierAgreement::Agrees),
     CreateCause::KeylessFallback { method: method, .. } => Rc::new(ModifierAgreement::Agrees),
 },
-    _ => Rc::new(ModifierAgreement::Agrees),
+    EffectShape::ReadEffect => Rc::new(ModifierAgreement::Agrees),
+    EffectShape::UpsertEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Agrees),
+    EffectShape::DeleteEffect { key_source: key_source, .. } => Rc::new(ModifierAgreement::Agrees),
+    EffectShape::AppendEffect => Rc::new(ModifierAgreement::Agrees),
+    EffectShape::ExecuteEffect => Rc::new(ModifierAgreement::Agrees),
 }
                 } else {
                     if (!declared_idempotent.clone() && declared_readonly.clone()) {

@@ -1,14 +1,5 @@
 module test.claim.realization_reconcile_witness
 
-import std.types { Bool, String, List }
-import std.effects { CreateEffect, CreateIfAbsent, PostAlways, InputField }
-import std.realization {
-  RealizedStep, LocalInProcess,
-  Materialization, Recompute, Memoize, Share,
-  reconcile,
-}
-import std.realization_schedule { cost_account_predicted_zero }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -22,7 +13,7 @@ fn is_share(m: Materialization) -> Bool {
 
 fn step_create_if_absent(field: String) -> RealizedStep {
   RealizedStep {
-    shape: CreateEffect { cause: CreateIfAbsent { key_source: InputField { field: field } } },
+    shape: CreateEffect { cause: std.effects.CreateIfAbsent { key_source: InputField { field: field } } },
     placement: LocalInProcess,
     materialization: Recompute,
     cost: cost_account_predicted_zero()
@@ -47,7 +38,7 @@ fn has_no_share<S>(steps: List<RealizedStep<S>>) -> Bool {
 }
 
 fn witness_same_keysource_collapses_to_share() -> Bool {
-  let out = reconcile(steps: [
+  let out = std.realization.reconcile(steps: [
     step_create_if_absent(field: "id"),
     step_create_if_absent(field: "id")
   ])
@@ -55,7 +46,7 @@ fn witness_same_keysource_collapses_to_share() -> Bool {
 }
 
 fn witness_different_keysource_does_not_collapse() -> Bool {
-  let out = reconcile(steps: [
+  let out = std.realization.reconcile(steps: [
     step_create_if_absent(field: "id"),
     step_create_if_absent(field: "other")
   ])
@@ -63,7 +54,7 @@ fn witness_different_keysource_does_not_collapse() -> Bool {
 }
 
 fn witness_post_always_never_collapses() -> Bool {
-  let out = reconcile(steps: [ step_post_always(), step_post_always() ])
+  let out = std.realization.reconcile(steps: [ step_post_always(), step_post_always() ])
   (out |> length) == 2 && has_no_share(steps: out)
 }
 

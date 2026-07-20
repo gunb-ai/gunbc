@@ -6,7 +6,7 @@ import extdeps.cargo_build
 import extdeps.git
 import extdeps.gunbc
 import std.logic { Bool }
-import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 data stc_doc: String = "Wave 2 Band A (07_target_carriers self-emit): shim-free seed-linked behavioral receipt. Emit ONLY v2.compiler.target_carriers via gunbc compile --entry; the emitted lib.rs carries its std import closure (no hand dep shims). Seed oracle: v1_compiler::v2_compiler_target_carriers (hand-retained in src/v1/stage0). Behavioral bar: cargo-green witness pairs emitted vs seed on lossless_source + source_medium (Lossless/Lossy) with FreeMonoid<Char> text carrier (plain + --inject-fault RED). Supplementary claim-run on target_carriers_fidelity_test covers decode_fidelity_from_target / target_source_medium."
 
@@ -30,7 +30,7 @@ fn stc_repo_path(root: String, rel: String) -> String {
 
 fn stc_cargo_toml(root: String) -> String {
   concat(
-    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim-rc = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
+    "[package]\nname = \"v1_compiled\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[features]\ntext_lookup_work_counter = []\n\n[[bin]]\nname = \"witness\"\npath = \"src/main.rs\"\n\n[dependencies]\nim = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
     concat(root, "/src/v1/stage0\" }\n")
   )
 }
@@ -41,7 +41,7 @@ fn stc_behavioral_receipt_holds() -> Bool {
   let driver_read = Filesystem.Read(path: stc_repo_path(root: root.path, rel: stc_shim_driver_rel))
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
   let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
   let emit = gunbc.WitnessBin.Run(
     workdir: root.path,

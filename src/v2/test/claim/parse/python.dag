@@ -1,22 +1,5 @@
 module v2.test.parse.python
 
-import v2.std.grammar { ParseTree }
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse }
-import v2.extdeps.languages.python { python_lex, python_grammar }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Integration,
-  manual_claim_anchor
-}
 data python_extended_fn_source: String = "def choose(x):\n    y = x + 1\n    if y > 0:\n        return y\n    return 0"
 
 fn python_parse_bool_atom(b: Bool) -> Node {

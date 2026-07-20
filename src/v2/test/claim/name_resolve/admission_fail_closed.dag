@@ -36,6 +36,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn fc_pass_node() -> Node {
   Node { kind: TypeNode { connective: Atom { identity: ^fc_pass_sym } }, children: [],
  occurrence_id: SyntheticOccurrence

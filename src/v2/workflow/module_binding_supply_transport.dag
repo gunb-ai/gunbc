@@ -1,0 +1,95 @@
+module v2.workflow.module_binding_supply_transport
+
+import extdeps.git
+import extdeps.gunbc
+import extdeps.shell
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.logic { Bool }
+import tools.host_prelude {
+  ClaimRun,
+  WitnessBinReady,
+  WitnessBinRefused,
+  run_gunbc_claims,
+  witness_bin,
+  witness_bin_ensure_built_typed,
+  witness_bin_release_path
+}
+import v2.std.text { String }
+
+data mbs_transport_note: String = "Executing consumer for the module-binding supply carrier. Emits BOTH manifests into one overlay source root and runs the consistency witness against them: --emit-module-binding-manifest supplies the whole-tree PARSED rows (module <-> path + provenance via v1_compiler_parse, no source text, so uncapped), and --emit-dag-manifest supplies the SOURCE TEXT the in-graph oracle re-derives from (bounded by that manifest's corpus-protection inline cap, hence the small scan dir). After task 4 both sides parse; the witness checks binding-table structural parity. The overlay root must sit UNDER the workspace root (an outside path panics in repo_relative_path_normalized) and must be ordered AFTER src/v2 so the committed stubs are superseded rather than colliding."
+
+data mbs_overlay_ephemeral_note: String = "The overlay directory MUST be ephemeral — freshly mktemp'd per run and removed after — never a fixed path. A fixed target/module-binding-supply/ was the first shape and it was WRONG: the sibling run_real_ingest_gate scans --source-root target RECURSIVELY, so a surviving overlay manifest collides with the committed stub of the same module and the indexer panics ('module-path collision ... one module, one authority'). That break is one run DELAYED, which is what makes it dangerous: on a fresh workspace the composed gate runs real_ingest BEFORE this gate creates the directory, so run 1 is green; the CI runners are persistent and target/ is gitignored, so the directory survives and run 2 panics. Found by running the composed gate end-to-end, after compile-clean and green individual witnesses had both missed it.
+
+Per-run mktemp plus unconditional cleanup makes the collision UNWRITABLE rather than order-dependent (DESIGN section 5 — construction over validation): there is no fixed path left for a second run to find, so gate ORDER stops being load-bearing for correctness. This mirrors compiler_closure_ingest_transport, which had the same overlay-under-a-scanned-root hazard and already solved it this way; the fix is adopting the sibling's shape, not inventing one."
+
+data mbs_source_root: String = "src/v2"
+data mbs_oracle_scan_dir: String = "src/v2/test/fixture/program_assembly"
+data mbs_overlay_template: String = "/target/module-binding-supply-XXXXXX"
+data mbs_entry: String = "src/v2/test/claim/long/module_binding_host_consistency_test.dag"
+
+data mbs_layout_entry: String = "src/v2/test/claim/self_host/crate_layout_witness_test.dag"
+
+data mbs_layout_claims_note: String = "The crate-layout witnesses run HERE, in the same overlay, because task 3 made them projections off the derived binding index instead of readers of a 27-row hand table. They need the real index, and the real index exists only inside this overlay — so this transport is their executing consumer.
+
+They were removed from compiler_frontier_census_holds in the same change (frontier_census_layout_relocation_note): the census is a pure zero-arity fast-lane gate that cannot obtain a host index, and the layer DAG forbids a compiler module importing v2.test.* to reach one. Enrolling them here is the other half of that removal, not a follow-on — a removal without this enrollment would leave a window where nothing checks crate layout at all.
+
+projection_refuses_on_absent_index is included deliberately even though it passes in either lane: it asserts the fail-closed arm on a LOCALLY constructed Empty index, so running it beside the populated-index witnesses proves both arms of the same projection in one place — the refusal is not merely an artifact of the fast lane having no data."
+
+fn mbs_claim_source_roots(overlay_dir: String) -> List<String> {
+  concat(witness_layer_roots, [overlay_dir])
+}
+
+fn mbs_emit_args(overlay_dir: String) -> List<String> {
+  [
+    "--source-root", mbs_source_root,
+    "--scan-dir", mbs_oracle_scan_dir,
+    "--emit-dag-manifest", concat(overlay_dir, "/host_source_root_ingest_manifest.dag"),
+    "--emit-module-binding-manifest", concat(overlay_dir, "/host_module_binding_manifest.dag")
+  ]
+}
+
+func run_module_binding_supply_gate_ready(root: String) -> Bool {
+  let target_ready = shell.Mkdir.Parents(path: concat(root, "/target"))
+  if target_ready.success {
+    let overlay = shell.Mktemp.DirWithTemplate(
+      template: concat(root, mbs_overlay_template)
+    )
+    if overlay.success {
+      let emitted = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+        args: mbs_emit_args(overlay_dir: overlay.path)
+      )
+      let ran = if emitted.success {
+        run_gunbc_claims(
+          source_roots: mbs_claim_source_roots(overlay_dir: overlay.path),
+          claims: [
+            ClaimRun { entry: mbs_entry, function: "module_binding_host_manifest_is_populated" },
+            ClaimRun { entry: mbs_entry, function: "module_binding_host_resolves_a_known_compiler_module" },
+            ClaimRun { entry: mbs_entry, function: "module_binding_host_agrees_with_parse_oracle" },
+            ClaimRun { entry: mbs_layout_entry, function: "projection_refuses_on_absent_index" },
+            ClaimRun { entry: mbs_layout_entry, function: "transition_parity_host_index_agrees_with_hand_rows" },
+            ClaimRun { entry: mbs_layout_entry, function: "crate_layout_witnesses" }
+          ]
+        )
+      } else {
+        false
+      }
+      let cleaned = shell.Remove.RecursiveForce(path: overlay.path)
+      ran && cleaned.success
+    } else {
+      false
+    }
+  } else {
+    false
+  }
+}
+
+func run_module_binding_supply_gate() -> Bool {
+  let root = git.Core.Toplevel()
+  let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
+  match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    WitnessBinReady { path: _ } => run_module_binding_supply_gate_ready(root: root.path)
+  }
+}

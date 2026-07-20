@@ -31,6 +31,7 @@ import std.realization_reconcile {
   reconcile_grounded
 }
 import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
 import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
@@ -1041,7 +1042,7 @@ fn provision_build_cache_reconcile_shell_observed(
 fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
   match transport {
     LocalShell => {
-      let result = shell.Exec.Run(script: script)
+      let result = shell.Exec.Run(script: transport_script_from_body(body: script))
       ShellExecObserved {
         exit_code: result.exit_code,
         success: result.success,

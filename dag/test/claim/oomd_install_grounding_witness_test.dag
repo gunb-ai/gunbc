@@ -1,42 +1,5 @@
 module test.claim.oomd_install_grounding_witness
 
-import std.types { Bool }
-import std.measure { byte_size, percent }
-import std.realization_reconcile {
-  ShowEffectiveRead,
-  ReadObserved,
-  Grounding,
-  Grounds,
-  DoesNotGround,
-  reconciliation_converged,
-}
-import gunbc.oomd_install {
-  OomdEffectiveRead,
-  OomdGroundingThresholds,
-  OomdGroundingCheck,
-  GroundingPass,
-  GroundingFail,
-  SliceMembershipSignal,
-  ground_oomd_from_read,
-  membership_grounding_check,
-  reconcile_oomd,
-  oomd_evidence_from_reconciliation,
-  gunbc_oomd_install_evidence,
-  gunbc_oomd_fleet_evidence,
-}
-import gunbc.ci_floor_measurement {
-  OomdEnforcementEvidence,
-  OomdEnforced,
-  OomdUnverified,
-  CapEffective,
-  CapUnbounded,
-  SessionAggregateMeasured,
-  SessionAggregateUnmeasured,
-}
-import extdeps.os.systemd { Active, Inactive }
-import extdeps.os.systemctl { UnitEnabled, UnitDisabled }
-import extdeps.os.oomd { ManagedOomKill, ManagedOomAuto }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -261,7 +224,7 @@ fn partial_migration_read() -> OomdEffectiveRead {
   }
 }
 
-fn grounding_is_enforced(g: Grounding<OomdEnforcementEvidence>) -> Bool {
+fn grounding_is_enforced(g: std.realization_reconcile.Grounding<OomdEnforcementEvidence>) -> Bool {
   match g {
     Grounds { evidence: e } =>
       match e {

@@ -24,8 +24,25 @@ import v2.compiler.self_host.frontier_probe_types {
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
+import v2.compiler.source_authority {
+  ModuleStorageIndex,
+  module_storage_module_for_path
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  outcome_accepted,
+  outcome_rejected,
+  port_locus
+}
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
 import v2.std.algebra { fold_list, length }
-import v2.std.collection { List }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.text { String }
@@ -80,6 +97,16 @@ type CompilerModuleFrontierRow {
 data compiler_frontier_module_count_expected: Int = 27
 
 data compiler_frontier_self_emitted_baseline: Int = 12
+
+data compiler_frontier_binding_hand_rows_note: String = "THE SECOND AUTHORITY, still live for ONE consumer and gated because of it. These 27 rows no longer serve the witness path — that projects off the derived ModuleStorageIndex — but they still feed the crate-layout EMITTER, which cannot be handed a host index without polluting an unrelated 18-variant dispatch (frontier_emitter_hand_row_debt_note has the full reasoning and the count).
+
+So two representations of the path⇄module fact are live at once, which §3 forbids in general. What makes this an honest interim rather than a fork is that they are PARITY-GATED: transition_parity_host_index_agrees_with_hand_rows is a STANDING witness on the wet cadence (promoted from one-time transition receipt, parent ruling 2026-07-19) asserting that the derived index and these rows answer identically for every path the rows name. If they ever drift, that witness REDS.
+
+That promotion is the point. As a one-time switchover check it would have proven the two agreed at a moment and said nothing afterwards, leaving a silent fork behind it. As a standing check it IS the §3 protection for as long as the duality lives — the mechanism that makes 'both exist' safe rather than merely admitted.
+
+It still catches both original failures — a projection bug (derivation disagrees with a known-good table) and hand-row drift (the table went stale and the derivation is right) — told apart by inspecting which side is wrong.
+
+dissolve-on: host-driven generation of the crate-layout artifact with the index supplied at the boundary. At that point this block, FrontierQualifiedModuleBinding, the _hand_rows fn family, and the parity witness are DELETED together — keeping any of them 'just in case' would restore the fork the parity gate exists to police."
 
 data compiler_frontier_qualified_module_bindings: List<FrontierQualifiedModuleBinding> = [
   FrontierQualifiedModuleBinding { module_path: "src/v2/compiler/00_compile.dag", qualified_module: "v2.compiler.compile" },
@@ -888,7 +915,35 @@ fn compiler_frontier_roster_matches_survey_holds(survey: List<FrontierProbeRecei
   )
 }
 
-fn compiler_frontier_qualified_module_for_path(target: String) -> String {
+data frontier_binding_projection_note: String = "Task 3 of docs/plans/module-identity-storage-binding-design.md: the path→module lookup is a PROJECTION off the derived binding authority (v2.compiler.source_authority ModuleStorageIndex), not a read of a hand table. The 27 hand FrontierQualifiedModuleBinding rows were the second authority §3 forbids; they survive in this PR only as the transition-parity oracle below and are deleted with it.
+
+The index arrives as a PARAMETER rather than an import, and that is forced by the layer DAG: the live rows are host-supplied through v2.test.workflow.host_module_binding_manifest, and no src/v2/compiler module may import v2.test.* (imports point toward std, §3). So the compiler layer owns the pure lookup and the test layer supplies the index.
+
+The distinction that decides whether this is a real dissolution or a relocated ledger is WHAT FLOWS IN, not the arity: passing a pure constant hand index would satisfy the signature and still be a parallel ledger. The live callers pass host_module_bindings."
+
+data frontier_binding_refusal_note: String = "Two DISTINCT located causes, never one. The prior lookup returned \"\" on miss — a sentinel meaning BOTH 'no binding for this path' AND 'the module name is empty' (state-space conflation, a named recurring failure mode). Projected off an unavailable index that sentinel becomes actively dangerous: every lookup returns \"\", and rust_qualified_module_mod_basename would fabricate a basename from the empty string SILENTLY, so a gate reading an EMPTY carrier would report on names it invented (§5 fabricated plausible output — structurally the coverage_complete-over-Empty shape).
+
+^frontier_binding_index_unavailable says the projection could not be computed (⊤-as-ignorance). ^frontier_binding_path_unbound says it was computed and this path genuinely has no module (a real answer). Their remedies differ — supply the index vs fix the roster or the tree — which is exactly why they are not one arm."
+
+fn frontier_binding_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: port_locus(port: ^compiler_frontier_binding_port),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data frontier_emitter_hand_row_debt_note: String = "TYPED, COUNTED DEBT — the emit path still reads the hand rows, and this is the one place that says so out loud.
+
+WHY IT SURVIVES: dag/gunbc/stage0_crate_layout_emit.dag generates stage0_crate_layout_generated.dag, and it is reached through generated_artifact_emit.dag's dispatch — ONE match over ~18 artifact variants, every one a zero-arg generator returning String. Supplying a ModuleStorageIndex there would force 17 unrelated generators to accept a host artifact they cannot use — the same coupling refused when the layout conjunct left compiler_frontier_census_holds (frontier_census_layout_relocation_note). Refusing it in one direction and accepting it in the other would be incoherent.
+
+COUNT: exactly ONE consumer chain — expected_stage0_crate_layout_generated_dag / _rs via hand_maintained_pub_mod_basenames, hand_maintained_stage0_filenames, emit_hand_maintained_pub_mod_block. Any NEW caller of the _hand_rows family is a regression, not a use.
+
+WHY THIS IS AN HONEST INTERIM RATHER THAN THE FORK §3 FORBIDS: the two authorities are not merely both present, they are PARITY-GATED. transition_parity_host_index_agrees_with_hand_rows is a STANDING witness on the wet cadence (promoted from transition artifact, parent ruling 2026-07-19) that REDS the moment the derived index and the hand rows disagree. A marked, parity-gated, trigger-bound duality is an interim; the same duality without the standing witness is a silent fork.
+
+dissolve-on: host-driven generation of the crate-layout artifact with the index supplied at the boundary (only host boundaries project paths, §2/§3) — its own designed lane, not a patch, because it touches the generated-artifact source and the same-PR regen discipline of the drift-gate chain. When it lands, this family, the 27 hand rows, FrontierQualifiedModuleBinding, and the parity witness are deleted TOGETHER."
+
+fn frontier_hand_rows_qualified_module_for_path(target: String) -> String {
   fold_list(
     xs: compiler_frontier_qualified_module_bindings,
     empty: "",
@@ -904,31 +959,15 @@ fn compiler_frontier_qualified_module_for_path(target: String) -> String {
   )
 }
 
-fn compiler_frontier_qualified_module_bindings_complete_holds() -> Bool {
-  length(xs: compiler_frontier_qualified_module_bindings) == compiler_frontier_module_count_expected
-}
-
-fn compiler_frontier_qualified_module_bindings_unique_holds() -> Bool {
-  fold_list(
-    xs: compiler_frontier_roster,
-    empty: true,
-    cons: fn(ok, row) {
-      ok
-        && (compiler_frontier_qualified_module_for_path(target: row.module_path) != "")
-        && (count_rows_with_module_path(xs: compiler_frontier_roster, target: row.module_path) == 1)
-    }
-  )
-}
-
-fn frontier_row_stage0_mod_basename(row: CompilerModuleFrontierRow) -> String {
+fn frontier_hand_rows_row_stage0_mod_basename(row: CompilerModuleFrontierRow) -> String {
   rust_qualified_module_mod_basename(
-    qualified_module: compiler_frontier_qualified_module_for_path(target: row.module_path)
+    qualified_module: frontier_hand_rows_qualified_module_for_path(target: row.module_path)
   )
 }
 
-fn self_emitted_frontier_row_stage0_mod_basename(row: CompilerModuleFrontierRow) -> List<String> {
+fn frontier_hand_rows_self_emitted_row_basename(row: CompilerModuleFrontierRow) -> List<String> {
   match row.disposition {
-    SelfEmitted => [frontier_row_stage0_mod_basename(row: row)]
+    SelfEmitted => [frontier_hand_rows_row_stage0_mod_basename(row: row)]
     SeedRetained { reason: _, migration_trigger: _ } => []
   }
 }
@@ -938,7 +977,87 @@ fn compiler_frontier_self_emitted_stage0_mod_basenames() -> List<String> {
     compiler_frontier_roster,
     init: [],
     f: fn(acc, row) {
-      concat(acc, self_emitted_frontier_row_stage0_mod_basename(row: row))
+      concat(acc, frontier_hand_rows_self_emitted_row_basename(row: row))
+    }
+  )
+}
+
+fn compiler_frontier_qualified_module_for_path(
+  index: ModuleStorageIndex,
+  target: String
+) -> Outcome<QualifiedName> {
+  if length(xs: index) == 0 {
+    outcome_rejected(d: frontier_binding_diagnostic(reason: ^frontier_binding_index_unavailable))
+  } else {
+    match module_storage_module_for_path(index: index, file_path: target) {
+      Present { value: v } => outcome_accepted(value: v)
+      Absent => outcome_rejected(d: frontier_binding_diagnostic(reason: ^frontier_binding_path_unbound))
+    }
+  }
+}
+
+fn compiler_frontier_qualified_module_dotted_for_path(
+  index: ModuleStorageIndex,
+  target: String
+) -> Outcome<String> {
+  bind_outcome(
+    o: compiler_frontier_qualified_module_for_path(index: index, target: target),
+    f: fn(qn) { outcome_accepted(value: qualified_name_to_dotted_string(qn: qn)) }
+  )
+}
+
+fn compiler_frontier_qualified_module_bindings_unique_holds(index: ModuleStorageIndex) -> Bool {
+  fold_list(
+    xs: compiler_frontier_roster,
+    empty: true,
+    cons: fn(ok, row) {
+      ok
+        && (match compiler_frontier_qualified_module_for_path(index: index, target: row.module_path) {
+             Accepted { value: _, diagnostics: _ } => true
+             Rejected { diagnostics: _ } => false
+           })
+        && (count_rows_with_module_path(xs: compiler_frontier_roster, target: row.module_path) == 1)
+    }
+  )
+}
+
+fn frontier_row_stage0_mod_basename(
+  index: ModuleStorageIndex,
+  row: CompilerModuleFrontierRow
+) -> Outcome<String> {
+  bind_outcome(
+    o: compiler_frontier_qualified_module_dotted_for_path(index: index, target: row.module_path),
+    f: fn(dotted) {
+      outcome_accepted(value: rust_qualified_module_mod_basename(qualified_module: dotted))
+    }
+  )
+}
+
+data frontier_basename_refusal_drop_note: String = "A row whose basename cannot be projected contributes NOTHING to this list, and the caller detects that by COUNT, not by a sentinel entry. compiler_frontier_crate_layout_holds asserts the produced length equals compiler_frontier_self_emitted_count(), so a refused projection shortens the list and REDS the gate — it cannot pass with an invented name in place of a real one.
+
+That count assertion is load-bearing rather than incidental: dropping a refusal silently is exactly the absorbing-drop shape §5 forbids (the pre-Phase-1 derivation made a failed module invisible to every downstream lookup), and the length check is what converts the drop back into a loud, counted failure. Do not weaken it to a subset test."
+
+fn self_emitted_frontier_row_stage0_mod_basename(
+  index: ModuleStorageIndex,
+  row: CompilerModuleFrontierRow
+) -> List<String> {
+  match row.disposition {
+    SelfEmitted => {
+      match frontier_row_stage0_mod_basename(index: index, row: row) {
+        Accepted { value: b, diagnostics: _ } => [b]
+        Rejected { diagnostics: _ } => []
+      }
+    }
+    SeedRetained { reason: _, migration_trigger: _ } => []
+  }
+}
+
+fn compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: ModuleStorageIndex) -> List<String> {
+  fold(
+    compiler_frontier_roster,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, self_emitted_frontier_row_stage0_mod_basename(index: index, row: row))
     }
   )
 }
@@ -1069,6 +1188,8 @@ fn basenames_to_stage0_filenames(basenames: List<String>) -> List<String> {
   basenames |> map(basename_to_stage0_filename)
 }
 
+data frontier_hand_maintained_arity_note: String = "These three keep their ORIGINAL zero-arity shape and read the hand rows, deliberately — they are the emit path described in frontier_emitter_hand_row_debt_note, and their caller (generated_artifact_emit.dag's ~18-variant dispatch) has no index to give them. Changing their arity is what broke this lane once: dag/gunbc and dag/test/claim callers compile CLEAN at a stale arity because .dag does not arity-check these cross-module sites, so the breakage surfaces only at run time."
+
 fn hand_maintained_pub_mod_basenames() -> List<String> {
   concat(
     concat(seed_retained_intrinsic_pub_mod_basenames(), seed_retained_scaffold_pub_mod_basenames()),
@@ -1083,14 +1204,15 @@ fn emit_hand_maintained_pub_mod_block() -> String {
 fn hand_maintained_stage0_filenames() -> List<String> {
   concat(
     concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files()),
-    basenames_to_stage0_filenames(basenames: compiler_frontier_self_emitted_stage0_mod_basenames())
+    basenames_to_stage0_filenames(
+      basenames: compiler_frontier_self_emitted_stage0_mod_basenames()
+    )
   )
 }
 
-fn compiler_frontier_crate_layout_holds() -> Bool {
-  compiler_frontier_qualified_module_bindings_complete_holds()
-    && compiler_frontier_qualified_module_bindings_unique_holds()
-    && (length(xs: compiler_frontier_self_emitted_stage0_mod_basenames()) == compiler_frontier_self_emitted_count())
+fn compiler_frontier_crate_layout_holds(index: ModuleStorageIndex) -> Bool {
+  compiler_frontier_qualified_module_bindings_unique_holds(index: index)
+    && (length(xs: compiler_frontier_self_emitted_stage0_mod_basenames_from_index(index: index)) == compiler_frontier_self_emitted_count())
 }
 
 fn compiler_frontier_census_holds() -> Bool {
@@ -1107,8 +1229,15 @@ fn compiler_frontier_census_holds() -> Bool {
     && compiler_frontier_self_emitted_located_reason_holds()
     && compiler_frontier_roster_probe_paths_match_holds()
     && compiler_frontier_band_a_emit_readiness_holds()
-    && compiler_frontier_crate_layout_holds()
 }
+
+data frontier_census_layout_relocation_note: String = "SCOPE CHANGE, stated loudly because it NARROWS this gate: compiler_frontier_crate_layout_holds is no longer a conjunct of compiler_frontier_census_holds. It is RELOCATED, not deleted, and the relocation lands in the same PR as this removal — never a removal now and an enrollment later, which would leave a window where nothing checks it.
+
+WHY it cannot stay here: the layout gate now requires a ModuleStorageIndex, and the live index is host-supplied through v2.test.workflow.host_module_binding_manifest. compiler_frontier_census_holds is a pure zero-arity gate on the FAST lane with no way to obtain one, and the layer DAG forbids a compiler module importing v2.test.* to reach it. Threading an index through the whole census — whose other ~12 conjuncts have nothing to do with bindings — would make every unrelated census check depend on a host artifact, which is a worse coupling than the one being removed.
+
+WHERE it went: v2.test.claim.self_host.crate_layout_witness_test, enrolled on the WET cadence (module_binding_supply_transport), where the real index exists. The fast-lane census keeps every conjunct that does not need one, so this narrows the fast lane by exactly one check and widens what that check can actually see — from 27 hand rows to the whole-tree derived index.
+
+The honest cost: a PR that touches only the frontier roster no longer gets layout coverage in the fast lane; it gets it on the wet cadence instead. That is a real latency increase for that one signal, accepted deliberately rather than papered over."
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }

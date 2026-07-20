@@ -48,6 +48,34 @@ fn realize_verdict_width(v: RealizeVerdict) -> Int {
   }
 }
 
+fn realize_verdict_label(v: RealizeVerdict) -> String {
+  match v {
+    PackedWidth { width: _ } => "PackedWidth"
+    MaturationReserve { width: _ } => "MaturationReserve"
+    BudgetRefused => "BudgetRefused"
+  }
+}
+
+data realize_advisory_note: String = "P4 advisory-first bridge entry (witness-realization plan): the terminal-kernel executor (claim_executor, hand Rust) consumes the modeled packing law through the interpreter — it extracts the DERIVED per-function space bound (ComplexityReport.function_space_bytes, empty size_env — a closed witness has no free size-vars) and the host budget as plain Int?s, and this wrapper reconstructs the DerivedBound/HostBudget shapes and calls realize_pack_width. The law stays modeled here (§2, no Rust reimplementation); the kernel only marshals scalars and reads back a RealizeAdvisory. Advisory-first (§5): the verdict is LOGGED beside the live MemoryGovernor admission, never yet used to schedule, so the derived bounds are proven sound on the real corpus before the governor is demoted to a safety net. Absent derived_bytes -> BoundUnknown -> MaturationReserve (the fail-closed frontier), never a fabricated width."
+
+type RealizeAdvisory {
+  width: Int
+  verdict: String
+}
+
+fn realize_advisory(derived_bytes: Int?, budget_bytes: Int?, independence_width: Int) -> RealizeAdvisory {
+  let bound = match derived_bytes {
+    Present { value: b } => BoundDerived { bytes: byte_size(count: b) }
+    Absent => BoundUnknown
+  }
+  let budget = match budget_bytes {
+    Present { value: y } => BudgetReadable { bytes: byte_size(count: y) }
+    Absent => BudgetUnreadable
+  }
+  let v = realize_pack_width(bound: bound, budget: budget, independence_width: independence_width)
+  RealizeAdvisory { width: realize_verdict_width(v: v), verdict: realize_verdict_label(v: v) }
+}
+
 fn realize_fits_budget(v: RealizeVerdict, bound: DerivedBound, budget: HostBudget) -> Bool {
   match budget {
     BudgetUnreadable => match v { BudgetRefused => true  PackedWidth { width: _ } => false  MaturationReserve { width: _ } => false }

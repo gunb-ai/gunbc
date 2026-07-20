@@ -1,52 +1,6 @@
 module v2.test.parse.parse_table_claims
 
-import v2.std.logic { Bool }
-import v2.std.collection { List, Set }
-import std.algebra { Cons, Empty }
-import v2.std.algebra { length }
-import v2.std.compilers.lexing { Token }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.node {
-  Atom,
-  Node,
-  Symbol,
-  TypeNode
-}
-import v2.std.grammar {
-  StampClass,
-  Choice,
-  GrammarExpr,
-  GrammarProduction,
-  GrammarRoot,
-  ModeledGrammar,
-  Nonterminal,
-  Optional,
-  ParseGrammar,
-  Repeat,
-  Sequence,
-  Terminal,
-  grammar_atom,
-  grammar_carries_symbol,
-  grammar_empty_sync_tokens
-}
-import v2.compiler.parse {
-  expr_direct_left_corner_list,
-  expr_has_undefined_nonterminal,
-  expr_is_nullable_given_set,
-  parse_expr,
-  parse_prov_initial,
-  parse_table_empty,
-  ParseExprAccepted,
-  ParseExprRejected,
-  token_position_indices
-}
 
-import v2.std.verification {
-  BoolWitness,
-  BoolWitnessClaim,
-  UnifiedTestClaim
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 fn parse_table_token(class: Symbol) -> Token {

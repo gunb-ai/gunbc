@@ -3,7 +3,7 @@ module v1.compiler.effect_derivation
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 
 import std.effects {
-  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
+  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect,
   KeySource, PathParam, InputField, CompositeKey,
   DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput,
   ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
@@ -26,10 +26,14 @@ import std.http_path {
   has_path_params,
   last_path_param
 }
+
 import extdeps.uri_path {
   PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
   parse_path_template,
 }
+
+
+
 
 fn re_export_derive_op_effect(
   operation_name: String,

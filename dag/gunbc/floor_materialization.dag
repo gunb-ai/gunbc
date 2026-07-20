@@ -1,23 +1,5 @@
 module gunbc.floor_materialization
 
-import std.types { Bool, Int, List, String }
-import std.realization_schedule { ScheduleWitnessEntry }
-import gunbc.ci_gate {
-  Gate,
-  EmitHostGate, LayeringImportsGate, ExtdepsExternalAuthorityGate,
-  DagCompileCleanGate, GeneratedArtifactDriftGate, SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate
-}
-import std.materialization_ladder {
-  Frame, SharedStateFrame,
-  CacheProvider, ReferenceTier,
-  CoversIdentities,
-  scope_exit_eviction,
-  provider_row,
-  ValueUsage, ValueConsumerEdge, ReadAccess,
-  ValueMaterialization, value_materialization
-}
-
 data floor_materialization_note: String = "P1 — the in-process INDEX-BUILD share, declared. Every floor consumer (spec gates + witness entries + the floor-runner/entry-selection prelude) resolves against ONE shared MultiEntryIndex — union-resolve S1 (#6234) materializes the parse + typecheck index once per (thread, source_roots) via process_shared_index (cli_run.rs:1737); each consumer then assembles its own view over that shared index. N consumers demanding one index-build with no Share is the ladder's rule-1 AuthoredDuplication at a SharedStateFrame (one claim_executor process); S1 already did the rule-1 REWIRE (the index is readonly, so the plural reads are legal at the VALUE tier). This module DECLARES that correct-but-undeclared share as a ReferenceTier provider row so it is ladder-visible and a regression (a consumer that builds a private index instead of reading the share) is countable, not re-discovered per lens/gate."
 
 data floor_three_quantities_note: String = "GRAIN (merry-moth-539, 2026-07-09) — three DISTINCT quantities, kept apart so the share is not mislabeled a lie: (1) index-build(dag,src/v2) = 1 materialization, K readers = THIS module's P1 (identity union-INDEX-build, deliberately NOT 'union-resolve' so it cannot collide with the entry-resolve grain); (2) per-entry CLOSURE resolves = K today = gunbc.ci_materialization's resolves_total receipt (resolve_entry_graph still fires once per distinct entry — S1 shares the INDEX, not the per-entry closures; memo_deduplicates_resolve_count proves once-PER-ENTRY), the ratchet target that the graph-major node-store rewire collapses K->~1; (3) readers of the share = K = this module's reader_count. Case study: S1 already bought index=1 (declared here); the remaining duplication is the K closure resolves (counted there); the graph-major node-store rewire kills those. Declaring the share moves nothing at runtime, so this lane does NOT touch ci_floor_declared_resolve_count."
@@ -26,8 +8,8 @@ data floor_index_build_share_provider_id: String = "process_shared_index"
 
 data floor_index_build_identity: String = "union-index-build(dag,src/v2)"
 
-fn floor_executor_process_frame() -> Frame {
-  Frame { name: "claim_executor-process", kind: SharedStateFrame }
+fn floor_executor_process_frame() -> std.materialization_ladder.Frame {
+  std.materialization_ladder.Frame { name: "claim_executor-process", kind: SharedStateFrame }
 }
 
 data floor_index_build_share_provider: CacheProvider = provider_row(

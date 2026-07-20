@@ -1,5 +1,6 @@
 module v2.lens.module_graph
 
+
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -9,6 +10,8 @@ import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_
 import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+
+
 
 type ModuleDeclarationFact {
   module: String
@@ -128,7 +131,7 @@ type ImportClosureBfsState {
 }
 
 fn map_lookup_where_rejected_unreachable<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
-  match map_get(m: m, key: key) {
+  match v2.std.collection.map_get(m: m, key: key) {
     Accepted { value: v, diagnostics: _ } => v
     Rejected { diagnostics: _ } => Absent
   }
@@ -343,6 +346,10 @@ fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
 fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
   any(xs: closure, predicate: fn(closure_path) { path_matches_touched(closure_path: closure_path, touched_path: path) })
 }
+
+data edgeless_entry_has_no_special_arm_note: String = "There is deliberately NO edgeless-entry arm here, and the one this branch briefly carried (entry_without_declared_edges_never_skips_note + module_declares_outgoing_dependency_edge, added after the import strip and now deleted) was the absorbing fallback DESIGN 5 names verbatim: 'can't compute the affected set -> rerun the entire suite'. It answered affected=true for every entry with no outgoing edges, which after the strip was ~530 claim modules, silently and uncounted — so the deficit's frequency was zero by construction while its cost surfaced as a 95-minute CI floor instead of as a diagnostic. It also was not answering an unknown: dependency_closure seeds with the entry itself, so an edgeless entry has the precise closure of the entry alone and 'affected iff my own file is touched' is a real answer. The two states that arm conflated are split on the host twin (cli_run.rs entry_file_touched_via_import_closure): a producer that looked and found no edges falls through to the closure; a producer that could not read or parse the file returns a typed AFFECTED-SET REFUSAL, because an unknown dependency set is not an empty one."
+
+data dag_surface_edge_source_lag_note: String = "HONEST DIVERGENCE, not a fork to reconcile by editing this file: the host twin now unions strict-tier (Qualified + UniqueBare) reference-derived edges onto the import edges, so it answers precisely for import-less files. This surface cannot yet, because reference_resolution_facts is not registered as a .dag builtin beside import_resolution_facts — so dependency_resolution_facts_live has nothing to swap its body to, which is exactly the swap dependency_edge_source_migration_note designates. Until that registration lands this surface under-selects for stripped entries relative to the host. It is NOT the live CI path (the compile-clean gate and the floor both run the host realization), and the divergence is bounded to entries the host now answers better. Dissolve-on: register the builtin, swap dependency_resolution_facts_live's body, delete this note. Do not paper over the gap by re-adding a widen arm — that trades a bounded, named lag for an unbounded silent one."
 
 fn entry_affected_by_touched_paths_excluding(
   entry_path: String,

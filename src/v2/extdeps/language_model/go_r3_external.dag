@@ -1,38 +1,5 @@
 module v2.test.language_model.go_r3_external
 
-import v2.lens.leaf_model_verification {
-  go_leaf_model_fact_atom,
-  go_r3_external_fixture,
-  go_r3_external_falsification_fixture_source,
-  go_r3_external_happy_fixture_source
-}
-import v2.std.diagnostic {
-  Diagnostic,
-  Textual,
-  Unavailable,
-  UserInputBoundary,
-  WholeFile,
-  outcome_rejected
-}
-import v2.std.leaf_model_verification {
-  LeafModelVerificationRunReceipt,
-  leaf_model_claim_go_r3_external_symbol_projection,
-  TargetCompileAccepted,
-  TargetCompileRejected,
-  TargetCompileVerdict,
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verdict { verdict_fail }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Boundary,
-  manual_claim_anchor
-}
 fn go_r3_external_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^go_r3_external_claim_bool_true } }, children: [],

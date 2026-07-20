@@ -1,75 +1,5 @@
 module test.claim.host_identity_observation_witness
 
-import std.types { Bool, String, NonEmptyStr }
-import gunbc.fleet_intent { srv1_host, srv2_host }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
-import std.error_primitives { Ok, Err }
-import gunbc.host_effect {
-  NodeControlPlane,
-  HostOs,
-  LocalShell,
-  ShellCommand,
-  host_effect_identity_evidence,
-}
-import gunbc.host_effect_realize { host_effect_apply }
-import std.realization_reconcile { reconciliation_converged }
-import gunbc.host_identity_observation {
-  HostIdentityObservationRow,
-  host_identity_short_hostname_script,
-  gunbc_srv1_host_identity_observation_fixture_row,
-  gunbc_srv2_host_identity_observation_fixture_row,
-  host_identity_observation_from_stdout,
-  host_identity_observation_apply,
-  host_identity_observation_from_apply,
-  host_identity_observation_nonempty,
-  fixture_host_identity_observation,
-  fixture_host_identity_observation_srv2,
-}
-import gunbc.deployed_intent_v0 {
-  gunbc_srv1_deployed_intent_v0_persisted,
-  gunbc_srv2_deployed_intent_v0_persisted,
-  deployed_intent_observed_differs_from_fleet_slot,
-  deployed_intent_observed_short_hostname,
-  deployed_intent_v0_from_observation_row,
-}
-import gunbc.host_identity_adopt {
-  srv1_host_identity_ssh_transport,
-  host_identity_transport_label,
-  host_identity_adopt_receipt,
-  host_identity_adopt_receipt_is_valid,
-  host_identity_adopt_model_hash,
-}
-import std.change { KeyedApplyHunk }
-import gunbc.host_identity_knob {
-  host_identity_knob_key,
-  three_way_leaf,
-  host_identity_knob_value,
-  host_identity_patch_from_intents,
-}
-import gunbc.host_identity_converge {
-  ApplyPlan,
-  host_identity_precondition_verdict,
-  host_identity_precondition_is_conflict,
-  host_identity_precondition_permits_apply,
-  host_identity_precondition_is_noop,
-  host_identity_plan_from_verdict,
-  host_identity_apply_gated,
-  host_identity_unprivileged_refusal_has_no_marker,
-  host_identity_read_back_matches,
-}
-import gunbc.deployed_intent_v1 {
-  gunbc_srv1_deployed_intent_v1,
-  deployed_intent_v1_desired_hostname_short,
-}
-import gunbc.host_identity_assimilation {
-  HostIdentityAssimilationTarget,
-  host_identity_converge_with_observation,
-}
-import gunbc.host_identity_access { host_identity_srv1_access }
-import gunbc.ci_deploy_access { deploy_access_unprivileged_fixture_actor }
-import gunbc.host_effect { SshShell, EmitArtifactThenThinRun }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -268,7 +198,6 @@ fn witness_drift_conflict_red_no_apply_arm() -> Bool {
         observed_hostname: "unexpected-host",
         desired_hostname: operator_host_srv1,
       ),
-      desired_hostname: operator_host_srv1,
     )
 }
 

@@ -13,8 +13,7 @@ import v2.std.witness_admission {
   QuarantineProbeExpectRed,
   OfflineLocalRecipe,
   DiscoverySelection,
-  NoConsumer,
-  witness_consumer_cadence_is_live
+  NoConsumer
 }
 import v2.std.algebra { length }
 import v2.std.logic { Bool }
@@ -60,21 +59,36 @@ fn witness_synthetic_orphan_admission_red_holds() -> Bool {
 }
 
 fn witness_known_red_probe_consumer_holds() -> Bool {
-  witness_consumer_cadence_is_live(
-    cadence: witness_consumer_cadence_for_row(
-      entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-      function: "logic_complement_truth_table",
-      excluded_from_discovery: true
-    )
-  )
-    && match witness_consumer_cadence_for_row(
-      entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
-      function: "logic_complement_truth_table",
-      excluded_from_discovery: true
-    ) {
-      QuarantineProbeExpectRed => true
-      _ => false
-    }
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/emit/logic_ground_truth_test.dag",
+    function: "logic_complement_truth_table",
+    excluded_from_discovery: true
+  ) {
+    QuarantineProbeExpectRed => true
+    _ => false
+  }
+}
+
+fn witness_field_access_wet_offline_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
+    function: "emit_on_demand_field_access_agreement_holds",
+    excluded_from_discovery: true
+  ) {
+    OfflineLocalRecipe => true
+    _ => false
+  }
+}
+
+fn witness_complement_wet_offline_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
+    function: "emit_on_demand_complement_agreement_holds",
+    excluded_from_discovery: true
+  ) {
+    OfflineLocalRecipe => true
+    _ => false
+  }
 }
 
 fn witness_offline_execution_lane_consumer_holds() -> Bool {
@@ -109,6 +123,8 @@ test fn witness_admission_invariant_holds() -> Bool {
     && witness_synthetic_orphan_has_no_consumer_holds()
     && witness_synthetic_orphan_admission_red_holds()
     && witness_known_red_probe_consumer_holds()
+    && witness_field_access_wet_offline_consumer_holds()
+    && witness_complement_wet_offline_consumer_holds()
     && witness_offline_execution_lane_consumer_holds()
     && witness_discovery_row_consumer_holds()
     && witness_explicit_manifest_nonempty_holds()

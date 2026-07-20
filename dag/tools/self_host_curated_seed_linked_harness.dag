@@ -9,7 +9,7 @@ import std.logic { Bool }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { List }
 import v2.std.text { String }
-import tools.host_prelude { witness_bin, witness_bin_ensure_built_typed, witness_bin_release_path }
+import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
 
 data cssl_doc: String = "Reusable curated seed-linked self-host harness (Wave 2 easy-flip lane): factors the duplicated emit->shim-assemble->cargo->witness(fault) spine shared by Band A behavioral transports. Probe lane consumes only cssl_v1_compiled_probe_lib_cargo_toml via tools.self_host_curated_probe_cargo. Curated = gunbc emit must succeed, then seed-retained dep shims + shim lib.rs replace the emitted closure so the entry module rustc-links against v1-compiler without waiting for full std self-emit or emitter Track-B body fixes. Each module lane supplies its own shim file paths, witness driver, pass marker, and optional supplementary claim-run. Empty shim_lib_rel = keep gunbc-emitted lib.rs (runtime closure only). Empty claim_entry_rel = skip supplementary claim-run. Dissolve-on: modeled self-host behavioral-equivalence harness producer emits this carrier's operations without per-module copy-paste (parallel to slb/ssuv_scaffold_dissolution_trigger)."
 
@@ -21,9 +21,9 @@ data cssl_std_bridge_shims_rel: String = "dag/tools/self_host_std_bridge_shims"
 
 data cssl_std_bridge_scaffold_dissolution_trigger: String = "dissolve-on: dag/tools/self_host_std_bridge_shims/* shared std-bridge (emitted-side ONLY; seed oracle uses v1_compiler real std). DISSOLVES WHEN v2 std self-emits and gunbc emits seed-linked extern imports without hand ABI bridges."
 
-data cssl_emit_artifact_sanitize_scaffold_debt: String = "SCAFFOLD — probe-side string scrub in cssl_seed_linked_closure_assembly.rs on emitted v2_std_witness.rs (Witness import/enum collision with v1_rt). The v2_std_integer.rs arm (blind Int128..UInt8 line-range strip) was REMOVED 2026-07-18: real-entry reproduction against the production cssl_seed_linked_behavioral_receipt path (04_infer.dag full closure, primary-precedence pool, rebuilt cssl_assemble binary) found the emit source already writes exactly one copy of each struct — the strip was silently deleting the only legitimate copy, not a duplicate; its dissolve-on trigger had already fired with no live rustc symptom to mark it (a corrupting no-op, latent breakage for any future Int128..UInt8 consumer). Same class as scripts/lib/apply_std_seed_link_assembly.sh measurement patches. Remaining scrub: dissolve-on #6775 emitter Rc/Optional coherence greens the Witness collision at emit source; delete sanitize_emitter_artifact_in_place when curated cargo probes pass without scrub (countable via CSSL_ASSEMBLE: sanitize scaffold applied stderr line)."
+data cssl_emit_artifact_sanitize_scaffold_debt: String = "SCAFFOLD — probe-side sanitize in cssl_seed_linked_closure_assembly.rs on every emit-retained artifact (dissolve-on #6775 emitter coherence). Two structural passes, no hand name roster: (1) strip use crate::v1_rt::NAME when the file locally defines pub enum/struct/type NAME (generic-arg-aware — Witness and Optional share the rule); (2) dedupe symbols across sequential pub use braces (transitive re-export collision — emit_produced Optional via grammar+collection). The v2_std_integer.rs blind strip was REMOVED 2026-07-18 (corrupting no-op). Delete sanitize_emitter_artifact_in_place when curated probes pass without CSSL_ASSEMBLE: sanitize scaffold applied stderr."
 
-data cssl_closure_assembly_note: String = "Generic closure assembly (arm 2 compiler re-export + arm 3 shared std-bridge + arm 4 dag/std emit-retain + arm 5 v2_lens/peripheral emit-retain + arm 6 bootstrap_inline skip + typed Refused). Dep manifest = gunbc-emitted src/lib.rs pub mod list. Entry module bytes hash-locked. Hand shim_lib_rel/shim_writes = optional fast-path (body_producer); skipped when non-empty."
+data cssl_closure_assembly_note: String = "Generic closure assembly: dep manifest = gunbc-emitted src/lib.rs pub mod list (structural closure-membership authority). Entry module bytes hash-locked. Emit-retain rule: any module listed in the emitted closure manifest with a matching emitted src sibling .rs is emit-retained — seed lib.rs pub mod presence is external-oracle only and must NOT trigger seed-replace (seed stubs may lack gunbc type surface). Hand shim_lib_rel/shim_writes = optional fast-path override (body_producer / behavioral receipts)."
 
 data cssl_medium_as_string_scaffold_debt: String = "SCAFFOLD — tracked debt: Cargo.toml TOML markup authored via concat string literals in cssl_v1_compiled_cargo_* (same class as slb_cargo_toml / ssuv_cargo_toml / peh_cargo_toml). Probe-only throwaway measurement — not gate-side substrate. dissolve-on: extdeps cargo manifest grammar rows + bash-emit #5828 OR harness consolidation; until then one concat producer per variant ([[bin]] witness vs [lib] probe), consumed only via tools.self_host_curated_probe_cargo."
 
@@ -33,7 +33,7 @@ fn cssl_repo_path(root: String, rel: String) -> String {
 
 fn cssl_v1_compiled_cargo_deps_block(root: String) -> String {
   concat(
-    "[dependencies]\nim-rc = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
+    "[dependencies]\nim = { version = \"15.1\", features = [\"serde\"] }\nserde = { version = \"1\", features = [\"derive\", \"rc\"] }\nserde_json = \"1\"\nstacker = \"0.1\"\nlazy_static = \"1\"\nunicode-ident = \"1\"\nunicode-properties = { version = \"0.1\", features = [\"emoji\"] }\nv1-compiler = { path = \"",
     concat(root, "/src/v1/stage0\" }\n")
   )
 }
@@ -173,8 +173,8 @@ fn cssl_seed_linked_behavioral_receipt(
   let driver_read = Filesystem.Read(path: cssl_repo_path(root: root.path, rel: driver_rel))
 
   let out_dir = shell.Mktemp.Dir()
-  let gunbc_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
-  let cssl_assemble_built = witness_bin_ensure_built_typed(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
+  let gunbc_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "GUNBC", bin_name: "gunbc"))
+  let cssl_assemble_built = witness_bin_ready(root: root.path, bin: witness_bin(var_name: "CSSL_ASSEMBLE", bin_name: "cssl_assemble"))
   let gunbc_bin = witness_bin_release_path(root: root.path, bin_name: "gunbc")
   let cssl_assemble_bin = witness_bin_release_path(root: root.path, bin_name: "cssl_assemble")
   let emit = gunbc.WitnessBin.Run(

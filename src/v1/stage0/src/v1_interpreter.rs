@@ -1,5 +1,5 @@
 use crate::v1_rt::VecCompat;
-use im_rc::HashMap;
+use im::HashMap;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::fmt;
@@ -7,9 +7,9 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Instant;
 
-use im_rc::HashMap as HamtMap;
-use im_rc::OrdSet;
-use im_rc::Vector as RrbVector;
+use im::HashMap as HamtMap;
+use im::OrdSet;
+use im::Vector as RrbVector;
 
 use crate::cli_run::value_to_wire_json;
 use crate::std_syntax::BinOp;
@@ -692,12 +692,24 @@ pub enum InterpError {
         limit_bytes: usize,
         argv0: String,
     },
+    /// Application-site contract mismatch: the caller's argument list does not match the
+    /// callee's declared parameter list. Typed and located (callee + the offending label)
+    /// so the line stops at the application site instead of surfacing later as a
+    /// `NoSuchVariable` for an unbound parameter — or, worse, not surfacing at all when
+    /// the mismatched names happen to overlap. DESIGN §5: a failure arm refuses, never widens.
+    CallContractMismatch {
+        callee: String,
+        detail: String,
+    },
 }
 
 impl fmt::Display for InterpError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             InterpError::NoSuchFunction { name } => write!(f, "no such function: {}", name),
+            InterpError::CallContractMismatch { callee, detail } => {
+                write!(f, "call contract mismatch calling '{}': {}", callee, detail)
+            }
             InterpError::NoMainFunction => write!(f, "no main function found"),
             InterpError::NoSuchVariable { name } => write!(f, "undefined variable: {}", name),
             InterpError::NoSuchField { type_name, field } => {
@@ -1220,7 +1232,7 @@ impl ExecutionMode {
 }
 
 pub struct InterpContext {
-    pub modules: Rc<im_rc::Vector<Rc<TypedModule>>>,
+    pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
@@ -1368,10 +1380,14 @@ impl InterpContext {
         let mut fn_nodes = HashMap::new();
         let mut service_ops = HashMap::new();
         for module in graph.modules.iter() {
+            let module_path = authored_name_at(source_indices.clone(), module.module.clone());
             for item in module.items.iter() {
                 let name = authored_name_at(source_indices.clone(), item.clone());
                 if !name.is_empty() {
                     fn_nodes.insert(name.clone(), item.clone());
+                    if !module_path.is_empty() {
+                        fn_nodes.insert(format!("{}.{}", module_path, name), item.clone());
+                    }
                 }
                 // Service-item detection is node-local: the item node carries the
                 // `transport` that *defines* it as a service, so `item_kind` of the
@@ -1616,7 +1632,60 @@ pub fn eval_data_item_value(ctx: &InterpContext, item_name: &str) -> InterpResul
     Ok(Some(eval_expr(body, &Env::empty(), ctx)?))
 }
 
+thread_local! {
+    static CALL_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Bounded execution (§4): a call chain deeper than this is a typed, located
+/// refusal naming the frontier function — never a host stack overflow, which
+/// aborts the whole process and takes every later witness's measurement with it
+/// (measured: a cycle inside live_deploy script assembly under census-resolved
+/// bare names killed batch-2 at entry 214/619). Genuine deep-but-terminating
+/// recursion lives under `stacker::maybe_grow` guards; 100_000 interpreter
+/// frames is far past any legitimate corpus chain.
+const CALL_DEPTH_LIMIT: u32 = 100_000;
+
 fn call_function(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+) -> InterpResult<Value> {
+    let depth = CALL_DEPTH.with(|d| {
+        let v = d.get() + 1;
+        d.set(v);
+        v
+    });
+    let result = call_function_guarded(ctx, fn_node, args, env, depth);
+    CALL_DEPTH.with(|d| d.set(d.get() - 1));
+    result
+}
+
+fn call_function_guarded(
+    ctx: &InterpContext,
+    fn_node: &Rc<Node>,
+    args: &[(Option<String>, Value)],
+    env: &Rc<Env>,
+    depth: u32,
+) -> InterpResult<Value> {
+    if depth > CALL_DEPTH_LIMIT {
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "call depth exceeded {} at fn '{}' — unbounded recursion (a bare-name \
+                 resolution cycle, or a genuinely divergent chain); refused, never a \
+                 host stack overflow",
+                CALL_DEPTH_LIMIT, fn_node.name
+            ),
+        });
+    }
+    // Grow the host stack in slices so DEEP-but-bounded chains below the limit
+    // never abort the process between guard checks.
+    stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
+        call_function_dispatch(ctx, fn_node, args, env)
+    })
+}
+
+fn call_function_dispatch(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
     args: &[(Option<String>, Value)],
@@ -1696,10 +1765,48 @@ fn call_function_inner(
         let mut positional_idx = 0;
         for (opt_name, val) in args {
             if let Some(name) = opt_name {
+                // A caller label that names no declared parameter is a contract mismatch, not
+                // an extra binding: inserting it would shadow nothing the body reads while the
+                // real parameter stays unbound. Refuse here (typed, located) rather than let the
+                // body fail later as `NoSuchVariable` — or silently compute when the stray label
+                // happens to collide with another in-scope name.
+                // The corpus marks a deliberately-unused parameter with a leading underscore
+                // (`_ctx`, `_spelling`) or an anonymous `_`, and call sites label it WITHOUT the
+                // underscore (`bash_fold_stmt_kind_tag_emit_transform(spelling: ..)` against
+                // `(_spelling: String)`; the fold-step `(acc, _: Edge, child)` labelled `e:`).
+                // That is the established idiom, and it is not a contract mismatch: the body
+                // cannot read the parameter, so nothing is silently dropped. Accept `x` against
+                // a declared `x`, `_x`, or `_`.
+                let matches_param = |p: &String| {
+                    p == name
+                        || p == "_"
+                        || p.strip_prefix('_').is_some_and(|stripped| stripped == name)
+                };
+                if !all_param_names.iter().any(matches_param) {
+                    return Err(InterpError::CallContractMismatch {
+                        callee: fn_node.name.clone(),
+                        detail: format!(
+                            "no parameter named '{}' (declared: [{}])",
+                            name,
+                            all_param_names.join(", ")
+                        ),
+                    });
+                }
                 bindings.insert(ctx.sym(name), val.clone());
             } else if positional_idx < param_names.len() {
                 bindings.insert(ctx.sym(&param_names[positional_idx]), val.clone());
                 positional_idx += 1;
+            } else {
+                // The pre-existing `else if` guard dropped surplus positional arguments on the
+                // floor. Silently discarding an evaluated argument is the §5 absorbing arm.
+                return Err(InterpError::CallContractMismatch {
+                    callee: fn_node.name.clone(),
+                    detail: format!(
+                        "too many positional arguments: {} supplied, {} positional parameter(s) declared",
+                        args.len(),
+                        param_names.len()
+                    ),
+                });
             }
         }
     }
@@ -1934,9 +2041,10 @@ fn eval_var(
         if ctx.sym_eq(sym, "Zero") {
             return Ok(Value::Int(0));
         }
+        let vn = ctx.resolve(sym);
         return Ok(Value::Variant {
             type_name: ctx.sym(parent_enum),
-            variant_name: sym,
+            variant_name: ctx.sym(vn.rsplit('.').next().unwrap_or(&vn)),
             fields: Rc::new(vec![]),
         });
     }
@@ -1971,6 +2079,57 @@ fn eval_var(
                 return Ok(Value::Fn {
                     node: fn_node.clone(),
                 });
+            }
+        }
+    }
+
+    // Qualified module.member value projection: the flat item_registry is keyed by
+    // bare name, so dotted references resolve through the qualified fn_nodes keys
+    // and classify by the node itself (mirrors the service-item note above).
+    if name.contains('.') {
+        if let Some(fn_node) = ctx.lookup_fn(&name) {
+            match item_kind(fn_node.clone()) {
+                ItemKind::DataItem => {
+                    if let Some(ref body) = fn_node.body {
+                        let key = Rc::as_ptr(fn_node) as usize;
+                        if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
+                            return Ok(v);
+                        }
+                        let v = eval_expr(body, &Env::empty(), ctx)?;
+                        ctx.data_cache.borrow_mut().insert(key, v.clone());
+                        return Ok(v);
+                    }
+                }
+                ItemKind::FuncItem | ItemKind::FnItem => {
+                    return Ok(Value::Fn {
+                        node: fn_node.clone(),
+                    });
+                }
+                _ => {}
+            }
+        }
+        // Qualified unit-variant value (module.Variant): the compile-side projection
+        // resolved the owning coproduct into this node's inferred — reuse that binding
+        // rather than re-looking the name up (single authority; fail-closed otherwise).
+        if let Some(inf) = node.inferred.as_deref() {
+            if let crate::v1_std_core::InferredNode::Resolved { node: ty, .. } = inf {
+                if ty.connective == crate::v1_std_core::Connective::Disj {
+                    let last = name.rsplit('.').next().unwrap_or(&name).to_string();
+                    let arm = ty
+                        .children
+                        .iter()
+                        .find(|c| authored_name_at(ctx.si(), (*c).clone()) == last);
+                    if let Some(arm) = arm {
+                        if arm.children.is_empty() {
+                            let ty_name = authored_name_at(ctx.si(), ty.clone());
+                            return Ok(Value::Variant {
+                                type_name: ctx.sym(&ty_name),
+                                variant_name: ctx.sym(&last),
+                                fields: Rc::new(vec![]),
+                            });
+                        }
+                    }
+                }
             }
         }
     }
@@ -2461,7 +2620,13 @@ fn match_pattern(
                         return Some(bindings);
                     }
                     if *variant_name != ctx.sym(name) {
-                        return None;
+                        // Qualified PATTERN spellings (module.Variant) carry the containment
+                        // path; variant identity is the bare arm name, normalized at value
+                        // construction — so only the pattern side needs the last segment.
+                        let pat_last = name.rsplit('.').next().unwrap_or(name);
+                        if *variant_name != ctx.sym(pat_last) {
+                            return None;
+                        }
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -3318,7 +3483,7 @@ fn eval_recompute_frame_integrate(f: &mut EvalRecomputeFrame, child_h: u64) {
             f.h = eval_recompute_mix(mixed, child_h);
         }
         EvalRecomputeFrameKind::Map { key_hashes, .. } => {
-            // Order-independent combine: im_rc map iteration order is not
+            // Order-independent combine: im map iteration order is not
             // content-canonical, so entries fold commutatively.
             f.h =
                 f.h.wrapping_add(eval_recompute_mix(key_hashes[f.idx], child_h));
@@ -4082,7 +4247,7 @@ fn eval_record_lit(
         }
         Ok(Value::Variant {
             type_name: ctx.sym(pe),
-            variant_name: ctx.sym(&type_name),
+            variant_name: ctx.sym(type_name.rsplit('.').next().unwrap_or(&type_name)),
             fields: Rc::new(fields),
         })
     } else {
@@ -4555,6 +4720,23 @@ fn eval_algebra_method_inner(
                     Value::Map(m) => Ok(Value::Int(m.len() as i64)),
                     _ => Err(InterpError::TypeError {
                         msg: format!("cannot get length of {}", receiver.type_label()),
+                    }),
+                },
+            },
+        },
+
+        // Known-method bridge parity: infer rewrites bare `is_empty(xs)` on
+        // import-stripped modules into a method call (the census never serves
+        // algebra template names), so eval must implement the same member the
+        // bridge targets — emptiness via the shared length authority above.
+        "is_empty" => match native_len(&receiver) {
+            Some(n) => Ok(Value::Bool(n == 0)),
+            None => match free_monoid_to_vec(&receiver) {
+                Some(items) => Ok(Value::Bool(items.is_empty())),
+                None => match &receiver {
+                    Value::Map(m) => Ok(Value::Bool(m.is_empty())),
+                    _ => Err(InterpError::TypeError {
+                        msg: format!("cannot check is_empty of {}", receiver.type_label()),
                     }),
                 },
             },
@@ -6833,6 +7015,8 @@ fn eval_emit_host_run_transport_builtin(
     run_arg: Option<&Value>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
+    ctx.effect_dispatch_count
+        .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     if ctx.execution_mode.is_hermetic() {
         return Err(InterpError::TypeError {
             msg: "hermetic mode: emit_host_run_transport refuses host process execution \
@@ -6956,6 +7140,300 @@ fn eval_emit_host_run_transport_builtin(
     result
 }
 
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.v1_deletion_plan
+/// ^witness_realization_kernel; receipt: dag/std/emit_on_demand.dag P3 kernel +
+/// extdeps.realization.emit_on_demand_host + emit_on_demand_kernel_witness_test):
+/// content-addressed emit_host transport persists workspace under workspace_dir and
+/// skips build when `.native_ready` is present. workspace_dir is the pre-composed
+/// path (native_cache_workspace_root(cache_root, key)); callers must not pass the
+/// cache parent alone. Workspace reuse is keyed by the caller's content-derived
+/// path (emit_on_demand_key closure_digest); a different closure MUST land in a
+/// different workspace dir — file set is assumed a pure function of that digest
+/// (benign-by-identity on partial writes before `.native_ready`). `.native_ready`
+/// is written only after a successful run (not after build alone): the P3 kernel's
+/// warm boundary is build+run proof, so a transient run failure must not skip
+/// rebuild on retry. Registered in 04_method.dag as
+/// emit_host_run_transport_cached; dissolve-on: witness_realization_kernel emits
+/// this builtin from v2 self-hosted transport rows (same dissolution as
+/// emit_host_run_transport seed handler).
+fn eval_emit_host_run_transport_cached_builtin(
+    workspace_dir_arg: Option<&Value>,
+    files_arg: Option<&Value>,
+    build_arg: Option<&Value>,
+    run_arg: Option<&Value>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    ctx.effect_dispatch_count
+        .set(ctx.effect_dispatch_count.get().wrapping_add(1));
+    if ctx.execution_mode.is_hermetic() {
+        return Err(InterpError::TypeError {
+            msg: "hermetic mode: emit_host_run_transport_cached refuses host process execution \
+                  (no mock arm; run wet or record a fixture)"
+                .to_string(),
+        });
+    }
+
+    let workspace_dir = free_monoid_to_string(workspace_dir_arg.ok_or_else(|| {
+        InterpError::TypeError {
+            msg:
+                "emit_host_run_transport_cached requires (workspace_dir, files, build, run) arguments"
+                    .to_string(),
+        }
+    })?)
+    .ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport_cached: workspace_dir must be String".to_string(),
+    })?;
+
+    let files_val = files_arg.ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport_cached requires (workspace_dir, files, build, run) arguments"
+            .to_string(),
+    })?;
+    let files = free_monoid_to_vec(files_val).ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport_cached: files must be a List of {path, text} records"
+            .to_string(),
+    })?;
+    let mut workspace_files: Vec<(String, String)> = Vec::with_capacity(files.len());
+    for f in &files {
+        match f {
+            Value::Record { fields, .. } => {
+                let path = ctx
+                    .field(fields, "path")
+                    .and_then(free_monoid_to_string)
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "emit_host_run_transport_cached: workspace file missing String path"
+                            .to_string(),
+                    })?;
+                let text = ctx
+                    .field(fields, "text")
+                    .and_then(free_monoid_to_string)
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "emit_host_run_transport_cached: workspace file missing String text"
+                            .to_string(),
+                    })?;
+                workspace_files.push((path, text));
+            }
+            other => {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: workspace entry must be a record, got {}",
+                        other.type_label()
+                    ),
+                })
+            }
+        }
+    }
+
+    let build_val = build_arg.ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport_cached requires (workspace_dir, files, build, run) arguments"
+            .to_string(),
+    })?;
+    let build_lists = free_monoid_to_vec(build_val).ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_run_transport_cached: build must be a List of argv Lists".to_string(),
+    })?;
+    let mut build_argvs: Vec<Vec<String>> = Vec::with_capacity(build_lists.len());
+    for argv_val in &build_lists {
+        let argv_items = free_monoid_to_vec(argv_val).ok_or_else(|| InterpError::TypeError {
+            msg: "emit_host_run_transport_cached: build argv must be a List<String>".to_string(),
+        })?;
+        let mut argv: Vec<String> = Vec::with_capacity(argv_items.len());
+        for item in &argv_items {
+            let s = free_monoid_to_string(item).ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: build argv element must be String, got {}",
+                    item.type_label()
+                ),
+            })?;
+            argv.push(s);
+        }
+        if argv.is_empty() {
+            return Err(InterpError::TypeError {
+                msg: "emit_host_run_transport_cached: empty build argv".to_string(),
+            });
+        }
+        build_argvs.push(argv);
+    }
+
+    let run_arg_items =
+        run_arg
+            .and_then(free_monoid_to_vec)
+            .ok_or_else(|| InterpError::TypeError {
+                msg: "emit_host_run_transport_cached: run must be a List<String>".to_string(),
+            })?;
+    let mut run_argv: Vec<String> = Vec::with_capacity(run_arg_items.len());
+    for item in &run_arg_items {
+        let s = free_monoid_to_string(item).ok_or_else(|| InterpError::TypeError {
+            msg: format!(
+                "emit_host_run_transport_cached: run argv element must be String, got {}",
+                item.type_label()
+            ),
+        })?;
+        run_argv.push(s);
+    }
+    if run_argv.is_empty() {
+        return Err(InterpError::TypeError {
+            msg: "emit_host_run_transport_cached: empty run argv".to_string(),
+        });
+    }
+
+    let workspace = std::path::PathBuf::from(&workspace_dir);
+    std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
+        msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
+    })?;
+
+    emit_host_run_transport_cached_in_workspace(
+        &workspace,
+        &workspace_files,
+        &build_argvs,
+        &run_argv,
+        ctx,
+    )
+}
+
+fn emit_host_run_transport_cached_in_workspace(
+    workspace: &std::path::Path,
+    files: &[(String, String)],
+    build_argvs: &[Vec<String>],
+    run_argv: &[String],
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    use std::path::Component;
+
+    let ready_marker = workspace.join(".native_ready");
+    let compile_skipped = ready_marker.exists();
+
+    let transport_result = |phase: &str,
+                            success: bool,
+                            exit_code: i64,
+                            stdout: &[u8],
+                            stderr: &[u8],
+                            build_log: Vec<Value>,
+                            compile_skipped: bool|
+     -> Value {
+        Value::Record {
+            type_name: ctx.sym("EmitHostTransportResult"),
+            fields: Rc::new(vec![
+                (ctx.sym("phase"), Value::Str(phase.to_string())),
+                (ctx.sym("success"), Value::Bool(success)),
+                (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
+                (
+                    ctx.sym("stdout_octets"),
+                    list_value(
+                        stdout
+                            .iter()
+                            .map(|b| Value::Int(*b as i64))
+                            .collect::<Vec<Value>>(),
+                    ),
+                ),
+                (
+                    ctx.sym("stderr_octets"),
+                    list_value(
+                        stderr
+                            .iter()
+                            .map(|b| Value::Int(*b as i64))
+                            .collect::<Vec<Value>>(),
+                    ),
+                ),
+                (ctx.sym("build_log"), list_value(build_log)),
+            ]),
+        }
+    };
+
+    let target_dir = workspace.join("target");
+    let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
+        std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .current_dir(workspace)
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: spawn {:?} failed: {e}",
+                    argv[0]
+                ),
+            })
+    };
+
+    if !compile_skipped {
+        for (rel, text) in files {
+            let p = std::path::Path::new(rel);
+            if p.is_absolute() || p.components().any(|c| matches!(c, Component::ParentDir)) {
+                return Err(InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: workspace path escapes workspace: {rel}"
+                    ),
+                });
+            }
+            let full = workspace.join(p);
+            if let Some(parent) = full.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: mkdir {} failed: {e}",
+                        parent.display()
+                    ),
+                })?;
+            }
+            std::fs::write(&full, text).map_err(|e| InterpError::TypeError {
+                msg: format!(
+                    "emit_host_run_transport_cached: write {} failed: {e}",
+                    full.display()
+                ),
+            })?;
+        }
+
+        let mut build_log: Vec<Value> = Vec::new();
+        for argv in build_argvs {
+            let out = run_command(argv)?;
+            let code = out.status.code().map(i64::from).unwrap_or(-1);
+            build_log.push(Value::Str(format!("{} -> exit {code}", argv.join(" "))));
+            if !out.status.success() {
+                build_log.push(Value::Str(String::from_utf8_lossy(&out.stderr).to_string()));
+                return Ok(transport_result(
+                    "build",
+                    false,
+                    code,
+                    &out.stdout,
+                    &out.stderr,
+                    build_log,
+                    false,
+                ));
+            }
+        }
+
+        let out = run_command(run_argv)?;
+        let code = out.status.code().map(i64::from).unwrap_or(-1);
+        build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+        if out.status.success() {
+            std::fs::write(&ready_marker, b"1").map_err(|e| InterpError::TypeError {
+                msg: format!("emit_host_run_transport_cached: ready marker write failed: {e}"),
+            })?;
+        }
+        return Ok(transport_result(
+            "run",
+            out.status.success(),
+            code,
+            &out.stdout,
+            &out.stderr,
+            build_log,
+            false,
+        ));
+    }
+
+    let out = run_command(run_argv)?;
+    let code = out.status.code().map(i64::from).unwrap_or(-1);
+    let mut build_log: Vec<Value> = Vec::new();
+    build_log.push(Value::Str(format!("{} -> exit {code}", run_argv.join(" "))));
+    Ok(transport_result(
+        "run_cached",
+        out.status.success(),
+        code,
+        &out.stdout,
+        &out.stderr,
+        build_log,
+        true,
+    ))
+}
+
 fn emit_host_run_transport_in_workspace(
     workspace: &std::path::Path,
     files: &[(String, String)],
@@ -7006,7 +7484,8 @@ fn emit_host_run_transport_in_workspace(
                             exit_code: i64,
                             stdout: &[u8],
                             stderr: &[u8],
-                            build_log: Vec<Value>|
+                            build_log: Vec<Value>,
+                            compile_skipped: bool|
      -> Value {
         Value::Record {
             type_name: ctx.sym("EmitHostTransportResult"),
@@ -7014,6 +7493,7 @@ fn emit_host_run_transport_in_workspace(
                 (ctx.sym("phase"), Value::Str(phase.to_string())),
                 (ctx.sym("success"), Value::Bool(success)),
                 (ctx.sym("exit_code"), Value::Int(exit_code)),
+                (ctx.sym("compile_skipped"), Value::Bool(compile_skipped)),
                 (
                     ctx.sym("stdout_octets"),
                     list_value(
@@ -7051,6 +7531,7 @@ fn emit_host_run_transport_in_workspace(
                 &out.stdout,
                 &out.stderr,
                 build_log,
+                false,
             ));
         }
     }
@@ -7065,6 +7546,7 @@ fn emit_host_run_transport_in_workspace(
         &out.stdout,
         &out.stderr,
         build_log,
+        false,
     ))
 }
 
@@ -7567,6 +8049,14 @@ fn eval_builtin_inner(
             positional.first().copied(),
             positional.get(1).copied(),
             positional.get(2).copied(),
+            ctx,
+        )?)),
+
+        "emit_host_run_transport_cached" => Ok(Some(eval_emit_host_run_transport_cached_builtin(
+            positional.first().copied(),
+            positional.get(1).copied(),
+            positional.get(2).copied(),
+            positional.get(3).copied(),
             ctx,
         )?)),
 
@@ -8151,6 +8641,37 @@ fn apply_closure(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
+    // Same bounded-execution guard as call_function — closures are the other
+    // call grain, and a recursion cycle through them never passes call_function.
+    let depth = CALL_DEPTH.with(|d| {
+        let v = d.get() + 1;
+        d.set(v);
+        v
+    });
+    if depth > CALL_DEPTH_LIMIT {
+        CALL_DEPTH.with(|d| d.set(d.get() - 1));
+        return Err(InterpError::TypeError {
+            msg: format!(
+                "call depth exceeded {} in closure application — unbounded recursion \
+                 (a bare-name resolution cycle, or a genuinely divergent chain); \
+                 refused, never a host stack overflow",
+                CALL_DEPTH_LIMIT
+            ),
+        });
+    }
+    let result = stacker::maybe_grow(256 * 1024, 8 * 1024 * 1024, || {
+        apply_closure_inner(closure, args, env, ctx)
+    });
+    CALL_DEPTH.with(|d| d.set(d.get() - 1));
+    result
+}
+
+fn apply_closure_inner(
+    closure: &Value,
+    args: &[Value],
+    env: &Rc<Env>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
     match closure {
         Value::Closure {
             params,
@@ -8442,12 +8963,12 @@ fn record_flatten_site(items: usize, loc: &'static std::panic::Location<'static>
 
 /// Hypothesis-B instrumentation (adhoc-c328b166-bca residual hunt): every
 /// `Cons { head, tail }` pattern match against a native `Value::List` clones
-/// the receiver and `split_off(1)`s it to build `tail`. `im_rc::Vector` makes
+/// the receiver and `split_off(1)`s it to build `tail`. `im::Vector` makes
 /// this O(log n) once tree-ified, not the O(n) `free_monoid_to_vec` disease --
 /// but `list_tail`'s call volume across a memoized parse (one call per
 /// position, threaded through `parse_current_position`) could still sum to a
 /// superlinear total. `calls` and `receiver_len_sum` let the ladder answer
-/// that by execution instead of by reading `im_rc`'s source.
+/// that by execution instead of by reading `im`'s source.
 static LIST_CONS_TAIL_SPLIT: (std::sync::atomic::AtomicU64, std::sync::atomic::AtomicU64) = (
     std::sync::atomic::AtomicU64::new(0),
     std::sync::atomic::AtomicU64::new(0),
@@ -9406,7 +9927,7 @@ mod shell_completion_trace_tests {
 mod argv_arg_limit_test {
     use std::rc::Rc;
 
-    use im_rc::{vector as im_vec, HashMap};
+    use im::{vector as im_vec, HashMap};
 
     use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
     use crate::v1_compiler_infer_items::ResolvedGraph;
