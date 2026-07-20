@@ -1213,10 +1213,15 @@ fn eval_type_node_atom(
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  if v2_eval_is_literal_shaped_node(node: node) {
-    interpretation.value.allocate_literal(node, environment)
-  } else {
-    eval_runtime_binding_lookup(node: node, environment: environment)
+  match node.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      if v2_eval_is_literal_shaped_node(node: node) {
+        interpretation.value.allocate_literal(node, environment)
+      } else {
+        eval_runtime_binding_lookup(node: node, environment: environment)
+      }
+    TypeNode { connective: _ } =>
+      interpretation.value.allocate_literal(node, environment)
   }
 }
 
