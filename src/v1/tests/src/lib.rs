@@ -142,6 +142,8 @@ mod shell_transport_stdin_wet_test;
 #[cfg(test)]
 mod source_root_ingest_manifest_host_test;
 #[cfg(test)]
+mod symbol_opaque_kernel_alias_emit_test;
+#[cfg(test)]
 mod sub_value_lattice_factor_test;
 #[cfg(test)]
 mod target_model_runtime_import_repro;

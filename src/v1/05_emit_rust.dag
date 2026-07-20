@@ -352,11 +352,27 @@ fn rust_host_string_op_fn_emit(name: String) -> String? {
   }
 }
 
+fn rust_opaque_kernel_alias_type_eligible(name: String) -> Bool {
+  name == "Json" || name == "Bytes" || name == "Symbol"
+}
+
 fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
-  if name == "Json" || name == "Bytes" {
+  if rust_opaque_kernel_alias_type_eligible(name: name) {
     Present { value: coerce_primitive_type(target: Rust, dag_name: name) }
   } else {
     none
+  }
+}
+
+fn rust_opaque_kernel_alias_type_decl(name: String) -> String {
+  let carrier = coerce_primitive_type(target: Rust, dag_name: name)
+  concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", name, " = ", carrier, ";")
+}
+
+fn rust_ground_opaque_kernel_type_name(name: String) -> String {
+  match rust_opaque_kernel_alias_carrier(name: name) {
+    Present { value: carrier } => carrier
+    Absent => name
   }
 }
 
@@ -665,6 +681,8 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
 fn rust_fn_sig_preserves_authored_alias_leaf(name: String, corpus_repr: RustCorpusRepr) -> Bool {
   if is_kernel_type(name: name) {
     false
+  } else if rust_opaque_kernel_alias_type_eligible(name: name) {
+    false
   } else if name == "Nat" {
     true
   } else {
@@ -905,7 +923,7 @@ fn rust_nominal_identity_carrier_def(name: String) -> String {
 }
 
 fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
-  type_name == "Symbol"
+  false
 }
 
 fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -2590,7 +2608,7 @@ fn type_item_has_rust_nominal_shell_authority(item: Node, item_text: String, mod
   } else if is_type_alias_item(item: item, source_indices: source_indices) {
     true
   } else if is_type_decl_item(item: item, source_indices: source_indices) {
-    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
+    if (item.params |> count) == 0 && (rust_nominal_identity_carrier_type_eligible(type_name: item_text) || rust_opaque_kernel_alias_type_eligible(name: item_text)) {
       true
     } else if (item.params |> count) > 0 {
       if is_parametric_opaque_type_decl_item(item: item, source_indices: source_indices) {
@@ -3521,6 +3539,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
 
     if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && item_text == "String" {
       concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
+    } else if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+      rust_opaque_kernel_alias_type_decl(name: item_text)
     } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
@@ -3547,7 +3567,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       }
     }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
+    if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+      rust_opaque_kernel_alias_type_decl(name: item_text)
+    } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else {
 
@@ -5360,7 +5382,8 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
   let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
   elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
-    || elem_name == "Secret" || elem_name == "Bytes" || rust_nominal_ord_type_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)
+    || elem_name == "Secret" || elem_name == "Bytes" || rust_opaque_kernel_alias_type_eligible(name: elem_name)
+    || rust_nominal_ord_type_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)
 }
 
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
@@ -8635,7 +8658,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     }
   }
   let raw_ty_str = if preserves_declared_brand {
-    ann_name
+    rust_ground_opaque_kernel_type_name(name: ann_name)
   } else if data_def_annotation_is_named_refinement(annotation: annotation_type_node, source_indices: scope.type_env.source_indices) {
     coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node))
   } else {
