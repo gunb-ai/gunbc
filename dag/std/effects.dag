@@ -13,6 +13,9 @@ type EffectShape<K>
   | DeleteEffect { key_source: K }
   | CreateEffect { cause: CreateCause<K> }
   | AppendEffect
+  | ExecuteEffect
+
+data execute_effect_note: String = "ExecuteEffect is the invoke-nature EffectShape variant (process/binary execution at a grounded filesystem position). NOT derived from HTTP methods; grounded by deploy-preflight displaced cost (sudo -n <binary> probes, whoami). std.effect_grant.verb_of_effect_shape coarsens it to Verb.Execute -- the verb is never minted without a shape arm (DESIGN 3). dissolve-on = none (landed authority)."
 
 type CreateCause<K>
   = PostAlways
@@ -45,6 +48,7 @@ fn is_idempotent_effect(shape: EffectShape<KeySource>) -> Bool {
         KeylessFallback { method: method } => false
       }
     AppendEffect => false
+    ExecuteEffect => false
   }
 }
 
