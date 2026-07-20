@@ -11541,6 +11541,15 @@ pub fn positional_payload_scrut_type(
     }
 }
 
+pub fn optional_pattern_unknown_parent_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Present/Absent patterns with an UNRESOLVED parent enum lower to Some/None (kernel Optional): a bare Present/Absent struct pattern is never valid emitted Rust (no bare variant of that name exists in any emitted scope), so the raw fallback arm could only ever produce a compile error. A modeled optional carrier (e.g. OptionalNode) still resolves its parent via pattern_parent_enum and takes the qualified path; only the parent-unknown residue (an unstamped scrutinee, e.g. a let-in-lambda pipeline) reroutes.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn emit_variant_pattern(
     name: String,
     parent_enum: Option<String>,

@@ -24,8 +24,9 @@ pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
-    container_template_alias_algebra, is_container_type,
+    container_template_alias_algebra, container_template_alias_rows, is_container_type,
 };
+pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -40,8 +41,8 @@ pub use crate::v1_std_core::{
     authored_name_at, bool_type, default_ident_span, error_type, find_child_named, float_type,
     has_inferred, int_type, is_compiler_error, is_kernel_type, kernel_span, leaf_node_with_span,
     make_error_node, make_expr_error_node, make_expr_node, make_param_node, make_span, no_span,
-    none_type, param_node_type_expr, string_type, unit_type, with_optional_cardinality,
-    with_required_cardinality,
+    none_type, param_node_type_expr, qualified_last_segment, string_type, type_name_compatible,
+    unit_type, with_optional_cardinality, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,
@@ -144,10 +145,8 @@ pub fn node_is_set_collection(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (node_is_element_collection(n.clone(), source_indices.clone())
-        && (crate::v1_std_core::qualified_last_segment(authored_name_at(
-            source_indices.clone(),
-            n.clone(),
-        )) == "Set".to_string()))
+        && (qualified_last_segment(authored_name_at(source_indices.clone(), n.clone()))
+            == "Set".to_string()))
 }
 
 pub fn canonical_template_name(
@@ -156,7 +155,7 @@ pub fn canonical_template_name(
 ) -> String {
     {
         let nm = authored_name_at(source_indices.clone(), n.clone());
-        match container_template_algebra(crate::v1_std_core::qualified_last_segment(nm.clone())) {
+        match container_template_algebra(qualified_last_segment(nm.clone())) {
             Some(algebra) => algebra.clone(),
             None => nm.clone(),
         }
@@ -164,10 +163,52 @@ pub fn canonical_template_name(
 }
 
 pub fn is_declared_container_alias_spelling(name: String) -> bool {
-    match container_template_algebra(crate::v1_std_core::qualified_last_segment(name.clone())) {
+    match container_template_algebra(qualified_last_segment(name.clone())) {
         Some(_) => true,
         None => false,
     }
+}
+
+pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
+    Rc::new(v1_rt::sorted_map_keys(&container_template_alias_rows()))
+        .iter()
+        .cloned()
+        .fold(None, |acc: _, k: String| match acc.clone() {
+            Some(_) => acc.clone(),
+            None => match v1_rt::map_get(&container_template_alias_rows(), k.clone()) {
+                Some(v) => {
+                    if (v.clone() == algebra.clone()) {
+                        Some(k.clone())
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            },
+        })
+}
+
+pub fn container_kind_canonical(name: String) -> String {
+    {
+        let last = qualified_last_segment(name.clone());
+        match v1_rt::map_get(&kernel_algebra_profile(), last.clone()) {
+            Some(_) => last.clone(),
+            None => match container_template_algebra(last.clone()) {
+                Some(algebra) => match container_alias_canonical_spelling(algebra.clone()) {
+                    Some(canonical) => canonical.clone(),
+                    None => last.clone(),
+                },
+                None => last.clone(),
+            },
+        }
+    }
+}
+
+pub fn kernel_profile_lookup(name: String) -> Option<AlgebraProfile> {
+    v1_rt::map_get(
+        &kernel_algebra_profile(),
+        container_kind_canonical(name.clone()),
+    )
 }
 
 pub fn reground_alias_carrier_identity(
@@ -1395,9 +1436,10 @@ pub fn apply_type_substitution(
                         } else {
                             if (arity.clone() == Some(1)) {
                                 match v1_rt::map_get(&subst, "__element__".to_string()) {
-                                    Some(elem) => {
-                                        make_container_type(receiver_name_str.clone(), elem.clone())
-                                    }
+                                    Some(elem) => make_container_type(
+                                        container_kind_canonical(receiver_name_str.clone()),
+                                        elem.clone(),
+                                    ),
                                     None => Rc::new(KernelTypeBuild {
                                         ty: receiver.clone(),
                                         diagnostics: Rc::new(vec![]),
@@ -1704,13 +1746,59 @@ pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
         let is_callable = ((n.params.clone().len() as i64) > 0);
         if is_callable.clone() {
             match n.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
+                Some(InferredNode::Resolved { node: ret, .. }) => {
+                    if (ret.connective.clone() == Connective::Arrow) {
+                        ret.clone()
+                    } else {
+                        make_callable_type(n.params.clone(), ret.clone())
+                    }
+                }
                 None => error_type(),
                 _ => error_type(),
             }
         } else {
             n.clone()
         }
+    }
+}
+
+pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
+    if ((n.params.clone().len() as i64) == 0) {
+        match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
+            _ => error_type(),
+        }
+    } else {
+        match callable_inferred(n.clone())
+            .inferred
+            .clone()
+            .as_deref()
+            .cloned()
+        {
+            Some(InferredNode::Resolved { node: callable, .. }) => {
+                match callable.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: ret, .. }) => ret.clone(),
+                    _ => error_type(),
+                }
+            }
+            _ => error_type(),
+        }
+    }
+}
+
+pub fn global_bare_callable_binding(binding: Rc<TypeBinding>) -> bool {
+    ((((((binding.resolved.clone().transport.clone() == None)
+        && (binding.resolved.clone().expr_data.clone() == Rc::new(ExprData::NoExprData)))
+        && (binding.resolved.clone().connective.clone() == Connective::NoConnective))
+        && (binding.resolved.clone().inferred.clone() != None))
+        && ((binding.resolved.clone().properties.clone().len() as i64) == 0))
+        && (binding.resolved.clone().type_annotation.clone() == None))
+}
+
+pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
+    match resolved.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::Resolved { node: ty, .. }) => ty.clone(),
+        _ => resolved,
     }
 }
 
@@ -2018,7 +2106,7 @@ pub fn node_type_compatible(
                                     if (left_opt.clone() || right_opt.clone()) {
                                         break false;
                                     } else {
-                                        break crate::v1_std_core::type_name_compatible(
+                                        break type_name_compatible(
                                             authored_name_at(source_indices.clone(), left.clone()),
                                             authored_name_at(source_indices.clone(), right.clone()),
                                         );
@@ -2081,11 +2169,11 @@ pub fn prefer_specific_type(
             {
                 right.clone()
             } else {
-                if ((left.connective.clone() == Connective::NoConnective)
-                    && ((left.children.clone().len() as i64) == 0)
+                if ((((left.connective.clone() == Connective::NoConnective)
+                    && ((left.children.clone().len() as i64) == 0))
                     && ((right.connective.clone() != Connective::NoConnective)
-                        || ((right.children.clone().len() as i64) > 0))
-                    && crate::v1_std_core::type_name_compatible(
+                        || ((right.children.clone().len() as i64) > 0)))
+                    && type_name_compatible(
                         left_norm_name.clone(),
                         authored_name_at(source_indices.clone(), right.clone()),
                     ))
@@ -2182,11 +2270,10 @@ pub fn node_type_equals_core(
         let left_name = authored_name_at(source_indices.clone(), left.clone());
         let right_name = authored_name_at(source_indices.clone(), right.clone());
         if (left_leaf.clone() && right_leaf.clone()) {
-            crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
+            type_name_compatible(left_name.clone(), right_name.clone())
         } else {
             if (left_struct.clone() && right_struct.clone()) {
-                if !crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
-                {
+                if !type_name_compatible(left_name.clone(), right_name.clone()) {
                     false
                 } else {
                     if ((left.connective.clone() == Connective::Conj)
@@ -2237,13 +2324,10 @@ pub fn node_type_equals_core(
                 }
             } else {
                 if (left_leaf.clone() && right_struct.clone()) {
-                    crate::v1_std_core::type_name_compatible(left_name.clone(), right_name.clone())
+                    type_name_compatible(left_name.clone(), right_name.clone())
                 } else {
                     if (left_struct.clone() && right_leaf.clone()) {
-                        crate::v1_std_core::type_name_compatible(
-                            left_name.clone(),
-                            right_name.clone(),
-                        )
+                        type_name_compatible(left_name.clone(), right_name.clone())
                     } else {
                         {
                             let left_is_container =
@@ -2814,48 +2898,4 @@ pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
         Some(_) => true,
         None => false,
     }
-}
-
-pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
-    v1_rt::sorted_map_keys(&crate::std_types::container_template_alias_rows())
-        .iter()
-        .cloned()
-        .fold(None, |acc: Option<String>, k: String| match acc {
-            Some(_) => acc,
-            None => match v1_rt::map_get(
-                &crate::std_types::container_template_alias_rows(),
-                k.clone(),
-            ) {
-                Some(v) => {
-                    if (v.clone() == algebra.clone()) {
-                        Some(k.clone())
-                    } else {
-                        None
-                    }
-                }
-                None => None,
-            },
-        })
-}
-
-pub fn container_kind_canonical(name: String) -> String {
-    let last = crate::v1_std_core::qualified_last_segment(name.clone());
-    match v1_rt::map_get(&kernel_algebra_profile(), last.clone()) {
-        Some(_) => last.clone(),
-        None => match container_template_algebra(last.clone()) {
-            Some(algebra) => match container_alias_canonical_spelling(algebra.clone()) {
-                Some(canonical) => canonical.clone(),
-                None => last.clone(),
-            },
-            None => last.clone(),
-        },
-    }
-}
-
-pub fn kernel_profile_lookup(name: String) -> Option<crate::std_algebra::AlgebraProfile> {
-    v1_rt::map_get(
-        &kernel_algebra_profile(),
-        container_kind_canonical(name.clone()),
-    )
-    .map(|p| p.clone())
 }

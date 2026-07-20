@@ -1819,30 +1819,32 @@ pub fn field_access_spine(
     texpr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<FieldAccessSpine>> {
-    match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprVar {
-            binding_kind: _, ..
-        } => {
-            let name = expr_var_name_at(texpr.clone(), source_indices.clone());
-            Some(Rc::new(FieldAccessSpine {
-                root: name.clone(),
-                dotted: name.clone(),
-            }))
-        }
-        ExprData::ExprFieldAccess { summary: _, .. } => {
-            match field_access_spine(field_access_base(texpr.clone()), source_indices.clone()) {
-                Some(base_spine) => Some(Rc::new(FieldAccessSpine {
-                    root: base_spine.root.clone(),
-                    dotted: v1_rt::concat(
-                        v1_rt::concat(base_spine.dotted.clone(), ".".to_string()),
-                        field_access_field_at(texpr.clone(), source_indices.clone()),
-                    ),
-                })),
-                None => None,
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprVar {
+                binding_kind: _, ..
+            } => {
+                let name = expr_var_name_at(texpr.clone(), source_indices.clone());
+                Some(Rc::new(FieldAccessSpine {
+                    root: name.clone(),
+                    dotted: name.clone(),
+                }))
             }
+            ExprData::ExprFieldAccess { summary: _, .. } => {
+                match field_access_spine(field_access_base(texpr.clone()), source_indices.clone()) {
+                    Some(base_spine) => Some(Rc::new(FieldAccessSpine {
+                        root: base_spine.root.clone(),
+                        dotted: v1_rt::concat(
+                            v1_rt::concat(base_spine.dotted.clone(), ".".to_string()),
+                            field_access_field_at(texpr.clone(), source_indices.clone()),
+                        ),
+                    })),
+                    None => None,
+                }
+            }
+            _ => None,
         }
-        _ => None,
-    }
+    })
 }
 
 pub fn expr_call_func_at(
@@ -3796,6 +3798,40 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
     })
 }
 
+pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
+    if (path.clone() == "".to_string()) {
+        Rc::new(vec![])
+    } else {
+        Rc::new(
+            path.clone()
+                .split(&".".to_string())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
+pub fn qualified_last_segment(name: String) -> String {
+    match module_path_segments(name.clone()).last().cloned() {
+        Some(s) => s.clone(),
+        None => name.clone(),
+    }
+}
+
+pub fn type_name_compatible(a: String, b: String) -> bool {
+    if (a.clone() == b.clone()) {
+        true
+    } else {
+        if (v1_rt::contains(a.clone(), ".".to_string())
+            && v1_rt::contains(b.clone(), ".".to_string()))
+        {
+            false
+        } else {
+            (qualified_last_segment(a.clone()) == qualified_last_segment(b.clone()))
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ShKeyword;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -3934,35 +3970,3 @@ pub struct ChildrenListField;
 pub struct SubValueField;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MetadataField;
-
-pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
-    if (path.clone() == "".to_string()) {
-        Rc::new(vec![])
-    } else {
-        Rc::new(
-            path.split('.')
-                .map(|s| s.to_string())
-                .collect::<std::vec::Vec<String>>()
-                .into(),
-        )
-    }
-}
-
-pub fn qualified_last_segment(name: String) -> String {
-    match module_path_segments(name.clone()).last() {
-        Some(s) => s.clone(),
-        None => name.clone(),
-    }
-}
-
-pub fn type_name_compatible(a: String, b: String) -> bool {
-    if (a.clone() == b.clone()) {
-        true
-    } else if v1_rt::contains(a.clone(), ".".to_string())
-        && v1_rt::contains(b.clone(), ".".to_string())
-    {
-        false
-    } else {
-        (qualified_last_segment(a.clone()) == qualified_last_segment(b.clone()))
-    }
-}
