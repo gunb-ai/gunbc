@@ -7561,7 +7561,7 @@ fn serve_read_request(
             target
         ));
     }
-    let mut content_length: usize = 0;
+    let mut content_length: Option<usize> = None;
     loop {
         let mut line = String::new();
         let n = reader
@@ -7583,13 +7583,19 @@ fn serve_read_request(
         }
         if let Some((name, value)) = line.split_once(':') {
             if name.eq_ignore_ascii_case("content-length") {
-                content_length = value
-                    .trim()
-                    .parse()
-                    .map_err(|e| format!("bad Content-Length: {}", e))?;
+                if content_length.is_some() {
+                    return Err("duplicate Content-Length header".to_string());
+                }
+                content_length = Some(
+                    value
+                        .trim()
+                        .parse()
+                        .map_err(|e| format!("bad Content-Length: {}", e))?,
+                );
             }
         }
     }
+    let content_length = content_length.unwrap_or(0);
     if content_length > MAX_BODY {
         return Err(format!(
             "body of {} bytes exceeds the {} byte serve limit",
