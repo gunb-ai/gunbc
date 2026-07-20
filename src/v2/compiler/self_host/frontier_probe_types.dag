@@ -77,7 +77,15 @@ data gate_a_flip_probe_witness_std_dup_reason: Symbol = ^gate_a_flip_probe_witne
 
 data gate_a_flip_probe_formal_nonterminal_btree_set_ord_reason: Symbol = ^gate_a_flip_probe_formal_nonterminal_btree_set_ord
 
-data gate_a_flip_probe_wave_note: String = "Gate-A flip wave 2026-07-19 (neat-swift-795, post-KeySource discharge + std_dup assembly fix): flipped 6 modules SelfEmitted (00_compile, 02_parse, 03_ingest, materialization_carriers, program_assembly, source_authority) after CSSL_STD_SEED_LINK=1 curated probe green. Baseline 6→12. Prior calm-boar-697 census: 4-module unresolved bucket discharged by KeySource import fix (21e3468b82); cargo-stage residue joined std_dup bucket (proud-deer-857)."
+data curated_cargo_probe_namespace_qualified_rust_emit_reason: Symbol = ^curated_cargo_probe_namespace_qualified_rust_emit
+
+data curated_cargo_probe_import_closure_cargo_refuse_reason: Symbol = ^curated_cargo_probe_import_closure_cargo_refuse
+
+data curated_cargo_probe_emit_assemble_refuse_reason: Symbol = ^curated_cargo_probe_emit_assemble_refuse
+
+data honest_frontier_refresh_probe_note: String = "Honest frontier refresh 2026-07-20 (neat-swift-795 @ d904abdeae): reverted premature Gate-A flip-wave 6 from SelfEmitted→SeedRetained after CSSL_STD_SEED_LINK=1 curated_cargo_probe_one.sh execution showed 0/6 cargo-green and 0/6 emit-clean post-#6848 merge. Current buckets by probe: curated_cargo_probe_namespace_qualified_rust_emit (emit+cargo dotted-path rustc refuse on 00_compile/02_parse/03_ingest/source_authority); curated_cargo_probe_import_closure_cargo_refuse (E0422 namespace on materialization_carriers + prior std_dup cargo residue on 01_tokenize/04_infer/program_partition); curated_cargo_probe_emit_assemble_refuse (program_assembly EMIT_REFUSE). Baseline 6 SelfEmitted (body_producer, normalize, target_carriers, discovery_enumeration, parse_engine_hooks, use_site_verdict). #6881 stays DRAFT until emit regression fixed and >=1 module cargo-green by execution."
+
+data gate_a_flip_probe_wave_note: String = "SUPERSEDED by honest_frontier_refresh_probe_note (2026-07-20): Jul-19 flip-wave claim retracted — never cargo-green by execution on current HEAD."
 
 fn frontier_probe_survey_host_failure_reason(is_oom_or_budget: Bool) -> Symbol {
   if is_oom_or_budget {

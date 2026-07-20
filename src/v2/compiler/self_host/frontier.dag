@@ -17,8 +17,9 @@ import v2.compiler.self_host.frontier_probe_types {
   SelfEmitReady,
   UnknownProbeCause,
   FixtureCemented,
-  gate_a_flip_probe_unresolved_compiler_error_reason,
-  gate_a_flip_probe_witness_std_dup_reason,
+  curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  curated_cargo_probe_import_closure_cargo_refuse_reason,
+  curated_cargo_probe_emit_assemble_refuse_reason,
   frontier_blocker_class_matches,
   frontier_probe_blocker_rank
 }
@@ -96,7 +97,7 @@ type CompilerModuleFrontierRow {
 
 data compiler_frontier_module_count_expected: Int = 27
 
-data compiler_frontier_self_emitted_baseline: Int = 12
+data compiler_frontier_self_emitted_baseline: Int = 6
 
 data compiler_frontier_binding_hand_rows_note: String = "THE SECOND AUTHORITY, still live for ONE consumer and gated because of it. These 27 rows no longer serve the witness path — that projects off the derived ModuleStorageIndex — but they still feed the crate-layout EMITTER, which cannot be handed a host index without polluting an unrelated 18-variant dispatch (frontier_emitter_hand_row_debt_note has the full reasoning and the count).
 
@@ -237,16 +238,13 @@ fn knowledge_attributed_blocker_class_seed_retained_row(
   )
 }
 
-data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+data compiler_frontier_row_00_compile: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/00_compile.dag",
   closure_reads: 102,
-  measured_probe: FrontierProbeReceipt {
-    module_path: "src/v2/compiler/00_compile.dag",
-    blocker_class: SelfEmitReady,
-    located_stage: ProbeStageEmit,
-    located_reason: ^measured_probe_self_emit_ready
-  },
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 102, pre_flip_blocker: NameResolutionGap)
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -254,20 +252,17 @@ data compiler_frontier_row_01_tokenize: CompilerModuleFrontierRow = execution_me
   closure_reads: 17,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
-data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+data compiler_frontier_row_02_parse: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/02_parse.dag",
   closure_reads: 65,
-  measured_probe: FrontierProbeReceipt {
-    module_path: "src/v2/compiler/02_parse.dag",
-    blocker_class: SelfEmitReady,
-    located_stage: ProbeStageEmit,
-    located_reason: ^measured_probe_self_emit_ready
-  },
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 65, pre_flip_blocker: EmitSurfaceGap)
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
@@ -282,16 +277,13 @@ data compiler_frontier_row_03_body_producer: CompilerModuleFrontierRow = executi
   tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 36, pre_flip_blocker: NameResolutionGap)
 )
 
-data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+data compiler_frontier_row_03_ingest: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/03_ingest.dag",
   closure_reads: 104,
-  measured_probe: FrontierProbeReceipt {
-    module_path: "src/v2/compiler/03_ingest.dag",
-    blocker_class: SelfEmitReady,
-    located_stage: ProbeStageEmit,
-    located_reason: ^measured_probe_self_emit_ready
-  },
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 104, pre_flip_blocker: EmitSurfaceGap)
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_03_name_resolve: CompilerModuleFrontierRow = knowledge_attributed_blocker_class_seed_retained_row(
@@ -325,7 +317,7 @@ data compiler_frontier_row_04_infer: CompilerModuleFrontierRow = execution_measu
   closure_reads: 44,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -416,16 +408,13 @@ data compiler_frontier_row_fold_lowering: CompilerModuleFrontierRow = knowledge_
   migration_trigger: ^migrate_when_body_lowering_generalizes
 )
 
-data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+data compiler_frontier_row_materialization_carriers: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/materialization_carriers.dag",
   closure_reads: 35,
-  measured_probe: FrontierProbeReceipt {
-    module_path: "src/v2/compiler/materialization_carriers.dag",
-    blocker_class: SelfEmitReady,
-    located_stage: ProbeStageEmit,
-    located_reason: ^measured_probe_self_emit_ready
-  },
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 35, pre_flip_blocker: EmitSurfaceGap)
+  measured_blocker: NameResolutionGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
@@ -440,16 +429,13 @@ data compiler_frontier_row_parse_engine_hooks: CompilerModuleFrontierRow = execu
   tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 2, pre_flip_blocker: EmitSurfaceGap)
 )
 
-data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+data compiler_frontier_row_program_assembly: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/program_assembly.dag",
   closure_reads: 90,
-  measured_probe: FrontierProbeReceipt {
-    module_path: "src/v2/compiler/program_assembly.dag",
-    blocker_class: SelfEmitReady,
-    located_stage: ProbeStageEmit,
-    located_reason: ^measured_probe_self_emit_ready
-  },
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 90, pre_flip_blocker: EmitSurfaceGap)
+  measured_blocker: NameResolutionGap,
+  located_stage: ProbeStageAssemble,
+  located_reason: curated_cargo_probe_emit_assemble_refuse_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
@@ -457,7 +443,7 @@ data compiler_frontier_row_program_partition: CompilerModuleFrontierRow = execut
   closure_reads: 58,
   measured_blocker: EmitSurfaceGap,
   located_stage: ProbeStageEmit,
-  located_reason: gate_a_flip_probe_witness_std_dup_reason,
+  located_reason: curated_cargo_probe_import_closure_cargo_refuse_reason,
   migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
@@ -468,16 +454,13 @@ data compiler_frontier_row_self_host: CompilerModuleFrontierRow = knowledge_attr
   migration_trigger: ^migrate_when_frontier_harness_repurposed
 )
 
-data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = execution_measured_self_emitted_row(
+data compiler_frontier_row_source_authority: CompilerModuleFrontierRow = execution_measured_seed_retained_row(
   module_path: "src/v2/compiler/source_authority.dag",
   closure_reads: 87,
-  measured_probe: FrontierProbeReceipt {
-    module_path: "src/v2/compiler/source_authority.dag",
-    blocker_class: SelfEmitReady,
-    located_stage: ProbeStageEmit,
-    located_reason: ^measured_probe_self_emit_ready
-  },
-  tractability_rank: self_emitted_tractability_rank_at_flip(closure_reads: 87, pre_flip_blocker: EmitSurfaceGap)
+  measured_blocker: EmitSurfaceGap,
+  located_stage: ProbeStageEmit,
+  located_reason: curated_cargo_probe_namespace_qualified_rust_emit_reason,
+  migration_trigger: ^migrate_when_closure_self_emits_cargo_green
 )
 
 data compiler_frontier_row_use_site_verdict: CompilerModuleFrontierRow = execution_measured_self_emitted_row(

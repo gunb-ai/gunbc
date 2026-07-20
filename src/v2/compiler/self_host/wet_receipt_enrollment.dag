@@ -61,36 +61,6 @@ data falsifier_self_host_wet_module_bindings: List<SelfHostWetReceiptBinding> = 
     module_path: "src/v2/compiler/03_normalize.dag",
     entry: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag",
     function: "self_host_03_normalize_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/00_compile.dag",
-    entry: "dag/test/claim/self_host_00_compile_behavioral_witness_test.dag",
-    function: "self_host_00_compile_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/02_parse.dag",
-    entry: "dag/test/claim/self_host_02_parse_behavioral_witness_test.dag",
-    function: "self_host_02_parse_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/03_ingest.dag",
-    entry: "dag/test/claim/self_host_03_ingest_behavioral_witness_test.dag",
-    function: "self_host_03_ingest_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/materialization_carriers.dag",
-    entry: "dag/test/claim/self_host_materialization_carriers_behavioral_witness_test.dag",
-    function: "self_host_materialization_carriers_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/program_assembly.dag",
-    entry: "dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag",
-    function: "self_host_program_assembly_behavioral_receipt_holds"
-  },
-  SelfHostWetReceiptBinding {
-    module_path: "src/v2/compiler/source_authority.dag",
-    entry: "dag/test/claim/self_host_source_authority_behavioral_witness_test.dag",
-    function: "self_host_source_authority_behavioral_receipt_holds"
   }
 ]
 
