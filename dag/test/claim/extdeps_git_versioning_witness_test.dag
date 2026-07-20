@@ -1,20 +1,5 @@
 module test.claim.extdeps_git_versioning_witness
 
-import std.logic { Bool }
-import std.algebra { Less, Equal, Greater }
-import extdeps.git.versioning {
-  GitReleaseVersion,
-  GitCliReportedVersion,
-  GitVersionPlain,
-  GitVersionWindows,
-  git_2_0_release,
-  git_release_versioning_spec_url,
-  git_release_version_compare,
-  git_release_to_version_identity,
-  git_release_version_scheme,
-  min_git_version,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

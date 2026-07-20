@@ -1,37 +1,5 @@
 module test.claim.markdown_source_emit
 
-import std.markdown {
-  MarkdownDocument,
-  MarkdownListItem,
-  MarkdownTaskItem,
-  MarkdownTableRow,
-  MarkdownTableCell,
-  HeadingBlock,
-  ParagraphBlock,
-  UnorderedListBlock,
-  OrderedListBlock,
-  CodeBlock,
-  TaskListBlock,
-  TableBlock,
-  BlockquoteBlock,
-  TextInline,
-  EmphasisInline,
-  StrongInline,
-  CodeInline,
-  LinkInline,
-  H1,
-  Checked,
-  Unchecked,
-  AlignNone,
-  AlignCenter,
-}
-import extdeps.languages.markdown {
-  MarkdownSpellings,
-  commonmark_gfm_spellings,
-  serialize_markdown_source,
-  serialize_markdown_source_with,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

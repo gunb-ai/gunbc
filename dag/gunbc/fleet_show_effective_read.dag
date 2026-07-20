@@ -1,65 +1,5 @@
 module gunbc.fleet_show_effective_read
 
-import std.types { NonEmptyStr, String, Int, List, Bool }
-import std.measure { ByteSize, byte_size_count, Percent, percent, percent_count }
-import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_reconcile {
-  ShowEffectiveRead,
-  ReadObserved,
-  ReadAbsent,
-  Reconciliation,
-  Converged,
-  NotConverged,
-}
-import product.placement_supply { HostIdentity }
-import extdeps.os.systemd {
-  SystemdCgroupMemoryLimit,
-  MemoryLimitUnbounded,
-  MemoryLimitBytes,
-  MemoryLimitAbsent,
-  parse_systemd_memory_limit_show,
-  systemd_memory_max_property,
-  systemd_memory_swap_max_property,
-  systemd_memory_high_property,
-}
-import extdeps.os.oomd {
-  parse_managed_oom_pressure_limit_show,
-}
-import gunbc.fleet_intent { srv1_host, srv2_host }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import gunbc.host_converge {
-  ConvergeTarget,
-  ConvergeVerdict,
-  VerdictConverged,
-  Drifted,
-  Absent,
-}
-import gunbc.host_effect {
-  ShellCommand,
-  ShellEffectApplied,
-  NodeControlPlane,
-  HostOs,
-  HostEffectTransport,
-  host_effect_read_evidence,
-  HostEffectIntent,
-  HostEffectEvidence,
-}
-import gunbc.host_effect_realize { host_effect_apply }
-import gunbc.host_identity_adopt {
-  srv1_host_identity_ssh_transport,
-  srv2_host_identity_ssh_transport,
-}
-import gunbc.ci_floor_measurement { RunnerSliceCapEffectiveness, CapEffective, CapUnbounded }
-import gunbc.runner_unit_live_read {
-  RunnerUnitLiveReadRow,
-  RunnerUnitMemoryLiveRead,
-  gunbc_srv1_runner_unit_live_read_fixture,
-  runner_unit_live_read_typed,
-  memory_limit_to_cap_effectiveness,
-  memory_limit_converge_verdict,
-  converge_target_live_verdict,
-}
 
 type RunnerSliceCapLiveReadRow {
   slice_unit: NonEmptyStr
@@ -118,7 +58,7 @@ type FleetHostEffectiveReadGroundedReceipt {
   probed_at: NonEmptyStr
 }
 
-data gunbc_fleet_show_effective_read_scope_disposition: Disposition = Terminal {
+data gunbc_fleet_show_effective_read_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "Typed READ-ONLY live host-read seam for runner-allocation-v0 (three blocking knobs): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax+MemorySwapMax on actions-runner@<host>-*.service, (3) runner_width active-unit count. Transport intent lives here; shell realization is scaffold-marked medium-as-string (fleet_show_effective_read_transport_script_scaffold) until host_effect orchestration emit binds grammar rows. Committed ShowEffectiveRead rows stay ReadAbsent until live or fixture-grounded read supplies ReadObserved. ManagedOOMMemoryPressureLimit percent-wire grounding lives in extdeps.os.oomd."
 }
 

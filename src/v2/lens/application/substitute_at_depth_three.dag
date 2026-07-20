@@ -13,6 +13,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data depth_three_original_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^depth_three_original_leaf_symbol } },
   children: [],

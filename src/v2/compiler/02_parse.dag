@@ -109,13 +109,13 @@ import v2.std.grammar {
 }
 
 type ParseProvenanceState {
-  alloc: OccurrenceIdAllocator
-  index: SpanIndex
+  alloc: v2.std.occurrence_id.OccurrenceIdAllocator
+  index: v2.std.provenance.SpanIndex
 }
 
 type ParseArtifact {
   tree: ParseTree
-  span_index: SpanIndex
+  span_index: v2.std.provenance.SpanIndex
 }
 
 type ParseMintSourceResult {
@@ -179,8 +179,8 @@ type ParsePositionKey {
 }
 
 type ParseTableRealization {
-  artifact_kind: ArtifactKindId
-  provider_id: CacheInterfaceId
+  artifact_kind: std.cache_identity.ArtifactKindId
+  provider_id: std.cache_identity.CacheInterfaceId
   materialization: Materialization
   grammar_digest: Hash
   token_stream_digest: Hash
@@ -273,7 +273,7 @@ fn parse_table_entries_lookup(table: ParseTable, key: ParsePositionKey) -> Witne
 }
 
 fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<ParseMemoEntry> {
-  match materialization_allows_memo_store(m: table.materialization) {
+  match v2.compiler.materialization_carriers.materialization_allows_memo_store(m: table.materialization) {
     true => { parse_table_entries_lookup(table: table, key: key) }
     false => {
       Violates {
@@ -313,7 +313,7 @@ fn parse_table_memo_insert_refused(
   value: ParseMemoEntry
 ) -> Bool {
   let after = parse_table_insert(table: table, key: key, value: value)
-  match map_get(m: after.entries, key: key) {
+  match v2.std.collection.map_get(m: after.entries, key: key) {
     Accepted { value: Absent } => true
     Accepted { value: Present { value: _ } } => false
     Rejected { diagnostics: _ } => false
@@ -396,7 +396,7 @@ fn parse_table_record_miss(table: ParseTable) -> ParseTable {
 }
 
 fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseMemoEntry) -> ParseTable {
-  match materialization_allows_memo_store(m: table.materialization) {
+  match v2.compiler.materialization_carriers.materialization_allows_memo_store(m: table.materialization) {
     true =>
       parse_table_carry_analysis(
         table: table,
@@ -456,9 +456,9 @@ fn parse_table_for_production_analyzed(
   all_tokens: List<Token>
 ) -> ParseTable {
   ParseTableRealization {
-    artifact_kind: parse_table_memo_artifact_kind(),
-    provider_id: parse_table_memo_provider_id(),
-    materialization: parse_table_memo_materialization(),
+    artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
+    provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
+    materialization: v2.compiler.materialization_carriers.parse_table_memo_materialization(),
     grammar_digest: parse_grammar_digest(validated: validated),
     token_stream_digest: parse_token_stream_digest(all_tokens: all_tokens),
     entries: empty_map(),
@@ -483,9 +483,9 @@ fn parse_table_for_production(
 
 fn parse_table_empty() -> ParseTable {
   ParseTableRealization {
-    artifact_kind: parse_table_memo_artifact_kind(),
-    provider_id: parse_table_memo_provider_id(),
-    materialization: parse_table_memo_materialization(),
+    artifact_kind: v2.compiler.materialization_carriers.parse_table_memo_artifact_kind(),
+    provider_id: v2.compiler.materialization_carriers.parse_table_memo_provider_id(),
+    materialization: v2.compiler.materialization_carriers.parse_table_memo_materialization(),
     grammar_digest: content_hash(n: grammar_empty_node()),
     token_stream_digest: atom_identity_hash(s: ^parse_table_empty_token_stream),
     entries: empty_map(),
@@ -516,11 +516,11 @@ fn parse_current_position(tokens: List<Token>) -> Int {
 
 fn token_position_indices(tokens: List<Token>) -> List<Int> {
   match is_empty(xs: tokens) {
-    true => Cons { head: 0, tail: Empty }
+    true => Cons { head: 0, tail: std.algebra.Empty }
     false =>
       fold_list(
         xs: tokens,
-        empty: Cons { head: 0, tail: Empty },
+        empty: Cons { head: 0, tail: std.algebra.Empty },
         cons: fn(acc, _) {
           list_snoc_item(xs: acc, item: length(xs: acc))
         }
@@ -573,15 +573,15 @@ fn parse_mint_from_source(
 
 fn parse_minted_id_from_node(n: Node) -> List<OccurrenceId> {
   match n.occurrence_id {
-    MintedOccurrence { id: id } => Cons { head: id, tail: Empty }
-    SyntheticOccurrence => Empty
+    MintedOccurrence { id: id } => Cons { head: id, tail: std.algebra.Empty }
+    SyntheticOccurrence => std.algebra.Empty
   }
 }
 
 fn parse_minted_id_list(nodes: List<Node>) -> List<OccurrenceId> {
   fold_list(
     xs: nodes,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, n) {
       list_append(left: acc, right: parse_minted_id_from_node(n: n))
     }
@@ -741,7 +741,7 @@ type ParseMatchArmStmtAcc {
 fn parse_flatten_diag_batches(batches: List<List<Diagnostic>>) -> List<Diagnostic> {
   fold_list(
     xs: batches,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, batch) {
       fold_list(
         xs: batch,
@@ -924,8 +924,8 @@ fn parse_match_arm_stmt_body(
   } else {
     let init = ParseMatchArmStmtAcc {
       remaining: tokens,
-      acc_nodes: Empty,
-      acc_diags: Empty,
+      acc_nodes: std.algebra.Empty,
+      acc_diags: std.algebra.Empty,
       done: false,
       prov: prov,
       table: table
@@ -1082,7 +1082,7 @@ type GrammarFirstAnalysis {
 }
 
 fn grammar_empty_terminal_list() -> List<Symbol> {
-  Empty
+  std.algebra.Empty
 }
 
 fn first_list_contains(xs: List<Symbol>, item: Symbol) -> Bool {
@@ -1111,7 +1111,7 @@ fn first_list_intersect(left: List<Symbol>, right: List<Symbol>) -> List<Symbol>
 }
 
 fn production_first_row_lookup(rows: Map<Symbol, List<Symbol>>, name: Symbol) -> List<Symbol> {
-  match map_get(m: rows, key: name) {
+  match v2.std.collection.map_get(m: rows, key: name) {
     Accepted { value: Present { value: terminals }, diagnostics: _ } => terminals
     Accepted { value: Absent, diagnostics: _ } => grammar_empty_terminal_list()
     Rejected { diagnostics: _ } => grammar_empty_terminal_list()
@@ -1120,7 +1120,7 @@ fn production_first_row_lookup(rows: Map<Symbol, List<Symbol>>, name: Symbol) ->
 
 fn expr_first_fold_terminal(token_class: Symbol) -> GrammarExprFirstFold {
   GrammarExprFirstFold {
-    terminals: Cons { head: token_class, tail: Empty },
+    terminals: Cons { head: token_class, tail: std.algebra.Empty },
     nullable: false
   }
 }
@@ -1328,7 +1328,7 @@ fn grammar_choice_ambiguity_roster_from_analysis(
 ) -> List<GrammarChoiceAmbiguityRow> {
   fold_list(
     xs: root.productions,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, p) {
       collect_choice_ambiguities_in_expr(
         expr: p.expression,
@@ -1381,7 +1381,7 @@ fn grammar_choice_ambiguity_row_diagnostic_list(
 ) -> List<Diagnostic> {
   fold_list(
     xs: roster,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       list_snoc_item(
         xs: acc,
@@ -1405,16 +1405,16 @@ fn grammar_choice_ambiguity_rejection_diagnostics(
 }
 
 fn grammar_empty_corner_list() -> List<Symbol> {
-  Empty
+  std.algebra.Empty
 }
 
 fn expr_corner_fold_terminal(_: Symbol) -> GrammarExprCornerFold {
-  GrammarExprCornerFold { corners: Empty, nullable: false }
+  GrammarExprCornerFold { corners: std.algebra.Empty, nullable: false }
 }
 
 fn expr_corner_fold_nonterminal(name: Symbol, nullable_set: Set<Symbol>) -> GrammarExprCornerFold {
   GrammarExprCornerFold {
-    corners: Cons { head: name, tail: Empty },
+    corners: Cons { head: name, tail: std.algebra.Empty },
     nullable: nullable_set.member(name)
   }
 }
@@ -1576,7 +1576,7 @@ fn parse_diag_cons(d: Diagnostic, acc: Diagnostics) -> Diagnostics {
 }
 
 fn parse_diags_to_diagnostics(diags: List<Diagnostic>) -> Diagnostics {
-  fold_list_right(xs: diags, empty: None, snoc: fn(acc, d) { parse_diag_cons(d: d, acc: acc) })
+  fold_list_right(xs: diags, empty: v2.std.diagnostic.None, snoc: fn(acc, d) { parse_diag_cons(d: d, acc: acc) })
 }
 
 fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> NonEmptyDiagnostics {
@@ -1603,7 +1603,7 @@ fn diagnostics_from_diagnostic_list(items: List<Diagnostic>) -> Diagnostics {
     Absent => None
     Present { value: first } =>
       match list_tail(xs: items) {
-        TailAbsent => Some { diagnostics: NonEmptyDiagnostics { head: first, tail: Empty } }
+        TailAbsent => Some { diagnostics: NonEmptyDiagnostics { head: first, tail: std.algebra.Empty } }
         TailFound { tail: rest } =>
           Some { diagnostics: NonEmptyDiagnostics { head: first, tail: rest } }
       }
@@ -1614,7 +1614,7 @@ fn grammar_overlap_residue_diagnostics(at: Locus, roster: List<GrammarChoiceAmbi
   diagnostics_from_diagnostic_list(
     items: fold_list(
       xs: roster,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, row) {
         list_snoc_item(xs: acc, item: parse_grammar_choice_overlap_residue_diagnostic(at: at))
       }
@@ -1666,8 +1666,8 @@ fn parse_sync_step(acc: ParseSyncState, tok: Token, sync_tokens: Set<Symbol>) ->
     true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: acc.result, item: tok) }
     false =>
       match sync_tokens.member(tok.class) {
-        true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: Empty, item: tok) }
-        false => ParseSyncState { found_sync: false, result: Empty }
+        true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: std.algebra.Empty, item: tok) }
+        false => ParseSyncState { found_sync: false, result: std.algebra.Empty }
       }
   }
 }
@@ -1675,7 +1675,7 @@ fn parse_sync_step(acc: ParseSyncState, tok: Token, sync_tokens: Set<Symbol>) ->
 fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> ParseSyncState {
   fold_list(
     xs: tokens,
-    empty: ParseSyncState { found_sync: false, result: Empty },
+    empty: ParseSyncState { found_sync: false, result: std.algebra.Empty },
     cons: fn(acc, tok) { parse_sync_step(acc: acc, tok: tok, sync_tokens: sync_tokens) }
   )
 }
@@ -1728,7 +1728,7 @@ fn parse_expr_terminal(
                     ParseExprAccepted {
                       remaining: remaining,
                       captured: captured,
-                      diagnostics: Empty,
+                      diagnostics: std.algebra.Empty,
                       prov: minted.prov,
                       table: table
                     }
@@ -2004,8 +2004,8 @@ fn parse_expr_repeat(
 ) -> ParseExprResult {
   let init = ParseRepeatAcc {
     remaining: tokens,
-    acc_nodes: Empty,
-    acc_diags: Empty,
+    acc_nodes: std.algebra.Empty,
+    acc_diags: std.algebra.Empty,
     done: false,
     prov: prov,
     table: table

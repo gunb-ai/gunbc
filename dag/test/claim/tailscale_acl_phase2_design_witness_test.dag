@@ -1,52 +1,5 @@
 module test.claim.tailscale_acl_phase2_design_witness
 
-import gunbc.tailscale_acl_phase2_credential {
-  tailscale_acl_ephemeral_token_secret_id,
-  tailscale_acl_ephemeral_lifetime,
-  tailscale_acl_operator_adc_strategy,
-  tailscale_acl_gcp_secret_credential_authority,
-  tailscale_acl_adc_refresh_credential_authority,
-  tailscale_acl_optional_impersonation_authority,
-  tailscale_acl_operator_email,
-  operator_principal_member,
-  operator_tailscale_acl_secret_bindings,
-  operator_bindings_are_user_principal_accessor_only,
-  operator_bindings_admit_repo_scoped_wif,
-  operator_bindings_admit_bmc_assimilator_sa,
-  tailscale_acl_credential_flow_uses_auth_patterns,
-  tailscale_acl_phase2_credential_design_holds,
-  tailscale_acl_phase2_live_write_disposition,
-  acl_auto_upsert_refused,
-  acl_upsert_permitted,
-  acl_upsert_wet_shape_is_diff_print_only,
-  ephemeral_token_gate_fail_closed,
-  ephemeral_token_gate_valid,
-  tailscale_ephemeral_token_within_ttl,
-  DiffPending,
-  OperatorConfirmed,
-  RefusedAutoUpsert,
-  PoliciesDiffer,
-  PoliciesMatch,
-  DiffPrintOnly,
-  LiveWriteRefused,
-  TokenPresent,
-  TokenAbsent,
-  TokenExpired,
-}
-import gunbc.fleet_posix_accounts { fleet_operator_gcp_iam_member, fleet_operator_email }
-import gunbc.assimilate.bmc_token_federation {
-  SecretAccessBinding,
-  bmc_secrets_project_id,
-  bmc_federated_github_repo,
-  bmc_wif_principal_set,
-  bmc_assimilator_sa_member,
-}
-import extdeps.cloud.gcp.gcp { AdcRefresh }
-import extdeps.cloud.gcp.iam { role_secretmanager_secret_accessor }
-import std.disposition { Scaffold, SingleAuthority }
-import std.measure { second, second_count }
-import std.types { Secret }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -112,7 +65,7 @@ fn witness_fail_closed_on_absent_or_expired_token() -> Bool {
       now: second(count: 1000)
     )
     && ephemeral_token_gate_valid(
-      gate: TokenPresent {
+      gate: gunbc.tailscale_acl_phase2_credential.TokenPresent {
         token: "tskey-witness" as Secret,
         issued_at: second(count: 1000),
         lifetime: second(count: 3600),

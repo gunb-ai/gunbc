@@ -1,16 +1,5 @@
 module gunbc.idea_pr_spine
 
-import std.types { List }
-import std.reducible {
-  ReduceVerdict, Reduced, Irreducible, Unknown,
-  reduce_verdicts_located,
-}
-import gunbc.review_verdict {
-  ReviewVerdict, Approve, ApproveWithComments, RequestChanges,
-  NeedsHumanTriage, NoVerdict,
-  ReviewProvider, Llm, Claude, HumanReviewer, ProviderOther,
-}
-
 type WorkProduct
   = DesignPlan
   | DagModel
@@ -47,9 +36,9 @@ fn review_to_reduce(r: Review) -> ReduceVerdict {
   match r.verdict {
     Approve => Reduced { last_parts: 1 }
     ApproveWithComments => Reduced { last_parts: 1 }
-    RequestChanges => Unknown { missing: concat("idea-pr:review:", work_tag(r.subject), ":request-changes") }
-    NeedsHumanTriage => Unknown { missing: concat("idea-pr:review:", work_tag(r.subject), ":needs-human-triage") }
-    NoVerdict => Unknown { missing: concat("idea-pr:review:", work_tag(r.subject), ":no-verdict") }
+    RequestChanges => std.reducible.Unknown { missing: concat("idea-pr:review:", work_tag(r.subject), ":request-changes") }
+    NeedsHumanTriage => std.reducible.Unknown { missing: concat("idea-pr:review:", work_tag(r.subject), ":needs-human-triage") }
+    NoVerdict => std.reducible.Unknown { missing: concat("idea-pr:review:", work_tag(r.subject), ":no-verdict") }
   }
 }
 
@@ -73,7 +62,7 @@ fn demo_spine_green() -> List<StageStep> {
     StageStep { stage: IdeaInput, verdict: Reduced { last_parts: 1 } },
     produce_step(DesignPlan, Reduced { last_parts: 3 }),
     produce_step(DagModel, Reduced { last_parts: 2 }),
-    review_step(Review { subject: DagModel, reviewer: Llm { provider: Claude }, verdict: Approve }),
+    review_step(Review { subject: DagModel, reviewer: gunbc.review_verdict.Llm { provider: Claude }, verdict: Approve }),
     produce_step(Implementation, Reduced { last_parts: 5 }),
     review_step(Review { subject: Implementation, reviewer: ProviderOther { name: "policy" }, verdict: ApproveWithComments }),
     review_step(Review { subject: IntentAlignment, reviewer: HumanReviewer, verdict: Approve }),
@@ -86,7 +75,7 @@ fn demo_spine_unknown() -> List<StageStep> {
     StageStep { stage: IdeaInput, verdict: Reduced { last_parts: 1 } },
     produce_step(DesignPlan, Reduced { last_parts: 3 }),
     produce_step(DagModel, Reduced { last_parts: 2 }),
-    review_step(Review { subject: DagModel, reviewer: Llm { provider: Claude }, verdict: RequestChanges }),
+    review_step(Review { subject: DagModel, reviewer: gunbc.review_verdict.Llm { provider: Claude }, verdict: RequestChanges }),
     produce_step(Implementation, Reduced { last_parts: 5 }),
     review_step(Review { subject: Implementation, reviewer: ProviderOther { name: "policy" }, verdict: Approve }),
     review_step(Review { subject: IntentAlignment, reviewer: HumanReviewer, verdict: Approve }),

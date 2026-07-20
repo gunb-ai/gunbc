@@ -1,12 +1,5 @@
 module v2.lens.witness_cost_locality
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import std.disposition { SingleAuthority }
-import v2.std.algebra { contains, filter, fold_list, length, list_append, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.text { String }
 
 data witness_cost_locality_law: String = "One law, two projections: a witness's cost must be denominated in its SUBJECT, never in the ambient system (the same denomination law DESIGN 5 states for failure arms - 'denominated in the corpus, not the change'). Per-PR CI cost is sum over witnesses of depth x breadth x frequency; a witness stays admissible for the continuous per-PR floor only while every factor is repo-independent. Two ambient couplings are detectable from a witness's closure facts: DataBreadth (the closure reaches an ambient-read carrier - the corpus arrives as DATA, so breadth grows with the repo and selection cannot attribute the read, forcing never-skip) and LayerDepth (the closure spans two or more compiler pipeline stages - the round-trip/integration shape whose cost multiplies through the pipeline). Both are the same defect: the witness's evaluation reaches outside its subject. Mocking at the layer boundary cuts both at once - a mock is a bounded fixture standing at the boundary. Integration-class witnesses are not banned; they are SCHEDULED (the nightly lane, a declared budget) instead of continuous, per the signed bounded-input/cost-envelope design: cost drives scheduling, never selection. The complement obligation runs the other way too: mock-based unit witnesses are sound only while mock-vs-real fidelity is itself witnessed, and that fidelity check is inherently integration-class - the scheduled lane is the unit lane's soundness backstop, exactly the affected-set falsifier pattern."
 
@@ -154,7 +147,7 @@ fn import_closure_fixpoint_step(
   }
 }
 
-fn import_closure(root: String, facts: List<ModuleImportFact>) -> List<String> {
+fn witness_import_closure(root: String, facts: List<ModuleImportFact>) -> List<String> {
   let rounds = list_append(left: facts, right: facts)
   let state = fold_list(xs: rounds, empty: ImportClosureFixpointState { members: [root], stable: false }, cons: fn(acc, ignored) {
     import_closure_fixpoint_step(facts: facts, state: acc)
@@ -169,7 +162,7 @@ fn witness_cost_locality_from_facts(
   pipeline_stages: List<String>
 ) -> WitnessCostLocality {
   witness_cost_locality(
-    closure_modules: import_closure(root: entry_module, facts: facts),
+    closure_modules: witness_import_closure(root: entry_module, facts: facts),
     ambient_read_carriers: ambient_read_carriers,
     pipeline_stages: pipeline_stages
   )

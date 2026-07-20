@@ -40,6 +40,7 @@ import v2.std.verification {
   manual_claim_anchor
 }
 import v2.std.witness { Holds, Witness }
+
 data rust_target_model_stub: TargetModel = TargetModel {
   bundle: Node {
     kind: TypeNode { connective: Conj },

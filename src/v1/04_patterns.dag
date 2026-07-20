@@ -1,6 +1,7 @@
 module v1.compiler.infer_patterns
 
 import std.types { SourceSpan }
+
 import v1.std.core {
   Node,
   find_child_named, NewlineIndex, authored_name_at, generic_param_name_at,
@@ -14,20 +15,25 @@ import v1.std.core {
   MatchPattern, LitPattern, arm_pattern,
   LiteralValue, LitBool,
   with_optional_cardinality,
-  none_type, error_type, no_span, kernel_span
+  none_type, error_type, no_span, kernel_span,
+  qualified_last_segment
 }
+
 import v1.compiler.infer_types {
   child_type_node,
   extract_optional_inner_node,
   emit_map_has
 }
+
 import v1.compiler.infer_env {
   TypeEnv,
   lookup_type, lookup_type_by_name,
   symbol_index_lookup
 }
+
 import v1.compiler.infer_resolve {
-  is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots
+  is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
+  substitute_type_slots_scoped
 }
 
 fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node> {
@@ -45,21 +51,43 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
   let decl_is_disj = decl.connective == Disj
   let has_inferred_alias = decl.inferred != none && decl.connective == NoConnective && decl.children |> count == 0
   if decl_is_disj {
-    decl
+    if (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
+      let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+      substitute_type_slots_scoped(
+        n: decl,
+        slot_bindings: subst,
+        decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
+        source_indices: env.source_indices,
+        bind_type_variables: true
+      )
+    } else { decl }
   } else if has_inferred_alias {
     match decl.inferred {
       Present { value: Resolved { node: target } } =>
         let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
-        substitute_type_slots(
+        let substituted = substitute_type_slots_scoped(
           n: target,
           slot_bindings: subst,
           decl_name: name,
-          source_indices: env.source_indices
+          source_indices: env.source_indices,
+        bind_type_variables: true
         )
+        expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
       _ => scrut_node
     }
   } else {
-    scrut_node
+    if decl.connective == Conj && (decl.params |> count) > 0 && (scrut_node.children |> count) > 0 {
+      let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+      substitute_type_slots_scoped(
+        n: decl,
+        slot_bindings: subst,
+        decl_name: authored_name_at(source_indices: env.source_indices, node: decl),
+        source_indices: env.source_indices,
+        bind_type_variables: true
+      )
+    } else {
+      scrut_node
+    }
   }
 }
 
@@ -80,7 +108,20 @@ fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
           match decl.inferred {
             Present { value: Resolved { node: target } } =>
               let target_is_disj = target.connective == Disj
-              if target_is_disj { target } else { scrut_node }
+              let target_is_generic_use = target.connective == NoConnective && target.children |> count > 0
+              if target_is_disj {
+                target
+              } else if target_is_generic_use {
+                let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+                let substituted = substitute_type_slots_scoped(
+                  n: target,
+                  slot_bindings: subst,
+                  decl_name: name,
+                  source_indices: env.source_indices,
+        bind_type_variables: true
+                )
+                expand_scrut_type_for_variant_lookup(scrut_node: substituted, env: env)
+              } else { scrut_node }
             _ => scrut_node
           }
         } else {
@@ -221,7 +262,16 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
       let source_indices = env.source_indices
       if contains(variant_name, ".") {
         match symbol_index_lookup(index: env.symbol_index, qualified_name: variant_name) {
-          Present { value: resolved } => node_lookup_resolved(node: resolved)
+          Present { value: resolved } =>
+            if (resolved.connective == Disj) {
+              match find_child_named(n: resolved, name: qualified_last_segment(name: variant_name), source_indices: source_indices) {
+                Present { value: variant_child } => node_lookup_resolved(node: variant_child)
+                Absent =>
+                  variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
+              }
+            } else {
+              node_lookup_resolved(node: resolved)
+            }
           Absent =>
             variant_not_found_result(scrut: scrut_node, variant_name: variant_name, module_name: module_name, source_indices: source_indices)
         }
@@ -250,7 +300,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
 
           let record_destructure = field_binding_count > 0
             && scrut_node.connective == Conj
-            && scrut_name == variant_name
+            && qualified_last_segment(name: scrut_name) == variant_name
           let fallback = if record_destructure {
             node_lookup_resolved(node: scrut_node)
           } else if optional_coproduct_subject && variant_name == "Present" {
@@ -336,6 +386,7 @@ fn check_match_exhaustiveness(
             map_insert(acc, variant_pattern_coverage_key(name: n), true)
           LitPattern { value: v } => match v {
             LitBool { value: b } => if b { map_insert(acc, "True", true) } else { map_insert(acc, "False", true) }
+            LitNull => map_insert(acc, "Absent", true)
             _ => acc
           }
           _ => acc

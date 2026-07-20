@@ -1,78 +1,5 @@
 module v2.lens.reference_deps
 
-import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-import v2.lens.coverage { dedupe_snoc }
-import v2.lens.enforcement.grammar_coverage { grammar_coverage_distinct_rel_paths }
-import v2.lens.module_graph {
-  ImportClosureBfsState,
-  ImportResolutionFact,
-  ModuleDeclarationFact,
-  bfs_absorb_neighbors,
-  build_module_to_path,
-  import_closure_bfs_walk,
-  import_closure_live_excluding,
-  import_resolution_facts_live,
-  map_lookup_where_rejected_unreachable,
-  module_declaration_facts_live,
-  module_graph_exclude_substrings,
-  no_paths,
-  snoc_unseen_list
-}
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.compiler.parse { parse_module }
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.dag {
-  ParseSubtreeAbsent,
-  ParseSubtreeFound,
-  dag_language_model,
-  parse_production_captured_child_optional,
-  parse_production_emitted_identity_optional,
-  parse_qualified_name_segments_from_capture,
-  parse_subtree_find_production_captured,
-  qualified_name_from_module_node,
-  qualified_name_from_symbol_segments
-}
-import v2.std.algebra {
-  any,
-  bag_eq,
-  contains,
-  fold_list,
-  for_all,
-  is_empty,
-  is_prefix_of,
-  length,
-  list_head,
-  list_snoc_item,
-  HeadFound,
-  HeadAbsent
-}
-import v2.std.collection { Absent, List, Map, Present, empty_map, map_insert }
-import v2.std.decl_index { decl_facts }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Rejected,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected,
-  port_locus
-}
-import v2.std.logic { Bool }
-import v2.std.node { Edge, Node, Symbol }
-import v2.std.node_query { find_named_child }
-import v2.std.qualified_name {
-  QualifiedName,
-  qualified_name_from_dotted_string,
-  qualified_name_from_node,
-  qualified_name_to_dotted_string
-}
-import v2.std.text { String }
 
 type ReferenceResolutionFact {
   path: String
@@ -172,10 +99,10 @@ fn reference_snoc_refusal(
 fn reference_deps_ingest_source_text(source_text: String, file: Symbol) -> Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(
-    o: tokenize(text: source_text, file: file, rules: lm.lex),
+    o: v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex),
     f: fn(token_stream) {
       bind_outcome(
-        o: parse_module(tokens: token_stream, grammar: lm.grammar),
+        o: v2.compiler.parse.parse_module(tokens: token_stream, grammar: lm.grammar),
         f: fn(artifact) {
           outcome_accepted(value: artifact.tree)
         }
@@ -197,9 +124,9 @@ fn reference_qn_from_qualified_name_production_strict(
       })
     Present { value: capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: capture, root: module_root) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: segments, diagnostics: _ } =>
-          qualified_name_from_symbol_segments(segments: segments, root: module_root)
+          v2.extdeps.languages.dag.qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
   }
 }
@@ -211,15 +138,15 @@ fn reference_qn_from_import_decl_strict(node: Node, module_root: Node) -> Outcom
   ) {
     ParseSubtreeAbsent =>
       match find_named_child(root: node, name: ^dag_surface_import_decl_qualified_name) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: qn_node, diagnostics: _ } =>
           qualified_name_from_node(root: qn_node)
       }
     ParseSubtreeFound { captured: qn_capture } =>
       match parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: module_root) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: segments, diagnostics: _ } =>
-          qualified_name_from_symbol_segments(segments: segments, root: module_root)
+          v2.extdeps.languages.dag.qualified_name_from_symbol_segments(segments: segments, root: module_root)
       }
   }
 }
@@ -251,7 +178,7 @@ fn reference_sites_collect_edges(
         module_qn: module_qn,
         acc: acc
       ) {
-        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
         Accepted { value: next_acc, diagnostics: _ } =>
           reference_sites_collect_edges(
             edges: edges |> skip(1),
@@ -276,7 +203,7 @@ fn reference_sites_collect_node(
           production_node: node,
           module_root: module_root
         ) {
-          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
           Accepted { value: site_qn, diagnostics: _ } =>
             reference_sites_collect_edges(
               edges: node.children,
@@ -291,7 +218,7 @@ fn reference_sites_collect_node(
         }
       } else if id == ^dag_surface_import_decl {
         match reference_qn_from_import_decl_strict(node: node, module_root: module_root) {
-          Rejected { diagnostics: d } => Rejected { diagnostics: d }
+          Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
           Accepted { value: site_qn, diagnostics: _ } =>
             reference_sites_collect_edges(
               edges: node.children,
@@ -324,13 +251,13 @@ fn reference_sites_collect_node(
 
 fn reference_sites_from_parsed_module(module_root: Node) -> Outcome<List<QualifiedName>> {
   match qualified_name_from_module_node(root: module_root) {
-    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
     Accepted { value: module_qn, diagnostics: _ } =>
       reference_sites_collect_node(
         node: module_root,
         module_root: module_root,
         module_qn: module_qn,
-        acc: Empty
+        acc: std.algebra.Empty
       )
   }
 }
@@ -424,7 +351,7 @@ fn reference_paths_from_import_edges(
     xs: edges,
     empty: acc,
     cons: fn(a, edge) {
-      dedupe_snoc(acc: a, item: edge.path, eq: string_eq)
+      v2.lens.coverage.dedupe_snoc(acc: a, item: edge.path, eq: string_eq)
     }
   )
 }
@@ -437,7 +364,7 @@ fn reference_paths_from_module_declarations(
     xs: nodes,
     empty: acc,
     cons: fn(a, node) {
-      dedupe_snoc(acc: a, item: node.path, eq: string_eq)
+      v2.lens.coverage.dedupe_snoc(acc: a, item: node.path, eq: string_eq)
     }
   )
 }
@@ -449,7 +376,7 @@ fn reference_corpus_paths_live(
 ) -> List<String> {
   let from_modules = reference_paths_from_module_declarations(
     nodes: module_declaration_facts_live(pool_roots: pool_roots),
-    acc: Empty
+    acc: std.algebra.Empty
   )
   let from_imports = reference_paths_from_import_edges(
     edges: import_resolution_facts_live(
@@ -460,9 +387,9 @@ fn reference_corpus_paths_live(
     acc: from_modules
   )
   fold_list(
-    xs: grammar_coverage_distinct_rel_paths(facts: decl_facts(pool_roots: pool_roots)),
+    xs: v2.lens.enforcement.grammar_coverage.grammar_coverage_distinct_rel_paths(facts: decl_facts(pool_roots: pool_roots)),
     empty: from_imports,
-    cons: fn(acc, path) { dedupe_snoc(acc: acc, item: path, eq: string_eq) }
+    cons: fn(acc, path) { v2.lens.coverage.dedupe_snoc(acc: acc, item: path, eq: string_eq) }
   )
 }
 
@@ -717,7 +644,7 @@ fn reference_neighbor_paths_from_facts(
           if reference_path_excluded(path: referenced_path, exclude_substrings: exclude_substrings) {
             a
           } else {
-            dedupe_snoc(acc: a, item: referenced_path, eq: string_eq)
+            v2.lens.coverage.dedupe_snoc(acc: a, item: referenced_path, eq: string_eq)
           }
         Absent => a
       }
@@ -754,7 +681,7 @@ fn reference_closure_bfs_parsed_walk(
                 facts: census.facts,
                 module_to_path: module_to_path,
                 exclude_substrings: exclude_substrings,
-                acc: Empty
+                acc: std.algebra.Empty
               )
               let next = bfs_absorb_neighbors(
                 state: ImportClosureBfsState {
@@ -785,7 +712,7 @@ fn reference_closure_bfs_parsed_walk(
                 facts: census.facts,
                 module_to_path: module_to_path,
                 exclude_substrings: exclude_substrings,
-                acc: Empty
+                acc: std.algebra.Empty
               )
               let next = bfs_absorb_neighbors(
                 state: ImportClosureBfsState {

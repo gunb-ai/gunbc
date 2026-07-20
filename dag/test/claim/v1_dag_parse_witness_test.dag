@@ -1,7 +1,5 @@
 module test.claim.v1_dag_parse_witness
 
-import tools.v1_dag_parse_transport { run_v1_dag_parse }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

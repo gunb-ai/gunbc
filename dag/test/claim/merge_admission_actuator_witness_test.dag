@@ -1,24 +1,5 @@
 module test.claim.merge_admission_actuator_witness
 
-import gunbc.merge_admission {
-  MergeAdmissionReceipt,
-  Success,
-  Skipped,
-  KeyedReceipt,
-  MergeAdmissionVerdict,
-  MergeAdmitted, MergeDeniedStaleBase, MergeDeniedStaleRoster, MergeDeniedNotSuccess,
-  classify_merge_admission_verdict,
-  merge_admission_would_block,
-  merge_admission_enforcement_policy,
-  merge_admission_documentation_only_skipped_admit_policy,
-}
-import gunbc.ci_failure_class {
-  merge_admission_blocks_merge,
-  merge_freshness_gating_status,
-  gating_is_enforced,
-}
-import std.types { ContentHash }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

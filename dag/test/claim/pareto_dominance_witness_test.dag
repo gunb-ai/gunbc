@@ -1,22 +1,5 @@
 module test.claim.pareto_dominance
 
-import std.logic { Bool }
-import std.types { List }
-import std.pareto {
-  AxisComparison,
-  DominanceVerdict,
-  HigherIsBetter,
-  LowerIsBetter,
-  axis_comparison_int,
-  dominance_of_comparisons,
-  verdict_dominates,
-  verdict_is_dominated,
-  verdict_is_equivalent,
-  verdict_is_incomparable,
-  any_dominates,
-  on_pareto_front
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -1,29 +1,5 @@
 module gunbc.accelerator_demo_gpu
 
-import std.types { String, Bool, Int, NonEmptyStr }
-import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
-import std.numerical_contract {
-  NumericalContract,
-  IntegerExact,
-  FloatApproximate,
-  FmaContractionPermitted,
-  FmaContractionRefused,
-  integer_exact_contract,
-  float_contract,
-}
-import std.approximate_field { ToNearestEven }
-import extdeps.gpu.types {
-  GpuModelCatalogRow,
-  GpuComputeCapability,
-}
-import extdeps.gpu.apple { apple_m5_gpu_catalog }
-import extdeps.gpu.nvidia { nvidia_rtx_5090_catalog }
-import extdeps.languages.gpu.wgsl.kernel {
-  wgsl_kernel_target_medium_name,
-  wgsl_relu_mul_add_int_kernel_source,
-  wgsl_relu_mul_add_float_kernel_source,
-}
-import std.measure { hardware_thread_count_value, bandwidth_count }
 
 fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
   match contract {
@@ -116,7 +92,7 @@ fn render_device_sketch(device: GpuModelCatalogRow) -> String {
             device.microarchitecture,
             concat(
               ", lanes=",
-              concat(to_string(hardware_thread_count_value(t: device.execution_lane_count)), "]")
+              concat(to_string(std.measure.hardware_thread_count_value(t: device.execution_lane_count)), "]")
             )
           )
         )
@@ -155,37 +131,37 @@ fn render_gpu_triptych_text(view: GpuDemoTriptychView) -> String {
 }
 
 fn witness_m5_gpu_execution_lane_count_grounded() -> Bool {
-  hardware_thread_count_value(t: apple_m5_gpu_catalog.execution_lane_count) == 10
+  std.measure.hardware_thread_count_value(t: extdeps.gpu.apple.apple_m5_gpu_catalog.execution_lane_count) == 10
 }
 
 fn witness_rtx5090_execution_lane_count_grounded() -> Bool {
-  hardware_thread_count_value(t: nvidia_rtx_5090_catalog.execution_lane_count) == 21760
+  std.measure.hardware_thread_count_value(t: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.execution_lane_count) == 21760
 }
 
 fn witness_rtx5090_memory_bandwidth_grounded() -> Bool {
-  bandwidth_count(b: nvidia_rtx_5090_catalog.memory_bandwidth) == 1792000000000
+  std.measure.bandwidth_count(b: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.memory_bandwidth) == 1792000000000
 }
 
 fn witness_m5_memory_bandwidth_grounded() -> Bool {
-  bandwidth_count(b: apple_m5_gpu_catalog.memory_bandwidth) == 153000000000
+  std.measure.bandwidth_count(b: extdeps.gpu.apple.apple_m5_gpu_catalog.memory_bandwidth) == 153000000000
 }
 
 fn witness_rtx5090_compute_capability_grounded() -> Bool {
-  match nvidia_rtx_5090_catalog.compute_capability {
+  match extdeps.gpu.nvidia.nvidia_rtx_5090_catalog.compute_capability {
     Present { value: cap } => cap.major == 12 && cap.minor == 0
     Absent => false
   }
 }
 
 fn witness_m5_has_no_compute_capability() -> Bool {
-  match apple_m5_gpu_catalog.compute_capability {
+  match extdeps.gpu.apple.apple_m5_gpu_catalog.compute_capability {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 fn witness_integer_path_is_lossless() -> Bool {
-  match wgsl_device_precision_fidelity(contract: integer_exact_contract()) {
+  match wgsl_device_precision_fidelity(contract: std.numerical_contract.integer_exact_contract()) {
     Lossless => true
     Lossy => false
   }
@@ -193,7 +169,7 @@ fn witness_integer_path_is_lossless() -> Bool {
 
 fn witness_float_path_is_lossy_even_when_fma_refused() -> Bool {
   match wgsl_device_precision_fidelity(
-    contract: float_contract(rounding: ToNearestEven, fma: FmaContractionRefused)
+    contract: std.numerical_contract.float_contract(rounding: ToNearestEven, fma: FmaContractionRefused)
   ) {
     Lossless => false
     Lossy => true
@@ -202,8 +178,8 @@ fn witness_float_path_is_lossy_even_when_fma_refused() -> Bool {
 
 fn witness_gpu_receipt_status_is_dormant() -> Bool {
   let receipt = gpu_fidelity_receipt(
-    device: nvidia_rtx_5090_catalog,
-    contract: integer_exact_contract()
+    device: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog,
+    contract: std.numerical_contract.integer_exact_contract()
   )
   match receipt.status {
     DormantAwaitingOperator => receipt.target_medium == "wgsl-compute-relu-mul-add"
@@ -213,8 +189,8 @@ fn witness_gpu_receipt_status_is_dormant() -> Bool {
 fn witness_gpu_triptych_contains_three_panels() -> Bool {
   let text = render_gpu_triptych_text(
     view: project_gpu_triptych_view(
-      device: nvidia_rtx_5090_catalog,
-      contract: integer_exact_contract()
+      device: extdeps.gpu.nvidia.nvidia_rtx_5090_catalog,
+      contract: std.numerical_contract.integer_exact_contract()
     )
   )
   string_contains(s: text, pattern: "[LEFT: GPU device]")

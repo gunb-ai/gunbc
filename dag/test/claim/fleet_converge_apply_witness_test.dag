@@ -1,45 +1,5 @@
 module test.claim.fleet_converge_apply_witness
 
-import std.logic { Bool }
-import std.types { String }
-import gunbc.host_converge {
-  ConvergePolicy,
-  ConvergePolicyDerived,
-  ConvergePolicyUnsound,
-  HostConverge,
-  ConvergeKnob,
-  GunbcSlice,
-  FreshStandup,
-  BlindApply,
-  GunbcPinnedTree,
-  DeferToSubmodule,
-  NoMembershipProbe,
-  gunbc_pinned_tree_desired_label,
-  gunbc_root_env_key,
-  gunbc_host_gunbc_root_path,
-  gunbc_dag_root_submodule_path,
-  gunbc_host_ctrl_checkout_path,
-  gunbc_ctrl_read_pin_script,
-  gunbc_pinned_binary_provenance_policy,
-  gunbc_green_place_marker_spec,
-  gunbc_dashboard_live_apply_policy,
-}
-import gunbc.fleet_converge_apply {
-  converge_apply,
-  FleetConvergeApplied,
-  FleetConvergeApplyRefused,
-  fleet_converge_apply_result_converged,
-  fleet_converge_thin_invocation,
-}
-import gunbc.host_effect { LocalShell, EmitArtifactThenThinRun, BootstrapFragment,
-  bootstrap_fragment_script_carrier_scaffold,
-  thin_invocation_argv_carrier_scaffold,
-  emit_artifact_then_thin_run_transport_scaffold,
-}
-import std.disposition { Scaffold, RealizationDispatch, Terminal }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

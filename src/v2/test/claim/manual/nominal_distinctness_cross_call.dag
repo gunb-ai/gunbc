@@ -69,6 +69,7 @@ import v2.std.verification {
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+
 data nominal_distinct_forbidden_authority_source_text: String = "nominal_distinct_forbidden_authority_source_text"
 
 data nominal_distinct_records_source: Medium<String> = Medium { carried: "module nominal.distinct.records.probe\n\ntype WrapA {\n  value: Int\n}\n\ntype WrapB {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(b: WrapB) -> Int = expects_a(b)\n", fidelity: Lossless }

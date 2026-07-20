@@ -1,35 +1,10 @@
 module test.claim.json_emit_witness
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.languages.json.emit {
-  extdeps_external_authority_anchor,
-  escape_json_string,
-  quote_json_string,
-  serialize_json,
-  json_null,
-  json_bool,
-  json_int,
-  json_string,
-  json_array,
-  json_object,
-  json_kv,
-  json_int_list,
-  json_str_list,
-  json_unicode_escape_hex4,
-  json_number_from_lexeme_string,
-}
-import extdeps.languages.json.grammar {
-  json_production_rows,
-  json_number_lexeme_valid,
-  json_number_lexeme,
-  json_int_lexeme,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_json_cites_rfc8259() -> Bool {
-  match extdeps_external_authority_anchor {
+  match extdeps.languages.json.emit.extdeps_external_authority_anchor {
     ExternalAuthority { uri } => uri.locator == "www.rfc-editor.org/rfc/rfc8259"
   }
 }

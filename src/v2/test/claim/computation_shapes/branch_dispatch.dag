@@ -24,6 +24,7 @@ import v2.std.verification {
   EqualsClaim,
   manual_claim_anchor
 }
+
 fn branch_dispatch_leaf(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence

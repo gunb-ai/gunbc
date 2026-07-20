@@ -1,15 +1,4 @@
 module v2.std.decl_index
-
-import std.algebra { Empty }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import v2.std.algebra { length, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.node { Node }
-import v2.std.node_query { node_labeled_child_edges, node_positional_child_targets }
-import v2.std.text { String }
-
 type ItemKind
   = FnItem
   | FuncItem
@@ -67,7 +56,7 @@ fn decl_fact_node_has_body(node: Node) -> Bool {
 }
 
 fn decl_facts_fn_items(facts: List<DeclFact>) -> List<DeclFact> {
-  fold(facts, init: Empty, f: fn(acc, fact) {
+  fold(facts, init: std.algebra.Empty, f: fn(acc, fact) {
     if decl_facts_is_fn_like(kind: fact.kind) {
       list_snoc_item(xs: acc, item: fact)
     } else {

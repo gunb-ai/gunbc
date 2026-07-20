@@ -1,8 +1,5 @@
 module gunbc.digest_render
 
-import extdeps.github.pulls { PullRequest, PullReview, PullRequestState, ReviewState, Open }
-import std.render { kv_pair, list_block }
-import std.types { NonEmptyStr }
 
 type PullRequestDigestSubject {
   number: Int
@@ -30,7 +27,7 @@ data digest_render_expectation_receipts: List<String> = [
   "render_readiness|DigestOpenForReview|open for review"
 ]
 
-fn digest_subject(pr: PullRequest) -> PullRequestDigestSubject {
+fn digest_subject(pr: extdeps.github.pulls.PullRequest) -> PullRequestDigestSubject {
   PullRequestDigestSubject {
     number: pr.number,
     title: pr.title,
@@ -63,7 +60,7 @@ fn review_state_labels(reviews: List<PullReview>) -> List<String> {
   map(reviews, r => render_review_state(state: r.state))
 }
 
-fn readiness_projection(pr: PullRequest) -> DigestReadinessProjection {
+fn readiness_projection(pr: extdeps.github.pulls.PullRequest) -> DigestReadinessProjection {
   if pr.draft {
     DigestNotReady { first_reason: "draft", more_reasons: [] }
   } else {
@@ -78,7 +75,7 @@ fn readiness_projection(pr: PullRequest) -> DigestReadinessProjection {
   }
 }
 
-fn project_pull_request_digest(pr: PullRequest, reviews: List<PullReview>) -> PullRequestDigestView {
+fn project_pull_request_digest(pr: extdeps.github.pulls.PullRequest, reviews: List<PullReview>) -> PullRequestDigestView {
   PullRequestDigestView {
     subject: digest_subject(pr: pr),
     readiness: readiness_projection(pr: pr),

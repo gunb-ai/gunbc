@@ -26,6 +26,7 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_facts,
   claim_inferred_tree
 }
+
 data apply_lens_mode_root: Node = claim_atom_node(s: ^apply_lens_mode_symbol)
 
 fn apply_lens_mode_tree() -> InferredTree {

@@ -1,10 +1,5 @@
 module gunbc.ci_oom_reclassify
 
-import gunbc.ci_failure_class {
-  FloorOutcome, NoFailure, FloorFailed,
-  FloorFailureClass, Infra, Structural,
-  InfraSignature, ClusteredOutOfMemoryKill
-}
 
 type OomKillSource
   = CgroupMemoryEvents
@@ -76,7 +71,7 @@ fn reclassify_floor_failure(c: FloorFailureClass, oom: OomKillObservation, clust
     Infra { signature: _ } => c
     Structural { reason: _ } =>
       if oom_is_confirmed(o: oom) && clustering_is_present(c: clustering) {
-        Infra { signature: ClusteredOutOfMemoryKill }
+        gunbc.ci_failure_class.Infra { signature: ClusteredOutOfMemoryKill }
       } else {
         c
       }

@@ -7,9 +7,9 @@ import v2.lens.registry.completeness {
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 data lens_registry_completeness_fixture_facts: List<ModuleDeclarationFact> = [
   ModuleDeclarationFact { module: "v2.lens.alpha_fixture", path: "src/v2/lens/alpha_fixture.dag" },

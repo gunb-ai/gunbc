@@ -1,21 +1,5 @@
 module v2.test.manual.target_carriers_fidelity
 
-import extdeps.communication.medium { Lossless, Lossy, Medium }
-import v2.compiler.target_carriers {
-  decode_fidelity_from_target,
-  target_source_medium
-}
-import v2.compiler.translate { target_serialize_source_from_model }
-import v2.extdeps.languages.dag {
-  dag_fixture_emitted_add_fn,
-  dag_target_model,
-  dag_target_model_lossless_fidelity_quotient
-}
-import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

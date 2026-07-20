@@ -1,43 +1,6 @@
 module v2.lens.grounding
 
 
-import gunbc.ci_layer_roots { witness_layer_roots }
-import v2.std.algebra { fold_list, is_empty, is_prefix_of, length, list_snoc_item }
-import v2.std.collection { List }
-import v2.std.cross_tree.import_model {
-  CrossTreeImport,
-  V2Tree,
-  cross_tree_layer_direction_holds
-}
-import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
-import v2.std.integer { Int }
-import v2.std.layer {
-  LayerPrefix,
-  LayerPrefixCompiler,
-  LayerPrefixExtdeps,
-  LayerPrefixStd,
-  LayerPrefixWorkflow
-}
-import v2.std.logic { Bool }
-import v2.std.text { Char, String }
-import v2.std.concept_index {
-  ConceptByName,
-  ConceptDecl,
-  ConceptStruct,
-  FieldRef,
-  QualifiedConcept,
-  build_concept_name_index,
-  concept_decl_facts,
-  concept_from_decl,
-  enumerate_concepts_from_decls
-}
-import v2.std.node { Node }
-import v2.std.node_query {
-  coproduct_arm_list_from_node,
-  coproduct_arm_payload_pair_from_arm,
-  node_is_coproduct
-}
-import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: RatchetForever

@@ -12,6 +12,7 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Cardinality, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.witness { Witness }
+
 type LensComplexityClaim {
   input: Node
   expected_cost: SymbolicCost
