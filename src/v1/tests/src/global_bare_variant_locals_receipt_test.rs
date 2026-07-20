@@ -3,7 +3,7 @@
 //! Discriminating case: owning module, same-authority variant (globally-unique Disj arm
 //! present in BOTH module `variant_fold.locals` and shared `global_bare_variant_locals`).
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
@@ -131,7 +131,7 @@ fn expected_variant_locals_old_path(
         module_name.clone(),
         Rc::new(VariantFoldState {
             locals: v1_rt::rc_empty_map(),
-            collision_errors: Rc::new(im_rc::Vector::new()),
+            collision_errors: Rc::new(im::Vector::new()),
         }),
     );
     let after_old_merge = simulate_old_merge_global_bare_variant_locals(
@@ -151,7 +151,7 @@ fn receipt1_owning_module_same_authority_variant_locals_byte_identical() {
     let sources = Rc::new(
         vec![src("dag/probe_def.dag", DEFINER)]
             .into_iter()
-            .collect::<im_rc::Vector<_>>(),
+            .collect::<im::Vector<_>>(),
     );
     let frontend = front_end_sources(sources);
     let graph = frontend.graph.clone().expect("graph");
@@ -220,7 +220,7 @@ fn receipt1_owning_module_same_authority_variant_locals_byte_identical() {
         module_path.clone(),
         Rc::new(VariantFoldState {
             locals: v1_rt::rc_empty_map(),
-            collision_errors: Rc::new(im_rc::Vector::new()),
+            collision_errors: Rc::new(im::Vector::new()),
         }),
     );
     let probe_eur_module = module_fold

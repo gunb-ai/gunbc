@@ -4,7 +4,7 @@
 
 use clap::{Parser, Subcommand};
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::rc::Rc;
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile;

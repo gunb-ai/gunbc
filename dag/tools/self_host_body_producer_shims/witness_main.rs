@@ -1,4 +1,4 @@
-use im_rc::{vector as vec, Vector as Vec};
+use im::{vector as vec, Vector as Vec};
 use std::rc::Rc;
 use v1_compiled::v2_compiler_body_producer as emitted;
 use v1_compiled::v2_std_node::{

@@ -55,7 +55,7 @@ fn probe_census_indexes_variant_and_fn() {
     let sources = Rc::new(
         vec![src("dag/probe_def.dag", DEFINER)]
             .into_iter()
-            .collect::<im_rc::Vector<_>>(),
+            .collect::<im::Vector<_>>(),
     );
     let frontend = front_end_sources(sources);
     let graph = frontend.graph.as_ref().expect("graph");
@@ -63,7 +63,7 @@ fn probe_census_indexes_variant_and_fn() {
         .newline_indices
         .iter()
         .cloned()
-        .fold(im_rc::HashMap::new(), |acc, si| {
+        .fold(im::HashMap::new(), |acc, si| {
             acc.update(si.file.clone(), si)
         });
     let source_indices_rc = Rc::new(source_indices);
