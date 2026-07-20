@@ -4856,6 +4856,23 @@ pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
         || Rc::ptr_eq(node, &STRIPPED_FN_BODY_MARKER.with(Rc::clone))
 }
 
+/// Typed refusal when a traversal reaches the census heads-only fn stand-in body.
+pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
+    if is_census_heads_fn_stand_in(node) {
+        Some(format!(
+            "census heads-only pool parse refused: body traversal hit stand-in '{}'",
+            CENSUS_HEADS_FN_STAND_IN_NAME
+        ))
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+pub fn census_heads_fn_stand_in_for_test() -> Rc<Node> {
+    stripped_fn_body_marker()
+}
+
 fn census_heads_children(children: &Rc<im::Vector<Rc<Node>>>) -> Rc<im::Vector<Rc<Node>>> {
     Rc::new(
         children

@@ -1411,6 +1411,26 @@ fn pool_parse_heads_only_does_not_prefill_parse_cache() {
 }
 
 #[test]
+fn census_heads_fn_stand_in_is_fail_loud_not_empty() {
+    use v1_compiler::cli_run::{census_heads_fn_stand_in_for_test, is_census_heads_fn_stand_in};
+    use v1_compiler::v1_std_core::ExprData;
+
+    let stand_in = census_heads_fn_stand_in_for_test();
+    assert!(
+        is_census_heads_fn_stand_in(&stand_in),
+        "stand-in must be identifiable by name/pointer"
+    );
+    assert!(
+        matches!(&*stand_in.expr_data, ExprData::ExprError { .. }),
+        "stand-in must carry ExprError so body-content traversal refuses, not succeed on emptiness"
+    );
+    assert!(
+        stand_in.children.is_empty() && stand_in.body.is_none(),
+        "stand-in must not masquerade as a real expression tree"
+    );
+}
+
+#[test]
 fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     use std::time::{SystemTime, UNIX_EPOCH};
     use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
