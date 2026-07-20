@@ -210,20 +210,8 @@ struct GovCore {
 
 impl GovCore {
     fn new() -> Self {
-        // GUNBC_FLOOR_INITIAL_WIDTH: opt-in seed for the AIMD start width (default 1 = the
-        // existing slow-start). The discovery pool reads target_width ONCE at spawn and its
-        // width-1 arm drains inline without ever polling the governor, so on hosts with a
-        // large declared budget the additive-increase path is unreachable — this seed is the
-        // manual-run escape until Rc→Arc retires the width-1 inline gate (see cli_run
-        // run_discovery_corpus). The seed only raises the START; every AIMD back-off arm
-        // (hard event, creep, budget-exceed collapse-to-1) still applies on top.
-        let seeded_width = std::env::var("GUNBC_FLOOR_INITIAL_WIDTH")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .filter(|w| *w >= 1)
-            .unwrap_or(1);
         GovCore {
-            target_width: seeded_width,
+            target_width: 1,
             active: 0,
             prev_swap_bytes: None,
             baseline_events_high: None,
