@@ -195,7 +195,7 @@ data host_standup_spine: List<HostStandupStep> = [
   host_standup_prefix_gap_step(
     phase: OsInstallActuated,
     label: "prefix:os-install-actuated",
-    interim_realization: "gunbc.srv3_os_install_actuate (runnable prep) + gunbc.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply; systemd-run transient units interim) + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + gunbc.network_identity_subsumption; live mount+boot proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)",
+    interim_realization: "gunbc.srv3_os_install_actuate (runnable prep) + gunbc.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply; systemd-run transient units interim) + extdeps.bmc.os_install_actuator_toolchain + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + gunbc.network_identity_subsumption; live mount+boot proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)",
     refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until NBD-proxy install actuates and OS-up witness is green-by-execution",
     effect_evidence: host_effect_identity_evidence
   ),
