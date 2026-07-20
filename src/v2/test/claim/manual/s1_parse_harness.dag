@@ -1,13 +1,5 @@
 module v2.test.manual.s1_parse_harness
 
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse_module }
-import v2.compiler.normalize { normalize }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.node { Symbol }
 
 fn s1_parse_ok(source: String, file: Symbol) -> Bool {
   let lm = dag_language_model()

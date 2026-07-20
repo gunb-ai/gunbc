@@ -1,49 +1,7 @@
 module gunbc.host_standup_assimilation_deduction
 
-import std.types { Bool, Int, List, NonEmptyStr, String, Milliseconds }
-import std.measure { Millisecond, millisecond, millisecond_count }
-import std.disposition { Disposition, Terminal }
-import std.upsert_decision {
-  ObservationVerdict,
-  Converged,
-  Absent,
-  Drifted,
-  UnknownRefused,
-  Conflict,
-  Inaccessible,
-  UpsertDecision,
-  UpsertClassification,
-  Noop,
-  Apply,
-  Refuse,
-}
-import std.temporal_effect {
-  EffectStallBudget,
-  StallBudgetVerdict,
-  StallWithinBudget,
-  StallBudgetExceeded,
-  stall_budget_verdict,
-}
-import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseTable }
-import extdeps.bmc.types {
-  RedfishBootSourceOverrideMode,
-  BootOverrideModeLegacy,
-  BootOverrideModeUefi,
-}
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.network_identity_subsumption {
-  lease_table_has_os_up_subsumption,
-  srv3_pre_install_lease_table,
-  srv3_post_install_lease_table_fixture,
-}
-import gunbc.srv3_os_install_diagnostic { srv3_install_hang_no_router_lease_ms }
-import gunbc.os_install_deduction {
-  KvmObservedScreen,
-  SubiquityStorageScreen,
-}
 
-data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = Terminal {
+data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "Level-triggered assimilation deduction: OsInstalled from DHCP option-12 subsumption satisfies prefix:os-install-actuated and unlocks P0:host-identity-converge. Verdict authority is std.upsert_decision.ObservationVerdict (no parallel level enum). Happy path = lease read only; unreadable lease table → UnknownRefused, never Absent/Pending. Converged → UpsertDecision Noop. KVM/BMC weak surfaces consulted ONLY inside stall cause-fold."
 }
 
@@ -146,7 +104,7 @@ fn deduce_os_install_actuation_verdict(
         Converged
       } else {
         match stall {
-          StallWithinBudget => Absent
+          StallWithinBudget => std.upsert_decision.Absent
           StallBudgetExceeded { step_id: _, elapsed_ms: _, limit_ms: _ } => Drifted
         }
       }
@@ -198,7 +156,7 @@ fn classify_os_install_actuation_upsert(
   obs: DhcpLeaseTableObservation,
   fleet_slot: HostIdentity,
   stall: StallBudgetVerdict,
-) -> UpsertClassification<OsInstallActuationAssertPlan> {
+) -> std.upsert_decision.UpsertClassification<OsInstallActuationAssertPlan> {
   let verdict = deduce_os_install_actuation_verdict(
     obs: obs,
     fleet_slot: fleet_slot,

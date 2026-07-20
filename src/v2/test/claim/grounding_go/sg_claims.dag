@@ -1,51 +1,5 @@
 module v2.test.grounding_go.sg_claims
 
-import v2.compiler.eval {
-  TestClaimEvalSubject,
-  TestClaimRun,
-  eval_test_claim_subject,
-  run_test_claim
-}
-import v2.compiler.translate {
-  ProjectionAbsent,
-  collection_realization_from_target,
-  free_monoid_collection_realization_from_target,
-  target_bundle_child_optional_type_expr_projection
-}
-import v2.extdeps.languages.go {
-  go_g1_3_per_language_fact_bundle_registry,
-  go_target_model,
-  go_target_atom_realization_catalog
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.grounding {
-  GroundingEvidenceSchema,
-  Sg1Evidence,
-  Sg2Evidence,
-  Sg5Evidence
-}
-import v2.std.logic { Bool, bool_node }
-import v2.std.node { Atom, Node, Symbol, TypeNode, content_hash, SyntheticOccurrence }
-import v2.std.runtime { RuntimeValue }
-import v2.std.compilers.target_model {
-  char_kernel_type_node,
-  symbol_kernel_type_node,
-  target_atom_realization_lookup_in_catalog
-}
-import v2.std.verification {
-  EqualsClaim,
-  Integration,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  manual_claim_anchor
-}
-import v2.test.manual.eval_runtime {
-  eval_add_subgraph,
-  eval_context,
-  eval_inferred_tree
-}
 fn go_g2_claim_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^go_g2_claim_fail_symbol } },

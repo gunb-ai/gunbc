@@ -1,11 +1,5 @@
 module test.claim.stage0_emit_model_witness
 
-import gunbc.stage0_emit_model {
-  stage0_module_emit_basename,
-  stage0_module_emit_filename,
-  is_generated_stage0_file
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

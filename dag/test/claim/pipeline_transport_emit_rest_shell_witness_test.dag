@@ -1,4 +1,5 @@
 module test.claim.pipeline_transport_emit_rest_shell_witness
+
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly

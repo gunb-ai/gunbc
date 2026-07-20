@@ -1,13 +1,9 @@
 module test.claim.time_scale_factor_derivation
 
-import std.logic { Bool }
-import std.nat { Nat }
-import std.measure { Scale, One, Sixty, time_scale_factor_seconds, scale_exponent }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn factor_is(s: Scale, expected: Nat) -> Bool {
+fn factor_is(s: Scale, expected: std.nat.Nat) -> Bool {
   match time_scale_factor_seconds(s: s) {
     Present { value: n } => n == expected
     Absent => false

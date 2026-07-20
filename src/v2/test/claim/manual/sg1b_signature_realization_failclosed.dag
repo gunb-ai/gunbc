@@ -19,6 +19,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn sg1b_fc_pass_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_pass_sym } },

@@ -1,53 +1,17 @@
 module test.claim.materialization_ladder_witness
 
-import std.materialization_ladder {
-  Frame, FrameKind,
-  SharedStateFrame, IsolatedChildrenFrame, ReplayedFrame, UnboundedSiblingsFrame,
-  FrameDemand, DemandNature,
-  PureComputation, IdempotentEffect, WorldRead, FreshEffect,
-  CacheProvider, ContentKeyed, ExistenceKeyed,
-  ProviderTier, ReferenceTier, CopyTier, MemoTier, ArtifactTier, CasTier,
-  ScopeExit, SpacePacked,
-  CoversAllComputations,
-  LadderVerdict,
-  DeclaredComputation,
-  materialization_ladder, materialization_ladder_holds,
-  ladder_zero_demand_verdicts,
-  AccessMode, ReadAccess, ConsumeAccess, CarryAccess, ProjectAccess,
-  ValueConsumerEdge, ValueUsage, ValueMaterialization,
-  value_materialization, value_materialization_is_green,
-  value_verdict_is_moved, value_verdict_is_shared_by_reference,
-  value_verdict_is_demoted_to_copy, value_verdict_is_refused_affine,
-  value_verdict_is_refused_needing_reference, value_verdict_is_refused_needing_copy,
-  value_verdict_is_dead,
-  empty_frame_path, no_cache_providers, no_cost_floor_exemptions,
-  verdict_is_authored_duplication,
-  verdict_is_discharged_by,
-  verdict_is_refused_no_provider,
-  verdict_is_refused_scope_too_narrow,
-  verdict_is_refused_existence_keyed,
-  verdict_is_refused_unmodeled_world_read,
-  verdict_is_exempt_fresh,
-  verdict_is_accepted_below_cost_floor,
-  verdict_is_accepted_single_recompute,
-  verdict_is_dead_computation,
-  verdict_is_accepted_effect_is_the_use,
-  verdict_is_refused_nature_conflict
-}
-import std.types { Bool, Int, List, String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data ladder_witness_note: String = "Each test is one cell of the operator's state x decision table (2026-07-09): the decision is a function of WHEN the redundancy is knowable and WHETHER what was knowable was prepared for. Errors fire only on knowable-but-unprepared; genuine emergence and declared triviality are typed acceptances, never silence. Fixtures mirror the live worked example: a workflow (isolated children) over jobs (shared-state steps), a retry frame (declared replay), a fleet frame (unbounded sibling runs over time)."
 
-fn wf() -> Frame { Frame { name: "workflow", kind: IsolatedChildrenFrame } }
-fn job(name: String) -> Frame { Frame { name: name, kind: SharedStateFrame } }
-fn step(name: String) -> Frame { Frame { name: name, kind: SharedStateFrame } }
-fn retry(name: String) -> Frame { Frame { name: name, kind: ReplayedFrame { attempts: 3 } } }
-fn fleet() -> Frame { Frame { name: "fleet", kind: UnboundedSiblingsFrame } }
+fn wf() -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: "workflow", kind: IsolatedChildrenFrame } }
+fn job(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: SharedStateFrame } }
+fn step(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: SharedStateFrame } }
+fn retry(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: ReplayedFrame { attempts: 3 } } }
+fn fleet() -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: "fleet", kind: UnboundedSiblingsFrame } }
 
-fn demand(identity: String, site: List<Frame>, nature: DemandNature) -> FrameDemand {
+fn demand(identity: String, site: List<std.materialization_ladder.Frame>, nature: DemandNature) -> FrameDemand {
   FrameDemand { identity: identity, site: site, nature: nature }
 }
 

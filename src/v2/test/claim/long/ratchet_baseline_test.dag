@@ -1,8 +1,5 @@
 module v2.test.long.ratchet_baseline
 
-import v2.lens.fact_cardinality { fact_cardinality_live_coexistence_ratchet_holds }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

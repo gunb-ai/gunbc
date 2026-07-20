@@ -1,13 +1,5 @@
 module v2.test.manual.tm_probe
 
-import extdeps.filesystem.filesystem_io
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { grammar_validate_for_parse, parse_production }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.compilers.lexing { token_stream_remaining }
-import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.grammar { ModeledGrammar }
-import v2.std.logic { Bool }
 
 fn tm_probe_parses() -> Bool {
   let lm = dag_language_model()

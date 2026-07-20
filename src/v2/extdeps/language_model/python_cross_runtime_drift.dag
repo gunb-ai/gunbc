@@ -1,28 +1,5 @@
 module v2.test.language_model.python_cross_runtime_drift
 
-import v2.lens.leaf_model_verification {
-  python_cross_runtime_drift_probe,
-  python_cross_runtime_drift_python_source,
-  python_cross_runtime_drift_rust_source,
-  python_cross_runtime_drift_go_source,
-  python_cross_runtime_drift_arbitrary_precision_value,
-  python_cross_runtime_drift_fixed_width_value
-}
-import v2.std.leaf_model_verification {
-  LeafModelCrossRuntimeDriftProbe,
-  leaf_model_claim_python_cross_runtime_drift_arbitrary_precision
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Boundary,
-  manual_claim_anchor
-}
 fn python_cross_runtime_drift_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^python_cross_runtime_drift_claim_bool_true } }, children: [],

@@ -25,6 +25,7 @@ import v2.std.verification {
   EqualsClaim,
   manual_claim_anchor
 }
+
 fn loop_linear_bound_leaf(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence

@@ -1,11 +1,5 @@
 module gunbc.code_change_workflow
 
-import gunbc.process_algebra { ProcessNodeId }
-import gunbc.pr_digests { MergeReadinessVerdict, Ready, NotReady }
-import gunbc.review_verdict { MergeReadinessTally }
-import extdeps.github.pulls { PullRequest, Open, Closed }
-import std.types { CommitSha, NonEmptyStr, Timestamp }
-
 type CodeChangeActiveStage
   = ChangeOpen
   | ChangeUnderReview
@@ -60,7 +54,7 @@ type CodeChangeDecision
   | TransitionRefused { refusal: CodeChangeRefusal }
 
 type CodeChangeGithubPrContext {
-  pr: PullRequest
+  pr: extdeps.github.pulls.PullRequest
 }
 
 type CodeChangeTransitionRequest {
@@ -107,7 +101,7 @@ fn successor_stage(
   }
 }
 
-fn github_pr_terminal_anchor(pr: PullRequest) -> CodeChangeStage? {
+fn github_pr_terminal_anchor(pr: extdeps.github.pulls.PullRequest) -> CodeChangeStage? {
   match pr.merged_at {
     Present { value: _ } =>
       Present { value: CodeChangeTerminal { stage: ChangeMerged } }
@@ -319,7 +313,7 @@ fn evaluate_terminal_record(
   CanTransition { to: CodeChangeTerminal { stage: to } }
 }
 
-fn classify_github_pr_terminal_anchor(pr: PullRequest) -> CodeChangeStage? {
+fn classify_github_pr_terminal_anchor(pr: extdeps.github.pulls.PullRequest) -> CodeChangeStage? {
   github_pr_terminal_anchor(pr: pr)
 }
 
@@ -356,7 +350,7 @@ fn decide_code_change_transition(request: CodeChangeTransitionRequest) -> CodeCh
 service gunbc.CodeChangeWorkflow {
   operation ClassifyGithubPrTerminalAnchor {
     input {
-      pr: PullRequest
+      pr: extdeps.github.pulls.PullRequest
     }
     output {
       anchor: CodeChangeStage?

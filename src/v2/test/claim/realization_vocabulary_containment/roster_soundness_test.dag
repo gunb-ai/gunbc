@@ -1,14 +1,5 @@
 module v2.test.realization_vocabulary_containment.roster_soundness
 
-import v2.lens.realization_vocabulary_containment {
-  realization_vocab_exception_roster,
-  realization_vocab_roster_sound
-}
-import v2.std.algebra { list_append }
-import v2.std.collection { List }
-import v2.std.logic { Bool }
-import v2.std.text { String }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

@@ -34,6 +34,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data synthesis_gap_poly_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_poly_atom_symbol } },
   children: [],

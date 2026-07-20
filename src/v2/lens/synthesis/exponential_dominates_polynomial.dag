@@ -21,6 +21,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data synthesis_exp_x: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_exp_x_symbol } },
   children: [],

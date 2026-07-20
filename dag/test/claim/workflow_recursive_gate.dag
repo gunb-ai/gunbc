@@ -1,10 +1,5 @@
 module test.claim.workflow_recursive_gate
 
-import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
-import test.claim.workflow_recursive_witness {
-  workflow_kernel_witnessed,
-  workflow_kernel_all_verified,
-}
 
 func main() -> ProcessExit {
   let w = workflow_kernel_witnessed()

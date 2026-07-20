@@ -320,7 +320,7 @@ fn capacitor_fold_step(
           }
           charge_microcoulombs: charge_micro(new_charge)
         }
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }
@@ -334,7 +334,7 @@ fn fold_capacitor_transient(
 ) -> Outcome<CapacitorState> {
   fold_list(
     xs: currents,
-    empty: Accepted { value: initial, diagnostics: None },
+    empty: Accepted { value: initial, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, current) {
       match acc {
         Accepted { value: state, diagnostics: _ } =>
@@ -391,7 +391,7 @@ fn inductor_fold_step(
           }
           flux_microwebers: flux_micro(new_flux)
         }
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
   }

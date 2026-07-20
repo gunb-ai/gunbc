@@ -1,18 +1,5 @@
 module v2.test.manual.infer_algebra_ref_grounding_anchor
 
-import v2.compiler.infer {
-  InferredFacts,
-  algebra_ref_is_grounded,
-  canonical_grounding_from_inferred_facts,
-}
-import v2.std.cardinality { RankingDimension, TerminationProof }
-import v2.std.constraints {
-  CanonicalGrounding,
-  CanonicalGroundingWitness
-}
-import v2.std.diagnostic { Outcome, Rejected }
-import v2.std.node { Atom, Conj, ComputationNode, Node, Symbol, TypeNode, Value, SyntheticOccurrence }
-import v2.std.witness { Holds, StructuralPropertyWitness, Witness }
 fn anchor_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },

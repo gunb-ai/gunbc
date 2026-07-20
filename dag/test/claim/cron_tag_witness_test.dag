@@ -1,8 +1,5 @@
 module test.claim.cron_tag_witness_test
 
-import gunbc.tools.cron_tag { cron_tag_upsert_protocol_keystone_holds }
-import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

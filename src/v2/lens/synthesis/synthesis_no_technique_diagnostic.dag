@@ -24,6 +24,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data synthesis_no_tech_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_no_tech_atom_symbol } },
   children: [],
