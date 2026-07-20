@@ -1,7 +1,7 @@
 module extdeps.http.server
 
 import std.http_path { PathTemplate }
-import std.types { HttpMethod, HttpStatus, Port }
+import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, HttpStatus, Port }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.uri_path {
@@ -30,6 +30,23 @@ fn http_content_type_wire_label(content_type: HttpContentType) -> String {
     ApplicationJsonUtf8 => "application/json; charset=utf-8"
     ApplicationOctetStream => "application/octet-stream"
   }
+}
+
+data parse_http_method_label_note: String = "The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set gunbc.node_http_server_emit.emit_http_method_label reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy)."
+
+type HttpMethodParse
+  = KnownMethod { method: HttpMethod }
+  | UnknownMethod { label: String }
+
+fn parse_http_method_label(label: String) -> HttpMethodParse {
+  if label == "GET" { KnownMethod { method: GET } }
+  else if label == "POST" { KnownMethod { method: POST } }
+  else if label == "PUT" { KnownMethod { method: PUT } }
+  else if label == "PATCH" { KnownMethod { method: PATCH } }
+  else if label == "DELETE" { KnownMethod { method: DELETE } }
+  else if label == "HEAD" { KnownMethod { method: HEAD } }
+  else if label == "OPTIONS" { KnownMethod { method: OPTIONS } }
+  else { UnknownMethod { label: label } }
 }
 
 type HttpRequestBodyKind

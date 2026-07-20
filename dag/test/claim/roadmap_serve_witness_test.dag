@@ -1,0 +1,112 @@
+module test.claim.roadmap_serve_witness
+
+import gunbc.roadmap_serve {
+  RoadmapServeHandler,
+  RoadmapDailyPageHandler, RoadmapFullPageHandler, RoadmapMdHandler,
+  DispatchJsonHandler, HealthzHandler, BeltDispatchHandler,
+  roadmap_serve_route_table,
+  roadmap_serve_selection_response,
+  belt_dispatch_status,
+  serve_param_value,
+}
+import gunbc.roadmap_belt_actuate {
+  BeltDispatchResult,
+  DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
+  DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
+}
+import extdeps.http.server {
+  ServeHttpResponse,
+  RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
+  serve_select_route,
+  HttpMethodParse, KnownMethod, UnknownMethod,
+  parse_http_method_label,
+}
+import extdeps.uri_path { PathParamBinding }
+import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
+
+fn selects(method: HttpMethod, path: String, want: RoadmapServeHandler) -> Bool {
+  match serve_select_route(table: roadmap_serve_route_table(), method: method, path: path) {
+    SelectedDynamic { handler: h, params: _ } => h == want
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+fn witness_serve_table_selection() -> Bool {
+  selects(method: GET, path: "/", want: RoadmapDailyPageHandler)
+    && selects(method: GET, path: "/roadmap", want: RoadmapFullPageHandler)
+    && selects(method: GET, path: "/ROADMAP.md", want: RoadmapMdHandler)
+    && selects(method: GET, path: "/target/roadmap-dispatch.json", want: DispatchJsonHandler)
+    && selects(method: GET, path: "/healthz", want: HealthzHandler)
+    && selects(method: POST, path: "/dispatch/some-node", want: BeltDispatchHandler)
+}
+
+fn witness_dispatch_param_bound() -> Bool {
+  match serve_select_route(table: roadmap_serve_route_table(), method: POST, path: "/dispatch/2-cd-transport") {
+    SelectedDynamic { handler: _, params: ps } =>
+      serve_param_value(params: ps, name: "node_id") == "2-cd-transport"
+    SelectedStatic { route: _ } => false
+    MethodNotAllowed { allowed: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+fn witness_dispatch_get_folds_405() -> Bool {
+  match serve_select_route(table: roadmap_serve_route_table(), method: GET, path: "/dispatch/x") {
+    MethodNotAllowed { allowed: ms } => count(ms) == 1 && any(ms, m => m == POST)
+    SelectedStatic { route: _ } => false
+    SelectedDynamic { handler: _, params: _ } => false
+    NoRouteMatched => false
+  }
+}
+
+fn witness_unknown_path_folds_404_response() -> Bool {
+  let r = roadmap_serve_selection_response(sel: NoRouteMatched)
+  r.status == 404
+}
+
+fn witness_405_response_carries_allowed() -> Bool {
+  let r = roadmap_serve_selection_response(sel: MethodNotAllowed { allowed: [POST] })
+  r.status == 405 && string_contains(s: r.body, pattern: "POST")
+}
+
+data status_map_red_note: String = "The 404/409/503/502 rows are the REDs a lazy 200-or-500 collapse would fail (parent review 2026-07-20): each refusal variant must map to ITS status, so a collapse of any arm reds exactly one witness row below."
+
+fn witness_dispatch_status_total() -> Bool {
+  belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s" }) == 200
+    && belt_dispatch_status(r: DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
+    && belt_dispatch_status(r: DispatchNodeNotFound { node_id: "n" }) == 404
+    && belt_dispatch_status(r: DispatchNodeAlreadyDone { node_id: "n" }) == 409
+    && belt_dispatch_status(r: DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
+    && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d" }) == 502
+}
+
+fn witness_unknown_method_refuses() -> Bool {
+  match parse_http_method_label(label: "BREW") {
+    UnknownMethod { label: l } => l == "BREW"
+    KnownMethod { method: _ } => false
+  }
+}
+
+fn witness_known_methods_parse() -> Bool {
+  match parse_http_method_label(label: "GET") {
+    KnownMethod { method: m } => m == GET
+    UnknownMethod { label: _ } => false
+  }
+  && match parse_http_method_label(label: "POST") {
+    KnownMethod { method: m } => m == POST
+    UnknownMethod { label: _ } => false
+  }
+}
+
+test fn roadmap_serve_witnesses() -> Bool {
+  witness_serve_table_selection()
+    && witness_dispatch_param_bound()
+    && witness_dispatch_get_folds_405()
+    && witness_unknown_path_folds_404_response()
+    && witness_405_response_carries_allowed()
+    && witness_dispatch_status_total()
+    && witness_unknown_method_refuses()
+    && witness_known_methods_parse()
+}
