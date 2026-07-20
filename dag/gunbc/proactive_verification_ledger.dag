@@ -179,14 +179,7 @@ fn proactive_verification_ledger_rows() -> List<VerificationLedgerRow> {
 }
 
 fn ledger_row_disposition_is(row: VerificationLedgerRow, d: VerificationDisposition) -> Bool {
-  match row.disposition {
-    ExecutableNow =>
-      match d { ExecutableNow => true, KnownRedPendingUnquarantine => false, BlockedOnCiFloorCutover => false }
-    KnownRedPendingUnquarantine =>
-      match d { ExecutableNow => false, KnownRedPendingUnquarantine => true, BlockedOnCiFloorCutover => false }
-    BlockedOnCiFloorCutover =>
-      match d { ExecutableNow => false, KnownRedPendingUnquarantine => false, BlockedOnCiFloorCutover => true }
-  }
+  row.disposition == d
 }
 
 fn ledger_rows_with_disposition(d: VerificationDisposition) -> List<VerificationLedgerRow> {
