@@ -1,0 +1,50 @@
+module v2.compiler.host_run_boundary_admission
+
+import std.types { Bool, List, String }
+import std.effect_grant {
+  NamespaceTree, UriTree,
+  LifecycleGrade, LifecycleByConstruction, LifecycleByConvention,
+}
+import std.frame_boundary {
+  BoundaryMaterialization,
+  BoundaryMaterialized, BoundaryUnmaterialized,
+  boundary_admits,
+}
+
+data host_run_boundary_admission_note: String = "The network-boundary precondition for a hermetic-native host run (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): the CONSUMER that makes std.frame_boundary a live decision rather than an inert spec. build_workspace_grant already makes the transport's DECLARED effects fail-closed by the absence of a UriTree grant -- but design line 81 is explicit that an ABSENT grant is not ENFORCED isolation: a build subprocess (cargo/cc) can reach the network at runtime with no declared effect, so 'no network' must be enforced by the REALIZATION (netns/--offline/sandbox), a boundary CLOSED at LifecycleByConstruction, else it is a DESIGN 5 fail-open on the network axis. This module lifts that from prose into an EXECUTABLE requirement: host_run_network_boundary_admits requires every network layer (UriTree) materialized at LifecycleByConstruction. A LifecycleByConvention closure (the offline-flag / vendored-deps Simulated baseline -- the only handler available in-container, unshare --net is EPERM here) is honestly WEAKER and is REFUSED, never silently accepted (operator policy 2026-07-20, Option 1 fail-closed). Three states are kept DISTINCT, never conflated (DESIGN 5 state-space): HostRunBoundaryRefused names a layer with NO closure at all; HostRunBoundaryUnderConstructed names a layer closed only ByConvention (the in-container reality); HostRunBoundaryAdmitted is the strong grade. This is the .dag decision the seed realization will consume: dissolve-on = the netns/container ByConstruction handler lands (constructs a BoundaryMaterialization at LifecycleByConstruction over UriTree) AND the emit_host_run_transport intrinsic's blanket is_hermetic() refusal is relaxed to 'run only on HostRunBoundaryAdmitted', with the seed attempting the construction and refusing located when it cannot (always, in-container)."
+
+data host_run_network_layers: List<NamespaceTree> = [UriTree]
+
+type HostRunBoundaryAdmission
+  = HostRunBoundaryAdmitted
+  | HostRunBoundaryUnderConstructed { grade: LifecycleGrade }
+  | HostRunBoundaryRefused { tree: NamespaceTree }
+
+fn grade_is_construction(g: LifecycleGrade) -> Bool {
+  match g {
+    LifecycleByConstruction => true
+    LifecycleByConvention => false
+  }
+}
+
+fn host_run_network_boundary_admits(
+  provided: BoundaryMaterialization
+) -> HostRunBoundaryAdmission {
+  match boundary_admits(required_trees: host_run_network_layers, provided: provided) {
+    BoundaryUnmaterialized { tree: t } => HostRunBoundaryRefused { tree: t }
+    BoundaryMaterialized { grade: g } =>
+      if grade_is_construction(g: g) {
+        HostRunBoundaryAdmitted
+      } else {
+        HostRunBoundaryUnderConstructed { grade: g }
+      }
+  }
+}
+
+fn host_run_boundary_is_admitted(a: HostRunBoundaryAdmission) -> Bool {
+  match a {
+    HostRunBoundaryAdmitted => true
+    HostRunBoundaryUnderConstructed { grade: g } => false
+    HostRunBoundaryRefused { tree: t } => false
+  }
+}
