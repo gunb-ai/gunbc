@@ -1,4 +1,4 @@
-use im_rc::HashMap;
+use im::HashMap;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -1764,11 +1764,11 @@ fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
     crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone())
 }
 
-pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) -> bool {
+pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
-fn eprint_compile_clean_hard_diagnostics(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) {
+fn eprint_compile_clean_hard_diagnostics(diagnostics: &im::Vector<Rc<ErrorNode>>) {
     const SHOWN_LIMIT: usize = 20;
     let mut shown = 0usize;
     let mut total = 0usize;
@@ -2473,14 +2473,14 @@ fn floor_compile_clean_emit_ok_via_index(
             return false;
         }
     };
-    let newline_indices: Rc<im_rc::Vector<Rc<NewlineIndex>>> =
-        Rc::new(si.values().cloned().collect::<im_rc::Vector<_>>());
+    let newline_indices: Rc<im::Vector<Rc<NewlineIndex>>> =
+        Rc::new(si.values().cloned().collect::<im::Vector<_>>());
     let resolved = Rc::new(v1_compiler_compile::ResolvedPipelineResult {
         graph: Some(graph),
-        diagnostics: Rc::new(im_rc::Vector::new()),
+        diagnostics: Rc::new(im::Vector::new()),
         source_indices: si,
         complexity: empty_complexity_report(),
-        ownership: Rc::new(im_rc::Vector::new()),
+        ownership: Rc::new(im::Vector::new()),
         newline_indices,
     });
     let result = v1_compiler_compile::emit_resolved_for_target(resolved, RenderTarget::Dag);
@@ -2624,7 +2624,7 @@ pub(crate) const CLI_RUN_COMPILE_CLEAN_DIAGNOSTIC_HISTOGRAM_SCAFFOLD_MARKER: &st
 /// or a floor-enrolled diagnostic-histogram lens subsumes this host transport.
 /// Uses the same resolve kernel as `witness_layer_roots_compile_clean_check`
 /// (`compile_to_resolved` on the whole-tree source closure).
-pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im_rc::Vector<Rc<ErrorNode>>, String> {
+pub fn compile_clean_whole_tree_hard_diagnostics() -> Result<im::Vector<Rc<ErrorNode>>, String> {
     let plan = CompileCleanScopePlan::WholeTree;
     let sources = match witness_layer_roots_compile_clean_sources_for_plan(&plan)? {
         None => return Err("compile-clean whole-tree: no sources (unexpected skip)".to_string()),
@@ -4706,10 +4706,8 @@ pub struct MultiEntryIndex {
     parse_cache: RefCell<
         std::collections::HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>,
     >,
-    normalize_diag_cache:
-        RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
-    ownership_diag_cache:
-        RefCell<std::collections::HashMap<String, Rc<im_rc::Vector<Rc<ErrorNode>>>>>,
+    normalize_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
+    ownership_diag_cache: RefCell<std::collections::HashMap<String, Rc<im::Vector<Rc<ErrorNode>>>>>,
     /// The source roots this index was built from — the tree identities behind the
     /// per-tree bare census layers (a module's bare-name universe is its own tree).
     source_roots: Vec<String>,
@@ -4889,7 +4887,7 @@ fn typed_module_content_key(
                  in this process before its typed result is keyed"
             )
         })?;
-    let mut import_hashes: im_rc::Vector<String> = im_rc::Vector::new();
+    let mut import_hashes: im::Vector<String> = im::Vector::new();
     for import in resolved.resolved_imports.iter() {
         let hash = interface_hash_by_name
             .get(&import.module_path)
@@ -5334,7 +5332,7 @@ fn resolved_graph_from_sources_with_index(
     // so an entry pays only for modules this process has not normalized before
     // (resolve-split receipt: normalize was 8% of whole-corpus resolve, recomputed
     // per entry at zero marginal information).
-    let mut norm_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
+    let mut norm_diag_vec: im::Vector<Rc<ErrorNode>> = im::Vector::new();
     for m in graph.modules.iter() {
         let key = m.module.span.file.clone();
         let cached = index.normalize_diag_cache.borrow().get(&key).cloned();
@@ -5401,7 +5399,7 @@ fn resolved_graph_from_sources_with_index(
     // with no bodied items contributes the same empty row the authority's filter
     // skips. First-touch per module; the per-entry graph-grain rerun (7% of
     // whole-corpus resolve in the resolve-split receipt) collapses to cache reads.
-    let mut ownership_diag_vec: im_rc::Vector<Rc<ErrorNode>> = im_rc::Vector::new();
+    let mut ownership_diag_vec: im::Vector<Rc<ErrorNode>> = im::Vector::new();
     for m in typed.modules.iter() {
         let key = m.module.span.file.clone();
         let cached = index.ownership_diag_cache.borrow().get(&key).cloned();
@@ -5610,8 +5608,8 @@ mod module_schedule_batches_tests {
 }
 
 fn finish_resolved_graph_assembly(
-    modules: Rc<im_rc::Vector<Rc<TypedModule>>>,
-    diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>>,
+    modules: Rc<im::Vector<Rc<TypedModule>>>,
+    diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>>,
     binding_fork_counts: (usize, usize),
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
@@ -5621,8 +5619,8 @@ fn finish_resolved_graph_assembly(
     });
     let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
-    let diagnostics: Rc<im_rc::Vector<Rc<ErrorNode>>> = Rc::new({
-        let mut acc = im_rc::Vector::new();
+    let diagnostics: Rc<im::Vector<Rc<ErrorNode>>> = Rc::new({
+        let mut acc = im::Vector::new();
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
@@ -5672,12 +5670,12 @@ fn try_reconcile_all_cache_hits(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     index: &MultiEntryIndex,
 ) -> Result<Option<Rc<ResolvedGraph>>, String> {
-    let mut modules_vec = im_rc::Vector::new();
-    let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> =
+    let mut modules_vec = im::Vector::new();
+    let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> =
         Vec::with_capacity(closure_modules.len() * 2);
     let mut same_tree_fork_count: usize = 0;
     let mut cross_tree_fork_count: usize = 0;
-    let empty_parent_diags = Rc::new(im_rc::Vector::new());
+    let empty_parent_diags = Rc::new(im::Vector::new());
     let mut interface_hash_by_name: std::collections::HashMap<String, String> =
         std::collections::HashMap::with_capacity(closure_modules.len());
 
@@ -5881,7 +5879,7 @@ fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, Strin
         return Ok(cached);
     }
     let pool = pool_parse(index)?;
-    let nodes: im_rc::Vector<Rc<Node>> = pool
+    let nodes: im::Vector<Rc<Node>> = pool
         .nodes_by_file
         .iter()
         .map(|(_, node)| node.clone())
@@ -5952,7 +5950,7 @@ fn tree_bare_census_for_root(
             }
         }
     }
-    let nodes: im_rc::Vector<Rc<Node>> = pool
+    let nodes: im::Vector<Rc<Node>> = pool
         .nodes_by_file
         .iter()
         .filter(|(file, _)| reached.contains(file))
@@ -5979,7 +5977,7 @@ fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> 
         return Ok(hit.clone());
     }
     let pool = pool_parse(index)?;
-    let nodes: im_rc::Vector<Rc<Node>> = pool
+    let nodes: im::Vector<Rc<Node>> = pool
         .nodes_by_file
         .iter()
         .map(|(_, node)| node.clone())
@@ -6010,7 +6008,7 @@ fn reconcile_with_typed_cache(
     index: &MultiEntryIndex,
 ) -> Result<Rc<ResolvedGraph>, String> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
-    let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
+    let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
     // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
@@ -6057,7 +6055,7 @@ fn reconcile_with_typed_cache(
         std::collections::HashMap::with_capacity(closure_modules.len());
     let mut dispatched: Vec<
         Option<(
-            Rc<im_rc::Vector<Rc<ErrorNode>>>,
+            Rc<im::Vector<Rc<ErrorNode>>>,
             Rc<v1_compiler_infer::TypecheckModuleResult>,
         )>,
     > = vec![None; closure_modules.len()];
@@ -6086,7 +6084,7 @@ fn reconcile_with_typed_cache(
             let cached = index_get_typed(index, &typed_key)?;
             let was_cache_hit = cached.is_some();
             let parent_diags = if was_cache_hit {
-                Rc::new(im_rc::Vector::new())
+                Rc::new(im::Vector::new())
             } else {
                 let parent_envs_started = std::time::Instant::now();
                 let parent_result = v1_compiler_infer::collect_parent_envs(
@@ -6183,7 +6181,7 @@ fn reconcile_with_typed_cache(
     // concern; the graph handed to consumers — module list, registry merge order, and
     // diagnostic order — is assembled in the exact order the serial fold produced, so the
     // result is byte-identical regardless of how the schedule batched the closure.
-    let mut modules_vec = im_rc::Vector::new();
+    let mut modules_vec = im::Vector::new();
     for (slot, entry) in dispatched.into_iter().enumerate() {
         let (parent_diags, tc_result) = entry.unwrap_or_else(|| {
             unreachable!(
@@ -6236,7 +6234,7 @@ fn format_error_node(
 }
 
 fn format_error_nodes(
-    diags: &Rc<im_rc::Vector<Rc<ErrorNode>>>,
+    diags: &Rc<im::Vector<Rc<ErrorNode>>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     diags
@@ -12932,7 +12930,7 @@ mod floor_skip_frontier_tests {
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
     use crate::v1_std_core::{authored_name_at, byte_to_line_col};
-    use im_rc::HashMap;
+    use im::HashMap;
     use std::collections::HashSet;
     use std::path::PathBuf;
 
@@ -13372,7 +13370,7 @@ mod floor_witness_a_prove {
         scan_test_decl_lines, DiscoveryRow, FileLineRange, FloorDiffEdits,
     };
     use crate::v1_interpreter::{self, ExecutionMode, Value};
-    use im_rc::HashMap;
+    use im::HashMap;
     use std::path::PathBuf;
 
     const FIXTURE_REL: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
@@ -20291,7 +20289,7 @@ fn resolve_dag_path_for_transport_script(path: &str) -> PathBuf {
 fn parse_module_items_for_transport_script(
     path: &str,
 ) -> (
-    Rc<im_rc::Vector<Rc<Node>>>,
+    Rc<im::Vector<Rc<Node>>>,
     Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) {
     let resolved = resolve_dag_path_for_transport_script(path);
@@ -20824,7 +20822,7 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
-    Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
+    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     use crate::v1_compiler_parse::parse;
@@ -20872,7 +20870,7 @@ pub fn shell_argv_nodes_for_operation(
     service: String,
     operation: String,
 ) -> (
-    Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
+    Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     let (items, source_indices) = parse_extdeps_module_items(&path);
@@ -21001,7 +20999,7 @@ fn extdeps_module_source_nickname_count_in_node(
 }
 
 fn extdeps_gist_create_declares_filename_for_items(
-    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::param_node_name_at;
@@ -21045,7 +21043,7 @@ fn extdeps_gist_map_keys_use_filename(
 }
 
 fn extdeps_gist_create_files_keyed_by_filename_for_items(
-    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::{is_rest_transport, transport_request_body};
@@ -21248,7 +21246,7 @@ fn external_authority_scheme_identity_from_value_node(
 }
 
 fn read_external_authority_anchor_from_items(
-    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_compiler_emit_core_support::is_data_def_item;
@@ -21513,7 +21511,7 @@ pub fn extdeps_external_authority_live_shadow_mask_holds() -> bool {
 #[cfg(test)]
 mod doc_reachability_tests {
     use super::*;
-    use im_rc::HashMap;
+    use im::HashMap;
 
     fn edges_of(pairs: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
         pairs
@@ -21653,7 +21651,7 @@ pub struct RestTransportCollectResult {
 }
 
 fn rest_transport_field_string(
-    props: Rc<im_rc::Vector<Rc<Node>>>,
+    props: Rc<im::Vector<Rc<Node>>>,
     prop_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
@@ -22006,7 +22004,7 @@ mod import_closure_equivalence_tests {
         resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
         witness_layer_roots, workspace_relative_repo_path,
     };
-    use im_rc::HashMap;
+    use im::HashMap;
     use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
@@ -22527,7 +22525,7 @@ mod peel_alias_fixpoint_termination {
             let base =
                 crate::v1_std_core::leaf_node_with_span("PeelFixpointProbe".to_string(), span);
             let n = std::rc::Rc::new(crate::v1_std_core::Node {
-                children: std::rc::Rc::new(im_rc::vector![elem]),
+                children: std::rc::Rc::new(im::vector![elem]),
                 ..(*base).clone()
             });
             // The strip-tree mechanism: the name resolves via SymbolIndex.global_bare
@@ -22562,8 +22560,8 @@ mod peel_alias_fixpoint_termination {
                 bindings: crate::v1_rt::rc_empty_map(),
                 str_bindings: crate::v1_rt::rc_empty_map(),
                 ancestry_str_bindings: crate::v1_rt::rc_empty_map(),
-                parents: std::rc::Rc::new(im_rc::vector![]),
-                recursive_types: std::rc::Rc::new(im_rc::vector![]),
+                parents: std::rc::Rc::new(im::vector![]),
+                recursive_types: std::rc::Rc::new(im::vector![]),
                 recursive_type_set: crate::v1_rt::rc_empty_map(),
                 inductive_fields: crate::v1_rt::rc_empty_map(),
                 source_indices: crate::v1_rt::rc_empty_map(),
@@ -22613,13 +22611,13 @@ mod sigs_env_flat_parents {
     fn w2_sig(fn_name: &str, marker: &str) -> Rc<crate::v1_compiler_infer_sigs::ResolvedFuncSig> {
         Rc::new(crate::v1_compiler_infer_sigs::ResolvedFuncSig {
             name: fn_name.to_string(),
-            params: Rc::new(im_rc::vector![]),
+            params: Rc::new(im::vector![]),
             inferred: crate::v1_std_core::leaf_node_with_span(
                 marker.to_string(),
                 crate::v1_std_core::kernel_span(marker.to_string()),
             ),
             is_async: false,
-            output_provenance: Rc::new(im_rc::vector![]),
+            output_provenance: Rc::new(im::vector![]),
             variant_provenance: crate::v1_rt::rc_empty_map(),
         })
     }
@@ -22741,7 +22739,7 @@ mod sigs_env_flat_parents {
         let result = crate::v1_compiler_infer_sigs::resolve_func_sigs(
             crate::v1_rt::rc_empty_map(),
             Rc::new([b, c].into_iter().collect()),
-            Rc::new(im_rc::vector![]),
+            Rc::new(im::vector![]),
             "top.module".to_string(),
             crate::v1_rt::rc_empty_map(),
         );

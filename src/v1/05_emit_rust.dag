@@ -1860,7 +1860,7 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
     "#![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]\n#![deny(unreachable_patterns)]\n",
 
     "#![recursion_limit = \"256\"]\n\n",
-    "use im_rc::\{OrdSet as BTreeSet, Vector as Vec\};\n\n",
+    "use im::\{OrdSet as BTreeSet, Vector as Vec\};\n\n",
     mod_decls |> join(separator: "\n"),
     hand_maintained_mods,
     "\n\n", shared_types,
@@ -3395,7 +3395,7 @@ fn emit_faithful_text_carrier_import_lines(imported_names: List<String>, local_t
 
 fn emit_prelude(imported_names: List<String>) -> String {
   let base = concat(
-    "use im_rc::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
+    "use im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
     "use crate::v1_rt::\{VecCompat, VecJoin\};\n",
     "use std::rc::Rc;\n",
     "use crate::v1_rt;")
@@ -8840,7 +8840,7 @@ fn emit_cargo_toml(crate_name: String, has_services: Bool) -> TextFile {
   let header = concat(render_cargo_package_header_prefix(name: crate_name), "\nedition = \"2021\"\n")
   let workspace = "\n[workspace]\n"
   let base_deps = [
-    emit_cargo_dep(name: "im-rc", version: "15.1", features: ["serde"]),
+    emit_cargo_dep(name: "im", version: "15.1", features: ["serde"]),
     emit_cargo_dep(name: "unicode-ident", version: "1", features: []),
     emit_cargo_dep(name: "unicode-properties", version: "0.1", features: ["emoji"]),
     emit_cargo_dep(name: "serde", version: "1", features: ["derive", "rc"]),
@@ -9086,7 +9086,7 @@ fn emit_main_mod_uses(workflow_funcs: List<WorkflowFunc>, has_pipeline: Bool, cr
     let pipeline_mod = module_to_filename(name: "v1.compiler.compile")
     let core_mod = module_to_filename(name: "v1.std.core")
     concat(base,
-      "\nuse im_rc::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
+      "\nuse im::\{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
       "use std::rc::Rc;\n",
       "use ", crate_name, "::", pipeline_mod, ";\n",
       "use ", crate_name, "::", pipeline_mod, "::PipelineResult;\n",
