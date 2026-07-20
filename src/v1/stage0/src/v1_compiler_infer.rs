@@ -6564,8 +6564,10 @@ pub fn infer_record_lit(
         };
         let is_zero_field_variant_tag_reference = (((field_inits.clone().len() as i64) == 0)
             && (variant_owner_node(scope.clone(), tn_str.clone()) != None));
-        let presence_name_is_ambiguous =
-            global_bare_is_ambiguous(scope.type_env.clone(), tn_str.clone());
+        let presence_name_is_ambiguous = (global_bare_is_ambiguous(
+            scope.type_env.clone(),
+            tn_str.clone(),
+        ) && (lookup_type_by_name(scope.type_env.clone(), tn_str.clone()) == None));
         let missing_field_diags = if ((((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
             || is_zero_field_variant_tag_reference.clone())
