@@ -16645,6 +16645,25 @@ fn longest_declared_module_prefix(
 thread_local! {
     static REFERENCE_EDGE_CACHE: RefCell<HashMap<String, Vec<ReferenceEdgeRaw>>> =
         RefCell::new(HashMap::new());
+    /// Import-less files the reference producer could NOT account for. Keyed identically to
+    /// `REFERENCE_EDGE_CACHE` and populated in the same pass.
+    ///
+    /// This set is what separates the two states an empty adjacency used to conflate
+    /// (DESIGN §5, ⊤-as-answer vs ⊤-as-ignorance). An import-less file the producer PARSED and
+    /// found no outgoing references in genuinely has no dependencies — its closure is `{self}`
+    /// and "affected iff my own file is touched" is a precise answer, not a gap. An import-less
+    /// file that failed to read/parse is a gap: the producer never got to ask. Only the second
+    /// may refuse, and because it is a list rather than a boolean it is typed, located, and
+    /// countable.
+    static REFERENCE_UNACCOUNTED_CACHE: RefCell<HashMap<String, Vec<ReferenceAccountingRefusal>>> =
+        RefCell::new(HashMap::new());
+}
+
+/// An import-less file the reference-edge producer could not answer for, with the located cause.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReferenceAccountingRefusal {
+    pub path: String,
+    pub cause: &'static str,
 }
 
 /// Reference-derived analogue of `import_resolution_facts`: emit one edge per (file, referenced
