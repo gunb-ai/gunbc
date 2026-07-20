@@ -83,6 +83,10 @@ fn run_index_fields(source_roots: &[String], corpus: &str) -> Result<ExitCode, E
             eprintln!("measure_rc_arc_share_spike: populate failed:\n{e}");
             ExitCode::from(2)
         })?;
+    eprintln!(
+        "measure_rc_arc_share_spike: populate done entries={entry_count} rows={row_count} peak_rss_before_receipt={:?}",
+        peak_rss_vhwm_bytes()
+    );
     let peak = peak_rss_vhwm_bytes();
     let receipt = multi_entry_index_memory_receipt(&index, peak);
     eprintln!(

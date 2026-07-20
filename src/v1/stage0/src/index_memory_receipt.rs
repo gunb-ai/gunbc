@@ -78,6 +78,13 @@ impl Accountant {
         }
     }
 
+    fn add_rc_shell<T>(&mut self, rc: &Rc<T>) {
+        let ptr = Rc::as_ptr(rc);
+        if self.first_visit(ptr) {
+            self.bytes += std::mem::size_of::<Rc<T>>() as u64;
+        }
+    }
+
     fn add_string(&mut self, s: &str) {
         self.bytes += (std::mem::size_of::<String>() + s.len()) as u64;
     }
@@ -318,38 +325,33 @@ fn account_typecheck_module_result(acc: &mut Accountant, result: &TypecheckModul
 fn account_from_typed_cache(
     cache: &StdHashMap<String, Rc<crate::v1_compiler_infer::TypecheckModuleResult>>,
 ) -> (u64, usize, u64) {
+    // Shareable grain = serde transport bytes (the cross-worker store payload) plus map shell.
     let mut acc = Accountant::new();
+    acc.add_hashmap_shell(cache);
     let mut serde_bytes = 0u64;
-    for result in cache.values() {
-        account_typecheck_module_result(&mut acc, result);
+    for (key, result) in cache.iter() {
+        acc.add_string(key);
         if let Ok(bytes) =
             crate::shared_typecheck_store::SharedTypecheckCaches::encode_typed_snapshot(result)
         {
             serde_bytes += bytes.len() as u64;
         }
     }
-    (acc.finish(), cache.len(), serde_bytes)
+    (acc.finish() + serde_bytes, cache.len(), serde_bytes)
 }
 
-fn account_parse_cache(
+fn account_parse_cache_shallow(
     cache: &StdHashMap<String, (Rc<ParseResult>, Rc<NewlineIndex>)>,
 ) -> (u64, usize) {
     let mut acc = Accountant::new();
-    for (path, (parse, nl)) in cache.iter() {
+    acc.add_hashmap_shell(cache);
+    for (path, _) in cache.iter() {
         acc.add_string(path);
-        let pptr = parse.as_ref() as *const ParseResult;
-        if acc.first_visit(pptr) {
-            acc.add_shell::<ParseResult>(pptr);
-            if let Some(module) = &parse.module {
-                account_node(&mut acc, module);
-            }
-        }
-        account_newline_index(&mut acc, nl);
     }
     (acc.finish(), cache.len())
 }
 
-fn account_resolved_graph_memo(
+fn account_resolved_graph_memo_shallow(
     memo: &im_rc::HashMap<
         String,
         (
@@ -359,45 +361,32 @@ fn account_resolved_graph_memo(
     >,
 ) -> (u64, usize) {
     let mut acc = Accountant::new();
-    for (subject, (graph, si)) in memo.iter() {
+    acc.add_im_hashmap_shell(memo);
+    for subject in memo.keys() {
         acc.add_string(subject);
-        let gptr = graph.as_ref() as *const crate::v1_compiler_infer_items::ResolvedGraph;
-        if acc.first_visit(gptr) {
-            acc.add_shell::<crate::v1_compiler_infer_items::ResolvedGraph>(gptr);
-            for module in graph.modules.iter() {
-                account_typed_module(&mut acc, module);
-            }
-        }
-        for nl in si.values() {
-            account_newline_index(&mut acc, nl);
-        }
     }
     (acc.finish(), memo.len())
 }
 
-fn account_intern_table_field(table: &Rc<InternTable>) -> (u64, usize) {
+fn account_intern_table_shallow(table: &Rc<InternTable>) -> (u64, usize) {
     let mut acc = Accountant::new();
-    account_intern_table(&mut acc, table.as_ref());
-    (acc.finish(), 1)
+    let ptr = table.as_ref() as *const InternTable;
+    if acc.first_visit(ptr) {
+        acc.add_shell::<InternTable>(ptr);
+        acc.bytes += (table.strings.len() * 24) as u64;
+    }
+    (acc.finish(), table.strings.len())
 }
 
-fn account_diag_cache_map(
+fn account_diag_cache_map_shallow(
     cache: &StdHashMap<String, Rc<im_rc::Vector<Rc<crate::v1_std_core::ErrorNode>>>>,
 ) -> (u64, usize) {
     let mut acc = Accountant::new();
+    acc.add_hashmap_shell(cache);
     for (key, diags) in cache.iter() {
         acc.add_string(key);
-        let vptr = Rc::as_ptr(diags) as *const im_rc::Vector<Rc<crate::v1_std_core::ErrorNode>>;
-        if acc.first_visit(vptr) {
-            acc.bytes +=
-                std::mem::size_of::<im_rc::Vector<Rc<crate::v1_std_core::ErrorNode>>>() as u64;
-            for diag in diags.iter() {
-                let dptr = diag.as_ref() as *const crate::v1_std_core::ErrorNode;
-                if acc.first_visit(dptr) {
-                    acc.add_shell::<crate::v1_std_core::ErrorNode>(dptr);
-                }
-            }
-        }
+        acc.bytes +=
+            diags.len() as u64 * std::mem::size_of::<Rc<crate::v1_std_core::ErrorNode>>() as u64;
     }
     (acc.finish(), cache.len())
 }
@@ -422,11 +411,11 @@ pub fn multi_entry_index_memory_receipt(
 
     let (shareable, typed_entries, serde_transport_bytes) = account_from_typed_cache(&typed_cache);
 
-    let (parse_bytes, parse_entries) = account_parse_cache(&parse_cache);
-    let (memo_bytes, memo_entries) = account_resolved_graph_memo(&memo);
-    let (intern_bytes, intern_entries) = account_intern_table_field(&intern);
-    let (normalize_bytes, normalize_entries) = account_diag_cache_map(&normalize_cache);
-    let (ownership_bytes, ownership_entries) = account_diag_cache_map(&ownership_cache);
+    let (parse_bytes, parse_entries) = account_parse_cache_shallow(&parse_cache);
+    let (memo_bytes, memo_entries) = account_resolved_graph_memo_shallow(&memo);
+    let (intern_bytes, intern_entries) = account_intern_table_shallow(&intern);
+    let (normalize_bytes, normalize_entries) = account_diag_cache_map_shallow(&normalize_cache);
+    let (ownership_bytes, ownership_entries) = account_diag_cache_map_shallow(&ownership_cache);
 
     let fields = vec![
         IndexFieldBytes {
