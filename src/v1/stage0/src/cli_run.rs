@@ -18,8 +18,8 @@ use crate::v1_compiler_infer_env::{
     lookup_type_by_name, qualified_all_but_last, symbol_index_insert, symbol_index_lookup,
     GlobalBareLookupState, SymbolIndex,
 };
-use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+use crate::v1_compiler_infer_sigs::{lookup_resolved_sig, ResolvedFuncEnv, ResolvedFuncSig};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
 use crate::v1_compiler_resolve;
@@ -17291,15 +17291,10 @@ pub fn containment_resolve_fn_v1(
             };
         }
     }
-    match index
-        .global_bare
-        .get(name)
-        .map(|s| s.as_ref().clone())
-    {
+    match index.global_bare.get(name).map(|s| &**s) {
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
             module_path: owner,
             binding,
-            ..
         }) => {
             if is_fn_decl_node(&binding.resolved) {
                 return ContainmentResolve::Hit {
@@ -17321,7 +17316,7 @@ pub fn containment_resolve_fn_v1(
 
 fn collect_bare_call_sites(
     node: &Rc<Node>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     out: &mut Vec<(String, Rc<Node>)>,
 ) {
     match &*node.expr_data {
@@ -17334,7 +17329,7 @@ fn collect_bare_call_sites(
         _ => {}
     }
     for child in node.children.iter() {
-        collect_bare_call_sites(child, source_indices, out);
+        collect_bare_call_sites(child, source_indices.clone(), out);
     }
     if let Some(body) = &node.body {
         collect_bare_call_sites(body, source_indices, out);
@@ -17342,8 +17337,7 @@ fn collect_bare_call_sites(
 }
 
 fn bindings_agree(import: &FnBindingRef, containment: &FnBindingRef) -> bool {
-    import.node_ptr == containment.node_ptr
-        || import.qualified_path == containment.qualified_path
+    import.node_ptr == containment.node_ptr || import.qualified_path == containment.qualified_path
 }
 
 fn bucket_site(
@@ -17351,12 +17345,15 @@ fn bucket_site(
     containment: ContainmentResolve,
 ) -> ResolutionDivergenceBucket {
     match (import_binding, containment) {
-        (Some(import), ContainmentResolve::Hit {
-            owner_module,
-            qualified_path,
-            node_ptr,
-            ..
-        }) => {
+        (
+            Some(import),
+            ContainmentResolve::Hit {
+                owner_module,
+                qualified_path,
+                node_ptr,
+                ..
+            },
+        ) => {
             let containment_binding = FnBindingRef {
                 owner_module,
                 qualified_path,
@@ -17372,17 +17369,24 @@ fn bucket_site(
             }
         }
         (Some(import), ContainmentResolve::Ambiguous) => {
-            ResolutionDivergenceBucket::ContainmentAmbiguous { import_binding: import }
+            ResolutionDivergenceBucket::ContainmentAmbiguous {
+                import_binding: import,
+            }
         }
         (Some(import), ContainmentResolve::Unresolved) => {
-            ResolutionDivergenceBucket::ContainmentUnresolved { import_binding: import }
+            ResolutionDivergenceBucket::ContainmentUnresolved {
+                import_binding: import,
+            }
         }
-        (None, ContainmentResolve::Hit {
-            owner_module,
-            qualified_path,
-            node_ptr,
-            ..
-        }) => ResolutionDivergenceBucket::ImportUnresolved {
+        (
+            None,
+            ContainmentResolve::Hit {
+                owner_module,
+                qualified_path,
+                node_ptr,
+                ..
+            },
+        ) => ResolutionDivergenceBucket::ImportUnresolved {
             containment_binding: FnBindingRef {
                 owner_module,
                 qualified_path,
@@ -17417,7 +17421,7 @@ pub fn resolution_divergence_census_from_ctx(
             let caller_fn = authored_name_at(source_indices.clone(), item.clone());
             let mut calls = Vec::new();
             if let Some(body) = &item.body {
-                collect_bare_call_sites(body, &source_indices, &mut calls);
+                collect_bare_call_sites(body, source_indices.clone(), &mut calls);
             }
             for (callee, call_node) in calls {
                 out.sites_checked += 1;
@@ -17429,17 +17433,14 @@ pub fn resolution_divergence_census_from_ctx(
                 let containment = containment_resolve_fn_v1(&census_index, &module_path, &callee);
 
                 if let ContainmentResolve::Hit {
-                    via,
-                    lexical_steps,
-                    ..
+                    via, lexical_steps, ..
                 } = &containment
                 {
                     out.cost_shape.containment_hits += 1;
                     match via {
                         ContainmentResolveVia::Lexical => {
                             out.cost_shape.lexical_only_hits += 1;
-                            *out
-                                .cost_shape
+                            *out.cost_shape
                                 .lexical_steps_histogram
                                 .entry(*lexical_steps)
                                 .or_insert(0) += 1;
@@ -17453,7 +17454,7 @@ pub fn resolution_divergence_census_from_ctx(
                 let bucket = bucket_site(import_binding, containment);
                 let site = ResolutionDivergenceSite {
                     calling_module: module_path.clone(),
-                    caller_fn,
+                    caller_fn: caller_fn.clone(),
                     callee: callee.clone(),
                     call_file: call_node.span.file.clone(),
                     call_span_start: call_node.span.start,
@@ -17473,7 +17474,9 @@ pub fn resolution_divergence_census_from_ctx(
                         out.containment_unresolved += 1;
                         out.containment_unresolved_rows.push(site);
                     }
-                    ResolutionDivergenceBucket::ImportUnresolved { .. } => out.import_unresolved += 1,
+                    ResolutionDivergenceBucket::ImportUnresolved { .. } => {
+                        out.import_unresolved += 1
+                    }
                     ResolutionDivergenceBucket::NeitherBound => out.neither_bound += 1,
                 }
             }
@@ -17506,9 +17509,18 @@ pub fn resolution_divergence_census_live(
 
 pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) -> String {
     let mut lines = Vec::new();
-    lines.push(format!("[resolution-divergence-census] sites_checked={}", census.sites_checked));
-    lines.push(format!("[resolution-divergence-census] agree={}", census.agree));
-    lines.push(format!("[resolution-divergence-census] diverge={}", census.diverge));
+    lines.push(format!(
+        "[resolution-divergence-census] sites_checked={}",
+        census.sites_checked
+    ));
+    lines.push(format!(
+        "[resolution-divergence-census] agree={}",
+        census.agree
+    ));
+    lines.push(format!(
+        "[resolution-divergence-census] diverge={}",
+        census.diverge
+    ));
     lines.push(format!(
         "[resolution-divergence-census] containment_ambiguous={}",
         census.containment_ambiguous
@@ -17571,9 +17583,7 @@ pub fn format_resolution_divergence_census(census: &ResolutionDivergenceCensus) 
         }
     }
     for site in &census.containment_unresolved_rows {
-        if let ResolutionDivergenceBucket::ContainmentUnresolved { import_binding } =
-            &site.bucket
-        {
+        if let ResolutionDivergenceBucket::ContainmentUnresolved { import_binding } = &site.bucket {
             lines.push(format!(
                 "CONTAINMENT_UNRESOLVED\tmodule={}\tcaller={}\tcallee={}\tat={}@{}\t\
                  import_chain={} ({})",
