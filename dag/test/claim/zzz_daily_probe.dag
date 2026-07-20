@@ -1,0 +1,42 @@
+module test.claim.zzz_daily_probe
+
+import gunbc.roadmap_page {
+  roadmap_daily_workspace_page_for_authority,
+  roadmap_page_for_authority,
+  three_gate_progress_markup,
+}
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import std.markup { MarkupNode, ElementNode, MarkupAttr }
+
+fn zzz_three_gate_html() -> String {
+  match try_serialize_html_source(node: ElementNode { tag: "div", attrs: [], children: [three_gate_progress_markup()] }) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => concat("REJECTED:", r)
+  }
+}
+
+fn witness_zzz_three_gate_alone() -> Bool {
+  string_contains(s: zzz_three_gate_html(), pattern: "gate-row")
+}
+
+fn zzz_daily_html() -> String {
+  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_authority()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => concat("REJECTED:", r)
+  }
+}
+
+fn witness_zzz_daily_page() -> Bool {
+  string_contains(s: zzz_daily_html(), pattern: "three-gate-progress")
+}
+
+fn zzz_roadmap_html() -> String {
+  match try_serialize_html_source(node: roadmap_page_for_authority()) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: r } => concat("REJECTED:", r)
+  }
+}
+
+fn witness_zzz_roadmap_page() -> Bool {
+  string_contains(s: zzz_roadmap_html(), pattern: "three-gate-progress")
+}
