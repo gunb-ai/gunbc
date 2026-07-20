@@ -20,6 +20,8 @@ pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{is_container_type, is_kernel_type};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
+pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std_integer_source;
+pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
 pub use crate::v1_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_emit::{
@@ -4026,16 +4028,22 @@ pub fn module_files_include_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool
 
 pub fn emit_v2_std_integer_closure_stub_module() -> Rc<TextFile> {
     Rc::new(TextFile {
-    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "v2_std_integer".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated closure stub — dissolve-on: derive from emitted ref set\n".to_string(), "// Source module: v2.std.integer (closure stub; std_algebra + std_nat only)\n\n".to_string()), "use std::rc::Rc;\n".to_string()), "use crate::std_algebra::GroupCompletion;\n".to_string()), "use crate::std_nat::Nat;\n\n".to_string()), "pub type Int = GroupCompletion<Rc<Nat>>;\n".to_string()),
-})
+        path: v1_rt::concat(
+            v1_rt::concat(rust_source_root(), "v2_std_integer".to_string()),
+            rust_source_ext(),
+        ),
+        content: closure_stub_v2_std_integer_source(),
+    })
 }
 
 pub fn emit_v2_std_text_closure_stub_module() -> Rc<TextFile> {
     Rc::new(TextFile {
-    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "v2_std_text".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated closure stub — dissolve-on: derive from emitted ref set\n".to_string(), "// Source module: v2.std.text (closure stub; std_algebra + std_types only)\n\n".to_string()), "use std::rc::Rc;\n".to_string()), "use crate::std_algebra::FreeMonoid::".to_string()), "{".to_string()), "Cons, Empty".to_string()), "}".to_string()), ";\n".to_string()), "use crate::std_types::Char;\n\n".to_string()), "pub type String = Rc<crate::std_algebra::FreeMonoid<Char>>;\n\n".to_string()), "pub fn host_string_text_from_rust_host(host: std::string::String) -> String ".to_string()), "{\n".to_string()), "    host.chars().fold(Rc::new(Empty), |acc, ch| Rc::new(Cons ".to_string()), "{".to_string()), " head: Rc::new(ch as i64), tail: acc ".to_string()), "}".to_string()), "))\n".to_string()), "}\n\n".to_string()), "pub fn host_string_text_to_rust_host(text: String) -> std::string::String ".to_string()), "{\n".to_string()), "    match &*text ".to_string()), "{\n".to_string()), "        Empty => std::string::String::new(),\n".to_string()), "        Cons ".to_string()), "{".to_string()), " head, tail ".to_string()), "}".to_string()), " => ".to_string()), "{\n".to_string()), "            let mut s = host_string_text_to_rust_host(tail.clone());\n".to_string()), "            s.insert(0, char::from_u32(**head as u32).unwrap_or(char::from_u32(0).unwrap()));\n".to_string()), "            s\n".to_string()), "        ".to_string()), "}\n".to_string()), "    ".to_string()), "}\n".to_string()), "}\n".to_string()),
-})
+        path: v1_rt::concat(
+            v1_rt::concat(rust_source_root(), "v2_std_text".to_string()),
+            rust_source_ext(),
+        ),
+        content: closure_stub_v2_std_text_source(),
+    })
 }
 
 pub fn emit_lib_rs_from_files(
