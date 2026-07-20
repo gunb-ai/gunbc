@@ -7817,6 +7817,25 @@ pub fn module_item_references_type_name(
         })
 }
 
+pub fn module_item_references_faithful_expanded_type(
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    ((module_item_references_type_name(
+        item.clone(),
+        "ByteSize".to_string(),
+        source_indices.clone(),
+    ) || module_item_references_type_name(
+        item.clone(),
+        "Measure".to_string(),
+        source_indices.clone(),
+    )) || module_item_references_type_name(
+        item.clone(),
+        "Map".to_string(),
+        source_indices.clone(),
+    ))
+}
+
 pub fn module_needs_faithful_carrier_imports(
     items: Rc<Vec<Rc<Node>>>,
     corpus_repr: RustCorpusRepr,
@@ -7832,7 +7851,7 @@ pub fn module_needs_faithful_carrier_imports(
         ) || {
             let mut __found = false;
             for item in items.clone().iter().cloned() {
-                if (((module_item_references_type_name(
+                if ((((((module_item_references_type_name(
                     item.clone(),
                     "FreeMonoid".to_string(),
                     source_indices.clone(),
@@ -7847,6 +7866,17 @@ pub fn module_needs_faithful_carrier_imports(
                 )) || module_item_references_type_name(
                     item.clone(),
                     "Int".to_string(),
+                    source_indices.clone(),
+                )) || module_item_references_type_name(
+                    item.clone(),
+                    "PartialFunction".to_string(),
+                    source_indices.clone(),
+                )) || module_item_references_type_name(
+                    item.clone(),
+                    "Memory".to_string(),
+                    source_indices.clone(),
+                )) || module_item_references_faithful_expanded_type(
+                    item.clone(),
                     source_indices.clone(),
                 )) {
                     __found = true;
@@ -7982,6 +8012,37 @@ pub fn emit_faithful_text_carrier_import_lines(
             }
             __found
         };
+        let needs_partial_function = {
+            let mut __found = false;
+            for item in items.clone().iter().cloned() {
+                if (module_item_references_type_name(
+                    item.clone(),
+                    "PartialFunction".to_string(),
+                    source_indices.clone(),
+                ) || module_item_references_type_name(
+                    item.clone(),
+                    "Map".to_string(),
+                    source_indices.clone(),
+                )) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
+        let needs_measure_phantoms = {
+            let mut __found = false;
+            for item in items.clone().iter().cloned() {
+                if module_item_references_faithful_expanded_type(
+                    item.clone(),
+                    source_indices.clone(),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        };
         let free_monoid = if (!needs_free_monoid.clone()
             || rust_import_name_already_resolved(
                 imported_names.clone(),
@@ -8038,12 +8099,60 @@ pub fn emit_faithful_text_carrier_import_lines(
                 "use crate::v2_std_integer::Int;".to_string(),
             )])
         };
+        let partial_function = if (!needs_partial_function.clone()
+            || rust_import_name_already_resolved(
+                imported_names.clone(),
+                local_type_names.clone(),
+                "PartialFunction".to_string(),
+            )) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                rust_visibility_prefix(),
+                "use crate::std_algebra::PartialFunction;".to_string(),
+            )])
+        };
+        let memory = if (!needs_measure_phantoms.clone()
+            || rust_import_name_already_resolved(
+                imported_names.clone(),
+                local_type_names.clone(),
+                "Memory".to_string(),
+            )) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                rust_visibility_prefix(),
+                "use crate::std_measure::Memory;".to_string(),
+            )])
+        };
+        let one = if (!needs_measure_phantoms.clone()
+            || rust_import_name_already_resolved(
+                imported_names.clone(),
+                local_type_names.clone(),
+                "One".to_string(),
+            )) {
+            Rc::new(vec![])
+        } else {
+            Rc::new(vec![v1_rt::concat(
+                rust_visibility_prefix(),
+                "use crate::std_measure::One;".to_string(),
+            )])
+        };
         v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(free_monoid.clone(), char_line.clone()),
-                non_empty_str.clone(),
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(free_monoid.clone(), char_line.clone()),
+                            non_empty_str.clone(),
+                        ),
+                        int_line.clone(),
+                    ),
+                    partial_function.clone(),
+                ),
+                memory.clone(),
             ),
-            int_line.clone(),
+            one.clone(),
         )
     }
 }
