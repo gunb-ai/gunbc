@@ -434,26 +434,12 @@ fn decide_admission(
             hard,
         );
     }
-    if let (Some(current), Some(share), Some(budget)) = (
-        sig.current_bytes,
-        core.measured_worker_share,
-        limits.budget_bytes,
-    ) {
-        let high_water = budget / HIGH_WATER_DEN * HIGH_WATER_NUM;
-        if current.saturating_add(share) > high_water {
-            if !core.headroom_episode {
-                core.headroom_episode = true;
-                core.headroom_holds += 1;
-            }
-            return (
-                AdmitDecision::Hold(HoldReason::InsufficientHeadroom {
-                    current,
-                    share,
-                    high_water,
-                }),
-                hard,
-            );
+    if let Some(reason) = headroom_hold(core, sig, limits) {
+        if !core.headroom_episode {
+            core.headroom_episode = true;
+            core.headroom_holds += 1;
         }
+        return (AdmitDecision::Hold(reason), hard);
     }
     core.headroom_episode = false;
     if let (Some(current), Some(budget)) = (sig.current_bytes, limits.budget_bytes) {
@@ -484,6 +470,35 @@ fn decide_admission(
     )
 }
 
+/// The single authority for "does ONE more worker-sized claim fit under the high-water
+/// line", read by BOTH the admission gate and the additive-increase arm.
+///
+/// Two arms answering this differently is what let the window run away from realized
+/// affordability: admission predicted `current + share <= high_water`, while increase
+/// predicted nothing at all and grew on any calm completion (§3 — one fact, one
+/// authority). `None` = no prediction is possible yet (no share measured, or the signal
+/// is unreadable); the caller decides what an unpredictable state licenses, and the two
+/// callers here differ only in that, never in the arithmetic.
+fn headroom_hold(
+    core: &GovCore,
+    sig: &MemorySignals,
+    limits: &GovernorLimits,
+) -> Option<HoldReason> {
+    let (Some(current), Some(share), Some(budget)) = (
+        sig.current_bytes,
+        core.measured_worker_share,
+        limits.budget_bytes,
+    ) else {
+        return None;
+    };
+    let high_water = budget / HIGH_WATER_DEN * HIGH_WATER_NUM;
+    (current.saturating_add(share) > high_water).then_some(HoldReason::InsufficientHeadroom {
+        current,
+        share,
+        high_water,
+    })
+}
+
 /// The creep-episode edge is the EARLY congestion signal — TCP's ECN mark, not its loss.
 /// Run 29182481051 proved a hold alone cannot save the box: admissions stopped at the
 /// high-water line, but the already-admitted workers' residency growth (~1GiB/min each,
@@ -503,13 +518,46 @@ fn creep_episode_backoff(core: &mut GovCore) -> Option<(usize, usize)> {
     Some((old, core.target_width))
 }
 
-/// Additive increase, gated on calm: a completed unit of work while no creep is visible
-/// grows the window by one, up to the CPU bound. A creep edge observed here backs off
-/// exactly as in the admission path (completions may be the only polls at a full window).
+/// What a completion is worth to the window. `target_width` is denominated in
+/// WORKER-SIZED residency claims — the quantity `active` counts and `measured_worker_share`
+/// calibrates — so only an event carrying evidence about that quantity may move it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CompletionKind {
+    /// A worker-sized cost LANDED and is now visible to the signals (an index build
+    /// finished), or the pool is stepping off the width-1 floor. Either way the poll
+    /// carries evidence about worker-sized residency, so it is an increase point — the
+    /// index-build clock that `undigested`'s own contract already names as the ramp rate.
+    IncreasePoint,
+    /// A unit of work (a resolve-group, an entry-group) finished. It still re-reads the
+    /// signals — completions may be the only polls at a full window, so the creep and
+    /// hard arms must run — but it is NOT an increase point: a unit is not a worker.
+    ///
+    /// Growing here was the defect that made the un-latched window unsurvivable. Units
+    /// are numerous and mostly cheap (2056 rows over 621 entry-groups), so the window
+    /// tracked the unit-completion rate instead of realized affordability: CI run
+    /// 29710324768 lifted it off the floor 34ms into the corpus, before any worker cost
+    /// had EVER been measured, and admitted against that fiction until `memory.current`
+    /// reached 101.6 GB and the box OOM-killed the run (exit 137). The grain conflation
+    /// is the root cause; the resulting overshoot is the symptom.
+    ObserveOnly,
+}
+
+/// Additive increase, gated on calm AND on the same headroom prediction the admission
+/// path uses: a completion that carries worker-sized evidence, observed while no creep is
+/// visible and while one more worker is predicted to fit, grows the window by one up to
+/// the CPU bound. A creep edge observed here backs off exactly as in the admission path.
+///
+/// The window may never grow into a state admission would immediately refuse — that is
+/// what makes the ramp mean something. When no prediction is possible (`headroom_hold`
+/// returns `None` because no worker has ever landed a cost), growth is licensed: running
+/// one worker is the only way to learn what a worker costs, and the step commits exactly
+/// one. That exploratory step is bounded by construction — it can only be taken while
+/// `measured_worker_share` is unset, and the first landing sets it.
 fn note_completion(
     core: &mut GovCore,
     sig: &MemorySignals,
     limits: &GovernorLimits,
+    kind: CompletionKind,
 ) -> (Option<HardEvent>, Option<(usize, usize)>) {
     let hard = absorb_hard_events(core, sig, limits);
     let creep = creep_reason(core, sig, limits);
@@ -522,7 +570,10 @@ fn note_completion(
         };
         return (hard, backoff);
     }
-    if core.target_width < limits.max_width {
+    if kind == CompletionKind::IncreasePoint
+        && headroom_hold(core, sig, limits).is_none()
+        && core.target_width < limits.max_width
+    {
         core.target_width += 1;
         core.width_growths += 1;
     }
@@ -676,13 +727,19 @@ impl MemoryGovernor {
         }
     }
 
-    /// A worker finished one unit of work (a resolve-group, an entry-group): the additive
-    /// increase point. Reached through `AdmittedSlot::note_unit_complete` so the pacing
-    /// bookkeeping cannot be skipped.
-    fn note_unit_complete_growth(&self) {
+    /// A worker finished one unit of work (a resolve-group, an entry-group): a SIGNAL POLL,
+    /// not an increase point (see `CompletionKind::ObserveOnly` — a unit is not a worker).
+    /// Reached through `AdmittedSlot::note_unit_complete` so the pacing bookkeeping cannot
+    /// be skipped, and it still carries the creep/hard back-off arms, which at a full
+    /// window may be the only polls the controller gets.
+    fn note_unit_observed(&self) {
+        self.observe(CompletionKind::ObserveOnly)
+    }
+
+    fn observe(&self, kind: CompletionKind) {
         let sig = self.source.read();
         let mut core = self.core.lock().unwrap();
-        let (hard, creep_backoff) = note_completion(&mut core, &sig, &self.limits);
+        let (hard, creep_backoff) = note_completion(&mut core, &sig, &self.limits, kind);
         drop(core);
         if let Some(h) = hard {
             eprintln!("{}", h.describe());
@@ -699,17 +756,19 @@ impl MemoryGovernor {
     /// pump thread and so claims no worker-sized residency (`active` is denominated in
     /// worker-sized claims — the quantity `measured_worker_share` calibrates).
     ///
-    /// It is still an additive-increase point, and a sound one: `note_completion` re-reads
-    /// the signals and grows ONLY when they are calm, and `memory.current`/PSI/swap include
-    /// the pump thread's bytes whether or not it held a slot. So the growth is gated on the
-    /// same evidence as a worker's completion; what differs is only the slot bookkeeping.
+    /// It IS an increase point, and the only one available off the floor: the window is 1,
+    /// so no worker exists to land a cost, and the lane is reached only while the window
+    /// stays 1. Without it width 1 is an absorbing state — nothing inside the lane could
+    /// lift the window off 1 (CI run 29707161743: a whole 621-group floor at
+    /// max_width_reached=1, admissions=1, on a 125 GB budget).
     ///
-    /// Without this, width 1 is an absorbing state: the inline lane is reached only while
-    /// the window is 1, and nothing inside it could lift the window off 1 (CI run
-    /// 29707161743 — a whole 621-group floor at max_width_reached=1 on a 125 GB budget).
+    /// It is bounded to the exploratory step. `note_completion` re-reads the signals and
+    /// grows only when they are calm and one more worker is predicted to fit; once a
+    /// worker has landed a cost, that prediction is real arithmetic rather than the
+    /// unmeasured commitment it necessarily is on the first step.
     /// 🟡 dissolve-on: Rc→Arc makes the index shareable, retiring the inline lane entirely.
     pub fn note_inline_unit_complete(&self) {
-        self.note_unit_complete_growth();
+        self.observe(CompletionKind::IncreasePoint)
     }
 
     fn note_first_cost_paid(&self) {
@@ -726,6 +785,12 @@ impl MemoryGovernor {
                 );
             }
         }
+        // THE additive-increase point. A landed cost is the only event that carries
+        // evidence about the quantity the window denominates: this worker's demand is now
+        // visible to the signals, so a calm, headroom-predicted poll here says one more
+        // fits. Sequenced after `note_first_cost` so the prediction reads the share this
+        // very landing measured, never a stale one.
+        self.observe(CompletionKind::IncreasePoint);
     }
 
     /// A worker released its slot.
