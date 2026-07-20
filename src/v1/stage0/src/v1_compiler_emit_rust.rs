@@ -373,21 +373,29 @@ pub fn render_rust_type_without_applied_binding(
                     } else {
                         {
                             let tn = authored_name_at(source_indices.clone(), n.clone());
-                            if (((tn.clone() == "String".to_string())
-                                && ((n.children.clone().len() as i64) == 0))
-                                && corpus_repr_is_faithful(corpus_repr.clone()))
-                            {
-                                rust_carrier_optional_wrap(
-                                    n.clone(),
-                                    render_rust_text_carrier(shared_types.clone()),
-                                )
+                            if type_node_has_unbound_type_variable(
+                                n.clone(),
+                                emit_info.fn_generic_param_names.clone(),
+                                source_indices.clone(),
+                            ) {
+                                "_".to_string()
                             } else {
-                                render_node_type(
-                                    n.clone(),
-                                    RenderTarget::Rust,
-                                    shared_types.clone(),
-                                    source_indices.clone(),
-                                )
+                                if (((tn.clone() == "String".to_string())
+                                    && ((n.children.clone().len() as i64) == 0))
+                                    && corpus_repr_is_faithful(corpus_repr.clone()))
+                                {
+                                    rust_carrier_optional_wrap(
+                                        n.clone(),
+                                        render_rust_text_carrier(shared_types.clone()),
+                                    )
+                                } else {
+                                    render_node_type(
+                                        n.clone(),
+                                        RenderTarget::Rust,
+                                        shared_types.clone(),
+                                        source_indices.clone(),
+                                    )
+                                }
                             }
                         }
                     }
@@ -1351,12 +1359,20 @@ pub fn render_rust_decl_type(
                                     }
                                 }
                             } else {
-                                render_rust_type_with_applied_binding(
+                                if type_node_has_unbound_type_variable(
                                     n.clone(),
-                                    shared_types.clone(),
-                                    corpus_repr.clone(),
+                                    generic_param_names.clone(),
                                     source_indices.clone(),
-                                )
+                                ) {
+                                    "_".to_string()
+                                } else {
+                                    render_rust_type_with_applied_binding(
+                                        n.clone(),
+                                        shared_types.clone(),
+                                        corpus_repr.clone(),
+                                        source_indices.clone(),
+                                    )
+                                }
                             }
                         }
                     }
@@ -1938,6 +1954,38 @@ pub fn type_node_has_unbound_type_variable(
             }
         }
     })
+}
+
+pub fn rust_rendered_type_needs_infer_wildcard(
+    rendered: String,
+    generic_param_names: Rc<Vec<String>>,
+) -> bool {
+    {
+        if ((rendered.clone() == "_".to_string()) || (rendered.clone() == "".to_string())) {
+            return false;
+        }
+        if {
+            let mut __found = false;
+            for g in generic_param_names.clone().iter().cloned() {
+                if v1_rt::contains(
+                    rendered.clone(),
+                    v1_rt::concat(
+                        v1_rt::concat("<".to_string(), to_pascal(g.clone())),
+                        ">".to_string(),
+                    ),
+                ) {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        } {
+            return false;
+        }
+        ((v1_rt::contains(rendered.clone(), "<T>".to_string())
+            || v1_rt::contains(rendered.clone(), ", T>".to_string()))
+            || v1_rt::contains(rendered.clone(), "<T,".to_string()))
+    }
 }
 
 pub fn is_rust_value_type(
@@ -16620,10 +16668,13 @@ pub fn emit_typed_fold_lambda(
                     .skip(1 as usize)
                     .collect::<Vec<_>>(),
             );
-            let safe_acc_type = if (((acc_type_str.clone() == "Rc<Vec<()>>".to_string())
+            let safe_acc_type = if ((((acc_type_str.clone() == "Rc<Vec<()>>".to_string())
                 || (acc_type_str.clone() == "Vec<()>".to_string()))
                 || (acc_type_str.clone() == "Option<()>".to_string()))
-            {
+                || rust_rendered_type_needs_infer_wildcard(
+                    acc_type_str.clone(),
+                    emit_info.fn_generic_param_names.clone(),
+                )) {
                 "_".to_string()
             } else {
                 acc_type_str.clone()
@@ -16982,10 +17033,14 @@ pub fn emit_rust_fold_method_call(
         );
         let is_bare_container = (((acc_type_node.children.clone().len() as i64) == 0)
             && is_container_type(acc_type_name.clone()));
-        let lambda_acc_type_str = if (((is_bare_container.clone() || acc_type_is_type_var.clone())
+        let lambda_acc_type_str = if ((((is_bare_container.clone()
+            || acc_type_is_type_var.clone())
             || acc_child_is_type_var.clone())
             || acc_has_unbound_type_var.clone())
-        {
+            || rust_rendered_type_needs_infer_wildcard(
+                acc_type_str.clone(),
+                emit_info.fn_generic_param_names.clone(),
+            )) {
             "_".to_string()
         } else {
             acc_type_str.clone()
