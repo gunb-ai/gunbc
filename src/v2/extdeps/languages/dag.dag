@@ -4002,14 +4002,25 @@ fn dag_symbol_is_complement_bool_literal(id: Symbol) -> Bool {
   (id == ^dag_complement_lit_true) || (id == ^dag_complement_lit_false)
 }
 
+fn dag_symbol_is_fixture_record_literal_atom(id: Symbol) -> Bool {
+  (id == ^dag_binding_rec_v)
+    || (id == ^dag_rec_lit_nine)
+    || (id == ^dag_binding_type_variant_true)
+}
+
+fn dag_symbol_is_fixture_body_literal_atom(id: Symbol) -> Bool {
+  dag_symbol_is_fixture_pick_literal(id: id)
+    || dag_symbol_is_complement_bool_literal(id: id)
+    || dag_symbol_is_fixture_record_literal_atom(id: id)
+}
+
 fn dag_node_is_eval_literal_atom(node: Node) -> Bool {
   dag_node_is_kw_true_atom(node: node)
     || dag_node_is_kw_false_atom(node: node)
     || dag_node_is_int_literal_atom(node: node)
     || match node.kind {
          TypeNode { connective: Atom { identity: id } } =>
-           dag_symbol_is_fixture_pick_literal(id: id)
-             || dag_symbol_is_complement_bool_literal(id: id)
+           dag_symbol_is_fixture_body_literal_atom(id: id)
          _ => false
        }
 }
