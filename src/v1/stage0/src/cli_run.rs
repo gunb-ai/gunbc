@@ -7460,7 +7460,10 @@ pub fn handle_serve(
     );
     let listener = std::net::TcpListener::bind((host.as_str(), port))
         .unwrap_or_else(|e| panic!("failed to bind {}:{}: {}", host, port, e));
-    eprintln!("gunbc serve listening on {}:{} -> {}()", host, port, function);
+    eprintln!(
+        "gunbc serve listening on {}:{} -> {}()",
+        host, port, function
+    );
     v1_interpreter::with_active_context(&ctx, || {
         for stream in listener.incoming() {
             let mut stream = match stream {
@@ -7521,7 +7524,9 @@ pub fn handle_serve(
 /// consumed) + exactly Content-Length body bytes. Anything else is a typed
 /// Err → 400. No keep-alive, no chunked bodies, no TLS (tailscale serve
 /// terminates HTTPS in front).
-fn serve_read_request(stream: &mut std::net::TcpStream) -> Result<(String, String, String), String> {
+fn serve_read_request(
+    stream: &mut std::net::TcpStream,
+) -> Result<(String, String, String), String> {
     use std::io::{BufRead, Read};
     stream
         .set_read_timeout(Some(std::time::Duration::from_secs(10)))
@@ -7535,7 +7540,10 @@ fn serve_read_request(stream: &mut std::net::TcpStream) -> Result<(String, Strin
     let method = parts.next().ok_or("empty request line")?.to_string();
     let target = parts.next().ok_or("missing request target")?.to_string();
     if !target.starts_with('/') {
-        return Err(format!("request target must be origin-form, got {:?}", target));
+        return Err(format!(
+            "request target must be origin-form, got {:?}",
+            target
+        ));
     }
     let mut content_length: usize = 0;
     loop {
