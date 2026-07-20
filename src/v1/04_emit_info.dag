@@ -405,4 +405,4 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
   }
 }
 
-data emit_dependency_registration_dissolve_on_note: String = "dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_files from that set. Instance-patch interim: module_needs_freemonoid_import walks full item subtree for faithful String leaves and explicit FreeMonoid refs."
+data emit_dependency_registration_dissolve_on_note: String = "dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_files from that set. Instance-patch interim: faithful corpus emits carrier import lines (FreeMonoid/Char/NonEmptyStr) per module unless locally defined."

@@ -1872,8 +1872,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let prelude = emit_prelude(imported_names: prelude_imported_names)
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
-  let carrier_import_lines = if module_renders_faithful_text_carrier(items: typed_module.items, corpus_repr: emit_info.corpus_repr, shared_types: shared_types, source_indices: scope.type_env.source_indices)
-    || module_needs_freemonoid_import(items: typed_module.items, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices) {
+  let carrier_import_lines = if corpus_repr_is_faithful(corpus_repr: emit_info.corpus_repr) {
     emit_faithful_text_carrier_import_lines(imported_names: prelude_imported_names, local_type_names: local_type_names)
   } else {
     []
