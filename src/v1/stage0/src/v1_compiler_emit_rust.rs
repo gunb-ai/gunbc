@@ -3978,22 +3978,65 @@ pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
 }
 
 pub fn emit_v2_std_text_closure_stub_module() -> Rc<TextFile> {
-    {
-        let from_host =
-            match rust_host_string_seam_fn_emit("host_string_text_from_rust_host".to_string()) {
-                Some(v) => v.clone(),
-                None => "".to_string(),
-            };
-        let to_host =
-            match rust_host_string_seam_fn_emit("host_string_text_to_rust_host".to_string()) {
-                Some(v) => v.clone(),
-                None => "".to_string(),
-            };
-        Rc::new(TextFile {
-    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "v2_std_text".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated closure stub — dissolve-on: derive from emitted ref set\n".to_string(), "// Source module: v2.std.text (closure stub)\n\n".to_string()), from_host.clone()), "\n".to_string()), to_host.clone()), "\n".to_string()),
-})
-    }
+    Rc::new(TextFile {
+        path: v1_rt::concat(
+            v1_rt::concat(rust_source_root(), "v2_std_text".to_string()),
+            rust_source_ext(),
+        ),
+        content: v2_std_text_closure_stub_source(),
+    })
+}
+
+pub fn v2_std_text_closure_stub_source() -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        "// Generated closure stub — dissolve-on: derive from emitted ref set\n".to_string(),
+                                        "// Source module: v2.std.text (closure stub; std_algebra + std_types only)\n\n".to_string(),
+                                    ),
+                                    "use std::rc::Rc;\n".to_string(),
+                                ),
+                                "use crate::std_algebra::FreeMonoid::{Cons, Empty};\n".to_string(),
+                            ),
+                            "use crate::std_types::Char;\n\n".to_string(),
+                        ),
+                        "pub type String = Rc<crate::std_algebra::FreeMonoid<Char>>;\n\n".to_string(),
+                    ),
+                    "pub fn host_string_text_from_rust_host(host: std::string::String) -> String {\n".to_string(),
+                ),
+                "    host.chars().fold(Rc::new(Empty), |acc, ch| Rc::new(Cons { head: Rc::new(ch as i64), tail: acc }))\n".to_string(),
+            ),
+            "}\n\n".to_string(),
+        ),
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "pub fn host_string_text_to_rust_host(text: String) -> std::string::String {\n".to_string(),
+                        "    match &*text {\n".to_string(),
+                    ),
+                    "        Empty => std::string::String::new(),\n".to_string(),
+                ),
+                "        Cons { head, tail } => {\n".to_string(),
+            ),
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "            let mut s = host_string_text_to_rust_host(tail.clone());\n".to_string(),
+                        "            s.insert(0, char::from_u32(**head as u32).unwrap_or('\\0'));\n".to_string(),
+                    ),
+                    "            s\n".to_string(),
+                ),
+                "        }\n    }\n}\n".to_string(),
+            ),
+        ),
+    )
 }
 
 pub fn emit_lib_rs_from_files(
