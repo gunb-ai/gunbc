@@ -285,7 +285,7 @@ shared** — which also keeps the O(M²) fix policy-agnostic (fill-once stands u
 
 **Sequencing consequence:** `SymbolIndex` lands first (it is the substrate *and* the O(M²) fix).
 **LANDED — #6809** ("SymbolIndex / type-env-single-authority — the containment-tree naming
-authority"), carrier `dag/std/symbol_index.dag`:
+authority"), carrier `src/v2/std/symbol_index.dag`:
 `SymbolIndex { entries: Map<QualifiedName, Node>, global_bare: Map<Symbol, GlobalBareBindingState> }`
 with `symbol_index_lookup` / `symbol_index_global_unique_lookup` / `symbol_index_lexical_lookup`,
 and `GlobalBareLookup = GlobalBareHit | GlobalBareLookupAmbiguous | GlobalBareLookupUnbound`.
@@ -466,7 +466,7 @@ alias period (two live spellings of one production is the §3 nickname the no-am
 forbids) — if the sugar keyword is renamed at all, it rides the import-strip terminal wave,
 which already touches every header region.
 
-## 12. Runtime dispatch is the FOURTH consumer — the fork is three-way, not two (zesty-deer-446, 2026-07-19)
+## 12. Runtime dispatch is another consumer of the containment tree — the fork is three-way, not two (zesty-deer-446, 2026-07-19)
 
 **Finding, proven by execution: the import list is already inert. NEITHER typecheck NOR runtime
 binds through it.** This is not "typecheck resolves against imports, runtime against registration
@@ -524,9 +524,13 @@ declared-vs-actual return type above.
 
 ### 12.3 What "fold runtime dispatch into this lane" means, concretely
 
-§3 names three consumers of the one containment tree (resolution walks it, content-addressing
-hashes it, termination reads its sub-value edges). **Dispatch is a fourth, and was unmodeled.**
-Naming it here is the whole consolidation: it converts component 1 of the bare-name dispatch fork
+DESIGN.md's namespace open thread names three consumers of the one containment tree — resolution
+walks it, content-addressing hashes it, termination reads its sub-value edges (this doc's §3
+derives the tree itself, not that consumer list). **Dispatch is a further consumer, and was
+unmodeled.** No ordinal is asserted here on purpose: effect grants independently claim "fourth"
+(`DESIGN.md:100`, `docs/plans/effect-namespace-grants.md:22`), and an ordinal maintained in three
+places is exactly the §3 second-encoding this lane exists to delete — consumers are *named*, and
+the count is read off the list, never restated. Naming dispatch here is the whole consolidation: it converts component 1 of the bare-name dispatch fork
 from *build a fourth resolver* into *delete a fork*.
 
 - **`v1_interpreter fn_nodes` dissolves.** It is not fixed, re-keyed, or taught about imports — it
