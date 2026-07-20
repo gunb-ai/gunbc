@@ -326,6 +326,15 @@ fn emit_field_eval_subject(tree: InferredTree) -> TestClaimEvalSubject<Node> {
   )
 }
 
+fn emit_field_eval_wrong_fixture_subject(tree: InferredTree) -> TestClaimEvalSubject<Node> {
+  eval_test_claim_subject(
+    claim: emit_field_eval_claim(rhs_result_node: rust_field_access_emit_host_wrong_field_body()),
+    context: emit_field_eval_context(),
+    tree: tree,
+    evaluator_pin: ^emit_field_eval_evaluator_pin
+  )
+}
+
 fn emit_field_eval_run(tree: InferredTree) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_field_eval_subject(tree: tree),
@@ -362,9 +371,14 @@ test fn emit_host_field_access_equals_eval_holds() -> Bool {
 }
 
 test fn emit_host_field_access_wrong_fixture_refuses_holds() -> Bool {
-  match emit_field_eval_wrong_field_producer_tree() {
+  match emit_field_eval_producer_tree() {
     Accepted { value: tree, diagnostics: _ } =>
-      emit_field_eval_verdict_is_semantic_mismatch(run: emit_field_eval_run(tree: tree))
+      emit_field_eval_verdict_is_semantic_mismatch(
+        run: run_test_claim_emit_vs_eval(
+          subject: emit_field_eval_wrong_fixture_subject(tree: tree),
+          target: rust_field_access_target_model_staging()
+        )
+      )
     Rejected { diagnostics: _ } => false
   }
 }

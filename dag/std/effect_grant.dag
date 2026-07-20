@@ -1,14 +1,16 @@
 module std.effect_grant
 
 import std.types { Bool, String, List }
-import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect }
+import std.effects { EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect, ExecuteEffect }
 import std.materialization_ladder { Frame }
 
 data effect_grant_note: String = "P-A model for effect-namespace grants (docs/plans/effect-namespace-grants.md, owned silent-ibex-417). An effect target is a POSITION in a containment tree that already exists; permission is a GRANT of (verb x subtree) attached to a Frame; admissibility is the namespace prefix relation (target under a granted root). This is the reach layer standing ABOVE the single std.effects.EffectShape authority, never a fork of it. MODEL ONLY, no behavior change: nothing dispatches through admit_effect yet (P-B wires the first enforcement seam). Grants reuse std.materialization_ladder.Frame (the scope/nesting authority) rather than mint a scope noun. DERIVED PROJECTIONS DEFERRED (see derived_projections_deferred_note). Provisional operator defaults carried inline (Q1 verb set, Q2 target realization) pending confirmation -- each with a dissolve-on."
 
-type Verb = Read | Write
+type Verb = Read | Write | Execute
 
-data verb_set_note: String = "Q1 (PROVISIONAL, pending operator ruling): the verb set is closed at Read/Write. Execute/Create arrive as later rows only when a displaced cost names one. Verb is the reach COARSENING of EffectShape, never a fork of it (DESIGN 3): a keyless write and a keyed write are both Write. verb_of_effect_shape below grounds the coarsening on the ONE EffectShape authority, making the 'grants reference a single EffectShape' prerequisite concrete. dissolve-on = operator confirms or amends the verb set."
+data verb_set_note: String = "Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-preflight sudo-probe displaced cost): the verb set is Read/Write/Execute, each coarsened from the ONE std.effects.EffectShape authority via verb_of_effect_shape below -- never a parallel grant vocabulary (DESIGN 3). Execute arrives as ExecuteEffect (invoke-nature shape in std.effects, not REST-derived). Create remains deferred until a displaced cost names it. dissolve-on = none (landed authority; operator may amend verb set)."
+
+data execute_verb_note: String = "Execute grant reach for process/binary invocation: target is a NamespacePosition in FilesystemPathTree naming the executable. The verb is shape-grounded: verb_of_effect_shape(ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via PosixSudoGrant -> Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via admit_effect (shell-intent Wave A follow-on)."
 
 fn verb_of_effect_shape(shape: EffectShape<KeySource>) -> Verb {
   match shape {
@@ -17,6 +19,7 @@ fn verb_of_effect_shape(shape: EffectShape<KeySource>) -> Verb {
     DeleteEffect { key_source: key_source } => Write
     CreateEffect { cause: cause } => Write
     AppendEffect => Write
+    ExecuteEffect => Execute
   }
 }
 
@@ -84,8 +87,16 @@ type Envelope {
 
 fn verb_eq(a: Verb, b: Verb) -> Bool {
   match a {
-    Read => match b { Read => true, Write => false }
-    Write => match b { Write => true, Read => false }
+    Read => match b { Read => true, Write => false, Execute => false }
+    Write => match b { Write => true, Read => false, Execute => false }
+    Execute => match b { Execute => true, Read => false, Write => false }
+  }
+}
+
+fn filesystem_position(path: List<String>) -> NamespacePosition {
+  NamespacePosition {
+    tree: FilesystemPathTree,
+    path: path
   }
 }
 
