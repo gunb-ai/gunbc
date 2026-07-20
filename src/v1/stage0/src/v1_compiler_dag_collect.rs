@@ -6,16 +6,17 @@ pub use crate::v1_compiler_dag_collect_support::{
     dag_node_surface_fingerprint, dag_node_surface_fingerprint_memo,
 };
 pub use crate::v1_compiler_dag_collect_support::{DagCollectAcc, DagCollectSlot};
+pub use crate::v1_compiler_infer_items::DagCollectSlot;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
-pub use crate::v1_std_core::import_is_all;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::MatchPattern::*;
+pub use crate::v1_std_core::{import_is_all, DagCollectSlot};
 pub use crate::v1_std_core::{Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;

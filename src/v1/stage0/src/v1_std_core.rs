@@ -22,8 +22,10 @@ use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
+pub use crate::std_algebra::{Present, SourceSpan};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_induction::{Present, SourceSpan};
 use crate::std_syntax::AlgebraFieldKind::{
     AlgAdd, AlgCompare, AlgJoin, AlgMeet, AlgMul, AlgQuotient, AlgReciprocal, AlgRemainder,
 };
@@ -32,9 +34,10 @@ use crate::std_syntax::BinOp::{
 };
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
+pub use crate::std_syntax::{Present, SourceSpan};
 pub use crate::std_types::{
     container_expected_arity, container_type_arity, is_container_type, is_kernel_type,
-    kernel_type_set,
+    kernel_type_set, Present,
 };
 pub use crate::std_types::{FilePath, NonEmptyStr, SourceSpan};
 use crate::v1_rt;

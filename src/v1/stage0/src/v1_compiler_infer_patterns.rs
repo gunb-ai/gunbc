@@ -6,13 +6,16 @@ use self::PatternSubject::*;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitBool;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{Node, Present};
 pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name, symbol_index_lookup};
+pub use crate::v1_compiler_infer_env::{
+    lookup_type, lookup_type_by_name, symbol_index_lookup, Present,
+};
 pub use crate::v1_compiler_infer_resolve::{
-    is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
+    is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots, Present,
 };
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, emit_map_has, extract_optional_inner_node,
+    child_type_node, emit_map_has, extract_optional_inner_node, Present,
 };
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -22,11 +25,13 @@ use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{FieldNotFound, NonExhaustiveMatch, VariantNotFound};
 use crate::v1_std_core::Connective::{Disj, NoConnective};
 use crate::v1_std_core::ExprData::NoExprData;
+use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::LitPattern;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, find_child_named, generic_param_name_at,
     is_compiler_error, kernel_span, make_error_node, no_span, none_type, with_optional_cardinality,
+    Present,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern,

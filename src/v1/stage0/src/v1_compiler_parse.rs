@@ -7,7 +7,9 @@ use self::ExpectedToken::*;
 use self::ParserCallIdentity::*;
 use self::ParserHelperIdentity::*;
 use self::ParserResultWitness::*;
-pub use crate::extdeps_languages_dag_syntax::{dag_non_name_keywords, dag_syntax_spec};
+pub use crate::extdeps_languages_dag_syntax::{
+    dag_non_name_keywords, dag_syntax_spec, Node, Present, SourceSpan, Token,
+};
 use crate::std_syntax::BinOp::{
     Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
 };
@@ -16,9 +18,11 @@ use crate::std_syntax::BodyKind::{
 };
 use crate::std_syntax::ItemFormKind::OtherForm;
 use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitNull, LitStr, LitSymbol};
+use crate::std_syntax::LiteralValue::{LitBool, LitFloat, LitInt, LitStr, LitSymbol};
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_syntax::{BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec};
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_languages::{Node, Present, SourceSpan, Token};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -58,7 +62,7 @@ pub use crate::v1_std_core::{
     transport_body_key, transport_headers_key, transport_method_key, transport_path_key,
     transport_path_template_key, transport_query_key, transport_response_format_key,
     transport_stdin_key, transport_tls_key, transport_url_key, variant_node_fields,
-    variant_node_name_at, with_required_cardinality,
+    variant_node_name_at, with_required_cardinality, ItemForm, Present,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,

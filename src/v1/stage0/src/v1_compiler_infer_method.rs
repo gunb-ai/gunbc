@@ -2,7 +2,8 @@
 // Source module: v1.compiler.infer_method
 
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_infer_types::{make_container_type, make_map_type};
+pub use crate::std_types::{Node, Present};
+pub use crate::v1_compiler_infer_types::{make_container_type, make_map_type, Present};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -10,9 +11,11 @@ use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::Connective::NoConnective;
 use crate::v1_std_core::ExprData::NoExprData;
+use crate::v1_std_core::InferredNode::TypeVariable;
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v1_std_core::{
     bool_type, hash_type, int_type, make_span, string_type, unit_type, with_optional_cardinality,
+    Present,
 };
 pub use crate::v1_std_core::{Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node};
 use crate::NonEmptyBTreeSet;

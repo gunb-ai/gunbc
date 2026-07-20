@@ -3,9 +3,11 @@
 
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+pub use crate::std_induction::{EmitResult, TextFile};
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_artifact::EmitResult;
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Python;
 pub use crate::v1_compiler_emit::{
@@ -40,19 +42,25 @@ pub use crate::v1_compiler_emit_core_support::{
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
-pub use crate::v1_compiler_infer::{build_params_scope, expr_span, extend_scope};
-pub use crate::v1_compiler_infer_env::authored_name;
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
-pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
-pub use crate::v1_compiler_infer_service::{
-    extract_typed_service_name, is_typed_service_call_receiver,
+pub use crate::v1_compiler_infer::{
+    build_params_scope, expr_span, extend_scope, EmitResult, TextFile,
 };
+pub use crate::v1_compiler_infer_env::{authored_name, EmitResult, TextFile};
+pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_items::{EmitResult, TextFile};
+pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
+pub use crate::v1_compiler_infer_method::{EmitResult, TextFile};
+pub use crate::v1_compiler_infer_service::{
+    extract_typed_service_name, is_typed_service_call_receiver, EmitResult, TextFile,
+};
+pub use crate::v1_compiler_infer_sigs::{EmitResult, TextFile};
 pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
-    node_is_keyed_collection, normalize_access_type_node, resolved_type,
+    node_is_keyed_collection, normalize_access_type_node, resolved_type, EmitResult, TextFile,
 };
 pub use crate::v1_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, test_conventions_for_target,
+    EmitResult, TextFile,
 };
 pub use crate::v1_compiler_languages::{ItemKeywords, TestConventions};
 use crate::v1_rt;
@@ -87,7 +95,7 @@ pub use crate::v1_std_core::{
     method_arg_nodes, method_receiver, module_imports, module_items, param_node_name_at,
     param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
     return_value, slice_base, slice_end, slice_start, transport_auth_header_name, transport_env,
-    transport_has_auth, transport_headers, with_required_cardinality,
+    transport_has_auth, transport_headers, with_required_cardinality, EmitResult,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, DeclaredFuncSig, ExprData, FieldAccessStyle, FieldSummary,

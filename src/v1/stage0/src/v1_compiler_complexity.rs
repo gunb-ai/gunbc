@@ -9,20 +9,31 @@ use crate::std_algebra::CollectionSizeEffect::{IdentityEffect, ProjectionEffect,
 use crate::std_algebra::CostShape::{
     ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
 };
+pub use crate::std_algebra::{
+    CallEdge, CallGraph, DfsFinishAcc, GraphEdge, Present, ProofEdge, SccComponentAcc,
+    TerminationProof,
+};
 pub use crate::std_algebra::{CollectionSizeEffect, CostShape};
 use crate::std_computation::CallPattern::{
     ArithmeticSubtractCall, ChildAccessorCall, CollectionShrinkCall, FoldBodyCall,
     ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
 };
+use crate::std_computation::CallPattern::{
+    ArithmeticSubtractCall, ChildAccessorCall, CollectionShrinkCall, FoldBodyCall,
+    ParserAdvanceCall, WorklistDrainCall,
+};
 use crate::std_computation::IterationDimension::{ArithmeticRepeat, CollectionFold, TreeDescent};
 pub use crate::std_computation::ShrinkFactor;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-pub use crate::std_computation::{lower_call_pattern, size_bound_param, type_iteration_dimension};
+pub use crate::std_computation::{
+    lower_call_pattern, size_bound_param, type_iteration_dimension, CallEdge, CallGraph,
+    DfsFinishAcc, GraphEdge, Present, ProofEdge, SccComponentAcc, TerminationProof,
+};
 pub use crate::std_computation::{CallPattern, IterationDimension, LoweringTarget};
 pub use crate::std_graph::{
     build_call_graph_from_proof_edges, dfs_collect_component, dfs_finish_order, forward_adjacency,
     graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, reverse_adjacency,
-    seed_adjacency_map,
+    seed_adjacency_map, CallEdge, Present,
 };
 pub use crate::std_graph::{CallGraph, DfsFinishAcc, GraphEdge, SccComponentAcc, SccCycleAcc};
 use crate::std_induction::AtomicCost::PolyCost;
@@ -33,11 +44,15 @@ use crate::std_induction::SubValueRelation::{
 };
 pub use crate::std_induction::{
     catamorphism_bound, cost_constant, cost_poly, derive_bound, sub_value_to_call_pattern,
-    sub_value_to_evidence, sub_value_to_lowering_target,
+    sub_value_to_evidence, sub_value_to_lowering_target, CallEdge, CallGraph, DfsFinishAcc,
+    GraphEdge, Present, ProofEdge, SccComponentAcc, TerminationProof,
 };
 pub use crate::std_induction::{AtomicCost, CostBound, PolynomialExponent, SubValueRelation};
 pub use crate::std_measure::ByteSize;
-pub use crate::std_measure::{byte_size, byte_size_count};
+pub use crate::std_measure::{
+    byte_size, byte_size_count, CallEdge, CallGraph, DfsFinishAcc, GraphEdge, Present, ProofEdge,
+    SccComponentAcc, TerminationProof,
+};
 use crate::std_syntax::BinOp::{Div, Sub};
 use crate::std_syntax::LiteralValue::{LitInt, LitNull};
 pub use crate::std_syntax::{BinOp, LiteralValue};
@@ -50,24 +65,42 @@ use crate::std_termination::PositiveDescentAmount::OneStep;
 use crate::std_termination::RankingDimension::{
     ArithmeticValue, ListLength, SetCardinality, TokenPosition, TreeSize,
 };
+use crate::std_termination::RankingDimension::{
+    ArithmeticValue, ListLength, TokenPosition, TreeSize,
+};
 pub use crate::std_termination::{
     descent_evidence_lattice_meet, evidence_rank, map_evidence_merge_at, optional_evidence_meet,
+    CallEdge, CallGraph, DfsFinishAcc, GraphEdge, Present, SccComponentAcc,
 };
 pub use crate::std_termination::{
     DescentEvidence, DescentSource, PositiveDescentAmount, ProofEdge, RankingDimension,
     TerminationProof,
 };
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_emit_core_support::to_string;
+pub use crate::std_types::{
+    CallEdge, CallGraph, DfsFinishAcc, GraphEdge, Present, ProofEdge, SccComponentAcc,
+    TerminationProof,
+};
+pub use crate::v1_compiler_emit_core_support::{
+    to_string, CallEdge, CallGraph, DfsFinishAcc, GraphEdge, Present, ProofEdge, SccComponentAcc,
+    TerminationProof,
+};
 pub use crate::v1_compiler_infer_sigs::CallEdge;
-pub use crate::v1_compiler_infer_types::{node_is_collection, resolved_type};
+pub use crate::v1_compiler_infer_sigs::{
+    CallGraph, DfsFinishAcc, GraphEdge, Present, ProofEdge, SccComponentAcc, TerminationProof,
+};
+pub use crate::v1_compiler_infer_types::{
+    node_is_collection, resolved_type, CallEdge, CallGraph, DfsFinishAcc, GraphEdge, Present,
+    ProofEdge, SccComponentAcc, TerminationProof,
+};
 use crate::v1_compiler_parse::ParserCallIdentity::{ParserCallFunction, ParserCallHelper};
 use crate::v1_compiler_parse::ParserResultWitness::{
     ParserWitnessAdvance, ParserWitnessCall, ParserWitnessEat, ParserWitnessExpect,
     ParserWitnessOpaque,
 };
 pub use crate::v1_compiler_parse::{
-    parser_passthrough_state_expr, parser_progress_flag_var, parser_result_witness,
+    parser_passthrough_state_expr, parser_progress_flag_var, parser_result_witness, CallEdge,
+    CallGraph, DfsFinishAcc, GraphEdge, Present, ProofEdge, SccComponentAcc, TerminationProof,
 };
 pub use crate::v1_compiler_parse::{ParserCallIdentity, ParserResultWitness};
 use crate::v1_rt;
@@ -91,7 +124,8 @@ pub use crate::v1_std_core::{
     is_children_list_field, is_sub_value_field, is_tree_size_preserving, is_tree_size_reducing,
     lambda_body, lambda_param_names_at, let_binding_name_at, let_body, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, param_node_name_at, param_node_type_expr,
-    return_value,
+    return_value, CallEdge, CallGraph, DfsFinishAcc, GraphEdge, Present, ProofEdge,
+    SccComponentAcc, TerminationProof,
 };
 pub use crate::v1_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;

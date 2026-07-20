@@ -2,10 +2,11 @@
 // Source module: v1.compiler.infer_service
 
 pub use crate::std_types::SourceSpan;
-pub use crate::v1_compiler_infer_items::inferred_to_outputs;
+pub use crate::std_types::{ItemInfo, Node, Present};
 use crate::v1_compiler_infer_items::ItemKind::FuncItem;
+pub use crate::v1_compiler_infer_items::{inferred_to_outputs, Present};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, TypedModule};
-pub use crate::v1_compiler_infer_types::{emit_map_has, nominal_type_ref};
+pub use crate::v1_compiler_infer_types::{emit_map_has, nominal_type_ref, ItemInfo, Present};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -18,7 +19,8 @@ use crate::v1_std_core::ExprData::{
 use crate::v1_std_core::InferredNode::Resolved;
 pub use crate::v1_std_core::{
     authored_name_at, expr_call_func_at, expr_var_name_at, field_access_base,
-    field_access_field_at, method_receiver, no_span, param_node_type_expr, unit_type,
+    field_access_field_at, method_receiver, no_span, param_node_type_expr, unit_type, ItemInfo,
+    Present,
 };
 pub use crate::v1_std_core::{Cardinality, Connective, ExprData, InferredNode, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;

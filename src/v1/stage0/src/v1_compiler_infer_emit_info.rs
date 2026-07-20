@@ -4,9 +4,10 @@
 use self::RustCorpusRepr::*;
 use self::TypeRepr::*;
 pub use crate::v1_compiler_infer_env::TypeEnv;
-pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
+pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env, FieldSummary, Present};
 pub use crate::v1_compiler_infer_types::{
-    child_type_node, emit_map_has, node_type_equals, normalize_access_type_node,
+    child_type_node, emit_map_has, node_type_equals, normalize_access_type_node, FieldSummary,
+    Present,
 };
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -19,7 +20,7 @@ use crate::v1_std_core::FieldValueShape::{OptionalValue, PlainValue};
 use crate::v1_std_core::InferredNode::{Resolved, TypeVariable};
 pub use crate::v1_std_core::{
     authored_name_at, find_child_named, has_child_named, param_node_name_at,
-    with_required_cardinality,
+    with_required_cardinality, Present,
 };
 pub use crate::v1_std_core::{
     Cardinality, Connective, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,

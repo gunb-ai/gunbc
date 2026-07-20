@@ -4,9 +4,12 @@
 use self::PathSegmentTokensResult::*;
 use self::PathTemplateParseResult::*;
 pub use crate::extdeps_external_authority::ExternalAuthority;
+pub use crate::extdeps_external_authority::PathTemplate;
 use crate::extdeps_uri::UriScheme::Https;
+pub use crate::extdeps_uri::{ExternalAuthority, PathTemplate};
 pub use crate::extdeps_uri::{Uri, UriScheme};
 use crate::std_http_path::UrlPathToken::{LiteralToken, ParamToken};
+pub use crate::std_http_path::{ExternalAuthority, Uri};
 pub use crate::std_http_path::{PathTemplate, UrlPathToken};
 use crate::v1_rt;
 use crate::v1_rt::Witness;

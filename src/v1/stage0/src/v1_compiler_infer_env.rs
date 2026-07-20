@@ -2,19 +2,21 @@
 // Source module: v1.compiler.infer_env
 
 use self::GlobalBareLookupState::*;
+pub use crate::std_induction::Present;
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{InductiveField, Present};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
-    source_text_at,
+    source_text_at, InductiveField, Present,
 };
 pub use crate::v1_std_core::{InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;

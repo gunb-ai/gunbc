@@ -3,12 +3,15 @@
 
 use self::ExportKind::*;
 use self::InterfaceContract::*;
-pub use crate::std_content_hash::{content_hash_atom, content_hash_combine, content_hash_tagged};
+pub use crate::std_content_hash::{
+    content_hash_atom, content_hash_combine, content_hash_tagged, DeclarationRef,
+};
 use crate::std_decl_ref::DeclField::WholeDeclaration;
 pub use crate::std_decl_ref::{DeclField, DeclarationRef};
 use crate::std_disposition::ConstructionMechanism::SingleAuthority;
 use crate::std_disposition::Disposition::Scaffold;
 pub use crate::std_disposition::{ConstructionMechanism, Disposition};
+pub use crate::std_types::DeclarationRef;
 pub use crate::std_types::{ContentHash, List, NonEmptyStr};
 use crate::v1_rt;
 use crate::v1_rt::Witness;

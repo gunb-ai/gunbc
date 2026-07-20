@@ -11,7 +11,9 @@ use crate::std_algebra::AlgebraTypeTemplate::{
     ReceiverSelf, ReceiverValue, TupleOf, WitnessOf,
 };
 use crate::std_algebra::ContainerSource::{Named, SameAsReceiver};
-pub use crate::std_algebra::{algebra_templates_for_profile, kernel_algebra_profile};
+pub use crate::std_algebra::{
+    algebra_templates_for_profile, kernel_algebra_profile, Node, Present,
+};
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraProfile, AlgebraTypeTemplate, ContainerSource,
 };
@@ -24,7 +26,7 @@ pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{
     container_expected_arity, container_param_name, container_template_algebra,
-    container_template_alias_algebra, is_container_type,
+    container_template_alias_algebra, is_container_type, Node, Present,
 };
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -41,7 +43,7 @@ pub use crate::v1_std_core::{
     has_inferred, int_type, is_compiler_error, is_kernel_type, kernel_span, leaf_node_with_span,
     make_error_node, make_expr_error_node, make_expr_node, make_param_node, make_span, no_span,
     none_type, param_node_type_expr, string_type, unit_type, with_optional_cardinality,
-    with_required_cardinality,
+    with_required_cardinality, Present,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind, InferredNode,

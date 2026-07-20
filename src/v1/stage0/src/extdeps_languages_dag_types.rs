@@ -2,9 +2,11 @@
 // Source module: extdeps.languages.dag.types
 
 pub use crate::extdeps_external_authority::ExternalAuthority;
+pub use crate::extdeps_uri::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::std_coercion::TypeCheckpoint;
+pub use crate::std_coercion::{ExternalAuthority, Uri};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
