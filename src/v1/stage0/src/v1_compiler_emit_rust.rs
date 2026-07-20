@@ -299,9 +299,7 @@ pub fn render_rust_type_without_applied_binding(
                     None => emit_rust_compile_error_expr("Set missing element type".to_string()),
                 }
             } else {
-                if (node_is_keyed_collection(n.clone(), source_indices.clone())
-                    && ((emit_info.fn_generic_param_names.clone().len() as i64) > 0))
-                {
+                if node_is_keyed_collection(n.clone(), source_indices.clone()) {
                     match n.children.clone().first().cloned() {
                         Some(key_child) => {
                             let key_node = child_type_node(key_child.clone());
@@ -341,9 +339,7 @@ pub fn render_rust_type_without_applied_binding(
                         ),
                     }
                 } else {
-                    if (node_is_element_collection(n.clone(), source_indices.clone())
-                        && ((emit_info.fn_generic_param_names.clone().len() as i64) > 0))
-                    {
+                    if node_is_element_collection(n.clone(), source_indices.clone()) {
                         match n.children.clone().first().cloned() {
                             Some(elem_child) => {
                                 let elem_node = child_type_node(elem_child.clone());

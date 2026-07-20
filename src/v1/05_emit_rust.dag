@@ -193,7 +193,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         }
       Absent => emit_rust_compile_error_expr(message: "Set missing element type")
     }
-  } else if node_is_keyed_collection(n: n, source_indices: source_indices) && emit_info.fn_generic_param_names |> count > 0 {
+  } else if node_is_keyed_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Present { value: key_child } =>
         let key_node = child_type_node(ch: key_child)
@@ -208,7 +208,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types)
       Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
-  } else if node_is_element_collection(n: n, source_indices: source_indices) && emit_info.fn_generic_param_names |> count > 0 {
+  } else if node_is_element_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Present { value: elem_child } =>
         let elem_node = child_type_node(ch: elem_child)
