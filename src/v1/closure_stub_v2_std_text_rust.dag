@@ -1,0 +1,27 @@
+module v1.compiler.closure_stub_v2_std_text_rust
+
+data closure_stub_v2_std_text_dissolve_on_note: String = "dissolve-on (FreeMonoid pass 2026-07-20): NOT a second v2.std.text authority — a minimal closure projection when narrow typed.modules omits v2.std.text but emitted refs need crate::v2_std_text::. Dissolves when emit_lib_rs_from_files derives pub-mod membership from the emitted ref set and emits the real v2.std.text module instead."
+
+fn closure_stub_v2_std_text_source() -> String {
+  concat(
+    "// Generated closure stub — dissolve-on: derive from emitted ref set\n",
+    "// Source module: v2.std.text (closure projection; std_algebra + std_types only)\n\n",
+    "use std::rc::Rc;\n",
+    "use crate::std_algebra::FreeMonoid::\{Cons, Empty\};\n",
+    "use crate::std_types::Char;\n\n",
+    "pub type String = Rc<crate::std_algebra::FreeMonoid<Char>>;\n\n",
+    "pub fn host_string_text_from_rust_host(host: std::string::String) -> String \{\n",
+    "    host.chars().fold(Rc::new(Empty), |acc, ch| Rc::new(Cons \{ head: Rc::new(ch as i64), tail: acc \}))\n",
+    "\}\n\n",
+    "pub fn host_string_text_to_rust_host(text: String) -> std::string::String \{\n",
+    "    match &*text \{\n",
+    "        Empty => std::string::String::new(),\n",
+    "        Cons \{ head, tail \} => \{\n",
+    "            let mut s = host_string_text_to_rust_host(tail.clone());\n",
+    "            s.insert(0, char::from_u32(**head as u32).unwrap_or(char::from_u32(0).unwrap()));\n",
+    "            s\n",
+    "        \}\n",
+    "    \}\n",
+    "\}\n"
+  )
+}

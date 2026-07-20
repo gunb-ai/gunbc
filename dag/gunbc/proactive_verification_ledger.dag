@@ -1,0 +1,239 @@
+module gunbc.proactive_verification_ledger
+
+import std.types { String, Int, List }
+import v2.std.node { Symbol }
+import v2.std.algebra { filter, fold_list, length }
+
+data proactive_verification_ledger_law: String = "The PROACTIVE VERIFICATION LEDGER (operator no-soak ruling 2026-07-20; v1_deletion_plan ^v1_delete): enumerated executed receipts that gate v1_delete — never calendar soak, never elapsed-time claims. Each row is ONE deliberate run with a typed execution shape, an overlap disposition (ExecutableNow | KnownRedPendingUnquarantine | BlockedOnCiFloorCutover), and an execution outcome (OutcomeGreen | OutcomePending | OutcomeRed) recorded only after a real run — never fabricated. Spine: (1) whole-corpus cold v1-vs-v2 witness parity — falsifier predict-only cadence, zero unexplained divergence (every divergence typed/located/counted, never absorbed); (2) compile-clean parity; (3) regen behavioral fixed point. Families: nine witness-realization equals_eval receipts (#6879 partition); fold_closure appends when the eval arc lands it — 8 of 9 green once #6912 merges. Dissolve-on: ci_floor_cutover + ledger all OutcomeGreen."
+
+type VerificationReceiptKind
+  = WholeCorpusWitnessParityCold
+  | CompileCleanParity
+  | RegenBehavioralFixedPoint
+  | FamilyEqualsEval
+
+type VerificationExecutionShape
+  = ClaimWitness { entry: String, function: String }
+  | FalsifierPredictOnlyBatch
+  | CompileCleanGate
+  | RegenVerifyGate
+
+type VerificationDisposition
+  = ExecutableNow
+  | KnownRedPendingUnquarantine
+  | BlockedOnCiFloorCutover
+
+type VerificationExecutionOutcome
+  = OutcomeGreen
+  | OutcomePending { reason: String }
+  | OutcomeRed { reason: String }
+
+type VerificationLedgerRow {
+  id: Symbol,
+  kind: VerificationReceiptKind,
+  title: String,
+  execution: VerificationExecutionShape,
+  disposition: VerificationDisposition,
+  dissolve_trigger: String
+}
+
+data spine_witness_parity_recipe: String = "claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_batches (batch 0 = SelectionPredictOnly whole-corpus cold affected-set falsifier; zero unexplained divergence vs predict-only expectations — a rerun-everything arm is the absorbing-fallback hard reject)"
+
+data spine_compile_clean_recipe: String = "claim_executor batch-1 dag_compile_clean_gate (--target dag whole-tree; same authority as gunbc_ci_floor_batches)"
+
+data spine_regen_recipe: String = "regen_stage0 --emit-fresh target/v2-emit-fresh-realize --write-manifest target/v2-emit-fresh-realize/roster_manifest.txt --verify (RegenVerifyGate transport)"
+
+data family_partition_note: String = "Nine witness-realization families (#6879 kernel partition): add (serial kernel), match+loop+fold_closure (lane 3), field_access+complement (lane 2), meet_join+variant_construct+classical_not_ingested (lane 4). Emitter clean across all nine — gaps are eval/harness-side. #6912 unblocks field_access, complement, meet_join, variant_construct equals_eval; fold_closure remains KnownRedPendingUnquarantine until closure-arg eval lands."
+
+data proactive_verification_spine_rows: List<VerificationLedgerRow> = [
+  VerificationLedgerRow {
+    id: ^whole_corpus_witness_parity_cold,
+    kind: WholeCorpusWitnessParityCold,
+    title: "Whole-corpus cold v1-vs-v2 witness parity (falsifier predict-only batch)",
+    execution: FalsifierPredictOnlyBatch,
+    disposition: BlockedOnCiFloorCutover,
+    dissolve_trigger: "ci_floor_cutover; falsifier cold sweep records zero unexplained divergence rows"
+  },
+  VerificationLedgerRow {
+    id: ^compile_clean_parity,
+    kind: CompileCleanParity,
+    title: "Compile-clean parity (whole-tree --target dag gate)",
+    execution: CompileCleanGate,
+    disposition: BlockedOnCiFloorCutover,
+    dissolve_trigger: "ci_floor_cutover; whole-tree compile-clean gate green on v2-emitted execution path"
+  },
+  VerificationLedgerRow {
+    id: ^regen_behavioral_fixed_point,
+    kind: RegenBehavioralFixedPoint,
+    title: "Regen behavioral fixed point (regen_stage0 --verify two-generation equivalence)",
+    execution: RegenVerifyGate,
+    disposition: BlockedOnCiFloorCutover,
+    dissolve_trigger: "emitter_fixed_point + ci_floor_cutover; regen_verify gate green by execution"
+  }
+]
+
+data proactive_verification_family_rows: List<VerificationLedgerRow> = [
+  VerificationLedgerRow {
+    id: ^family_equals_add,
+    kind: FamilyEqualsEval,
+    title: "emit_host_add family equals_eval agreement",
+    execution: ClaimWitness {
+      entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
+      function: "emit_host_add_equals_eval_all_holds"
+    },
+    disposition: ExecutableNow,
+    dissolve_trigger: "ledger all-green at v1_delete"
+  },
+  VerificationLedgerRow {
+    id: ^family_equals_match,
+    kind: FamilyEqualsEval,
+    title: "emit_host_match family equals_eval agreement",
+    execution: ClaimWitness {
+      entry: "src/v2/test/claim/execution/emit_host_match_equals_eval_test.dag",
+      function: "emit_host_match_equals_eval_all_holds"
+    },
+    disposition: ExecutableNow,
+    dissolve_trigger: "ledger all-green at v1_delete"
+  },
+  VerificationLedgerRow {
+    id: ^family_equals_loop,
+    kind: FamilyEqualsEval,
+    title: "emit_host_loop family equals_eval agreement",
+    execution: ClaimWitness {
+      entry: "src/v2/test/claim/execution/emit_host_loop_equals_eval_test.dag",
+      function: "emit_host_loop_equals_eval_all_holds"
+    },
+    disposition: ExecutableNow,
+    dissolve_trigger: "ledger all-green at v1_delete"
+  },
+  VerificationLedgerRow {
+    id: ^family_equals_classical_not_ingested,
+    kind: FamilyEqualsEval,
+    title: "emit_host_classical_not_ingested family equals_eval agreement",
+    execution: ClaimWitness {
+      entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+      function: "emit_host_classical_not_ingested_equals_eval_holds"
+    },
+    disposition: ExecutableNow,
+    dissolve_trigger: "ledger all-green at v1_delete"
+  },
+  VerificationLedgerRow {
+    id: ^family_equals_field_access,
+    kind: FamilyEqualsEval,
+    title: "emit_host_field_access family equals_eval agreement",
+    execution: ClaimWitness {
+      entry: "src/v2/test/claim/execution/emit_host_field_access_equals_eval_test.dag",
+      function: "emit_host_field_access_equals_eval_all_holds"
+    },
+    disposition: KnownRedPendingUnquarantine,
+    dissolve_trigger: "#6912 eval-repair merges; known_red_probe wet rows delete (swift-stag-662)"
+  },
+  VerificationLedgerRow {
+    id: ^family_equals_complement,
+    kind: FamilyEqualsEval,
+    title: "emit_host_complement family equals_eval agreement",
+    execution: ClaimWitness {
+      entry: "src/v2/test/claim/execution/emit_host_complement_equals_eval_test.dag",
+      function: "emit_host_complement_equals_eval_all_holds"
+    },
+    disposition: KnownRedPendingUnquarantine,
+    dissolve_trigger: "#6912 eval-repair merges; known_red_probe wet rows delete (swift-stag-662)"
+  },
+  VerificationLedgerRow {
+    id: ^family_equals_meet_join,
+    kind: FamilyEqualsEval,
+    title: "emit_host_meet_join family equals_eval agreement",
+    execution: ClaimWitness {
+      entry: "src/v2/test/claim/execution/emit_host_meet_join_equals_eval_test.dag",
+      function: "emit_host_meet_join_equals_eval_all_holds"
+    },
+    disposition: KnownRedPendingUnquarantine,
+    dissolve_trigger: "#6912 eval-repair merges (complement literal root shared)"
+  },
+  VerificationLedgerRow {
+    id: ^family_equals_variant_construct,
+    kind: FamilyEqualsEval,
+    title: "emit_host_variant_construct family equals_eval agreement",
+    execution: ClaimWitness {
+      entry: "src/v2/test/claim/execution/emit_host_variant_construct_equals_eval_test.dag",
+      function: "emit_host_variant_construct_equals_eval_all_holds"
+    },
+    disposition: KnownRedPendingUnquarantine,
+    dissolve_trigger: "#6912 eval-repair merges (Conj scrutinee allocate_literal arm)"
+  },
+  VerificationLedgerRow {
+    id: ^family_equals_fold_closure,
+    kind: FamilyEqualsEval,
+    title: "emit_host_fold_closure family equals_eval agreement",
+    execution: ClaimWitness {
+      entry: "src/v2/test/claim/execution/emit_host_fold_closure_equals_eval_test.dag",
+      function: "emit_host_fold_closure_equals_eval_all_holds"
+    },
+    disposition: KnownRedPendingUnquarantine,
+    dissolve_trigger: "eval arc lands closure-arg support; known_red_probe row deletes on green (jolly-dove-581)"
+  }
+]
+
+fn proactive_verification_ledger_rows() -> List<VerificationLedgerRow> {
+  concat(proactive_verification_spine_rows, proactive_verification_family_rows)
+}
+
+fn ledger_row_disposition_is(row: VerificationLedgerRow, d: VerificationDisposition) -> Bool {
+  row.disposition == d
+}
+
+fn ledger_rows_with_disposition(d: VerificationDisposition) -> List<VerificationLedgerRow> {
+  filter(xs: proactive_verification_ledger_rows(), predicate: fn(row) {
+    ledger_row_disposition_is(row: row, d: d)
+  })
+}
+
+fn ledger_spine_row_count() -> Int {
+  length(xs: proactive_verification_spine_rows)
+}
+
+fn ledger_family_row_count() -> Int {
+  length(xs: proactive_verification_family_rows)
+}
+
+fn ledger_total_row_count() -> Int {
+  length(xs: proactive_verification_ledger_rows())
+}
+
+fn ledger_executable_now_count() -> Int {
+  length(xs: ledger_rows_with_disposition(d: ExecutableNow))
+}
+
+fn ledger_known_red_count() -> Int {
+  length(xs: ledger_rows_with_disposition(d: KnownRedPendingUnquarantine))
+}
+
+fn ledger_blocked_count() -> Int {
+  length(xs: ledger_rows_with_disposition(d: BlockedOnCiFloorCutover))
+}
+
+fn ledger_v1_delete_required_green_count() -> Int {
+  ledger_total_row_count()
+}
+
+fn ledger_has_spine_kind(kind: VerificationReceiptKind) -> Bool {
+  fold_list(
+    xs: proactive_verification_spine_rows,
+    empty: false,
+    cons: fn(acc, row) { acc || (row.kind == kind) }
+  )
+}
+
+fn ledger_all_spine_kinds_present() -> Bool {
+  ledger_has_spine_kind(kind: WholeCorpusWitnessParityCold)
+    && ledger_has_spine_kind(kind: CompileCleanParity)
+    && ledger_has_spine_kind(kind: RegenBehavioralFixedPoint)
+}
+
+fn disposition_to_pending_outcome(row: VerificationLedgerRow) -> VerificationExecutionOutcome {
+  match row.disposition {
+    ExecutableNow => OutcomePending { reason: "not yet executed this session" }
+    KnownRedPendingUnquarantine => OutcomePending { reason: row.dissolve_trigger }
+    BlockedOnCiFloorCutover => OutcomePending { reason: row.dissolve_trigger }
+  }
+}

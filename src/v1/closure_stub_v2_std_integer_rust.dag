@@ -1,0 +1,14 @@
+module v1.compiler.closure_stub_v2_std_integer_rust
+
+data closure_stub_v2_std_integer_dissolve_on_note: String = "dissolve-on (FreeMonoid pass 2026-07-20): NOT a second v2.std.integer authority — a minimal closure projection when narrow typed.modules omits v2.std.integer but emitted refs need Int. Dissolves when emit_lib_rs_from_files derives pub-mod membership from the emitted ref set and emits the real v2.std.integer module instead."
+
+fn closure_stub_v2_std_integer_source() -> String {
+  concat(
+    "// Generated closure stub — dissolve-on: derive from emitted ref set\n",
+    "// Source module: v2.std.integer (closure projection; std_algebra + std_nat only)\n\n",
+    "use std::rc::Rc;\n",
+    "use crate::std_algebra::GroupCompletion;\n",
+    "use crate::std_nat::Nat;\n\n",
+    "pub type Int = GroupCompletion<Rc<Nat>>;\n"
+  )
+}

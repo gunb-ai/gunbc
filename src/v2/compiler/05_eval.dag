@@ -1213,10 +1213,27 @@ fn eval_type_node_atom(
   interpretation: InterpretationAlgebra,
   environment: EvaluationEnvironment
 ) -> Outcome<RuntimeValue> {
-  if v2_eval_is_literal_shaped_node(node: node) {
-    interpretation.value.allocate_literal(node, environment)
-  } else {
-    eval_runtime_binding_lookup(node: node, environment: environment)
+  match node.kind {
+    TypeNode { connective: Atom { identity: _ } } =>
+      if v2_eval_is_literal_shaped_node(node: node) {
+        interpretation.value.allocate_literal(node, environment)
+      } else {
+        match eval_runtime_binding_lookup(node: node, environment: environment) {
+          Accepted { value: v, diagnostics: d } =>
+            Accepted { value: v, diagnostics: d }
+          Rejected { diagnostics: bind_ds } =>
+            match interpretation.value.allocate_literal(node, environment) {
+              Accepted { value: v, diagnostics: d } =>
+                Accepted { value: v, diagnostics: d }
+              Rejected { diagnostics: _ } =>
+                Rejected { diagnostics: bind_ds }
+            }
+        }
+      }
+    TypeNode { connective: _ } =>
+      interpretation.value.allocate_literal(node, environment)
+    ComputationNode { behavior: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
