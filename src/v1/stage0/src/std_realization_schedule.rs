@@ -36,9 +36,18 @@ pub enum CostBasis {
     Measured,
 }
 
+pub fn cost_account_time_axis_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "time is spelled Measure<Quantity, S, Nat> (the axis OWNER) rather than Measure<Time, S, Nat> (the axis variant) as an interim: the emitter's field path erases a variant-as-type-arg to unit while the census sig path owner-resolves it to Quantity, so the two spellings emitted incompatible Rust for the same dag type (field Measure<()> vs constructor/param Measure<Quantity>). The axis stays evident in the field name and the time_measure constructor. Dissolve-on: emitter unifies variant-as-type-arg handling across field and sig paths, then this reverts to Measure<Time, S, Nat>.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
-    pub time: Rc<Measure<(), S, Nat>>,
+    pub time: Rc<Measure<Quantity, S, Nat>>,
     pub space: ByteSize,
     pub power: Watt,
     pub basis: CostBasis,
