@@ -1,5 +1,5 @@
 use crate::v1_rt::VecCompat;
-use im_rc::HashMap;
+use im::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 

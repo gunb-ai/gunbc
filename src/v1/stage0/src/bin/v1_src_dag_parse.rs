@@ -5,7 +5,7 @@ const SCAFFOLD_NOTE: &str = "SCAFFOLD \u{2014} dissolve-on: when src/v1 .dag is 
     modeled pipeline / when the seed shrinks to zero (\u{a7}7; src/v1 is the bootstrap seed; \
     parsing the seed currently requires the seed parser itself).";
 
-use im_rc::HashMap;
+use im::HashMap;
 use std::process::ExitCode;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};

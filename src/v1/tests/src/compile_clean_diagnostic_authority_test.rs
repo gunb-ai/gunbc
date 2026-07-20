@@ -57,7 +57,7 @@ fn genuine_error() -> Rc<ErrorNode> {
 }
 
 fn has_hard(nodes: Vec<Rc<ErrorNode>>) -> bool {
-    let v: im_rc::Vector<Rc<ErrorNode>> = nodes.into_iter().collect();
+    let v: im::Vector<Rc<ErrorNode>> = nodes.into_iter().collect();
     compile_clean_pipeline_has_hard_errors(&v)
 }
 

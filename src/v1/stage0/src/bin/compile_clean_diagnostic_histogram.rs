@@ -186,7 +186,7 @@ fn file_prefix_bucket(file: &str) -> String {
     "other".to_string()
 }
 
-fn count_message_substr(diags: &im_rc::Vector<Rc<ErrorNode>>, needle: &str) -> usize {
+fn count_message_substr(diags: &im::Vector<Rc<ErrorNode>>, needle: &str) -> usize {
     use v1_compiler::v1_std_core::{diagnostic_to_message, CompilerDiagnostic};
     diags
         .iter()
@@ -199,7 +199,7 @@ fn count_message_substr(diags: &im_rc::Vector<Rc<ErrorNode>>, needle: &str) -> u
         .count()
 }
 
-fn count_type_mismatch_name(diags: &im_rc::Vector<Rc<ErrorNode>>, name: &str) -> usize {
+fn count_type_mismatch_name(diags: &im::Vector<Rc<ErrorNode>>, name: &str) -> usize {
     use v1_compiler::v1_std_core::CompilerDiagnostic;
     diags
         .iter()
