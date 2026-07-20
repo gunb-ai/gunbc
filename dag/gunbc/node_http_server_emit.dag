@@ -50,10 +50,23 @@ import extdeps.languages.typescript.program {
   ts_spread,
 }
 
+data belt_dispatch_route_note: String = "INTERIM (roadmap belt A, operator 2026-07-20): the deployed static Node dashboard gets ONE dynamic POST route so the launch button works before the model-honest gunbc-serve (belt B, child cool-wolf-720) lands and RETIRES this whole Node server. On POST <path_prefix>NODE, it execs the srv1 gunbc binary running belt_dispatch_node_cli with the node id in GUNBC_BELT_NODE_ID (env channel -- gunbc run has no --arg), cwd = the repo (gunbc run derives workspace_root from cwd, so it MUST be a git checkout), and returns the JSON receipt. The dispatch AUTHORITY stays belt_dispatch_node in .dag -- this route only SHELLS the CLI (an interim smuggled-exec that B dissolves to an in-process call). Only the roadmap dashboard spec carries this; gunbhub leaves it Absent."
+
+type BeltDispatchRouteConfig {
+  path_prefix: String
+  gunbc_bin: String
+  repo_cwd: String
+  source_roots: List<String>
+  entry: String
+  function_name: String
+  env_var: String
+}
+
 type NodeHttpStaticServerSpec {
   service_name: String
   routes: ServedStaticRouteTable
   listen: HttpServerListenConfig
+  dispatch: BeltDispatchRouteConfig?
 }
 
 fn emit_http_method_label(method: HttpMethod) -> String {
@@ -152,7 +165,99 @@ fn node_http_match_handler_body() -> TsStmt {
   ])
 }
 
-fn node_http_request_handler_block() -> TsStmt {
+fn node_http_dispatch_exec_args(cfg: BeltDispatchRouteConfig) -> List<TsExpr> {
+  let roots = fold(cfg.source_roots, init: [], f: fn(acc, r) {
+    concat(acc, [ts_lit_str(value: "--source-root"), ts_lit_str(value: r)])
+  })
+  concat(
+    concat([ts_lit_str(value: "run")], roots),
+    [
+      ts_lit_str(value: "--entry"), ts_lit_str(value: cfg.entry),
+      ts_lit_str(value: "--function"), ts_lit_str(value: cfg.function_name),
+    ]
+  )
+}
+
+fn node_http_dispatch_callback() -> TsExpr {
+  ts_arrow(params: ["err", "stdout", "stderr"], body: ts_block(stmts: [
+    ts_expr_stmt(expr: ts_call(
+      callee: res_member(name: "writeHead"),
+      args: [
+        ts_cond(
+          test: ts_ident(name: "err"),
+          consequent: ts_lit_num(text: "500"),
+          alternate: ts_lit_num(text: "200"),
+        ),
+        ts_object(fields: [ts_quoted_field(key: "Content-Type", value: ts_lit_str(value: "application/json"))]),
+      ]
+    )),
+    ts_expr_stmt(expr: ts_call(
+      callee: res_member(name: "end"),
+      args: [ts_call(
+        callee: ts_member(object: ts_ident(name: "JSON"), property: "stringify"),
+        args: [ts_object(fields: [
+          ts_field(key: "ok", value: ts_prefix(op: "!", expr: ts_ident(name: "err"))),
+          ts_field(key: "node", value: ts_ident(name: "node")),
+          ts_field(key: "stdout", value: ts_ident(name: "stdout")),
+          ts_field(key: "stderr", value: ts_ident(name: "stderr")),
+        ])]
+      )]
+    )),
+  ]))
+}
+
+fn node_http_dispatch_route_stmt(cfg: BeltDispatchRouteConfig) -> TsStmt {
+  ts_if(
+    cond: ts_binop(
+      left: ts_binop(left: ts_ident(name: "method"), op: "===", right: ts_lit_str(value: "POST")),
+      op: "&&",
+      right: ts_call(
+        callee: ts_member(object: ts_ident(name: "path"), property: "startsWith"),
+        args: [ts_lit_str(value: cfg.path_prefix)]
+      )
+    ),
+    then: ts_block(stmts: [
+      ts_const(
+        name: "node",
+        value: ts_call(
+          callee: ts_ident(name: "decodeURIComponent"),
+          args: [ts_call(
+            callee: ts_member(object: ts_ident(name: "path"), property: "slice"),
+            args: [ts_member(object: ts_lit_str(value: cfg.path_prefix), property: "length")]
+          )]
+        )
+      ),
+      ts_const(
+        name: "cp",
+        value: ts_call(callee: ts_ident(name: "require"), args: [ts_lit_str(value: "child_process")])
+      ),
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_ident(name: "cp"), property: "execFile"),
+        args: [
+          ts_lit_str(value: cfg.gunbc_bin),
+          ts_array(elements: node_http_dispatch_exec_args(cfg: cfg)),
+          ts_object(fields: [
+            ts_field(key: "cwd", value: ts_lit_str(value: cfg.repo_cwd)),
+            ts_field(key: "maxBuffer", value: ts_lit_num(text: "10485760")),
+            ts_field(key: "env", value: ts_call(
+              callee: ts_member(object: ts_ident(name: "Object"), property: "assign"),
+              args: [
+                ts_object(fields: []),
+                ts_member(object: ts_ident(name: "process"), property: "env"),
+                ts_object(fields: [ts_quoted_field(key: cfg.env_var, value: ts_ident(name: "node"))]),
+              ]
+            )),
+          ]),
+          node_http_dispatch_callback(),
+        ]
+      )),
+      ts_return(expr: none),
+    ]),
+    else_stmt: none
+  )
+}
+
+fn node_http_request_handler_block(dispatch: BeltDispatchRouteConfig?) -> TsStmt {
   ts_block(stmts: [
     ts_const(
       name: "method",
