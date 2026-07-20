@@ -17754,7 +17754,7 @@ fn caller() -> Bool {
         );
         assert!(
             matches!(
-                containment,
+                &containment,
                 ContainmentResolve::Hit {
                     owner_module,
                     ..
