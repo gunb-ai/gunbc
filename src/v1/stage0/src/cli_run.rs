@@ -4850,7 +4850,6 @@ fn stripped_fn_body_marker() -> Rc<Node> {
     STRIPPED_FN_BODY_MARKER.with(Rc::clone)
 }
 
-#[cfg(test)]
 pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
     node.name == CENSUS_HEADS_FN_STAND_IN_NAME
         || Rc::ptr_eq(node, &STRIPPED_FN_BODY_MARKER.with(Rc::clone))
@@ -4871,6 +4870,11 @@ pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
 #[cfg(test)]
 pub fn census_heads_fn_stand_in_for_test() -> Rc<Node> {
     stripped_fn_body_marker()
+}
+
+#[cfg(test)]
+pub fn census_heads_module_node_for_test(module: Rc<Node>) -> Rc<Node> {
+    census_heads_module_node(module)
 }
 
 fn census_heads_children(children: &Rc<im::Vector<Rc<Node>>>) -> Rc<im::Vector<Rc<Node>>> {
