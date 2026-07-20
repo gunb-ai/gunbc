@@ -11558,8 +11558,8 @@ pub fn emit_variant_pattern(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let optional_variant =
-            (is_optional_variant_name(name.clone()) && is_optional_parent(resolved_parent.clone()));
+        let optional_variant = (is_optional_variant_name(name.clone())
+            && (is_optional_parent(resolved_parent.clone()) || (resolved_parent.clone() == None)));
         let rust_name = if optional_variant.clone() {
             if (name.clone() == "Present".to_string()) {
                 "Some".to_string()
@@ -12212,8 +12212,8 @@ pub fn emit_variant_pattern_rc_aware(
             scrut_type.clone(),
             emit_info.type_summaries.clone(),
         );
-        let optional_variant =
-            (is_optional_variant_name(name.clone()) && is_optional_parent(resolved_parent.clone()));
+        let optional_variant = (is_optional_variant_name(name.clone())
+            && (is_optional_parent(resolved_parent.clone()) || (resolved_parent.clone() == None)));
         let rust_name = if optional_variant.clone() {
             if (name.clone() == "Present".to_string()) {
                 "Some".to_string()

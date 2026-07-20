@@ -7,24 +7,16 @@ use crate::std_induction::RecursionShape::{
 };
 use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
-pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::Cardinality::*;
-use crate::v1_std_core::Connective::*;
-use crate::v1_std_core::ExprData::*;
-use crate::v1_std_core::InferredNode::*;
 pub use crate::v1_std_core::{
-    authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
-    kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
-    param_node_type_expr, source_text_at,
+    authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
+    source_text_at,
 };
-pub use crate::v1_std_core::{
-    Cardinality, Connective, ExprData, InferredNode, InternTable, NewlineIndex, Node,
-};
+pub use crate::v1_std_core::{InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
@@ -56,7 +48,7 @@ pub struct TypeBinding {
 pub fn global_bare_fallback_invariant() -> String {
     thread_local! {
         static CACHED: String = {
-            "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases (unique across the WHOLE bare-name space: a variant whose name any type/fn/data decl claims stays qualified-only, never a global_bare candidate — else a type-vs-variant tie, e.g. actions.Job vs ExpressionContext.Job, refuses every far use of the TYPE); every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment — the candidate whose module path shares the strictly longest leading-segment prefix with the REFERENCING module (TypeEnv.module_path) wins; any tie at the max, including the all-disjoint lcp=0 case, REFUSES (Absent — fail-closed, never guesses, §5; the source must qualify by containment path). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node).".to_string()
+            "Corpus-wide bare-name census, resolved by ONE uniform containment walk (operator ruling 2026-07-18: global uniqueness is NOT a special tier — it is the shallowest level of the same walk; filepaths are irrelevant, the declared module path is the containment tree). SymbolIndex.global_bare is keyed on the bare declared name and built once by build_symbol_index_census over graph.modules before any module typechecks (order-independent). Tracking is decl-only via symbol_index_insert_decl / local_binding_for_item (type/fn/data names) plus corpus-globally-unique Disj variant aliases; every homonym keeps its FULL candidate list (module_path + binding), never a candidate-free Ambiguous tombstone. Resolution (global_bare_lookup): a single candidate resolves from anywhere (the one-candidate degenerate case of the walk); multiple candidates resolve by nearest-ancestor containment — the candidate whose module path shares the strictly longest leading-segment prefix with the REFERENCING module (TypeEnv.module_path) wins; any tie at the max, including the all-disjoint lcp=0 case, REFUSES (Absent — fail-closed, never guesses, §5; the source must qualify by containment path). lookup_binding_by_name consults it only after str_bindings/ancestry_str_bindings/intern+bindings all miss. Variant arms additionally merge into per-module variant_locals via merge_global_bare_variant_locals (constructor_binding_authority — owner is the coproduct node).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -65,7 +57,7 @@ pub fn global_bare_fallback_invariant() -> String {
 pub fn qualified_module_projection_invariant() -> String {
     thread_local! {
         static CACHED: String = {
-            "Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let type-annotation positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module item paths plus module-unique Disj variant aliases (qualified path always; corpus-unique variants also enter global_bare — mirrors v2 symbol_index_fill_unique_variant_aliases); lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics).".to_string()
+            "Grammar lane G1/G1b: container.member module projection in value/type/pattern and fn/data/let type-annotation positions resolves via symbol_index_lookup on the full qualified path (module projection), not value field-access — v2 resolve: TypeNode Conj QN spines; v1 typecheck: lookup_binding_by_name after global_bare; v1 patterns: lookup_variant_in_type routes dotted variant names through symbol_index_lookup. build_symbol_index_census materializes declared-module item paths plus module-unique Disj variant aliases (mirrors v2 symbol_index_fill_unique_variant_aliases); lookup_qualified_module_projection runs only when the reference carries a dot (fail-closed on miss — never widens to field-access semantics).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -87,6 +79,16 @@ pub enum GlobalBareLookupState {
     GlobalBareAmbiguousBinding {
         candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
     },
+}
+impl GlobalBareLookupState {
+    pub fn binding(&self) -> Rc<TypeBinding> {
+        match self {
+            GlobalBareLookupState::GlobalBareUniqueBinding { binding: __val, .. } => __val.clone(),
+            GlobalBareLookupState::GlobalBareAmbiguousBinding { .. } => {
+                panic!("no binding on ambiguous variant")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -153,16 +155,9 @@ pub fn global_bare_candidates_contain(
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
     resolved: Rc<Node>,
 ) -> bool {
-    {
-        let mut __found = false;
-        for c in candidates.clone().iter().cloned() {
-            if (c.binding.clone().resolved.clone() == resolved.clone()) {
-                __found = true;
-                break;
-            }
-        }
-        __found
-    }
+    candidates
+        .iter()
+        .any(|c| c.binding.resolved.clone() == resolved.clone())
 }
 
 pub fn symbol_index_track_global_bare(
@@ -174,23 +169,20 @@ pub fn symbol_index_track_global_bare(
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-            candidates: cands, ..
-        }) => {
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cands }) => {
             if global_bare_candidates_contain(cands.clone(), binding.resolved.clone()) {
                 global_bare.clone()
             } else {
+                let mut appended = (*cands).clone();
+                appended.push_back(Rc::new(GlobalBareCandidate {
+                    module_path: module_path.clone(),
+                    binding: binding.clone(),
+                }));
                 v1_rt::rc_map_insert(
                     global_bare.clone(),
                     binding.name.clone(),
                     Rc::new(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-                        candidates: v1_rt::concat(
-                            cands.clone(),
-                            Rc::new(vec![Rc::new(GlobalBareCandidate {
-                                module_path: module_path.clone(),
-                                binding: binding.clone(),
-                            })]),
-                        ),
+                        candidates: Rc::new(appended),
                     }),
                 )
             }
@@ -198,7 +190,6 @@ pub fn symbol_index_track_global_bare(
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
             module_path: existing_path,
             binding: existing,
-            ..
         }) => {
             if (existing.resolved.clone() == binding.resolved.clone()) {
                 global_bare.clone()
@@ -697,7 +688,13 @@ pub fn union_variant_locals_into_acc(
             None => m.clone(),
             Some(incoming) => match v1_rt::map_get(&m, name.clone()) {
                 None => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
-                Some(_existing) => v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone()),
+                Some(existing) => {
+                    if binding_same_authority(existing.clone(), incoming.clone()) {
+                        m.clone()
+                    } else {
+                        v1_rt::rc_map_insert(m.clone(), name.clone(), incoming.clone())
+                    }
+                }
             },
         },
     )
@@ -847,115 +844,37 @@ pub fn lookup_qualified_module_projection(
     }
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SegmentLcpScan {
-    pub remaining: Rc<Vec<String>>,
-    pub matched: i64,
-    pub live: bool,
-}
+pub use crate::v1_std_core::{module_path_segments, qualified_last_segment};
 
 pub fn segment_lcp_len(a: Rc<Vec<String>>, b: Rc<Vec<String>>) -> i64 {
-    {
-        let scan = a.clone().iter().cloned().fold(
-            Rc::new(SegmentLcpScan {
-                remaining: b.clone(),
-                matched: 0,
-                live: true,
-            }),
-            |acc: Rc<SegmentLcpScan>, seg: String| {
-                if acc.live.clone() {
-                    match acc.remaining.clone().first().cloned() {
-                        Some(bh) => {
-                            if (bh.clone() == seg.clone()) {
-                                Rc::new(SegmentLcpScan {
-                                    remaining: Rc::new(
-                                        acc.remaining
-                                            .clone()
-                                            .iter()
-                                            .cloned()
-                                            .skip(1 as usize)
-                                            .collect::<Vec<_>>(),
-                                    ),
-                                    matched: (acc.matched.clone() + 1),
-                                    live: true,
-                                })
-                            } else {
-                                Rc::new(SegmentLcpScan {
-                                    remaining: acc.remaining.clone(),
-                                    matched: acc.matched.clone(),
-                                    live: false,
-                                })
-                            }
-                        }
-                        None => Rc::new(SegmentLcpScan {
-                            remaining: acc.remaining.clone(),
-                            matched: acc.matched.clone(),
-                            live: false,
-                        }),
-                    }
-                } else {
-                    acc.clone()
-                }
-            },
-        );
-        scan.matched.clone()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GlobalBareNearestScan {
-    pub best_lcp: i64,
-    pub best: Option<Rc<TypeBinding>>,
-    pub tie: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct GlobalBareNearestCandidateScan {
-    pub best_lcp: i64,
-    pub best: Option<Rc<GlobalBareCandidate>>,
-    pub tie: bool,
+    a.iter().zip(b.iter()).take_while(|(x, y)| x == y).count() as i64
 }
 
 pub fn global_bare_nearest_ancestor_candidate(
     env_module_path: String,
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<GlobalBareCandidate>> {
-    {
-        let env_segs = module_path_segments(env_module_path.clone());
-        let scan = candidates.clone().iter().cloned().fold(
-            Rc::new(GlobalBareNearestCandidateScan {
-                best_lcp: (0 - 1),
-                best: None,
-                tie: false,
-            }),
-            |acc: Rc<GlobalBareNearestCandidateScan>, cand: Rc<GlobalBareCandidate>| {
-                let l = segment_lcp_len(
-                    env_segs.clone(),
-                    module_path_segments(cand.module_path.clone()),
-                );
-                if (l.clone() > acc.best_lcp.clone()) {
-                    Rc::new(GlobalBareNearestCandidateScan {
-                        best_lcp: l.clone(),
-                        best: Some(cand.clone()),
-                        tie: false,
-                    })
-                } else {
-                    if (l.clone() == acc.best_lcp.clone()) {
-                        Rc::new(GlobalBareNearestCandidateScan {
-                            best_lcp: acc.best_lcp.clone(),
-                            best: acc.best.clone(),
-                            tie: true,
-                        })
-                    } else {
-                        acc.clone()
-                    }
-                }
-            },
+    let env_segs = module_path_segments(env_module_path.clone());
+    let mut best_lcp: i64 = -1;
+    let mut best: Option<Rc<GlobalBareCandidate>> = None;
+    let mut tie = false;
+    for cand in candidates.iter() {
+        let l = segment_lcp_len(
+            env_segs.clone(),
+            module_path_segments(cand.module_path.clone()),
         );
-        match scan.tie.clone() {
-            true => None,
-            false => scan.best.clone(),
+        if l > best_lcp {
+            best_lcp = l;
+            best = Some(cand.clone());
+            tie = false;
+        } else if l == best_lcp {
+            tie = true;
         }
+    }
+    if tie {
+        None
+    } else {
+        best
     }
 }
 
@@ -979,25 +898,11 @@ pub fn global_bare_owner_module(
         .cloned()
     {
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-            module_path: mp,
-            binding: b,
-            ..
-        }) => match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
-            true => Some(mp.clone()),
-            false => None,
-        },
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-            candidates: cands, ..
-        }) => {
+            module_path: mp, ..
+        }) => Some(mp.clone()),
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cands }) => {
             match global_bare_nearest_ancestor_candidate(owner_module_path.clone(), cands.clone()) {
-                Some(cand) => match binding_declares_name(
-                    cand.binding.clone(),
-                    name.clone(),
-                    env.source_indices.clone(),
-                ) {
-                    true => Some(cand.module_path.clone()),
-                    false => None,
-                },
+                Some(cand) => Some(cand.module_path.clone()),
                 None => None,
             }
         }
@@ -1005,44 +910,24 @@ pub fn global_bare_owner_module(
     }
 }
 
-pub fn binding_declares_name(
-    binding: Rc<TypeBinding>,
-    name: String,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (authored_name_at(source_indices.clone(), binding.resolved.clone()) == name.clone())
-}
-
 pub fn borrowed_generic_param_names(
     params: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, bool>> {
-    params.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
-            let pt = param_node_type_expr(p.clone());
-            let pname = param_node_name_at(p.clone(), source_indices.clone());
-            let tname = authored_name_at(source_indices.clone(), pt.clone());
-            if (((((pt.children.clone().len() as i64) == 0)
-                && (pt.connective.clone() == Connective::NoConnective))
-                && (pname.clone() != "".to_string()))
-                && ((pname.clone() == tname.clone()) || (pname.clone() == pt.name.clone())))
-            {
-                v1_rt::rc_map_insert(acc.clone(), pname.clone(), true)
-            } else {
-                acc.clone()
-            }
-        },
-    )
-}
-
-pub fn qualify_declaration_position_invariant() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "qualify_borrowed_type_names rewrites REFERENCE positions only. Within a type expression, a NoConnective node's children are generic ARGS (references - rename-eligible); a STRUCTURED node's (Disj/Conj) children are DECLARATIONS (variant names, field names) whose names must never be rewritten - renaming them detaches bare patterns/projections from the decl (a projected coproduct's Independent became std.realization.Independent and every bare match arm missed). Declaration subtrees are walked by qualify_decl_reference_positions: keep the declared name, qualify the inferred payload (a type expr - reference position), recurse into child declarations. The census type-decl pass (census_upgrade_type_decl_binding) uses the SAME walk - one authority for the declaration/reference distinction.".to_string()
-        };
+    let mut acc = v1_rt::rc_empty_map::<String, bool>();
+    for p in params.iter() {
+        let pt = crate::v1_std_core::param_node_type_expr(p.clone());
+        let pname = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
+        let tname = authored_name_at(source_indices.clone(), pt.clone());
+        if pt.children.len() as i64 == 0
+            && pt.connective.clone() == crate::v1_std_core::Connective::NoConnective
+            && pname.clone() != "".to_string()
+            && (pname.clone() == tname.clone() || pname.clone() == pt.name.clone())
+        {
+            acc = v1_rt::rc_map_insert(acc.clone(), pname.clone(), true);
+        }
     }
-    CACHED.with(|c: &String| c.clone())
+    acc
 }
 
 pub fn qualify_decl_reference_positions(
@@ -1051,27 +936,26 @@ pub fn qualify_decl_reference_positions(
     env: Rc<TypeEnv>,
     excluded: Rc<HashMap<String, bool>>,
 ) -> Rc<Node> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let inf2 = qualify_borrowed_inferred(
-            n.inferred.clone(),
-            owner_module_path.clone(),
-            env.clone(),
-            excluded.clone(),
-        );
-        let ch2 = Rc::new({
-            let mut __result = Vec::new();
-            for c in n.children.clone().iter().cloned() {
-                __result.push(qualify_decl_reference_positions(
+    let inf2 = qualify_borrowed_inferred(
+        n.inferred.clone(),
+        owner_module_path.clone(),
+        env.clone(),
+        excluded.clone(),
+    );
+    let ch2: Rc<Vec<Rc<Node>>> = Rc::new(
+        n.children
+            .iter()
+            .map(|c| {
+                qualify_decl_reference_positions(
                     c.clone(),
                     owner_module_path.clone(),
                     env.clone(),
                     excluded.clone(),
-                ));
-            }
-            __result
-        });
-        node_with_children(node_with_inferred(n.clone(), inf2.clone()), ch2.clone())
-    })
+                )
+            })
+            .collect::<Vec<Rc<Node>>>(),
+    );
+    node_with_children(node_with_inferred(n.clone(), inf2.clone()), ch2)
 }
 
 pub fn qualify_borrowed_type_names(
@@ -1080,90 +964,88 @@ pub fn qualify_borrowed_type_names(
     env: Rc<TypeEnv>,
     excluded: Rc<HashMap<String, bool>>,
 ) -> Rc<Node> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let qualified_children = if (n.connective.clone() == Connective::NoConnective) {
-            Rc::new({
-                let mut __result = Vec::new();
-                for c in n.children.clone().iter().cloned() {
-                    __result.push(qualify_borrowed_type_names(
-                        c.clone(),
-                        owner_module_path.clone(),
-                        env.clone(),
-                        excluded.clone(),
-                    ));
-                }
-                __result
-            })
+    let qualified_children: Rc<Vec<Rc<Node>>> =
+        if n.connective == crate::v1_std_core::Connective::NoConnective {
+            Rc::new(
+                n.children
+                    .iter()
+                    .map(|c| {
+                        qualify_borrowed_type_names(
+                            c.clone(),
+                            owner_module_path.clone(),
+                            env.clone(),
+                            excluded.clone(),
+                        )
+                    })
+                    .collect::<Vec<Rc<Node>>>(),
+            )
         } else {
-            Rc::new({
-                let mut __result = Vec::new();
-                for c in n.children.clone().iter().cloned() {
-                    __result.push(qualify_decl_reference_positions(
-                        c.clone(),
-                        owner_module_path.clone(),
-                        env.clone(),
-                        excluded.clone(),
-                    ));
-                }
-                __result
-            })
+            Rc::new(
+                n.children
+                    .iter()
+                    .map(|c| {
+                        qualify_decl_reference_positions(
+                            c.clone(),
+                            owner_module_path.clone(),
+                            env.clone(),
+                            excluded.clone(),
+                        )
+                    })
+                    .collect::<Vec<Rc<Node>>>(),
+            )
         };
-        let name = authored_name_at(env.source_indices.clone(), n.clone());
-        let is_type_var = match n.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::TypeVariable { id: _, .. }) => true,
-            _ => false,
-        };
-        let rewrite = ((((((n.connective.clone() == Connective::NoConnective)
-            && (name.clone() != "".to_string()))
-            && !v1_rt::contains(name.clone(), ".".to_string()))
-            && !is_kernel_type(name.clone()))
-            && !v1_rt::map_has(&excluded, name.clone()))
-            && !is_type_var.clone());
-        let owner_hit = if rewrite.clone() {
-            global_bare_owner_module(env.clone(), owner_module_path.clone(), name.clone())
-        } else {
-            None
-        };
-        match owner_hit.clone() {
-            Some(mp) => {
-                if (mp.clone() == "".to_string()) {
-                    node_with_children(n.clone(), qualified_children.clone())
-                } else {
-                    {
-                        let qname =
-                            v1_rt::concat(v1_rt::concat(mp.clone(), ".".to_string()), name.clone());
-                        Rc::new(Node {
-                            name: qname.clone(),
-                            span: n.span.clone(),
-                            ident_span: Some(kernel_span(qname.clone())),
-                            children: qualified_children.clone(),
-                            connective: n.connective.clone(),
-                            params: n.params.clone(),
-                            inferred: n.inferred.clone(),
-                            return_cardinality: n.return_cardinality.clone(),
-                            uses: n.uses.clone(),
-                            body: n.body.clone(),
-                            transport: n.transport.clone(),
-                            properties: n.properties.clone(),
-                            type_annotation: n.type_annotation.clone(),
-                            is_self_recursive: n.is_self_recursive.clone(),
-                            has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-                            match_pattern: n.match_pattern.clone(),
-                            expr_data: n.expr_data.clone(),
-                            ident: None,
-                        })
-                    }
-                }
+    let name = authored_name_at(env.source_indices.clone(), n.clone());
+    let is_type_var = matches!(
+        n.inferred.as_deref(),
+        Some(crate::v1_std_core::InferredNode::TypeVariable { .. })
+    );
+    let rewrite = n.connective.clone() == crate::v1_std_core::Connective::NoConnective
+        && name.clone() != "".to_string()
+        && !v1_rt::contains(name.clone(), ".".to_string())
+        && !crate::std_types::is_kernel_type(name.clone())
+        && !v1_rt::map_has(&excluded, name.clone())
+        && !is_type_var;
+    let owner_hit = if rewrite {
+        global_bare_owner_module(env.clone(), owner_module_path.clone(), name.clone())
+    } else {
+        None
+    };
+    match owner_hit {
+        Some(mp) => {
+            if mp.clone() == "".to_string() {
+                node_with_children(n.clone(), qualified_children.clone())
+            } else {
+                let qname = v1_rt::concat(v1_rt::concat(mp.clone(), ".".to_string()), name.clone());
+                Rc::new(Node {
+                    name: qname.clone(),
+                    ident: None,
+                    span: n.span.clone(),
+                    ident_span: Some(crate::v1_std_core::kernel_span(qname.clone())),
+                    children: qualified_children.clone(),
+                    connective: n.connective.clone(),
+                    params: n.params.clone(),
+                    inferred: n.inferred.clone(),
+                    return_cardinality: n.return_cardinality.clone(),
+                    uses: n.uses.clone(),
+                    body: n.body.clone(),
+                    transport: n.transport.clone(),
+                    properties: n.properties.clone(),
+                    type_annotation: n.type_annotation.clone(),
+                    is_self_recursive: n.is_self_recursive,
+                    has_non_tail_self_call: n.has_non_tail_self_call,
+                    match_pattern: n.match_pattern.clone(),
+                    expr_data: n.expr_data.clone(),
+                })
             }
-            None => node_with_children(n.clone(), qualified_children.clone()),
         }
-    })
+        None => node_with_children(n.clone(), qualified_children.clone()),
+    }
 }
 
 pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
     Rc::new(Node {
         name: n.name.clone(),
-        ident: n.ident.clone(),
+        ident: n.ident,
         span: n.span.clone(),
         ident_span: n.ident_span.clone(),
         children: children.clone(),
@@ -1176,17 +1058,20 @@ pub fn node_with_children(n: Rc<Node>, children: Rc<Vec<Rc<Node>>>) -> Rc<Node> 
         transport: n.transport.clone(),
         properties: n.properties.clone(),
         type_annotation: n.type_annotation.clone(),
-        is_self_recursive: n.is_self_recursive.clone(),
-        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        is_self_recursive: n.is_self_recursive,
+        has_non_tail_self_call: n.has_non_tail_self_call,
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
 
-pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc<Node> {
+pub fn node_with_inferred(
+    n: Rc<Node>,
+    inferred: Option<Rc<crate::v1_std_core::InferredNode>>,
+) -> Rc<Node> {
     Rc::new(Node {
         name: n.name.clone(),
-        ident: n.ident.clone(),
+        ident: n.ident,
         span: n.span.clone(),
         ident_span: n.ident_span.clone(),
         children: n.children.clone(),
@@ -1199,59 +1084,49 @@ pub fn node_with_inferred(n: Rc<Node>, inferred: Option<Rc<InferredNode>>) -> Rc
         transport: n.transport.clone(),
         properties: n.properties.clone(),
         type_annotation: n.type_annotation.clone(),
-        is_self_recursive: n.is_self_recursive.clone(),
-        has_non_tail_self_call: n.has_non_tail_self_call.clone(),
+        is_self_recursive: n.is_self_recursive,
+        has_non_tail_self_call: n.has_non_tail_self_call,
         match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
 
 pub fn qualify_borrowed_inferred(
-    inferred: Option<Rc<InferredNode>>,
+    inferred: Option<Rc<crate::v1_std_core::InferredNode>>,
     owner_module_path: String,
     env: Rc<TypeEnv>,
     excluded: Rc<HashMap<String, bool>>,
-) -> Option<Rc<InferredNode>> {
-    match inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: t, .. }) => Some(Rc::new(InferredNode::Resolved {
-            node: qualify_borrowed_type_names(
-                t.clone(),
-                owner_module_path.clone(),
-                env.clone(),
-                excluded.clone(),
-            ),
-        })),
+) -> Option<Rc<crate::v1_std_core::InferredNode>> {
+    match inferred.as_deref() {
+        Some(crate::v1_std_core::InferredNode::Resolved { node: t }) => {
+            Some(Rc::new(crate::v1_std_core::InferredNode::Resolved {
+                node: qualify_borrowed_type_names(
+                    t.clone(),
+                    owner_module_path.clone(),
+                    env.clone(),
+                    excluded.clone(),
+                ),
+            }))
+        }
         _ => inferred.clone(),
     }
 }
 
 pub fn qualified_all_but_last(name: String) -> String {
-    {
-        let segs = module_path_segments(name.clone());
-        let seg_count = (segs.clone().len() as i64);
-        if (seg_count.clone() <= 1) {
-            "".to_string()
-        } else {
-            {
-                let scan = Rc::new(
-                    segs.clone()
-                        .iter()
-                        .cloned()
-                        .take((seg_count.clone() - 1) as usize)
-                        .collect::<Vec<_>>(),
-                )
-                .iter()
-                .cloned()
-                .fold("".to_string(), |acc: String, seg: String| {
-                    if (acc.clone() == "".to_string()) {
-                        seg.clone()
-                    } else {
-                        v1_rt::concat(v1_rt::concat(acc.clone(), ".".to_string()), seg.clone())
-                    }
-                });
-                scan
+    let segs = module_path_segments(name.clone());
+    let seg_count = segs.len() as i64;
+    if seg_count <= 1 {
+        "".to_string()
+    } else {
+        let mut acc = "".to_string();
+        for seg in segs.iter().take((seg_count - 1) as usize) {
+            if acc.clone() == "".to_string() {
+                acc = seg.clone();
+            } else {
+                acc = v1_rt::concat(v1_rt::concat(acc.clone(), ".".to_string()), seg.clone());
             }
         }
+        acc
     }
 }
 
@@ -1260,12 +1135,12 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
-            Some(binding.clone())
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+            binding: binding, ..
+        }) => Some(binding.clone()),
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cands }) => {
+            global_bare_nearest_ancestor(env.module_path.clone(), cands.clone())
         }
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-            candidates: cands, ..
-        }) => global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()),
         None => None,
     }
 }
@@ -1275,10 +1150,10 @@ pub fn global_bare_is_ambiguous(env: Rc<TypeEnv>, name: String) -> bool {
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
-            candidates: cands, ..
-        }) => (global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()) == None),
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => false,
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cands }) => {
+            global_bare_nearest_ancestor(env.module_path.clone(), cands.clone()).is_none()
+        }
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding: _, .. }) => false,
         None => false,
     }
 }
@@ -1316,39 +1191,8 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
 
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match lookup_binding_by_name(env.clone(), name.clone()) {
-        Some(binding) => match (v1_rt::contains(name.clone(), ".".to_string())
-            || binding_declares_name(binding.clone(), name.clone(), env.source_indices.clone()))
-        {
-            true => Some(binding.resolved.clone()),
-            false => match variant_arm_type_projection(
-                env.clone(),
-                binding.resolved.clone(),
-                name.clone(),
-            ) {
-                Some(arm) => Some(arm.clone()),
-                None => Some(binding.resolved.clone()),
-            },
-        },
+        Some(binding) => Some(binding.resolved.clone()),
         None => None,
-    }
-}
-
-pub fn variant_arm_type_projection(
-    env: Rc<TypeEnv>,
-    owner: Rc<Node>,
-    name: String,
-) -> Option<Rc<Node>> {
-    match owner.connective.clone() {
-        Connective::Disj => {
-            match find_child_named(owner.clone(), name.clone(), env.source_indices.clone()) {
-                Some(arm) => match ((arm.children.clone().len() as i64) == 0) {
-                    true => Some(arm.clone()),
-                    false => None,
-                },
-                None => None,
-            }
-        }
-        _ => None,
     }
 }
 
@@ -1358,26 +1202,7 @@ pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
     match node.ident.clone() {
-        Some(id) => match lookup_type(env.clone(), id.clone()) {
-            Some(resolved) => {
-                let name = authored_name(env.clone(), node.clone());
-                match ((resolved.connective.clone() == Connective::Disj)
-                    && (authored_name_at(env.source_indices.clone(), resolved.clone())
-                        != name.clone()))
-                {
-                    true => match variant_arm_type_projection(
-                        env.clone(),
-                        resolved.clone(),
-                        name.clone(),
-                    ) {
-                        Some(arm) => Some(arm.clone()),
-                        None => Some(resolved.clone()),
-                    },
-                    false => Some(resolved.clone()),
-                }
-            }
-            None => None,
-        },
+        Some(id) => lookup_type(env.clone(), id.clone()),
         None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }
@@ -1643,15 +1468,15 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                 name: tp_name.clone(),
                 resolved: Rc::new(Node {
                     name: tp_name.clone(),
-                    span: kernel_span(tp_name.clone()),
-                    ident_span: Some(kernel_span(tp_name.clone())),
+                    span: crate::v1_std_core::kernel_span(tp_name.clone()),
+                    ident_span: Some(crate::v1_std_core::kernel_span(tp_name.clone())),
                     children: Rc::new(vec![]),
-                    connective: Connective::NoConnective,
+                    connective: crate::v1_std_core::Connective::NoConnective,
                     params: Rc::new(vec![]),
-                    inferred: Some(Rc::new(InferredNode::TypeVariable {
+                    inferred: Some(Rc::new(crate::v1_std_core::InferredNode::TypeVariable {
                         id: tp_name.clone(),
                     })),
-                    return_cardinality: Cardinality::Required,
+                    return_cardinality: crate::v1_std_core::Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: None,
                     transport: None,
@@ -1660,7 +1485,7 @@ pub fn env_with_type_variable_bindings(env: Rc<TypeEnv>, tp_names: Rc<Vec<String
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
                     match_pattern: None,
-                    expr_data: Rc::new(ExprData::NoExprData),
+                    expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
                     ident: None,
                 }),
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
