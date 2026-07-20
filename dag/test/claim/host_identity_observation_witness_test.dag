@@ -268,7 +268,6 @@ fn witness_drift_conflict_red_no_apply_arm() -> Bool {
         observed_hostname: "unexpected-host",
         desired_hostname: operator_host_srv1,
       ),
-      desired_hostname: operator_host_srv1,
     )
 }
 

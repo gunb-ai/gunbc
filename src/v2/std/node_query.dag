@@ -339,7 +339,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
           Accepted { value: bindings, diagnostics: d } =>
             match edge.label {
               Named { name: sym } =>
-                outcome_accepted(
+                outcome_with_diagnostics(
                   value: list_snoc_item(xs: bindings, item: sym),
                   diagnostics: d
                 )
@@ -357,7 +357,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
               d: node_query_domain_malformed_diagnostic(domain: domain)
             )
           } else {
-            outcome_accepted(value: bindings, diagnostics: d)
+            outcome_with_diagnostics(value: bindings, diagnostics: d)
           }
         Rejected { diagnostics: d } => Rejected { diagnostics: d }
       }

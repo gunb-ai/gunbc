@@ -9,12 +9,12 @@ import std.effect_grant {
   Envelope,
 }
 import std.materialization_ladder { Frame, SharedStateFrame }
-import v2.workflow.build_workspace_grant { build_workspace_grant_envelope }
+import v2.compiler.build_workspace_grant { build_workspace_grant_envelope }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data build_workspace_grant_witness_note: String = "Discriminating witnesses for the build-envelope authority (v2.workflow.build_workspace_grant, docs/plans/effect-namespace-grants.md 6). The claim is fail-closed build admissibility (DESIGN 5): a build's WRITES are scoped to its own workspace, its READS to the content-addressed closure + pinned toolchain + its own workspace (the emitted sources and intermediates it reads back), and network is refused BY CONSTRUCTION (no UriTree grant, so no arm to widen). Every positive arm is paired with a RED control that goes red if a scope is dropped: writing the repo tree admits, writing the read-only toolchain/closure admits, reading the LIVE repo tree (instead of the content-addressed closure) admits, or any network target admits. The workspace Read grant resolves the ownership-implies-read question this row initially deferred: P-B (build_transport_admission) decided a build reads its own workspace, so it is asserted here (build_workspace_grant_admits_workspace_read)."
+data build_workspace_grant_witness_note: String = "Discriminating witnesses for the build-envelope authority (v2.compiler.build_workspace_grant, docs/plans/effect-namespace-grants.md 6). The claim is fail-closed build admissibility (DESIGN 5): a build's WRITES are scoped to its own workspace, its READS to the content-addressed closure + pinned toolchain + its own workspace (the emitted sources and intermediates it reads back), and network is refused BY CONSTRUCTION (no UriTree grant, so no arm to widen). Every positive arm is paired with a RED control that goes red if a scope is dropped: writing the repo tree admits, writing the read-only toolchain/closure admits, reading the LIVE repo tree (instead of the content-addressed closure) admits, or any network target admits. The workspace Read grant resolves the ownership-implies-read question this row initially deferred: P-B (build_transport_admission) decided a build reads its own workspace, so it is asserted here (build_workspace_grant_admits_workspace_read)."
 
 data build_frame: Frame = Frame { name: "build", kind: SharedStateFrame }
 
