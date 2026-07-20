@@ -173,8 +173,6 @@ test fn post_install_dhcp_subsumption_reduces_gap_count_by_one() -> Bool {
     && host_standup_gap_count_at_actuation_verdict(verdict: std.upsert_decision.Converged) == (host_standup_gap_count() - 1)
 }
 
-data interim_authority_classes_note: String = "Three admissible interim-realization classes for a DeclaredGap, weakest to strongest: a ctrl script (ctrl: prefix), an extdeps-shape + gunbc-consumer pair (extdeps. AND gunbc.), or a fully gunbc-modeled interim (gunbc. alone — introduced by Wave C3 #6947's prefix:os-install-actuated row, whose interim is entirely in-repo modeled authorities; the pre-C3 predicate had no arm for this class, so the strongest interim shape was the one that failed). A gap whose interim names NONE of the three still reds — the row must point at something real."
-
 test fn declared_gap_steps_carry_interim_realization_authority() -> Bool {
   fold(
     host_standup_spine,
@@ -183,8 +181,8 @@ test fn declared_gap_steps_carry_interim_realization_authority() -> Bool {
       DeclaredGap { interim_realization: path, refusal: r } =>
         string_contains(s: r, pattern: "host_standup:")
           && (string_contains(s: path, pattern: "ctrl:")
-            || string_contains(s: path, pattern: "gunbc.")
-            || string_contains(s: path, pattern: "extdeps."))
+            || (string_contains(s: path, pattern: "extdeps.")
+              && string_contains(s: path, pattern: "gunbc.")))
       ModeledCompose { authorities: refs } => refs.length() > 0
     }
   )
