@@ -18,6 +18,10 @@ import v2.extdeps.languages.dag {
   dag_int_literal_node_from_lexeme,
   dag_node_is_int_literal_atom
 }
+import v2.extdeps.runtimes.v2_evaluator {
+  v2_evaluator_interpretation,
+  v2_evaluator_interpretation_structure_witness
+}
 import v2.std.cardinality { termination_proof_witness_for_node }
 import v2.std.collection {
   Absent,
@@ -499,9 +503,32 @@ fn bind_eval_unbound_reference_refuses_holds() -> Bool {
   }
 }
 
+fn bind_eval_default_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^bind_eval_runtime_id,
+    interpretation: v2_evaluator_interpretation(),
+    structure_witness: v2_evaluator_interpretation_structure_witness()
+  )
+}
+
+fn bind_eval_unbound_reference_default_algebra_refuses_holds() -> Bool {
+  let ref_node = bind_eval_atom(s: ^bind_eval_unbound_ref_sym)
+  let tree = bind_eval_admitted_tree(root: ref_node)
+  match eval_with_context(
+    tree: tree,
+    context: bind_eval_default_context(),
+    inputs: inputs_root_only(root: ref_node)
+  ) {
+    Rejected { diagnostics: d } =>
+      d.head.reason == ^eval_rejected_runtime_binding_lookup_miss
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
 test fn bind_reference_binding_protocol_witnesses_hold() -> Bool {
   bind_eval_bound_reference_reads_value_holds()
     && bind_eval_minted_occurrence_equal_reference_reads_holds()
     && bind_eval_parse_shaped_occurrence_distinct_reference_reads_holds()
     && bind_eval_unbound_reference_refuses_holds()
+    && bind_eval_unbound_reference_default_algebra_refuses_holds()
 }

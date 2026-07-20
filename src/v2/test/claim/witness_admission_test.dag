@@ -69,13 +69,24 @@ fn witness_known_red_probe_consumer_holds() -> Bool {
   }
 }
 
-fn witness_field_access_wet_quarantine_consumer_holds() -> Bool {
+fn witness_field_access_wet_offline_consumer_holds() -> Bool {
   match witness_consumer_cadence_for_row(
     entry: "src/v2/test/claim/execution/emit_on_demand_field_access_family_witness_test.dag",
     function: "emit_on_demand_field_access_agreement_holds",
     excluded_from_discovery: true
   ) {
-    QuarantineProbeExpectRed => true
+    OfflineLocalRecipe => true
+    _ => false
+  }
+}
+
+fn witness_complement_wet_offline_consumer_holds() -> Bool {
+  match witness_consumer_cadence_for_row(
+    entry: "src/v2/test/claim/execution/emit_on_demand_complement_family_witness_test.dag",
+    function: "emit_on_demand_complement_agreement_holds",
+    excluded_from_discovery: true
+  ) {
+    OfflineLocalRecipe => true
     _ => false
   }
 }
@@ -112,7 +123,8 @@ test fn witness_admission_invariant_holds() -> Bool {
     && witness_synthetic_orphan_has_no_consumer_holds()
     && witness_synthetic_orphan_admission_red_holds()
     && witness_known_red_probe_consumer_holds()
-    && witness_field_access_wet_quarantine_consumer_holds()
+    && witness_field_access_wet_offline_consumer_holds()
+    && witness_complement_wet_offline_consumer_holds()
     && witness_offline_execution_lane_consumer_holds()
     && witness_discovery_row_consumer_holds()
     && witness_explicit_manifest_nonempty_holds()

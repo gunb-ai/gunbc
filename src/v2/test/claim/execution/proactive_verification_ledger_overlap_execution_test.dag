@@ -1,0 +1,10 @@
+module v2.test.execution.proactive_verification_ledger_overlap_execution
+
+import tools.proactive_verification_ledger_transport { run_executable_ledger_rows }
+import v2.std.logic { Bool }
+
+data proactive_verification_ledger_overlap_execution_note: String = "Overlap-start execution receipt: runs the four ExecutableNow family equals_eval rows (add, match, loop, classical_not_ingested) via run_gunbc_claims. Excluded from hermetic per-PR discovery (test/claim/execution/ grain — IsExecutable is a wet host effect). Dissolve-on: ci_floor_cutover enrolls overlap execution on the scheduled wet/falsifier lane when native routing lands."
+
+test fn proactive_verification_ledger_overlap_execution_holds() -> Bool {
+  run_executable_ledger_rows()
+}
