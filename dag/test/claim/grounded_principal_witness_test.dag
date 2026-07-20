@@ -7,6 +7,7 @@ import gunbc.fleet_posix_accounts {
   FleetAccountRoot,
   GroundedPosixPrincipal,
   PosixAccountDeclaredProbe,
+  PosixSudoGrant,
   fleet_posix_principal,
   grounded_posix_principal_name,
   fleet_posix_account_from_name,
@@ -14,7 +15,13 @@ import gunbc.fleet_posix_accounts {
   posix_declared_probe_names_principal,
   fleet_operator_email,
   fleet_operator_gcp_iam_member,
+  fleet_apt_get_binary_path,
+  posix_sudo_grant_to_effect_grant,
 }
+import std.effect_grant {
+  Execute, verb_eq, grant_verb, filesystem_position, grant_root, position_under, verb_of_effect_shape,
+}
+import std.effects { ExecuteEffect }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_srv1_operator_access,
@@ -159,6 +166,18 @@ fn witness_deploy_preflight_script_is_dash_safe() -> Bool {
     && string_contains(s: script, pattern: deploy_preflight_shell_header)
 }
 
+fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
+  let projected = posix_sudo_grant_to_effect_grant(
+    g: PosixSudoGrant { command_path: fleet_apt_get_binary_path, check_argv: "--help" }
+  )
+  let expected = filesystem_position(path: ["usr", "bin", "apt-get"])
+  let root = grant_root(g: projected)
+  verb_eq(a: grant_verb(g: projected), b: verb_of_effect_shape(shape: ExecuteEffect))
+    && verb_eq(a: grant_verb(g: projected), b: Execute)
+    && position_under(target: expected, root: root)
+    && position_under(target: root, root: expected)
+}
+
 test fn grounded_principal_witnesses() -> Bool {
   witness_runner_fiction_not_in_roster()
     && witness_ghrunner_is_ci_deploy_principal()
@@ -173,4 +192,5 @@ test fn grounded_principal_witnesses() -> Bool {
     && witness_ci_runner_grounded_access_gate_permits()
     && witness_operator_grounded_access_gate_permits()
     && witness_deploy_preflight_script_is_dash_safe()
+    && witness_posix_sudo_grant_materializes_execute_grant()
 }

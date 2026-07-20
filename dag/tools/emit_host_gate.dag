@@ -3,7 +3,7 @@ module tools.emit_host_gate
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.shell
+import extdeps.shell.exec { transport_script_from_body }
 import gunbc.shell_bash_runner { shell_printf_line }
 import tools.emit_host_transport {
   run_rust_smoke,
@@ -48,7 +48,7 @@ fn smoke_verdict_line(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: B
 
 fn gate_failure_exit(rust: Bool, python: Bool, go: Bool, ts: Bool, node_http: Bool, c: Bool) -> ProcessExit {
   let verdicts = smoke_verdict_line(rust: rust, python: python, go: go, ts: ts, node_http: node_http, c: c)
-  let narrated = shell.Exec.Run(script: shell_printf_line(line: verdicts))
+  let narrated = shell.Exec.Run(script: transport_script_from_body(body: shell_printf_line(line: verdicts)))
   exit_failure(
     reason: if narrated.success { verdicts } else { concat(verdicts, " (verdict narration refused)") }
   )
