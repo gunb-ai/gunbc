@@ -32,6 +32,7 @@ import std.realization_reconcile {
   ReadObserved, Grounds, DoesNotGround,
   reconcile_grounded
 }
+import v2.std.algebra { fold_list }
 import extdeps.shell
 import extdeps.shell.exec { transport_script_from_body }
 import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
@@ -1352,7 +1353,7 @@ fn deploy_access_shell_apply_success_stdout(
           if code == 0 {
             Present { value: out }
           } else {
-            Absent
+            none
           }
         ConvergePlanApplied { stdout: _, exit_code: _ } => Absent
       }
@@ -1381,10 +1382,10 @@ fn deploy_access_sudo_check_cmd(access: DeployAccess, cmd: PrivilegedCommand) ->
 }
 
 fn deploy_access_sudo_all_granted(access: DeployAccess) -> Bool {
-  fold(
-    access.privileged_commands,
-    init: true,
-    f: (acc, cmd) => if !acc { false } else { deploy_access_sudo_check_cmd(access: access, cmd: cmd) }
+  fold_list(
+    xs: access.privileged_commands,
+    empty: true,
+    cons: (acc, cmd) => if !acc { false } else { deploy_access_sudo_check_cmd(access: access, cmd: cmd) }
   )
 }
 
