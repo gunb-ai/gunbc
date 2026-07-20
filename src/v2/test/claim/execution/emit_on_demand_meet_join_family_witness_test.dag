@@ -58,7 +58,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): emit-on-demand native execution for std/logic meet and join — extension of #6879 kernel. Wet: native cold/warm receipts (run_emit_host_cached octet oracle — NOT interpreted==native equals_eval; bool-fn run_test_claim_emit_vs_eval is pre-red upstream debt in emit_host_meet_join_equals_eval_test.dag), closure_digest key sensitivity, swapped-arms RED."
+data emit_on_demand_meet_join_family_note: String = "Witness-realization fan-out lane 4 (meet_join): emit-on-demand native execution for std/logic meet and join — extension of #6879 kernel. Wet: interpreted==native equals_eval (emit_host_meet_join_equals_eval_test.dag — green via dag_node_is_eval_literal_atom complement-root repair, witty-owl-841), native cold/warm receipts, closure_digest key sensitivity, swapped-arms RED."
 
 data meet_join_family_cache_root: String = "/tmp/gunbc_emit_on_demand_meet_join_family"
 data meet_join_family_emitter: String = "v2.compiler.emit"
