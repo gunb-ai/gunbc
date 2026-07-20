@@ -1594,7 +1594,10 @@ fn census_heads_fn_stand_in_naive_infer_expr_refuses_not_succeeds() {
         "naive infer_expr on stand-in must raise a hard diagnostic without calling predicates"
     );
     assert!(
-        result.diagnostics.iter().all(|d| is_error_diagnostic(d.diagnostic.clone())),
+        result
+            .diagnostics
+            .iter()
+            .all(|d| is_error_diagnostic(d.diagnostic.clone())),
         "stand-in inference diagnostic must be hard/blocking, not advisory"
     );
     assert!(
