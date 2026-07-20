@@ -1,4 +1,4 @@
-use im_rc::HashMap;
+use im::HashMap;
 use std::rc::Rc;
 use v1_compiler::v1_rt::VecCompat;
 
@@ -12,7 +12,7 @@ use v1_compiler::v1_std_core::{
     diagnostic_to_message, empty_intern_table, is_error_diagnostic, ExprData, TokenShape,
 };
 
-fn tokenize_expr(src: &str) -> Rc<im_rc::Vector<Rc<v1_compiler::v1_std_core::Token>>> {
+fn tokenize_expr(src: &str) -> Rc<im::Vector<Rc<v1_compiler::v1_std_core::Token>>> {
     tokenize(src.to_string(), "test.dag".to_string())
 }
 
@@ -124,7 +124,7 @@ fn probe() -> Bool {
   true
 }
 "#;
-    let sources = Rc::new(im_rc::vector![Rc::new(SourceFile {
+    let sources = Rc::new(im::vector![Rc::new(SourceFile {
         path: "caret_probe5b.dag".to_string(),
         content: src.to_string(),
     })]);
@@ -141,7 +141,7 @@ fn probe() -> Bool {
 }
 
 fn compile_rust_sources(content: &str, path: &str) -> String {
-    let sources = Rc::new(im_rc::vector![Rc::new(SourceFile {
+    let sources = Rc::new(im::vector![Rc::new(SourceFile {
         path: path.to_string(),
         content: content.to_string(),
     })]);

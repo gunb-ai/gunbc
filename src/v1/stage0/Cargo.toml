@@ -9,14 +9,28 @@ text_lookup_work_counter = []
 interp_test_witness = []
 
 [dependencies]
-# Persistent value carriers (ctrl#1533 phase 2). im-rc is the Rc-backed
-# (thread-confined, matching the Value Rc-discipline) crate providing BOTH
-# carriers v2.std.value_carrier declares: HashMap is a hash array mapped trie
-# (map_carrier: ^hash_array_mapped_trie) and Vector is a relaxed radix
-# balanced tree (list_carrier: ^relaxed_radix_balanced_tree, O(log n)
-# concatenation). rpds was the considered alternative; rejected because its
-# Vector has no concatenation, so it cannot realize the declared list carrier.
-im-rc = { version = "15.1", features = ["serde"] }
+# Persistent value carriers (ctrl#1533 phase 2). `im` and `im-rc` are the same
+# crate source; build.rs switches on CARGO_PKG_NAME to set cfg(threadsafe),
+# which flips one alias in that crate's util.rs -- Ref<A> = std::rc::Rc for
+# im-rc, std::sync::Arc for im. Public API, macro set, and algorithms are
+# identical; the only feature im-rc adds is `pool`, which we do not request.
+# It provides BOTH carriers v2.std.value_carrier declares: HashMap is a hash
+# array mapped trie (map_carrier: ^hash_array_mapped_trie) and Vector is a
+# relaxed radix balanced tree (list_carrier: ^relaxed_radix_balanced_tree,
+# O(log n) concatenation). rpds was the considered alternative; rejected
+# because its Vector has no concatenation, so it cannot realize the declared
+# list carrier.
+#
+# im-rc -> im so the typed payloads these carriers build CAN become Send. The
+# floor runs serially because each worker rebuilds its own whole-tree typed
+# index; cross-entry reuse is real (measured 92.5% typed_module_cache hit rate
+# over 80 sequential discovery entries), but sharing it needs Send payloads,
+# and an outer Arc cannot make a value Send when its interior is im_rc-backed.
+# NOT Send yet: the Value substrate is still std::rc::Rc. That is the
+# follow-on step, gated on this swap's measured cost -- im refcounts
+# atomically, so this taxes every collection op including the interpreter
+# hot path.
+im = { version = "15.1", features = ["serde"] }
 unicode-ident = "1"
 unicode-properties = { version = "0.1", features = ["emoji"] }
 stacker = "0.1"
