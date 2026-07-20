@@ -56,8 +56,10 @@ import v2.test.execution.emit_host_loop_equals_eval {
   emit_loop_eval_subgraph_node,
 }
 import v2.test.execution.emit_host_fold_closure_equals_eval {
+  emit_fold_eval_run,
   emit_fold_eval_subgraph_node,
   emit_fold_eval_tree_for,
+  emit_fold_eval_verdict_is_pass,
 }
 import v2.test.emit.fold_call_closure_fixture {
   fold_fixture_param_canonical_arrow,
@@ -512,6 +514,14 @@ fn fold_alt_tree() -> InferredTree {
   emit_fold_eval_tree_for(root: fold_fixture_param_wrong_arrow)
 }
 
+data emit_on_demand_fold_agreement_note: String = "The (a) leg for fold, restored on un-quarantine (2026-07-20) once eval gained structural closure-arg support. Like the match and loop agreement witnesses it routes through emit_fold_eval_run -> run_test_claim_emit_vs_eval, so the verdict is a comparison of BOTH legs: emit()-to-native host run versus eval() of the same subgraph. It is deliberately NOT a native-cached-path assertion — the cached-octets witnesses below cover that, and an agreement fn that read the native path as its own oracle would be checking the native leg against itself."
+
+test fn emit_on_demand_fold_closure_agreement_holds() -> Bool {
+  emit_fold_eval_verdict_is_pass(
+    run: emit_fold_eval_run(root: fold_fixture_param_canonical_arrow)
+  )
+}
+
 test fn emit_on_demand_fold_closure_native_cached_octets_holds() -> Bool {
   let tree = fold_primary_tree()
   let key = family_native_key_for(tree: tree)
@@ -708,6 +718,7 @@ test fn emit_on_demand_match_loop_fold_family_witnesses() -> Bool {
     && emit_on_demand_loop_native_cold_holds()
     && emit_on_demand_loop_native_cold_then_warm_holds()
     && emit_on_demand_loop_content_change_cold_rebuild_holds()
+    && emit_on_demand_fold_closure_agreement_holds()
     && emit_on_demand_fold_closure_native_cached_octets_holds()
     && emit_on_demand_fold_closure_wrong_fixture_refuses_holds()
     && emit_on_demand_fold_closure_native_cold_holds()
