@@ -17729,6 +17729,21 @@ pub fn non_fold_residue_roster_size() -> i64 {
 mod nfr_tests {
     use super::*;
 
+    /// TEMP DIAGNOSTIC: print roster rows the analyzer no longer reports as residue.
+    #[test]
+    fn temp_print_stale_roster_rows() {
+        let live: std::collections::BTreeSet<&str> =
+            nfr_build_report().sites.iter().map(|s| s.as_str()).collect();
+        let stale: Vec<&&str> = NON_FOLD_RESIDUE_ROSTER
+            .iter()
+            .filter(|s| !live.contains(*s))
+            .collect();
+        eprintln!("STALE_ROSTER_ROWS n={}", stale.len());
+        for s in &stale {
+            eprintln!("STALE: {s}");
+        }
+    }
+
     fn files(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
         pairs
             .iter()
