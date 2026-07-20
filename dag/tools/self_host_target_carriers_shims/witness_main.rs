@@ -1,4 +1,4 @@
-use im_rc::{vector as vec, Vector as Vec};
+use im::{vector as vec, Vector as Vec};
 use std::rc::Rc;
 use v1_compiled::extdeps_communication_medium::{
     DecodeFidelity as EDecodeFidelity, Medium as EMedium,

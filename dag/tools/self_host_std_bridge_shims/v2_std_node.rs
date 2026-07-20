@@ -1,5 +1,5 @@
 // seed-linked dep shim — minimal v2.std.node surface for body_producer pilot
-use im_rc::{vector as vec, Vector as Vec};
+use im::{vector as vec, Vector as Vec};
 use std::rc::Rc;
 
 pub type Symbol = String;
