@@ -16,11 +16,11 @@
 | **Peak RSS on worker object (this box)?** | **~1.51 GiB** VmHWM after discovery warm (73 entries). Shell-only build: **~50 MiB**, **~7.5 s**. |
 | **Width duplication (RSS)?** | **~linear**: W=1 → 1.58 GiB; W=2 → 3.16 GiB on the same box. |
 | **RSS crossover for sharing?** | At W=2, private ≈3.16 GiB vs one union ≈1.58 GiB — memory favors sharing from width 2 **on RSS alone**. This box has a **31.25 GiB cgroup cap**; even W=9 private ≈14 GiB stays under cap — **bytes are not the binding constraint here**. |
-| **Is width worth it for wall-clock?** | **No — decode dominates typecheck.** Module-grain ratio (§3.6): **0.01** typecheck/decode per module (~3.8 ms typecheck vs ~318 ms decode on 40 serde-eligible modules). Sharing typed snapshots does **not** remove the ~55 s warm; it would **add** serde decode cost. PR #6905 Amdahl bound still holds. |
+| **Is width worth it for wall-clock?** | **Not answered by §3.6** — that section prices the **interim serde byte transport** (`SharedTypecheckCaches`), not in-memory `Arc` sharing (which would hold handles with **no decode**). PR #6905 Amdahl bound still the wall-clock context. Serde transport receipt: ~318 ms/module decode on a 7.8% biased sample (§3.6). |
 | **store-path-only vs whole-seed?** | **store-path-only** for increment C (design §9.2 default). `im_rc` collections stay `!Send` without `im-rc`→`im`. |
 | **im-rc price?** | **123 / 154** stage0 `.rs` files reference `im_rc` (dynamic census). `lib.rs` aliases `HashMap`/`Vector`/`BTreeSet` to it. |
 
-**What is NOT established:** serde-based byte crossover (discarded — see §2.2). Whole-tree strict resolve to the ~10.7 GiB nimble-owl/srv1 receipt (not re-run here). `build-vs-attach` was **not retried** (OOM by construction on 31 GiB — two whole-tree indexes); module-grain (§3.6) answers the wall-clock question instead.
+**What is NOT established:** in-memory `Arc<TypecheckModuleResult>` share wall-clock (not measured — Arc share has no serde decode). Serde-based byte crossover (discarded — see §2.2). Whole-tree strict resolve to the ~10.7 GiB nimble-owl/srv1 receipt (not re-run here). `build-vs-attach` was **not retried** (OOM by construction on 31 GiB — two whole-tree indexes); module-grain (§3.6) prices serde transport at module residency instead.
 
 ---
 
@@ -40,8 +40,10 @@
 1. **Peak RSS (VmHWM) is the only byte metric used for conclusions.** Per-field `index-field` lines are shallow map-shell + key counts; they **under-count** parse trees, resolved graphs, and typed payloads. They are diagnostic, not summed for crossover.
 2. **Serde transport bytes are not reported** — per-module encode OOM'd or produced non-credible extrapolations; using them for crossover was an error in the first draft (corrected per operator review).
 3. **Residue is under-estimated** — `parse_cache`, `resolved_graph_memo`, and `intern_table` payloads stay per-worker after Arc migration; shallow accounting excludes their heap bodies.
-4. **`build-vs-attach` not run** — holds two whole-tree indexes in one process; OOM on 31 GiB cgroup by construction. Module-grain (§3.6) measures the same decision at module residency.
-5. **Module-grain sample bias** — serde snapshots capped at 50 MiB to stay inside cgroup; only **40 / 513** cold-miss modules fit (473 skipped). Ratio is over the serde-eligible tail, not a uniform corpus draw.
+4. **`build-vs-attach` not run** — holds two whole-tree indexes in one process; OOM on 31 GiB cgroup by construction. Module-grain (§3.6) prices serde transport at module residency instead.
+5. **Module-grain measures serde transport, not Arc share** — `SharedTypecheckCaches` is the interim serde-byte scaffold (`shared_typecheck_store.rs` header; dissolve-on: store-path `Rc`→`Arc`). Real Arc sharing would pass in-memory handles — **no decode**. §3.6 prices the workaround that exists because `Rc` is `!Send`.
+6. **Module-grain sample bias** — serde snapshots capped at 50 MiB; only **40 / 513** cold-miss modules fit (**7.8%**; 473 skipped are the large ones). Snapshots near 50 MiB imply `encode_typed_snapshot` serializes each module with its transitive closure — shared context re-encoded per module (transport redundancy, not a property of sharing).
+7. **Module-grain timer mismatch (open)** — same run: `module-grain-warm` **60 491 ms** over 513 cold misses ≈ **118 ms/module** warm cost, but `typecheck_ms_per_module=3.761` from the per-miss hook. **31× discrepancy within one run** — the hook timer does not capture full produce cost; **do not treat `typecheck_to_decode_ratio=0.01` as a decisive wall-clock ratio** (also mixes inner-loop timing vs fresh-subprocess decode with startup/load overhead).
 
 ### 2.3 Shareable vs per-worker residue (design §4.2)
 
@@ -116,7 +118,9 @@ Per-field shallow accounting (shell + keys only — **not** payload bodies; peak
 
 **RSS net-win sketch (not a done-bar):** `private(W) ≈ 1.58 GiB × W`; `shared(W) ≈ 1.58 GiB + (W−1) × 0.05 GiB` (one warm union + cold shells). Crossover **W≥2** on bytes alone — but cgroup headroom is ample to W=9 (~14 GiB naive linear).
 
-### 3.6 Module-grain typecheck vs decode (`--mode module-grain-produce --sample-size 200`)
+### 3.6 Module-grain **serde transport** cost (`--mode module-grain-produce --sample-size 200`)
+
+**What this measures:** the interim **serde byte transport** in `SharedTypecheckCaches` — the scaffold that exists because `Rc` is `!Send` (`shared_typecheck_store.rs`: "interim serde byte transport for cross-worker share only"; dissolve-on: store-path `Rc`→`Arc`). **Not** in-memory `Arc<TypecheckModuleResult>` sharing (which would hold handles with no decode).
 
 Operator-directed replacement for `build-vs-attach`: cold typecheck per module during discovery warm, bounded serde encode (50 MiB cap), decode in a **fresh subprocess** — peak residency is N modules, not two whole-tree indexes.
 
@@ -129,12 +133,15 @@ Operator-directed replacement for `build-vs-attach`: cold typecheck per module d
 
 | Metric | Value |
 |---|---|
-| Modules encoded+decoded | **40** (473 skipped: serde snapshot > 50 MiB) |
-| Typecheck ms/module (cold miss) | **3.761** |
-| Decode ms/module (fresh process) | **318.119** |
-| Ratio typecheck/decode | **0.01** (~100× **slower** to decode than to typecheck) |
+| Modules encoded+decoded | **40** (**7.8%** of 513 cold misses; 473 skipped: serde snapshot > 50 MiB) |
+| Warm ms/module (receipt) | **~118** (60 491 ms ÷ 513 cold misses) |
+| Hook `typecheck_ms_per_module` | **3.761** (inner per-miss timer — **31× below** warm receipt; discrepancy **unresolved**) |
+| Decode ms/module (fresh subprocess) | **318.119** (includes process start + snapshot load) |
+| Harness `typecheck_to_decode_ratio` | **0.01** (3.761 ÷ 318.119 — **not comparable bases**; see §2.2 item 7) |
 
-**Conclusion:** increment C does **not** buy wall-clock. Even if workers shared typed bytes and skipped cold typecheck, paying serde decode per module is ~100× worse per module than computing types. The ~55 s discovery warm survives; sharing buys bytes only (§3.5). **Lane is dead for wall-clock** unless the transport changes (not in scope for this spike).
+**What is established:** the serde byte transport is expensive (~318 ms/module decode on this sample) and structurally redundant (per-module snapshots re-encode transitive closure). This is evidence **against** shipping increment C on the serde transport, and **for** real `Arc` handles (the migration this scaffold exists to enable).
+
+**What is not established:** whether in-memory Arc sharing removes the ~55 s discovery warm — that path was not measured here. A naive same-run sketch (warm ~118 ms/module vs decode ~318 ms/module) is ~2.7×, but the two timers are on **incomparable bases** (§2.2 item 7); it is not reported as a done-bar ratio.
 
 ### 3.7 build-vs-attach — **not run (superseded by §3.6)**
 
@@ -142,7 +149,7 @@ Operator-directed replacement for `build-vs-attach`: cold typecheck per module d
 EXIT=137 (OOM killed, ~100s) — two whole-tree indexes in one 31.25 GiB cgroup
 ```
 
-Not retried per operator direction; module-grain answers the decode-vs-typecheck question without holding two indexes.
+Not retried per operator direction; §3.6 prices serde transport at module residency without holding two indexes.
 
 ---
 
