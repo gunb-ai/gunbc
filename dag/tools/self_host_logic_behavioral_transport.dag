@@ -1,5 +1,6 @@
 module tools.self_host_logic_behavioral_transport
 
+
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.cargo_build
@@ -7,6 +8,8 @@ import extdeps.git
 import extdeps.gunbc
 import std.logic { Bool }
 import tools.host_prelude { witness_bin, witness_bin_ready, witness_bin_release_path }
+
+
 
 data slb_doc: String = "Wave 1 Gate 4 (weak self-host behavioral receipt) for dag/std/logic.dag: realize the v2 self-emit -> compile -> run -> equals-seed chain as typed host ops, mirroring run_rust_smoke's shape (shell.Mktemp/Filesystem.Write/cargo.Build.BuildManifest/gunbc.WitnessBin.Run) rather than serialized bash. The module content is read via Filesystem.Read at run time (reads-real-bytes, matching self_host_realized_comparison's provenance pattern) so the receipt cannot drift from the committed dag/std/logic.dag. The driver crate depends on the real v1-compiler crate as a path dependency and imports its std_logic module directly as the seed oracle -- no seed-runtime shim is reconstructed (single authority, DESIGN.md SS3), and the seed crate is not rebuilt in isolation since sccache keys on rustc invocation+source content, not target-dir location. The driver exercises the full Classical truth table for classical_not/classical_and/classical_or and supports --inject-fault, which deliberately calls the emitted side on a mismatched input so the receipt is proven discriminating (DESIGN.md SS5) rather than tautologically green."
 

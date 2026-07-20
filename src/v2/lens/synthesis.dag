@@ -1,34 +1,5 @@
 module v2.lens.synthesis
-import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
-import v2.lens.application { AdvisoryLens }
-import v2.lens.complexity {
-  ComplexityBound,
-  SizedLinearClass,
-  SizedLinearithmicClass,
-  complexity_lens,
-  complexity_bound_class,
-  single_complexity_variable,
-  sized_complexity
-}
-import v2.lens.cost {
-  ClassLinear,
-  ClassLinearithmic,
-  SizeVariable,
-  asymptotic_class_dominates
-}
-import std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  AmbiguousIntent,
-  Diagnostic,
-  Locus,
-  Unavailable,
-  node_locus
-}
-import v2.std.node { Node, Symbol }
-import v2.std.report { Report, SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
-import v2.std.witness { Holds, Violates }
 
 type LowerBoundTechnique
   = DecisionTree

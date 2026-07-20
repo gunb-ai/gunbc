@@ -24,6 +24,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 fn python_claim_bool_atom(b: Bool) -> Node {
   match b {
     true => Node { kind: TypeNode { connective: Atom { identity: ^python_claim_bool_true } }, children: [],

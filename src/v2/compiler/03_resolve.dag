@@ -305,7 +305,7 @@ fn resolve_ctx_with_under_module_root(ctx: ResolveContext, under_module_root: Bo
 fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
   match s {
     ScopeFrame { locals: m, outer: o } =>
-      match map_get(m, name) {
+      match v2.std.collection.map_get(m, name) {
         Accepted { value: opt, diagnostics: d_here } => match opt {
           Present { value: v } =>
             Accepted { value: optional_present(value: v), diagnostics: d_here }
@@ -325,7 +325,7 @@ fn lookup_chain(s: Scope, name: Symbol) -> Outcome<Symbol?> {
         Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
       }
     ScopeRoot { module: mod } =>
-      match map_get(mod.bindings, name) {
+      match v2.std.collection.map_get(mod.bindings, name) {
         Accepted { value: opt, diagnostics: d } => match opt {
           Present { value: v } => Accepted { value: optional_present(value: v), diagnostics: d }
           Absent => Accepted { value: optional_absent(), diagnostics: d }

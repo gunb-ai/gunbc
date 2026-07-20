@@ -1,8 +1,5 @@
 module v2.test.manual.recompute_trace_probe
 
-import v2.std.integer { Int }
-import v2.std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

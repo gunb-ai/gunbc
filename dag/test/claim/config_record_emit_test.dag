@@ -1,16 +1,5 @@
 module test.claim.config_record_emit_witness
 
-import std.languages {
-  yaml_format, toml_format, makefile_format, gitignore_format,
-  json_record_knobs, SerializationKnobs, SerialField, SerialValue
-}
-import std.serialize {
-  serial_scalar, serial_field,
-  serialize_field_doc, serialize_fields_doc, serialize_record_doc
-}
-import std.layout { render, LayoutProtocol }
-import gunbc.runner_deploy_emit { manifest_record_knobs }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

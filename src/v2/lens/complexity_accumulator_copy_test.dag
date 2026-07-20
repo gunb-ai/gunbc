@@ -1,20 +1,5 @@
 module v2.test.lens_complexity_accumulator_copy
 
-import v2.lens.complexity_accumulator_copy {
-  Finding,
-  PortBareName,
-  PortComputedExpression,
-  PortMissing,
-  PortPureLiteral,
-  PortReading,
-  Poly2Suspect,
-  Unclassifiable,
-  classify_call
-}
-import v2.std.collection { Absent, List, Optional, Present }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

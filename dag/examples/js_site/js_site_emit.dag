@@ -1,27 +1,5 @@
 module examples.js_site_emit
 
-import examples.js_site {
-  JsSitePage,
-  JsSitePageId,
-  Home,
-  About,
-  Browse,
-  js_site_pages,
-}
-import extdeps.languages.html {
-  try_serialize_html_source,
-  HtmlEmitResult,
-  EmitOk,
-  EmitRejected,
-}
-import extdeps.languages.react_jsx {
-  try_serialize_jsx_component,
-  JsxEmitResult,
-  JsxOk,
-  JsxRejected,
-}
-import extdeps.filesystem.filesystem_io { Filesystem }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 fn js_site_generated_dir() -> String {
   "dag/examples/js_site/generated"

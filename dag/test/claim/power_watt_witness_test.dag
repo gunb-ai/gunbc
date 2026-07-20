@@ -1,9 +1,5 @@
 module test.claim.power_watt
 
-import std.logic { Bool }
-import std.types { Int, List }
-import std.measure { Watt, watt, watt_count }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

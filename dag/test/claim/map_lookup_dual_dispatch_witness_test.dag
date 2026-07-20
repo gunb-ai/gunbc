@@ -1,8 +1,5 @@
 module test.claim.map_lookup_dual_dispatch_witness_test
 
-import std.graph { CallGraph, GraphEdge, build_adjacency_views }
-import std.logic { Bool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

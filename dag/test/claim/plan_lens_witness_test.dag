@@ -1,12 +1,5 @@
 module test.claim.plan_lens_witness
 
-import gunbc.plan {
-  Plan, DissolutionTrigger, HasTrigger, NoTrigger,
-  plan_has_dissolution_trigger, plans_all_have_dissolution_trigger,
-  plan_title_is_present, plans_all_titled,
-}
-import gunbc.plan_registry { all_plans }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

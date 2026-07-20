@@ -1,19 +1,5 @@
 module test.claim.extdeps_version_semver
 
-import extdeps.version.semver {
-  SemVerIdentity,
-  SemVerConstraint,
-  SemVerVersion,
-  SemVerNumericIdentifier,
-  SemVerAlphanumericIdentifier,
-  semver_scheme,
-  semver_compare,
-  semver_compare_identifier,
-  semver_to_version_identity,
-  semver_version_label,
-}
-import std.algebra { Equal, Less, Greater }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -85,11 +71,11 @@ fn w_identity_distinct_from_constraint() -> Bool {
 }
 
 fn w_semver_scheme_equality_compare() -> Bool {
-  semver_scheme.compare("1.0.0", "1.0.0") == Equal
+  semver_scheme.compare("1.0.0", "1.0.0") == std.algebra.Equal
 }
 
 fn w_semver_scheme_wire_label_ordering() -> Bool {
-  semver_scheme.compare("1.0.0", "2.0.0") == Less
+  semver_scheme.compare("1.0.0", "2.0.0") == std.algebra.Less
 }
 
 fn w_semver_compare_identifier_numeric_less_than_alphanumeric() -> Bool {
@@ -112,7 +98,7 @@ fn w_semver_version_label_pre_release() -> Bool {
 
 fn w_semver_version_label_build_ignored_in_compare() -> Bool {
   semver_version_label(v: semver_1_0_0_build_1()) == "1.0.0+1"
-    && semver_compare(a: semver_1_0_0(), b: semver_1_0_0_build_1()) == Equal
+    && semver_compare(a: semver_1_0_0(), b: semver_1_0_0_build_1()) == std.algebra.Equal
 }
 
 fn w_semver_compare_pre_release_less_than_release() -> Bool {

@@ -1,11 +1,5 @@
 module test.claim.ci_render_histogram_width
 
-import gunbc.ci_render { timing_histogram_frame, percentiles_box_frame_ns, render_percentile_box }
-import extdeps.render.terminal { serialize_line, serialize_frame }
-import std.render { Frame, RenderCapability }
-import std.symbols { Ascii, Unicode }
-import std.unicode { string_display_width }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -13,7 +7,7 @@ fn no_color_cap() -> RenderCapability {
   RenderCapability { color: false, tier: Unicode, cursor_addressable: false }
 }
 
-fn sample_frame(width: Int) -> Frame {
+fn sample_frame(width: Int) -> std.render.Frame {
   timing_histogram_frame(p50: 12, p90: 3400, p95: 56000, p99: 7800000, p100: 920000000, width: width)
 }
 
@@ -33,7 +27,7 @@ fn exact_small_box() -> Bool {
   "┌─ X ────────────────────────┐\n│ p50: 1ns  p90: 2ns  p95: 3 │\n└────────────────────────────┘"
 }
 
-fn ascii_box(width: Int) -> Frame {
+fn ascii_box(width: Int) -> std.render.Frame {
   percentiles_box_frame_ns(title: "X", p50: 1, p90: 2, p95: 3, p99: 4, p100: 5, width: width, tier: Ascii)
 }
 

@@ -7,19 +7,17 @@ use self::PolynomialExponent::*;
 use self::RecursionShape::*;
 use self::SubValueRelation::*;
 pub use crate::std_computation::tree_size_bound;
-use crate::std_computation::CallPattern::{
-    ArithmeticDivideCall, ArithmeticSubtractCall, ChildAccessorCall, FoldBodyCall, SameArgumentCall,
-};
-use crate::std_computation::IterationPrimitive::{Descend, Fold, Repeat};
-use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
-use crate::std_computation::SizeBound::{ArithmeticParam, CollectionSize, Forever};
+use crate::std_computation::CallPattern::*;
+use crate::std_computation::IterationPrimitive::*;
+use crate::std_computation::ShrinkFactor::*;
+use crate::std_computation::SizeBound::*;
 pub use crate::std_computation::{
     CallPattern, IterationPrimitive, LoweringTarget, ShrinkFactor, SizeBound,
 };
-use crate::std_termination::DescentEvidence::{DescentUnknown, NonIncreasing, Strict};
-use crate::std_termination::PositiveDescentAmount::{AdditionalStep, OneStep};
-use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
-use crate::std_termination::RankingDimension::TreeSize;
+use crate::std_termination::DescentEvidence::*;
+use crate::std_termination::PositiveDescentAmount::*;
+use crate::std_termination::ProportionalDivisor::*;
+use crate::std_termination::RankingDimension::*;
 pub use crate::std_termination::{
     peano_literal_materialization_cap, positive_descent_amount_from_positive_int,
     positive_descent_count, proportional_divisor_from_int_at_least_two,

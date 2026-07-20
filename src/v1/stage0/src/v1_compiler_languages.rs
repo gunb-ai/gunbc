@@ -13,71 +13,57 @@ use self::ServiceReturnStrategy::*;
 use self::TestNameStyle::*;
 use self::VisibilitySpec::*;
 pub use crate::extdeps_languages_dag_emit::{
-    dag_async_prefix, dag_container_templates, dag_enum_keyword, dag_error_expr_template,
-    dag_error_type_template, dag_func_keyword, dag_import_from_keyword, dag_import_keyword,
-    dag_keywords, dag_lambda_template, dag_list_literal_empty, dag_list_literal_template,
-    dag_module_keyword, dag_null_coalesce_template, dag_param_separator, dag_param_type_sep,
-    dag_reserved, dag_return_arrow, dag_source_extension, dag_string_types, dag_struct_keyword,
-    dag_tuple_empty, dag_tuple_multi_template, dag_tuple_pair_template, dag_tuple_separator,
-    dag_type_alias_keyword, dag_type_arg_close, dag_type_arg_open, dag_void_type,
+    dag_async_prefix, dag_enum_keyword, dag_error_expr_template, dag_error_type_template,
+    dag_func_keyword, dag_import_from_keyword, dag_import_keyword, dag_lambda_template,
+    dag_list_literal_empty, dag_list_literal_template, dag_module_keyword,
+    dag_null_coalesce_template, dag_param_separator, dag_param_type_sep, dag_reserved,
+    dag_return_arrow, dag_source_extension, dag_struct_keyword, dag_tuple_empty,
+    dag_tuple_multi_template, dag_tuple_pair_template, dag_tuple_separator, dag_type_alias_keyword,
+    dag_type_arg_close, dag_type_arg_open, dag_void_type,
 };
 pub use crate::extdeps_languages_dag_syntax::dag_operators;
 pub use crate::extdeps_languages_go_emit::{
-    go_async_prefix, go_enum_keyword, go_error_expr_template, go_error_type_template,
-    go_func_keyword, go_import_from_keyword, go_import_keyword, go_keywords, go_lambda_template,
-    go_list_literal_empty, go_list_literal_template, go_manifest_file, go_module_keyword,
-    go_null_coalesce_template, go_param_separator, go_param_type_sep, go_reserved,
-    go_reserved_escape_suffix, go_return_arrow, go_source_extension, go_string_types,
-    go_struct_keyword, go_tuple_empty, go_tuple_multi_template, go_tuple_pair_template,
-    go_tuple_separator, go_type_alias_keyword, go_type_arg_close, go_type_arg_open, go_void_type,
+    go_async_prefix, go_error_expr_template, go_error_type_template, go_import_from_keyword,
+    go_import_keyword, go_keywords, go_lambda_template, go_list_literal_empty,
+    go_list_literal_template, go_null_coalesce_template, go_param_separator, go_param_type_sep,
+    go_reserved, go_reserved_escape_suffix, go_return_arrow, go_string_types, go_tuple_empty,
+    go_tuple_multi_template, go_tuple_pair_template, go_tuple_separator, go_type_arg_close,
+    go_type_arg_open, go_void_type,
 };
 pub use crate::extdeps_languages_go_syntax::{go_item_forms, go_operators};
 pub use crate::extdeps_languages_python_emit::{
-    python_async_prefix, python_default_value, python_derive_attribute, python_enum_keyword,
-    python_error_expr_template, python_error_type_template, python_func_keyword,
-    python_import_from_keyword, python_import_keyword, python_keywords, python_lambda_template,
-    python_list_literal_empty, python_list_literal_template, python_module_init,
-    python_module_keyword, python_null_coalesce_template, python_param_separator,
+    python_async_prefix, python_default_value, python_derive_attribute, python_error_expr_template,
+    python_error_type_template, python_import_from_keyword, python_import_keyword, python_keywords,
+    python_lambda_template, python_list_literal_empty, python_list_literal_template,
+    python_module_init, python_null_coalesce_template, python_param_separator,
     python_param_type_sep, python_reserved, python_reserved_escape_suffix, python_return_arrow,
-    python_source_extension, python_string_types, python_struct_keyword, python_tuple_empty,
-    python_tuple_multi_template, python_tuple_pair_template, python_tuple_separator,
-    python_type_alias_keyword, python_type_arg_close, python_type_arg_open, python_void_type,
+    python_source_extension, python_string_types, python_tuple_empty, python_tuple_multi_template,
+    python_tuple_pair_template, python_tuple_separator, python_type_arg_close,
+    python_type_arg_open, python_void_type,
 };
 pub use crate::extdeps_languages_python_syntax::{python_item_forms, python_operators};
 pub use crate::extdeps_languages_rust_emit::{
-    rust_async_prefix, rust_container_templates, rust_enum_derives, rust_enum_derives_copy,
-    rust_enum_keyword, rust_error_expr_template, rust_error_type_template, rust_func_keyword,
-    rust_import_from_keyword, rust_import_keyword, rust_keywords, rust_lambda_template,
-    rust_list_literal_empty, rust_list_literal_template, rust_module_keyword,
+    rust_async_prefix, rust_enum_derives, rust_enum_derives_copy, rust_error_expr_template,
+    rust_error_type_template, rust_import_from_keyword, rust_import_keyword, rust_keywords,
+    rust_lambda_template, rust_list_literal_empty, rust_list_literal_template,
     rust_null_coalesce_template, rust_param_separator, rust_param_type_sep, rust_reserved,
     rust_reserved_escape_suffix, rust_return_arrow, rust_serde_rename_template, rust_serde_tag,
     rust_source_dir, rust_source_extension, rust_string_types, rust_struct_derives,
-    rust_struct_derives_copy, rust_struct_keyword, rust_tuple_empty, rust_tuple_multi_template,
-    rust_tuple_pair_template, rust_tuple_separator, rust_type_alias_keyword, rust_type_arg_close,
-    rust_type_arg_open, rust_visibility, rust_void_type,
+    rust_struct_derives_copy, rust_tuple_empty, rust_tuple_multi_template,
+    rust_tuple_pair_template, rust_tuple_separator, rust_type_arg_close, rust_type_arg_open,
+    rust_visibility, rust_void_type,
 };
 pub use crate::extdeps_languages_rust_syntax::{rust_item_forms, rust_operators};
 use crate::std_syntax::AlgebraFieldKind::*;
-use crate::std_syntax::BinOp::{
-    Add, And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub,
-};
-use crate::std_syntax::BodyKind::{
-    BlockBody, ExprBody, NoBody, ResourceBody, ServiceBody, TypeBody, ValueBody,
-};
-use crate::std_syntax::ItemFormKind::{
-    EnumForm, FuncForm, ModuleForm, OtherForm, StructForm, TypeAliasForm,
-};
-pub use crate::std_syntax::{
-    AlgebraFieldKind, BodyKind, ItemForm, ItemFormKind, OperatorSpec, SyntaxSpec,
-};
-pub use crate::std_syntax::{BinOp, LiteralValue};
+use crate::std_syntax::BinOp::*;
+use crate::std_syntax::ItemFormKind::*;
+pub use crate::std_syntax::{AlgebraFieldKind, BinOp, ItemForm, ItemFormKind, OperatorSpec};
 pub use crate::v1_compiler_artifact::RenderTarget;
-use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
+use crate::v1_compiler_artifact::RenderTarget::*;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::LiteralValue::*;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

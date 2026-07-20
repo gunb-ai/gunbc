@@ -24,6 +24,7 @@ import v2.std.verification {
   Unit
 }
 import v2.std.diagnostic { Outcome }
+
 fn algebra_law_generated_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence

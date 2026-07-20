@@ -24,6 +24,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+
 data spine_normalize_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_normalize_module } },
   children: [],

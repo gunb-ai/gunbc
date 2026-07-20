@@ -1,19 +1,5 @@
 module test.claim.os_install_actuator_toolchain_grant
 
-import std.logic { Bool }
-import std.types { list_length }
-import extdeps.bmc.os_install_actuator_toolchain {
-  srv3_os_install_actuator_toolchain_grant,
-  srv3_os_install_actuator_host_label,
-  srv3_os_install_actuator_toolchain_is_complete,
-  actuator_toolchain_requirement_includes_tool,
-  extdeps_external_authority_anchor,
-}
-import extdeps.tools.curl { curl_cli_tool }
-import extdeps.tools.websocat { websocat_cli_tool }
-import extdeps.tools.nbdkit { nbdkit_cli_tool }
-import extdeps.tools.socat { socat_cli_tool }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -47,7 +33,7 @@ test fn srv3_actuator_host_label_is_declared() -> Bool {
 
 test fn srv3_actuator_toolchain_authority_cites_openbmc_virtual_media() -> Bool {
   string_contains(
-    s: extdeps_external_authority_anchor.uri.locator,
+    s: extdeps.bmc.os_install_actuator_toolchain.extdeps_external_authority_anchor.uri.locator,
     pattern: "openbmc/docs/blob/master/designs/virtual-media.md",
   )
 }

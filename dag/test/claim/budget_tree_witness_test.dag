@@ -1,27 +1,13 @@
 module test.claim.budget_tree_witness
 
-import std.logic { Bool }
-import std.nat { Nat }
-import std.measure { byte_size, Memory, One }
-import extdeps.accounting.budget {
-  Appropriation, LineItem, BudgetBalance, Surplus, Balanced, Deficit,
-  BudgetingMethod, ZeroBased, within_appropriation, admit_all, AdmissionState
-}
-import product.budget_tree {
-  BudgetNode, BudgetClaim, BudgetPriority, Guaranteed, BestEffort,
-  BudgetReconciliation, AllSatisfied, Evicted, GuaranteedShortfall,
-  node_conserves, node_conserves_local, node_balance, reconcile,
-  claim_items, budget_tree_method
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn claim(name: String, amount: Nat, p: BudgetPriority) -> BudgetClaim {
+fn claim(name: String, amount: std.nat.Nat, p: BudgetPriority) -> BudgetClaim {
   BudgetClaim { item: LineItem { purpose: name, amount: byte_size(count: amount) }, priority: p }
 }
 
-fn appr(n: Nat) -> Appropriation<Memory, One> {
+fn appr(n: std.nat.Nat) -> Appropriation<Memory, One> {
   Appropriation { ceiling: byte_size(count: n) }
 }
 
@@ -33,11 +19,11 @@ fn sample_claims() -> List<BudgetClaim> {
   ]
 }
 
-fn leaf_node(cap: Nat) -> BudgetNode {
+fn leaf_node(cap: std.nat.Nat) -> BudgetNode {
   BudgetNode { name: "host", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
 }
 
-fn child_node(cap: Nat) -> BudgetNode {
+fn child_node(cap: std.nat.Nat) -> BudgetNode {
   BudgetNode { name: "c", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
 }
 
@@ -86,15 +72,15 @@ fn witness_balance_states() -> Bool {
 }
 
 fn witness_reconcile_all_satisfied() -> Bool {
-  is_all_satisfied(r: reconcile(node: leaf_node(cap: 120), actual: byte_size(count: 120)))
+  is_all_satisfied(r: product.budget_tree.reconcile(node: leaf_node(cap: 120), actual: byte_size(count: 120)))
 }
 
 fn witness_reconcile_evicts_best_effort() -> Bool {
-  is_evicted(r: reconcile(node: leaf_node(cap: 120), actual: byte_size(count: 90)))
+  is_evicted(r: product.budget_tree.reconcile(node: leaf_node(cap: 120), actual: byte_size(count: 90)))
 }
 
 fn witness_reconcile_guaranteed_shortfall() -> Bool {
-  is_guaranteed_shortfall(r: reconcile(node: leaf_node(cap: 120), actual: byte_size(count: 50)))
+  is_guaranteed_shortfall(r: product.budget_tree.reconcile(node: leaf_node(cap: 120), actual: byte_size(count: 50)))
 }
 
 fn witness_method_is_zero_based() -> Bool {

@@ -1,33 +1,5 @@
 module gunbc.srv3_os_install_reconcile_dry_run
 
-import gunbc.srv3_host_effect_apply {
-  srv3_host_effect_observe_read_apply,
-  srv3_emit_typed_receipt,
-  srv3_typed_receipt_from_lines,
-  srv3_shell_stdout_from_apply,
-  srv3_reconciliation_failure_reason,
-}
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.types { String, NonEmptyStr }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import gunbc.srv3_os_install_diagnostic {
-  srv3_os_install_attempt_intent,
-  parse_srv3_install_debug_observation,
-}
-import gunbc.srv3_os_install_reconcile {
-  reconcile_srv3_os_install,
-  srv3_held_lease_from_serve,
-}
-import gunbc.srv3_os_install_reconcile_types {
-  srv3_install_reconcile_default_disk,
-  srv3_install_reconcile_dry_run_observed_at,
-}
-import gunbc.srv3_os_install_reconcile_receipt {
-  srv3_install_reconcile_full_receipt,
-  srv3_install_reconcile_action_line,
-}
-import std.temporal_effect { GrantAbsent, NoPriorReceipt }
 
 data srv3_os_install_reconcile_dry_run_shell_runner_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

@@ -1,61 +1,5 @@
 module gunbc.host_identity_assimilation
 
-import std.types { String, NonEmptyStr, Bool, ContentHash }
-import std.disposition { Disposition, Terminal }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { content_hash_atom }
-import extdeps.shell
-import extdeps.shell.exec { transport_script_from_body }
-import extdeps.dns.domain_name { DnsLabel }
-import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host }
-import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
-import gunbc.host_effect {
-  NodeControlPlane,
-  HostOs,
-  HostEffectTransport,
-}
-import gunbc.host_identity_knob {
-  HostIdentityKnobKey,
-  HostIdentityLeafVerdict,
-  host_identity_knob_key,
-}
-import std.change { KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
-import gunbc.host_identity_observation {
-  HostIdentityObservation,
-  host_identity_observation_nonempty,
-}
-import gunbc.host_identity_adopt {
-  host_identity_observed_probed_at,
-  host_identity_transport_label,
-  host_identity_adopt_model_hash,
-  srv1_host_identity_ssh_transport,
-  srv2_host_identity_ssh_transport,
-}
-import gunbc.deployed_intent_v0 {
-  DeployedIntentV0,
-  deployed_intent_observed_short_hostname,
-  deployed_intent_observed_differs_from_fleet_slot,
-  gunbc_srv1_deployed_intent_v0_persisted,
-  gunbc_srv2_deployed_intent_v0_persisted,
-}
-import gunbc.deployed_intent_v1 {
-  DeployedIntentV1,
-  gunbc_srv1_deployed_intent_v1,
-  gunbc_srv2_deployed_intent_v1,
-}
-import gunbc.host_identity_converge {
-  host_identity_precondition_verdict,
-  host_identity_precondition_is_noop,
-  host_identity_precondition_is_conflict,
-  host_identity_plan_from_verdict,
-  host_identity_apply_gated,
-  host_identity_observation_live,
-  host_identity_read_back_matches,
-  host_identity_apply_converged,
-}
-import gunbc.host_identity_access { host_identity_srv1_access, host_identity_srv2_access }
-import gunbc.ci_deploy_access { DeployAccess, DeployAccessActor }
 
 type HostIdentityAssimilationTarget {
   fleet_slot: HostIdentity
@@ -107,7 +51,7 @@ type HostIdentityAssimilationReceipt {
   model_hash: ContentHash
 }
 
-data gunbc_host_identity_assimilation_scope_disposition: Disposition = Terminal {
+data gunbc_host_identity_assimilation_scope_disposition: Disposition = std.disposition.Terminal {
   reason: "Closed-loop converge-from-base: host_identity_converge_from_base takes the PERSISTED DeployedIntentV0 (a committed .dag data row — gunbc.deployed_intent_v0's gunbc_srv1_deployed_intent_v0_persisted / gunbc_srv2_deployed_intent_v0_persisted) as its base ARGUMENT, never re-derives base from a live read. Adoption (gunbc.host_identity_adopt, run once, out of band) and converge (this module, run every reconcile pass) are split so a run cannot silently promote drift into the new base — the three-way merge's Conflict arm stays reachable (host_identity_plan_from_verdict maps Conflict to ConflictPlan, whose plan_effect_script is structurally Absent, so host_identity_apply_gated never constructs a shell script for a conflicted leaf — no-shell-on-conflict by construction, not by a runtime check on the Conflict variant)."
 }
 

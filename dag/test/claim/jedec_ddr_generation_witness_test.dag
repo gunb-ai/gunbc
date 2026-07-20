@@ -1,23 +1,5 @@
 module test.claim.jedec_ddr_generation
 
-import std.logic { Bool }
-import std.measure { byte_size, byte_size_count, bit_width }
-import extdeps.memory.types {
-  DimmBuffering,
-  DoubleDataRate,
-  DramModuleCatalogRow,
-  dram_module_is_realizable,
-  dram_generation_ddr4,
-  dram_generation_ddr5,
-  dram_generation_eq,
-}
-import extdeps.memory.jedec {
-  ddr4_generation_catalog,
-  ddr5_generation_catalog,
-  jedec_ddr_generation_catalog_row,
-}
-import extdeps.vendor.sk_hynix { sk_hynix }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

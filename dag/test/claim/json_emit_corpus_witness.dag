@@ -1,7 +1,5 @@
 module test.claim.json_emit_corpus_witness
 
-import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.filesystem.filesystem_io
 
 data json_grammar_path: String = "dag/extdeps/languages/json/grammar.dag"
 data json_emit_path: String = "dag/extdeps/languages/json/emit.dag"

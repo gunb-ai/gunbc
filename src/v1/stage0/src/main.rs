@@ -231,8 +231,13 @@ fn resolve_transitively_with_seen(
     let mut queue: Vec<(String, String)> = entry_sources;
 
     while let Some((_path, content)) = queue.pop() {
-        let imports = extract_import_paths(&content);
-        for module_path in imports {
+        // Compile scope stays the IMPORT closure: widening it to reference-derived
+        // deps was measured to pull cross-tree modules into this pool-precedence
+        // view where their own bare names do not resolve (344 diagnostics — the
+        // Empty/Cons poisoning class). References instead widen the CENSUS
+        // (fill = whole tree; policy gates lookup, never fill): see
+        // census_only_sources below.
+        for module_path in extract_import_paths(&content) {
             if seen.contains_key(&module_path) {
                 continue;
             }
@@ -326,6 +331,9 @@ fn main() {
             let render_targets = parse_render_targets(&target);
             let pool_index = parse_dependency_pool_index(&dependency_pool_index);
 
+            // Indexed modules outside the compile closure, included in the name
+            // census only (fill = whole tree; the compile scope stays the closure).
+            let mut census_only_sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::new();
             let sources = if !source_roots.is_empty() {
                 let index = build_module_index(&source_roots, pool_index);
                 eprintln!(
@@ -387,6 +395,35 @@ fn main() {
                     "resolved {} sources (transitive import closure)",
                     resolved.len()
                 );
+                // Everything indexed but outside the closure enters the census only.
+                {
+                    let closure_paths: std::collections::HashSet<String> =
+                        resolved.iter().map(|s| s.path.clone()).collect();
+                    let mut pool_rest: Vec<(String, std::path::PathBuf)> = index
+                        .iter()
+                        .filter(|(_, p)| !closure_paths.contains(&p.to_string_lossy().to_string()))
+                        .map(|(m, p)| (m.clone(), p.clone()))
+                        .collect();
+                    pool_rest.sort_by(|a, b| a.0.cmp(&b.0));
+                    for (module_path, file_path) in pool_rest {
+                        let content = std::fs::read_to_string(&file_path).unwrap_or_else(|e| {
+                            panic!(
+                                "failed to read indexed module '{}' at {:?}: {}",
+                                module_path, file_path, e
+                            )
+                        });
+                        census_only_sources.push(Rc::new(v1_compiler_compile::SourceFile {
+                            path: file_path.to_string_lossy().to_string(),
+                            content,
+                        }));
+                    }
+                    if !census_only_sources.is_empty() {
+                        eprintln!(
+                            "[census] {} indexed modules outside the closure enter the name census only (not compiled)",
+                            census_only_sources.len()
+                        );
+                    }
+                }
                 resolved
             } else if let Some(dir) = source_dir {
                 // Legacy: flat directory scan (backward compatibility)
@@ -414,10 +451,15 @@ fn main() {
                 std::process::exit(1);
             };
 
+            let pipeline_options = Rc::new(v1_compiler_compile::CompilePipelineOptions {
+                analyze_complexity: false,
+                census_only_sources: Rc::new(census_only_sources.into()),
+            });
             if render_targets.len() == 1 {
-                let result = v1_compiler_compile::compile_sources(
+                let result = v1_compiler_compile::compile_sources_with_options(
                     Rc::new(sources.into()),
                     render_targets[0].1.clone(),
+                    pipeline_options.clone(),
                 );
                 if let Some(message) =
                     v1_compiler_compile::stage0_self_compile_refusal_message(result.clone())
@@ -433,7 +475,10 @@ fn main() {
                 );
                 render_diagnostics(&result);
             } else {
-                let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
+                let resolved = v1_compiler_compile::compile_to_resolved_with_options(
+                    Rc::new(sources.into()),
+                    pipeline_options.clone(),
+                );
                 let mut total_files = 0usize;
                 let mut total_diagnostics = 0usize;
                 for (name, render_target) in render_targets {

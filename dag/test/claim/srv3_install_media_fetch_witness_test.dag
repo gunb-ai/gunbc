@@ -1,33 +1,5 @@
 module test.claim.srv3_install_media_fetch
 
-import std.logic { Bool }
-import std.disposition { Scaffold, Terminal }
-import std.effects { CreateEffect, CreateIfAbsent, InputField }
-import gunbc.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
-import gunbc.srv3_install_media_fetch {
-  srv3_ubuntu_install_media_install_path,
-  install_media_fetch_effect_shape,
-  classify_install_media_fetch,
-  install_media_fetch_verdict_is_idempotent_skip,
-  install_media_fetch_first_mirror_url,
-  srv3_install_media_fetch_install_path_is_versioned,
-  srv3_install_media_fetch_actuator_host_is_srv1,
-  srv3_install_media_fetch_shell_runner_scaffold,
-  Absent,
-  Present,
-  AlreadyPresent,
-  FetchRequired,
-  HashMismatchRefusal,
-}
-import extdeps.os.ubuntu_install_media {
-  CdimageUbuntuCom,
-  ReleasesUbuntuCom,
-  ubuntu_install_media_mirror_rows,
-}
-import extdeps.os.ubuntu_install_media_fetch {
-  install_media_fetch_bash_emit_dissolution_trigger,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -42,7 +14,7 @@ test fn install_media_fetch_effect_is_create_if_absent_on_content_sha256() -> Bo
 
 test fn install_media_fetch_already_present_fixture() -> Bool {
   match classify_install_media_fetch(
-    observation: Present { observed_sha256: srv3_ubuntu_install_media_artifact.content_sha256 },
+    observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: srv3_ubuntu_install_media_artifact.content_sha256 },
     artifact: srv3_ubuntu_install_media_artifact,
   ) {
     AlreadyPresent { install_path: p, content_sha256: h } =>
@@ -57,7 +29,7 @@ test fn install_media_fetch_already_present_fixture() -> Bool {
 
 test fn install_media_fetch_hash_mismatch_refusal_fixture() -> Bool {
   match classify_install_media_fetch(
-    observation: Present { observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000" },
+    observation: gunbc.srv3_install_media_fetch.Present { observed_sha256: "0000000000000000000000000000000000000000000000000000000000000000" },
     artifact: srv3_ubuntu_install_media_artifact,
   ) {
     HashMismatchRefusal { install_path: p, expected_sha256: e, observed_sha256: o } =>

@@ -1,14 +1,5 @@
 module v2.test.long.cwc_resolution_probe
 
-import v2.compiler.tokenize { tokenize }
-import v2.compiler.parse { parse }
-import v2.compiler.normalize { normalize }
-import v2.compiler.resolve { resolve }
-import v2.extdeps.languages.dag { dag_language_model }
-import v2.std.diagnostic { Accepted, Rejected, Outcome, bind_outcome }
-import v2.std.logic { Bool }
-import v2.std.node { Disj, Node, NodeFold, TypeNode, fold_node }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

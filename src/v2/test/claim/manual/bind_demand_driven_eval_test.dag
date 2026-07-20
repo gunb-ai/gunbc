@@ -166,7 +166,7 @@ fn bind_eval_int_from_runtime(value: RuntimeValue) -> Int {
 }
 
 fn bind_eval_touch_from_env(env: EvaluationEnvironment, key: EnvironmentBindingKey) -> Int {
-  match map_get(m: env.bindings, key: key) {
+  match v2.std.collection.map_get(m: env.bindings, key: key) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: v } => bind_eval_int_from_runtime(value: v)

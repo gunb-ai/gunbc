@@ -1,17 +1,5 @@
 module test.claim.srv3_os_install_actuate_scope
 
-import std.logic { Bool }
-import gunbc.srv3_os_install_actuate_scope {
-  srv3_autoinstall_seed_delivery_refusal,
-  srv3_autoinstall_seed_gap_is_fail_closed,
-  srv3_os_install_actuate_credential_resolution_is_wired,
-  srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref,
-  srv3_actuator_prep_uses_seeded_autoinstall_delivery,
-  srv3_actuator_prep_binds_seeded_iso_path,
-  srv3_os_install_actuate_is_actuator_prep_not_install_solved,
-}
-import gunbc.os_install { fleet_install_server_specs }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

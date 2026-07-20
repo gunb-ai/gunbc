@@ -220,10 +220,11 @@ fn resolve_imports_transitively_with_index(
     sources
 }
 
-fn analyze_complexity_options() -> CompilePipelineOptions {
-    CompilePipelineOptions {
+fn analyze_complexity_options() -> Rc<CompilePipelineOptions> {
+    Rc::new(CompilePipelineOptions {
         analyze_complexity: true,
-    }
+        ..(*v1_compiler::v1_compiler_compile::default_compile_pipeline_options()).clone()
+    })
 }
 
 pub fn compile_dag_analyze_complexity(source: &str) -> Rc<PipelineResult> {
