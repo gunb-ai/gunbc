@@ -3907,6 +3907,23 @@ pub fn load_sources_for_entry(
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
+/// Builtins that REQUIRE a service registration to dispatch, paired with the
+/// services-census key whose provider must therefore be in the closure. This is
+/// the one dependency edge a name-derived closure cannot see: the builtin's
+/// identifier is the interpreter's, not any module's, so no census lookup
+/// reaches the provider — under imports the edge was a name-less `import
+/// extdeps.filesystem.filesystem_io`, which the strip removed and nothing can
+/// re-derive.
+///
+/// Rows mirror the hard `ctx.service_ops.contains_key(..)` REQUIREMENT gates in
+/// `v1_interpreter` — not the optional ones (`Clock.UnixSecs`,
+/// `shell.Env.Get`), which fall back to a transport when the service is absent
+/// and so create no closure obligation. A missing row cannot fabricate a
+/// result: the builtin's own gate still refuses, typed and located (that
+/// refusal is exactly how this row was found — `interp_recorded_fixture`'s
+/// nested replay, CI 29722434993).
+const BUILTIN_REQUIRED_SERVICE_KEYS: &[(&str, &str)] = &[("filesystem_read", "Filesystem.Read")];
+
 /// Bare (non-dotted) identifiers in `content`, split by whether any occurrence
 /// sits in CALL POSITION (immediately followed by `(`). The split is the pull
 /// discriminator: the census strips fn bodies, so a 0-arg fn and a type alias
@@ -4106,7 +4123,7 @@ fn extend_with_bare_reference_closure(
         // dotted scan can follow — the services census key (`cron.Tab`; service
         // names are themselves dotted) is the only edge back to the provider.
         // A module-path chain (`v2.std....`) misses the services census: no pull.
-        let service_prefixes: BTreeSet<String> = candidates
+        let mut service_prefixes: BTreeSet<String> = candidates
             .dotted_chains
             .iter()
             .flat_map(|chain| {
@@ -4122,6 +4139,24 @@ fn extend_with_bare_reference_closure(
                 prefixes
             })
             .collect();
+        // SIDE-EFFECT-ONLY dependency, the one edge names alone cannot carry: a
+        // BUILTIN that dispatches through a service (`filesystem_read` →
+        // `Filesystem.Read`) needs the provider module LOADED for its service
+        // registration, but contributes no name the census could resolve — the
+        // builtin's own identifier belongs to the interpreter, not to any
+        // module. Under imports that edge was a name-less `import
+        // extdeps.filesystem.filesystem_io`; stripped, it is underivable, so
+        // the requirement each builtin already ENFORCES at dispatch is declared
+        // here as the pull key and resolved through the same services census a
+        // dotted service head uses. Keep in lockstep with the
+        // `ctx.service_ops.contains_key(..)` gates in v1_interpreter (each gate
+        // is a row here); a missing row does not fabricate — the builtin's gate
+        // still refuses, typed and located, exactly as it did for this row.
+        for (builtin_name, service_key) in BUILTIN_REQUIRED_SERVICE_KEYS {
+            if candidates.call_position.contains(*builtin_name) {
+                service_prefixes.insert((*service_key).to_string());
+            }
+        }
         // A dotted-chain HEAD that is never body-bound in this file is a
         // cross-module data-const projection (`gunbc_ci_spec.diff_policy`) —
         // resolve it like a bare reference so the declaring module is pulled
