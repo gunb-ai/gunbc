@@ -1,0 +1,50 @@
+module tools.proactive_verification_ledger_transport
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import gunbc.proactive_verification_ledger {
+  VerificationLedgerRow,
+  VerificationExecutionShape,
+  ClaimWitness,
+  ExecutableNow,
+  ledger_rows_with_disposition
+}
+import tools.host_prelude { ClaimRun, run_gunbc_claims }
+import tools.regen_verify_transport { run_regen_verify }
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+fn claim_run_from_row(row: VerificationLedgerRow) -> ClaimRun {
+  match row.execution {
+    ClaimWitness { entry: e, function: f } =>
+      ClaimRun { entry: e, function: f }
+    FalsifierPredictOnlyBatch =>
+      ClaimRun { entry: "", function: "" }
+    CompileCleanGate =>
+      ClaimRun { entry: "", function: "" }
+    RegenVerifyGate =>
+      ClaimRun { entry: "", function: "" }
+  }
+}
+
+fn run_ledger_claim_row(row: VerificationLedgerRow) -> Bool {
+  match row.execution {
+    ClaimWitness { entry: e, function: f } =>
+      run_gunbc_claims(
+        source_roots: witness_layer_roots,
+        claims: [ClaimRun { entry: e, function: f }]
+      )
+    FalsifierPredictOnlyBatch => false
+    CompileCleanGate => false
+    RegenVerifyGate => run_regen_verify()
+  }
+}
+
+fn run_executable_ledger_rows() -> Bool {
+  fold_list(
+    xs: ledger_rows_with_disposition(d: ExecutableNow),
+    empty: true,
+    cons: fn(acc, row) { acc && run_ledger_claim_row(row: row) }
+  )
+}
