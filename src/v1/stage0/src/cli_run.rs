@@ -3469,14 +3469,6 @@ fn entry_file_touched_via_import_closure(
     // ⊤-as-answer and, because the widen was silent and uncounted, drove the deficit's observed
     // frequency to zero by construction while the cost showed up as a 95-minute CI floor rather
     // than as a diagnostic (DESIGN §5).
-    // TEMPORARY RED PROOF - REVERTED IMMEDIATELY
-    if facts
-        .adjacency
-        .get(&entry_rel)
-        .is_none_or(|targets| targets.is_empty())
-    {
-        return Ok(true);
-    }
     if facts.reference_unaccounted.contains(&entry_rel) {
         return Err(format!(
             "AFFECTED-SET REFUSAL cause=ReferenceEdgesUnaccounted entry={entry_rel} — the \
@@ -19674,6 +19666,81 @@ mod witness_layer_roots_compile_clean_tests {
                 !on_unrelated,
                 "{entry} must NOT be selected by an unrelated touch — this is the widen arm's RED"
             );
+        });
+    }
+
+    /// Population receipt for the same wiring, and the control that IS discriminating for the
+    /// deleted widen arm.
+    ///
+    /// The single-entry test above is NOT: once the union lands, an entry that gained edges never
+    /// reaches the edgeless arm, so restoring the widen leaves it green (verified — it passed with
+    /// the arm restored). The arm only ever fired for entries that stay edgeless, so the RED has to
+    /// be taken there. This asserts on that residual directly, and asserts the residual is small,
+    /// which is the receipt that the union actually covered the corpus rather than a lucky entry.
+    #[test]
+    fn edgeless_residual_is_small_and_selects_precisely() {
+        with_workspace_cwd(|| {
+            let roots = default_source_roots();
+            let facts = build_module_graph_facts_live(&roots);
+            let declared: HashSet<String> = facts.declared_paths.clone();
+
+            let claim_entries: Vec<String> = facts
+                .nodes
+                .iter()
+                .map(|n| workspace_relative_repo_path(&n.path))
+                .filter(|p| p.ends_with("_test.dag") || p.contains("/test/claim/"))
+                .collect();
+            let edgeless: Vec<String> = claim_entries
+                .iter()
+                .filter(|p| {
+                    facts
+                        .adjacency
+                        .get(*p)
+                        .is_none_or(|targets| targets.is_empty())
+                })
+                .cloned()
+                .collect();
+
+            eprintln!(
+                "[edge-wiring receipt] claim entries={} edgeless-after-union={}",
+                claim_entries.len(),
+                edgeless.len()
+            );
+            assert!(
+                edgeless.len() * 4 < claim_entries.len(),
+                "edgeless residual {} of {} claim entries is too large — before the strict-tier \
+                 union this was the majority, and a regression here silently restores whole-corpus \
+                 selection: {:?}",
+                edgeless.len(),
+                claim_entries.len(),
+                edgeless.iter().take(10).collect::<Vec<_>>()
+            );
+
+            // THE discriminating arm. An edgeless entry has closure {self}, so an unrelated touch
+            // must not select it. The deleted widen returned `true` here unconditionally.
+            if let Some(entry) = edgeless.first() {
+                let on_unrelated = entry_file_touched_via_import_closure(
+                    entry,
+                    &facts,
+                    &declared,
+                    &["dag/gunbc/tools/review_codex.dag".to_string()],
+                )
+                .expect("an accounted edgeless entry must not refuse");
+                assert!(
+                    !on_unrelated,
+                    "edgeless entry {entry} must NOT be selected by an unrelated touch — this \
+                     assertion is what the widen arm made unconditionally true"
+                );
+                let on_self =
+                    entry_file_touched_via_import_closure(entry, &facts, &declared, &[entry.clone()])
+                        .expect("an accounted edgeless entry must not refuse");
+                assert!(
+                    on_self,
+                    "edgeless entry {entry} must still be selected when its OWN file is touched — \
+                     the closure seeds with the entry, so this is the precise answer the widen \
+                     was standing in for"
+                );
+            }
         });
     }
 
