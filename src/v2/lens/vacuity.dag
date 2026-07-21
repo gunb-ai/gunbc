@@ -1,5 +1,29 @@
 module v2.lens.vacuity
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.std.algebra { count_where, length }
+import v2.std.collection { List }
+import v2.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.std.verification {
+  BoolWitnessClaim,
+  CompilesClaim,
+  DiagnosticClaim,
+  EmitVsEval,
+  EqualsClaim,
+  EvalOnly,
+  NodeCorpus,
+  RoundTripClaim,
+  StructuralEqualsClaim,
+  TestClaim,
+  TestClaimTransportMode,
+  UnifiedTestClaim
+}
 
 data vacuity_lens_home_note: String = "VacuityEvidence is the fail-closed oracle-provenance verdict for test claims (ProvenDuplicate | ProvenIndependent | Unknown). VacuityEvidenceRecord carries TestClaimTransportMode directly — the consumer/observation dimension (rung_5 EmitVsEval counterexample: distinct execution paths, not operand syntax). Advisory census only until provenance edges ground ProvenDuplicate classes (W2.2); only ProvenDuplicate may gate (W3). W3 trigger: re-audit classify_vacuity_same_eval_record's deepest else (known-provenance residue → ProvenIndependent) — when gating on ProvenDuplicate, that residue may need Unknown instead of a positive ProvenIndependent claim."
 
