@@ -48,19 +48,13 @@ fn cited_rows_to_members(rows: List<CitedColorRow>) -> List<SwatchMember> {
 
 data okabe_ito: SwatchSet = SwatchSet {
   name: "okabe-ito",
-  provenance: CitedUpstream {
-    authority: extdeps.color.okabe_ito.extdeps_external_authority_anchor,
-    version: okabe_ito_version,
-  },
+  provenance: CitedUpstream { authority: extdeps.color.okabe_ito.extdeps_external_authority_anchor, version: okabe_ito_version },
   members: cited_rows_to_members(rows: okabe_ito_swatches),
 }
 
 data solarized: SwatchSet = SwatchSet {
   name: "solarized",
-  provenance: CitedUpstream {
-    authority: extdeps.color.solarized.extdeps_external_authority_anchor,
-    version: solarized_version,
-  },
+  provenance: CitedUpstream { authority: extdeps.color.solarized.extdeps_external_authority_anchor, version: solarized_version },
   members: cited_rows_to_members(rows: solarized_swatches),
 }
 
