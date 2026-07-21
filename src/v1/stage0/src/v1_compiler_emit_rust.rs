@@ -4200,6 +4200,57 @@ pub fn build_module_export_sets(
     )
 }
 
+// Deep referenced-name collector: every node's authored name across ALL
+// sub-node fields, not just `children`. Type references live in
+// `type_annotation`/`params` and constructor/value references in `body`, so a
+// children-only walk (collect_type_names_from_node) misses them entirely --
+// that is why the SVN-based pass initially wired nothing. Over-collection
+// (definition names, locals) is harmless: the SVN + cross-module-registry
+// filter in reference_derived_use_lines removes anything already in scope.
+pub fn collect_referenced_names_deep(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    let mut out: Vec<String> = Vec::new();
+    if (n.name.clone() != "".to_string()) {
+        out.push(n.name.clone());
+    }
+    if n.ident_span.is_some() {
+        out.push(authored_name_at(source_indices.clone(), n.clone()));
+    }
+    for c in n.children.iter().cloned() {
+        out.extend((*collect_referenced_names_deep(c, source_indices.clone())).iter().cloned());
+    }
+    for c in n.params.iter().cloned() {
+        out.extend((*collect_referenced_names_deep(c, source_indices.clone())).iter().cloned());
+    }
+    for c in n.uses.iter().cloned() {
+        out.extend((*collect_referenced_names_deep(c, source_indices.clone())).iter().cloned());
+    }
+    for c in n.properties.iter().cloned() {
+        out.extend((*collect_referenced_names_deep(c, source_indices.clone())).iter().cloned());
+    }
+    match &n.type_annotation {
+        Some(t) => out.extend(
+            (*collect_referenced_names_deep(t.clone(), source_indices.clone())).iter().cloned(),
+        ),
+        None => {}
+    }
+    match &n.body {
+        Some(b) => out.extend(
+            (*collect_referenced_names_deep(b.clone(), source_indices.clone())).iter().cloned(),
+        ),
+        None => {}
+    }
+    match &n.transport {
+        Some(t) => out.extend(
+            (*collect_referenced_names_deep(t.clone(), source_indices.clone())).iter().cloned(),
+        ),
+        None => {}
+    }
+    Rc::new(out)
+}
+
 // Reference-derived use-lines (emit_import_closure_root, §5).
 //
 // The import-derived block (emit_imports) wires a use-line only for names that
@@ -4236,10 +4287,17 @@ pub fn reference_derived_use_lines(
         }
         Rc::new(vec![])
     } else {
-        let referenced = unique_strings(crate::v1_compiler_emit::collect_type_names_from_items(
-            items.clone(),
-            source_indices.clone(),
-        ));
+        let referenced = unique_strings(Rc::new({
+            let mut __r = Vec::new();
+            for item in items.clone().iter().cloned() {
+                __r.extend(
+                    (*collect_referenced_names_deep(item.clone(), source_indices.clone()))
+                        .iter()
+                        .cloned(),
+                );
+            }
+            __r
+        }));
         if trace {
             eprintln!(
                 "[reftrace] {} svn={} referenced={}",
