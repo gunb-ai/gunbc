@@ -58,6 +58,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_computation.rs",
     "std_constructors.rs",
     "std_content_hash.rs",
+    "std_currency.rs",
     "std_decl_ref.rs",
     "std_disposition.rs",
     "std_effects.rs",
