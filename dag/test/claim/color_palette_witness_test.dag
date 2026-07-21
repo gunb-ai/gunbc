@@ -2,7 +2,7 @@ module test.claim.color_palette_witness
 
 import std.types { Int, String, Bool }
 import std.color { Srgb8, srgb8, srgb8_to_hsl }
-import gunbc.site.tokens { Material, FieldArea, quiet_envelope }
+import gunbc.design.register_walls { quiet_envelope_hsl }
 import gunbc.design.palette { palette_admissible }
 import gunbc.design.catalog {
   soft_pastel_v1, soft_pastel_mint, soft_pastel_sky, soft_pastel_cream,
@@ -13,19 +13,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn material_from_srgb8(c: Srgb8) -> Material {
-  let hsl = srgb8_to_hsl(c: c)
-  Material {
-    name: "witness",
-    hue: hsl.h,
-    sat_pct: hsl.s,
-    light_pct: hsl.l,
-    area: FieldArea,
-  }
-}
-
 fn quiet_envelope_admits_srgb8(c: Srgb8) -> Bool {
-  quiet_envelope(m: material_from_srgb8(c: c))
+  let hsl = srgb8_to_hsl(c: c)
+  quiet_envelope_hsl(sat_pct: hsl.s, light_pct: hsl.l)
 }
 
 fn witness_wood_hsl_projection() -> Bool {
