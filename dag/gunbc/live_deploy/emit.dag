@@ -20,6 +20,9 @@ import gunbc.live_deploy.spec {
   deployment_owned_steps_retract_order,
   deployment_step_ownership,
   gunbc_roadmap_systemd_unit_path,
+  gunbc_tree_sync_unit_name,
+  gunbc_tree_sync_unit_path,
+  gunbc_tree_sync_env_path,
 }
 import gunbc.ownership { Ownership }
 import gunbc.membership_reconcile {
@@ -171,6 +174,33 @@ fn apply_systemd_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
   ))
 }
 
+fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
+  let user = spec.service.service_user
+  doc_concat(parts: [
+    doc_line_of(text: "[Unit]"),
+    doc_line_of(text: "Description=gunbc source tree sync (service-user-principal rsync from CI runner checkout)"),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Service]"),
+    doc_line_of(text: "Type=oneshot"),
+    doc_line_of(text: concat("User=", user)),
+    doc_line_of(text: concat("Group=", user)),
+    doc_line_of(text: concat("EnvironmentFile=", gunbc_tree_sync_env_path as String)),
+    doc_line_of(text: join([
+      "ExecStart=/usr/bin/rsync -rlpt --delete --exclude /target --exclude /.git \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
+    ], "")),
+    doc_line_of(text: join([
+      "ExecStart=/usr/bin/rsync -rlpt \"$\{GUNBC_TREE_SRC\}/.git/\" ", tree_path, "/.git/",
+    ], "")),
+  ])
+}
+
+fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> PipelineStep {
+  deploy_raw(command: concat(
+    concat("cat > \"$_gunbc_stage/gunbc-tree-sync.service\" <<'GUNBC_TREE_SYNC_EOF'\n", render(doc: emit_tree_sync_unit_doc(spec: spec, tree_path: tree_path), proto: live_deploy_protocol)),
+    "GUNBC_TREE_SYNC_EOF"
+  ))
+}
+
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   let port = deployment_plan_listen_port(spec: spec)
   If {
@@ -190,32 +220,39 @@ fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   }
 }
 
-data emit_root_principal_note: String = "The deploy principal on srv1 is ROOT (actions-runner unit User=root, parent-lane verification 2026-07-20), mirrored from the operator-approved manual provisioning: the tree rsyncs (working tree + additive .git — the belt's `git worktree add` requires a real repo; see apply_tree_split_sync_note) and the chown-to-service-user run BARE, requiring the root principal and NO new sudoers grant; the sudo -n prefix stays only on the ops in the historical minimal grant set (apt-get/install/systemctl/tailscale), where it is redundant-but-harmless under root and load-bearing for any future unprivileged principal. The former install_d_shared_setup_latent_coupling marker fired as designed: /opt/gunbc now has MULTIPLE owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer."
+data emit_deploy_principal_note: String = "The deploy principal on srv1 is the UNPRIVILEGED CI-runner account — gunbc.fleet_posix_accounts FleetAccountCiRunner (ghrunner, uid 1001) with exactly the five NOPASSWD sudo grants that module enumerates (apt-get, install, systemctl, tailscale, rm) — NOT root. The prior note here claimed ROOT from a hand ssh verification (parent lane 2026-07-20) that CONTRADICTED the repo's own single authority (fleet_posix_accounts, probed 2026-07-02) — a DESIGN 3 fork of the principal fact — and reality sided with the authority: the first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync EACCES/chgrp-EPERM into the service-user-owned tree. The corrected realization stays INSIDE the granted set, no new sudoers grant: directories and the binary install with -o/-g service-user via the granted install (ownership at creation, never a chown fixup — the root-writes-then-chown two-step is dissolved, the wrongly-owned intermediate state unwritable); the tree sync runs AS the service user through gunbc-tree-sync.service (a oneshot unit, User=service-user, installed and started via the granted install+systemctl — the owner writes its own tree); teardown rm goes through the granted rm. RESIDUE (named): admission of each sudo -n command against the ci_deploy_access grant envelope is witnessed post-hoc in test.claim.live_deploy.emit, not yet refused at emit-construction time — that wall rides the effect-namespace-grants lane. The former install_d_shared_setup_latent_coupling marker fired as designed: /opt/gunbc now has MULTIPLE owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer."
 
-fn chown_service_user_step(spec: DeploymentSpec, path: String) -> PipelineStep {
-  deploy_raw(command: join([
-    "chown -R ", spec.service.service_user, ":", spec.service.service_user, " ", path,
-  ], ""))
+fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
+  join([
+    "sudo -n install -d -m 0755 -o ", spec.service.service_user,
+    " -g ", spec.service.service_user, " ", path,
+  ], "")
 }
 
-data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy."
+data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy. Flags are -rlpt, not -a: the sync principal is the service user (emit_deploy_principal_note), so -a's owner/group replication would chgrp toward the runner's group and fail EPERM — ownership is the destination principal's by construction, never replicated from the source."
 
 fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
   match art.kind {
     GunbcSourceTree => [
       deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc"),
-      deploy_raw(command: concat("rsync -a --delete --exclude /target --exclude /.git ./ ", concat(art.path as String, "/"))),
-      deploy_raw(command: concat("rsync -a ./.git/ ", concat(art.path as String, "/.git/"))),
-      chown_service_user_step(spec: spec, path: art.path as String),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
+      deploy_raw(command: "printf 'GUNBC_TREE_SRC=%s\\n' \"$PWD\" > \"$_gunbc_stage/gunbc-tree-sync.env\""),
+      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.env\" ", gunbc_tree_sync_env_path as String)),
+      apply_tree_sync_unit_write_step(spec: spec, tree_path: art.path as String),
+      deploy_raw(command: concat("sudo -n install -m 0644 \"$_gunbc_stage/gunbc-tree-sync.service\" ", gunbc_tree_sync_unit_path as String)),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: systemctl_restart_command(unit: gunbc_tree_sync_unit_name, privileged: true)),
     ]
     ServeBinary => [
       deploy_raw(command: "sudo -n install -d -m 0755 /opt/gunbc/bin"),
-      deploy_raw(command: concat("sudo -n install -m 0755 target/release/gunbc ", art.path as String)),
-      chown_service_user_step(spec: spec, path: "/opt/gunbc/bin"),
+      deploy_raw(command: join([
+        "sudo -n install -m 0755 -o ", spec.service.service_user,
+        " -g ", spec.service.service_user,
+        " target/release/gunbc ", art.path as String,
+      ], "")),
     ]
     DispatchWorktreeRoot => [
-      deploy_raw(command: concat("sudo -n install -d -m 0755 ", art.path as String)),
-      chown_service_user_step(spec: spec, path: art.path as String),
+      deploy_raw(command: install_d_owned_command(spec: spec, path: art.path as String)),
     ]
     SystemdUnit => [
       apply_systemd_unit_write_step(spec: spec),
@@ -230,7 +267,7 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec) -> Li
   }
 }
 
-data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rmdir, NEVER rm -rf: a non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition itself). GunbcSourceTree teardown runs AFTER the worktree rmdir succeeds, so the repo the worktrees are registered in is never deleted from under them."
+data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d succeeds, so the repo the worktrees are registered in is never deleted from under them."
 
 fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> List<PipelineStep> {
   match art.kind {
@@ -243,13 +280,15 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
       deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
     ]
     DispatchWorktreeRoot => [
-      deploy_raw(command: concat("rmdir ", art.path as String)),
+      deploy_raw(command: concat("sudo -n rm -d ", art.path as String)),
     ]
     ServeBinary => [
       deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
     ]
     GunbcSourceTree => [
-      deploy_raw(command: concat("rm -rf ", art.path as String)),
+      deploy_raw(command: concat("sudo -n rm -f ", concat(gunbc_tree_sync_unit_path as String, concat(" ", gunbc_tree_sync_env_path as String)))),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: concat("sudo -n rm -rf ", art.path as String)),
     ]
   }
 }
@@ -285,9 +324,9 @@ fn apply_intent_from_effects(spec: DeploymentSpec, effects: List<MemberEffect<De
       [
         deploy_raw(command: "set -euo pipefail"),
         deploy_raw(command: concat("# GENERATED APPLY by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
-        deploy_raw(command: "# Principal: ROOT (actions-runner User=root). rsync/chown run bare and REQUIRE it;"),
-        deploy_raw(command: "# sudo -n stays on the historical grant-set ops (apt-get, install, systemctl, tailscale),"),
-        deploy_raw(command: "# redundant under root, load-bearing for a future unprivileged principal."),
+        deploy_raw(command: "# Principal: UNPRIVILEGED ci-runner (fleet_posix_accounts FleetAccountCiRunner) — every host"),
+        deploy_raw(command: "# mutation rides its five sudo -n grants (apt-get, install, systemctl, tailscale, rm);"),
+        deploy_raw(command: "# the tree syncs AS the service user via gunbc-tree-sync.service (owner writes its own tree)."),
         deploy_raw(command: "_gunbc_stage=\"$(mktemp -d)\""),
         deploy_raw(command: "trap 'rm -rf \"$_gunbc_stage\"' EXIT"),
       ],
@@ -309,7 +348,8 @@ fn retract_intent_from_effects(spec: DeploymentSpec, effects: List<MemberEffect<
         deploy_raw(command: "set -euo pipefail"),
         deploy_raw(command: concat("# GENERATED RETRACT by dag/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
         deploy_raw(command: "# owned-artifacts only — ensured deps (tailscale, tmux) intentionally NOT purged"),
-        deploy_raw(command: "# Principal: ROOT. dispatch-worktrees teardown is rmdir: live worktrees fail it LOUDLY."),
+        deploy_raw(command: "# Principal: UNPRIVILEGED ci-runner. dispatch-worktrees teardown is rm -d (granted rm,"),
+        deploy_raw(command: "# empty-dir only): live worktrees fail it LOUDLY — the same empty-dir refusal wall."),
       ],
       concat(
         flat_map(effects, e => emit_deploy_member_effect(effect: e, spec: spec)),
@@ -359,6 +399,10 @@ fn expected_live_deploy_retract_script() -> String {
 
 fn live_deploy_systemd_unit_for(spec: DeploymentSpec) -> String {
   render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol)
+}
+
+fn live_deploy_tree_sync_unit_for(spec: DeploymentSpec) -> String {
+  render(doc: emit_tree_sync_unit_doc(spec: spec, tree_path: spec.service.repo_root as String), proto: live_deploy_protocol)
 }
 
 fn deployment_ensure_dependency_intent(dep: DeploymentDependencyStep) -> Pipeline {
