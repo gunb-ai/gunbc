@@ -93,26 +93,61 @@ From `theme_transition.dag`: generic reframe derivation (`reframe_css`, `untheme
 
 **Design goal:** a new brand is a **handful of L3 rows** atop L2 machinery — new `Theme` assignments + accent + mark params, zero edits to L1/L2.
 
-### L4 — Surface archetypes (per site-kind)
+### L4 — Surface archetypes (formal model)
 
-**Owns:** parameter sets keyed by **site kind**, mapping content roles to layout patterns and declaring which `AreaClass` values dominate.
+**Owns:** how a **content graph** becomes a **surface** — not a fourth palette, but a preset over decomposed structural axes plus an emission grammar. L4 references L0–L3 **by name only** (see §2.1); it never copies values.
 
-| Archetype | Dominant register | Layout character |
+#### Archetypes are presets, not primitives
+
+The `Hermetic | Wet` precedent applies verbatim (§3 state-space conflation): `MarketingSite` / `DocsSite` / `Dashboard` bundle **independent axes** and must **dissolve into them**, with the three names surviving only as **preset rows** — convenience bundles, not new types.
+
+**Candidate axes** (§2 independence test — net concepts must not grow; derive any axis that proves dependent):
+
+| Axis | Variants | Independence |
 |---|---|---|
-| `MarketingSite` | `FieldArea` + `PointArea` figures | centered column, hero constellation, quiet D0/D1 |
-| `DocsSite` | `TextArea` + hairline structure | readable measure, specimen panels, spine nav |
-| `Dashboard` | text + **data visualization** | dense tables, status chips, time series |
-| `ArtifactReport` | ledger/receipt emphasis | proof rows, digest copy, minimal chrome |
+| **Reading posture** | `Contemplative` \| `Reference` \| `Operational` | independent — the register thesis ("quiet at arm's length") is a **posture** statement |
+| **Content shape** | `Narrative` \| `ReferenceGraph` \| `LiveFacts` | independent — drives layout grammar, not color |
+| **Liveness** | `StaticEmit` \| `Regenerated` \| `Live` | independent — emission cadence / refresh contract |
+| **Interaction verb set** | subset of L2 `Verb` | independent — which verbs the surface admits |
 
-**Second-consumer discipline (§6):** L4 rows land **with the second real site**, not speculatively. Named near-term second consumers: roadmap dashboard (already HTML-emitted), self-host artifact pages. Until then, gunb.ai moodboard remains the L5 composition reference; archetypes are **named scaffolds** with dissolution triggers, not implemented modules.
+**Density is derived, not an axis:** visual density follows from `posture × content_shape` (e.g. `Operational × LiveFacts` ⇒ dense tables; `Contemplative × Narrative` ⇒ centered column). No separate `Density` enum — adding it would duplicate information.
+
+**Preset rows** (names are opinion; axes are structure):
+
+| Preset | Posture | Content shape | Liveness | Verbs (L2) |
+|---|---|---|---|---|
+| `MarketingSite` | Contemplative | Narrative | StaticEmit | `Approach`, `Traverse` (hover + navigate) |
+| `DocsSite` | Reference | ReferenceGraph | Regenerated | `Approach`, `Traverse`, `Enter`, `Copy` (navigate + search + anchor + copy) |
+| `Dashboard` | Operational | LiveFacts | Live | filter, drill, refresh *(extend L2 verb enum at Phase B — not ad-hoc strings)* |
+| `ArtifactReport` | Reference | ReferenceGraph | StaticEmit | `Copy`, `Traverse` (ledger emphasis) |
+
+**Decomposition test:** the axis product generates points the three marketing names cannot — `ArtifactReport`, blog hybrids (`Contemplative` + `ReferenceGraph`), status pages (`Operational` + `StaticEmit`) — with **zero new primitives**. That is the proof the decomposition is real.
+
+#### What an archetype formally is
+
+Three components, all referencing L2/L3 **by name** (never embedding `Material` values or HSL literals):
+
+```text
+Archetype = RoleDemandProfile × InteractionVerbSet × EmissionGrammar
+```
+
+**(a) Role-demand profile** — which `ThemeRole`s and `AreaClass`es the surface **consumes**, with budgets (max figure count, allowed `DataVizArea` slots, luminance budget share). The Dashboard profile is where **`DataVizArea` demand** lives — not an envelope exemption on `FieldArea`.
+
+**(b) Interaction verb set** — a declared subset of the closed L2 `Verb` vocabulary. Coverage law from L1 still applies: every admitted verb has response rows for every interactive element the grammar emits.
+
+**(c) Emission grammar** — rows mapping **content-node kinds** → markup patterns whose regions consume roles. Same shape as language emit: `GrammarRelationRow` / `target_model_edge_translation_rules` (§4 one-grammar-read-both-directions). An archetype is to a content graph what a target language is to a program — an **emission row set**, read backward for ingest when a surface round-trip is needed.
+
+This is the §2 horizontal unification: one grammar, N site kinds — not N hand-rolled page composers.
 
 #### `DataVizArea` extension (Phase C)
 
-The marketing register's quiet envelope **rightly forbids** saturated categorical colors on large fields. Dashboard needs **mutually distinguishable series/status colors** — model as:
+The marketing register's quiet envelope **rightly forbids** saturated categorical colors on large fields. Dashboard needs **mutually distinguishable series/status colors** — modeled in the **role-demand profile**, not by weakening L1:
 
-- new `AreaClass` variant: `DataVizArea` with its **own** saturation/brightness ceilings (distinct from `PointArea`, still under L1 glare envelope unless a cited L0 exception applies)
-- under the `Dashboard` archetype only: a **validated categorical/status parameter set** (N series colors, pairwise CVD-separation check via L0)
-- **never** an ad-hoc envelope exemption on `FieldArea` — that would be a §5 fail-open (widening the wall instead of naming the precision frontier)
+- new `AreaClass` variant: `DataVizArea` with its **own** OKLCH chroma ceiling (Class 2 reground)
+- under the `Dashboard` preset only: a **validated categorical/status parameter set** (N series colors, pairwise CVD-separation via L0)
+- **never** an ad-hoc envelope exemption on `FieldArea` — §5 fail-open
+
+**Second-consumer discipline (§6):** L4 preset rows and emission grammar land **with the second real site** (Phase B), not speculatively. gunb.ai moodboard remains the L5 composition reference until then.
 
 ### L5 — Site instance
 
@@ -128,6 +163,50 @@ SiteInstance = Register(L1+L2 library) × Identity(L3) × Archetype(L4) × Conte
 - **Content** — copy, layer-DAG facts (`constellation` stars), pages (`moodboard`, `accent_study`), `site_workflow` → Pages
 
 Four references plus content facts. Hosting (`roadmap_static_site.SiteArtifact`, generated `pages.yml`) is a **second realization handler** of the same allocation spec — not a sixth layer.
+
+### 2.1 Interface law, propagation, and where opinion lives
+
+#### The interface law (names-not-values)
+
+Every layer exports:
+
+1. a **closed vocabulary** (types, enums, row kinds), and
+2. **laws** over that vocabulary (witnesses, refusing constructors).
+
+The layer above references the vocabulary **by name only** — never copies values (no inlined HSL, no duplicated threshold literals, no parallel `ThemeRole` enum). It must satisfy the laws; coherence is **witnessed per L5 instance**.
+
+**Names-not-values** is what makes an L0–L3 edit propagate to every site **by derivation**: change the accent row (L3), reground the glare envelope (L1), or add a WCAG cite (L0), and every `SiteInstance` re-emits from the same graph — no hand hunt through CSS files.
+
+| Layer | Exports (vocabulary) | Exports (laws) | Imports by name from |
+|---|---|---|---|
+| L0 | perceptual ops, cite rows | computed theorems (contrast, CVD) | extdeps cite tables |
+| L1 | `PrincipleId`, wall predicates | `RegisterPrinciple` + `enforced_by` | L0 ops |
+| L2 | `ThemeRole`, `Verb`, `Material`, `BuildRule` | `theme_coherent`, `coverage_complete` | L1 walls |
+| L3 | `MarkSpec`, accent class ref, material family ids | identity witness bundle | L2 roles/materials |
+| L4 | axis variants, preset ids, grammar row kinds | role-demand + verb-set admissibility | L2/L3 names |
+| L5 | content node kinds, fact rows | instance coherence (full stack) | L1–L4 names |
+
+#### Propagation is the compiler's own change story
+
+Sites are **emitted from the graph** (§7). Therefore:
+
+- **Edit-at-Ln blast radius = the affected set** — the same machinery as CI witness selection (`v2.lens.affected_set`): a change to `gunbc.design.material` selects every L5 site import-closure that references those names; regen is scoped to that closure, not the whole repo by default.
+- **Every site re-runs coherence witnesses** on any upstream law change — a site that breaks under a new OKLCH wall or WCAG re-ground **reds loudly** (typed, located refusal), never silently drifts in committed CSS (§5 fail-closed propagation).
+- **No new mechanism** — this is *why* the library lives in the substrate instead of a hand-maintained frontend repo.
+
+#### Where opinion lives (formal / opinionated split)
+
+| Layer | Opinion? | What is signed |
+|---|---|---|
+| **L0** | **No** — cited / mechanical | upstream standards only |
+| **L1** | **Yes** — house taste | walls (§4k checklist rows → `RegisterPrinciple`) |
+| **L2** | **No** — mechanical over L1 | machinery is derived; timing tokens are discrete rows, not vibes |
+| **L3** | **Yes** — brand identity | accent class, material family, mark selection |
+| **L4 axes** | **No** — structural | posture / shape / liveness / verbs are closed enums |
+| **L4 presets** | **Yes** — which axis tuple gets a friendly name | `MarketingSite` row = operator-signed bundle |
+| **L5** | **Yes** — content | copy, facts, page composition |
+
+**Rule:** opinions are exactly the rows an operator signs; everything else is **derived or cited**. A preset without a sign-off row is a scaffold with a dissolution trigger, not production authority.
 
 ## 3. Override semantics
 
@@ -167,7 +246,7 @@ Defaults flow **down** the hierarchy; **nearest-ancestor wins** for parameters.
 | Phase | Trigger | Work | Acceptance |
 |---|---|---|---|
 | **A — Lift L1/L2 + re-ground site** | **#6927 merged** | extract `gunbc.design.*`; gunb.ai imports; L0 contrast re-ground; dissolve lightness-gap proxy | emission-identical witness green; all #6927 register witnesses green on new import paths |
-| **B — Archetype layer** | **second real site** scoped (dashboard HTML or docs) | `MarketingSite` / `DocsSite` / `Dashboard` / `ArtifactReport` rows; parameterized constellation | second site uses L4 + L3 only; zero `gunbc.design` edits beyond shared scales |
+| **B — Archetype layer** | **second real site** scoped (dashboard HTML or docs) | axis decomposition + preset rows + emission grammar (`GrammarRelationRow`); `DataVizArea` in Dashboard role-demand profile | second site = L3 + L4 preset + L5 content only; hybrid presets (e.g. ArtifactReport) need no new primitives |
 | **C — `DataVizArea`** | Dashboard archetype consumer live | new `AreaClass` + validated categorical/status set under L1 walls | marketing pages refuse `DataVizArea` on hero fields; dashboard series colors pass L0 CVD check |
 
 DOC-ONLY until Phase A trigger (#6927 merge). Phases B/C are design-named; no L4 module work until B's second consumer is scheduled.
