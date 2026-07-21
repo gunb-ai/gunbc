@@ -1,7 +1,7 @@
 module v2.test.execution.emit_on_demand_complement_family_witness
 
 import std.logic { Bool }
-import std.types { ContentHash, String }
+import std.types { ContentHash, Int, String }
 import std.measure { ByteSize, byte_size }
 import std.materialization_ladder {
   CacheProvider, CoversAllComputations, ArtifactTier, ContentKeyed, SpacePacked, provider_row,
@@ -54,7 +54,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_complement_family_note: String = "Witness-realization lane 2 (witness_family_fanout): emit_host_complement family — P3 ACCEPT witnesses mirroring emit_on_demand_kernel_witness_test.dag. complement(True) -> False via shared octet codec ([0,0,0,0,0])."
+data emit_on_demand_complement_family_note: String = "Witness-realization lane 2 (witness_family_fanout): emit_host_complement family — P3 ACCEPT witnesses mirroring emit_on_demand_kernel_witness_test.dag. complement(True) -> False via shared octet codec ([0,0,0,0,0]). The content-change alt tree is the swapped-arms fixture — a VALID identity program whose derived native output is True ([0,1,0,0,0]) — so expected_octet is threaded per tree (meet_join pattern); the same fixture doubles as the semantic-mismatch RED control in the equals-claim context."
 
 data complement_family_cache_root: String = "/tmp/gunbc_emit_on_demand_complement"
 data complement_family_emitter: String = "v2.compiler.emit"
@@ -149,7 +149,8 @@ fn complement_family_cached_run_with_source(
   workspace: String,
   tree: InferredTree,
   source: Medium<String>,
-  expect_compile_skipped: Bool
+  expect_compile_skipped: Bool,
+  expected_octet: Int
 ) -> Bool {
   match run_emit_host_cached(
     workspace_dir: workspace,
@@ -164,7 +165,7 @@ fn complement_family_cached_run_with_source(
           diagnostics: None
         } =>
           receipt.compile_skipped == expect_compile_skipped
-            && stdout.bytes == emit_host_octets_byte_string(octets: [0, 0, 0, 0, 0])
+            && stdout.bytes == emit_host_octets_byte_string(octets: [0, expected_octet, 0, 0, 0])
         _ => false
       }
     Rejected { diagnostics: _ } => false
@@ -185,7 +186,8 @@ fn complement_family_evict_and_workspace(test_id: String, tree: InferredTree) ->
 fn complement_family_cached_run_checks(
   workspace: String,
   tree: InferredTree,
-  expect_compile_skipped: Bool
+  expect_compile_skipped: Bool,
+  expected_octet: Int
 ) -> Bool {
   match emit(tree: tree, target: rust_logic_complement_target_model_staging()) {
     Accepted { value: source, diagnostics: _ } =>
@@ -193,26 +195,33 @@ fn complement_family_cached_run_checks(
         workspace: workspace,
         tree: tree,
         source: source,
-        expect_compile_skipped: expect_compile_skipped
+        expect_compile_skipped: expect_compile_skipped,
+        expected_octet: expected_octet
       )
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn complement_family_cached_cold_then_warm(workspace: String, tree: InferredTree) -> Bool {
+fn complement_family_cached_cold_then_warm(
+  workspace: String,
+  tree: InferredTree,
+  expected_octet: Int
+) -> Bool {
   match emit(tree: tree, target: rust_logic_complement_target_model_staging()) {
     Accepted { value: source, diagnostics: _ } =>
       complement_family_cached_run_with_source(
         workspace: workspace,
         tree: tree,
         source: source,
-        expect_compile_skipped: false
+        expect_compile_skipped: false,
+        expected_octet: expected_octet
       )
         && complement_family_cached_run_with_source(
           workspace: workspace,
           tree: tree,
           source: source,
-          expect_compile_skipped: true
+          expect_compile_skipped: true,
+          expected_octet: expected_octet
         )
     Rejected { diagnostics: _ } => false
   }
@@ -245,7 +254,8 @@ test fn emit_on_demand_complement_native_content_change_cold_rebuild_holds() -> 
     )
     let warmed = complement_family_cached_cold_then_warm(
       workspace: workspace_primary,
-      tree: tree_primary
+      tree: tree_primary,
+      expected_octet: 0
     )
     let workspace_alt = native_cache_workspace_root(
       cache_root: shared_parent,
@@ -255,7 +265,8 @@ test fn emit_on_demand_complement_native_content_change_cold_rebuild_holds() -> 
       && complement_family_cached_run_checks(
         workspace: workspace_alt,
         tree: tree_alt,
-        expect_compile_skipped: false
+        expect_compile_skipped: false,
+        expected_octet: 1
       )
   }
 }
@@ -284,14 +295,15 @@ test fn emit_on_demand_complement_native_cold_holds() -> Bool {
   complement_family_cached_run_checks(
     workspace: workspace,
     tree: tree,
-    expect_compile_skipped: false
+    expect_compile_skipped: false,
+    expected_octet: 0
   )
 }
 
 test fn emit_on_demand_complement_native_warm_holds() -> Bool {
   let tree = complement_family_primary_tree()
   let workspace = complement_family_evict_and_workspace(test_id: "native_warm", tree: tree)
-  complement_family_cached_cold_then_warm(workspace: workspace, tree: tree)
+  complement_family_cached_cold_then_warm(workspace: workspace, tree: tree, expected_octet: 0)
 }
 
 test fn emit_on_demand_complement_native_cold_then_warm_holds() -> Bool {
@@ -300,7 +312,7 @@ test fn emit_on_demand_complement_native_cold_then_warm_holds() -> Bool {
     test_id: "native_cold_then_warm",
     tree: tree
   )
-  complement_family_cached_cold_then_warm(workspace: workspace, tree: tree)
+  complement_family_cached_cold_then_warm(workspace: workspace, tree: tree, expected_octet: 0)
 }
 
 test fn emit_on_demand_complement_materialize_share_on_hit_holds() -> Bool {

@@ -39,7 +39,7 @@ import v2.compiler.infer { InferredTree }
 import v2.extdeps.languages.rust_test { rust_field_access_target_model_staging }
 import v2.test.execution.emit_host_field_access_equals_eval {
   emit_field_eval_producer_tree,
-  emit_field_eval_wrong_field_producer_tree,
+  emit_field_eval_alt_descent_producer_tree,
   emit_field_eval_subject,
   emit_field_eval_wrong_fixture_subject,
   emit_field_eval_subgraph_node,
@@ -78,7 +78,7 @@ fn field_access_family_primary_tree() -> Outcome<InferredTree> {
 }
 
 fn field_access_family_alt_tree() -> Outcome<InferredTree> {
-  emit_field_eval_wrong_field_producer_tree()
+  emit_field_eval_alt_descent_producer_tree()
 }
 
 fn field_access_family_test_store() -> ArtifactStore {
@@ -285,7 +285,7 @@ test fn emit_on_demand_field_access_native_content_change_cold_rebuild_holds() -
                 workspace: workspace_alt,
                 tree: tree_alt,
                 expect_compile_skipped: false,
-                expected_octet: 1
+                expected_octet: 9
               )
           }
         Rejected { diagnostics: _ } => false
