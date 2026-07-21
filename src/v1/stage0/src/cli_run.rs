@@ -17564,24 +17564,56 @@ fn import_chain_owner(func_env: &ResolvedFuncEnv, name: &str) -> Option<String> 
     None
 }
 
-/// `symbol_index_lexical_lookup` from `dag/std/symbol_index.dag`, on v1 string QNs.
+/// `symbol_index_lexical_lookup` from `src/v2/std/symbol_index.dag`, on v1 string QNs.
+/// Unique-on-chain: collects every binder on the ancestor chain; 0 = Unbound, 1 = Hit, 2+ = Ambiguous.
+#[derive(Clone, Debug)]
+pub enum LexicalLookupV1 {
+    Hit {
+        owner_module: String,
+        node: Rc<Node>,
+        steps: usize,
+    },
+    Ambiguous {
+        candidates: Vec<(String, Rc<Node>)>,
+    },
+    Unbound,
+}
+
 pub fn symbol_index_lexical_lookup_v1(
     index: &SymbolIndex,
     position: &str,
     name: &str,
-) -> Option<(String, Rc<Node>, usize)> {
+) -> LexicalLookupV1 {
     let mut pos = position.to_string();
-    let mut steps = 0usize;
+    let mut step = 0usize;
+    let mut candidates: Vec<(String, Rc<Node>, usize)> = Vec::new();
     loop {
-        steps += 1;
+        step += 1;
         let qn = module_path_to_qualified_path(&pos, name);
         if let Some(node) = symbol_index_lookup(Rc::new(index.clone()), qn) {
-            return Some((pos, node, steps));
+            candidates.push((pos.clone(), node, step));
         }
         if pos.is_empty() {
-            return None;
+            break;
         }
         pos = qualified_all_but_last(pos);
+    }
+    match candidates.len() {
+        0 => LexicalLookupV1::Unbound,
+        1 => {
+            let (owner, node, steps) = candidates.into_iter().next().unwrap();
+            LexicalLookupV1::Hit {
+                owner_module: owner,
+                node,
+                steps,
+            }
+        }
+        _ => LexicalLookupV1::Ambiguous {
+            candidates: candidates
+                .into_iter()
+                .map(|(owner, node, _)| (owner, node))
+                .collect(),
+        },
     }
 }
 
@@ -17601,16 +17633,24 @@ pub fn containment_resolve_fn_v1_for_module(
     name: &str,
     item_index: Option<&ModuleItemIndex>,
 ) -> ContainmentResolve {
-    if let Some((owner, node, steps)) = symbol_index_lexical_lookup_v1(index, module_path, name) {
-        if is_fn_like_binding(&node, &owner, name, item_index) {
-            return ContainmentResolve::Hit {
-                owner_module: owner.clone(),
-                qualified_path: module_path_to_qualified_path(&owner, name),
-                node_ptr: Rc::as_ptr(&node) as usize,
-                via: ContainmentResolveVia::Lexical,
-                lexical_steps: steps,
-            };
+    match symbol_index_lexical_lookup_v1(index, module_path, name) {
+        LexicalLookupV1::Hit {
+            owner_module: owner,
+            node,
+            steps,
+        } => {
+            if is_fn_like_binding(&node, &owner, name, item_index) {
+                return ContainmentResolve::Hit {
+                    owner_module: owner.clone(),
+                    qualified_path: module_path_to_qualified_path(&owner, name),
+                    node_ptr: Rc::as_ptr(&node) as usize,
+                    via: ContainmentResolveVia::Lexical,
+                    lexical_steps: steps,
+                };
+            }
         }
+        LexicalLookupV1::Ambiguous { .. } => return ContainmentResolve::Ambiguous,
+        LexicalLookupV1::Unbound => {}
     }
     match index.global_bare.get(name).map(|s| &**s) {
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {

@@ -50,6 +50,9 @@ import v2.std.symbol_index {
   GlobalBareHit,
   GlobalBareLookupAmbiguous,
   GlobalBareLookupUnbound,
+  LexicalAmbiguous,
+  LexicalHit,
+  LexicalUnbound,
   SymbolIndex,
   empty_symbol_index,
   symbol_index_global_unique_lookup,
@@ -383,9 +386,10 @@ fn try_symbol_index_atom_identity(ctx: ResolveContext, name: Symbol) -> Optional
     position: symbol_index_lookup_position(ctx: ctx),
     name: name
   ) {
-    Present { value: node } =>
+    LexicalHit { node: node, path: _ } =>
       optional_present(value: symbol_index_node_identity(node: node, fallback: name))
-    Absent =>
+    LexicalAmbiguous { candidates: _ } => optional_absent()
+    LexicalUnbound =>
       match ctx.policy {
         NamespaceOnlyY =>
           match symbol_index_global_unique_lookup(
