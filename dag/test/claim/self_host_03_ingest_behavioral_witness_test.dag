@@ -1,0 +1,9 @@
+module test.claim.self_host_03_ingest_behavioral_witness
+
+import tools.self_host_03_ingest_behavioral_transport { si_behavioral_receipt_holds }
+
+data self_host_03_ingest_behavioral_witness_doc: String = "Wet self-host behavioral receipt probe for Gate-A flip wave (03_ingest): compares gunbc-emitted vs seed ingest_module_note (03_ingest.dag module authority constant); --inject-fault perturbs emitted comparison (not driver flag). Enrolled on nightly falsifier when frontier row is SelfEmitted."
+
+test fn self_host_03_ingest_behavioral_receipt_holds() -> Bool {
+  si_behavioral_receipt_holds()
+}

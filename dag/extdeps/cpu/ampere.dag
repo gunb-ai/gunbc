@@ -1,20 +1,5 @@
 module extdeps.cpu.ampere
 
-import extdeps.cpu.types {
-  CacheGeometryCitation,
-  CpuL1CacheGeometry,
-  CpuL2CacheGeometry,
-  CpuL3CacheGeometry,
-  CpuModelCatalogRow,
-  CpuSocket,
-  SocketPackage,
-}
-import extdeps.toolchain.types { Architecture }
-import extdeps.vendor.ampere { ampere }
-import std.measure { ByteSize, byte_size, hardware_thread_count, hertz, watt }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

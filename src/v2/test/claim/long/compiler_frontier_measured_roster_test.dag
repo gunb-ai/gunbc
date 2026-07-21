@@ -41,9 +41,9 @@ test fn compiler_frontier_measured_tokenize_emit_surface_holds() -> Bool {
   }
 }
 
-test fn compiler_frontier_measured_compile_name_resolution_holds() -> Bool {
+test fn compiler_frontier_measured_compile_emit_surface_holds() -> Bool {
   match compiler_frontier_row_00_compile.measured_probe.blocker_class {
-    NameResolutionGap => true
+    EmitSurfaceGap => true
     _ => false
   }
 }

@@ -36,6 +36,7 @@ import gunbc.roadmap_dispatch_actuator {
   tmux_kill_session_argv,
   dispatch_live_sessions,
 }
+import gunbc.host_layout { srv1_gunbc_repo_root }
 import extdeps.gunbc
 import extdeps.shell
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -63,9 +64,9 @@ data belt_actuate_fingerprint_dissolution_trigger: Disposition = Scaffold {
   }
 }
 
-data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). belt_actuate_workdir is the SPAWN root: `git worktree add` must run inside the gunbc repo, so spawn's argv fold runs from /opt/gunbc/gunbc. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
+data belt_actuate_workdir_note: String = "Two DISTINCT workdirs, because the belt's two host verbs bind to different roots (a §5 fail-open otherwise: observing from a repo path that may not exist on an arbitrary host would make `tmux ls` fail and — before this split — get widened to an empty session set). belt_actuate_workdir is the SPAWN root: `git worktree add` must run inside the gunbc repo — a PROJECTION of gunbc.host_layout.srv1_gunbc_repo_root (the single path authority; its former private copy deleted, DESIGN §3): the same tree `gunbc serve` loads, which is why dispatch works in-process. belt_observe_workdir is the host-global root '/': `tmux ls` and `tmux kill-session` act on the per-user tmux server (a host singleton, not a repo), so they must run from a directory guaranteed to exist on the host — never the repo path, which may be absent (fake-claude test box, a freshly-enrolled srvN). Observe/teardown therefore carry no workdir parameter; only spawn is workdir-parameterized."
 
-data belt_actuate_workdir: FilePath = "/opt/gunbc/gunbc" as FilePath
+data belt_actuate_workdir: FilePath = srv1_gunbc_repo_root
 
 data belt_observe_workdir: FilePath = "/" as FilePath
 
