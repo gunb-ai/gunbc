@@ -7219,14 +7219,13 @@ fn eval_emit_host_native_cache_evict_builtin(
                 .to_string(),
         });
     }
-    let workspace_dir = free_monoid_to_string(workspace_dir_arg.ok_or_else(|| {
-        InterpError::TypeError {
+    let workspace_dir =
+        free_monoid_to_string(workspace_dir_arg.ok_or_else(|| InterpError::TypeError {
             msg: "emit_host_native_cache_evict requires a workspace_dir argument".to_string(),
-        }
-    })?)
-    .ok_or_else(|| InterpError::TypeError {
-        msg: "emit_host_native_cache_evict: workspace_dir must be String".to_string(),
-    })?;
+        })?)
+        .ok_or_else(|| InterpError::TypeError {
+            msg: "emit_host_native_cache_evict: workspace_dir must be String".to_string(),
+        })?;
     let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
     match std::fs::remove_dir_all(&workspace_dir) {
         Ok(()) => Ok(Value::Bool(true)),
