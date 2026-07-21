@@ -10,8 +10,6 @@ import gunbc.runner_slot_allocation {
   gunbc_runner_slot_enforcement_expected_cap,
   gunbc_runner_slot_thrash_not_fail_policy_holds,
   gunbc_runner_slot_oom_pressure_kill,
-  gunbc_runner_slot_memory_policy,
-  ThrashNotFail,
 }
 import extdeps.os.oomd { ManagedOomAuto }
 import std.measure { byte_size, byte_size_count }
@@ -65,9 +63,7 @@ test fn runner_slot_allocation_managed_oom_memory_pressure_is_auto() -> Bool {
 }
 
 test fn runner_slot_allocation_memory_policy_is_thrash_not_fail() -> Bool {
-  match gunbc_runner_slot_memory_policy() {
-    ThrashNotFail => true
-  }
+  gunbc_runner_slot_thrash_not_fail_policy_holds()
 }
 
 test fn runner_slot_allocation_RED_oom_pressure_kill_would_break_thrash_not_fail() -> Bool {
