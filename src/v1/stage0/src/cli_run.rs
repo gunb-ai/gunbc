@@ -18656,6 +18656,45 @@ pub fn resolution_divergence_census_live(
     Ok(census)
 }
 
+/// Closure-scoped mode (operator/parent ruling 2026-07-21, in response to the
+/// default whole-tree scan's ~15 pre-existing unrelated resolve failures on
+/// orphaned/broken files never reachable from any real entry): reuses the
+/// compile-clean gate's OWN closure authority — `witness_layer_roots()` +
+/// `load_compile_clean_entry_sources` — the exact source set the falsifier's
+/// `GUNBC_CI_COMPILE_CLEAN_COLD_CONTROL` whole-tree cold control already
+/// resolves cleanly, rather than `whole_tree_strict_sources`'s blind directory
+/// walk. A file nothing imports is not compiled into any real program, so this
+/// is the closure precision frontier computed AS the answer (DESIGN §5), not a
+/// blocklist: it excludes nothing by name, only by non-membership in the live
+/// compiled tree. Does NOT touch `resolution_divergence_census_live`'s default
+/// whole-tree scan — an additive mode, not a semantics change for #6936/#6967
+/// or any other consumer.
+pub fn resolution_divergence_census_live_closure_scoped(
+    ws: &Path,
+) -> Result<ResolutionDivergenceCensus, String> {
+    let roots = witness_layer_roots();
+    let mei = build_multi_entry_index_primary_precedence(&roots);
+    let sources = load_compile_clean_entry_sources(&roots, &mei, None)?;
+    let modules_resolved = sources.len();
+    crate::v1_rt::resolution_silent_pick_enable();
+    let resolve_result = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
+    let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
+    let (graph, source_indices) = resolve_result?;
+    let ctx = v1_interpreter::InterpContext::with_runtime_options(
+        graph.as_ref(),
+        source_indices,
+        v1_interpreter::ExecutionMode::Wet,
+        None,
+        None,
+    );
+    let _ = ws;
+    let mut census = resolution_divergence_census_from_ctx(&ctx);
+    census.modules_resolved = modules_resolved;
+    census.modules_excluded = 0;
+    merge_silent_pick_telemetry(&mut census, silent_picks);
+    Ok(census)
+}
+
 /// §5 fail-closed gate: any silent-pick telemetry row is a regression (the
 /// §13-ratified unique-on-chain rule has no silent-pick arm; #6936's Diverge=0
 /// baseline means the frontier starts at zero, not a tuned threshold). Single
