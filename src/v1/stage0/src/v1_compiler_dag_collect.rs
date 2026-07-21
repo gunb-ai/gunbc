@@ -6,7 +6,6 @@ pub use crate::v1_compiler_dag_collect_support::{
     dag_node_surface_fingerprint, dag_node_surface_fingerprint_memo,
 };
 pub use crate::v1_compiler_dag_collect_support::{DagCollectAcc, DagCollectSlot};
-pub use crate::v1_compiler_emit_core_support::to_string;
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use crate::v1_rt;
 use crate::v1_rt::Witness;

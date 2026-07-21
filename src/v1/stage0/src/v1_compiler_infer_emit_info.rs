@@ -3,7 +3,6 @@
 
 use self::RustCorpusRepr::*;
 use self::TypeRepr::*;
-pub use crate::v1_compiler_emit_rust::is_type_variable;
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
 pub use crate::v1_compiler_infer_types::{
