@@ -49,7 +49,7 @@ fn host_hygiene_reap_install_units_body() -> String {
 
 fn host_hygiene_reap_classify_and_act_body() -> String {
   concat(
-    concat("for unit in $(systemctl list-units --all --no-legend '", concat(host_hygiene_reaper_slot_unit_glob, "' | awk '{print $1}'); do\n")),
+    concat("for unit in $(systemctl list-units --all --no-legend '", concat(host_hygiene_reaper_slot_unit_glob, "' | awk '\{print $1}'); do\n")),
     concat(
       "  state=$(systemctl show \"$unit\" --property=ActiveState --value)\n",
       concat(
@@ -57,7 +57,7 @@ fn host_hygiene_reap_classify_and_act_body() -> String {
         concat(
           "  cgroup=$(systemctl show \"$unit\" --property=ControlGroup --value)\n",
           concat(
-            "  procs_path=\"/sys/fs/cgroup${cgroup}/cgroup.procs\"\n",
+            "  procs_path=\"/sys/fs/cgroup$\{cgroup}/cgroup.procs\"\n",
             concat(
               "  [ -s \"$procs_path\" ] || continue\n",
               concat(
