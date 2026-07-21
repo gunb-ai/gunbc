@@ -8159,6 +8159,38 @@ fn eval_builtin_inner(
             Ok(Some(list_value(items)))
         }
 
+        "reference_resolution_facts" => {
+            let pool_roots =
+                expect_str_list(positional.first().copied(), "reference_resolution_facts")?;
+            let importer_roots =
+                expect_str_list(positional.get(1).copied(), "reference_resolution_facts")?;
+            let exclude_substrings =
+                expect_str_list(positional.get(2).copied(), "reference_resolution_facts")?;
+            // Selection tier: Qualified + UniqueBare only (strict = true). AmbiguousBare is
+            // dropped here — same projection `reference_edges_as_import_facts` applies on the
+            // host twin's `selection_adjacency` path in `build_module_graph_facts_live_uncached`.
+            let facts = crate::cli_run::reference_edges_as_import_facts(
+                &crate::cli_run::reference_resolution_facts(
+                    &pool_roots,
+                    &importer_roots,
+                    &exclude_substrings,
+                ),
+                true,
+            );
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                items.push(Value::Record {
+                    type_name: ctx.sym("ImportResolutionFact"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("import_module"), Value::Str(f.import_module)),
+                        (ctx.sym("path"), Value::Str(f.path)),
+                        (ctx.sym("target_declared"), Value::Bool(f.target_declared)),
+                    ])),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+
         "concept_decl_facts" => {
             let pool_roots = expect_str_list(positional.first().copied(), "concept_decl_facts")?;
             Ok(Some(crate::coproduct_reflection::eval_concept_decl_facts(

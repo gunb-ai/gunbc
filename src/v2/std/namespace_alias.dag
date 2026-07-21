@@ -1,0 +1,11 @@
+module v2.std.namespace_alias
+
+import v2.std.node { Symbol }
+import v2.std.qualified_name { QualifiedName }
+
+type AliasBindingRow {
+  binding: Symbol
+  target: QualifiedName
+}
+
+data alias_binding_row_authority_note: String = "Namespace alias surface row (docs/plans/namespace-resolution-design.md §13): alias <binding> = <qualified.path> is an ordinary binding node at the declaring position — the target is encoded once, references resolve through it by unique-on-chain lookup. The dag-surface reader lives in v2.extdeps.languages.dag (layer-correct home beside parse_import_block_idents); resolution/normalize consumers land in follow-on PRs."

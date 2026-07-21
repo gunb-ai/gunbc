@@ -127,6 +127,26 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "record_source_chars_index_lookup".to_string(),
             unit_type(),
         );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "resolution_silent_pick_is_enabled".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "resolution_silent_pick_record_global_bare_lcp_pick".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "resolution_silent_pick_record_global_bare_lcp_tie".to_string(),
+            unit_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "resolution_silent_pick_record_fn_parent_first_hit".to_string(),
+            unit_type(),
+        );
         let m = v1_rt::rc_map_insert(m.clone(), "to_string".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "discriminant".to_string(), string_type());
         let m = v1_rt::rc_map_insert(m.clone(), "concat".to_string(), string_type());
@@ -407,6 +427,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "import_resolution_facts".to_string(),
+            list_of_type_variable("import_resolution_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "reference_resolution_facts".to_string(),
             list_of_type_variable("import_resolution_fact_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(

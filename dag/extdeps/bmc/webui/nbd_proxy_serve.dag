@@ -1,20 +1,5 @@
 module extdeps.bmc.webui.nbd_proxy_serve
 
-import std.disposition { Disposition, RealizationDispatch, Scaffold }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-
-import std.types { NonEmptyStr, Int, String, List }
-import std.logic { Bool }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.tools.curl { curl_cli_tool }
-import extdeps.tools.websocat { websocat_cli_tool, websocat_install_path }
-import extdeps.tools.nbdkit { nbdkit_cli_tool }
-import extdeps.tools.socat { socat_cli_tool }
-import extdeps.bmc.webui.nbd_proxy {
-  nbd_proxy_role_assignment,
-  NbdServer,
-}
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

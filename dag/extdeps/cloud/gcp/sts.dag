@@ -1,11 +1,5 @@
 module extdeps.cloud.gcp.sts
 
-import std.types { NonEmptyStr, HttpMethod, AuthScheme, Secret }
-import extdeps.cloud.gcp.errors { GcpErrorShape, GcpOAuth2ErrorShape }
-import extdeps.github.errors { GitHubErrorShape }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

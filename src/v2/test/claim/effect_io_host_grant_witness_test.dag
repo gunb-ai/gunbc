@@ -1,0 +1,102 @@
+module v2.test.claim.effect_io_host_grant_witness
+
+import std.types { Bool }
+import std.content_hash { content_hash_atom }
+import std.execution_mode { Hermetic, Wet }
+import std.effect_grant {
+  Write, verb_eq,
+  EffectAdmission, Admitted, EffectOutsideGrant,
+}
+import v2.extdeps.runtimes.effect_io_host_grant {
+  effect_io_host_write_admissible,
+  effect_io_host_locator_position,
+  effect_io_host_envelope,
+  effect_io_host_frame,
+}
+import v2.extdeps.runtimes.v2_effect_io_pure {
+  EffectIoResourceLocator,
+  HttpResourceBackend,
+  FileResourceBackend,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data effect_io_host_grant_witness_note: String = "P-B discriminating witnesses for v2.extdeps.runtimes.effect_io_host_grant (docs/plans/effect-namespace-grants.md 6). Write admission consults the construction-time Envelope only (never re-reads ExecutionMode). Hermetic envelopes refuse every write via EffectOutsideGrant; wet envelopes admit writes on the declared backend subtree. Backend/locator mismatch is a located refusal before admit_effect (review 40162)."
+
+data sample_locator: EffectIoResourceLocator = EffectIoResourceLocator {
+  backend: HttpResourceBackend,
+  identity: content_hash_atom(value: "effect-io-grant-witness")
+}
+
+data mismatched_backend_locator: EffectIoResourceLocator = EffectIoResourceLocator {
+  backend: FileResourceBackend,
+  identity: content_hash_atom(value: "effect-io-grant-witness-mismatch")
+}
+
+fn is_refused(a: EffectAdmission) -> Bool {
+  match a {
+    Admitted { via_root: r } => false
+    EffectOutsideGrant { verb: v, target: t, frame: f } => true
+  }
+}
+
+fn is_admitted(a: EffectAdmission) -> Bool {
+  match a {
+    Admitted { via_root: r } => true
+    EffectOutsideGrant { verb: v, target: t, frame: f } => false
+  }
+}
+
+data sample_locator_b: EffectIoResourceLocator = EffectIoResourceLocator {
+  backend: HttpResourceBackend,
+  identity: content_hash_atom(value: "effect-io-grant-witness-b")
+}
+
+test fn effect_io_host_locator_position_uses_hash_identity_holds() -> Bool {
+  let a = effect_io_host_locator_position(backend: HttpResourceBackend, locator: sample_locator)
+  let b = effect_io_host_locator_position(backend: HttpResourceBackend, locator: sample_locator_b)
+  (a.path == b.path) == false
+}
+
+test fn effect_io_host_hermetic_write_outside_grant_holds() -> Bool {
+  is_refused(
+    a: effect_io_host_write_admissible(
+      env: effect_io_host_envelope(mode: Hermetic, backend: HttpResourceBackend),
+      backend: HttpResourceBackend,
+      locator: sample_locator
+    )
+  )
+}
+
+test fn effect_io_host_wet_write_admitted_holds() -> Bool {
+  is_admitted(
+    a: effect_io_host_write_admissible(
+      env: effect_io_host_envelope(mode: Wet, backend: HttpResourceBackend),
+      backend: HttpResourceBackend,
+      locator: sample_locator
+    )
+  )
+}
+
+test fn effect_io_host_hermetic_refusal_is_located() -> Bool {
+  match effect_io_host_write_admissible(
+    env: effect_io_host_envelope(mode: Hermetic, backend: HttpResourceBackend),
+    backend: HttpResourceBackend,
+    locator: sample_locator
+  ) {
+    EffectOutsideGrant { verb: v, target: t, frame: f } =>
+      verb_eq(a: v, b: Write) && f == effect_io_host_frame
+    Admitted { via_root: r } => false
+  }
+}
+
+test fn effect_io_host_write_refuses_backend_mismatch_holds() -> Bool {
+  is_refused(
+    a: effect_io_host_write_admissible(
+      env: effect_io_host_envelope(mode: Wet, backend: HttpResourceBackend),
+      backend: HttpResourceBackend,
+      locator: mismatched_backend_locator
+    )
+  )
+}
