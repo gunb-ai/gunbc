@@ -56,7 +56,7 @@ The srv3 dissolution triggers are unanimous: `srv3_install_diagnostic_checklist_
 | `dag_compile_clean_transport.dag` | **fully migrated** — `serialize_bash` not even imported; scaffolds dissolved ✓ |
 | `emit_determinism_transport.dag` | **fully migrated** — same; pairing now via `duplicate_computation` lens ✓ |
 | `host_prelude.dag` | run path typed (`WitnessBin.Run`/`cargo.Build`); residual typed `ShellStmt` builders are scaffold-only for the emit_determinism lane ✓ |
-| `build_step_transport.dag` | **EXCEPTION — still genuine bash execution:** splices `verifications_script` (`serialize_bash`) into a raw `mktemp`/`touch`/`chmod`/`printf` harness through `shell.Exec.Run` (a corruption-probe execution oracle). Not off the bash path. |
+| `build_step_transport.dag` | **dissolved (#6565, 2026-07-14)** — corruption-probe harness reshaped onto typed `shell.Mktemp.Dir`/`Filesystem.Write`/`gunbc.WitnessBin.Run`/`shell.Remove.RecursiveForce`; no `serialize_bash`/`verifications_script` import remains (see `bst_typed_transport_doc` in the file). |
 | `build_step.dag` | typed `ShellStmt` AST library (no `RawLine`); consumed by the above |
 
 ### E. Replacement machinery + detectors — not dissolution targets
@@ -111,7 +111,7 @@ Two tracks run in parallel; deletion is the join.
 - **P4 = the G1+G2+G3 keystone above** (srv1/srv2 subsumption).
 - **P5:** the srv3 tails follow the *same* interface. Each `srv3_*_observe_script` becomes a typed `…Observe` effect on `host_effect_apply` (their dissolution triggers already name this); the receipt echoes become typed receipts; `shell_exec_via_bash` (the heredoc runner) dissolves once no caller passes a raw script. The two heavy files: `srv3_install_diagnostic_checklist` is FROZEN/terminal (typed observe effect retires it), `srv3_os_install_actuator_toolchain_ensure` → typed `extdeps.apt`/`curl` argv effects.
 - **P6:** `host_identity_converge` drops its `sudo hostnamectl` script for a typed hostname effect (it's already on `apply_gated`); `nbd_proxy_serve_program`'s `RawLine` body gets first-class typed background/trap statements or a typed long-running-process effect.
-- **P7:** `build_step_transport` — the last oracle exception: reshape the corruption-probe harness onto typed `shell.Mktemp`/`Filesystem.Write`/`WitnessBin.Run` (the pattern its siblings already use), dropping the `verifications_script` `serialize_bash` execution.
+- **P7:** `build_step_transport` — **LANDED (#6565, 2026-07-14)**: corruption-probe harness reshaped onto typed `shell.Mktemp`/`Filesystem.Write`/`WitnessBin.Run`, dropping the `verifications_script` `serialize_bash` execution.
 
 ### The join — delete `program.dag`
 
