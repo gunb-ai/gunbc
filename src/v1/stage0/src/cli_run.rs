@@ -4865,7 +4865,7 @@ fn stripped_fn_body_marker() -> Rc<Node> {
 
 pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
     node.name == CENSUS_HEADS_FN_STAND_IN_NAME
-        || Rc::ptr_eq(node, &STRIPPED_FN_BODY_MARKER.with(Rc::clone))
+        || STRIPPED_FN_BODY_MARKER.with(|marker| Rc::ptr_eq(node, marker))
 }
 
 /// Optional query helper for non-inference traversals. Loud refusal on inference is
