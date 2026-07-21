@@ -157,7 +157,7 @@ fn witness_gunbc_pinned_tree_runs_first() -> Bool {
 fn witness_fresh_standup_bootstrap_committed_byte_oracle_holds() -> Bool {
   let committed = filesystem_read(path: ".github/fleet-converge.sh").content
   let arm = fresh_standup_bootstrap_arm_golden()
-  let seam = concat(arm, "gunbc converge --host \"srv3\" || host_failed=1")
+  let seam = concat(concat(arm, "\n"), "gunbc converge --host \"srv3\" || host_failed=1")
   has(s: committed, p: seam)
     && !has(s: committed, p: concat(seam, "x"))
     && !has(s: fresh_standup_bootstrap_script(), p: fresh_standup_bootstrap_emit_refused_poison)
