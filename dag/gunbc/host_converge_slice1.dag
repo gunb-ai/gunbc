@@ -7,7 +7,7 @@ import extdeps.shell
 import extdeps.shell.exec { transport_script_from_body }
 import product.placement_supply { HostIdentity }
 import extdeps.os.systemd { systemd_memory_max_property, systemd_memory_current_property, parse_systemd_memory_limit_show, MemoryLimitBytes, MemoryLimitUnbounded, MemoryLimitAbsent }
-import std.measure { byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3 }
 import gunbc.fleet_host_budget { declared_runner_count }
 import gunbc.host_converge {
@@ -29,6 +29,7 @@ import gunbc.runner_unit_live_read {
   RunnerUnitMemoryLiveRead,
   gunbc_srv1_runner_unit_live_read_fixture,
   runner_unit_live_read_typed,
+  runner_unit_usage_exceeds_bytes,
 }
 import gunbc.fleet_show_effective_read {
   fleet_runner_unit_property_read_script,
@@ -229,9 +230,11 @@ fn host_converge_slice1_apply_memory_max(unit: NonEmptyStr, bytes_value: String)
 }
 
 type HostConvergeSlice1UsageGuardOutcome
-  = HostConvergeSlice1UsageSafe { unit: NonEmptyStr, current_bytes: Int }
-  | HostConvergeSlice1UsageUnsafe { unit: NonEmptyStr, current_bytes: Int, target_cap_bytes: Int }
+  = HostConvergeSlice1UsageSafe { unit: NonEmptyStr, current_bytes: ByteSize }
+  | HostConvergeSlice1UsageUnsafe { unit: NonEmptyStr, current_bytes: ByteSize, target_cap_bytes: ByteSize }
   | HostConvergeSlice1UsageUnknown { unit: NonEmptyStr, reason: String }
+
+data host_converge_slice1_usage_guard_placeholder_probed_at: NonEmptyStr = "host_converge_slice1_usage_guard"
 
 fn host_converge_slice1_read_memory_current_raw(unit: NonEmptyStr) -> String? {
   let script = fleet_runner_unit_property_read_script(unit: unit, property: systemd_memory_current_property)
@@ -248,27 +251,40 @@ fn host_converge_slice1_usage_guard(unit: NonEmptyStr, target_bytes_value: Strin
   match parse_int(s: target_bytes_value) {
     Present { value: target_bytes } =>
       match host_converge_slice1_read_memory_current_raw(unit: unit) {
-        Present { value: raw } =>
-          match parse_systemd_memory_limit_show(raw: raw) {
-            MemoryLimitBytes { bytes: b } => {
-              let current_bytes = byte_size_count(b: b)
-              if current_bytes > target_bytes {
-                HostConvergeSlice1UsageUnsafe { unit: unit, current_bytes: current_bytes, target_cap_bytes: target_bytes }
-              } else {
-                HostConvergeSlice1UsageSafe { unit: unit, current_bytes: current_bytes }
-              }
+        Present { value: raw } => {
+          let read = runner_unit_live_read_typed(
+            row: RunnerUnitLiveReadRow {
+              unit: unit,
+              memory_max_raw: "",
+              memory_swap_max_raw: "",
+              memory_high_raw: "",
+              memory_current_raw: raw,
+              probed_at: host_converge_slice1_usage_guard_placeholder_probed_at,
             }
-            MemoryLimitUnbounded =>
-              HostConvergeSlice1UsageUnknown {
-                unit: unit,
-                reason: "host_converge_slice1: MemoryCurrent read unbounded ('infinity'); cannot bound usage against target cap; fail-closed",
+          )
+          let target_cap = byte_size(count: target_bytes)
+          match runner_unit_usage_exceeds_bytes(read: read, target_bytes: target_cap) {
+            Present { value: exceeds } =>
+              match read.memory_current {
+                MemoryLimitBytes { bytes: current } =>
+                  if exceeds {
+                    HostConvergeSlice1UsageUnsafe { unit: unit, current_bytes: current, target_cap_bytes: target_cap }
+                  } else {
+                    HostConvergeSlice1UsageSafe { unit: unit, current_bytes: current }
+                  }
+                _ =>
+                  HostConvergeSlice1UsageUnknown {
+                    unit: unit,
+                    reason: "host_converge_slice1: MemoryCurrent read parsed inconsistently between guard and comparison; fail-closed",
+                  }
               }
-            MemoryLimitAbsent =>
+            _ =>
               HostConvergeSlice1UsageUnknown {
                 unit: unit,
-                reason: "host_converge_slice1: MemoryCurrent read absent/unparseable; fail-closed",
+                reason: "host_converge_slice1: MemoryCurrent read unbounded or unparseable; cannot bound usage against target cap; fail-closed",
               }
           }
+        }
         _ =>
           HostConvergeSlice1UsageUnknown {
             unit: unit,
@@ -301,14 +317,10 @@ fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyS
   if result.success {
     let trimmed = trim(result.stdout)
     if trimmed == "" {
-      none
+      Present { value: [] }
     } else {
       let lines = filter(split(s: trimmed, delimiter: "\n"), l => trim(l) != "")
-      if length(lines) == 0 {
-        none
-      } else {
-        Present { value: map(lines, l => trim(l) as NonEmptyStr) }
-      }
+      Present { value: map(lines, l => trim(l) as NonEmptyStr) }
     }
   } else {
     none
@@ -333,7 +345,7 @@ fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<
 type HostConvergeSlice1UnitOutcome
   = HostConvergeSlice1UnitConverged { unit: NonEmptyStr, applied: Bool, receipt: HostConvergeSlice1MemoryCapReceipt }
   | HostConvergeSlice1UnitRefused { unit: NonEmptyStr, reason: String }
-  | HostConvergeSlice1UnitUsageGuardRefused { unit: NonEmptyStr, current_bytes: Int, target_cap_bytes: Int }
+  | HostConvergeSlice1UnitUsageGuardRefused { unit: NonEmptyStr, current_bytes: ByteSize, target_cap_bytes: ByteSize }
 
 type HostConvergeSlice1HostResult
   = HostConvergeSlice1HostConverged { host: HostIdentity, outcomes: List<HostConvergeSlice1UnitOutcome> }
@@ -504,10 +516,62 @@ fn host_converge_slice1_unit_outcome_to_legacy_result(outcome: HostConvergeSlice
     HostConvergeSlice1UnitUsageGuardRefused { unit: u, current_bytes: cb, target_cap_bytes: tb } =>
       HostConvergeSlice1Refused {
         reason: concat(
-          concat(concat("host_converge_slice1: usage guard refused apply for ", u as String), concat(" current_bytes=", to_string(cb))),
-          concat(concat(" exceeds target_cap_bytes=", to_string(tb)), "; retryable once the slot is quiet"),
+          concat(concat("host_converge_slice1: usage guard refused apply for ", u as String), concat(" current_bytes=", to_string(byte_size_count(b: cb)))),
+          concat(concat(" exceeds target_cap_bytes=", to_string(byte_size_count(b: tb))), "; retryable once the slot is quiet"),
         ),
       }
+  }
+}
+
+fn host_converge_slice1_host_result_applied_count(result: HostConvergeSlice1HostResult) -> Int {
+  match result {
+    HostConvergeSlice1HostConverged { host: _, outcomes: os } =>
+      fold(os, init: 0, f: fn(acc, o) {
+        match host_converge_slice1_unit_outcome_to_legacy_result(o) {
+          HostConvergeSlice1Converged { applied_knobs: n, receipt: _ } => acc + n
+          _ => acc
+        }
+      })
+    _ => 0
+  }
+}
+
+fn host_converge_slice1_host_result_all_valid(result: HostConvergeSlice1HostResult) -> Bool {
+  match result {
+    HostConvergeSlice1HostConverged { host: _, outcomes: os } =>
+      length(os) > 0
+        && fold(os, init: true, f: fn(acc, o) {
+          acc
+            && match o {
+              HostConvergeSlice1UnitConverged { unit: _, applied: _, receipt: r } => host_converge_slice1_receipt_is_valid(receipt: r)
+              _ => false
+            }
+        })
+    _ => false
+  }
+}
+
+fn host_converge_slice1_host_result_refusal_reason(result: HostConvergeSlice1HostResult) -> String? {
+  match result {
+    HostConvergeSlice1HostRefused { reason: why } => Present { value: why }
+    HostConvergeSlice1HostEnumerationMismatch { mismatch: m } =>
+      Present {
+        value: concat(
+          concat("host_converge_slice1: enumeration mismatch for ", m.host as String),
+          concat(concat(" declared_count=", to_string(m.declared_count)), concat(" observed_count=", to_string(length(m.observed_units)))),
+        ),
+      }
+    HostConvergeSlice1HostConverged { host: _, outcomes: os } =>
+      fold(os, init: none, f: fn(acc, o) {
+        match acc {
+          Present { value: _ } => acc
+          _ =>
+            match host_converge_slice1_unit_outcome_to_legacy_result(o) {
+              HostConvergeSlice1Refused { reason: why } => Present { value: why }
+              _ => none
+            }
+        }
+      })
   }
 }
 

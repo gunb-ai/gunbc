@@ -37,6 +37,7 @@ import gunbc.host_converge_slice1 {
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import gunbc.fleet_host_budget { declared_runner_count }
+import std.measure { byte_size }
 import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -163,8 +164,8 @@ fn witness_cross_check_enumeration_none_iff_length_matches_declared() -> Bool {
 fn witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason() -> Bool {
   let outcome: HostConvergeSlice1UnitOutcome = HostConvergeSlice1UnitUsageGuardRefused {
     unit: host_converge_slice1_probe_unit,
-    current_bytes: 200,
-    target_cap_bytes: 100,
+    current_bytes: byte_size(count: 200),
+    target_cap_bytes: byte_size(count: 100),
   }
   match host_converge_slice1_unit_outcome_to_legacy_result(outcome) {
     HostConvergeSlice1Refused { reason: r } =>
