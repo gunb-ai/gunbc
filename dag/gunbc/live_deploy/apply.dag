@@ -6,12 +6,6 @@ import gunbc.live_deploy.spec {
   deployment_spec_srv1,
   deployment_plan_listen_port,
 }
-import gunbc.live_deploy.emit {
-  live_deploy_apply_script_for,
-  live_deploy_retract_script_for,
-  deployment_ensure_dependency_script,
-}
-import gunbc.roadmap_static_site { roadmap_site_digest_readback_script }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_srv1_operator_access,
