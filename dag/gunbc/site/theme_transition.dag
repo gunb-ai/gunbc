@@ -1,0 +1,218 @@
+module gunbc.site.theme_transition
+
+import gunbc.site.tokens {
+  BuildRule, StaticRule, ResponseRule, CssDecl, decl, css_block,
+  TimingToken, reframe_page, night_theme, day_theme,
+  response_base_selector,
+}
+import extdeps.languages.typescript.program {
+  TsProgram, serialize_typescript_program,
+  ts_ident, ts_lit_str, ts_lit_num, ts_member, ts_call, ts_binop, ts_cond,
+  ts_arrow, ts_block, ts_const, ts_let, ts_expr_stmt,
+}
+
+data theme_transition_note: String = "The general-purpose theme reframe (operator, eighth pass 2026-07-20: universally nail dark->light and light->dark — everyone either gets it for free or has to implement it). Model: a theme flip is a TOUCH (OS toggle or in-page control), so the still-until-touched law grants it exactly one answer — a page-wide cross-fade of every themed property on ONE clock (tokens.reframe_page), never a per-element ripple. Construction: the reframe CSS is DERIVED from the same BuildRule rows that made the colors themed — route a color through a role var and the transition is free BY DERIVATION; bypass the role system and the literal shows up in unthemed_color_decls, a counted census row (opting out is visible, never silent). ORDERING (proven by probe, 2026-07-20): a raw prefers-color-scheme media block recolors in the same style pass as the flip, BEFORE any change event runs — a class added afterwards has nothing left to animate (single-frame snap, measured). So the watcher OWNS the applied theme: at load it pins :root[data-theme] to the current scheme (same values the media block was painting — no flash), which makes the :root:not([data-theme]) media block inert; every subsequent flip is recolored by OUR attribute mutation, set in the same turn as html.reframing, so the cross-fade is structural, not a race. CSS ms and JS ms share one authority (tokens.reframe_page). No JS = media block drives, instant recolor (degraded, never removed); prefers-reduced-motion collapses the reframe to instant by the same guard as every response."
+
+type ReframePair {
+  selector: String
+  props: List<String>
+}
+
+type UnthemedColorDecl {
+  selector: String
+  prop: String
+  value: String
+}
+
+fn color_transition_prop(prop: String) -> String {
+  if prop == "background" {
+    "background-color"
+  } else if prop == "color" {
+    "color"
+  } else if prop == "fill" {
+    "fill"
+  } else if prop == "stroke" {
+    "stroke"
+  } else if prop == "border" {
+    "border-color"
+  } else if prop == "border-color" {
+    "border-color"
+  } else if prop == "border-bottom" {
+    "border-bottom-color"
+  } else if prop == "border-left" {
+    "border-left-color"
+  } else {
+    ""
+  }
+}
+
+fn decl_is_color(d: CssDecl) -> Bool {
+  color_transition_prop(prop: d.prop).length() > 0
+}
+
+fn decl_is_role_themed(d: CssDecl) -> Bool {
+  decl_is_color(d: d) && string_contains(s: d.value, pattern: "var(--")
+}
+
+fn decl_is_literal_color(d: CssDecl) -> Bool {
+  decl_is_color(d: d) && !string_contains(s: d.value, pattern: "var(--")
+}
+
+fn contains_prop(props: List<String>, prop: String) -> Bool {
+  fold(props, init: false, f: (acc, p) => acc || p == prop)
+}
+
+fn themed_props_of(decls: List<CssDecl>) -> List<String> {
+  fold(decls, init: [], f: (acc, d) =>
+    if decl_is_role_themed(d: d) {
+      let tp = color_transition_prop(prop: d.prop)
+      if contains_prop(props: acc, prop: tp) { acc } else { concat(acc, [tp]) }
+    } else {
+      acc
+    })
+}
+
+fn rule_selector(rule: BuildRule) -> String {
+  match rule {
+    StaticRule { selector, decls: _ } => selector
+    ResponseRule { subject, shape, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } =>
+      response_base_selector(subject: subject, shape: shape)
+  }
+}
+
+fn rule_decls(rule: BuildRule) -> List<CssDecl> {
+  match rule {
+    StaticRule { selector: _, decls } => decls
+    ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls, response_decls } =>
+      concat(base_decls, response_decls)
+  }
+}
+
+fn merge_pair(pairs: List<ReframePair>, selector: String, props: List<String>) -> List<ReframePair> {
+  let found = fold(pairs, init: false, f: (acc, p) => acc || p.selector == selector)
+  if found {
+    map(pairs, p =>
+      if p.selector == selector {
+        ReframePair {
+          selector: p.selector,
+          props: fold(props, init: p.props, f: (acc, np) =>
+            if contains_prop(props: acc, prop: np) { acc } else { concat(acc, [np]) }),
+        }
+      } else {
+        p
+      })
+  } else {
+    concat(pairs, [ReframePair { selector: selector, props: props }])
+  }
+}
+
+fn reframe_pairs(rules: List<BuildRule>) -> List<ReframePair> {
+  fold(rules, init: [], f: (acc, r) => {
+    let props = themed_props_of(decls: rule_decls(rule: r))
+    if props.length() == 0 {
+      acc
+    } else {
+      merge_pair(pairs: acc, selector: rule_selector(rule: r), props: props)
+    }
+  })
+}
+
+fn unthemed_color_decls(rules: List<BuildRule>) -> List<UnthemedColorDecl> {
+  fold(rules, init: [], f: (acc, r) =>
+    fold(rule_decls(rule: r), init: acc, f: (inner, d) =>
+      if decl_is_literal_color(d: d) {
+        concat(inner, [UnthemedColorDecl { selector: rule_selector(rule: r), prop: d.prop, value: d.value }])
+      } else {
+        inner
+      }))
+}
+
+fn reframe_transition_value(props: List<String>, t: TimingToken) -> String {
+  join(map(props, p => join([p, " ", to_string(t.duration_ms), "ms ", t.easing], "")), ", ")
+}
+
+fn reframe_selector(selector: String) -> String {
+  concat("html.reframing ", selector)
+}
+
+fn reframe_css(rules: List<BuildRule>) -> String {
+  let pairs = reframe_pairs(rules: rules)
+  if pairs.length() == 0 {
+    ""
+  } else {
+    join([
+      join(map(pairs, p =>
+        css_block(
+          selector: reframe_selector(selector: p.selector),
+          decls: [decl(prop: "transition", value: reframe_transition_value(props: p.props, t: reframe_page))])), "\n"),
+      join([
+        "@media (prefers-reduced-motion: reduce) { ",
+        join(map(pairs, p =>
+          css_block(
+            selector: reframe_selector(selector: p.selector),
+            decls: [decl(prop: "transition", value: "none")])), " "),
+        " }",
+      ], ""),
+    ], "\n")
+  }
+}
+
+fn alternate_scheme_query() -> String {
+  join(["(prefers-color-scheme: ", day_theme.scheme, ")"], "")
+}
+
+fn reframe_watcher_program() -> TsProgram {
+  TsProgram {
+    ts_nocheck: false,
+    header_lines: [
+      "gunb.ai theme reframe watcher — emitted from gunbc.site.theme_transition",
+      "duration is tokens.reframe_page: one authority for the CSS ms and this timeout",
+      "applyTheme pins :root[data-theme]; the :not([data-theme]) media block goes inert,",
+      "so every flip is our mutation, set in the same turn as html.reframing (no race)",
+    ],
+    statements: [
+      ts_const(name: "mql", value: ts_call(
+        callee: ts_member(object: ts_ident(name: "window"), property: "matchMedia"),
+        args: [ts_lit_str(value: alternate_scheme_query())])),
+      ts_const(name: "root", value: ts_member(object: ts_ident(name: "document"), property: "documentElement")),
+      ts_const(name: "applyTheme", value: ts_arrow(params: [], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_ident(name: "root"), property: "setAttribute"),
+          args: [
+            ts_lit_str(value: "data-theme"),
+            ts_cond(
+              test: ts_member(object: ts_ident(name: "mql"), property: "matches"),
+              consequent: ts_lit_str(value: day_theme.name),
+              alternate: ts_lit_str(value: night_theme.name)),
+          ])),
+      ]))),
+      ts_let(name: "reframeTimer", value: ts_lit_num(text: "0")),
+      ts_const(name: "pulse", value: ts_arrow(params: [], body: ts_block(stmts: [
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(object: ts_member(object: ts_ident(name: "root"), property: "classList"), property: "add"),
+          args: [ts_lit_str(value: "reframing")])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "applyTheme"), args: [])),
+        ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearTimeout"), args: [ts_ident(name: "reframeTimer")])),
+        ts_expr_stmt(expr: ts_binop(
+          left: ts_ident(name: "reframeTimer"),
+          op: "=",
+          right: ts_call(callee: ts_ident(name: "setTimeout"), args: [
+            ts_arrow(params: [], body: ts_block(stmts: [
+              ts_expr_stmt(expr: ts_call(
+                callee: ts_member(object: ts_member(object: ts_ident(name: "root"), property: "classList"), property: "remove"),
+                args: [ts_lit_str(value: "reframing")])),
+            ])),
+            ts_lit_num(text: to_string(reframe_page.duration_ms)),
+          ]))),
+      ]))),
+      ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "applyTheme"), args: [])),
+      ts_expr_stmt(expr: ts_call(
+        callee: ts_member(object: ts_ident(name: "mql"), property: "addEventListener"),
+        args: [ts_lit_str(value: "change"), ts_ident(name: "pulse")])),
+    ],
+  }
+}
+
+fn reframe_watcher_js() -> String {
+  serialize_typescript_program(p: reframe_watcher_program())
+}
