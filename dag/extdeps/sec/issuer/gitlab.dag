@@ -1,0 +1,33 @@
+module extdeps.sec.issuer.gitlab
+
+import extdeps.sec.types {
+  Cik,
+  IssuerCatalogRow,
+  Nasdaq,
+  StockTicker,
+}
+import extdeps.vendor.gitlab { gitlab }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=0001653482"
+  }
+}
+
+data gitlab_cik_digits: NonEmptyStr = "1653482"
+
+data gitlab_cik: Cik = Cik { digits: gitlab_cik_digits }
+
+data gitlab_ticker: StockTicker = StockTicker { symbol: "GTLB" }
+
+data gitlab_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
+  cik: gitlab_cik,
+  legal_name: "GitLab Inc.",
+  primary_ticker: gitlab_ticker,
+  exchange: Nasdaq,
+  vendor: gitlab,
+}

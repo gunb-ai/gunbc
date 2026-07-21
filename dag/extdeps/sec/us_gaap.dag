@@ -1,0 +1,35 @@
+module extdeps.sec.us_gaap
+
+import std.types { NonEmptyStr }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd"
+  }
+}
+
+data us_gaap_taxonomy_version_note: String = "Declared taxonomy release for the us-gaap element tags below. Element tag strings are the single authority (DESIGN section 3 — no nicknaming); the annual release version is cited metadata, not a rename of the tags."
+
+data us_gaap_taxonomy_version: NonEmptyStr = "2024"
+
+data us_gaap_taxonomy_namespace: NonEmptyStr = "us-gaap"
+
+data us_gaap_revenues: NonEmptyStr = "Revenues"
+
+data us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax: NonEmptyStr = "RevenueFromContractWithCustomerExcludingAssessedTax"
+
+data us_gaap_cost_of_revenue: NonEmptyStr = "CostOfRevenue"
+
+data us_gaap_gross_profit: NonEmptyStr = "GrossProfit"
+
+data us_gaap_selling_and_marketing_expense: NonEmptyStr = "SellingAndMarketingExpense"
+
+data us_gaap_research_and_development_expense: NonEmptyStr = "ResearchAndDevelopmentExpense"
+
+data us_gaap_general_and_administrative_expense: NonEmptyStr = "GeneralAndAdministrativeExpense"
+
+data us_gaap_operating_income_loss: NonEmptyStr = "OperatingIncomeLoss"
