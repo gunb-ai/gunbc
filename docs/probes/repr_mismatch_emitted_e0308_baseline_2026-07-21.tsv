@@ -1,0 +1,16 @@
+# repr_mismatch emitted E0308 baseline — crisp-fox-839 pre-staged harness, 2026-07-21
+# Oracle: scripts/repr_mismatch_emitted_e0308_probe.sh (merry-newt / bright-lynx-868)
+# Path: EMITTED_namespace (gunbc compile --entry namespace reference-closure, cargo build emitted .rs)
+# head=3bd736d230 (main post-#6983 repr grounding + #6986 UNRESOLVED fix; pre-#6981 dotted-alias)
+# Prior receipt (f355017edc, pre-#6983): materialization_carriers E0308=652, 04_infer E0308=3410
+#
+path	module	head	emit_ok	emit_summary	cargo	e0308_all	e0308_module_rs	total_rustc_errors	first_error
+EMITTED_namespace	src/v2/compiler/materialization_carriers.dag	3bd736d230	1	41 files emitted, 46 diagnostics	refuse	83	0	316	error[E0425]: cannot find value `extdeps` in this scope
+EMITTED_namespace	src/v2/compiler/04_infer.dag	3bd736d230	1	50 files emitted, 0 diagnostics	refuse	0	0	110	error: expected one of `!`, `(`, `+`, `::`, `;`, `<`, or `where`, found `.`
+#
+# DISPOSITION (pre-#6981):
+# - 04_infer E0308 already 0 on current main — repr grounding (#6983) cleared the 3410 brick.
+#   Remaining cargo refuse is the dotted qualified-alias class (#6981), not E0308.
+# - materialization_carriers module_rs E0308=0; closure e0308_all=83 (down from 652).
+#   First error is E0425 extdeps namespace, not E0308 — fan-out gate (c) for module E0308 is met.
+# - #6981 is NOT expected to move E0308 further; it targets dotted-alias rendering only.
