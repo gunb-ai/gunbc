@@ -1,0 +1,121 @@
+module gunbc.site.constellation
+
+import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
+
+data constellation_note: String = "Layer 5: the hero figure — candidate B Asterism (design section 4e): the layer DAG (DESIGN.md section 3: std <- extdeps <- compiler <- workflow, imports point toward std) drawn as a constellation. The stars ARE the architecture facts; the brightest star is the authority layer every import arrow points toward. DerivedTruth: nothing here is free art — delete a layer row and its star is gone. HTML owns text (frontend DESIGN rule 5): star names live in the HTML legend; hovering a star answers in the LEGEND via :has() — counterpart-highlight, proof the two surfaces render one fact row."
+
+type LayerStar {
+  key: String
+  claim: String
+  x: Int
+  y: Int
+  radius: Int
+}
+
+type LayerImportEdge {
+  from_key: String
+  to_key: String
+}
+
+data layer_stars: List<LayerStar> = [
+  LayerStar { key: "std", claim: "the frameworks — single authority", x: 66, y: 30, radius: 5 },
+  LayerStar { key: "extdeps", claim: "the real upstream, cited", x: 150, y: 78, radius: 4 },
+  LayerStar { key: "compiler", claim: "one grammar, both directions", x: 246, y: 48, radius: 3 },
+  LayerStar { key: "workflow", claim: "intent as an ordinary graph", x: 330, y: 96, radius: 2 },
+]
+
+data layer_import_edges: List<LayerImportEdge> = [
+  LayerImportEdge { from_key: "extdeps", to_key: "std" },
+  LayerImportEdge { from_key: "compiler", to_key: "extdeps" },
+  LayerImportEdge { from_key: "workflow", to_key: "compiler" },
+]
+
+fn star_by_key(stars: List<LayerStar>, key: String) -> LayerStar {
+  fold(stars, init: LayerStar { key: "", claim: "", x: 0, y: 0, radius: 0 },
+    f: (acc, s) => if s.key == key { s } else { acc })
+}
+
+fn brightest_is_authority(stars: List<LayerStar>, authority_key: String) -> Bool {
+  let authority = star_by_key(stars: stars, key: authority_key)
+  all(stars, s => s.key == authority_key || s.radius < authority.radius)
+}
+
+fn sattr(name: String, value: String) -> MarkupAttr {
+  MarkupAttr { name: name, value: value }
+}
+
+fn constellation_edge_lines(stars: List<LayerStar>, edges: List<LayerImportEdge>) -> List<MarkupNode> {
+  map(edges, e => {
+    let from = star_by_key(stars: stars, key: e.from_key)
+    let to = star_by_key(stars: stars, key: e.to_key)
+    ElementNode { tag: "line", attrs: [
+      sattr(name: "x1", value: to_string(from.x)),
+      sattr(name: "y1", value: to_string(from.y)),
+      sattr(name: "x2", value: to_string(to.x)),
+      sattr(name: "y2", value: to_string(to.y)),
+      sattr(name: "class", value: "sky-edge"),
+      sattr(name: "stroke-width", value: "1"),
+    ], children: [] }
+  })
+}
+
+fn star_group(s: LayerStar) -> MarkupNode {
+  ElementNode { tag: "g", attrs: [
+    sattr(name: "class", value: concat("star-g star-g-", s.key)),
+  ], children: [
+    ElementNode { tag: "circle", attrs: [
+      sattr(name: "cx", value: to_string(s.x)),
+      sattr(name: "cy", value: to_string(s.y)),
+      sattr(name: "r", value: to_string(s.radius + 7)),
+      sattr(name: "class", value: "star-halo"),
+    ], children: [] },
+    ElementNode { tag: "circle", attrs: [
+      sattr(name: "cx", value: to_string(s.x)),
+      sattr(name: "cy", value: to_string(s.y)),
+      sattr(name: "r", value: to_string(s.radius)),
+      sattr(name: "class", value: concat("star star-", s.key)),
+      sattr(name: "tabindex", value: "0"),
+    ], children: [] },
+  ] }
+}
+
+fn constellation_star_nodes(stars: List<LayerStar>) -> List<MarkupNode> {
+  map(stars, s => star_group(s: s))
+}
+
+fn constellation_svg(stars: List<LayerStar>, edges: List<LayerImportEdge>) -> MarkupNode {
+  ElementNode {
+    tag: "svg",
+    attrs: [
+      sattr(name: "viewBox", value: "0 0 396 126"),
+      sattr(name: "class", value: "constellation"),
+      sattr(name: "role", value: "img"),
+      sattr(name: "aria-label", value: "the layer DAG as an asterism"),
+    ],
+    children: concat(
+      constellation_edge_lines(stars: stars, edges: edges),
+      constellation_star_nodes(stars: stars)),
+  }
+}
+
+fn legend_item(s: LayerStar) -> MarkupNode {
+  ElementNode { tag: "li", attrs: [
+    sattr(name: "class", value: concat("legend-", s.key)),
+  ], children: [
+    ElementNode { tag: "span", attrs: [ sattr(name: "class", value: "legend-key") ],
+      children: [ TextNode { text: s.key } ] },
+    TextNode { text: concat(" — ", s.claim) },
+  ] }
+}
+
+fn constellation_legend(stars: List<LayerStar>) -> MarkupNode {
+  ElementNode { tag: "ul", attrs: [ sattr(name: "class", value: "legend") ],
+    children: map(stars, s => legend_item(s: s)) }
+}
+
+fn constellation_figure() -> MarkupNode {
+  ElementNode { tag: "figure", attrs: [ sattr(name: "class", value: "hero") ], children: [
+    constellation_svg(stars: layer_stars, edges: layer_import_edges),
+    constellation_legend(stars: layer_stars),
+  ] }
+}
