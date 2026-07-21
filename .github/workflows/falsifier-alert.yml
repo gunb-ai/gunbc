@@ -1,0 +1,88 @@
+# HAND-MAINTAINED INTERIM (unlike ci.yml/falsifier.yml, which are generated and
+# drift-gated — gunbc.generated_artifact enumerates exactly those two artifacts).
+# Purpose: the falsifier is the whole-corpus cold control — the only executor of
+# the Gate-1 emit receipts and the verifier of per-PR affected-set selection —
+# and it ran RED for 29 consecutive scheduled runs (2026-07-16..07-21) without
+# any human noticing, because nothing consumed its conclusion (operator: "totally
+# ambient/gets ignored unless a human literally goes to look at it"). This
+# workflow makes falsifier state non-ambient: transition-to-red opens a labeled
+# issue (notifying watchers), sustained red heartbeats at most daily, and
+# transition-to-green closes it with a receipt.
+# 🟡 dissolve-on: fold into gunbc.falsifier_workflow (dag/gunbc/falsifier_workflow.dag)
+# when the workflow emit seam models workflow_run triggers + issue effects; the
+# alert then becomes a typed effect row beside the batches it observes.
+name: falsifier-alert
+on:
+  workflow_run:
+    workflows: ["affected-set-falsifier"]
+    types: [completed]
+permissions:
+  issues: write
+jobs:
+  alert:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const conclusion = run.conclusion; // success | failure | cancelled | ...
+            if (conclusion !== 'success' && conclusion !== 'failure') {
+              core.info(`conclusion=${conclusion} — no alert action`);
+              return;
+            }
+            const label = 'falsifier-alert';
+            const title = 'falsifier is RED — affected-set cold control is dark';
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: label, per_page: 1,
+            });
+            const existing = open[0];
+            const runLine = `[run ${run.id}](${run.html_url}) · started ${run.run_started_at} · conclusion **${conclusion}**`;
+            if (conclusion === 'failure') {
+              if (!existing) {
+                await github.rest.issues.create({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  title, labels: [label],
+                  body: [
+                    '@briansrls — the scheduled affected-set falsifier just went RED.',
+                    '',
+                    `First red: ${runLine}`,
+                    '',
+                    'While this is red: per-PR affected-set selection runs UNVERIFIED by its',
+                    'cold control, the Gate-1 emit receipts (namespace import-closure A/B,',
+                    'self-host wet batch) do not execute anywhere, and the known-red probe',
+                    'un-quarantine accounting is dark. This issue auto-closes when a',
+                    'scheduled run goes green; sustained red heartbeats at most daily.',
+                  ].join('\n'),
+                });
+                core.notice('falsifier alert issue opened');
+              } else {
+                // heartbeat at most every 20h while red
+                const { data: comments } = await github.rest.issues.listComments({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: existing.number, per_page: 100,
+                });
+                const last = comments[comments.length - 1];
+                const lastTs = new Date(last ? last.created_at : existing.created_at).getTime();
+                if (Date.now() - lastTs > 20 * 3600 * 1000) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner, repo: context.repo.repo,
+                    issue_number: existing.number,
+                    body: `Still red. Latest: ${runLine}`,
+                  });
+                }
+              }
+            } else if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `GREEN again: ${runLine} — cold control restored; closing.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number, state: 'closed',
+              });
+              core.notice('falsifier alert issue closed (green)');
+            }

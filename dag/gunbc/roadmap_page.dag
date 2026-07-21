@@ -5,6 +5,7 @@ import std.markup { MarkupNode, ElementNode, TextNode, MarkupAttr }
 import std.markdown_markup { markdown_inlines_to_markup_nodes }
 import extdeps.languages.markdown { parse_inline_markdown_minimal }
 import gunbc.roadmap_style { roadmap_css }
+import gunbc.site.mark { render_mark }
 import gunbc.roadmap_model {
   RoadmapNode, RoadmapEdge, Pointer, RoadmapNodeId,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
@@ -151,6 +152,10 @@ fn txt(s: String) -> MarkupNode { TextNode { text: s } }
 
 fn el(tag: String, children: List<MarkupNode>) -> MarkupNode {
   ElementNode { tag: tag, attrs: [], children: children }
+}
+
+fn roadmap_header(title: String) -> MarkupNode {
+  el("header", [ render_mark(depth: 1), el("h1", [ txt(title) ]) ])
 }
 
 fn el_class(tag: String, cls: String, children: List<MarkupNode>) -> MarkupNode {
@@ -394,7 +399,7 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
         el("title", [ txt("gunbc — daily workspace") ]),
       ]),
       el("body", [
-        el("header", [ el("h1", [ txt("gunbc — daily workspace") ]) ]),
+        roadmap_header(title: "gunbc — daily workspace"),
         el_class("main", "daily-workspace", concat(main_prefix, [
           roadmap_frontier_markup(frontier: frontier, merged: merged),
         ])),
@@ -409,7 +414,7 @@ fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
   let main_children = concat(main_prefix, concat(lead, secs))
   let body_base = [
-    el("header", [ el("h1", [ txt("gunbc — roadmap") ]) ]),
+    roadmap_header(title: "gunbc — roadmap"),
     el_class("main", "roadmap", main_children),
   ]
   let body_children = if list_length(main_children) == 0 {

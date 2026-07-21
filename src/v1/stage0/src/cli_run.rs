@@ -4526,12 +4526,21 @@ fn load_sources_for_entry_with_pool(
     index: &MultiEntryIndex,
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let cache_key = workspace_relative_entry_path(entry_path);
+    if let Some(cached) = index.entry_closure_sources.borrow().get(&cache_key) {
+        return Ok(cached.clone());
+    }
     let sources = load_sources_for_entry_with_index(
         &index.source_files,
         &index.module_graph_facts,
         entry_path,
     )?;
-    extend_sources_to_both_closure_fixpoint(sources, index)
+    let sources = extend_sources_to_both_closure_fixpoint(sources, index)?;
+    index
+        .entry_closure_sources
+        .borrow_mut()
+        .insert(cache_key, sources.clone());
+    Ok(sources)
 }
 
 fn load_sources_for_entry_with_index(
@@ -4834,6 +4843,11 @@ pub struct MultiEntryIndex {
     /// (closure census + own-tree underlay); the pulled provider becomes
     /// closure-visible, which is what serves the name at typecheck.
     pool_bare_census: RefCell<Option<Rc<SymbolIndex>>>,
+    /// Memo: normalized entry path → name-derived closure sources. The bare-
+    /// reference fixpoint (`extend_sources_to_both_closure_fixpoint`) is pure
+    /// for a fixed pool; witnesses sharing an entry file within one floor worker
+    /// reused the loader without this and re-paid the #6848 walk each time.
+    entry_closure_sources: RefCell<HashMap<String, Vec<Rc<v1_compiler_compile::SourceFile>>>>,
     // Per-process subject-digest → resolved-graph share, the ReferenceTier in
     // front of the cross-process store (materialization-ladder tier ordering:
     // the share serves repeats, the store serves the process's FIRST touch of a
@@ -4920,6 +4934,21 @@ pub fn typed_module_cache_cap_for_test(index: &MultiEntryIndex) -> usize {
     typed_module_cache_cap(index)
 }
 
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
+    index.entry_closure_sources.borrow().len()
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn pool_qualified_fill_initialized_for_test(index: &MultiEntryIndex) -> bool {
+    index.pool_qualified_fill.borrow().is_some()
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn reset_pool_qualified_fill_for_test(index: &MultiEntryIndex) {
+    *index.pool_qualified_fill.borrow_mut() = None;
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
@@ -4944,6 +4973,7 @@ fn new_multi_entry_index_shell(
         pool_qualified_fill: RefCell::new(None),
         tree_bare_census: RefCell::new(std::collections::HashMap::new()),
         pool_bare_census: RefCell::new(None),
+        entry_closure_sources: RefCell::new(HashMap::new()),
     }
 }
 
