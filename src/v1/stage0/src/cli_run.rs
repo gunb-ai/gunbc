@@ -4691,7 +4691,7 @@ pub struct MultiEntryIndex {
     /// collision structurally unable to serve the wrong typecheck (the name-keyed
     /// store relied on `module_source_identity` failing loud instead).
     typed_module_cache:
-        RefCell<std::collections::HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+        RefCell<std::collections::HashMap<String, Arc<v1_compiler_infer::TypecheckModuleResult>>>,
     /// Source-content hashes by file path, recorded in the parse loop (where the
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
@@ -4908,12 +4908,21 @@ fn typed_module_content_key(
     ))
 }
 
+fn typed_result_to_arc(
+    result: Rc<v1_compiler_infer::TypecheckModuleResult>,
+) -> Arc<v1_compiler_infer::TypecheckModuleResult> {
+    match Rc::try_unwrap(result) {
+        Ok(inner) => Arc::new(inner),
+        Err(rc) => Arc::new((*rc).clone()),
+    }
+}
+
 /// Record `mod_name`'s interface hash for downstream key derivation (one entry per
 /// module per reconcile; the interface is a pure projection of the typed result).
 fn note_interface_hash(
     interface_hash_by_name: &mut std::collections::HashMap<String, String>,
     mod_name: &str,
-    tc_result: &Rc<v1_compiler_infer::TypecheckModuleResult>,
+    tc_result: &Arc<v1_compiler_infer::TypecheckModuleResult>,
 ) {
     interface_hash_by_name.insert(
         mod_name.to_string(),
@@ -4921,13 +4930,13 @@ fn note_interface_hash(
     );
 }
 
-/// Read the typed cache: per-index `Rc` when private; shared byte snapshots only when
+/// Read the typed cache: per-index `Arc` when private; shared byte snapshots only when
 /// cross-worker store is armed (no local duplicate — serde transport is one authority).
 /// `typed_key` is the content key from `typed_module_content_key`, never a module name.
 fn index_get_typed(
     index: &MultiEntryIndex,
     typed_key: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+) -> Result<Option<Arc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let Some(store) = index.cross_worker_store.as_ref() else {
         return Ok(index.typed_module_cache.borrow().get(typed_key).cloned());
     };
@@ -4955,13 +4964,14 @@ fn index_insert_typed(
     index: &MultiEntryIndex,
     typed_key: String,
     result: Rc<v1_compiler_infer::TypecheckModuleResult>,
-) -> Result<Rc<v1_compiler_infer::TypecheckModuleResult>, String> {
+) -> Result<Arc<v1_compiler_infer::TypecheckModuleResult>, String> {
+    let arc = typed_result_to_arc(result);
     let Some(store) = index.cross_worker_store.as_ref() else {
         index
             .typed_module_cache
             .borrow_mut()
-            .insert(typed_key, result.clone());
-        return Ok(result);
+            .insert(typed_key, arc.clone());
+        return Ok(arc);
     };
     if let Some(bytes) = {
         let caches = shared_caches_read(store)?;
@@ -4969,7 +4979,7 @@ fn index_insert_typed(
     } {
         return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
     }
-    let encoded = SharedTypecheckCaches::encode_typed_snapshot(&result)?;
+    let encoded = SharedTypecheckCaches::encode_typed_snapshot(arc.as_ref())?;
     let raced_bytes = {
         let mut caches = shared_caches_write(store)?;
         if let Some(existing) = caches.clone_typed_bytes(&typed_key) {
@@ -4982,15 +4992,15 @@ fn index_insert_typed(
     if let Some(bytes) = raced_bytes {
         return SharedTypecheckCaches::decode_typed_snapshot(bytes.as_slice());
     }
-    // Insert won the race: bytes live in the shared store only (no per-index Rc copy).
-    Ok(result)
+    // Insert won the race: bytes live in the shared store only (no per-index Arc copy).
+    Ok(arc)
 }
 
 /// Read the shared typed cache with a brief lock hold; decode happens after the guard drops.
 fn shared_get_typed(
     shared_caches: &Arc<RwLock<SharedTypecheckCaches>>,
     typed_key: &str,
-) -> Result<Option<Rc<v1_compiler_infer::TypecheckModuleResult>>, String> {
+) -> Result<Option<Arc<v1_compiler_infer::TypecheckModuleResult>>, String> {
     let bytes = {
         let caches = shared_caches_read(shared_caches)?;
         caches.clone_typed_bytes(typed_key)
@@ -6056,7 +6066,7 @@ fn reconcile_with_typed_cache(
     let mut dispatched: Vec<
         Option<(
             Rc<im::Vector<Rc<ErrorNode>>>,
-            Rc<v1_compiler_infer::TypecheckModuleResult>,
+            Arc<v1_compiler_infer::TypecheckModuleResult>,
         )>,
     > = vec![None; closure_modules.len()];
 
