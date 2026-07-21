@@ -26,9 +26,14 @@ import v2.std.qualified_name {
   qualified_name_to_dotted_string
 }
 
+import v2.compiler.ingested_fixture_arrows { ingested_add_module_source }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
 data normalize_graft_note: String = "§10 normalize-as-ingest: graft runs post-child-fold in 03_normalize, before resolve/fill — equivalent to desugaring at ingest for all downstream consumers."
 
-data ng_norm_module_source: String = "module v2.test.namespace_graft.norm\n\nfn norm_probe(x: Int) -> Int { x }\n"
+data ng_norm_module_source: String = ingested_add_module_source
 
 fn ng_norm_parsed_root() -> Optional<Node> {
   let lm = dag_language_model()
@@ -133,6 +138,22 @@ fn ng_norm_grafted_tree_has_no_metadata_edges(node: Node) -> Bool {
   }
 }
 
+test fn namespace_graft_manual_qn_on_parsed_holds() -> Bool {
+  match ng_norm_parsed_root() {
+    Present { value: parsed } =>
+      match module_header_containment_graft(root: parsed) {
+        Accepted { value: grafted, diagnostics: _ } =>
+          match qualified_name_from_graft_spine(root: grafted) {
+            Accepted { value: qn, diagnostics: _ } =>
+              qualified_name_to_dotted_string(qn: qn) == "m"
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
 test fn namespace_graft_normalize_applies_on_parsed_module_holds() -> Bool {
   match ng_norm_normalized_root() {
     Present { value: root } => namespace_graft_is_module_shell(root: root)
@@ -145,7 +166,7 @@ test fn namespace_graft_normalize_qn_round_trip_holds() -> Bool {
     Present { value: root } =>
       match qualified_name_from_graft_spine(root: root) {
         Accepted { value: qn, diagnostics: _ } =>
-          qualified_name_to_dotted_string(qn: qn) == "v2.test.namespace_graft.norm"
+          qualified_name_to_dotted_string(qn: qn) == "m"
         Rejected { diagnostics: _ } => false
       }
     Absent => false
