@@ -10,7 +10,7 @@ import extdeps.pricing.hetzner_dedicated {
   Ax102_1_Ltd,
   hetzner_dedicated_setup_fee_micros,
 }
-import std.currency { CurrencyCode, Eur, Usd }
+import std.currency { Eur, Usd }
 import std.measure {
   HardwareThreadCount,
   MoneyPerMinute,
@@ -23,7 +23,7 @@ import std.measure {
   money_per_month_micros,
 }
 import std.nat { Nat }
-import std.types { Int, NonEmptyStr }
+import std.types { Int }
 
 data knowable_wedge_note: String = "Knowable wedge = publicly cited umbrella price minus a cost floor derivable from cited hardware rows, given explicitly declared utilization/amortization/exchange-rate assumptions. Opaque inputs refuse — never estimate around Unknown."
 
@@ -122,10 +122,8 @@ fn derive_runner_cost_floor_per_minute_usd(
           ) {
             Present { value: monthly_eur } => {
               let per_minute_server_eur = monthly_eur / minutes_per_billing_month()
-              let per_minute_runner_eur =
-                (per_minute_server_eur * runner_count) / server_count
-              let utilized_runner_eur =
-                (per_minute_runner_eur * 10000) / assumptions.runner_utilization_bp
+              let per_minute_runner_eur = (per_minute_server_eur * runner_count) / server_count
+              let utilized_runner_eur = (per_minute_runner_eur * 10000) / assumptions.runner_utilization_bp
               eur_micros_to_usd_micros(
                 eur_micros: utilized_runner_eur,
                 numerator: assumptions.eur_to_usd_numerator,

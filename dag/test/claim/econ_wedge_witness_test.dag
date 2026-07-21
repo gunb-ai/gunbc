@@ -2,6 +2,10 @@ module test.claim.econ_wedge_witness
 
 import extdeps.pricing.github_actions { github_actions_linux_2core_price }
 import extdeps.pricing.hetzner_dedicated { hetzner_ax41_1_ltd_price }
+import extdeps.sec.issuer.gitlab_facts {
+  gitlab_fy2026_gross_profit,
+  gitlab_fy2026_revenue,
+}
 import extdeps.sec.issuer.chemed_facts {
   chemed_fy2025_operating_income,
   chemed_fy2025_revenue,
@@ -28,7 +32,6 @@ import gunbc.econ.knowable_wedge {
 import gunbc.econ.margin_envelope {
   GrossMargin,
   MarginEnvelopeDerived,
-  MarginEnvelopeRefused,
   OperatingMargin,
   derive_margin_envelope_from_filed_facts,
   margin_envelope_in_band,

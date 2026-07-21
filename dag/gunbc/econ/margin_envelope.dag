@@ -6,7 +6,7 @@ import extdeps.sec.facts {
   usd_whole_dollars_count,
 }
 import std.nat { Nat }
-import std.types { Int, NonEmptyStr }
+import std.types { Int }
 
 data margin_envelope_derive_not_store_note: String = "Margin envelopes are DERIVED from filed SEC component rows at read time (extdeps.sec.facts filed_facts_derive_not_store_note) — never stored fields on issuer fact rows. Basis points are integer-derived from whole-dollar filed amounts: (profit * 10000) / revenue."
 
