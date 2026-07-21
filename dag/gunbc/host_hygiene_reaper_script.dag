@@ -3,6 +3,7 @@ module gunbc.host_hygiene_reaper_script
 import std.types { String, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.host_converge { gunbc_runner_all_slots_unit_glob }
 
 data host_hygiene_reaper_script_dissolution_trigger: String = "🟡 dissolve-on: host_hygiene_reaper_script — concat-built bash shell text (host_hygiene_reap_classify_and_act_body / host_hygiene_reap_stale_override_body / host_hygiene_reap_script_body). DISSOLVES WHEN bash-emit (issue 5828) realizes the reap effect as typed host-effect argv routed through host_effect_apply, retiring the raw shell_exec_via_bash transport this scaffold stands in for. Separate from host_hygiene_reap_unit_body_dissolution_trigger below (review 40975: one scaffold had bundled two independent dissolution triggers, so resolving this one alone must not silently read as resolving that one)."
 
@@ -25,8 +26,6 @@ data host_hygiene_reap_unit_body_scaffold: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
-
-data host_hygiene_reaper_slot_unit_glob: String = "actions-runner@*.service"
 
 data host_hygiene_reap_service_unit_path: String = "/etc/systemd/system/host-hygiene-reap.service"
 
@@ -60,7 +59,7 @@ fn host_hygiene_reap_install_units_body() -> String {
 
 fn host_hygiene_reap_classify_and_act_body() -> String {
   concat(
-    concat("for unit in $(systemctl list-units --all --no-legend '", concat(host_hygiene_reaper_slot_unit_glob, "' | awk '\{print $1}'); do\n")),
+    concat("for unit in $(systemctl list-units --all --no-legend '", concat(gunbc_runner_all_slots_unit_glob, "' | awk '\{print $1}'); do\n")),
     concat(
       "  state=$(systemctl show \"$unit\" --property=ActiveState --value)\n",
       concat(
@@ -94,7 +93,7 @@ fn host_hygiene_reap_classify_and_act_body() -> String {
 
 fn host_hygiene_reap_stale_override_body() -> String {
   concat(
-    concat("for dir in /etc/systemd/system.control/", concat(host_hygiene_reaper_slot_unit_glob, ".d; do\n")),
+    concat("for dir in /etc/systemd/system.control/", concat(gunbc_runner_all_slots_unit_glob, ".d; do\n")),
     concat(
       "  [ -d \"$dir\" ] || continue\n",
       concat(

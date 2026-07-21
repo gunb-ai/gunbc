@@ -91,3 +91,7 @@ test fn ground_fleet_listening_refuses_when_one_stale() -> Bool {
     DoesNotGround { reason: _ } => true
   }
 }
+
+test fn liveness_script_reads_listening_for_jobs_line_is_an_executing_witness() -> Bool {
+  host_hygiene_liveness_reads_listening_for_jobs_line()
+}

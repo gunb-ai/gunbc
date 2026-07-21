@@ -145,3 +145,15 @@ test fn exempt_causes_are_counted_not_silently_dropped() -> Bool {
   ]
   collect_exempt_causes(obs_list: rows).length() == 1
 }
+
+test fn reap_script_refuses_build_cache_occupant_is_an_executing_witness() -> Bool {
+  host_hygiene_reap_refuses_build_cache_occupant()
+}
+
+test fn reap_script_skips_active_units_is_an_executing_witness() -> Bool {
+  host_hygiene_reap_skips_active_units()
+}
+
+test fn reap_script_removes_only_disabled_overrides_is_an_executing_witness() -> Bool {
+  host_hygiene_reap_removes_only_disabled_overrides()
+}
