@@ -1,13 +1,5 @@
 module extdeps.cpu
 
-import extdeps.cpu.types { CpuFacts }
-import extdeps.toolchain.types { Architecture }
-import extdeps.vendor { Vendor }
-import extdeps.hardware { Hardware }
-import std.measure { HardwareThreadCount, Hertz }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
