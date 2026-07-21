@@ -96,16 +96,20 @@ type XbrlConceptRef {
   tag: NonEmptyStr
 }
 
+data edgar_calendar_date_note: String = "ISO 8601 calendar date (YYYY-MM-DD) on SEC XBRL fact rows — upstream JSON keys include filed, start, end, and frame period bounds on companyfacts/companyconcept responses."
+
+type EdgarCalendarDate = String
+
 type XbrlFact {
-  end: String?
-  start: String?
+  end: EdgarCalendarDate?
+  start: EdgarCalendarDate?
   val: Float
   accn: String
   fy: Int
   fp: String
   form: String
-  filed: String
-  frame: String?
+  filed: EdgarCalendarDate
+  frame: EdgarCalendarDate?
 }
 
 type IssuerCatalogRow {

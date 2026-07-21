@@ -1,7 +1,7 @@
 module extdeps.sec.facts
 
 import std.types { Int, NonEmptyStr, String, List, Float }
-import extdeps.sec.types { FilingForm, AnnualReport }
+import extdeps.sec.types { FilingForm, AnnualReport, EdgarCalendarDate }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -20,9 +20,9 @@ type FiledFactCitation {
   fiscal_year: Int
   fiscal_period: NonEmptyStr
   form: FilingForm
-  period_start: String
-  period_end: String
-  filed_date: String
+  period_start: EdgarCalendarDate
+  period_end: EdgarCalendarDate
+  filed_date: EdgarCalendarDate
 }
 
 type FiledAmount
