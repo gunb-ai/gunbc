@@ -10059,8 +10059,14 @@ mod emit_host_admission_flip_test {
             let err = require_admitted_transport(Some(&v), &ctx, "emit_host_run_transport")
                 .expect_err("outside-grant transport must refuse");
             let msg = format!("{err:?}");
-            assert!(msg.contains("not admitted"), "typed refusal names the cause: {msg}");
-            assert!(msg.contains("EffectOutsideGrant"), "refusal locates the verdict: {msg}");
+            assert!(
+                msg.contains("not admitted"),
+                "typed refusal names the cause: {msg}"
+            );
+            assert!(
+                msg.contains("EffectOutsideGrant"),
+                "refusal locates the verdict: {msg}"
+            );
         }
     }
 
