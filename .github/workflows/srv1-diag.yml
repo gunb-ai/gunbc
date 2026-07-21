@@ -27,3 +27,14 @@ jobs:
           ss -tlnp 2>/dev/null | grep 8080 || true
           echo "=== node server processes ==="
           ps aux | grep -E 'server\.js|gunbc serve' | grep -v grep || true
+          echo "=== checkout path chain perms (namei) ==="
+          namei -l "$PWD" 2>&1 || true
+          echo "=== sudo probes: modeled grants + rsync/chown reality-check ==="
+          sudo -n /usr/bin/install --version >/dev/null 2>&1 && echo "install: GRANTED" || echo "install: DENIED"
+          sudo -n /usr/bin/systemctl --version >/dev/null 2>&1 && echo "systemctl: GRANTED" || echo "systemctl: DENIED"
+          sudo -n /usr/bin/rm --version >/dev/null 2>&1 && echo "rm: GRANTED" || echo "rm: DENIED"
+          sudo -n rsync --version >/dev/null 2>&1 && echo "rsync: GRANTED" || echo "rsync: DENIED"
+          sudo -n chown --version >/dev/null 2>&1 && echo "chown: GRANTED" || echo "chown: DENIED"
+          echo "=== sudoers dropin (if readable) ==="
+          sudo -n /usr/bin/install --version >/dev/null 2>&1 && sudo -n /usr/bin/install -m 0644 /etc/sudoers.d/gunbc-deploy /tmp/gunbc-deploy-sudoers-copy 2>/dev/null && cat /tmp/gunbc-deploy-sudoers-copy || echo "(not readable)"
+          rm -f /tmp/gunbc-deploy-sudoers-copy || true
