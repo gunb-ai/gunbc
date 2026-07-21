@@ -39,7 +39,20 @@ import v2.extdeps.languages.dag {
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
   qualified_name_from_emit_shaped_module_root,
-  qualified_name_from_module_node
+  qualified_name_from_parsed_module_root
+}
+
+fn namespace_graft_pre_graft_module_qn(root: Node) -> Outcome<QualifiedName> {
+  match parse_production_emitted_identity_optional(node: root) {
+    Present { value: id } =>
+      if id == ^dag_surface_module {
+        qualified_name_from_parsed_module_root(root: root)
+      } else {
+        qualified_name_from_emit_shaped_module_root(root: root)
+      }
+    Absent =>
+      qualified_name_from_emit_shaped_module_root(root: root)
+  }
 }
 
 type ModuleRootEdgeDisposition
@@ -357,7 +370,7 @@ fn namespace_graft_dual_position_refused(root: Node) -> Bool {
   if !namespace_graft_is_graft_candidate(root: root) {
     false
   } else {
-    match qualified_name_from_module_node(root: root) {
+    match namespace_graft_pre_graft_module_qn(root: root) {
       Rejected { diagnostics: _ } => false
       Accepted { value: qn, diagnostics: _ } =>
         match qn {
@@ -381,7 +394,7 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
   } else if !namespace_graft_is_graft_candidate(root: root) {
     outcome_accepted(value: root)
   } else {
-    match qualified_name_from_module_node(root: root) {
+    match namespace_graft_pre_graft_module_qn(root: root) {
       Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
       Accepted { value: qn, diagnostics: _ } =>
         match qn {

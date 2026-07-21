@@ -170,6 +170,10 @@ import v2.std.integer {
 }
 import v2.std.text { String }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node }
+import v2.std.namespace_graft {
+  namespace_graft_already_grafted,
+  qualified_name_from_graft_spine
+}
 import v2.extdeps.languages.fidelity {
   DeclaredNormalized,
   FailClosed,
@@ -5771,14 +5775,18 @@ fn qualified_name_from_parsed_module_root(root: Node) -> Outcome<QualifiedName> 
 }
 
 fn qualified_name_from_module_node(root: Node) -> Outcome<QualifiedName> {
-  match parse_production_emitted_identity_optional(node: root) {
-    Present { value: id } =>
-      if id == ^dag_surface_module {
-        qualified_name_from_parsed_module_root(root: root)
-      } else {
+  if namespace_graft_already_grafted(root: root) {
+    qualified_name_from_graft_spine(root: root)
+  } else {
+    match parse_production_emitted_identity_optional(node: root) {
+      Present { value: id } =>
+        if id == ^dag_surface_module {
+          qualified_name_from_parsed_module_root(root: root)
+        } else {
+          qualified_name_from_emit_shaped_module_root(root: root)
+        }
+      Absent =>
         qualified_name_from_emit_shaped_module_root(root: root)
-      }
-    Absent =>
-      qualified_name_from_emit_shaped_module_root(root: root)
+    }
   }
 }
