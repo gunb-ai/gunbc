@@ -1,5 +1,21 @@
 module v2.test.claim_pipeline.translate
 
+import v2.compiler.translate { translate }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  CompilesClaim,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
 
 data spine_translate_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_translate_module } },

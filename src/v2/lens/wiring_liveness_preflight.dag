@@ -1,5 +1,27 @@
 module v2.lens.wiring_liveness_preflight
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.lens.affected_set {
+  ChangedSubgraphFrontier,
+  FailClosed,
+  FailClosedReason,
+  FrontierDependency,
+  ReExecFrontier,
+  ReasonDiagnostics
+}
+import v2.lens.common.graph_invariant {
+  GraphReachProjection,
+  graph_invariant_reaches,
+  graph_reach_unreachable_diagnostic
+}
+import std.perturbation { BackwardDiffInDiffOut, perturbation_consistent }
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.std.algebra { list_snoc_item }
+import v2.std.dependency { DependencyView }
+import v2.std.diagnostic { diagnostics_singleton }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
 
 type FrontierWiringObligation {
   output: Node

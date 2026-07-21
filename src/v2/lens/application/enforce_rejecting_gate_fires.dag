@@ -1,5 +1,30 @@
 module v2.test.lens_application.enforce_rejecting_gate_fires
 
+import v2.compiler.compile {
+  CompileLens,
+  CompileLensEnforce,
+  apply_compile_lens,
+  compile_lens_gate_rejected_diagnostic
+}
+import v2.compiler.infer { InferredTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_rejected, port_locus }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Witness }
+import v2.test.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
 
 data enforce_reject_root: Node = claim_atom_node(s: ^enforce_reject_symbol)
 

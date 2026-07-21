@@ -1,5 +1,17 @@
 module v2.test.lens_fact_density.hollow_alias_no_fact
 
+import v2.lens.fact_density { NoFact, carrier_spec_fact }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
 
 data hollow_alias_input: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_alias_int32_symbol } },

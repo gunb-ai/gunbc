@@ -1,5 +1,42 @@
 module v2.test.claim.ci_spec_witness
 
+import v2.std.algebra { bag_eq, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Behavior, Symbol }
+import v2.std.node_query { coproduct_arm_keys, coproduct_nullary_inhabitants }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
+import gunbc.ci_spec {
+  CiSpec, DiffPolicy, DiffMergeBase, Gate,
+  gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates,
+  gunbc_ci_regen_floor_gates,
+  ci_release_features,
+  scheduler_invoke, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
+  ci_floor_build_verify_script,
+  ci_repo_root_shell,
+  ci_documentation_only_floor_policy_note,
+  compile_clean_floor_skip_witness_bin,
+}
+import v2.workflow.ci_release_build_emit { gunbc_ci_run_script, ci_release_build_script }
+import gunbc.ci_diff_defaults { ci_merge_base_ref }
+import gunbc.ci_materialization {
+  ci_floor_resolve_receipt_gate_script,
+  ci_floor_materialization_receipt_gate_script,
+}
+import gunbc.ci_workflow { ci_selection_control_script }
+import gunbc.merge_admission_produce {
+  ci_floor_disposition_marker_path,
+  ci_floor_disposition_marker_init_note,
+  ci_floor_disposition_marker_init_shell_emit_dissolution_trigger,
+  merge_admission_floor_disposition_documentation_only_skipped,
+  merge_admission_floor_disposition_floor_running,
+  merge_admission_stamp_invoke,
+  merge_admission_merge_base_ref,
+  ci_documentation_only_gate_skip_prefix_shell_emit_dissolution_trigger,
+  ci_merge_admission_gate_script,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

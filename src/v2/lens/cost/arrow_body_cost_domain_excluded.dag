@@ -1,5 +1,23 @@
 module v2.test.lens_cost.arrow_body_cost_domain_excluded
 
+import v2.lens.cost { SumCost, cost_lens, unit_cost }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.witness { Holds }
 
 data arrow_body_cost_domain_excluded_note: String = "Discriminating RED for Wave 1 Gate 1 C1: Arrow domain Cardinality children must NOT inflate the cost fold — only ^arrow_body_edge is priced. If edge_contributes_to_cost_fold regresses to include Arrow positional children, this witness goes red (domain linear cost would dominate)."
 

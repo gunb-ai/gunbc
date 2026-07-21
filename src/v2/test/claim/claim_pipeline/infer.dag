@@ -1,5 +1,20 @@
 module v2.test.claim_pipeline.infer
 
+import v2.compiler.infer { infer }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  CompilesClaim,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
 
 data spine_infer_module_subject: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^spine_infer_module } },

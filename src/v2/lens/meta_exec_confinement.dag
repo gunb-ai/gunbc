@@ -1,5 +1,22 @@
 module v2.lens.meta_exec_confinement
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+
+import v2.lens.layering_imports {
+  LayerImportFact,
+  layer_import_facts_live
+}
+import v2.std.algebra {
+  fold_list,
+  is_empty,
+  is_prefix_of,
+  length,
+  list_snoc_item
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { Char, String }
 
 data meta_exec_confinement_law: String = "Meta-exec confinement (shell→intent Wave A1): shell.Exec.Run/.Check is the honest bottom bash transport — kept, not deleted — but sequestered to realization. extdeps.shell.exec is module-isolated from extdeps.shell; only realization-edge paths may import it without a shrinking roster entry. Intent-layer shell.Exec import is a typed leak; bare String at the Run script position is separately banned by host_language_transport_script once TransportScript brands the input. Dissolves when every roster row migrates off direct shell.Exec and typed host_effect_apply / emit(intent,Bash) is the only path from intent."
 

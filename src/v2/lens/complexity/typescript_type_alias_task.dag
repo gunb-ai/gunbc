@@ -1,5 +1,17 @@
 module v2.test.lens_complexity.typescript_type_alias_task
 
+import v2.extdeps.languages.typescript { ts_task_type_alias_emitted }
+import v2.lens.complexity { ComplexityBound, complexity_lens, linear_complexity }
+import v2.lens.cost { LinearCost, SizeVariable, SymbolicCost, cost_lens }
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v2.std.node { Cardinality, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.witness { Witness }
 
 type LensComplexityClaim {
   input: Node

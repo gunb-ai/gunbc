@@ -1,5 +1,15 @@
 module v2.test.emit.semantic_decl_routing
 
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.rust { rust_target_model }
+import extdeps.languages.rust.emit { rust_enum_derives_copy, rust_struct_derives }
+import std.algebra { Empty }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Arrow, Atom, Conj, Disj, Edge, Named, Node, Positional, Symbol, SyntheticOccurrence, TypeNode }
+import extdeps.communication.medium { Medium }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

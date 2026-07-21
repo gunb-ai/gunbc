@@ -1,5 +1,50 @@
 module v2.test.emit.rust_literal_bind_emit
 
+import v2.test.complexity_gate.table_fixture_bind_subject_producer {
+  table_fixture_bind_arrow_with_body,
+  table_fixture_bind_wrong_value_arrow_with_body
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust_test {
+  rust_literal_emit_string_refusal_note,
+  rust_bind_bool_literal_arrow_node,
+  rust_bind_bool_literal_source_text,
+  rust_bind_bool_literal_wrong_arrow_node,
+  rust_bind_bool_literal_wrong_source_text,
+  rust_bind_char_literal_arrow_node,
+  rust_bind_char_literal_source_text,
+  rust_bind_char_literal_wrong_arrow_node,
+  rust_bind_char_literal_wrong_source_text,
+  rust_bind_int_literal_source_text,
+  rust_bind_int_literal_wrong_source_text,
+  rust_bind_literal_target_model
+}
+import extdeps.communication.medium { Medium }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model {
+  TargetModel,
+  target_value_expression_string_literal,
+  target_value_expression_tokens_from_target,
+  target_value_expression_projection_from_target
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Disj, Node, SyntheticOccurrence, TypeNode }
+import v2.std.witness { Violates, Witness }
+import v2.std.algebra { free_monoid_type_node }
+import v2.std.compilers.target_model { char_kernel_type_node }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

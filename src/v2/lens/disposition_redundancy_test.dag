@@ -1,5 +1,44 @@
 module v2.test.lens_disposition_redundancy.disposition_redundancy_test
 
+import v2.lens.disposition_redundancy { disposition_redundancy_violation_count, terminal_count }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
+import std.decl_ref { DeclarationRef, NamedField, WholeDeclaration }
+import extdeps.llm.anthropic { structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads }
+import std.bytes { bytes_seam_host_realization_marker }
+import std.encoding { utf8_decode_bytes_host_realization_marker, base64_group_fill_carrier_debt_marker }
+import gunbc.ci_floor_measurement {
+  gunbc_ci_host_fixed_overhead_disposition,
+  gunbc_ci_concurrent_runs_conservative_high_disposition,
+  gunbc_ci_regime2_aggregate_dissolution_marker,
+  gunbc_ci_footprint_granularity_disposition,
+  gunbc_ci_footprint_bridge_disposition
+}
+import gunbc.ci_budget_tree { gunbc_ci_budget_tree_deconfliction_disposition }
+import extdeps.entropy {
+  entropy_count_bytes_unit_debt,
+  entropy_transport_linux_gnu_only
+}
+import gunbc.tools.bmc_onboard {
+  bmc_onboard_secret_on_disk_debt,
+}
+import gunbc.ci_runner_placement {
+  gunbc_ci_cpu_weight_unit_modeling_marker,
+  gunbc_ci_count_field_measure_followup,
+  gunbc_ci_runner_count_from_budget_disposition
+}
+import gunbc.host_converge {
+  gunbc_host_converge_runner_sessions_coupling_marker
+}
+import tools.rust_stage0_gates {
+  consumed_input_closure_concept_note,
+  unit_must_run_failclosed_note,
+  unit_must_run_staged_note,
+  should_run_gates_coverage_note
+}
+import v2.std.collection { List }
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 

@@ -1,5 +1,19 @@
 module v2.test.emit_host_gate.target_coverage_completeness
 
+import v2.std.algebra { fold_list, is_empty }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.compilers.target_model { TargetModel, runtime_row_from_target }
+import v2.extdeps.languages.rust { rust_target_model }
+import v2.extdeps.languages.python { python_target_model }
+import v2.extdeps.languages.go { go_target_model }
+import v2.extdeps.languages.typescript { ts_target_model }
+import v2.extdeps.languages.cpp { cpp_target_model }
+import v2.extdeps.languages.c { c_target_model }
+import v2.extdeps.languages.java { java_target_model }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

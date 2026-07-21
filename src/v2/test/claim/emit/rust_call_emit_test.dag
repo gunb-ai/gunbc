@@ -1,5 +1,48 @@
 module v2.test.emit.rust_call_emit
 
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust { rust_target_model_bundle_core }
+import v2.extdeps.languages.rust_test {
+  rust_call_binding_spellings,
+  rust_call_host_source_text,
+  rust_call_lex
+}
+import v2.std.compilers.target_model {
+  TargetModel,
+  target_model_emit_transforms_empty
+}
+import extdeps.communication.medium { Medium }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Arrow,
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  Transform,
+  TypeNode,
+  Value,
+  node_synthetic
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

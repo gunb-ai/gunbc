@@ -1,5 +1,31 @@
 module v2.test.lens_cost.disj_max
 
+import v2.lens.cost { LinearCost, SizeVariable, cost_lens }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds }
 
 data disj_max_cheap_body: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^disj_max_cheap_body_atom } },

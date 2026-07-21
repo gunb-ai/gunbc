@@ -1,5 +1,13 @@
 module v2.test.emit.semantic_decl_target_refusal
 
+import v2.compiler.emit_semantic_decl { emit_semantic_type_decl }
+import v2.extdeps.languages.cpp { cpp_target_model }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Conj, Disj, Edge, Named, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.text { String }
+import std.algebra { Empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

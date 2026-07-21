@@ -1,5 +1,41 @@
 module v2.test.emit.rust_body_add_emit
 
+import v2.test.complexity_gate.table_fixture_add_subject_producer {
+  table_fixture_add_arrow_with_body,
+  table_fixture_add_arrow_with_body_swapped_operands
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.rust {
+  rust_source_text,
+  rust_target_model_staging,
+  rust_fn_add_lex
+}
+import v2.extdeps.languages.rust_test { rust_target_model_with_operators_and_lex }
+import v2.std.collection { Map }
+import v2.std.compilers.target_model {
+  InfixToken,
+  TargetModel,
+  canonical_operation_op_add,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node
+}
+import extdeps.communication.medium { Medium }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

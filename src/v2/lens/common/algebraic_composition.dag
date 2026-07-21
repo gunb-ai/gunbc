@@ -1,5 +1,9 @@
 module v2.lens.common.algebraic_composition
 
+import v2.compiler.infer { InferredFacts }
+import v2.std.dependency { DependencyKindClassifier }
+import v2.std.diagnostic { Diagnostic }
+import v2.std.witness { Witness }
 
 type EffectClassification {}
 

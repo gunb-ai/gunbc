@@ -1,5 +1,12 @@
 module v2.lens.simulated_relationship
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+
+import v2.std.node { Node }
+import std.algebra { FreeMonoid }
+import v2.lens.common.chain_generalization { chain_collapses }
+import v2.std.logic { Bool }
 
 fn chain_is_simulated(steps: FreeMonoid<Node>) -> Bool {
   chain_collapses(steps: steps, min_len: 3, require_hole: true)

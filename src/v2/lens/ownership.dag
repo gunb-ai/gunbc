@@ -1,5 +1,36 @@
 module v2.lens.ownership
 
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import v2.lens.common.algebraic_composition {
+  BorrowedDependency,
+  OwnedContainment,
+  OwnershipMode,
+  RequiresAccessWitness,
+  SharedRead,
+  UnknownOwnership,
+  ownership_classifier
+}
+import std.disposition { SingleAuthority }
+
+import v2.compiler.infer { InferredTree }
+import v2.std.algebra { bag_eq, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.dependency {
+  ClassifiedDependencyView,
+  DependencyView,
+  classify_dependency_view,
+  classified_dependency_view_eq
+}
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.witness { Holds, Violates, Witness }
 
 type OwnershipFact {
   dependencies: List<ClassifiedDependencyView<OwnershipMode>>

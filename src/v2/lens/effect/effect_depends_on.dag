@@ -1,5 +1,62 @@
 module v2.test.lens_effect.effect_depends_on
 
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval_diagnostic,
+  eval_test_claim_subject,
+  run_test_claim
+}
+import v2.lens.effect {
+  EffectClassification,
+  EffectFact,
+  effect_fact,
+  effect_fact_eq,
+  effect_witness
+}
+import v2.std.dependency {
+  ClassifiedDependencyView,
+  DependencyView,
+  EffectDependsOn
+}
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, None, diagnostics_singleton }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, ComputationNode, Edge, Named, Node, Symbol, TypeNode, Value, SyntheticOccurrence }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  Continue,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Violates, Witness }
+import v2.test.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
 
 data effect_child: Node = claim_atom_node(s: ^effect_child_symbol)
 

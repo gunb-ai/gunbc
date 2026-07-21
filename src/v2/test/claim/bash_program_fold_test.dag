@@ -1,5 +1,39 @@
 module v2.test.claim.bash_program_fold
 
+import tools.build_step { BuildArtifact, emit_verifications }
+import v2.extdeps.languages.bash_build {
+  bash_build_and_then,
+  bash_build_assign,
+  bash_build_assign_lit,
+  bash_build_command_from_lits,
+  bash_build_command_from_word_nodes,
+  bash_build_command_words_pair,
+  bash_build_command_words_single,
+  bash_build_exit,
+  bash_build_if_from_stmts,
+  bash_build_or_else,
+  bash_build_subshell_from_stmts,
+  bash_build_with_redir,
+  bash_build_word_cmdsubst,
+  bash_build_word_concat,
+  bash_build_word_concat_from_nodes,
+  bash_build_word_lit,
+  bash_build_word_var
+}
+import v2.workflow.bash_emit {
+  BashEmitSpecial,
+  BashEmitStmt,
+  BashEmitTagged,
+  bash_emit_matches_golden,
+  bash_emit_program,
+  bash_emit_program_matches_golden
+}
+import v2.std.algebra { list_append, list_map }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

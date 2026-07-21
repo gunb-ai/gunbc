@@ -1,5 +1,48 @@
 module v2.test.claim.c_compilation_unit_witness
 
+import std.algebra { Empty }
+import std.types { ContentHash, NonEmptyStr, List }
+import v2.extdeps.languages.c {
+  c_include_directive_for_dep,
+  c_partition_fold_outcome,
+  c_partition_unit_graph_has_cycle,
+  c_translation_unit_spelling,
+  c_unit_header_path,
+  c_unit_object_path,
+  c_unit_source_path,
+  c_validate_partition_r4
+}
+import v2.std.compilers.compilation_unit {
+  ByValueTypeCycle,
+  CompilationUnitId,
+  InterfaceClosureUnreachedFixpoint,
+  ModuleDag,
+  ModuleDagEdge,
+  ModuleId,
+  ModuleTypeDefinitionRow,
+  PartitionFoldOk,
+  PartitionFoldRefused,
+  PartitionR4Refused,
+  PartitionR4Valid,
+  compilation_unit_artifact_id,
+  partition_fold_outcome,
+  partition_fold_outcome_with_closure_fuel,
+  partition_interface_contains_node,
+  partition_unit_by_id
+}
+import v2.std.collection { empty_map, map_insert }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  node_synthetic
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
