@@ -1359,6 +1359,410 @@ fn front_end_resilience_partial_graph_excludes_only_the_broken_module() {
 }
 
 #[test]
+fn pool_parse_heads_only_does_not_prefill_parse_cache() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, parse_cache_contains_path_for_test, parse_cache_paths_for_test,
+        resolve_entry_with_index,
+    };
+
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc_pool_heads_only_{}_{}",
+            std::process::id(),
+            stamp
+        ));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let root = dir.to_string_lossy().into_owned();
+    let cleanup = || {
+        let _ = std::fs::remove_dir_all(&dir);
+    };
+
+    let huge_body = format!(
+        "module huge\nfn big() -> Int {{\n{}\n}}\n",
+        (0..50_000)
+            .map(|i| format!("  let x{i} = {i}\n"))
+            .collect::<String>()
+    );
+    std::fs::write(dir.join("huge.dag"), huge_body).expect("write huge.dag");
+    std::fs::write(
+        dir.join("entry.dag"),
+        "module entry\nfn main() -> Int { 0 }\n",
+    )
+    .expect("write entry.dag");
+    let entry_path = dir.join("entry.dag").to_string_lossy().into_owned();
+    let huge_path = dir.join("huge.dag").to_string_lossy().into_owned();
+
+    let index = build_multi_entry_index(std::slice::from_ref(&root));
+    resolve_entry_with_index(&index, &entry_path)
+        .expect("entry must resolve after heads-only pool census");
+    assert!(
+        !parse_cache_contains_path_for_test(&index, &huge_path),
+        "pool census must not retain full-body ASTs in parse_cache for uncompiled pool modules"
+    );
+    assert!(
+        parse_cache_contains_path_for_test(&index, &entry_path),
+        "closure resolve must still cache full bodies for compiled modules (entry_path={entry_path:?}, parse_cache_keys={:?})",
+        parse_cache_paths_for_test(&index),
+    );
+    cleanup();
+}
+
+#[test]
+fn entry_closure_sources_memo_reuses_name_derived_walk() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, entry_closure_sources_len_for_test, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    resolve_entry_with_index(&index, &entry).expect("first resolve");
+    assert_eq!(
+        entry_closure_sources_len_for_test(&index),
+        1,
+        "first resolve must memo the entry closure"
+    );
+    resolve_entry_with_index(&index, &entry).expect("second resolve");
+    assert_eq!(
+        entry_closure_sources_len_for_test(&index),
+        1,
+        "second resolve must not re-run the bare-reference fixpoint walk"
+    );
+}
+
+#[test]
+fn reconcile_defer_builds_pool_qualified_fill_on_typed_cache_miss() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, pool_qualified_fill_initialized_for_test, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    assert!(
+        !pool_qualified_fill_initialized_for_test(&index),
+        "fresh index must not pre-build qualified fill"
+    );
+    resolve_entry_with_index(&index, &entry).expect("cold miss resolve");
+    assert!(
+        pool_qualified_fill_initialized_for_test(&index),
+        "cache-miss reconcile must build qualified fill after the short-circuit probe"
+    );
+}
+
+#[test]
+fn reconcile_defer_skips_pool_qualified_fill_on_full_typed_cache_hit() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, pool_qualified_fill_initialized_for_test,
+        reset_pool_qualified_fill_for_test, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    resolve_entry_with_index(&index, &entry).expect("cold warm typed cache");
+    reset_pool_qualified_fill_for_test(&index);
+    assert!(
+        !pool_qualified_fill_initialized_for_test(&index),
+        "test setup: qualified fill cleared while typed cache remains warm"
+    );
+    resolve_entry_with_index(&index, &entry).expect("hot all-hit resolve");
+    assert!(
+        !pool_qualified_fill_initialized_for_test(&index),
+        "all-cache-hit reconcile must not consult or build pool_qualified_fill"
+    );
+}
+
+#[test]
+fn reconcile_defer_hot_hit_matches_cold_oracle() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, make_eval_context, reset_pool_qualified_fill_for_test,
+        resolve_entry_graph, resolve_entry_with_index, run_claim,
+    };
+    use v1_compiler::v1_interpreter::ExecutionMode;
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let function = "doc_graph_has_no_orphan_docs";
+
+    let (cold_graph, cold_si) = resolve_entry_graph(&roots, &entry).expect("cold oracle");
+    let cold_ctx = make_eval_context(&cold_graph, cold_si, ExecutionMode::Wet);
+    let cold = run_claim(&cold_ctx, function);
+
+    let index = build_multi_entry_index(&roots);
+    resolve_entry_with_index(&index, &entry).expect("warm typed cache");
+    reset_pool_qualified_fill_for_test(&index);
+    let (hot_graph, hot_si) = resolve_entry_with_index(&index, &entry).expect("hot hit");
+    let hot_ctx = make_eval_context(&hot_graph, hot_si, ExecutionMode::Wet);
+    let hot = run_claim(&hot_ctx, function);
+
+    assert_eq!(
+        cold, hot,
+        "deferral must not change witness outcome on the all-hit path (cold={cold:?}, hot={hot:?})"
+    );
+}
+
+#[test]
+fn census_heads_fn_stand_in_is_fail_loud_not_empty() {
+    use v1_compiler::cli_run::{
+        census_heads_body_traversal_refusal, census_heads_fn_stand_in_for_test,
+        is_census_heads_fn_stand_in,
+    };
+    use v1_compiler::v1_std_core::{ExprData, ExprErrorKind};
+
+    let stand_in = census_heads_fn_stand_in_for_test();
+    assert!(
+        is_census_heads_fn_stand_in(&stand_in),
+        "stand-in must be identifiable by name/pointer"
+    );
+    assert!(
+        matches!(
+            &*stand_in.expr_data,
+            ExprData::ExprError {
+                kind: ExprErrorKind::CensusHeadsBodyStripped,
+                ..
+            }
+        ),
+        "stand-in must carry CensusHeadsBodyStripped so infer_expr raises a hard diagnostic"
+    );
+    assert!(
+        stand_in.children.is_empty() && stand_in.body.is_none(),
+        "stand-in must not masquerade as a real expression tree"
+    );
+    assert!(
+        census_heads_body_traversal_refusal(&stand_in).is_some(),
+        "query API must refuse stand-in body traversal"
+    );
+}
+
+#[test]
+fn census_heads_fn_stand_in_preserves_body_presence_discriminator() {
+    use im::HashMap;
+    use std::rc::Rc;
+    use v1_compiler::cli_run::{census_heads_module_node_for_test, is_census_heads_fn_stand_in};
+    use v1_compiler::v1_compiler_infer::local_binding_for_item;
+    use v1_compiler::v1_compiler_parse::parse_with_table;
+    use v1_compiler::v1_compiler_tokenize::tokenize;
+    use v1_compiler::v1_std_core::{build_newline_index, empty_intern_table, module_items};
+
+    let source = "module test.census_heads_fn_disc\nfn foo(x: Int) -> Int { x }\n";
+    let path = "test_census_heads_fn_disc.dag".to_string();
+    let tokens = tokenize(source.to_string(), path.clone());
+    let nl = build_newline_index(path.clone(), source.to_string());
+    let mut si = HashMap::new();
+    si.insert(nl.file.clone(), nl.clone());
+    let parsed = parse_with_table(tokens, Rc::new(si), empty_intern_table());
+    let module = parsed
+        .result
+        .module
+        .clone()
+        .expect("fixture module must parse");
+    let shrunk = census_heads_module_node_for_test(module);
+    let item = module_items(shrunk)
+        .iter()
+        .find(|item| item.name == "foo")
+        .expect("foo decl")
+        .clone();
+    assert!(
+        item.body.is_some(),
+        "caveat (A): stripped fn decl must keep body.is_some() for local_binding_for_item routing"
+    );
+    assert!(
+        is_census_heads_fn_stand_in(item.body.as_ref().expect("body")),
+        "stripped fn body must be the fail-loud stand-in, not empty"
+    );
+    let binding = local_binding_for_item(item.clone(), Rc::new(HashMap::new()))
+        .expect("fn decl must bind as a function, not type/alias");
+    assert_eq!(
+        binding.resolved.params.len(),
+        1,
+        "misroute to type/alias would drop fn params"
+    );
+}
+
+#[test]
+fn census_heads_preserves_declaration_children_for_types() {
+    use im::HashMap;
+    use std::rc::Rc;
+    use v1_compiler::cli_run::census_heads_module_node_for_test;
+    use v1_compiler::v1_compiler_parse::parse_with_table;
+    use v1_compiler::v1_compiler_tokenize::tokenize;
+    use v1_compiler::v1_std_core::{
+        build_newline_index, empty_intern_table, module_items, Connective,
+    };
+
+    let source = "module test.census_heads_children\ntype Color = Red | Green\n";
+    let path = "test_census_heads_children.dag".to_string();
+    let tokens = tokenize(source.to_string(), path.clone());
+    let nl = build_newline_index(path.clone(), source.to_string());
+    let mut si = HashMap::new();
+    si.insert(nl.file.clone(), nl.clone());
+    let parsed = parse_with_table(tokens, Rc::new(si), empty_intern_table());
+    let module = parsed
+        .result
+        .module
+        .clone()
+        .expect("fixture module must parse");
+    let item = module_items(module.clone())
+        .iter()
+        .find(|item| item.name == "Color")
+        .expect("Color type decl")
+        .clone();
+    let child_names: Vec<String> = item.children.iter().map(|c| c.name.clone()).collect();
+    assert!(
+        !child_names.is_empty(),
+        "fixture must carry variant children"
+    );
+    let shrunk = census_heads_module_node_for_test(module);
+    let shrunk_item = module_items(shrunk)
+        .iter()
+        .find(|item| item.name == "Color")
+        .expect("Color type decl after shrink")
+        .clone();
+    assert_ne!(
+        shrunk_item.connective,
+        Connective::NoConnective,
+        "type decl must remain structural, not fn-shaped"
+    );
+    let shrunk_child_names: Vec<String> = shrunk_item
+        .children
+        .iter()
+        .map(|c| c.name.clone())
+        .collect();
+    assert_eq!(
+        shrunk_child_names, child_names,
+        "caveat (B): declaration children (variant heads) must survive heads-only shrink"
+    );
+}
+
+#[test]
+fn census_heads_fn_stand_in_naive_infer_expr_refuses_not_succeeds() {
+    use im::HashMap;
+    use std::rc::Rc;
+    use v1_compiler::cli_run::census_heads_fn_stand_in_for_test;
+    use v1_compiler::v1_compiler_infer::{infer_expr, InferScope};
+    use v1_compiler::v1_compiler_infer_env::empty_type_env;
+    use v1_compiler::v1_compiler_infer_sigs::ResolvedFuncEnv;
+    use v1_compiler::v1_std_core::{
+        diagnostic_to_message, is_error_diagnostic, ExprData, ExprErrorKind,
+    };
+
+    let stand_in = census_heads_fn_stand_in_for_test();
+    let scope = Rc::new(InferScope {
+        type_env: empty_type_env(),
+        func_env: Rc::new(ResolvedFuncEnv {
+            name: "test.census_heads_naive".to_string(),
+            local: Rc::new(HashMap::new()),
+            parents: Rc::new(im::vector![]),
+        }),
+        locals: Rc::new(HashMap::new()),
+        body_locals: Rc::new(HashMap::new()),
+        match_bound_names: Rc::new(HashMap::new()),
+        module_name: "test.census_heads_naive".to_string(),
+        service_registry: Rc::new(HashMap::new()),
+        item_registry: Rc::new(HashMap::new()),
+        lambda_param_provenance: Rc::new(HashMap::new()),
+    });
+    let result = infer_expr(stand_in, scope, None);
+    assert!(
+        matches!(
+            &*result.typed.expr_data,
+            ExprData::ExprError {
+                kind: ExprErrorKind::CensusHeadsBodyStripped,
+                ..
+            }
+        ),
+        "naive infer_expr traversal must return CensusHeadsBodyStripped, not fabricate a resolved type"
+    );
+    let diag_msgs: Vec<String> = result
+        .diagnostics
+        .iter()
+        .map(|diag| diagnostic_to_message(diag.diagnostic.clone()))
+        .collect();
+    assert!(
+        !diag_msgs.is_empty(),
+        "naive infer_expr on stand-in must raise a hard diagnostic without calling predicates"
+    );
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|d| is_error_diagnostic(d.diagnostic.clone())),
+        "stand-in inference diagnostic must be hard/blocking, not advisory"
+    );
+    assert!(
+        diag_msgs
+            .iter()
+            .any(|msg| msg.contains("pool census heads-only")),
+        "diagnostic must locate the stripped-body refusal, got {diag_msgs:?}"
+    );
+}
+
+// 🟡 dissolve-on (B): replace this ignored scaffold with a corpus scan that every
+// `pool.nodes_by_file` consumer refuses non-inference body/ExprData descent.
+#[test]
+#[ignore = "follow-up (B): standing wall forbidding pool.nodes_by_file non-inference body descent"]
+fn pool_nodes_by_file_consumers_must_not_descend_into_body() {
+    panic!(
+        "not implemented: static census of pool.nodes_by_file consumers must prove no \
+         non-inference ExprData/body descent on census-head nodes"
+    );
+}
+
+#[test]
 fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
     use std::time::{SystemTime, UNIX_EPOCH};
     use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
@@ -4091,42 +4495,57 @@ fn indexed_names(names: List<String>) -> List<String> {
 }
 
 #[test]
-#[ignore = "failing: Symbol data does not preserve authored identity. Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=emit-rust-render"]
-fn rust_set_nominal_ord_decl_emits_carriers_before_btree_set_use() {
+fn rust_symbol_opaque_alias_emits_string_and_btree_set() {
     let source = "\
 module test_nominal_ord_set
 type Symbol
 type DiffId { id: Symbol }
 data root_fix_symbol: Symbol = root_fix_symbol
+fn symbol_param(x: Symbol) -> Symbol { x }
 type DiffBag { ids: Set<DiffId> }
 ";
     let result = compile_dag_target(source, RenderTarget::Rust);
+    let msgs = diagnostic_messages(&result);
+    assert!(
+        msgs.is_empty(),
+        "expected clean compile, got {}: {:?}",
+        msgs.len(),
+        msgs
+    );
     assert!(
         has_file(&result, "src/test_nominal_ord_set.rs"),
         "expected emitted file, got diagnostics: {:?}",
-        diagnostic_messages(&result)
+        msgs
     );
     let content = find_file(&result, "src/test_nominal_ord_set.rs");
     assert!(
-        content.contains("#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]\npub struct Symbol(pub String);"),
-        "Symbol must emit an ordered identity carrier before Set<DiffId> opens the BTreeSet gate, got:\n{}",
+        content.contains("pub type Symbol = String;"),
+        "Symbol must alias host String at the opaque-kernel coerce authority, got:\n{}",
         content
     );
     assert!(
-        content.contains(
-            "pub fn root_fix_symbol() -> Symbol { Symbol(\"root_fix_symbol\".to_string()) }"
-        ),
-        "Symbol data should preserve authored identity, got:\n{}",
+        !content.contains("pub struct Symbol(pub String)"),
+        "Symbol must not emit a parallel newtype carrier, got:\n{}",
         content
     );
     assert!(
-        content.contains("pub struct DiffId {\n    pub id: Symbol,"),
-        "DiffId should carry the emitted Symbol type, got:\n{}",
+        content.contains("pub fn root_fix_symbol() -> String"),
+        "Symbol data values must ground to String, got:\n{}",
         content
     );
     assert!(
-        content.contains("pub ids: BTreeSet<DiffId>,"),
-        "Set<DiffId> should lower to BTreeSet<DiffId>, got:\n{}",
+        content.contains("fn symbol_param(x: String) -> String"),
+        "Symbol fn sig params must ground to String, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("pub id: String,") || content.contains("pub id: String"),
+        "DiffId fields typed Symbol must ground to String, got:\n{}",
+        content
+    );
+    assert!(
+        content.contains("BTreeSet") && content.contains("DiffId"),
+        "Set<DiffId> should lower through the BTreeSet gate, got:\n{}",
         content
     );
 }

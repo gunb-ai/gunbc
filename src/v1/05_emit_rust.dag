@@ -4,7 +4,7 @@ import v1.std.core {
   Node, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   import_is_all, import_specific_names_at, module_imports, module_items,
   param_node_type_expr, param_node_default_value,
-  authored_name_at, NewlineIndex, find_child_named, tuple_type_name,
+  authored_name_at, NewlineIndex, find_child_named, tuple_type_name, qualified_last_segment,
   expr_var_name_at, expr_call_func_at, field_access_field_at,
   param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at,
   LiteralValue,
@@ -22,7 +22,7 @@ import v1.std.core {
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
   MatchPattern, field_binding_pattern,
-  TextFile, ErrorNode, make_error_node, InternalError, SourceSpan,
+  TextFile, ErrorNode, make_error_node, InternalError, UnlistedImportUse, SourceSpan,
   resource_use_resource,
   BinOp, AlgebraFieldKind,
   UnaryOpKind, StringPart, Text, Interpolation,
@@ -159,7 +159,8 @@ fn render_rust_applied_via_emit_info(n: Node, shared_types: Set<String>, corpus_
 fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match n.inferred {
-    Present { value: TypeVariable { id: tv } } => to_pascal(name: tv)
+    Present { value: TypeVariable { id: tv } } =>
+      if type_var_in_fn_generic_scope(id: tv, generic_param_names: emit_info.fn_generic_param_names) { to_pascal(name: tv) } else { "_" }
     _ =>
       match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
         Present { value: applied } =>
@@ -192,7 +193,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         }
       Absent => emit_rust_compile_error_expr(message: "Set missing element type")
     }
-  } else if node_is_keyed_collection(n: n, source_indices: source_indices) && emit_info.fn_generic_param_names |> count > 0 {
+  } else if node_is_keyed_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Present { value: key_child } =>
         let key_node = child_type_node(ch: key_child)
@@ -207,7 +208,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types)
       Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
-  } else if node_is_element_collection(n: n, source_indices: source_indices) && emit_info.fn_generic_param_names |> count > 0 {
+  } else if node_is_element_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Present { value: elem_child } =>
         let elem_node = child_type_node(ch: elem_child)
@@ -219,7 +220,9 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     }
   } else {
     let tn = authored_name_at(source_indices: source_indices, node: n)
-    if tn == "String" && n.children |> count == 0 && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+    if type_node_has_unbound_type_variable(n: n, generic_param_names: emit_info.fn_generic_param_names, source_indices: source_indices) {
+      "_"
+    } else if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
       render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
@@ -245,15 +248,11 @@ fn is_host_freemonoid_vec_alias(name: String, corpus_repr: RustCorpusRepr) -> Bo
   corpus_repr_is_host(corpus_repr: corpus_repr) && name == "FreeMonoid"
 }
 fn render_rust_text_carrier(shared_types: Set<String>) -> String {
-  render_rust_shared_type_if_needed(type_name: "FreeMonoid", rendered: "FreeMonoid<Char>", shared_types: shared_types)
+  render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
 }
 
 fn emit_rust_host_to_dag_string_via_seam(host_expr: String, corpus_repr: RustCorpusRepr) -> String {
-  if corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-    concat("crate::v2_std_text::host_string_text_from_rust_host(", host_expr, ")")
-  } else {
-    host_expr
-  }
+  host_expr
 }
 
 fn emit_rust_map_literal_key(field_name: String, key_is_string: Bool, corpus_repr: RustCorpusRepr) -> String {
@@ -282,11 +281,7 @@ fn map_literal_key_is_string(map_type_node: Node, source_indices: Map<String, Ne
 }
 
 fn emit_rust_dag_string_to_host_via_seam(dag_expr: String, corpus_repr: RustCorpusRepr) -> String {
-  if corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-    concat("crate::v2_std_text::host_string_text_to_rust_host(", dag_expr, ")")
-  } else {
-    dag_expr
-  }
+  dag_expr
 }
 
 fn rust_host_string_seam_fn_emit(name: String) -> String? {
@@ -349,11 +344,27 @@ fn rust_host_string_op_fn_emit(name: String) -> String? {
   }
 }
 
+fn rust_opaque_kernel_alias_type_eligible(name: String) -> Bool {
+  name == "Json" || name == "Bytes" || name == "Symbol"
+}
+
 fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
-  if name == "Json" || name == "Bytes" {
+  if rust_opaque_kernel_alias_type_eligible(name: name) {
     Present { value: coerce_primitive_type(target: Rust, dag_name: name) }
   } else {
     none
+  }
+}
+
+fn rust_opaque_kernel_alias_type_decl(name: String) -> String {
+  let carrier = coerce_primitive_type(target: Rust, dag_name: name)
+  concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", name, " = ", carrier, ";")
+}
+
+fn rust_ground_opaque_kernel_type_name(name: String) -> String {
+  match rust_opaque_kernel_alias_carrier(name: name) {
+    Present { value: carrier } => carrier
+    Absent => name
   }
 }
 
@@ -389,17 +400,13 @@ fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, Newline
 }
 
 fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>, corpus_repr: RustCorpusRepr) -> Bool {
-  if !corpus_repr_is_host(corpus_repr: corpus_repr) {
-    false
+  let nm = authored_name_at(source_indices: source_indices, node: n)
+  if nm == "String" {
+    true
+  } else if nm == "FreeMonoid" || nm == "List" {
+    rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) == "Char"
   } else {
-    let nm = authored_name_at(source_indices: source_indices, node: n)
-    if nm == "String" {
-      true
-    } else if nm == "FreeMonoid" || nm == "List" {
-      rust_host_text_carrier_elem_name(n: n, source_indices: source_indices) == "Char"
-    } else {
-      false
-    }
+    false
   }
 }
 
@@ -413,19 +420,13 @@ fn rust_seed_host_freemonoid_empty(carrier_name: String, corpus_repr: RustCorpus
 fn rust_named_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
   if name == "Witness" || name == "witness" {
     "Witness"
-  } else if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-    "FreeMonoid<Char>"
   } else {
     coerce_primitive_type(target: Rust, dag_name: name)
   }
 }
 
 fn rust_applied_type_base(name: String, corpus_repr: RustCorpusRepr) -> String {
-  if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
-    "FreeMonoid"
-  } else {
-    rust_named_type_base(name: name, corpus_repr: corpus_repr)
-  }
+  rust_named_type_base(name: name, corpus_repr: corpus_repr)
 }
 
 fn rust_normalize_witness_type_text(rendered: String) -> String {
@@ -520,9 +521,12 @@ fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: Lis
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     "()"
+  } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
+    "_"
   } else {
     match n.inferred {
-      Present { value: TypeVariable { id: tv } } => to_pascal(name: tv)
+      Present { value: TypeVariable { id: tv } } =>
+        if type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { to_pascal(name: tv) } else { "_" }
       _ => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
     }
   }
@@ -591,7 +595,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       let name = authored_name_at(source_indices: source_indices, node: n)
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
-      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+      } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
         rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
@@ -631,6 +635,8 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         }
         render_rust_shared_type_with_optional(n: n, type_name: name, rendered: applied_ty, shared_types: shared_types)
         }
+      } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
+        "_"
       } else {
         render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
       }
@@ -657,6 +663,8 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
 fn rust_fn_sig_preserves_authored_alias_leaf(name: String, corpus_repr: RustCorpusRepr) -> Bool {
   if is_kernel_type(name: name) {
     false
+  } else if rust_opaque_kernel_alias_type_eligible(name: name) {
+    false
   } else if name == "Nat" {
     true
   } else {
@@ -679,7 +687,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   let name = authored_name_at(source_indices: source_indices, node: n)
-  if n.connective == NoConnective && n.children |> count == 0 && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+  if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, corpus_repr: corpus_repr) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
@@ -717,6 +725,14 @@ fn alias_rhs_container_arg(arg: Node, source_indices: Map<String, NewlineIndex>)
   }
 }
 
+data alias_rhs_qualified_name_routing_note: String = "Construction wall for the dotted-render class. A namespace-QUALIFIED name in a type position (post-PR 6848 resolution) arrives from authored_name_at as the full dotted spelling, e.g. std.algebra.FreeMonoid. Every routing lookup on this path — alias_rhs_rust_qualify_module_filename via lookup_item, rust_seed_host_container_base, alias_base_is_zero_param_decl, is_parametric_opaque_type_base, shared_types — is keyed on the BARE declared name, so a dotted spelling matched nothing, def_mod fell back to the local module, and the else arm rendered the dotted string VERBATIM into Rust. That is not valid Rust: rustc reports 'expected one of !, (, +, ::, ;, <, or where, found .', a PARSE error, which then masks every later error in the module.
+
+Measured blast radius before the fix: the emitted 04_infer closure (50 files) contained exactly ONE such line — 'pub type List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs — and that single line blocked 4 of 5 self-host flip candidates, because std.collection sits in essentially every deep-module closure. The control that proves the fault is qualified-specific is the very next declaration: 'type Set<T> = PointwisePower<T>' (BARE) already routed correctly to Rc<crate::v2_std_algebra::PointwisePower<T>>.
+
+Fix: route on the TERMINAL segment via qualified_last_segment (v1.std.core, the existing authority — a qualified name IS a containment path, and its last segment is the declared name the registry knows). Not a string dot-to-colon rewrite: that would FABRICATE a path from the spelling instead of RESOLVING the declaration, and would silently produce a wrong path whenever the qualifier does not match the defining module. Because qualified_last_segment is the identity on an unqualified name, every bare name renders exactly as before — the seed stays byte-identical by construction, which is why this lands with regen_divergence_count=0 rather than merely hoping for it.
+
+The v2 corpus authors qualified names in type position only rarely today, which is why one line carried this much weight; the point of fixing the renderer rather than editing that one declaration is that the next qualified name must not reintroduce it (DESIGN: do not cement the seed's accidents)."
+
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   match n.type_annotation {
@@ -741,7 +757,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     match rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr) {
       Present { value: host } => host
       Absent =>
-    if name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
+    if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
       match rust_opaque_kernel_alias_carrier(name: name) {
@@ -754,25 +770,26 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
     }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
-    let numeric_host_alias = rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr)
+    let leaf = qualified_last_segment(name: name)
+    let numeric_host_alias = rust_seed_host_numeric_alias(name: leaf, corpus_repr: corpus_repr)
     if numeric_host_alias != none {
       return match numeric_host_alias { Present { value: host } => host  Absent => "" }
     }
     let local_mod = module_to_filename(name: module_name)
-    let def_mod = alias_rhs_rust_qualify_module_filename(name: name, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let base = match rust_seed_host_container_base(name: name, corpus_repr: corpus_repr) {
+    let def_mod = alias_rhs_rust_qualify_module_filename(name: leaf, alias_module: module_name, imports: imports, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let base = match rust_seed_host_container_base(name: leaf, corpus_repr: corpus_repr) {
       Present { value: host } => host
       Absent => if def_mod != local_mod {
-        concat("crate::", def_mod, "::", name)
+        concat("crate::", def_mod, "::", leaf)
       } else {
-        name
+        leaf
       }
     }
-    let base_is_zero_param = rust_seed_host_container_base(name: name, corpus_repr: corpus_repr) == none && alias_base_is_zero_param_decl(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let base_is_zero_param = rust_seed_host_container_base(name: leaf, corpus_repr: corpus_repr) == none && alias_base_is_zero_param_decl(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     if base_is_zero_param {
-      return if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
+      return if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
     }
-    let peel = is_parametric_opaque_type_base(type_name: name, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let args = n.children |> map(arg =>
       if peel {
         render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
@@ -781,7 +798,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       }
     ) |> join(separator: ", ")
     let applied_ty = concat(base, "<", args, ">")
-    if set_contains(shared_types, name) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
+    if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
       applied_ty
@@ -799,6 +816,30 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   match inferred {
     TypeVariable { id: _ } => true
     _ => false
+  }
+}
+
+fn type_var_in_fn_generic_scope(id: String, generic_param_names: List<String>) -> Bool {
+  generic_param_names |> any(g => g == id)
+}
+
+fn type_node_has_unbound_type_variable(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if n.inferred != none {
+    match n.inferred.value {
+      TypeVariable { id: tv } =>
+        if !type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { return true }
+      Resolved { node: rt } =>
+        if type_node_has_unbound_type_variable(n: rt, generic_param_names: generic_param_names, source_indices: source_indices) { return true }
+      _ => ()
+    }
+  }
+  if n.children |> any(c => type_node_has_unbound_type_variable(n: child_type_node(ch: c), generic_param_names: generic_param_names, source_indices: source_indices)) {
+    true
+  } else {
+    match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
+      Present { value: applied } => applied.children |> any(c => type_node_has_unbound_type_variable(n: c, generic_param_names: generic_param_names, source_indices: source_indices))
+      Absent => false
+    }
   }
 }
 
@@ -867,7 +908,7 @@ fn rust_nominal_identity_carrier_def(name: String) -> String {
 }
 
 fn rust_nominal_identity_carrier_type_eligible(type_name: String) -> Bool {
-  type_name == "Symbol"
+  false
 }
 
 fn rust_nominal_identity_carrier_shape_eligible(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1716,6 +1757,16 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
   )
 }
 
+fn group_unlisted_type_names(diags: List<ErrorNode>) -> Map<String, List<String>> {
+  diags |> fold(init: empty_map(), f: (acc, en) =>
+    match en.diagnostic {
+      UnlistedImportUse { name: nm, span: _ } =>
+        let existing = match map_get(acc, en.module_name) { Present { value: v } => v  Absent => [] }
+        map_insert(acc, en.module_name, concat(existing, [nm]))
+      _ => acc
+    })
+}
+
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let has_v1_seed = corpus_has_v1_seed_source_indices(modules: typed.modules)
   let base_info = build_emit_graph_info(modules: typed.modules, has_v1_seed: has_v1_seed)
@@ -1756,7 +1807,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   let test_projections = extract_test_projections(typed: typed)
   let export_sets = build_module_export_sets(modules: typed.modules)
   let module_index = build_module_index(modules: typed.modules)
-  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index))
+  let unlisted_type_names_by_module = group_unlisted_type_names(diags: typed.diagnostics)
+  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items, export_sets: export_sets, typed_modules: typed.modules, module_index: module_index, unlisted_type_names: match map_get(unlisted_type_names_by_module, authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)) { Present { value: v } => v  Absent => [] }))
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
@@ -1892,7 +1944,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
   let module_index = build_module_index(modules: [typed_module])
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index)
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]), export_sets: export_sets, typed_modules: [typed_module], module_index: module_index, unlisted_type_names: [])
 }
 
 fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<String, Bool>> {
@@ -1904,7 +1956,118 @@ fn build_module_export_sets(modules: List<TypedModule>) -> Map<String, Map<Strin
   )
 }
 
-fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex) -> TextFile {
+fn record_lit_ref_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  match n.expr_data {
+    ExprRecordLit { parent_enum: pe } =>
+      let tn_list = match record_lit_type_name_at(texpr: n, source_indices: source_indices) {
+        Present { value: t } => if t != "" { [t] } else { [] }
+        Absent => []
+      }
+      let pe_list = match pe {
+        Present { value: p } => if p != "" { [p] } else { [] }
+        Absent => []
+      }
+      concat(tn_list, pe_list)
+    _ => []
+  }
+}
+
+fn collect_value_ref_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let self_name = match n.expr_data {
+    ExprVar { binding_kind: bk } =>
+      match bk {
+        Present { value: FunctionValueBinding } =>
+          let nm = authored_name_at(source_indices: source_indices, node: n)
+          if nm != "" { [nm] } else { [] }
+        _ => []
+      }
+    ExprCall { call_semantics: _, descent_evidence: _ } =>
+      let nm = authored_name_at(source_indices: source_indices, node: n)
+      if nm != "" { [nm] } else { [] }
+    ExprRecordLit { parent_enum: _ } =>
+      record_lit_ref_names(n: n, source_indices: source_indices)
+    _ => []
+  }
+  let list_fields = concat(
+    concat(
+      n.children |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices)),
+      n.params |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices))
+    ),
+    concat(
+      n.uses |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices)),
+      n.properties |> flat_map(c => collect_value_ref_names(n: c, source_indices: source_indices))
+    )
+  )
+  let opt_fields = concat(
+    match n.body { Present { value: b } => collect_value_ref_names(n: b, source_indices: source_indices)  Absent => [] },
+    concat(
+      match n.transport { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices)  Absent => [] },
+      match n.type_annotation { Present { value: t } => collect_value_ref_names(n: t, source_indices: source_indices)  Absent => [] }
+    )
+  )
+  concat(self_name, concat(list_fields, opt_fields))
+}
+
+fn imported_names_in_use_line(line: String) -> List<String> {
+  if contains(line, "use ") == false {
+    []
+  } else {
+    let after = match (line |> split(delimiter: "::")) |> last {
+      Present { value: s } => s
+      Absent => ""
+    }
+    let cleaned = replace(replace(replace(replace(after, "{", ""), "}", ""), ";", ""), "*", "")
+    cleaned |> split(delimiter: ",") |> map(s => trim(s)) |> filter(s => s != "")
+  }
+}
+
+data reference_derived_use_lines_note: String = "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then cross-module registry-resolved (a same-module or local ref never registry-resolves cross-module, so it is skipped for free), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider). A candidate that registry-resolves to nothing is left for the step-2 typed refusal (dotted-render #6934 residue falls here); it never fabricates a use-line. SCOPE (emit_module_full): this pass runs ONLY for modules with zero authored imports — the namespace-resolution case the post-PR-6848 regression is about. An import-bearing module (all src/v1 seed modules) resolves its refs through emit_imports + the v1 whole-pool census, and its value refs render as methods (to_string(value:e) -> e.to_string()) or route through census/§3-forked homonyms (kernel_span defined in both v1.std.core and v1.compiler.infer) that a name->one-module registry mis-resolves — so running the walk there would add spurious/wrong use-lines (a drift, not a fix). This is where UnlistedImportUse already fires exactly (a module WITH imports has its refs in SVN, so the resolver never flags them): the import-free gate is the same boundary read from the emit side, keeping the seed regen zero-drift by construction while covering the whole namespace corpus."
+
+fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
+  {
+    let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices)))
+    let candidates = unique_strings(items: concat(unlisted_type_names, value_names))
+    let already = already_imported_names |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
+    let unlisted = candidates |> flat_map(name =>
+      if emit_map_has(m: already, key: name) || is_kernel_type(name: name) {
+        []
+      } else {
+        match map_get(registry, name) {
+          Present { value: info } =>
+            if info.module_name != this_module_name { [name] } else { [] }
+          Absent => []
+        }
+      }
+    )
+    let providers = unique_strings(items: unlisted |> flat_map(name =>
+      match map_get(registry, name) {
+        Present { value: info } => [info.module_name]
+        Absent => []
+      }
+    ))
+    providers |> flat_map(provider =>
+      let names = unlisted |> filter(name =>
+        match map_get(registry, name) {
+          Present { value: info } => info.module_name == provider
+          Absent => false
+        }
+      )
+      let block = emit_specific_import_block(import_module: provider, mod_name: module_to_filename(name: provider), filtered_names: names, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+      let block_lines = if block == "" { [] } else { block |> split(delimiter: "\n") }
+      let emitted_here = block_lines |> flat_map(l => imported_names_in_use_line(line: l))
+      let fallback = names |> flat_map(nm =>
+        if (emitted_here |> any(e => e == nm)) || is_known_variant(type_summaries: emit_info.type_summaries, name: nm) {
+          []
+        } else {
+          [concat(rust_visibility_prefix(), concat("use crate::", concat(module_to_filename(name: provider), concat("::", concat(emit_import_name(n: nm, registry: registry), ";")))))]
+        }
+      )
+      concat(block_lines, fallback)
+    )
+  }
+}
+
+fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Set<String>, svc_module_map: Map<String, String>, data_items: Map<String, Node>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, unlisted_type_names: List<String>) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let scoped_data_items = augment_scoped_data_item_index_with_imports(
@@ -1945,7 +2108,16 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   } else {
     []
   }
-  let merged_imports = dedupe_rust_import_lines(lines: concat(dag_import_lines, carrier_import_lines)) |> join(separator: "\n")
+  let already_imported_names = concat(
+    prelude_imported_names,
+    concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
+  )
+  let reference_use_lines = if module_imports(n: m) |> count == 0 {
+    reference_derived_use_lines(items: typed_module.items, unlisted_type_names: unlisted_type_names, this_module_name: authored_name(env: scope.type_env, node: m), registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
+  } else {
+    []
+  }
+  let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
@@ -2552,7 +2724,7 @@ fn type_item_has_rust_nominal_shell_authority(item: Node, item_text: String, mod
   } else if is_type_alias_item(item: item, source_indices: source_indices) {
     true
   } else if is_type_decl_item(item: item, source_indices: source_indices) {
-    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
+    if (item.params |> count) == 0 && (rust_nominal_identity_carrier_type_eligible(type_name: item_text) || rust_opaque_kernel_alias_type_eligible(name: item_text)) {
       true
     } else if (item.params |> count) > 0 {
       if is_parametric_opaque_type_decl_item(item: item, source_indices: source_indices) {
@@ -3186,7 +3358,7 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
         }
       } else {
         let specific_names = mod_imports |> flat_map(imp => import_specific_names_at(n: imp, source_indices: source_indices))
-        let synth_for_module = module_data_field_struct_import_names(items: supplement_items, type_summaries: emit_info.type_summaries, import_module: import_module, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+        let synth_for_module = module_data_field_struct_import_names(items: supplement_items, type_summaries: emit_info.type_summaries, import_module: import_module, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
         let merged_specific = unique_strings(items: concat(specific_names, synth_for_module))
         emit_specific_import_block(
           import_module: import_module,
@@ -3245,8 +3417,15 @@ fn node_tree_references_type_name(n: Node, type_name: String, source_indices: Ma
   }
 }
 
-fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, import_module: String, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
-  let mod_filename = module_to_filename(name: import_module)
+data data_field_struct_import_provider_note: String = "§3 single authority for 'which module PROVIDES this field-struct name'. This synth exists because an ANONYMOUS record literal takes its type from the FIELD it initializes (an unnamed record literal on the `io` field), so the constructed type name appears NOWHERE in the source text and can therefore never sit in an authored import list — emit_imports, which derives use-lines only from import lists, has no candidate to work from and the emitted Rust refuses (E0422 `cannot find struct ... in this scope`).
+
+The predicate was `has_physical_type_def_in_module_filename` — field type PHYSICALLY DEFINED in the module being imported from. That is strictly narrower than the question actually being asked, which is whether the imported module PROVIDES the name. `extdeps.realization.compile_stage_memo` imports CacheInterfaceCatalogFacts from `extdeps.cache.types` and constructs its `io` / `placement` fields, but those types are defined in the SIBLING modules `extdeps.cache.catalog_io` / `extdeps.cache.catalog_placement` and merely re-exported by `extdeps.cache.types` — so the physical-definition test rejected them and the use-line was never synthesized. Measured, not assumed: materialization_carriers first_error = error E0422 cannot find struct, variant or union type CacheInterfaceCatalogIoSemantics in this scope.
+
+`name_in_transitive_export_surface` is the existing authority for that question (get_exported_names counts specific-import names as exports, which is exactly re-export), so this reuses it rather than minting a second reachability rule. Routing needs no change: graph_type_import_module_filename already groups emitted use-lines by the type's DEFINING module, so admitting the candidate yields a braced use-line against crate::extdeps_cache_catalog_io on its own.
+
+INCREMENT 2 (generic-argument axis, #6986): build_field_type_map also walks the resolved field-type NODE TREE via collect_type_node_import_surface_names (04_emit_info.dag), populating TypeSummary.field_import_surface_names; this synth consumes that list so List<CacheEvidence> admits CacheEvidence (field_type_map still maps field→HEAD for lookup). Witness: field_import_surface_generic_arg_test. Re-probe 2026-07-21: materialization_carriers CacheEvidence E0422 cleared; first error advanced to E0425 cannot find value extdeps (namespace/dotted-path class — distinct blocker)."
+
+fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<String, TypeSummary>, import_module: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> List<String> {
   unique_strings(items: items
     |> filter(item => is_data_def_item(item: item))
     |> flat_map(item => {
@@ -3259,9 +3438,9 @@ fn module_data_field_struct_import_names(items: List<Node>, type_summaries: Map<
       } else {
         match map_get(type_summaries, type_name) {
           Present { value: summary } =>
-            map_values(summary.field_type_map) |> filter(field_type =>
+            summary.field_import_surface_names |> filter(field_type =>
               field_type != ""
-              && has_physical_type_def_in_module_filename(rhs_name: field_type, mod_filename: mod_filename, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+              && name_in_transitive_export_surface(name: field_type, module_name: import_module, visited: [], export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
               && match map_get(type_summaries, field_type) {
                 Present { value: ft } =>
                   match ft.repr {
@@ -3483,6 +3662,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
 
     if corpus_repr_is_host(corpus_repr: emit_info.corpus_repr) && item_text == "String" {
       concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " String = std::string::String;")
+    } else if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+      rust_opaque_kernel_alias_type_decl(name: item_text)
     } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
@@ -3509,7 +3690,9 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       }
     }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
-    if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
+    if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
+      rust_opaque_kernel_alias_type_decl(name: item_text)
+    } else if (item.params |> count) == 0 && rust_nominal_identity_carrier_type_eligible(type_name: item_text) {
       rust_nominal_identity_carrier_def(name: item_text)
     } else {
 
@@ -5322,7 +5505,8 @@ fn type_node_child_is_type_variable(c: Node) -> Bool {
 fn rust_btree_set_element_ord_eligible(elem_node: Node, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> Bool {
   let elem_name = authored_name_at(source_indices: source_indices, node: elem_node)
   elem_name == "String" || elem_name == "Int" || elem_name == "Bool" || elem_name == "Unit"
-    || elem_name == "Secret" || elem_name == "Bytes" || rust_nominal_ord_type_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)
+    || elem_name == "Secret" || elem_name == "Bytes" || rust_opaque_kernel_alias_type_eligible(name: elem_name)
+    || rust_nominal_ord_type_eligible(elem_node: elem_node, source_indices: source_indices, emit_info: emit_info)
 }
 
 fn rust_empty_set_element_type_str(set_type: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
@@ -6176,8 +6360,9 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
   let acc_type_str = render_rust_type(n: acc_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices, emit_info: fold_emit_info)
   let acc_type_is_type_var = if acc_type_node.inferred != none { is_type_variable(inferred: acc_type_node.inferred.value) } else { false }
   let acc_child_is_type_var = acc_type_node.children |> any(c => type_node_child_is_type_variable(c: c))
+  let acc_has_unbound_type_var = type_node_has_unbound_type_variable(n: acc_type_node, generic_param_names: emit_info.fn_generic_param_names, source_indices: scope.type_env.source_indices)
   let is_bare_container = acc_type_node.children |> count == 0 && is_container_type(name: acc_type_name)
-  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var { "_" } else { acc_type_str }
+  let lambda_acc_type_str = if is_bare_container || acc_type_is_type_var || acc_child_is_type_var || acc_has_unbound_type_var { "_" } else { acc_type_str }
   let acc_has_unit_child = acc_type_node.children |> any(c => is_unit_like(n: c) || c.ident_span == none) || acc_type_node.children |> any(c => c.children |> any(gc => is_unit_like(n: gc) || gc.ident_span == none))
   let init_str = match args |> first {
     Present { value: init_arg } =>
@@ -8596,7 +8781,7 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
     }
   }
   let raw_ty_str = if preserves_declared_brand {
-    ann_name
+    rust_ground_opaque_kernel_type_name(name: ann_name)
   } else if data_def_annotation_is_named_refinement(annotation: annotation_type_node, source_indices: scope.type_env.source_indices) {
     coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node))
   } else {

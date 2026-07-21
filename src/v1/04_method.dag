@@ -63,6 +63,10 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "from_code_point", string_type)
   let m = map_insert(m, "chars_to_string", string_type)
   let m = map_insert(m, "record_source_chars_index_lookup", unit_type)
+  let m = map_insert(m, "resolution_silent_pick_is_enabled", bool_type)
+  let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_pick", unit_type)
+  let m = map_insert(m, "resolution_silent_pick_record_global_bare_lcp_tie", unit_type)
+  let m = map_insert(m, "resolution_silent_pick_record_fn_parent_first_hit", unit_type)
   let m = map_insert(m, "to_string", string_type)
 
   let m = map_insert(m, "discriminant", string_type)
@@ -142,6 +146,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "transport_script_position_facts_for_path", list_of_type_variable(id: "transport_script_position_fact_elem"))
   let m = map_insert(m, "layer_import_facts", list_of_type_variable(id: "layer_import_fact_elem"))
   let m = map_insert(m, "import_resolution_facts", list_of_type_variable(id: "import_resolution_fact_elem"))
+  let m = map_insert(m, "reference_resolution_facts", list_of_type_variable(id: "import_resolution_fact_elem"))
   let m = map_insert(m, "module_declaration_facts", list_of_type_variable(id: "module_declaration_fact_elem"))
   let m = map_insert(m, "concept_decl_facts", list_of_type_variable(id: "concept_decl_elem"))
   let m = map_insert(m, "decl_facts", list_of_type_variable(id: "decl_fact_elem"))

@@ -10,6 +10,7 @@ data inert_carrier_roster: List<String> = [
   "FilePermissions",
   "FloorWitnessRow",
   "FreeOutput",
+  "GcpProject",
   "GitCliReportedVersion",
   "LocalAlias",
   "ProcMeminfo",

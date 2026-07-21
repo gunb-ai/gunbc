@@ -1,19 +1,5 @@
 module extdeps.cloud.hetzner
 
-import extdeps.toolchain.types { Architecture }
-import std.currency { CurrencyCode, Eur }
-import std.measure {
-  MoneyAmountMicro,
-  money_amount_micro,
-  ByteSize,
-  byte_size,
-  HardwareThreadCount,
-  hardware_thread_count,
-}
-import std.types { NonEmptyStr }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -23,6 +9,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type HetznerCloudServerType = Cax11 | Cax21 | Cax31 | Cax41
+
+data dissolve_on_anemic_money_rate_carrier: List<String> = [
+  "closure:migrate_to_money_rate|hourly/monthly_cap: MoneyAmountMicro + separate currency forks std.measure MoneyRate<P> (MoneyPerHour/MoneyPerMonth); §3 parallel representation|trigger:next hetzner-cloud catalog edit routes hourly and monthly_cap through MoneyPerHour/MoneyPerMonth"
+]
 
 type HetznerCloudServerCatalogRow {
   server_type: HetznerCloudServerType

@@ -50,6 +50,9 @@ import v2.std.symbol_index {
   GlobalBareHit,
   GlobalBareLookupAmbiguous,
   GlobalBareLookupUnbound,
+  LexicalAmbiguous,
+  LexicalHit,
+  LexicalUnbound,
   SymbolIndex,
   empty_symbol_index,
   symbol_index_global_unique_lookup,
@@ -351,6 +354,14 @@ fn unbound_symbol_diagnostic(n: Node) -> Diagnostic {
   }
 }
 
+fn ambiguous_symbol_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^resolve_reason_ambiguous_symbol,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: UserInputBoundary }
+  }
+}
+
 fn namespace_has_canonical_symbol(namespace: Namespace, name: Symbol) -> Bool {
   namespace.canonical_symbols.member(name)
 }
@@ -377,15 +388,26 @@ fn symbol_index_node_identity(node: Node, fallback: Symbol) -> Symbol {
   }
 }
 
-fn try_symbol_index_atom_identity(ctx: ResolveContext, name: Symbol) -> Optional<Symbol> {
+type SymbolIndexAtomLookup
+  = SymbolIndexAtomHit { canonical: Symbol }
+  | SymbolIndexAtomAmbiguous
+  | SymbolIndexAtomUnbound
+
+fn lookup_symbol_index_atom_identity(
+  ctx: ResolveContext,
+  name: Symbol
+) -> SymbolIndexAtomLookup {
   match symbol_index_lexical_lookup(
     index: ctx.namespace.symbol_index,
     position: symbol_index_lookup_position(ctx: ctx),
     name: name
   ) {
-    Present { value: node } =>
-      optional_present(value: symbol_index_node_identity(node: node, fallback: name))
-    Absent =>
+    LexicalHit { node: node, path: _ } =>
+      SymbolIndexAtomHit {
+        canonical: symbol_index_node_identity(node: node, fallback: name)
+      }
+    LexicalAmbiguous { candidates: _ } => SymbolIndexAtomAmbiguous
+    LexicalUnbound =>
       match ctx.policy {
         NamespaceOnlyY =>
           match symbol_index_global_unique_lookup(
@@ -393,11 +415,13 @@ fn try_symbol_index_atom_identity(ctx: ResolveContext, name: Symbol) -> Optional
             name: name
           ) {
             GlobalBareHit { node } =>
-              optional_present(value: symbol_index_node_identity(node: node, fallback: name))
-            GlobalBareLookupAmbiguous => optional_absent()
-            GlobalBareLookupUnbound => optional_absent()
+              SymbolIndexAtomHit {
+                canonical: symbol_index_node_identity(node: node, fallback: name)
+              }
+            GlobalBareLookupAmbiguous => SymbolIndexAtomAmbiguous
+            GlobalBareLookupUnbound => SymbolIndexAtomUnbound
           }
-        ImportScoped => optional_absent()
+        ImportScoped => SymbolIndexAtomUnbound
       }
   }
 }
@@ -449,13 +473,20 @@ fn resolve_atom(ctx: ResolveContext, n: Node, identity: Symbol) -> Outcome<Node>
             diagnostics: pending
           }
         Absent =>
-          match try_symbol_index_atom_identity(ctx: ctx, name: identity) {
-            Present { value: canonical } =>
+          match lookup_symbol_index_atom_identity(ctx: ctx, name: identity) {
+            SymbolIndexAtomHit { canonical: canonical } =>
               Accepted {
                 value: canonical_atom(identity: canonical, occurrence_id: n.occurrence_id),
                 diagnostics: pending
               }
-            Absent =>
+            SymbolIndexAtomAmbiguous =>
+              Rejected {
+                diagnostics: rejected_with_pending(
+                  pending: pending,
+                  rejected: diagnostics_singleton(d: ambiguous_symbol_diagnostic(n: n))
+                )
+              }
+            SymbolIndexAtomUnbound =>
               if namespace_has_canonical_symbol(
                 namespace: ctx.namespace,
                 name: identity

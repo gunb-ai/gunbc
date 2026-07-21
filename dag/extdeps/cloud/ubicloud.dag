@@ -1,16 +1,5 @@
 module extdeps.cloud.ubicloud
 
-import extdeps.toolchain.types { Architecture, Aarch64, X86_64 }
-import std.measure {
-  ByteSize,
-  byte_size,
-  HardwareThreadCount,
-  hardware_thread_count,
-}
-import std.types { NonEmptyStr }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

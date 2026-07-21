@@ -195,7 +195,7 @@ data host_standup_spine: List<HostStandupStep> = [
   host_standup_prefix_gap_step(
     phase: OsInstallActuated,
     label: "prefix:os-install-actuated",
-    interim_realization: "gunbc.srv3_os_install_actuate (runnable prep) + extdeps.bmc.webui.nbd_proxy_serve ShellProgram transport (bash_emit dissolve-on) + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + gunbc.network_identity_subsumption; live mount+boot proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)",
+    interim_realization: "gunbc.srv3_os_install_actuate (runnable prep) + gunbc.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply; extdeps.bmc.webui.nbd_proxy_serve transport shape; systemd-run transient units interim) + extdeps.bmc.os_install_actuator_toolchain + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + gunbc.network_identity_subsumption; live mount+boot proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)",
     refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until NBD-proxy install actuates and OS-up witness is green-by-execution",
     effect_evidence: host_effect_identity_evidence
   ),
@@ -322,7 +322,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "prefix:os-install-actuated",
     modeling: "gap",
-    authority_or_interim: "gunbc.srv3_os_install_actuate + extdeps.bmc.webui.nbd_proxy_serve (ShellProgram + bash_emit dissolve-on) + extdeps.bmc.os_install_actuator_toolchain + gunbc.network_identity_subsumption — live execution proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)"
+    authority_or_interim: "gunbc.srv3_os_install_actuate + gunbc.host_effect_nbd_proxy_serve (Srv3NbdProxyServe typed session-lease on host_effect_apply) + extdeps.bmc.os_install_actuator_toolchain + gunbc.network_identity_subsumption — live execution proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)"
   },
   GapLedgerRow {
     phase_label: "prefix:host-converge",

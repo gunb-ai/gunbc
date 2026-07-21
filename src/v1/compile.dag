@@ -333,6 +333,7 @@ fn expr_error_kind_name(value: ExprErrorKind) -> String {
     ParseRecoveryError => "ParseRecoveryError"
     SemanticExprError => "SemanticExprError"
     InternalExprError => "InternalExprError"
+    CensusHeadsBodyStripped => "CensusHeadsBodyStripped"
   }
 }
 
