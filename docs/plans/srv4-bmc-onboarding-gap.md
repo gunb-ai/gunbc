@@ -86,3 +86,36 @@ the other handler, not a hard prerequisite).
 
 Open question for the operator: scope now — do all of G1–G4, or minimally G1+G3 (parameterize +
 operator-token handler) to unblock srv4 today and land G2 (gcloud self-provision) as follow-up?
+
+## Outcome (2026-07-21) — srv4 rotated + two gaps found by execution
+
+Full close G1–G4 landed and verified (850-module typecheck clean + 11 witnesses green).
+srv4's BMC was then rotated **live** with an operator-supplied token — the first real
+execution of this flow (srv3's rotation was never run live; its debt marker said so). Two
+gaps surfaced only because we executed (§5 "done = green by execution"):
+
+- **Credential format (FIXED).** `mint_bmc_credential` used `Urandom.ReadBytes(...).octets_b64`
+  — base64, whose `=`/`/`/`+` OpenBMC rejects with `PropertyValueFormatError` (HTTP 400) on the
+  password PATCH. The fail-closed read-back gate correctly aborted before rotating (no lockout).
+  Then a *firmware-policy divergence* surfaced: srv4 (newer OpenBMC, UUID 83819837) accepted a
+  16-char **alphanumeric** password, but srv3 (OpenBMC **2.07.00**, UUID 6df9b4b1) rejected it —
+  its `pam_pwquality` needs a 4th character class (special). Policy read from srv3's AccountService:
+  MinPasswordLength 9, MaxPasswordLength 20. Fixed universally: added `Urandom.ReadPassword`, a
+  composition-guaranteed generator (≥1 upper/lower/digit/special from the shell/JSON/basic-auth-safe
+  set `_.@#%-`), and `mint_bmc_credential` mints a **16-char** such password (within 9–20, satisfies
+  both firmwares). Live-verified: srv4 rotated with a 16-char alnum credential (before the divergence
+  was known); srv3 rotated with a 16-char 4-class credential.
+- **Secret-container creation (FOLLOW-UP).** `bmc_store_and_rotate`'s `AddVersion` assumes the
+  secret exists; `bmc-srv4-admin` did not (404) because the GCP bootstrap
+  (`gunbc.assimilate.bmc_bootstrap_provision`, still srv3-hardcoded) never ran for srv4. Created
+  it manually this session. Correct fix: parameterize `bmc_bootstrap_provision` per-host (same move
+  as G1) so it creates `bmc-<host>-admin` + IAM before onboarding. A blind create-if-missing inside
+  the rotation path is unsafe — the gcp effect consumption style aborts on non-200, so a 409
+  (already-exists) on re-run would break idempotency; the bootstrap is the right home.
+
+State now: **both srv3 and srv4 CredentialsRotated.** srv4 → Secret Manager `bmc-srv4-admin` v2
+(v1, rejected base64, destroyed). srv3 → `bmc-srv3-admin` v6 (v1–v5, prior base64/alnum attempts
+that populated the secret but never rotated the BMC — the "secret exists, server never rotated"
+state — destroyed). Both: factory `0penBmc` → 401, stored credential → 200. Next lifecycle step is
+OsInstalled (the existing seeded-autoinstall spine); the rotation persists across OS installs since
+the BMC is out-of-band.
