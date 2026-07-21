@@ -26,6 +26,7 @@ pub use crate::std_termination::{
 pub use crate::std_termination::{
     DescentEvidence, PositiveDescentAmount, ProportionalDivisor, RankingDimension,
 };
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

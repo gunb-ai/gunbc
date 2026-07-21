@@ -14,7 +14,10 @@ pub use crate::extdeps_languages_rust_types::{
     rust_algebra_inhabitants, rust_callable, rust_cast_syntax, rust_optional_template,
     rust_type_checkpoints,
 };
+pub use crate::std_coercion::CastRule;
 pub use crate::std_coercion::{CallableRepr, CastSyntax, InhabitantDecl, TypeCheckpoint};
+pub use crate::std_measure::second;
+pub use crate::std_types::List;
 pub use crate::std_types::{canonical_container_names, container_template_algebra};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};

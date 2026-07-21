@@ -9,15 +9,19 @@ use crate::std_algebra::CollectionSizeEffect::{IdentityEffect, ProjectionEffect,
 use crate::std_algebra::CostShape::{
     ShapeConstant, ShapeIterateBody, ShapeLinearScan, ShapeSortBody,
 };
+pub use crate::std_algebra::{AlgebraFieldTemplate, CommutativeSemiring};
 pub use crate::std_algebra::{CollectionSizeEffect, CostShape};
 use crate::std_computation::CallPattern::{
     ArithmeticSubtractCall, ChildAccessorCall, CollectionShrinkCall, FoldBodyCall,
     ParserAdvanceCall, SameArgumentCall, WorklistDrainCall,
 };
 use crate::std_computation::IterationDimension::{ArithmeticRepeat, CollectionFold, TreeDescent};
+use crate::std_computation::IterationPrimitive::*;
 use crate::std_computation::ShrinkFactor::{ConstantShrink, ProportionalShrink, UnitShrink};
+use crate::std_computation::SizeBound::*;
 pub use crate::std_computation::{lower_call_pattern, size_bound_param, type_iteration_dimension};
 pub use crate::std_computation::{CallPattern, IterationDimension, LoweringTarget, ShrinkFactor};
+pub use crate::std_computation::{IterationPrimitive, SizeBound};
 pub use crate::std_graph::{
     build_call_graph_from_proof_edges, dfs_collect_component, dfs_finish_order, forward_adjacency,
     graph_has_multi_node_scc, is_lexicographic_descent, is_valid_proof, reverse_adjacency,
@@ -26,6 +30,7 @@ pub use crate::std_graph::{
 pub use crate::std_graph::{CallGraph, DfsFinishAcc, GraphEdge, SccComponentAcc, SccCycleAcc};
 use crate::std_induction::AtomicCost::PolyCost;
 use crate::std_induction::CostBound::{AtomicBound, ConstantBound, ErrorBound, ForeverBound};
+pub use crate::std_induction::InductiveField;
 use crate::std_induction::PolynomialExponent::*;
 use crate::std_induction::SubValueRelation::{
     ArithmeticDescent, IteratedSubValue, PreservedValue, StrictSubValue, SubValueUnknown,
@@ -35,8 +40,12 @@ pub use crate::std_induction::{
     sub_value_to_evidence, sub_value_to_lowering_target,
 };
 pub use crate::std_induction::{AtomicCost, CostBound, PolynomialExponent, SubValueRelation};
+pub use crate::std_magnitude::Magnitude;
+pub use crate::std_measure::second;
 pub use crate::std_measure::ByteSize;
+pub use crate::std_measure::Measure;
 pub use crate::std_measure::{byte_size, byte_size_count};
+pub use crate::std_nat::Nat;
 use crate::std_syntax::BinOp::{Div, Sub};
 use crate::std_syntax::LiteralValue::{LitInt, LitNull};
 pub use crate::std_syntax::{BinOp, LiteralValue};
@@ -57,6 +66,8 @@ pub use crate::std_termination::{
     TerminationProof,
 };
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{List, Map, Set};
+pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_emit_core_support::to_string;
 pub use crate::v1_compiler_infer_sigs::CallEdge;
 pub use crate::v1_compiler_infer_types::{node_is_collection, resolved_type};

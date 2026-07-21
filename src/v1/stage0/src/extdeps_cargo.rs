@@ -11,7 +11,9 @@ pub use crate::extdeps_cargo_version::{
 pub use crate::extdeps_external_authority::ExternalAuthority;
 use crate::extdeps_uri::UriScheme::Https;
 pub use crate::extdeps_uri::{Uri, UriScheme};
+pub use crate::extdeps_version_semver::SemVerConstraint;
 pub use crate::std_types::FilePathParts;
+pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

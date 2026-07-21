@@ -4,11 +4,14 @@
 pub use crate::extdeps_languages_go_emit::{go_reserved, go_reserved_escape_suffix};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
+pub use crate::std_measure::second;
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{FilePath, List, Map};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Go;
+pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_emit::{
     apply_naming_case, compute_service_fields, effective_operation_transport,
     emit_algebra_method_template, emit_bin_op_symbol, emit_container, emit_default_bin_op,
@@ -41,8 +44,11 @@ pub use crate::v1_compiler_emit_core_support::{
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{build_params_scope, expr_span, extend_scope};
+pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::authored_name;
+pub use crate::v1_compiler_infer_env::TypeEnvCache;
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_items::ModuleInterface;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -51,11 +57,15 @@ pub use crate::v1_compiler_infer_sigs::{ResolvedFuncEnv, ResolvedFuncSig};
 pub use crate::v1_compiler_infer_types::{
     node_is_keyed_collection, normalize_access_type_node, resolved_type,
 };
+use crate::v1_compiler_languages::NamingCase::*;
 use crate::v1_compiler_languages::VisibilitySpec::CaseVisibility;
 pub use crate::v1_compiler_languages::{
     is_string_like, scaffold_for_target, test_conventions_for_target,
 };
 pub use crate::v1_compiler_languages::{ItemKeywords, TestConventions, VisibilitySpec};
+pub use crate::v1_compiler_languages::{
+    LanguageSpec, NamingCase, ProjectScaffold, ServiceFieldTemplates,
+};
 pub use crate::v1_compiler_runtime_go::go_runtime_source;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -63,6 +73,7 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Conj, Disj};
+pub use crate::v1_std_core::ErrorNode;
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
     ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,

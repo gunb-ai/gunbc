@@ -8,12 +8,15 @@ use self::TcoExprShape::*;
 pub use crate::extdeps_languages_go_emit::go_method_templates_flat;
 pub use crate::extdeps_languages_python_emit::python_method_templates_flat;
 pub use crate::extdeps_languages_rust_emit::rust_method_templates;
+pub use crate::std_coercion::CallableRepr;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+pub use crate::std_measure::second;
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type};
+pub use crate::std_types::{List, Map, Set};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::{Dag, Go, Python, Rust};
 pub use crate::v1_compiler_coercion::{
@@ -31,12 +34,15 @@ pub use crate::v1_compiler_emit_core_support::{
     to_upper_char, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
+pub use crate::v1_compiler_emit_rust::enum_derives;
 pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{build_params_scope, extend_scope};
 pub use crate::v1_compiler_infer_emit_info::{EmitGraphInfo, TypeSummary};
 use crate::v1_compiler_infer_env::GlobalBareLookupState::*;
 pub use crate::v1_compiler_infer_env::{authored_name, empty_symbol_index};
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{SymbolIndex, TypeEnvCache};
+pub use crate::v1_compiler_infer_items::ModuleInterface;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_lookup::lookup_func_sig;
 pub use crate::v1_compiler_infer_service::{
@@ -60,12 +66,19 @@ use crate::v1_compiler_languages::InterpStyle::{FormatArgs, InlineExpr};
 use crate::v1_compiler_languages::MatchValueForm::{MatchExpression, MatchStatementArmReturn};
 use crate::v1_compiler_languages::NamingCase::{AsAuthored, CamelCase, PascalCase, SnakeCase};
 use crate::v1_compiler_languages::ReservedWordStrategy::{NoEscape, PrefixEscape, SuffixEscape};
+use crate::v1_compiler_languages::ServiceMethodStrategy::*;
+use crate::v1_compiler_languages::ServiceReturnStrategy::*;
 use crate::v1_compiler_languages::TestNameStyle::{PascalCaseTestNames, SnakeCaseTestNames};
 use crate::v1_compiler_languages::VisibilitySpec::{CaseVisibility, KeywordVisibility};
 pub use crate::v1_compiler_languages::{
     binop_symbol, canonical_emoji_char_escape, is_string_like, language_spec_for_target,
     service_method_depth, service_methods_inside_class, service_receiver_str, service_return_str,
     service_self_param, target_keyword, test_conventions_for_target, wrap_shared_type,
+};
+pub use crate::v1_compiler_languages::{
+    AnnotationRequirements, EmojiCharEscape, ForEachSyntax, IndexingSemantics, ItemKeywords,
+    ProjectScaffold, ReservedWords, SerializationSpec, ServiceMethodStrategy,
+    ServiceReturnStrategy, SharingStrategy, TupleSyntax,
 };
 pub use crate::v1_compiler_languages::{
     BlockSyntax, CharSanitization, EscapePair, ExpressionSemantics, IfValueForm, ImportRule,
@@ -77,6 +90,7 @@ use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::error_type;
 use crate::v1_std_core::AlgebraFieldKind::*;
 use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -86,12 +100,14 @@ use crate::v1_std_core::ExprData::{
     ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
 };
 use crate::v1_std_core::FieldAccessStyle::{TupleFirst, TupleSecond};
+use crate::v1_std_core::FieldValueShape::*;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::LiteralValue::*;
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 use crate::v1_std_core::MethodSemantics::{
     AlgebraMethodSemantics, PlainMethodSemantics, ServiceMethodSemantics,
 };
+use crate::v1_std_core::OperationModifier::*;
 use crate::v1_std_core::StringPart::{Interpolation, Text};
 use crate::v1_std_core::UnaryOpKind::*;
 use crate::v1_std_core::VarBindingKind::*;
@@ -116,6 +132,7 @@ pub use crate::v1_std_core::{
     InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, StringPart, TextFile,
     UnaryOpKind, VarBindingKind,
 };
+pub use crate::v1_std_core::{FieldValueShape, InternTable, OperationModifier};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

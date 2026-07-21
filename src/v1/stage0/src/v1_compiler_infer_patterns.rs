@@ -3,9 +3,13 @@
 
 use self::NodeLookupStatus::*;
 use self::PatternSubject::*;
+pub use crate::std_measure::second;
 pub use crate::std_syntax::LiteralValue;
 use crate::std_syntax::LiteralValue::LitBool;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{FilePath, List, Map};
+pub use crate::v1_compiler_emit::is_self_recursive;
+pub use crate::v1_compiler_infer_env::SymbolIndex;
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name, symbol_index_lookup};
 pub use crate::v1_compiler_infer_resolve::{

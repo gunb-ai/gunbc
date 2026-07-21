@@ -13,6 +13,7 @@ use crate::std_syntax::LiteralValue::LitBool;
 pub use crate::std_syntax::{
     BinOp, BodyKind, ItemForm, ItemFormKind, LiteralValue, OperatorSpec, SyntaxSpec,
 };
+pub use crate::std_types::{List, Map};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};

@@ -10,18 +10,22 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_serde_rename_all_snake_case, rust_struct_derives, rust_struct_derives_copy,
 };
 pub use crate::gunbc_stage0_crate_layout_generated::generated_pub_mod_block;
+pub use crate::std_coercion::TypeCheckpoint;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
+pub use crate::std_measure::second;
 use crate::std_serialization::VariantEncoding::*;
 use crate::std_serialization::VariantNaming::*;
 pub use crate::std_serialization::{CoproductWireContract, VariantEncoding, VariantNaming};
 pub use crate::std_syntax::{AlgebraFieldKind, BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{is_container_type, is_kernel_type};
+pub use crate::std_types::{FilePath, List, Map, Set};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std_integer_source;
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
+pub use crate::v1_compiler_coercion::literal_suffix;
 pub use crate::v1_compiler_coercion::{coerce_primitive_type, is_copy, lookup_checkpoint};
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_emit::{
@@ -71,8 +75,11 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, empty_symbol_index, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{SymbolIndex, TypeEnvCache};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
+pub use crate::v1_compiler_infer_items::ModuleInterface;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
+pub use crate::v1_compiler_infer_resolve::NodeResolveResult;
 pub use crate::v1_compiler_infer_resolve::{
     is_width_nat_type_literal, lookup_unit_variant_phantom_type, resolve_node,
 };
@@ -90,7 +97,12 @@ pub use crate::v1_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, sharing_for_target,
     test_conventions_for_target, visibility_for_target,
 };
+pub use crate::v1_compiler_languages::{
+    AnnotationRequirements, IndexingSemantics, LanguageSpec, ProjectScaffold, SerializationSpec,
+    ServiceFieldTemplates, SharingStrategy,
+};
 pub use crate::v1_compiler_languages::{ItemKeywords, TestConventions, VisibilitySpec};
+pub use crate::v1_compiler_ownership::FoldAccUnwrapProof;
 pub use crate::v1_compiler_ownership::OwnershipProof;
 pub use crate::v1_compiler_ownership::{
     analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params,
@@ -118,6 +130,7 @@ use crate::v1_std_core::FieldAccessStyle::{
 };
 use crate::v1_std_core::FieldValueShape::OptionalValue;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
+pub use crate::v1_std_core::InternTable;
 use crate::v1_std_core::LiteralValue::*;
 use crate::v1_std_core::MatchPattern::*;
 use crate::v1_std_core::MethodSemantics::{

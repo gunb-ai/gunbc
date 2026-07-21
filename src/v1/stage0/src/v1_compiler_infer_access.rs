@@ -3,6 +3,8 @@
 
 pub use crate::std_types::is_ordered_element_collection;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{FilePath, List, Map};
+pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_infer_types::{
     for_each_element_type_node, node_is_element_collection, node_is_keyed_collection,
     node_type_equals, normalize_access_type_node, resolved_type,

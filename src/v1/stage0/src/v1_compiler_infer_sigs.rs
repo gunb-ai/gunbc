@@ -3,6 +3,8 @@
 
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_types::{List, Map, SourceSpan};
+pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_infer_types::emit_map_has;
 use crate::v1_rt;
 use crate::v1_rt::Witness;

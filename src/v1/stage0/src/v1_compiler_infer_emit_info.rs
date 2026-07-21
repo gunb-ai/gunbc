@@ -3,6 +3,9 @@
 
 use self::RustCorpusRepr::*;
 use self::TypeRepr::*;
+pub use crate::std_measure::second;
+pub use crate::std_types::{List, Map, Set, SourceSpan};
+pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{empty_symbol_index, empty_type_env};
 pub use crate::v1_compiler_infer_types::{

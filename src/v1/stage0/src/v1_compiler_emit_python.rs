@@ -6,8 +6,10 @@ use crate::std_induction::SubValueRelation::SubValueUnknown;
 use crate::std_syntax::BinOp::NullCoalesce;
 pub use crate::std_syntax::{BinOp, LiteralValue};
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{FilePath, List, Map};
 pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Python;
+pub use crate::v1_compiler_emit::is_self_recursive;
 pub use crate::v1_compiler_emit::{
     compute_service_fields, effective_operation_transport, emit_algebra_method_template,
     emit_bin_op_symbol, emit_container, emit_default_bin_op, emit_error_expr,
@@ -39,10 +41,14 @@ pub use crate::v1_compiler_emit_core_support::{
     to_upper_char, unique_strings,
 };
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
+pub use crate::v1_compiler_emit_rust::enum_derives;
 pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{build_params_scope, expr_span, extend_scope};
+pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
 pub use crate::v1_compiler_infer_env::authored_name;
+pub use crate::v1_compiler_infer_env::TypeEnvCache;
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_items::ModuleInterface;
 pub use crate::v1_compiler_infer_items::{ItemInfo, ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_service::{
     extract_typed_service_name, is_typed_service_call_receiver,
@@ -55,12 +61,16 @@ pub use crate::v1_compiler_languages::{
     is_string_like, scaffold_for_target, serialization_for_target, test_conventions_for_target,
 };
 pub use crate::v1_compiler_languages::{ItemKeywords, TestConventions};
+pub use crate::v1_compiler_languages::{
+    LanguageSpec, ProjectScaffold, SerializationSpec, ServiceFieldTemplates,
+};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::Connective::{Conj, Disj};
+pub use crate::v1_std_core::ErrorNode;
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
     ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,

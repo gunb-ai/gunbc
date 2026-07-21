@@ -9,6 +9,9 @@ use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
+pub use crate::std_types::{FilePath, List, Map, Set};
+pub use crate::v1_compiler_emit::is_self_recursive;
+pub use crate::v1_compiler_resolve::map_has;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -17,6 +20,7 @@ use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::Connective::*;
 use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::*;
+use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, find_child_named, intern, intern_find, intern_str,
     kernel_span, merge_intern_tables, module_path_segments, param_node_name_at,
@@ -25,6 +29,7 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{
     Cardinality, Connective, ExprData, InferredNode, InternTable, NewlineIndex, Node,
 };
+pub use crate::v1_std_core::{InternResult, MatchPattern};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};

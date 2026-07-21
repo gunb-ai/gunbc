@@ -17,6 +17,8 @@ use self::Stage0ReexportPathDepsOutcome::*;
 use crate::extdeps_cargo::CargoDepSource::{LocalPathDep, RegistryDep};
 pub use crate::extdeps_cargo::{CargoDepSource, CargoDependency, CargoFeature};
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
+pub use crate::extdeps_cargo_version::CargoVersionRequirement;
+pub use crate::extdeps_version_semver::SemVerConstraint;
 pub use crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows;
 use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::{
     GeneratedEmitCoreCrate, GeneratedFoundationCrate, GeneratedLayeredCoreCrate,
@@ -24,6 +26,7 @@ use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::
 pub use crate::gunbc_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
+pub use crate::std_types::List;
 pub use crate::v1_compiler_emit_rust::{emit_cargo_dep, emit_non_empty_wrappers};
 use crate::v1_rt;
 use crate::v1_rt::Witness;
