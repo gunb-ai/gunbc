@@ -40,6 +40,10 @@ fn realized_comparison_args() -> List<String> {
   ]
 }
 
+fn realized_comparison_verify_args() -> List<String> {
+  concat(realized_comparison_args(), ["--verify"])
+}
+
 fn run_self_host_realized_comparison_emit() -> Bool {
   run_witness_bin_program(
     invoke: realized_comparison_invoke(),
