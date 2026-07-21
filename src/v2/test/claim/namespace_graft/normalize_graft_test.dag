@@ -1,0 +1,99 @@
+module v2.test.claim.namespace_graft.normalize_graft_test
+
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.collection { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node {
+  ComputationNode,
+  Conj,
+  Named,
+  Node,
+  Positional,
+  TypeNode
+}
+import v2.std.namespace_graft {
+  namespace_graft_is_metadata_edge,
+  namespace_graft_is_module_shell,
+  qualified_name_from_graft_spine
+}
+import v2.std.qualified_name {
+  qualified_name_from_dotted_string,
+  qualified_name_to_dotted_string
+}
+
+data normalize_graft_note: String = "§10 normalize-as-ingest: graft runs post-child-fold in 03_normalize, before resolve/fill — equivalent to desugaring at ingest for all downstream consumers."
+
+data ng_norm_module_source: String = "module v2.test.namespace_graft.norm\n\nfn norm_probe() -> Int { 1 }\n"
+
+fn ng_norm_normalized_root() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: ng_norm_module_source,
+    file: ^ng_norm_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => Absent
+            Accepted { value: tree, diagnostics: _ } => Present { value: tree }
+          }
+      }
+  }
+}
+
+fn ng_norm_grafted_tree_has_no_metadata_edges(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      fold(node.children, init: true, f: fn(ok, edge) {
+        if !ok {
+          false
+        } else {
+          match edge.label {
+            Named { name: sym } =>
+              if namespace_graft_is_metadata_edge(name: sym) {
+                false
+              } else {
+                ng_norm_grafted_tree_has_no_metadata_edges(node: edge.target)
+              }
+            Positional =>
+              ng_norm_grafted_tree_has_no_metadata_edges(node: edge.target)
+          }
+        }
+      })
+    ComputationNode { behavior: _ } => true
+    _ => true
+  }
+}
+
+test fn namespace_graft_normalize_applies_on_parsed_module_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: root } => namespace_graft_is_module_shell(root: root)
+    Absent => false
+  }
+}
+
+test fn namespace_graft_normalize_qn_round_trip_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: root } =>
+      match qualified_name_from_graft_spine(root: root) {
+        Accepted { value: qn, diagnostics: _ } =>
+          qualified_name_to_dotted_string(qn: qn) == "v2.test.namespace_graft.norm"
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn namespace_graft_normalize_output_has_zero_metadata_edges_holds() -> Bool {
+  match ng_norm_normalized_root() {
+    Present { value: root } => ng_norm_grafted_tree_has_no_metadata_edges(node: root)
+    Absent => false
+  }
+}

@@ -32,12 +32,14 @@ import v2.std.qualified_name {
   QualifiedName,
   qualified_name_snoc
 }
+import v2.std.compilers.lexing { symbol_lexeme }
 import v2.extdeps.languages.dag {
   dag_named_edge,
   dag_surface_module_header_metadata_edge,
   parse_production_captured_child_optional,
   parse_production_emitted_identity_optional,
-  qualified_name_from_emit_shaped_module_root
+  qualified_name_from_emit_shaped_module_root,
+  qualified_name_from_module_node
 }
 
 type ModuleRootEdgeDisposition
@@ -92,22 +94,84 @@ fn namespace_graft_is_module_shell(root: Node) -> Bool {
   }
 }
 
-fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
-  let working = namespace_graft_unwrap_module_working_root(root: root)
-  fold(
-    working.children,
-    init: [],
-    f: fn(acc, edge) {
-      match edge.label {
-        Named { name: sym } =>
-          match namespace_graft_module_root_edge_disposition(name: sym) {
-            ModuleRootEdgeDissolve => acc
-            ModuleRootEdgeRehomeProvenance => acc
-            ModuleRootEdgeGraftBody => list_snoc_item(xs: acc, item: edge)
+fn namespace_graft_parse_projection_edge(name: Symbol) -> Bool {
+  (name == ^grammar_production_identity_node_projection)
+    || (name == ^grammar_production_captured_node_projection)
+    || ends_with(s: symbol_lexeme(sym: name), suffix: "_node_projection")
+}
+
+fn namespace_graft_is_module_header_subtree(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_module_header
+    Absent => false
+  }
+}
+
+fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      if count(node.children) == 0 {
+        false
+      } else {
+        fold(node.children, init: true, f: fn(ok, e) {
+          if !ok {
+            false
+          } else {
+            match e.label {
+              Named { name: sym } => namespace_graft_parse_projection_edge(name: sym)
+              Positional => true
+            }
           }
-        Positional => list_snoc_item(xs: acc, item: edge)
+        })
       }
-    }
+    _ => false
+  }
+}
+
+fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
+  match edge.label {
+    Named { name: sym } =>
+      if namespace_graft_is_metadata_edge(name: sym) {
+        acc
+      } else if namespace_graft_parse_projection_edge(name: sym) {
+        concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
+      } else if namespace_graft_is_module_header_subtree(node: edge.target) {
+        acc
+      } else if namespace_graft_is_transparent_sequence_spine(node: edge.target) {
+        concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
+      } else {
+        list_snoc_item(xs: acc, item: edge)
+      }
+    Positional =>
+      if namespace_graft_is_module_header_subtree(node: edge.target) {
+        acc
+      } else if namespace_graft_is_transparent_sequence_spine(node: edge.target) {
+        concat(acc, namespace_graft_collect_body_edges_from_node(node: edge.target))
+      } else {
+        list_snoc_item(xs: acc, item: edge)
+      }
+  }
+}
+
+fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
+  fold(node.children, init: [], f: fn(acc, edge) {
+    namespace_graft_collect_body_edge(acc: acc, edge: edge)
+  })
+}
+
+fn namespace_graft_is_graft_candidate(root: Node) -> Bool {
+  if namespace_graft_already_grafted(root: root) {
+    false
+  } else if namespace_graft_is_module_shell(root: root) {
+    true
+  } else {
+    namespace_graft_has_module_header(root: root)
+  }
+}
+
+fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
+  namespace_graft_collect_body_edges_from_node(
+    node: namespace_graft_unwrap_module_working_root(root: root)
   )
 }
 
@@ -274,14 +338,10 @@ fn namespace_graft_already_grafted(root: Node) -> Bool {
 }
 
 fn namespace_graft_dual_position_refused(root: Node) -> Bool {
-  if !namespace_graft_has_module_header(
-    root: namespace_graft_unwrap_module_working_root(root: root)
-  ) {
+  if !namespace_graft_is_graft_candidate(root: root) {
     false
   } else {
-    match qualified_name_from_emit_shaped_module_root(
-      root: namespace_graft_unwrap_module_working_root(root: root)
-    ) {
+    match qualified_name_from_module_node(root: root) {
       Rejected { diagnostics: _ } => false
       Accepted { value: qn, diagnostics: _ } =>
         match qn {
@@ -302,9 +362,10 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
       at: node_locus(node: root),
       correction: Unavailable { reason: ExternalContractUnknown }
     })
+  } else if !namespace_graft_is_graft_candidate(root: root) {
+    outcome_accepted(value: root)
   } else {
-    let working = namespace_graft_unwrap_module_working_root(root: root)
-    match qualified_name_from_emit_shaped_module_root(root: working) {
+    match qualified_name_from_module_node(root: root) {
       Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
       Accepted { value: qn, diagnostics: _ } =>
         match qn {
