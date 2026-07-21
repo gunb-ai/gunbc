@@ -10,8 +10,7 @@ import extdeps.pricing.ubicloud { ubicloud_premium_standard_2_price }
 import std.currency { Usd }
 import std.measure {
   MoneyPerMinute,
-  billing_month_as_hours,
-  hour_count,
+  billing_month_as_hour_count,
   money_amount_micro,
   money_per_hour_micros,
   money_per_minute_micros,
@@ -49,7 +48,7 @@ fn witness_hetzner_ax41_monthly_matches_cited_price() -> Bool {
 
 fn witness_hetzner_ax41_hourly_equivalent_derived() -> Bool {
   let derived = per_hour_equivalent_from_per_month(q: hetzner_ax41_1_ltd_price.monthly)
-  money_per_hour_micros(q: derived) == 57300000 / hour_count(h: billing_month_as_hours())
+  money_per_hour_micros(q: derived) == 57300000 / billing_month_as_hour_count
 }
 
 data wrong_github_2core_per_minute_fixture: MoneyPerMinute = MoneyPerMinute {

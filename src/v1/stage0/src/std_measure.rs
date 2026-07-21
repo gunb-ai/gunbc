@@ -414,29 +414,16 @@ pub fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
     })
 }
 
-pub type Hour = Rc<Measure<(), (), i64>>;
-
-pub fn hour(count: Nat) -> Hour {
-    Rc::new(Measure {
-        count: count.clone(),
-        _phantom: std::marker::PhantomData,
-    })
-}
-
-pub fn hour_count(h: Hour) -> Nat {
-    measure_count(h.clone())
-}
-
-pub fn billing_month_as_hours() -> Hour<Time, One, Nat> {
+pub fn billing_month_as_hour_count() -> Nat {
     thread_local! {
-        static CACHED: Hour<Time, One, Nat> = {
-            hour(730)
+        static CACHED: Nat = {
+            730
         };
     }
-    CACHED.with(|c: &Hour<Time, One, Nat>| c.clone())
+    CACHED.with(|c: &Nat| c.clone())
 }
 
-pub fn billing_month_as_hours_note() -> String {
+pub fn billing_month_as_hour_count_note() -> String {
     thread_local! {
         static CACHED: String = {
             "Derived monthly→hourly divisor: 730 hours (365×24/12), the conventional cloud billing month used for cross-vendor hourly equivalence only — not a vendor quote.".to_string()
@@ -445,10 +432,19 @@ pub fn billing_month_as_hours_note() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn billing_month_as_hour_count_representation_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Nat divisor, not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
     Rc::new(MoneyRate {
         amount: money_amount_micro(
-            (money_per_month_micros(q.clone()) / hour_count(billing_month_as_hours())),
+            (money_per_month_micros(q.clone()) / billing_month_as_hour_count()),
         ),
         currency: q.currency.clone(),
         _phantom: std::marker::PhantomData,
