@@ -1,6 +1,11 @@
 module extdeps.sec.issuer.gitlab_facts
 
-import extdeps.sec.facts { FiledAmount, FiledFactCitation, FiledMonetaryFact }
+import extdeps.sec.facts {
+  FiledAmount,
+  FiledFactCitation,
+  FiledMonetaryFact,
+  usd_whole_dollars,
+}
 import extdeps.sec.types { AnnualReport }
 import extdeps.sec.us_gaap {
   us_gaap_cost_of_revenue,
@@ -32,19 +37,19 @@ data gitlab_fy2026_citation: FiledFactCitation = FiledFactCitation {
 
 data gitlab_fy2026_revenue: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
-  amount: Filed { amount_usd: 955224000 },
+  amount: Filed { amount: usd_whole_dollars(count: 955224000) },
   citation: Present { value: gitlab_fy2026_citation },
 }
 
 data gitlab_fy2026_cost_of_revenue: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_cost_of_revenue,
-  amount: Filed { amount_usd: 120743000 },
+  amount: Filed { amount: usd_whole_dollars(count: 120743000) },
   citation: Present { value: gitlab_fy2026_citation },
 }
 
 data gitlab_fy2026_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_gross_profit,
-  amount: Filed { amount_usd: 834481000 },
+  amount: Filed { amount: usd_whole_dollars(count: 834481000) },
   citation: Present { value: gitlab_fy2026_citation },
 }
 
