@@ -31,9 +31,43 @@ type TypeSummary {
   repr: TypeRepr
   field_summaries: Map<String, FieldSummary>
   field_type_map: Map<String, String>
+  field_import_surface_names: List<String>
   variant_name_set: Map<String, Bool>
   generic_param_names: List<String>
   has_fn_fields: Bool
+}
+
+type FieldTypeMapBuild {
+  field_types: Map<String, String>
+  import_surface_names: List<String>
+}
+
+type UniqueStringAccum {
+  seen: Map<String, Bool>
+  result: List<String>
+}
+
+fn dedupe_nonempty_strings(items: List<String>) -> List<String> {
+  let acc = items |> fold(init: UniqueStringAccum { seen: empty_map(), result: [] }, f: (inner, item) =>
+    if item == "" || emit_map_has(m: inner.seen, key: item) { inner }
+    else { UniqueStringAccum { seen: map_insert(inner.seen, item, true), result: concat(inner.result, [item]) } }
+  )
+  acc.result
+}
+
+fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let peeled = normalize_access_type_node(n: n)
+  let name = authored_name_at(source_indices: source_indices, node: peeled)
+  let is_tv = if peeled.inferred != none { is_type_variable(inferred: peeled.inferred.value) } else { false }
+  let own = if name != "" && name != "Dynamic" && !is_tv { [name] } else { [] }
+  let child_names = peeled.children |> flat_map(ch =>
+    collect_type_node_import_surface_names(n: child_type_node(ch: ch), source_indices: source_indices)
+  )
+  let inferred_names = match peeled.inferred {
+    Present { value: Resolved { node: rt } } => collect_type_node_import_surface_names(n: rt, source_indices: source_indices)
+    _ => []
+  }
+  dedupe_nonempty_strings(items: concat(own, concat(child_names, inferred_names)))
 }
 
 type RustCorpusRepr = HostNative | FaithfulFreeMonoid
@@ -270,17 +304,21 @@ fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, 
   )
 }
 
-fn build_field_type_map(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
-  fold(children, init: empty_map(), f: (acc, child) =>
+fn build_field_type_map(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> FieldTypeMapBuild {
+  fold(children, init: FieldTypeMapBuild { field_types: empty_map(), import_surface_names: [] }, f: (acc, child) =>
     match child.inferred {
       Present { value: Resolved { node: ft } } =>
         let resolved_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: ft))
         let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
-
         let key = authored_name_at(source_indices: source_indices, node: child)
-        if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {
-          map_insert(acc, key, resolved_name)
-        } else { acc }
+        let surface_names = collect_type_node_import_surface_names(n: ft, source_indices: source_indices)
+        let next_field_types = if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {
+          map_insert(acc.field_types, key, resolved_name)
+        } else { acc.field_types }
+        FieldTypeMapBuild {
+          field_types: next_field_types,
+          import_surface_names: dedupe_nonempty_strings(items: concat(acc.import_surface_names, surface_names))
+        }
       _ => acc
     }
   )
@@ -299,11 +337,13 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
     }
   )
   if is_product {
+    let field_types = build_field_type_map(children: item.children, source_indices: source_indices)
     Present { value: TypeSummary {
       name: authored_name_at(source_indices: source_indices, node: item),
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(parent: item, source_indices: source_indices),
-      field_type_map: build_field_type_map(children: item.children, source_indices: source_indices),
+      field_type_map: field_types.field_types,
+      field_import_surface_names: field_types.import_surface_names,
       variant_name_set: empty_map(),
       generic_param_names: gpn,
       has_fn_fields: has_fn
@@ -315,6 +355,7 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children, source_indices: source_indices),
       field_type_map: empty_map(),
+      field_import_surface_names: [],
       variant_name_set: fold(item.children, init: empty_map(), f: (acc, child) => map_insert(acc, authored_name_at(source_indices: source_indices, node: child), true)),
       generic_param_names: gpn,
       has_fn_fields: has_fn
@@ -349,6 +390,7 @@ fn close_fn_fields(summaries: Map<String, TypeSummary>) -> Map<String, TypeSumma
             repr: s.repr,
             field_summaries: s.field_summaries,
             field_type_map: s.field_type_map,
+            field_import_surface_names: s.field_import_surface_names,
             variant_name_set: s.variant_name_set,
             generic_param_names: s.generic_param_names,
             has_fn_fields: true
