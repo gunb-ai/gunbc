@@ -16,7 +16,7 @@ use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::{
     lookup_binding_by_name, lookup_type_by_name, qualified_all_but_last, symbol_index_insert,
-    symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
+    symbol_index_lookup, GlobalBareCandidate, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
@@ -18580,6 +18580,323 @@ fn neither_bound_subclass_label(subclass: &NeitherBoundSubclass) -> &'static str
     }
 }
 
+/// Silent-pick class eligible for walk-target-sourced alias codemod (§13 relief valve).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum WalkTargetAliasPlanClass {
+    GlobalBareLcp,
+    FnParentFirstHit,
+}
+
+impl WalkTargetAliasPlanClass {
+    fn label(self) -> &'static str {
+        match self {
+            WalkTargetAliasPlanClass::GlobalBareLcp => "global_bare_lcp",
+            WalkTargetAliasPlanClass::FnParentFirstHit => "fn_parent_first_hit",
+        }
+    }
+}
+
+/// Deduped alias plan row — one `alias <binding> = <walk.target>` per key.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WalkTargetAliasPlanKey {
+    pub class: WalkTargetAliasPlanClass,
+    pub declaring_module: String,
+    pub binding: String,
+    pub walk_target_qualified_path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WalkTargetAliasPlanRow {
+    pub key: WalkTargetAliasPlanKey,
+    pub lookup_events: usize,
+    pub walk_verified: bool,
+    /// Primary oracle key (§13): pre-flip binding identity as qualified path.
+    pub pre_flip_qualified_path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WalkTargetAliasPlanRefused {
+    pub class: WalkTargetAliasPlanClass,
+    pub declaring_module: String,
+    pub binding: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WalkTargetAliasPlan {
+    pub rows: Vec<WalkTargetAliasPlanRow>,
+    pub refused: Vec<WalkTargetAliasPlanRefused>,
+    pub global_bare_lcp_events: usize,
+    pub fn_parent_first_hit_events: usize,
+    pub modules_resolved: usize,
+    pub modules_excluded: usize,
+}
+
+fn build_module_type_env_map(
+    ctx: &v1_interpreter::InterpContext,
+) -> HashMap<String, Rc<TypeEnv>> {
+    ctx.modules
+        .iter()
+        .map(|tm| (tm.type_env.module_path.clone(), tm.type_env.clone()))
+        .collect()
+}
+
+/// Ground walk target for a `global_bare_lcp` silent pick via SymbolIndex — never import lists.
+fn ground_walk_target_global_bare_lcp(
+    type_env: Rc<TypeEnv>,
+    name: &str,
+    chosen_module_path: &str,
+) -> Result<String, String> {
+    match type_env
+        .symbol_index
+        .global_bare
+        .get(name)
+        .map(|s| &**s)
+    {
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates, .. }) => {
+            let cand = candidates
+                .iter()
+                .find(|c| c.module_path == chosen_module_path)
+                .ok_or_else(|| {
+                    format!(
+                        "chosen_module '{chosen_module_path}' not in global_bare candidates for '{name}'"
+                    )
+                })?;
+            let qualified_path = module_path_to_qualified_path(chosen_module_path, name);
+            match symbol_index_lookup(type_env.symbol_index.clone(), qualified_path.clone()) {
+                Some(node) if Rc::as_ptr(&node) == Rc::as_ptr(&cand.binding.resolved) => {
+                    Ok(qualified_path)
+                }
+                Some(_) => Err(format!(
+                    "symbol_index_lookup node_ptr mismatch for '{qualified_path}' vs global_bare candidate"
+                )),
+                None => Err(format!("symbol_index_lookup miss for '{qualified_path}'")),
+            }
+        }
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding { .. }) => {
+            Err(format!("global_bare not ambiguous for '{name}' at silent-pick site"))
+        }
+        None => Err(format!("name '{name}' not in global_bare index")),
+    }
+}
+
+/// Ground walk target for `fn_parent_first_hit` via SymbolIndex qualified-path lookup.
+fn ground_walk_target_fn_parent_first_hit(
+    type_env: Rc<TypeEnv>,
+    chosen_parent_module: &str,
+    name: &str,
+    item_index: &ModuleItemIndex,
+) -> Result<String, String> {
+    let qualified_path = module_path_to_qualified_path(chosen_parent_module, name);
+    match symbol_index_lookup(type_env.symbol_index.clone(), qualified_path.clone()) {
+        Some(node) if is_fn_like_binding(&node, chosen_parent_module, name, Some(item_index)) => {
+            Ok(qualified_path)
+        }
+        Some(_) => Err(format!(
+            "symbol_index_lookup hit for '{qualified_path}' is not fn-like"
+        )),
+        None => Err(format!("symbol_index_lookup miss for '{qualified_path}'")),
+    }
+}
+
+/// Build deduped walk-target alias plan from a resolved ctx + census telemetry.
+pub fn walk_target_alias_plan_from_census(
+    ctx: &v1_interpreter::InterpContext,
+    census: &ResolutionDivergenceCensus,
+) -> WalkTargetAliasPlan {
+    let type_envs = build_module_type_env_map(ctx);
+    let item_index = build_module_item_index(ctx);
+    let mut event_counts: HashMap<WalkTargetAliasPlanKey, usize> = HashMap::new();
+    let mut verified: HashMap<WalkTargetAliasPlanKey, bool> = HashMap::new();
+    let mut pre_flip_paths: HashMap<WalkTargetAliasPlanKey, String> = HashMap::new();
+    let mut refused = Vec::new();
+
+    let mut record = |class: WalkTargetAliasPlanClass,
+                      declaring_module: &str,
+                      binding: &str,
+                      walk_target: Result<String, String>| {
+        match walk_target {
+            Ok(qualified_path) => {
+                let key = WalkTargetAliasPlanKey {
+                    class,
+                    declaring_module: declaring_module.to_string(),
+                    binding: binding.to_string(),
+                    walk_target_qualified_path: qualified_path.clone(),
+                };
+                *event_counts.entry(key.clone()).or_insert(0) += 1;
+                verified.entry(key.clone()).or_insert(true);
+                pre_flip_paths
+                    .entry(key)
+                    .or_insert(qualified_path);
+            }
+            Err(reason) => refused.push(WalkTargetAliasPlanRefused {
+                class,
+                declaring_module: declaring_module.to_string(),
+                binding: binding.to_string(),
+                reason,
+            }),
+        }
+    };
+
+    for row in &census.silent_pick_global_bare_lcp_rows {
+        match type_envs.get(&row.env_module_path) {
+            Some(type_env) => record(
+                WalkTargetAliasPlanClass::GlobalBareLcp,
+                &row.env_module_path,
+                &row.name,
+                ground_walk_target_global_bare_lcp(
+                    type_env.clone(),
+                    &row.name,
+                    &row.chosen_module_path,
+                ),
+            ),
+            None => record(
+                WalkTargetAliasPlanClass::GlobalBareLcp,
+                &row.env_module_path,
+                &row.name,
+                Err(format!(
+                    "declaring module '{}' not in resolved ctx",
+                    row.env_module_path
+                )),
+            ),
+        }
+    }
+
+    for row in &census.silent_pick_fn_parent_first_hit_rows {
+        match type_envs.get(&row.env_module_path) {
+            Some(type_env) => record(
+                WalkTargetAliasPlanClass::FnParentFirstHit,
+                &row.env_module_path,
+                &row.name,
+                ground_walk_target_fn_parent_first_hit(
+                    type_env.clone(),
+                    &row.chosen_parent_module,
+                    &row.name,
+                    &item_index,
+                ),
+            ),
+            None => record(
+                WalkTargetAliasPlanClass::FnParentFirstHit,
+                &row.env_module_path,
+                &row.name,
+                Err(format!(
+                    "declaring module '{}' not in resolved ctx",
+                    row.env_module_path
+                )),
+            ),
+        }
+    }
+
+    let mut rows: Vec<WalkTargetAliasPlanRow> = event_counts
+        .into_iter()
+        .map(|(key, lookup_events)| WalkTargetAliasPlanRow {
+            pre_flip_qualified_path: pre_flip_paths
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| key.walk_target_qualified_path.clone()),
+            walk_verified: *verified.get(&key).unwrap_or(&false),
+            lookup_events,
+            key,
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        (
+            a.key.class.label(),
+            a.key.declaring_module.as_str(),
+            a.key.binding.as_str(),
+            a.key.walk_target_qualified_path.as_str(),
+        )
+            .cmp(&(
+                b.key.class.label(),
+                b.key.declaring_module.as_str(),
+                b.key.binding.as_str(),
+                b.key.walk_target_qualified_path.as_str(),
+            ))
+    });
+
+    WalkTargetAliasPlan {
+        rows,
+        refused,
+        global_bare_lcp_events: census.silent_pick_global_bare_lcp,
+        fn_parent_first_hit_events: census.silent_pick_fn_parent_first_hit,
+        modules_resolved: census.modules_resolved,
+        modules_excluded: census.modules_excluded,
+    }
+}
+
+/// Whole-corpus walk-target alias plan (plan-only; no source edits).
+pub fn walk_target_alias_plan_live(
+    source_roots: &[String],
+    exclude_substrings: &[String],
+) -> Result<WalkTargetAliasPlan, String> {
+    crate::v1_rt::resolution_silent_pick_enable();
+    let WholeTreeCtx {
+        ctx,
+        modules_resolved,
+        modules_excluded,
+        ..
+    } = whole_tree_resolved_ctx(
+        source_roots,
+        exclude_substrings,
+        v1_interpreter::ExecutionMode::Wet,
+    )?;
+    let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
+    let mut census = resolution_divergence_census_from_ctx(&ctx);
+    census.modules_resolved = modules_resolved;
+    census.modules_excluded = modules_excluded;
+    merge_silent_pick_telemetry(&mut census, silent_picks);
+    Ok(walk_target_alias_plan_from_census(&ctx, &census))
+}
+
+pub fn format_walk_target_alias_plan(plan: &WalkTargetAliasPlan) -> String {
+    let global_bare_unique = plan
+        .rows
+        .iter()
+        .filter(|r| r.key.class == WalkTargetAliasPlanClass::GlobalBareLcp)
+        .count();
+    let fn_parent_unique = plan
+        .rows
+        .iter()
+        .filter(|r| r.key.class == WalkTargetAliasPlanClass::FnParentFirstHit)
+        .count();
+    let mut lines = vec![
+        format!(
+            "[walk-target-alias-plan] scope=dag+src/v2 modules_resolved={} modules_excluded={}",
+            plan.modules_resolved, plan.modules_excluded
+        ),
+        format!(
+            "[walk-target-alias-plan] global_bare_lcp_events={} unique_rows={} fn_parent_first_hit_events={} unique_rows={} refused={}",
+            plan.global_bare_lcp_events,
+            global_bare_unique,
+            plan.fn_parent_first_hit_events,
+            fn_parent_unique,
+            plan.refused.len(),
+        ),
+    ];
+    for row in &plan.rows {
+        lines.push(format!(
+            "ALIAS_ROW\t{}\tmodule={}\tbinding={}\twalk_target={}\tlookup_events={}\twalk_verified={}\tpre_flip_qn={}",
+            row.key.class.label(),
+            row.key.declaring_module,
+            row.key.binding,
+            row.key.walk_target_qualified_path,
+            row.lookup_events,
+            row.walk_verified,
+            row.pre_flip_qualified_path,
+        ));
+    }
+    for row in &plan.refused {
+        lines.push(format!(
+            "REFUSED\t{}\tmodule={}\tbinding={}\treason={}",
+            row.class.label(),
+            row.declaring_module,
+            row.binding,
+            row.reason,
+        ));
+    }
+    lines.join("\n")
+}
+
 #[cfg(test)]
 mod resolution_divergence_census_tests {
     use super::{
@@ -18721,6 +19038,122 @@ fn caller() -> Bool {
                 containment_binding.owner_module
             );
         }
+        let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    fn walk_target_alias_plan_fixture_root() -> std::path::PathBuf {
+        super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-walk-alias-plan-{}", std::process::id()))
+    }
+
+    /// Planted global_bare_lcp silent pick: two homonymous types, consumer nearer to one.
+    /// Oracle: plan row walk_target == symbol_index-grounded qualified path for LCP winner.
+    #[test]
+    fn walk_target_alias_plan_positive_control_global_bare_lcp() {
+        use super::{
+            walk_target_alias_plan_from_census, walk_target_alias_plan_live,
+            WalkTargetAliasPlanClass,
+        };
+
+        let ws = super::process_workspace_root();
+        let fixture = walk_target_alias_plan_fixture_root();
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "near.dag",
+            r#"module test.aliasplan.near
+
+import std.types { Int }
+
+type AmbigType = Int
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "far.dag",
+            r#"module test.aliasplan.far.away
+
+import std.types { Int }
+
+type AmbigType = Int
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "consumer.dag",
+            r#"module test.aliasplan.near.consumer
+
+import std.types { Int }
+
+fn use_ambig(x: AmbigType) -> Int {
+  return x
+}
+"#,
+        );
+        let roots = vec![
+            fixture.to_string_lossy().into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+        ];
+        let plan = walk_target_alias_plan_live(&roots, &[]).expect("plan live");
+        assert!(
+            plan.global_bare_lcp_events >= 1,
+            "fixture must trigger global_bare_lcp silent pick, got events={}",
+            plan.global_bare_lcp_events
+        );
+        let rows: Vec<_> = plan
+            .rows
+            .iter()
+            .filter(|r| {
+                r.key.class == WalkTargetAliasPlanClass::GlobalBareLcp
+                    && r.key.declaring_module == "test.aliasplan.near.consumer"
+                    && r.key.binding == "AmbigType"
+            })
+            .collect();
+        assert_eq!(
+            rows.len(),
+            1,
+            "expected one deduped AmbigType row for consumer module, plan rows={:?}",
+            plan.rows
+        );
+        let row = rows[0];
+        assert!(
+            row.walk_verified,
+            "walk target must verify via symbol_index, row={row:?}"
+        );
+        assert_eq!(
+            row.pre_flip_qualified_path, "test.aliasplan.near.AmbigType",
+            "oracle primary key must be LCP-nearer qualified path"
+        );
+        assert_eq!(
+            row.key.walk_target_qualified_path, row.pre_flip_qualified_path,
+            "walk_target and pre_flip_qn must agree"
+        );
+        assert!(
+            row.lookup_events >= 1,
+            "lookup_events must count silent-pick telemetry hits"
+        );
+
+        // Binding-identity oracle within one run: re-ground from census ctx must match plan row.
+        crate::v1_rt::resolution_silent_pick_enable();
+        let WholeTreeCtx { ctx, .. } = whole_tree_resolved_ctx(&roots, &[], Wet).expect("resolve");
+        let silent_picks = crate::v1_rt::resolution_silent_pick_disable();
+        let mut census = super::resolution_divergence_census_from_ctx(&ctx);
+        super::merge_silent_pick_telemetry(&mut census, silent_picks);
+        let replay = walk_target_alias_plan_from_census(&ctx, &census);
+        let replay_row = replay
+            .rows
+            .iter()
+            .find(|r| {
+                r.key.declaring_module == "test.aliasplan.near.consumer"
+                    && r.key.binding == "AmbigType"
+            })
+            .expect("replay plan must contain consumer AmbigType row");
+        assert_eq!(
+            replay_row.pre_flip_qualified_path, row.pre_flip_qualified_path,
+            "oracle: replay qualified_path must match plan snapshot"
+        );
+
         let _ = std::fs::remove_dir_all(&fixture);
     }
 }
