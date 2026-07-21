@@ -20,6 +20,9 @@ import gunbc.live_deploy.spec {
   deployment_owned_steps_retract_order,
   deployment_step_ownership,
   gunbc_roadmap_systemd_unit_path,
+  gunbc_tree_sync_unit_name,
+  gunbc_tree_sync_unit_path,
+  gunbc_tree_sync_env_path,
 }
 import gunbc.ownership { Ownership }
 import gunbc.membership_reconcile {
@@ -190,12 +193,13 @@ fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   }
 }
 
-data emit_root_principal_note: String = "The deploy principal on srv1 is ROOT (actions-runner unit User=root, parent-lane verification 2026-07-20), mirrored from the operator-approved manual provisioning: the tree rsyncs (working tree + additive .git — the belt's `git worktree add` requires a real repo; see apply_tree_split_sync_note) and the chown-to-service-user run BARE, requiring the root principal and NO new sudoers grant; the sudo -n prefix stays only on the ops in the historical minimal grant set (apt-get/install/systemctl/tailscale), where it is redundant-but-harmless under root and load-bearing for any future unprivileged principal. The former install_d_shared_setup_latent_coupling marker fired as designed: /opt/gunbc now has MULTIPLE owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer."
+data emit_deploy_principal_note: String = "The deploy principal on srv1 is the UNPRIVILEGED CI-runner account — gunbc.fleet_posix_accounts FleetAccountCiRunner (ghrunner, uid 1001) with exactly the five NOPASSWD sudo grants that module enumerates (apt-get, install, systemctl, tailscale, rm) — NOT root. The prior note here claimed ROOT from a hand ssh verification (parent lane 2026-07-20) that CONTRADICTED the repo's own single authority (fleet_posix_accounts, probed 2026-07-02) — a DESIGN 3 fork of the principal fact — and reality sided with the authority: the first flip deploy (run 29822498755, 2026-07-21) died on bare-rsync EACCES/chgrp-EPERM into the service-user-owned tree. The corrected realization stays INSIDE the granted set, no new sudoers grant: directories and the binary install with -o/-g service-user via the granted install (ownership at creation, never a chown fixup — the root-writes-then-chown two-step is dissolved, the wrongly-owned intermediate state unwritable); the tree sync runs AS the service user through gunbc-tree-sync.service (a oneshot unit, User=service-user, installed and started via the granted install+systemctl — the owner writes its own tree); teardown rm goes through the granted rm. RESIDUE (named): admission of each sudo -n command against the ci_deploy_access grant envelope is witnessed post-hoc in test.claim.live_deploy.emit, not yet refused at emit-construction time — that wall rides the effect-namespace-grants lane. The former install_d_shared_setup_latent_coupling marker fired as designed: /opt/gunbc now has MULTIPLE owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer."
 
-fn chown_service_user_step(spec: DeploymentSpec, path: String) -> PipelineStep {
-  deploy_raw(command: join([
-    "chown -R ", spec.service.service_user, ":", spec.service.service_user, " ", path,
-  ], ""))
+fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
+  join([
+    "sudo -n install -d -m 0755 -o ", spec.service.service_user,
+    " -g ", spec.service.service_user, " ", path,
+  ], "")
 }
 
 data apply_tree_split_sync_note: String = "GunbcSourceTree apply is a SPLIT sync (review 40332, DESIGN 5 — the retract-side rmdir wall alone gave false assurance): the shared repo at /opt/gunbc/gunbc accumulates target-LOCAL git state the runner checkout never has — .git/worktrees/<name> registrations for every live dispatch worktree, the session branch refs those worktrees are on, and the objects their commits wrote into the shared store — so a single rsync --delete of ./ would destroy live agent sessions on every redeploy. The working tree syncs with --delete (stale sources must not linger) but excludes /.git; .git syncs ADDITIVELY (no --delete), which keeps origin/main fresh from the runner checkout (the belt's git worktree add resolves origin/main from these remote-tracking refs — srv1 does no fetch) while never deleting worktree metadata, session refs, or their objects. Accumulation of pruned-worktree residue is the safe direction and is reaped by git itself, never by deploy."
