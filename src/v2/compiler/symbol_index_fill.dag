@@ -1,4 +1,7 @@
 module v2.compiler.symbol_index_fill
+
+import v2.std.namespace_graft { qualified_name_from_module_node_graft_aware }
+
 data symbol_index_fill_extdeps_coupling_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -179,7 +182,7 @@ fn symbol_index_fill_unique_variant_aliases(
 }
 
 fn symbol_index_fill_module_root(index: SymbolIndex, root: Node) -> SymbolIndex {
-  match qualified_name_from_module_node(root: root) {
+  match qualified_name_from_module_node_graft_aware(root: root) {
     Accepted { value: module_qn, diagnostics: _ } =>
       symbol_index_fill_unique_variant_aliases(
         index: symbol_index_fill_containment_node(

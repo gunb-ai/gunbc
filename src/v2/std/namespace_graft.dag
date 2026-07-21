@@ -1,5 +1,7 @@
 module v2.std.namespace_graft
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.algebra { Cons, Empty, FreeMonoid }
 import v2.std.algebra { fold_list_right, is_empty, list_snoc_item }
 import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
@@ -52,6 +54,27 @@ fn namespace_graft_pre_graft_module_qn(root: Node) -> Outcome<QualifiedName> {
       }
     Absent =>
       qualified_name_from_emit_shaped_module_root(root: root)
+  }
+}
+
+data qualified_name_from_module_node_graft_aware_note: String = "INTERIM dual-arm QN reader (§10 C4 staging). Post-normalize trees: QN from containment nesting position (qualified_name_from_graft_spine — the §10/§13 single naming authority). Pre-graft ingress only: header-path read via namespace_graft_pre_graft_module_qn (honest — parse emits header metadata until normalize graft fires; no header shim re-stamped onto grafted trees). Wet-ingest RED controls: program_assembly_real_ingest_module_roots_parse_holds + validate_module_roots_red_on_parsed_roots."
+
+data qualified_name_from_module_node_graft_aware_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "v2.extdeps.languages.dag",
+    decl_name: "qualified_name_from_module_node",
+    field: WholeDeclaration
+  }
+}
+
+data qualified_name_from_module_node_graft_aware_dissolution_trigger: String = "DISSOLVE-ON: v2.extdeps.languages.dag qualified_name_from_module_node routes grafted roots through nesting-position spine walk internally (import cycle v2.std.namespace_graft <-> v2.extdeps.languages.dag broken — spine helpers lifted to std or pre-graft ingress split to parse-only boundary). Then delete qualified_name_from_module_node_graft_aware + namespace_graft_pre_graft_module_qn; all production callers already on the collapsed reader. Completion signal: wet source_root_ingest_gate_passes green + both real_ingest RED controls green on grafted fixture ingest."
+
+fn qualified_name_from_module_node_graft_aware(root: Node) -> Outcome<QualifiedName> {
+  if namespace_graft_already_grafted(root: root) {
+    qualified_name_from_graft_spine(root: root)
+  } else {
+    namespace_graft_pre_graft_module_qn(root: root)
   }
 }
 
