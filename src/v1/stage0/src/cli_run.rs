@@ -19324,8 +19324,24 @@ fn caller() -> Bool {
 
     #[test]
     fn walk_target_alias_plan_refuses_global_bare_lcp_tie_sites() {
-        use super::{walk_target_alias_plan_from_census, WalkTargetAliasPlanClass};
+        use super::{
+            walk_target_alias_plan_from_census, ResolutionDivergenceCensus,
+            WalkTargetAliasPlanClass,
+        };
+        use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+        use crate::v1_compiler_infer_items::ResolvedGraph;
+        use crate::v1_interpreter::InterpContext;
+        use im::HashMap;
+        use im::Vector;
+        use std::rc::Rc;
 
+        let graph = ResolvedGraph {
+            modules: Rc::new(Vector::new()),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(Vector::new()),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        let ctx = InterpContext::new(&graph, Rc::new(HashMap::new()), Wet);
         let census = ResolutionDivergenceCensus {
             silent_pick_global_bare_lcp_tie: 1,
             silent_pick_global_bare_lcp_tie_rows: vec![crate::v1_rt::GlobalBareLcpTieSite {
@@ -19334,11 +19350,6 @@ fn caller() -> Bool {
                 candidate_count: 2,
             }],
             ..ResolutionDivergenceCensus::default()
-        };
-        let ctx = v1_interpreter::InterpContext {
-            modules: Vec::new(),
-            source_indices: Rc::new(HashMap::new()),
-            ..Default::default()
         };
         let plan = walk_target_alias_plan_from_census(&ctx, &census);
         assert_eq!(plan.global_bare_lcp_tie_events, 1);
