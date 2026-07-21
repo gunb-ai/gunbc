@@ -5,7 +5,7 @@ import extdeps.color.srgb { Srgb8, CitedColorRow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-data solarized_authority: ExternalAuthority = ExternalAuthority {
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
     locator: "ethanschoonover.com/solarized/"
