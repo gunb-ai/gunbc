@@ -269,28 +269,47 @@ fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
 
 data money_rate_billing_unit_note: String = "Billing unit is part of the fact: per-minute, per-hour, and per-month are distinct carriers — never folded into a bare amount with the unit in the field name. Cross-vendor normalization is a derived projection at read time, never a stored catalog field."
 
-type MoneyPerMinute { amount: MoneyAmountMicro, currency: CurrencyCode }
+type PerMinute
 
-type MoneyPerHour { amount: MoneyAmountMicro, currency: CurrencyCode }
+type PerHour
 
-type MoneyPerMonth { amount: MoneyAmountMicro, currency: CurrencyCode }
+type PerMonth
 
-type MoneyOnce { amount: MoneyAmountMicro, currency: CurrencyCode }
+type Once
+
+type MoneyRate<P> {
+  amount: MoneyAmountMicro
+  currency: CurrencyCode
+}
+
+type MoneyPerMinute = MoneyRate<PerMinute>
+
+type MoneyPerHour = MoneyRate<PerHour>
+
+type MoneyPerMonth = MoneyRate<PerMonth>
+
+type MoneyOnce = MoneyRate<Once>
+
+data money_rate_carrier_representation_note: String = "MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records — same move as MoneyAmount<S> = Measure<Currency, S, Nat> and Vendor<Domain>. Not a Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single Quantity; the carrier also holds runtime CurrencyCode beside the micro-denominated amount. Passing PerMinute where PerHour is expected is unwritable via the type argument."
+
+fn money_rate_micros<P>(q: MoneyRate<P>) -> Nat {
+  money_amount_micro_count(m: q.amount)
+}
 
 fn money_per_minute_micros(q: MoneyPerMinute) -> Nat {
-  money_amount_micro_count(m: q.amount)
+  money_rate_micros(q: q)
 }
 
 fn money_per_hour_micros(q: MoneyPerHour) -> Nat {
-  money_amount_micro_count(m: q.amount)
+  money_rate_micros(q: q)
 }
 
 fn money_per_month_micros(q: MoneyPerMonth) -> Nat {
-  money_amount_micro_count(m: q.amount)
+  money_rate_micros(q: q)
 }
 
 fn money_once_micros(q: MoneyOnce) -> Nat {
-  money_amount_micro_count(m: q.amount)
+  money_rate_micros(q: q)
 }
 
 fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
