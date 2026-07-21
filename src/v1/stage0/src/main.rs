@@ -349,16 +349,25 @@ fn main() {
             entry,
         } => {
             // #6967/§13 silent-pick piggyback: drain resolution silent-pick
-            // telemetry over this same compile. Arm-based genuine proxy — see
-            // resolution_divergence_silent_pick_genuine_rows in cli_run.rs for
-            // the full census-side join this mirrors: every fn_parent_first_hit
-            // fire observed in the corpus is containment_ambiguous (the fn-parent
-            // walk IS the containment walk), while global_bare_lcp fires on
-            // whole-pool name overlap alone and is never genuine in this corpus
-            // (§13 unique-on-chain). So fn_parent_first_hit is red-on-any here;
-            // global_bare_lcp stays silent (would false-positive on ~483 benign
-            // whole-pool-overlap sites otherwise). A future genuine global_bare
-            // pick is caught by the cadence full-join backstop, not here.
+            // telemetry over this same compile. This is NOT the shared
+            // resolution_divergence_silent_pick_refusal authority (cli_run.rs)
+            // — that requires the full whole-tree census join against
+            // containment_ambiguous_rows/diverge_rows, too costly to run on
+            // every `gunbc compile` (measured >90s/3GB+ RSS whole-tree, per
+            // ci_layer_roots.dag's falsifier_silent_pick_gate_note). This is a
+            // deliberately narrower, cost-motivated proxy, asymmetric in both
+            // directions from the shared authority (review 41032):
+            //   - fn_parent_first_hit: red-on-any raw count here, on the
+            //     ASSERTED-not-construction-proven corpus invariant that every
+            //     fn_parent_first_hit fire is containment_ambiguous (the
+            //     fn-parent walk IS the containment walk) — over-strict if the
+            //     invariant is ever wrong (a false refusal), never silent.
+            //   - global_bare_lcp: skipped entirely here (fires on whole-pool
+            //     name overlap alone — ~483 benign corpus sites, not genuine
+            //     under §13 unique-on-chain) — under-strict; a future genuine
+            //     global_bare_lcp pick is caught only by the nightly full-join
+            //     falsifier backstop, not at compile time.
+            // Tracked fast-follow, not a single authority today.
             v1_rt::resolution_silent_pick_enable();
             let render_targets = parse_render_targets(&target);
             let pool_index = parse_dependency_pool_index(&dependency_pool_index);
