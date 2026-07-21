@@ -275,6 +275,8 @@ fn emit_host_octets_byte_string(octets: List<Int>) -> ByteString {
   emit_host_list_map(xs: octets, f: fn(o) { emit_host_byte_from_octet(octet: o) })
 }
 
+data emit_host_run_args_note: String = "run_args is the family-member selector (std.emit_on_demand witness_family_build_grain_ruling): a family-grain crate carries one argv-dispatched main, and the member id is appended to the descriptor's run invocation at run time. The dispatcher is fail-closed — an unknown member exits nonzero, surfacing as a refused logical_run, never fabricated octets. Per-witness callers pass []."
+
 fn run_host_process(
   row: EmitHostRuntimeRow,
   target: TargetModel,
@@ -287,7 +289,8 @@ fn run_host_process(
     target: target,
     source: source,
     fixture_inputs: fixture_inputs,
-    use_cache: false
+    use_cache: false,
+    run_args: []
   )
 }
 
@@ -304,7 +307,8 @@ fn run_host_process_cached(
     target: target,
     source: source,
     fixture_inputs: fixture_inputs,
-    use_cache: true
+    use_cache: true,
+    run_args: []
   )
 }
 
@@ -314,7 +318,8 @@ fn run_host_process_with_cache(
   target: TargetModel,
   source: Medium<String>,
   fixture_inputs: Inputs,
-  use_cache: Bool
+  use_cache: Bool,
+  run_args: List<String>
 ) -> Outcome<EmitHostRunReceipt> {
   let _inputs = fixture_inputs
   let transport = row.transport
@@ -327,7 +332,8 @@ fn run_host_process_with_cache(
         transport: transport,
         target: target,
         source: source,
-        use_cache: use_cache
+        use_cache: use_cache,
+        run_args: run_args
       )
   }
 }
@@ -337,14 +343,16 @@ fn run_host_process_admitted(
   transport: HostTransportDescriptor,
   target: TargetModel,
   source: Medium<String>,
-  use_cache: Bool
+  use_cache: Bool,
+  run_args: List<String>
 ) -> Outcome<EmitHostRunReceipt> {
   bind_outcome(
     o: build_invocation_argvs(builds: transport.build),
     f: fn(builds) {
       bind_outcome(
         o: invocation_argv(inv: transport.run),
-        f: fn(run_argv) {
+        f: fn(descriptor_run_argv) {
+          let run_argv = concat(descriptor_run_argv, run_args)
           let files = emit_host_list_map(
             xs: transport.workspace,
             f: fn(w) {
@@ -425,6 +433,29 @@ fn run_emit_host_cached(
         target: target,
         source: source,
         fixture_inputs: fixture_inputs
+      )
+    }
+  )
+}
+
+fn run_emit_host_cached_with_run_args(
+  workspace_dir: String,
+  target: TargetModel,
+  source: Medium<String>,
+  fixture_inputs: Inputs,
+  run_args: List<String>
+) -> Outcome<EmitHostRunReceipt> {
+  bind_outcome(
+    o: runtime_row_from_target(target: target),
+    f: fn(row) {
+      run_host_process_with_cache(
+        workspace_dir: workspace_dir,
+        row: row,
+        target: target,
+        source: source,
+        fixture_inputs: fixture_inputs,
+        use_cache: true,
+        run_args: run_args
       )
     }
   )
