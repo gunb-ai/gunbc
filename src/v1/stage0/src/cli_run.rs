@@ -23391,9 +23391,9 @@ mod compile_clean_loader_closure_fork_regression {
     //     -- --ignored --nocapture --test-threads=1
     use super::*;
 
-    fn hard_diags(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> Vec<String> {
+    fn hard_diags(sources: &[Arc<v1_compiler_compile::SourceFile>]) -> Vec<String> {
         v1_compiler_compile::compile_sources(
-            Rc::new(sources.to_vec().into()),
+            Arc::new(sources.to_vec().into()),
             crate::v1_compiler_artifact::RenderTarget::Dag,
         )
         .diagnostics
