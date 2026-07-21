@@ -1538,6 +1538,14 @@ fn run_walk(
     // source_root sets, the key must grow a source_roots_hash component.
     let mut walk_memo: std::collections::HashMap<(String, ExecutionMode), InterpContext> =
         std::collections::HashMap::new();
+    // Every (entry, execution_mode) that ANY unit — spawned thread or main-thread
+    // memo lane — has completed a resolve for, this walk. walk_memo alone under-covers:
+    // it is seeded only by units that already went through the memo lane, so an entry
+    // that never carries `use_walk_memo: true` and never happened to be a walk_memo hit
+    // cold-resolves on a brand-new spawned thread EVERY batch it appears in, forever —
+    // the double-resolve defect. `seen_entries` closes that: see the partition block below.
+    let mut seen_entries: std::collections::HashSet<(String, ExecutionMode)> =
+        std::collections::HashSet::new();
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
         let units = group_batch_units(batch);
@@ -1551,8 +1559,21 @@ fn run_walk(
         let batch_start = Instant::now();
         // Partition units: memo units stay on the main thread; others spawn.
         // A unit goes to the memo path if (a) its profile declares heavy whole-tree
-        // resolve, or (b) its entry is already in walk_memo from a prior batch — in
-        // which case re-resolving would be redundant regardless of profile.
+        // resolve, or (b) its entry is already in walk_memo from a prior batch, or
+        // (c) its (entry, mode) was already SEEN — completed by any unit, spawned
+        // included, earlier in this walk — in which case re-resolving cold would be
+        // redundant regardless of profile.
+        //
+        // The law behind (c): a repeat (entry, mode) within one claim_executor process
+        // is AuthoredDuplication (docs/plans/duplicate-work-graph-lens-design.md — the
+        // ladder's rule-1: one process = shared-state frame ⇒ AuthoredDuplication ⇒
+        // REWIRE/Share, never a fresh cache), so it is routed to the warmed main-thread
+        // lane instead of paying another cold per-thread resolve. The first occurrence
+        // still spawns (no parallelism loss). The second occurrence resolves once more
+        // via run_memo_shared_claims — on the main thread, whose shared resolve index
+        // (process_shared_index, cli_run.rs) is already warm from every prior
+        // main-thread resolve — and that call seeds walk_memo, so a third+ occurrence
+        // is free (resolve_nanos == 0).
         let mut memo_units: Vec<BatchUnit> = Vec::new();
         let mut main_thread_units: Vec<BatchUnit> = Vec::new();
         let mut thread_units: Vec<BatchUnit> = Vec::new();
@@ -1566,7 +1587,9 @@ fn run_walk(
                     entry,
                     execution_mode,
                     ..
-                } if walk_memo.contains_key(&(entry.clone(), *execution_mode)) => {
+                } if walk_memo.contains_key(&(entry.clone(), *execution_mode))
+                    || seen_entries.contains(&(entry.clone(), *execution_mode)) =>
+                {
                     memo_units.push(unit)
                 }
                 // Discovery pumps run on the MAIN thread: `process_shared_index` is
@@ -1595,13 +1618,25 @@ fn run_walk(
             );
             v1_compiler::v1_interpreter::group_begin(&format!("batch {} host-effects", bi + 1));
         }
+        // Pair each handle with its (entry, mode) key, captured before `unit` moves
+        // into the spawned closure — needed at the join point below to mark the
+        // entry SEEN so a repeat in a later batch routes to the warmed main-thread
+        // lane instead of spawning cold again.
         let handles: Vec<_> = thread_units
             .into_iter()
             .map(|unit| {
+                let unit_key = match &unit {
+                    BatchUnit::SharedClaims {
+                        entry,
+                        execution_mode,
+                        ..
+                    } => Some((entry.clone(), *execution_mode)),
+                    _ => None,
+                };
                 let roots = source_roots.to_vec();
                 let unit_governor = governor.clone();
                 let wet_budgets = falsifier_self_host_wet_budgets;
-                thread::spawn(move || {
+                let handle = thread::spawn(move || {
                     run_batch_unit(
                         roots,
                         unit,
@@ -1609,7 +1644,8 @@ fn run_walk(
                         fast_lane_eval_budget_ms,
                         wet_budgets,
                     )
-                })
+                });
+                (unit_key, handle)
             })
             .collect();
         // Run memo units on the main thread while spawned threads are working.
@@ -1629,6 +1665,7 @@ fn run_walk(
                     execution_mode,
                     &mut walk_memo,
                 );
+                seen_entries.insert((entry.clone(), execution_mode));
                 memo_results.extend(results);
             }
         }
@@ -1648,9 +1685,17 @@ fn run_walk(
         // after `group_end`, and a thread panic still has to close the group.
         let mut batch_results: Vec<ClaimResult> = memo_results;
         let mut thread_panicked = false;
-        for handle in handles {
+        for (unit_key, handle) in handles {
             match handle.join() {
-                Ok(results) => batch_results.extend(results),
+                Ok(results) => {
+                    // Completed (not panicked): the entry's resolve is done, so a
+                    // later batch's repeat of it routes to the warmed main-thread
+                    // lane rather than spawning cold again (see the partition block).
+                    if let Some(key) = unit_key {
+                        seen_entries.insert(key);
+                    }
+                    batch_results.extend(results);
+                }
                 Err(_) => thread_panicked = true,
             }
         }
@@ -2646,6 +2691,77 @@ mod tests {
         assert_eq!(
             second[0].resolve_nanos, 0,
             "second call must cache-hit — resolve_entry_graph must NOT fire again"
+        );
+    }
+
+    /// Cross-batch double-resolve regression oracle for the `run_walk` partition
+    /// rewire (the AuthoredDuplication law, docs/plans/duplicate-work-graph-lens-design.md:
+    /// one process = shared-state frame ⇒ AuthoredDuplication ⇒ REWIRE/Share, never a
+    /// fresh cache). `group_batch_units` only coalesces same-entry claims WITHIN one
+    /// batch, so the same entry recurring across separate batches previously spawned
+    /// a fresh cold thread — and paid a full resolve — every single time, forever,
+    /// whenever the Runnable never declared `use_walk_memo: true` (walk_memo is seeded
+    /// only by the memo lane, and a spawned thread's resolve never reaches it).
+    ///
+    /// This drives the SAME entry through three separate batches on ordinary
+    /// (non-memo-flagged) SingleClaims. Before the seen-entries rewire this goes RED
+    /// at resolves_total == 3 (every occurrence cold-spawned). After the rewire: the
+    /// first occurrence still spawns cold (parallelism preserved), the second is
+    /// routed to the warmed main-thread lane and resolves once more (walk_memo miss,
+    /// seeding it), and the third is a free walk_memo hit — resolves_total == 2, not 3.
+    #[test]
+    fn repeat_entry_across_batches_resolves_at_most_twice() {
+        // See the ordering note on eval_call_memo_serves_verified_hits_with_identical_values:
+        // the trace latch is process-wide and set-once, so every ledger-touching test
+        // sets it defensively before its first eval.
+        std::env::set_var("GUNBC_RECOMPUTE_TRACE", "1");
+        let root = workspace_root();
+        let roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dag/test/claim/runnable_resource_profile_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        // Same entry in three separate batches — real, passing, hermetic witnesses so
+        // no batch fails closed (which would `break` before the third ever runs).
+        let batches: Vec<Vec<Runnable>> = vec![
+            vec![single(&entry, "witness_negligible_profile_is_not_heavy")],
+            vec![single(
+                &entry,
+                "witness_negligible_profile_declares_hermetic",
+            )],
+            vec![single(
+                &entry,
+                "witness_memory_class_eq_discriminates_variants",
+            )],
+        ];
+        let governor = Arc::new(MemoryGovernor::from_environment(4));
+        let outcome = run_walk(
+            &roots,
+            &batches,
+            &governor,
+            None,
+            FalsifierSelfHostWetBudgets::default(),
+        );
+        assert!(!outcome.any_failed, "all three witnesses must pass");
+        assert_eq!(outcome.batches_run, 3, "must run all three batches");
+
+        // The externally-observable artifact (same line CI's floor prints and gates
+        // on: "[receipt] floor resolves: N entry resolve(s), Xms").
+        let receipt = std::fs::read_to_string("target/floor-resolve-receipt.txt")
+            .expect("run_walk must write the resolve receipt");
+        let resolves_total: u64 = receipt
+            .lines()
+            .find_map(|l| l.strip_prefix("resolves_total="))
+            .and_then(|n| n.parse().ok())
+            .expect("resolve receipt must carry resolves_total");
+        assert_eq!(
+            resolves_total, 2,
+            "repeat entry across 3 batches must resolve exactly twice (cold spawn + \
+             one warm main-thread seed); 3 means a later occurrence spawned cold \
+             again — the double-resolve defect regressed"
         );
     }
 }
