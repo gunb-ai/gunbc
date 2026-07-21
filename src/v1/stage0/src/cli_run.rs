@@ -18695,18 +18695,93 @@ pub fn resolution_divergence_census_live_closure_scoped(
     Ok(census)
 }
 
-/// §5 fail-closed gate: any silent-pick telemetry row is a regression (the
-/// §13-ratified unique-on-chain rule has no silent-pick arm; #6936's Diverge=0
-/// baseline means the frontier starts at zero, not a tuned threshold). Single
-/// authority consumed by both the CLI binary's exit code and the Rust
+/// A silent-pick row that also lands in the census's own containment_ambiguous
+/// or diverge cross-check for the same (module, name) site — the JOIN that
+/// separates a genuine §13 fail-open from benign whole-pool name overlap
+/// (parent ruling 2026-07-21: neither signal alone is the answer — silent-pick
+/// over-fires on whole-pool candidate_count>=2 with 487 of 487 corpus sites
+/// benign-looking at a glance, containment_ambiguous alone would include sites
+/// the seed correctly refuses — the intersection is the durable condition, and
+/// it tracks the §13 seed refusal-arm landing: a fixed site moves picks->refuses
+/// and leaves the frontier for free, no re-tuning).
+#[derive(Clone, Debug)]
+pub struct SilentPickGenuineRow {
+    pub class: &'static str,
+    pub module: String,
+    pub name: String,
+    pub detail: String,
+}
+
+/// Single-authority join, reused by the CLI binary's exit code, the Rust
+/// discriminating-RED oracle, and the ad hoc cross-check analysis (§2 — one
+/// decision, not two/three). Reuses `containment_ambiguous_rows`/`diverge_rows`
+/// verbatim — no recompute, no new resolution pass.
+pub fn resolution_divergence_silent_pick_genuine_rows(
+    census: &ResolutionDivergenceCensus,
+) -> Vec<SilentPickGenuineRow> {
+    let mut genuine_keys: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
+    for row in &census.diverge_rows {
+        genuine_keys.insert((row.calling_module.clone(), row.callee.clone()));
+    }
+    for row in &census.containment_ambiguous_rows {
+        genuine_keys.insert((row.calling_module.clone(), row.callee.clone()));
+    }
+
+    let mut out = Vec::new();
+    for row in &census.silent_pick_global_bare_lcp_rows {
+        if genuine_keys.contains(&(row.env_module_path.clone(), row.name.clone())) {
+            out.push(SilentPickGenuineRow {
+                class: "SILENT_PICK_GLOBAL_BARE_LCP",
+                module: row.env_module_path.clone(),
+                name: row.name.clone(),
+                detail: format!(
+                    "candidates={} chosen_module={}",
+                    row.candidate_count, row.chosen_module_path
+                ),
+            });
+        }
+    }
+    for row in &census.silent_pick_global_bare_lcp_tie_rows {
+        if genuine_keys.contains(&(row.env_module_path.clone(), row.name.clone())) {
+            out.push(SilentPickGenuineRow {
+                class: "SILENT_PICK_GLOBAL_BARE_LCP_TIE",
+                module: row.env_module_path.clone(),
+                name: row.name.clone(),
+                detail: format!("candidates={}", row.candidate_count),
+            });
+        }
+    }
+    for row in &census.silent_pick_fn_parent_first_hit_rows {
+        if genuine_keys.contains(&(row.env_module_path.clone(), row.name.clone())) {
+            out.push(SilentPickGenuineRow {
+                class: "SILENT_PICK_FN_PARENT_FIRST_HIT",
+                module: row.env_module_path.clone(),
+                name: row.name.clone(),
+                detail: format!(
+                    "parent_matches={} chosen_parent={}",
+                    row.parent_match_count, row.chosen_parent_module
+                ),
+            });
+        }
+    }
+    out
+}
+
+/// §5 fail-closed gate: a silent-pick row that ALSO lands in the census's own
+/// containment_ambiguous/diverge cross-check is a regression (the §13-ratified
+/// unique-on-chain rule has no silent-pick arm; #6936's Diverge=0 baseline means
+/// the frontier starts at zero, not a tuned threshold). Bare silent-pick
+/// telemetry alone over-records on whole-pool name overlap (v1/v2 std forks,
+/// each unique on its own resolution chain — not a §13 violation), so the raw
+/// count is NOT the gate condition; the join is (parent ruling 2026-07-21).
+/// Single authority consumed by both the CLI binary's exit code and the Rust
 /// discriminating-RED oracle (§2 — one decision, not two).
 pub fn resolution_divergence_silent_pick_refusal(
     census: &ResolutionDivergenceCensus,
 ) -> Option<String> {
-    let total = census.silent_pick_global_bare_lcp
-        + census.silent_pick_global_bare_lcp_tie
-        + census.silent_pick_fn_parent_first_hit;
-    if total == 0 {
+    let genuine = resolution_divergence_silent_pick_genuine_rows(census);
+    if genuine.is_empty() {
         return None;
     }
     // "SILENT-PICK-GATE" is a stable, greppable marker (parent-session guardrail,
@@ -18714,29 +18789,16 @@ pub fn resolution_divergence_silent_pick_refusal(
     // batches, so this refusal must self-identify rather than ride an
     // undifferentiated job-conclusion flip.
     let mut lines = vec![format!(
-        "SILENT-PICK-GATE: resolution-divergence-census: SILENT_PICK regression: {total} silent pick(s) \
-         (global_bare_lcp={} global_bare_lcp_tie={} fn_parent_first_hit={}) — DESIGN §5/§13: \
-         a resolver that silently picks among >=2 candidates must refuse, never pick",
-        census.silent_pick_global_bare_lcp,
-        census.silent_pick_global_bare_lcp_tie,
-        census.silent_pick_fn_parent_first_hit,
+        "SILENT-PICK-GATE: resolution-divergence-census: SILENT_PICK regression: {} silent pick(s) \
+         joined against containment_ambiguous/diverge (§13 genuine fail-open — whole-pool-overlap-only \
+         sites are filtered as benign, not counted here) — DESIGN §5/§13: a resolver that silently \
+         picks among >=2 candidates must refuse, never pick",
+        genuine.len(),
     )];
-    for row in &census.silent_pick_global_bare_lcp_rows {
+    for row in &genuine {
         lines.push(format!(
-            "  SILENT-PICK-GATE SILENT_PICK_GLOBAL_BARE_LCP module={} name={} candidates={} chosen_module={}",
-            row.env_module_path, row.name, row.candidate_count, row.chosen_module_path,
-        ));
-    }
-    for row in &census.silent_pick_global_bare_lcp_tie_rows {
-        lines.push(format!(
-            "  SILENT-PICK-GATE SILENT_PICK_GLOBAL_BARE_LCP_TIE module={} name={} candidates={}",
-            row.env_module_path, row.name, row.candidate_count,
-        ));
-    }
-    for row in &census.silent_pick_fn_parent_first_hit_rows {
-        lines.push(format!(
-            "  SILENT-PICK-GATE SILENT_PICK_FN_PARENT_FIRST_HIT module={} name={} parent_matches={} chosen_parent={}",
-            row.env_module_path, row.name, row.parent_match_count, row.chosen_parent_module,
+            "  SILENT-PICK-GATE {} module={} name={} {}",
+            row.class, row.module, row.name, row.detail,
         ));
     }
     Some(lines.join("\n"))
