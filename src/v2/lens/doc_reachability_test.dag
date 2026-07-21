@@ -8,7 +8,9 @@ import v2.lens.doc_reachability {
   doc_graph_clean_holds,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data live_tree_disposition_correction_note: String = "Corrected in the same motion as the dag/test/claim sibling (its 2026-07-15 note): every test fn below reads the live docs/ tree through the doc_graph_* host builtins (cli_run.rs build_doc_graph_report) — the hidden-behind-a-builtin blind spot live_tree.dag declares. The prior SubstrateInputsOnly stamp was the same false classification the sibling was corrected for; ReadsLiveTree keeps the never-skip tooth on the lens side too (review 40908)."
 
 test fn doc_graph_has_no_orphan_docs() -> Bool {
   return doc_graph_orphan_clean_holds(plan_roots: plan_doc_graph_roots())
