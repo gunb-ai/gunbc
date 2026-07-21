@@ -80,6 +80,13 @@ fn managed_oom_action_value(a: ManagedOomAction) -> NonEmptyStr {
   }
 }
 
+fn managed_oom_pressure_is_kill(a: ManagedOomAction) -> Bool {
+  match a {
+    ManagedOomKill => true
+    ManagedOomAuto => false
+  }
+}
+
 type OomdDropIn {
   target_unit: NonEmptyStr
   policy: UnitManagedOomPolicy

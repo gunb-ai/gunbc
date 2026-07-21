@@ -10,9 +10,9 @@ import extdeps.os.oomd {
   ManagedOomKill,
   ManagedOomAuto,
   oomd_default_global_config,
+  managed_oom_pressure_is_kill,
 }
-
-data gunbc_runner_slot_unit_template: NonEmptyStr = "actions-runner@.service"
+import extdeps.os.systemd { actions_runner_unit_template }
 
 data gunbc_runner_slot_oom_limit_authority: Disposition = Terminal {
   reason: "ManagedOOMMemoryPressureLimit is sustained stall-time fraction averaged over managed_oom_memory_pressure_duration — NOT instantaneous PSI (extdeps.os.oomd oomd_default_global_config cites freedesktop oomd.conf.html default percent(60) over second(30)). Horizontal extension of gunbc_oomd_sessions_policy: limit percent(60), duration second(20) — same values as gunbc.oomd_install.gunbc_oomd_sessions_policy (import-forbidden cycle via ci_floor_measurement). Fleet-diagnosis PSI samples (srv3-03 ~4% memory.pressure some avg10 while crawling; srv1 0.5-0.8% at 14G peaks) are a DIFFERENT quantity — feeding them into this knob is state-space conflation. srv1 per-slot PSI is excluded from derivation: compile RSS escapes slot cgroups until compile_pool lands (PR 7019), so srv1 PSI understates slot pressure."
@@ -98,22 +98,15 @@ fn gunbc_runner_slot_psi_sample_below_oomd_limit() -> Bool {
 }
 
 data gunbc_runner_slot_oom_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
-  scope_unit: gunbc_runner_slot_unit_template,
+  scope_unit: actions_runner_unit_template,
   managed_oom_swap: ManagedOomKill,
   managed_oom_memory_pressure: ManagedOomKill,
   managed_oom_memory_pressure_limit: gunbc_runner_slot_oom_pressure_limit(),
   managed_oom_memory_pressure_duration: gunbc_runner_slot_oom_pressure_duration(),
 }
 
-fn gunbc_runner_slot_oom_pressure_kill() -> Bool {
-  match gunbc_runner_slot_oom_policy.managed_oom_memory_pressure {
-    ManagedOomKill => true
-    ManagedOomAuto => false
-  }
-}
-
 fn gunbc_runner_slot_thrash_not_fail_policy_holds() -> Bool {
-  gunbc_runner_slot_oom_pressure_kill()
+  managed_oom_pressure_is_kill(a: gunbc_runner_slot_oom_policy.managed_oom_memory_pressure)
     && percent_count(p: gunbc_runner_slot_oom_pressure_limit()) == percent_count(p: percent(60))
     && second_count(s: gunbc_runner_slot_oom_pressure_duration()) == second_count(s: second(20))
     && gunbc_runner_slot_healthy_build_sustained_stall_would_not_trigger()

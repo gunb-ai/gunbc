@@ -12,6 +12,9 @@ import gunbc.host_converge {
   ConvergeKnob,
   ConvergeVerdict,
   NoMembershipProbe,
+  PerSlotMemoryCap,
+  SliceProperty,
+  gunbc_runner_unit_template,
 }
 import gunbc.host_converge_slice1 { host_converge_from_policy }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure_access }
@@ -25,10 +28,14 @@ import gunbc.host_effect {
 import gunbc.host_effect_realize { host_effect_apply_gated }
 import gunbc.fleet_show_effective_read { per_slot_memory_cap_verdict_from_unit_read }
 import gunbc.runner_unit_live_read { RunnerUnitMemoryLiveRead }
+import extdeps.os.oomd {
+  oomd_managed_oom_memory_pressure_property,
+  oomd_managed_oom_memory_pressure_limit_property,
+}
 import std.realization_reconcile { Converged, NotConverged }
 
 data host_runner_memory_provision_scope_disposition: Disposition = Terminal {
-  reason: "srv3 runner memory policy via host-standup converge (operator mandate 2026-07-21; Brief 3 thrash-not-fail extension): MemoryMax/MemoryHigh/MemorySwapMax per-slot knobs plus per_slot_oom_pressure_kill=true and per_slot_oom_pressure_limit_pct percent(60) (ManagedOOMMemoryPressure=kill — horizontal extension of gunbc_oomd_sessions_policy sustained stall-time fraction over second(20) duration window; NOT PSI samples). All knobs derive from gunbc.runner_slot_allocation + gunbc.runner_slot_oom_policy single authorities, applied as a ConvergePlan host-effect ensure on the assimilation spine (P1:runner-deploy-slot), routed through host_effect_apply_gated — never hand systemctl or raw drop-ins. Values are never fresh literals; per-unit caps derive from gunbc_runner_slot_desired() and runner_instance_glob(host). Read-back is mandatory for byte caps: applied-without-read-back refuses (per_slot_memory_cap_verdict_from_unit_read). FreshStandup apply mode for srv3 is host_converge.gunbc_apply_mode_for_host, not a separate cap row. Live host mutation requires deploy access; absent access yields a typed refusal naming the host."
+  reason: "srv3 runner memory policy via host-standup converge (operator mandate 2026-07-21; Brief 3 thrash-not-fail extension): MemoryMax/MemoryHigh/MemorySwapMax per-slot knobs plus per_slot_oom_pressure_kill=true and per_slot_oom_pressure_limit_pct percent(60) (ManagedOOMMemoryPressure=kill — horizontal extension of gunbc_oomd_sessions_policy sustained stall-time fraction over second(20) duration window; NOT PSI samples). Knob selection narrows by ConvergeTarget variant (PerSlotMemoryCap for byte caps; SliceProperty on actions-runner@ for OOM policy knobs) — never string-name rosters. All knobs derive from gunbc.runner_slot_allocation + gunbc.runner_slot_oom_policy single authorities, applied as a ConvergePlan host-effect ensure on the assimilation spine (P1:runner-deploy-slot), routed through host_effect_apply_gated — never hand systemctl or raw drop-ins. Values are never fresh literals; per-unit caps derive from gunbc_runner_slot_desired() and runner_instance_glob(host). Read-back is mandatory for byte caps: applied-without-read-back refuses (per_slot_memory_cap_verdict_from_unit_read). FreshStandup apply mode for srv3 is host_converge.gunbc_apply_mode_for_host, not a separate cap row. Live host mutation requires deploy access; absent access yields a typed refusal naming the host."
 }
 
 data host_runner_memory_provision_realize_scaffold: Disposition = Scaffold {
@@ -40,33 +47,31 @@ data host_runner_memory_provision_realize_scaffold: Disposition = Scaffold {
   }
 }
 
-data runner_memory_cap_knob_names: List<String> = [
-  "per_slot_memory_max_bytes",
-  "per_slot_memory_high_bytes",
-  "per_slot_memory_swap_max_bytes",
-]
+fn runner_memory_knob_is_per_slot_memory_cap(knob: ConvergeKnob) -> Bool {
+  match knob.target {
+    PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } => true
+    _ => false
+  }
+}
 
-data runner_memory_provision_knob_names: List<String> = [
-  "per_slot_memory_max_bytes",
-  "per_slot_memory_high_bytes",
-  "per_slot_memory_swap_max_bytes",
-  "per_slot_oom_pressure_kill",
-  "per_slot_oom_pressure_limit_pct",
-]
-
-fn runner_memory_knob_in_list(names: List<String>, name: String) -> Bool {
-  fold(names, init: false, f: (acc, n) => acc || n == name)
+fn runner_memory_knob_is_runner_slot_oom_policy(knob: ConvergeKnob) -> Bool {
+  match knob.target {
+    SliceProperty { unit: u, property: p, apply_value: _, expected_effective: _ } =>
+      u == gunbc_runner_unit_template
+        && (p == oomd_managed_oom_memory_pressure_property || p == oomd_managed_oom_memory_pressure_limit_property)
+    _ => false
+  }
 }
 
 fn runner_memory_cap_knobs_from(host: HostConverge) -> List<ConvergeKnob> {
   fold(host.knobs, init: [], f: (acc, k) =>
-    if runner_memory_knob_in_list(names: runner_memory_cap_knob_names, name: k.name) { concat(acc, [k]) } else { acc }
+    if runner_memory_knob_is_per_slot_memory_cap(knob: k) { concat(acc, [k]) } else { acc }
   )
 }
 
 fn runner_memory_provision_knobs_from(host: HostConverge) -> List<ConvergeKnob> {
   fold(host.knobs, init: [], f: (acc, k) =>
-    if runner_memory_knob_in_list(names: runner_memory_provision_knob_names, name: k.name) { concat(acc, [k]) } else { acc }
+    if runner_memory_knob_is_per_slot_memory_cap(knob: k) || runner_memory_knob_is_runner_slot_oom_policy(knob: k) { concat(acc, [k]) } else { acc }
   )
 }
 

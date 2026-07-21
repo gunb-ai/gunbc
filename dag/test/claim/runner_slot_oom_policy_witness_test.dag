@@ -1,8 +1,8 @@
 module test.claim.runner_slot_oom_policy_witness
 
 import gunbc.runner_slot_oom_policy {
+  gunbc_runner_slot_oom_policy,
   gunbc_runner_slot_thrash_not_fail_policy_holds,
-  gunbc_runner_slot_oom_pressure_kill,
   gunbc_runner_slot_oom_pressure_limit,
   gunbc_runner_slot_oom_pressure_duration,
   gunbc_runner_slot_healthy_build_sustained_stall_would_not_trigger,
@@ -12,6 +12,7 @@ import gunbc.runner_slot_oom_policy {
   gunbc_runner_slot_healthy_build_sustained_stall_fraction,
 }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy }
+import extdeps.os.oomd { managed_oom_pressure_is_kill }
 import std.measure { percent, percent_count, second, second_count }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -22,7 +23,7 @@ test fn runner_slot_oom_policy_thrash_not_fail_holds() -> Bool {
 }
 
 test fn runner_slot_oom_policy_pressure_kill_enabled() -> Bool {
-  gunbc_runner_slot_oom_pressure_kill()
+  managed_oom_pressure_is_kill(a: gunbc_runner_slot_oom_policy.managed_oom_memory_pressure)
 }
 
 test fn runner_slot_oom_policy_limit_matches_sessions_shape() -> Bool {
@@ -50,7 +51,7 @@ test fn runner_slot_oom_policy_RED_psi_sample_does_not_discriminate_at_oomd_limi
 }
 
 test fn runner_slot_oom_policy_RED_kill_disabled_breaks_thrash_not_fail() -> Bool {
-  gunbc_runner_slot_thrash_not_fail_policy_holds() && gunbc_runner_slot_oom_pressure_kill()
+  gunbc_runner_slot_thrash_not_fail_policy_holds() && managed_oom_pressure_is_kill(a: gunbc_runner_slot_oom_policy.managed_oom_memory_pressure)
 }
 
 test fn runner_slot_oom_policy_RED_healthy_sustained_stall_at_misapplied_limit_would_kill() -> Bool {

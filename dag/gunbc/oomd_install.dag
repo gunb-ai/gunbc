@@ -37,6 +37,7 @@ import extdeps.os.oomd {
   OomdDropIn,
   systemd_oomd_unit,
   oomd_managed_oom_memory_pressure_property,
+  managed_oom_pressure_is_kill,
 }
 import extdeps.os.systemd {
   SystemdUnitActiveState,
@@ -160,10 +161,7 @@ fn unit_is_enabled(s: UnitFileState) -> Bool {
 }
 
 fn pressure_is_kill(a: ManagedOomAction) -> Bool {
-  match a {
-    ManagedOomKill => true
-    ManagedOomAuto => false
-  }
+  managed_oom_pressure_is_kill(a: a)
 }
 
 fn cap_equals(eff: RunnerSliceCapEffectiveness, target: ByteSize) -> Bool {

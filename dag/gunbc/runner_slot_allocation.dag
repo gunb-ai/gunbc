@@ -8,10 +8,10 @@ import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
 import gunbc.runner_slot_oom_policy {
   gunbc_runner_slot_oom_policy,
-  gunbc_runner_slot_oom_pressure_kill,
   gunbc_runner_slot_oom_pressure_limit,
   gunbc_runner_slot_thrash_not_fail_policy_holds,
 }
+import extdeps.os.oomd { ManagedOomAction }
 type RunnerSlotLabels {
   github_labels: List<String>
 }
