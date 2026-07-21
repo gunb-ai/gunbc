@@ -1,6 +1,6 @@
 # Hierarchical design-register library
 
-Status: **draft for operator review** (DOC-ONLY — no code lands from this doc; no edits to `dag/gunbc/site/` while PR [#6927](https://github.com/gunb-ai/gunbc/pull/6927) is in review). **Follow-on to** [gunb.ai site subsumption](gunb-ai-site-subsumption-design.md) (the in-flight PR that proves the register on one surface). Phase A implementation **fires on #6927 merge** — that PR's dissolution trigger (cutover receipt at `https://gunb.ai/`) is independent; this lane's Phase A trigger is **#6927 merged to main** with the `gunbc.site.*` carriers stable.
+Status: **draft for operator review** (DOC-ONLY — no code lands from this doc; no edits to `dag/gunbc/site/` while PR [#6927](https://github.com/gunb-ai/gunbc/pull/6927) is in review). **Follow-on to** [gunb.ai site subsumption (PR #6927)](https://github.com/gunb-ai/gunbc/pull/6927) — sibling plan doc `gunb-ai-site-subsumption-design.md` lands with that PR; link upgrades when #6927 merges. Phase A implementation **fires on #6927 merge** — that PR's dissolution trigger (cutover receipt at `https://gunb.ai/`) is independent; this lane's Phase A trigger is **#6927 merged to main** with the `gunbc.site.*` carriers stable.
 
 ## 1. The displaced cost
 
@@ -286,7 +286,7 @@ Do not speculatively implement L4 archetypes for a site that does not exist — 
 
 | Authority | This doc's relationship |
 |---|---|
-| [gunb.ai site subsumption](gunb-ai-site-subsumption-design.md) | **Proves** the register (#6927); owns §4k checklist, Phase 0–3 hosting, component vocabulary §4f |
+| [gunb.ai site subsumption (PR #6927)](https://github.com/gunb-ai/gunbc/pull/6927) | **Proves** the register (#6927); owns §4k checklist, Phase 0–3 hosting, component vocabulary §4f — `gunb-ai-site-subsumption-design.md` links here after #6927 merge |
 | `roadmap_static_site.dag` | Hosting realization for L5 artifacts |
 | DESIGN.md §2–§5 | Governing — Realization, single authority, fail-closed, construction over validation |
 
