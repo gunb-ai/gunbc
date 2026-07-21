@@ -8,9 +8,13 @@ import extdeps.pricing.hetzner_dedicated {
 }
 import std.currency { Eur, Usd }
 import std.measure {
+  AmortizationMonths,
+  BasisPoint,
   HardwareThreadCount,
   MoneyPerMinute,
   MoneyPerMonth,
+  amortization_months_count,
+  basis_point_count,
   billing_month_as_hour_count,
   hardware_thread_count_value,
   minutes_per_hour,
@@ -25,8 +29,8 @@ data knowable_wedge_note: String = "Knowable wedge = publicly cited umbrella pri
 data wedge_runner_vcpus_are_hardware_threads_note: String = "Hosted-runner vcpus and server cpu.catalog.threads are both counted as hardware threads (SMT siblings), not physical cores — required for per-thread cost allocation."
 
 type WedgeAssumptions {
-  runner_utilization_bp: Int
-  amortization_months: Nat
+  runner_utilization_bp: BasisPoint
+  amortization_months: AmortizationMonths
   eur_to_usd_numerator: Nat
   eur_to_usd_denominator: Nat
   runner_vcpus_are_hardware_threads: Bool
@@ -107,16 +111,17 @@ fn subtract_money_per_minute_usd(umbrella: MoneyPerMinute, floor: MoneyPerMinute
 
 fn derive_monthly_eur_with_amortization(
   row: HetznerDedicatedServerPriceRow,
-  amortization_months: Nat,
+  amortization_months: AmortizationMonths,
 ) -> MoneyPerMonth? {
-  if amortization_months <= 0 {
+  let months = amortization_months_count(m: amortization_months)
+  if months <= 0 {
     none
   } else {
     let monthly = money_per_month_micros(q: row.monthly)
     let setup = hetzner_dedicated_setup_fee_micros(row: row)
     Present {
       value: MoneyPerMonth {
-        amount: money_amount_micro(count: monthly + (setup / amortization_months)),
+        amount: money_amount_micro(count: monthly + (setup / months)),
         currency: Eur,
       }
     }
@@ -128,9 +133,9 @@ fn derive_runner_cost_floor_per_minute_usd(
   runner_vcpus: HardwareThreadCount,
   assumptions: WedgeAssumptions,
 ) -> RunnerCostFloorResult {
-  if assumptions.runner_utilization_bp <= 0 {
+  if basis_point_count(bp: assumptions.runner_utilization_bp) <= 0 {
     RunnerCostFloorRefused { cause: UtilizationUnknown }
-  } else if assumptions.amortization_months <= 0 {
+  } else if amortization_months_count(m: assumptions.amortization_months) <= 0 {
     RunnerCostFloorRefused { cause: AmortizationUnknown }
   } else if assumptions.eur_to_usd_denominator <= 0 {
     RunnerCostFloorRefused { cause: ExchangeRateUnknown }
@@ -159,7 +164,7 @@ fn derive_runner_cost_floor_per_minute_usd(
           }
           let utilized_runner_eur = MoneyPerMinute {
             amount: money_amount_micro(
-              count: (money_per_minute_micros(q: per_minute_runner_eur) * 10000) / assumptions.runner_utilization_bp
+              count: (money_per_minute_micros(q: per_minute_runner_eur) * 10000) / basis_point_count(bp: assumptions.runner_utilization_bp)
             ),
             currency: Eur,
           }
@@ -187,9 +192,9 @@ fn derive_github_hetzner_ci_minute_wedge(
   match assumptions_input {
     WedgeAssumptionsUnknown => KnowableWedgeRefused { cause: AssumptionsUnknown }
     WedgeAssumptionsDeclared { assumptions: assumptions } => {
-      if assumptions.runner_utilization_bp <= 0 {
+      if basis_point_count(bp: assumptions.runner_utilization_bp) <= 0 {
         KnowableWedgeRefused { cause: UtilizationUnknown }
-      } else if assumptions.amortization_months <= 0 {
+      } else if amortization_months_count(m: assumptions.amortization_months) <= 0 {
         KnowableWedgeRefused { cause: AmortizationUnknown }
       } else if assumptions.eur_to_usd_denominator <= 0 {
         KnowableWedgeRefused { cause: ExchangeRateUnknown }

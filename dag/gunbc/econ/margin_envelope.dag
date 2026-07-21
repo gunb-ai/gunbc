@@ -5,16 +5,16 @@ import extdeps.sec.facts {
   filed_amount,
   usd_whole_dollars_count,
 }
+import std.measure { BasisPoint, basis_point, basis_point_count }
 import std.nat { Nat }
-import std.types { Int }
 
-data margin_envelope_derive_not_store_note: String = "Margin envelopes are DERIVED from filed SEC component rows at read time (extdeps.sec.facts filed_facts_derive_not_store_note) — never stored fields on issuer fact rows. Basis points are integer-derived from whole-dollar filed amounts: (profit * 10000) / revenue."
+data margin_envelope_derive_not_store_note: String = "Margin envelopes are DERIVED from filed SEC component rows at read time (extdeps.sec.facts filed_facts_derive_not_store_note) — never stored fields on issuer fact rows. Basis points are integer-derived from whole-dollar filed amounts via std.measure.BasisPoint: (profit * 10000) / revenue."
 
 type MarginKind = GrossMargin | OperatingMargin
 
 type MarginEnvelope {
-  margin_low_bp: Int
-  margin_high_bp: Int
+  margin_low_bp: BasisPoint
+  margin_high_bp: BasisPoint
 }
 
 type MarginEnvelopeRefusalCause
@@ -31,12 +31,12 @@ fn margin_envelope_from_whole_dollar_counts(revenue: Nat, profit: Nat) -> Margin
   if revenue <= 0 {
     none
   } else {
-    let low_bp = (profit * 10000) / revenue
-    let high_bp = ((profit * 10000) + revenue - 1) / revenue
+    let low_count = (profit * 10000) / revenue
+    let high_count = ((profit * 10000) + revenue - 1) / revenue
     Present {
       value: MarginEnvelope {
-        margin_low_bp: low_bp,
-        margin_high_bp: high_bp,
+        margin_low_bp: basis_point(count: low_count),
+        margin_high_bp: basis_point(count: high_count),
       }
     }
   }
@@ -69,8 +69,8 @@ fn derive_margin_envelope_from_filed_facts(
   }
 }
 
-fn margin_envelope_in_band(envelope: MarginEnvelope, low_bp: Int, high_bp: Int) -> Bool {
-  (envelope.margin_low_bp >= low_bp)
-    && (envelope.margin_high_bp <= high_bp)
-    && (envelope.margin_low_bp <= envelope.margin_high_bp)
+fn margin_envelope_in_band(envelope: MarginEnvelope, low_bp: BasisPoint, high_bp: BasisPoint) -> Bool {
+  (basis_point_count(bp: envelope.margin_low_bp) >= basis_point_count(bp: low_bp))
+    && (basis_point_count(bp: envelope.margin_high_bp) <= basis_point_count(bp: high_bp))
+    && (basis_point_count(bp: envelope.margin_low_bp) <= basis_point_count(bp: envelope.margin_high_bp))
 }

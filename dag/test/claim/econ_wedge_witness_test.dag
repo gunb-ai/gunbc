@@ -50,8 +50,11 @@ import gunbc.econ.margin_envelope {
 }
 import std.currency { Eur, Usd }
 import std.measure {
+  BasisPoint,
   MoneyPerMinute,
   MoneyPerMonth,
+  amortization_months,
+  basis_point,
   hardware_thread_count,
   hardware_thread_count_value,
   money_amount_micro,
@@ -61,29 +64,29 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data gitlab_fy2026_gross_margin_bp_low: Int = 8735
+data gitlab_fy2026_gross_margin_bp_low: BasisPoint = basis_point(8735)
 
-data gitlab_fy2026_gross_margin_bp_high: Int = 8737
+data gitlab_fy2026_gross_margin_bp_high: BasisPoint = basis_point(8737)
 
-data rollins_fy2025_operating_margin_bp_low: Int = 1930
+data rollins_fy2025_operating_margin_bp_low: BasisPoint = basis_point(1930)
 
-data rollins_fy2025_operating_margin_bp_high: Int = 1931
+data rollins_fy2025_operating_margin_bp_high: BasisPoint = basis_point(1931)
 
-data chemed_fy2025_operating_margin_bp_low: Int = 1336
+data chemed_fy2025_operating_margin_bp_low: BasisPoint = basis_point(1336)
 
-data chemed_fy2025_operating_margin_bp_high: Int = 1337
+data chemed_fy2025_operating_margin_bp_high: BasisPoint = basis_point(1337)
 
 data github_hetzner_wedge_assumptions: WedgeAssumptions = WedgeAssumptions {
-  runner_utilization_bp: 10000,
-  amortization_months: 60,
+  runner_utilization_bp: basis_point(10000),
+  amortization_months: amortization_months(60),
   eur_to_usd_numerator: 109,
   eur_to_usd_denominator: 100,
   runner_vcpus_are_hardware_threads: true,
 }
 
 data github_hetzner_zero_utilization_assumptions: WedgeAssumptions = WedgeAssumptions {
-  runner_utilization_bp: 0,
-  amortization_months: 60,
+  runner_utilization_bp: basis_point(0),
+  amortization_months: amortization_months(60),
   eur_to_usd_numerator: 109,
   eur_to_usd_denominator: 100,
   runner_vcpus_are_hardware_threads: true,
