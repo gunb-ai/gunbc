@@ -40,27 +40,43 @@ data host_runner_memory_provision_realize_scaffold: Disposition = Scaffold {
   }
 }
 
-data runner_memory_policy_knob_names: List<String> = [
+data runner_memory_cap_knob_names: List<String> = [
+  "per_slot_memory_max_bytes",
+  "per_slot_memory_high_bytes",
+  "per_slot_memory_swap_max_bytes",
+]
+
+data runner_memory_provision_knob_names: List<String> = [
   "per_slot_memory_max_bytes",
   "per_slot_memory_high_bytes",
   "per_slot_memory_swap_max_bytes",
   "per_slot_oom_pressure_kill",
 ]
 
-fn runner_memory_knob_selected(name: String) -> Bool {
-  fold(runner_memory_policy_knob_names, init: false, f: (acc, n) => acc || n == name)
+fn runner_memory_knob_in_list(names: List<String>, name: String) -> Bool {
+  fold(names, init: false, f: (acc, n) => acc || n == name)
+}
+
+fn runner_memory_cap_knobs_from(host: HostConverge) -> List<ConvergeKnob> {
+  fold(host.knobs, init: [], f: (acc, k) =>
+    if runner_memory_knob_in_list(names: runner_memory_cap_knob_names, name: k.name) { concat(acc, [k]) } else { acc }
+  )
+}
+
+fn runner_memory_provision_knobs_from(host: HostConverge) -> List<ConvergeKnob> {
+  fold(host.knobs, init: [], f: (acc, k) =>
+    if runner_memory_knob_in_list(names: runner_memory_provision_knob_names, name: k.name) { concat(acc, [k]) } else { acc }
+  )
 }
 
 fn runner_memory_knobs_from(host: HostConverge) -> List<ConvergeKnob> {
-  fold(host.knobs, init: [], f: (acc, k) =>
-    if runner_memory_knob_selected(name: k.name) { concat(acc, [k]) } else { acc }
-  )
+  runner_memory_cap_knobs_from(host: host)
 }
 
 fn runner_memory_host_converge(host: HostIdentity) -> HostConverge? {
   match host_converge_from_policy(policy: fleet_converge_policy(), host: host) {
     Present { value: full } =>
-      let memory_knobs = runner_memory_knobs_from(host: full)
+      let memory_knobs = runner_memory_provision_knobs_from(host: full)
       if memory_knobs.length() == 0 {
         none
       } else {
