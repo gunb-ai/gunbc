@@ -4207,6 +4207,31 @@ pub fn build_module_export_sets(
 // that is why the SVN-based pass initially wired nothing. Over-collection
 // (definition names, locals) is harmless: the SVN + cross-module-registry
 // filter in reference_derived_use_lines removes anything already in scope.
+// Bounded type-expression name walk: name + generic-arg children/params only.
+// Used for `inferred` (resolved) type nodes -- a fn's return type lives there,
+// not in `children`. Bounded (no `inferred`/`body` recursion) so it collects the
+// type reference and its generic args without descending into the referenced
+// type's own definition (which would over-collect the whole provider module).
+pub fn collect_type_expr_names(
+    rt: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    let mut out: Vec<String> = Vec::new();
+    if (rt.name.clone() != "".to_string()) {
+        out.push(rt.name.clone());
+    }
+    if rt.ident_span.is_some() {
+        out.push(authored_name_at(source_indices.clone(), rt.clone()));
+    }
+    for c in rt.children.iter().cloned() {
+        out.extend((*collect_type_expr_names(c, source_indices.clone())).iter().cloned());
+    }
+    for c in rt.params.iter().cloned() {
+        out.extend((*collect_type_expr_names(c, source_indices.clone())).iter().cloned());
+    }
+    Rc::new(out)
+}
+
 pub fn collect_referenced_names_deep(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4248,6 +4273,15 @@ pub fn collect_referenced_names_deep(
         ),
         None => {}
     }
+    // Resolved/inferred type node (fn return types, inferred annotations).
+    match &n.inferred {
+        Some(inf) => match &**inf {
+            InferredNode::Resolved { node: rt } => out
+                .extend((*collect_type_expr_names(rt.clone(), source_indices.clone())).iter().cloned()),
+            _ => {}
+        },
+        None => {}
+    }
     Rc::new(out)
 }
 
@@ -4267,6 +4301,36 @@ pub fn collect_referenced_names_deep(
 // module whose references are all already visible adds nothing. Only genuinely
 // unlisted-but-registry-resolvable names produce new lines. Empty SVN mirrors
 // the resolver's own mask guard (skip), preserving current behavior there.
+// Names a use-line already binds, extracted from an emitted import line. Kept
+// simple: the segment after the final `::`, with `{}`/`;`/`*` stripped and split
+// on `,`. Covers `use crate::m::X;`, `use crate::m::{A, B};` and the `pub use`
+// variants; wildcards contribute nothing. Used to keep the reference-derived
+// pass a true no-op for any name the prelude/import block already provides
+// (drift-safety + no E0252 duplicate-import against the runtime prelude).
+pub fn imported_names_in_use_line(line: String) -> Rc<Vec<String>> {
+    let trimmed = line.trim().to_string();
+    if (trimmed.contains(&"use ".to_string()) == false) {
+        Rc::new(vec![])
+    } else {
+        let after = match trimmed.rsplit(&"::".to_string()).next() {
+            Some(s) => s.to_string(),
+            None => "".to_string(),
+        };
+        let cleaned = after
+            .replace(&"{".to_string(), &"".to_string())
+            .replace(&"}".to_string(), &"".to_string())
+            .replace(&";".to_string(), &"".to_string())
+            .replace(&"*".to_string(), &"".to_string());
+        Rc::new(
+            cleaned
+                .split(&",".to_string())
+                .map(|s| s.trim().to_string())
+                .filter(|s| (s.clone() != "".to_string()))
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
     this_module_name: String,
@@ -4274,6 +4338,7 @@ pub fn reference_derived_use_lines(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
     local_type_names: Rc<Vec<String>>,
+    already_imported_names: Rc<Vec<String>>,
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -4318,9 +4383,14 @@ pub fn reference_derived_use_lines(
                 );
             }
         }
+        let already: std::collections::HashSet<String> =
+            already_imported_names.iter().cloned().collect();
         let mut pairs: Vec<(String, String)> = Vec::new();
         for name in referenced.iter().cloned() {
             if v1_rt::map_has(&source_visible_names, name.clone()) {
+                continue;
+            }
+            if already.contains(&name) || is_kernel_type(name.clone()) {
                 continue;
             }
             match v1_rt::map_get(&registry, name.clone()) {
@@ -4487,6 +4557,20 @@ pub fn emit_module_full(
         } else {
             Rc::new(vec![])
         };
+        let already_imported_names = v1_rt::concat(
+            prelude_imported_names.clone(),
+            Rc::new({
+                let mut __r = Vec::new();
+                for l in dag_import_lines
+                    .iter()
+                    .cloned()
+                    .chain(carrier_import_lines.iter().cloned())
+                {
+                    __r.extend((*imported_names_in_use_line(l)).iter().cloned());
+                }
+                __r
+            }),
+        );
         let reference_use_lines = reference_derived_use_lines(
             typed_module.items.clone(),
             authored_name(scope.type_env.clone(), m.clone()),
@@ -4494,6 +4578,7 @@ pub fn emit_module_full(
             registry.clone(),
             emit_info.clone(),
             local_type_names.clone(),
+            already_imported_names.clone(),
             export_sets.clone(),
             typed_modules.clone(),
             scope.type_env.clone().source_indices.clone(),
