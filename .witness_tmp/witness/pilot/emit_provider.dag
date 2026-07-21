@@ -1,0 +1,7 @@
+module witness.pilot.emit_provider
+
+type PilotColor = PilotRed | PilotGreen | PilotBlue
+
+fn pilot_provider_flag() -> Bool { true }
+
+fn pilot_provider_default() -> PilotColor { PilotRed }
