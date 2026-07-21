@@ -72,6 +72,82 @@ pub struct FieldTypeMapBuild {
     pub import_surface_names: Rc<Vec<String>>,
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct UniqueStringAccum {
+    pub seen: Rc<HashMap<String, bool>>,
+    pub result: Rc<Vec<String>>,
+}
+
+pub fn dedupe_nonempty_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
+    {
+        let acc = items.clone().iter().cloned().fold(
+            Rc::new(UniqueStringAccum {
+                seen: v1_rt::rc_empty_map::<String, bool>(),
+                result: Rc::new(vec![]),
+            }),
+            |inner: Rc<UniqueStringAccum>, item: String| {
+                if ((item.clone() == "".to_string())
+                    || emit_map_has(inner.seen.clone(), item.clone()))
+                {
+                    inner.clone()
+                } else {
+                    Rc::new(UniqueStringAccum {
+                        seen: v1_rt::rc_map_insert(inner.seen.clone(), item.clone(), true),
+                        result: v1_rt::concat(inner.result.clone(), Rc::new(vec![item.clone()])),
+                    })
+                }
+            },
+        );
+        acc.result.clone()
+    }
+}
+
+pub fn collect_type_node_import_surface_names(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let peeled = normalize_access_type_node(n.clone());
+        let name = authored_name_at(source_indices.clone(), peeled.clone());
+        let is_tv = if (peeled.inferred.clone() != None) {
+            is_type_variable(peeled.inferred.clone().clone().unwrap())
+        } else {
+            false
+        };
+        let own = if (((name.clone() != "".to_string()) && (name.clone() != "Dynamic".to_string()))
+            && !is_tv.clone())
+        {
+            Rc::new(vec![name.clone()])
+        } else {
+            Rc::new(vec![])
+        };
+        let child_names = Rc::new({
+            let mut __result = Vec::new();
+            for ch in peeled.children.clone().iter().cloned() {
+                __result.extend(
+                    (*collect_type_node_import_surface_names(
+                        child_type_node(ch.clone()),
+                        source_indices.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let inferred_names = match peeled.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                collect_type_node_import_surface_names(rt.clone(), source_indices.clone())
+            }
+            _ => Rc::new(vec![]),
+        };
+        dedupe_nonempty_strings(v1_rt::concat(
+            own.clone(),
+            v1_rt::concat(child_names.clone(), inferred_names.clone()),
+        ))
+    })
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -517,62 +593,6 @@ pub fn build_enum_field_summaries(
     }
 }
 
-pub fn dedupe_nonempty_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut seen = HashMap::new();
-        let mut result = Vec::new();
-        for item in items.iter().cloned() {
-            if (item.clone() != "".to_string()) && !seen.contains_key(&item) {
-                seen.insert(item.clone(), true);
-                result.push(item);
-            }
-        }
-        result
-    })
-}
-
-pub fn collect_type_node_import_surface_names(
-    n: Rc<Node>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<String>> {
-    let peeled = normalize_access_type_node(n.clone());
-    let name = authored_name_at(source_indices.clone(), peeled.clone());
-    let is_tv = if peeled.inferred.clone().is_some() {
-        is_type_variable(peeled.inferred.clone().unwrap())
-    } else {
-        false
-    };
-    let own = if ((name.clone() != "".to_string()) && (name.clone() != "Dynamic".to_string()))
-        && !is_tv
-    {
-        vec![name]
-    } else {
-        vec![]
-    };
-    let mut child_names = Vec::new();
-    for ch in peeled.children.clone().iter().cloned() {
-        child_names.extend(
-            collect_type_node_import_surface_names(child_type_node(ch), source_indices.clone())
-                .iter()
-                .cloned(),
-        );
-    }
-    let mut inferred_names = Vec::new();
-    if let Some(InferredNode::Resolved { node: rt, .. }) =
-        peeled.inferred.clone().as_deref().cloned()
-    {
-        inferred_names.extend(
-            collect_type_node_import_surface_names(rt, source_indices.clone())
-                .iter()
-                .cloned(),
-        );
-    }
-    let mut merged = own;
-    merged.extend(child_names);
-    merged.extend(inferred_names);
-    dedupe_nonempty_strings(Rc::new(merged))
-}
-
 pub fn build_field_type_map(
     children: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -593,17 +613,17 @@ pub fn build_field_type_map(
                     source_indices.clone(),
                     normalize_access_type_node(ft.clone()),
                 );
-                let ft_is_type_var = if ft.inferred.clone().is_some() {
-                    is_type_variable(ft.inferred.clone().unwrap())
+                let ft_is_type_var = if (ft.inferred.clone() != None) {
+                    is_type_variable(ft.inferred.clone().clone().unwrap())
                 } else {
                     false
                 };
                 let key = authored_name_at(source_indices.clone(), child.clone());
                 let surface_names =
                     collect_type_node_import_surface_names(ft.clone(), source_indices.clone());
-                let next_field_types = if ((resolved_name.clone() != "".to_string())
-                    && !ft_is_type_var)
-                    && (resolved_name.clone() != "Dynamic".to_string())
+                let next_field_types = if (((resolved_name.clone() != "".to_string())
+                    && !ft_is_type_var.clone())
+                    && (resolved_name.clone() != "Dynamic".to_string()))
                 {
                     v1_rt::rc_map_insert(
                         acc.field_types.clone(),
@@ -613,15 +633,15 @@ pub fn build_field_type_map(
                 } else {
                     acc.field_types.clone()
                 };
-                let mut merged_surfaces =
-                    acc.import_surface_names.iter().cloned().collect::<Vec<_>>();
-                merged_surfaces.extend(surface_names.iter().cloned());
                 Rc::new(FieldTypeMapBuild {
-                    field_types: next_field_types,
-                    import_surface_names: dedupe_nonempty_strings(Rc::new(merged_surfaces)),
+                    field_types: next_field_types.clone(),
+                    import_surface_names: dedupe_nonempty_strings(v1_rt::concat(
+                        acc.import_surface_names.clone(),
+                        surface_names.clone(),
+                    )),
                 })
             }
-            _ => acc,
+            _ => acc.clone(),
         },
     )
 }
@@ -661,17 +681,23 @@ pub fn build_type_summary(
             __found
         };
         if is_product.clone() {
-            let field_types = build_field_type_map(item.children.clone(), source_indices.clone());
-            Some(Rc::new(TypeSummary {
-                name: authored_name_at(source_indices.clone(), item.clone()),
-                repr: Rc::new(TypeRepr::StructRepr),
-                field_summaries: build_struct_field_summaries(item.clone(), source_indices.clone()),
-                field_type_map: field_types.field_types.clone(),
-                field_import_surface_names: field_types.import_surface_names.clone(),
-                variant_name_set: v1_rt::rc_empty_map::<String, bool>(),
-                generic_param_names: gpn.clone(),
-                has_fn_fields: has_fn.clone(),
-            }))
+            {
+                let field_types =
+                    build_field_type_map(item.children.clone(), source_indices.clone());
+                Some(Rc::new(TypeSummary {
+                    name: authored_name_at(source_indices.clone(), item.clone()),
+                    repr: Rc::new(TypeRepr::StructRepr),
+                    field_summaries: build_struct_field_summaries(
+                        item.clone(),
+                        source_indices.clone(),
+                    ),
+                    field_type_map: field_types.field_types.clone(),
+                    field_import_surface_names: field_types.import_surface_names.clone(),
+                    variant_name_set: v1_rt::rc_empty_map::<String, bool>(),
+                    generic_param_names: gpn.clone(),
+                    has_fn_fields: has_fn.clone(),
+                }))
+            }
         } else {
             {
                 let unit_only = {
