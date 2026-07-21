@@ -3907,28 +3907,50 @@ fn resolve_discovery_entry_for_corpus_row(
 /// the landed parent-lane authorities are docs/plans/compute-envelope-model.md (fleet
 /// envelope) and docs/plans/input-envelope-roadmap.md (admission)): the deduped transitive
 /// import-closure of every roster row plus the given prefix-context entries, counted at
-/// the module-path grain via the pure import walk (no typecheck). On a completed
-/// width-1 run this equals the post-resolve resolved-graph union
-/// (`DiscoverySummary.roster_closure_nodes`) — resolve resolves exactly the transitive
-/// imports — and `run_discovery_corpus_with_options` asserts that equality as the
-/// definition-drift oracle (an implicit prelude module the walk misses, or a resolve
-/// seeding change, localizes here instead of silently skewing bytes-per-node).
+/// the module-path grain via the same both-closure loader as post-resolve
+/// (`extend_sources_to_both_closure_fixpoint`; import walk + bare-reference pull for
+/// import-stripped modules). On a completed width-1 run this equals the post-resolve
+/// resolved-graph union (`DiscoverySummary.roster_closure_nodes`), and
+/// `run_discovery_corpus_with_options` asserts that equality as the definition-drift
+/// oracle (a loader fork or seeding change localizes here instead of silently skewing
+/// bytes-per-node).
+fn collect_both_closure_module_names_for_entry(
+    index: &MultiEntryIndex,
+    entry_path: &str,
+    out: &mut HashSet<String>,
+) -> Result<(), String> {
+    let sources = load_sources_for_entry_with_pool(index, entry_path)?;
+    let closure_paths: HashSet<String> = sources
+        .iter()
+        .map(|s| workspace_relative_repo_path(&s.path))
+        .collect();
+    for node in &index.module_graph_facts.nodes {
+        let rel = workspace_relative_repo_path(&node.path);
+        if closure_paths.contains(&rel)
+            || closure_paths
+                .iter()
+                .any(|closure_path| repo_paths_match_touched(closure_path, &rel))
+        {
+            out.insert(node.module.clone());
+        }
+    }
+    Ok(())
+}
+
 pub fn roster_import_closure_nodes_pre_resolve(
     rows: &[DiscoveryRow],
     prefix_entries: &[&str],
-    facts: &ModuleGraphFactsLive,
-) -> usize {
-    let mut closure_paths: BTreeSet<String> = BTreeSet::new();
+    index: &MultiEntryIndex,
+) -> Result<usize, String> {
+    let mut closure_modules: HashSet<String> = HashSet::new();
     for entry in rows
         .iter()
         .map(|r| r.entry.as_str())
         .chain(prefix_entries.iter().copied())
     {
-        for path in import_closure_live_paths_with_facts(entry, facts) {
-            closure_paths.insert(workspace_relative_repo_path(&path));
-        }
+        collect_both_closure_module_names_for_entry(index, entry, &mut closure_modules)?;
     }
-    closure_paths.len()
+    Ok(closure_modules.len())
 }
 
 #[cfg(test)]
@@ -11936,13 +11958,9 @@ pub fn run_discovery_corpus_with_options(
         } else {
             &[]
         };
-        let n = roster_import_closure_nodes_pre_resolve(
-            &rows,
-            prefix_entries,
-            &index.module_graph_facts,
-        );
+        let n = roster_import_closure_nodes_pre_resolve(&rows, prefix_entries, &index)?;
         eprintln!(
-            "[calibration] roster_import_closure_nodes={} rows={} (pure import walk, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
+            "[calibration] roster_import_closure_nodes={} rows={} (both-closure loader, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
             n,
             rows.len()
         );
@@ -12078,16 +12096,16 @@ pub fn run_discovery_corpus_with_options(
             // skew — refuse rather than emit a lying receipt.
             if summary.roster_closure_nodes != pre_resolve_closure_nodes {
                 return Err(format!(
-                    "[calibration] closure-definition drift: pre-resolve import walk = {} nodes, \
+                    "[calibration] closure-definition drift: pre-resolve both-closure loader = {} nodes, \
                      post-resolve resolved union = {} — the two closure definitions diverged \
-                     (implicit prelude/kernel module in resolve the import walk cannot see, or a \
-                     seeding change); reconcile the definitions before trusting bytes-per-node \
-                     calibration (roster_import_closure_nodes_pre_resolve is the shared authority)",
+                     (loader fork or seeding change); reconcile the definitions before trusting \
+                     bytes-per-node calibration (roster_import_closure_nodes_pre_resolve is the \
+                     shared authority)",
                     pre_resolve_closure_nodes, summary.roster_closure_nodes
                 ));
             }
             eprintln!(
-                "[calibration] closure consistency: pre-resolve walk == post-resolve union == {} node(s)",
+                "[calibration] closure consistency: pre-resolve both-closure == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
             Ok(attach_deferred_discovery_rows(summary, deferred_rows))
