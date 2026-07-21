@@ -4,7 +4,7 @@ import gunbc.site.tokens { TimingToken, respond_fast, reveal_deliberate }
 
 data interaction_note: String = "Layer 3: the closed interaction vocabulary (design section 4l). Verbs x Responses x TimingToken, held as rows. The coverage law is a countable fold: every interactive element must carry a response row for every verb it declares — a dead hover is a LOCATED gap, not a review vibe."
 
-type Verb
+type InteractionVerb
   = Approach
   | Enter
   | StepBack
@@ -17,7 +17,7 @@ type Response
   | CounterpartHighlight
   | Receipt
 
-fn verb_key(v: Verb) -> String {
+fn verb_key(v: InteractionVerb) -> String {
   match v {
     Approach => "approach"
     Enter => "enter"
@@ -38,26 +38,26 @@ fn response_key(r: Response) -> String {
 
 type BehaviorRow {
   element: String
-  verb: Verb
+  verb: InteractionVerb
   response: Response
   timing: TimingToken
 }
 
 type InteractiveElement {
   element: String
-  verbs: List<Verb>
+  verbs: List<InteractionVerb>
 }
 
 type CoverageGap {
   element: String
-  verb: Verb
+  verb: InteractionVerb
 }
 
-fn interaction_verb_eq(a: Verb, b: Verb) -> Bool {
+fn interaction_verb_eq(a: InteractionVerb, b: InteractionVerb) -> Bool {
   verb_key(v: a) == verb_key(v: b)
 }
 
-fn row_covers(rows: List<BehaviorRow>, element: String, verb: Verb) -> Bool {
+fn row_covers(rows: List<BehaviorRow>, element: String, verb: InteractionVerb) -> Bool {
   fold(rows, init: false, f: (acc, r) =>
     acc || (r.element == element && interaction_verb_eq(a: r.verb, b: verb)))
 }
