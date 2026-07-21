@@ -8,6 +8,7 @@ import std.effect_grant {
   Envelope,
   EffectAdmission, Admitted, EffectOutsideGrant, admit_effect,
 }
+import std.filesystem_path_grant { rel_path_has_parent_segment }
 import std.materialization_ladder { Frame, SharedStateFrame }
 import v2.compiler.build_workspace_grant { build_workspace_grant_envelope }
 import v2.std.host_transport {
@@ -49,10 +50,6 @@ fn build_transport_envelope() -> Envelope {
     toolchain_root: build_transport_toolchain_root,
     frame: build_transport_frame
   )
-}
-
-fn rel_path_has_parent_segment(p: RelPath) -> Bool {
-  string_contains(s: concat("/", concat(p, "/")), pattern: "/../")
 }
 
 fn rel_path_is_workspace_contained(p: RelPath) -> Bool {
