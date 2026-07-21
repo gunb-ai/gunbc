@@ -1,0 +1,121 @@
+module extdeps.sec.types
+
+import std.types { Int, NonEmptyStr, String, List }
+import extdeps.vendor { Vendor }
+import extdeps.securities { Securities }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/edgar/searchedgar/companysearch"
+  }
+}
+
+data cik_digit_width: Int = 10
+
+type Cik {
+  digits: NonEmptyStr
+}
+
+type StockTicker {
+  symbol: NonEmptyStr
+}
+
+type StockExchange
+  = Nasdaq
+  | Nyse
+  | NyseAmerican
+  | OtherExchange { mic: NonEmptyStr }
+
+fn stock_exchange_label(ex: StockExchange) -> String {
+  match ex {
+    Nasdaq => "NASDAQ"
+    Nyse => "NYSE"
+    NyseAmerican => "NYSE American"
+    OtherExchange { mic: m } => m
+  }
+}
+
+type FilingForm
+  = AnnualReport
+  | QuarterlyReport
+  | CurrentReport
+  | OtherFilingForm { form: NonEmptyStr }
+
+fn filing_form_wire(form: FilingForm) -> String {
+  match form {
+    AnnualReport => "10-K"
+    QuarterlyReport => "10-Q"
+    CurrentReport => "8-K"
+    OtherFilingForm { form: f } => f
+  }
+}
+
+fn parse_filing_form(raw: String) -> FilingForm? {
+  if raw == "10-K" { Present { value: AnnualReport } }
+  else if raw == "10-Q" { Present { value: QuarterlyReport } }
+  else if raw == "8-K" { Present { value: CurrentReport } }
+  else if raw != "" { Present { value: OtherFilingForm { form: raw } } }
+  else { none }
+}
+
+type XbrlTaxonomy
+  = UsGaap
+  | Dei
+  | IfrsFull
+  | Srt
+  | Ecd
+  | OtherTaxonomy { name: NonEmptyStr }
+
+fn xbrl_taxonomy_wire(taxonomy: XbrlTaxonomy) -> String {
+  match taxonomy {
+    UsGaap => "us-gaap"
+    Dei => "dei"
+    IfrsFull => "ifrs-full"
+    Srt => "srt"
+    Ecd => "ecd"
+    OtherTaxonomy { name: n } => n
+  }
+}
+
+fn parse_xbrl_taxonomy(raw: String) -> XbrlTaxonomy? {
+  if raw == "us-gaap" { Present { value: UsGaap } }
+  else if raw == "dei" { Present { value: Dei } }
+  else if raw == "ifrs-full" { Present { value: IfrsFull } }
+  else if raw == "srt" { Present { value: Srt } }
+  else if raw == "ecd" { Present { value: Ecd } }
+  else if raw != "" { Present { value: OtherTaxonomy { name: raw } } }
+  else { none }
+}
+
+type XbrlConceptRef {
+  taxonomy: XbrlTaxonomy
+  tag: NonEmptyStr
+}
+
+data edgar_calendar_date_note: String = "ISO 8601 calendar date (YYYY-MM-DD) on SEC XBRL fact rows — upstream JSON keys include filed, start, end, and frame period bounds on companyfacts/companyconcept responses."
+
+type EdgarCalendarDate = String
+
+type XbrlFact {
+  end: EdgarCalendarDate?
+  start: EdgarCalendarDate?
+  val: Float
+  accn: String
+  fy: Int
+  fp: String
+  form: String
+  filed: EdgarCalendarDate
+  frame: EdgarCalendarDate?
+}
+
+type IssuerCatalogRow {
+  cik: Cik
+  legal_name: NonEmptyStr
+  primary_ticker: StockTicker
+  exchange: StockExchange
+  vendor: Vendor<Securities>
+}

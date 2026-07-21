@@ -133,5 +133,7 @@ fn srv3_host_effect_script_for(effect: HostEffect) -> String? {
     RedfishAction { action: _ } => Absent
     ConvergePlan { policy: _ } => Absent
     SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } => Absent
+    ReadEffectivePosixPrincipal { read: _ } => Absent
+    SudoNopasswdExecuteProbe { probe: _ } => Absent
   }
 }
