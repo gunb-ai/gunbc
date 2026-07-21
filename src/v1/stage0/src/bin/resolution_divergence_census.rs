@@ -96,9 +96,12 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("{refusal}");
         return Err(ExitCode::from(1));
     }
+    let raw_telemetry_count = census.silent_pick_global_bare_lcp_rows.len()
+        + census.silent_pick_global_bare_lcp_tie_rows.len()
+        + census.silent_pick_fn_parent_first_hit_rows.len();
     println!(
-        "SILENT-PICK-GATE: clean (0 silent picks, sites_checked={})",
-        census.sites_checked
+        "SILENT-PICK-GATE: clean (0 genuine silent picks — {} raw telemetry site(s) filtered as benign whole-pool overlap via containment_ambiguous/diverge join, sites_checked={})",
+        raw_telemetry_count, census.sites_checked
     );
     Ok(ExitCode::SUCCESS)
 }

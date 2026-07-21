@@ -597,7 +597,7 @@ fn main() {
             let silent_pick = v1_rt::resolution_silent_pick_disable();
             if !silent_pick.fn_parent_first_hits.is_empty() {
                 eprintln!(
-                    "SILENT-PICK-GATE: {} genuine fn_parent_first_hit silent pick(s) in this compile (§13 fail-open — a bare reference resolved by first-hit-among-multiple-parents, i.e. containment-ambiguous):",
+                    "SILENT-PICK-GATE: {} fn_parent_first_hit silent pick(s) in this compile (raw-count proxy gate, not the join-filtered resolution_divergence_silent_pick_refusal authority — §13 fail-open — a bare reference resolved by first-hit-among-multiple-parents, i.e. containment-ambiguous):",
                     silent_pick.fn_parent_first_hits.len()
                 );
                 for site in &silent_pick.fn_parent_first_hits {
