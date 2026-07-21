@@ -33,3 +33,9 @@ data us_gaap_research_and_development_expense: NonEmptyStr = "ResearchAndDevelop
 data us_gaap_general_and_administrative_expense: NonEmptyStr = "GeneralAndAdministrativeExpense"
 
 data us_gaap_operating_income_loss: NonEmptyStr = "OperatingIncomeLoss"
+
+data us_gaap_cost_of_goods_and_services_sold: NonEmptyStr = "CostOfGoodsAndServicesSold"
+
+data us_gaap_cost_of_goods_and_service_excluding_depreciation_depletion_and_amortization: NonEmptyStr = "CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization"
+
+data us_gaap_selling_general_and_administrative_expense: NonEmptyStr = "SellingGeneralAndAdministrativeExpense"
