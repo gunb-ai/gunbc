@@ -12,7 +12,8 @@ fn authority_page_html() -> String {
 
 fn witness_authority_serializes_with_structure() -> Bool {
   let h = authority_page_html()
-  string_contains(s: h, pattern: "<header><h1>gunbc — roadmap</h1></header>")
+  string_contains(s: h, pattern: "<header><svg viewBox=\"0 0 120 72\" class=\"mark mark-d1\"")
+    && string_contains(s: h, pattern: "</svg><h1>gunbc — roadmap</h1></header>")
     && string_contains(s: h, pattern: "<main class=\"roadmap\">")
     && string_contains(s: h, pattern: "class=\"roadmap-section\"")
     && string_contains(s: h, pattern: "class=\"status status-")
@@ -30,7 +31,8 @@ fn witness_empty_doc_is_minimal_shell() -> Bool {
   let h = empty_doc_html()
   starts_with(s: h, prefix: "<html><head><meta charset=\"utf-8\"")
     && string_contains(s: h, pattern: "<title>gunbc — roadmap</title></head>")
-    && string_contains(s: h, pattern: "<body><header><h1>gunbc — roadmap</h1></header><main class=\"roadmap\"></main></body></html>")
+    && string_contains(s: h, pattern: "<body><header><svg viewBox=\"0 0 120 72\" class=\"mark mark-d1\"")
+    && string_contains(s: h, pattern: "</svg><h1>gunbc — roadmap</h1></header><main class=\"roadmap\"></main></body></html>")
 }
 
 fn witness_authority_differs_from_empty() -> Bool {
