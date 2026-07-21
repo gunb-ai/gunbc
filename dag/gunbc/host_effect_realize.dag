@@ -4,6 +4,8 @@ import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction, ConvergePlan,
   Srv3InstallDiagnosticObserve, OsInstallActuatorToolchainEnsure, ProvisionBuildCache,
   SetHostnameCas,
+  ReadEffectivePosixPrincipal,
+  SudoNopasswdExecuteProbe,
   Srv3InstallReconcileObserve,
   DurableApprovalGrantRecord,
   DurableApprovalGrantRead,
@@ -21,7 +23,7 @@ import gunbc.host_effect {
   HostEffectIntent, HostEffectEvidence, ShellEffectApplied, ConvergePlanApplied,
   HostEffectTransport, LocalShell, SshShell,
   EmitArtifactThenThinRun, BootstrapFragment,
-  host_effect_drive, host_effect_identity_evidence,
+  host_effect_drive, host_effect_identity_evidence, host_effect_read_evidence,
 }
 import extdeps.dns.domain_name { DnsLabel }
 import std.effects { IdempotencyEvidence }
@@ -30,6 +32,7 @@ import std.realization_reconcile {
   ReadObserved, Grounds, DoesNotGround,
   reconcile_grounded
 }
+import v2.std.algebra { fold_list }
 import extdeps.shell
 import extdeps.shell.exec { transport_script_from_body }
 import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
@@ -70,9 +73,15 @@ import gunbc.srv3_actuate_shell_paths {
 }
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.ci_deploy_access {
-  DeployAccess, DeployAccessActor,
-  deploy_access_check, deploy_access_check_observed,
+  DeployAccess,
+  DeployAccessActor,
+  PrivilegedCommand,
+  deploy_access_check,
   deploy_access_decision_reason,
+  deploy_access_principal_line,
+  deploy_access_refusal_prefix,
+  deploy_access_read_principal_effect,
+  deploy_access_sudo_probe_effect,
 }
 import gunbc.srv3_host_effect_script { srv3_host_effect_script_for }
 import gunbc.host_build_cache_provision_script { build_cache_provision_shell_script }
@@ -103,6 +112,10 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
   InstallMediaRemasterRefused,
 }
 import gunbc.host_effect_hostname_script { host_effect_set_hostname_cas_script }
+import gunbc.host_effect_deploy_access_probe_script {
+  host_effect_read_effective_posix_principal_script,
+  host_effect_sudo_nopasswd_execute_probe_script,
+}
 import gunbc.host_effect_nbd_proxy_serve {
   host_effect_nbd_proxy_serve_apply,
   host_effect_nbd_proxy_serve_session_binding,
@@ -219,6 +232,13 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 SetHostnameCas { hostnamectl_path: p, base: b, desired: d } =>
                   HostnameOnHost { node: n, hostnamectl_path: p, base: b, desired: d }
+                ReadEffectivePosixPrincipal { read: r } =>
+                  ShellOnHost { node: n, script: host_effect_read_effective_posix_principal_script(read: r) }
+                SudoNopasswdExecuteProbe { probe: p } =>
+                  ShellOnHost {
+                    node: n,
+                    script: host_effect_sudo_nopasswd_execute_probe_script(probe: p),
+                  }
                 Srv3NbdProxyServe { intent: i, lease_key: k } =>
                   NbdProxySessionOnHost { node: n, intent: i, lease_key: k }
               }
@@ -273,6 +293,10 @@ fn resolve_host_effect_cell(target: NodeControlPlane, effect: HostEffect) -> Res
                   IncompatibleCell { reason: "host_effect: Srv3ReceiptEmit is in-band (actuator host typed receipt) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
                 SetHostnameCas { hostnamectl_path: _, base: _, desired: _ } =>
                   IncompatibleCell { reason: "host_effect: SetHostnameCas is in-band (shell hostnamectl) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                ReadEffectivePosixPrincipal { read: _ } =>
+                  IncompatibleCell { reason: "host_effect: ReadEffectivePosixPrincipal is in-band (shell whoami) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
+                SudoNopasswdExecuteProbe { probe: _ } =>
+                  IncompatibleCell { reason: "host_effect: SudoNopasswdExecuteProbe is in-band (shell sudo -n probe) and cannot target BmcController (out-of-band Redfish only); target HostOs instead. Typed mismatch via total fold, DESIGN section 5." }
               }
           }
       }
@@ -1306,6 +1330,90 @@ fn host_effect_privilege_verdict(
   match fixture_actor {
     Present { value: actor } => deploy_access_check(access: access, actor: actor)
     Absent => deploy_access_check_observed(access: access)
+  }
+}
+
+fn deploy_access_host_target(access: DeployAccess) -> NodeControlPlane {
+  HostOs { node: access.host }
+}
+
+fn deploy_access_shell_apply_success_stdout(
+  access: DeployAccess,
+  effect: HostEffect,
+) -> String? {
+  match host_effect_apply(
+    target: deploy_access_host_target(access: access),
+    effect: effect,
+    evidence: host_effect_read_evidence,
+    transport: access.transport,
+  ) {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: out, exit_code: code } =>
+          if code == 0 {
+            Present { value: out }
+          } else {
+            none
+          }
+        ConvergePlanApplied { stdout: _, exit_code: _ } => Absent
+      }
+    NotConverged { reason: _, applied: _ } => Absent
+  }
+}
+
+fn deploy_access_observed_principal(access: DeployAccess) -> NonEmptyStr? {
+  match deploy_access_shell_apply_success_stdout(
+    access: access,
+    effect: deploy_access_read_principal_effect(),
+  ) {
+    Present { value: stdout } => deploy_access_principal_line(success: true, stdout: stdout)
+    Absent => Absent
+  }
+}
+
+fn deploy_access_sudo_check_cmd(access: DeployAccess, cmd: PrivilegedCommand) -> Bool {
+  match deploy_access_shell_apply_success_stdout(
+    access: access,
+    effect: deploy_access_sudo_probe_effect(cmd: cmd),
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn deploy_access_sudo_all_granted(access: DeployAccess) -> Bool {
+  fold_list(
+    xs: access.privileged_commands,
+    empty: true,
+    cons: (acc, cmd) => if !acc { false } else { deploy_access_sudo_check_cmd(access: access, cmd: cmd) }
+  )
+}
+
+fn deploy_access_observed_actor(access: DeployAccess) -> DeployAccessActor? {
+  match deploy_access_observed_principal(access: access) {
+    Present { value: observed_name } =>
+      Present {
+        value: DeployAccessActor {
+          observed_name: observed_name,
+          sudo_granted: deploy_access_sudo_all_granted(access: access),
+        }
+      }
+    Absent => Absent
+  }
+}
+
+fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
+  match deploy_access_observed_actor(access: access) {
+    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Absent =>
+      Deny {
+        reason: Present {
+          value: concat(
+            deploy_access_refusal_prefix,
+            " — could not observe principal (ReadEffectivePosixPrincipal failed)"
+          )
+        }
+      }
   }
 }
 

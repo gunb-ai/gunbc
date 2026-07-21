@@ -24,11 +24,11 @@ data target_meta_exec_module: String = "extdeps.shell.exec"
 data meta_exec_realization_edge_path_prefixes: List<String> = [
   "dag/tools/",
   "dag/gunbc/host_effect_realize",
+  "dag/gunbc/ci_deploy_access_observe",
   "dag/test/claim/"
 ]
 
 data meta_exec_confinement_exception_roster: List<String> = [
-  "dag/gunbc/ci_deploy_access.dag",
   "dag/gunbc/ci_deploy_target_host.dag",
   "dag/gunbc/host_converge_slice1.dag",
   "dag/gunbc/host_identity_adopt.dag",
