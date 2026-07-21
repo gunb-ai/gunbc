@@ -22,7 +22,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data aws_ec2_pricing_provenance_note: String = "On-demand Linux Shared tenancy prices live-fetched 2026-07-21 from the AWS Price List API (anchor above, us-east-1, preInstalledSw=NA). m7a general-purpose family only — 3-5 comparable instances, not full catalog coverage."
 
-type AwsEc2InstanceFamily = M7a
+type AwsEc2InstanceFamily = | M7a
 
 type AwsEc2OnDemandPriceRow {
   instance_type: NonEmptyStr
