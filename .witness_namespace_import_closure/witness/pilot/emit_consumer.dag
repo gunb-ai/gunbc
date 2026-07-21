@@ -1,5 +1,0 @@
-module witness.pilot.emit_consumer
-
-fn pilot_consumer_flag() -> Bool { pilot_provider_flag() }
-
-fn pilot_consumer_default() -> PilotColor { pilot_provider_default() }
