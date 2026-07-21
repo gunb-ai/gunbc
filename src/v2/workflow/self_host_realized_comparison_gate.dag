@@ -5,7 +5,8 @@ import std.logic { Bool }
 import tools.host_prelude { ClaimRun, run_gunbc_claims, run_witness_bin_program }
 import tools.self_host_realized_comparison_transport {
   realized_comparison_args,
-  realized_comparison_invoke
+  realized_comparison_invoke,
+  realized_comparison_verify_args
 }
 
 data srfc_gate_test_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
@@ -29,22 +30,16 @@ func self_host_realized_comparison_reads_real_bytes_gate_holds() -> Bool {
 }
 
 func self_host_realized_comparison_staleness_gate_holds() -> Bool {
-  srfc_emit_realized()
-    && run_gunbc_claims(
-      source_roots: witness_layer_roots,
-      claims: [ClaimRun { entry: srfc_gate_test_entry, function: srfc_staleness_gate_witness }]
-    )
+  run_witness_bin_program(
+    invoke: realized_comparison_invoke(),
+    prereqs: [],
+    args: realized_comparison_verify_args()
+  )
 }
 
 func run_self_host_realized_comparison_gate() -> Bool {
-  srfc_emit_realized()
-    && run_gunbc_claims(
-      source_roots: witness_layer_roots,
-      claims: [
-        ClaimRun { entry: srfc_gate_test_entry, function: srfc_provenance_witness },
-        ClaimRun { entry: srfc_gate_test_entry, function: srfc_staleness_gate_witness }
-      ]
-    )
+  self_host_realized_comparison_reads_real_bytes_gate_holds()
+    && self_host_realized_comparison_staleness_gate_holds()
 }
 
 func self_host_realized_comparison_gate_passes() -> Bool {
