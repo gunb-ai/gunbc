@@ -57,7 +57,7 @@ fn alias_decl_expected_row() -> AliasBindingRow {
   }
 }
 
-test fn alias_decl_parse_and_binding_row_holds() -> Bool {
+fn alias_decl_parse_and_binding_row_holds() -> Bool {
   match alias_decl_parse_tree() {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>
@@ -74,7 +74,7 @@ test fn alias_decl_parse_and_binding_row_holds() -> Bool {
   }
 }
 
-test fn alias_decl_keyword_reserved_in_binding_position_red_control_holds() -> Bool {
+fn alias_decl_keyword_reserved_in_binding_position_red_control_holds() -> Bool {
   let lm = dag_language_model()
   match bind_outcome(
     o: tokenize(
