@@ -1,0 +1,35 @@
+module v2.test.manual.floor_drain_retention
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data floor_drain_retention_note: String = "Width=1 floor drain reuses one in-process typed_module_cache across entry groups (term-3 retention axis). The catalog row cites Never eviction at the mechanism layer; the interim host-budget entry cap in cli_run.rs is the counted runtime backstop until cross-entry-typed-module-memo (PR-beta) lands SpacePacked eviction on the ladder."
+
+fn witness_typed_module_cache_is_in_process_with_never_mechanism() -> Bool {
+  let row = cache_interface_facts_from_catalog(row: typed_module_cache_facts)
+  (row.locality == InProcess)
+    && (typed_module_cache_facts.placement.eviction == Never)
+    && (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == NativeInternalHash)
+}
+
+fn witness_typed_module_cache_projects_scope_exit_not_refused() -> Bool {
+  let projection = provider_from_catalog(
+    facts: typed_module_cache_facts,
+    scope: empty_frame_path,
+    coverage: CoversAllComputations
+  )
+  match projection {
+    ProjectedProvider { provider: prov } => {
+      match prov.eviction {
+        ScopeExit => true
+        SpacePacked { budget: _ } => false
+      }
+    }
+    ProjectionRefused { interface: _, reason: _ } => false
+  }
+}
+
+test fn floor_drain_retention_catalog_witnesses() -> Bool {
+  witness_typed_module_cache_is_in_process_with_never_mechanism()
+    && witness_typed_module_cache_projects_scope_exit_not_refused()
+}

@@ -1,35 +1,5 @@
 module extdeps.boot.emit
 
-import extdeps.boot.framebuffer { vga_text_mode_base }
-import extdeps.boot.freestanding_payload {
-  EmittedPayload,
-  FreestandingPayloadRef,
-  HollowPrebuiltInit,
-  PrebuiltPayload,
-}
-import extdeps.formats.elf.encode { encode_elf64_ehdr, encode_elf64_phdr }
-import extdeps.formats.elf.primitives {
-  ElfClass64,
-  ElfData2Lsb,
-  EtExec,
-  EmX86_64,
-  PtLoad,
-  elf64_phdr_size,
-  elf64_ehdr_size,
-  elf_mag0,
-  elf_mag1,
-  elf_mag2,
-  elf_mag3,
-  pf_r,
-  pf_x,
-}
-import extdeps.formats.elf.segments { Elf64Phdr }
-import extdeps.formats.elf.types { Elf64Ehdr, ElfIdent, byte_at_in_bounds }
-import std.exec_format { EntryPoint }
-import std.types { NonEmptyStr }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
