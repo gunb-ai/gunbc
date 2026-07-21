@@ -10,22 +10,43 @@ import extdeps.accessibility.wcag_contrast {
   wcag_aaa_normal_text_hundredths,
 }
 
-data design_palette_note: String = "L2 palette-catalogue machinery (design-register-library.md — landed ahead of the Phase-A lift by operator request 2026-07-21; additive only, gunbc.site untouched). A SwatchSet is catalogued raw material: named colors with authored Srgb8 identity and explicit provenance — the common location every downstream palette derives from. Approval of a combination is COMPUTED, never hand-flagged: PairingGrade derives from the cited WCAG kernel against the named thresholds (sect 5 construction — an approved-combination row that fails its threshold is unwritable because approval IS the computed grade; names-not-values — thresholds import from the cite, no literal here). Pairings are ordered figure-on-ground (the WCAG ratio is symmetric; usage direction is not). graded_pairings is TOTAL over ordered distinct pairs by construction — no string-keyed roster to fall open on (sect 10 Class 3). A swatch set with no text-capable pairing is still cataloguable (the set is a fact; capability is a computed property of it) — binding such a set to text roles is what refuses, at theme level. DTCG interchange (W3C Design Tokens Community Group format) is the named external surface for swap-in/swap-out; its citation and emit land with the first external consumer, not speculatively (sect 6). Dissolution notes: when the Phase-A lift re-grounds gunbc.site materials, Material color identity re-homes onto catalogue swatches and the theme layer becomes the binding of ThemeRole -> Swatch — this module is the substrate for that, not a parallel color story."
+data design_palette_note: String = "L2 palette-catalogue machinery (design-register-library.md). A SwatchSet is register-independent catalog data; admissibility against the house register (gunbc.site.tokens quiet_envelope_hsl_pct) is checked at the (set × register) binding in witnesses, never here. swatch_names_distinct is O(n^2) over names — acceptable at catalogue scale, dissolve if a set-ordering witness lands. SwatchMemberKind (Filed | Derived) is the relationship vocabulary. Set-level structure rows live on extdeps palette modules and are pinned by witnesses. PairingGrade derives from the cited WCAG kernel — approval is computed, never hand-flagged."
 
 type Swatch {
   name: String
   color: Srgb8
 }
 
+type SwatchMemberKind
+  = Filed
+  | Derived { anchor_name: String, note: String }
+
+type SwatchMember {
+  swatch: Swatch
+  kind: SwatchMemberKind
+}
+
+fn swatch_filed(sw: Swatch) -> SwatchMember {
+  SwatchMember { swatch: sw, kind: Filed }
+}
+
+fn swatch_derived(sw: Swatch, anchor_name: String, note: String) -> SwatchMember {
+  SwatchMember { swatch: sw, kind: Derived { anchor_name: anchor_name, note: note } }
+}
+
 type SwatchSetProvenance
   = HouseAuthored { note: String }
   | InspiredByExternal { note: String }
-  | CitedUpstream { authority: ExternalAuthority }
+  | CitedUpstream { authority: ExternalAuthority, version: String }
 
 type SwatchSet {
   name: String
   provenance: SwatchSetProvenance
-  swatches: List<Swatch>
+  members: List<SwatchMember>
+}
+
+fn swatches_of(s: SwatchSet) -> List<Swatch> {
+  map(s.members, m => m.swatch)
 }
 
 fn swatch_paint(sw: Swatch) -> String {
@@ -44,9 +65,10 @@ fn swatch_names_distinct(swatches: List<Swatch>) -> Bool {
 }
 
 fn swatch_set_admissible(s: SwatchSet) -> Bool {
-  s.swatches.length() > 0
-    && all(s.swatches, sw => srgb8_admissible(c: sw.color))
-    && swatch_names_distinct(swatches: s.swatches)
+  let swatches = swatches_of(s: s)
+  swatches.length() > 0
+    && all(swatches, sw => srgb8_admissible(c: sw.color))
+    && swatch_names_distinct(swatches: swatches)
 }
 
 type PairingGrade
@@ -98,8 +120,9 @@ fn grade_pairing(figure: Swatch, ground: Swatch) -> GradedPairing {
 }
 
 fn graded_pairings(s: SwatchSet) -> List<GradedPairing> {
-  fold(s.swatches, init: [], f: (acc, f) =>
-    concat(acc, fold(s.swatches, init: [], f: (acc2, g) =>
+  let swatches = swatches_of(s: s)
+  fold(swatches, init: [], f: (acc, f) =>
+    concat(acc, fold(swatches, init: [], f: (acc2, g) =>
       if f.name == g.name { acc2 } else { concat(acc2, [grade_pairing(figure: f, ground: g)]) })))
 }
 

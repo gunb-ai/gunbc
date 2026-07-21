@@ -34,8 +34,7 @@ use crate::v1_std_core::{
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
     empty_node_list, expr_call_func_at, expr_method_name_at, expr_var_name_at, field_access_base,
     field_access_field_at, field_init_node_name_at, field_init_node_value, has_child_named,
-    inferred_to_node, intern, is_discovery_corpus_advisory_typecheck_diagnostic,
-    is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
+    inferred_to_node, intern, is_discovery_corpus_blocking_diagnostic, is_error_diagnostic,
     is_interpreter_blocking_diagnostic, let_binding_name_at, let_value, match_arm_nodes,
     match_scrutinee, method_arg_nodes, method_receiver, module_items, no_span, param_node_name_at,
     param_node_type_expr, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
@@ -63,30 +62,6 @@ fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypeche
     match gate {
         ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => is_discovery_corpus_blocking_diagnostic(d),
-    }
-}
-
-fn log_discovery_advisory_typecheck(
-    d: &Rc<ErrorNode>,
-    source_indices: &HashMap<String, Rc<NewlineIndex>>,
-    gate: ResolveTypecheckGate,
-) {
-    if gate != ResolveTypecheckGate::DiscoveryCorpusAdvisory {
-        return;
-    }
-    // Surface ALL discovery-corpus advisory diagnostics, not only those that also
-    // interpreter-block. Every advisory diagnostic except UnlistedImportUse is already
-    // interpreter-blocking, so this is a no-op for them; it wires UnlistedImportUse
-    // (advisory + non-blocking, the diagnostic-collect signal) into the reporting path
-    // instead of leaving it emitted-but-unobservable (§5 spec-without-execution).
-    if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
-        let span = diagnostic_to_span(d.diagnostic.clone());
-        let loc = format_error_loc(&span.file, span.start, source_indices);
-        eprintln!(
-            "advisory(typecheck): {}: error: {}",
-            loc,
-            diagnostic_to_message(d.diagnostic.clone())
-        );
     }
 }
 
@@ -3723,7 +3698,7 @@ mod live_read_carrier_home_roster_drift_gate_tests {
 pub(crate) const CLI_RUN_DISCOVERY_SKIP_BEFORE_RESOLVE_SCAFFOLD_MARKER: &str =
     "cli_run_discovery_skip_before_resolve";
 
-/// Module names for one entry at the resolved-graph grain — shared by
+/// Module names for one entry at the loader both-closure grain (no resolve) — shared by
 /// `roster_import_closure_nodes_pre_resolve` and skip-before-resolve augmentation.
 fn collect_import_closure_module_names_from_facts(
     index: &MultiEntryIndex,
@@ -3906,8 +3881,16 @@ fn resolve_discovery_entry_for_corpus_row(
 /// the landed parent-lane authorities are docs/plans/compute-envelope-model.md (fleet
 /// envelope) and docs/plans/input-envelope-roadmap.md (admission)): the deduped transitive
 /// import-closure of every roster row plus the given prefix-context entries, counted at
-/// the module-path grain via the same resolved-module union as post-resolve
-/// (`resolve_entry_with_index_for_discovery_corpus` + `collect_typed_module_names`).
+/// the authored-module-name grain via the LOADER's both-closure source set
+/// (`load_sources_for_entry_with_pool`) — the exact set `resolve_entry_with_parse_cache`
+/// starts from — so equality with the post-resolve union
+/// (`collect_typed_module_names` over what resolve actually loaded) holds by
+/// construction WITHOUT resolving: no parse, no typecheck, and nothing installed
+/// into `resolved_graph_memo`. The #6938 form of this helper ran the full
+/// `resolve_entry_with_index_for_discovery_corpus` per entry, which made every
+/// floor run resolve the ENTIRE roster on the width-1 pump thread and retain every
+/// resolved graph co-resident in the uncapped memo (~17 GB scoped runs became
+/// ~38 GB whole-corpus retention — the 2026-07-21 exit-137 floor kills).
 /// On a completed width-1 run this equals `DiscoverySummary::roster_closure_nodes`,
 /// and `run_discovery_corpus_with_options` asserts that equality as the definition-drift
 /// oracle (a loader fork or seeding change localizes here instead of silently skewing
@@ -3917,8 +3900,21 @@ fn collect_both_closure_module_names_for_entry(
     entry_path: &str,
     out: &mut HashSet<String>,
 ) -> Result<(), String> {
-    let (graph, source_indices) = resolve_entry_with_index_for_discovery_corpus(index, entry_path)?;
-    collect_typed_module_names(graph.modules.iter().cloned(), &source_indices, out);
+    for source in load_sources_for_entry_with_pool(index, entry_path)? {
+        match extract_module_path(&source.content) {
+            Some(name) => {
+                out.insert(name);
+            }
+            None => {
+                return Err(format!(
+                    "calibration closure: source '{}' in entry '{}' closure declares no \
+                     module header — the loader-grain module-name count cannot include it \
+                     (fail-closed; a headerless source in the pool is an indexing defect)",
+                    source.path, entry_path
+                ));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -4785,6 +4781,17 @@ pub struct MultiEntryIndex {
     /// drain accumulation lane). Each eviction is a typed, located diagnostic — never
     /// a silent widen (§5).
     typed_cache_evictions: Cell<u64>,
+    /// Host-budget-derived typed-cache entry cap, sampled ONCE for this index's
+    /// lifetime — a run-start fact, never re-read per insert. Re-deriving the cap
+    /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, the fallback
+    /// when no private cgroup memory limit is discoverable) on every insert was the
+    /// 2026-07-21 fleet OOM incident: the cap chased the host's real-time noise
+    /// across every co-resident session, and each eviction's recompute-on-miss
+    /// added the exact memory pressure the cap exists to relieve — a thrashing
+    /// feedback loop, not a bound. `OnceCell` gives lazy single-sample semantics
+    /// so index construction stays free of the governor read for callers that
+    /// never touch the typed cache.
+    typed_module_cache_cap: std::cell::OnceCell<usize>,
     /// Source-content hashes by file path, recorded in the parse loop (where the
     /// `SourceFile.content` is in hand) — the source-hash key term for
     /// `typed_module_content_key`. A reconcile of a module whose file never passed
@@ -4904,6 +4911,15 @@ pub fn typed_cache_evictions_for_test(index: &MultiEntryIndex) -> u64 {
     index.typed_cache_evictions.get()
 }
 
+/// Test witness for the sample-once cap: exposes the same accessor runtime
+/// call sites use, so a test can observe that repeated calls against one
+/// `index` return the identical value even as the underlying signal moves —
+/// the property the 2026-07-21 fleet OOM fix depends on.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn typed_module_cache_cap_for_test(index: &MultiEntryIndex) -> usize {
+    typed_module_cache_cap(index)
+}
+
 fn new_multi_entry_index_shell(
     source_files: ModuleSourceIndex,
     source_roots: &[String],
@@ -4914,6 +4930,7 @@ fn new_multi_entry_index_shell(
         module_graph_facts: build_module_graph_facts_live(source_roots),
         typed_module_cache: RefCell::new(std::collections::HashMap::new()),
         typed_cache_evictions: Cell::new(0),
+        typed_module_cache_cap: std::cell::OnceCell::new(),
         source_hash_by_file: RefCell::new(std::collections::HashMap::new()),
         module_source_identity: RefCell::new(std::collections::HashMap::new()),
         cross_worker_store,
@@ -5230,28 +5247,73 @@ const TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE: u64 = 3 * 1024 * 1024;
 const TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR: usize = 100;
 const TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL: usize = 4_000;
 
-/// Host-budget-derived cap on `typed_module_cache` entries for the private
-/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
-/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
-/// malformed override falls through to the derived cap (fail-closed).
-pub fn typed_module_cache_max_entries() -> usize {
+/// One derivation of the typed-cache entry cap: env override, else the host
+/// budget divided by the per-entry estimate. Returns `(cap, source_label,
+/// degraded)` — `degraded` is true exactly when the budget did not come from
+/// a private cgroup `memory.max`/`memory.high` (i.e. it fell through to the
+/// host-wide `MemAvailable`/`MemTotal` last resort, or no budget was found at
+/// all and the ceiling was used). Pure and side-effect-free: callers decide
+/// how often to invoke it and whether to log the degraded case.
+fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     if let Ok(raw) = std::env::var("GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES") {
         if let Ok(n) = raw.trim().parse::<usize>() {
             if n > 0 {
-                return n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL);
+                return (
+                    n.min(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL),
+                    "env override GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES".to_string(),
+                    false,
+                );
             }
             // Zero override is invalid — fall through to derived cap.
         }
         // Malformed override — fall through to derived cap (fail-closed).
     }
-    let (budget, _) = crate::memory_governor::read_host_budget_bytes();
-    budget
+    let (budget, source_label) = crate::memory_governor::read_host_budget_bytes();
+    // String-scan of read_host_budget_bytes' label — acceptable while that fn returns
+    // (Option<u64>, String); if it ever grows a typed source enum, ground this check on
+    // the enum instead of re-parsing its display label (§3, avoid a second representation).
+    let degraded = !(source_label.contains("memory.max") || source_label.contains("memory.high"));
+    let cap = budget
         .map(|b| (b / TYPED_MODULE_BYTES_PER_ENTRY_ESTIMATE) as usize)
         .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL)
         .clamp(
             TYPED_MODULE_CACHE_MAX_ENTRIES_FLOOR,
             TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
-        )
+        );
+    (cap, source_label, degraded)
+}
+
+/// Host-budget-derived cap on `typed_module_cache` entries for the private
+/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
+/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
+/// malformed override falls through to the derived cap (fail-closed).
+///
+/// This is the pure, un-cached derivation — kept for direct env-override
+/// tests. Runtime call sites must go through `typed_module_cache_cap`
+/// instead, which samples this exactly once per index lifetime; re-deriving
+/// from a live host-shared signal on every insert was the 2026-07-21 fleet
+/// OOM incident (see the doc comment on `MultiEntryIndex::typed_module_cache_cap`).
+pub fn typed_module_cache_max_entries() -> usize {
+    typed_module_cache_cap_derivation().0
+}
+
+/// The typed-cache cap for `index`, sampled exactly ONCE for this index's
+/// lifetime (a run-start fact, never re-read per insert). On first call, if
+/// the budget source is degraded (no private cgroup limit found), emits a
+/// typed, counted `[floor-drain] degraded_budget_source` diagnostic — an
+/// honesty arm, not a widened failure: the cap still derives from whatever
+/// source was found, it is simply named so the degraded case is observable
+/// and prioritizable rather than silent.
+fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
+    *index.typed_module_cache_cap.get_or_init(|| {
+        let (cap, source, degraded) = typed_module_cache_cap_derivation();
+        if degraded {
+            eprintln!(
+                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)"
+            );
+        }
+        cap
+    })
 }
 
 pub fn index_retention_snapshot(index: &MultiEntryIndex) -> IndexRetentionSnapshot {
@@ -5329,7 +5391,11 @@ fn emit_floor_drain_group_line(
     );
 }
 
-fn emit_floor_drain_receipt(total_groups: usize, peaks: &IndexRetentionSnapshot) {
+fn emit_floor_drain_receipt(
+    index: &MultiEntryIndex,
+    total_groups: usize,
+    peaks: &IndexRetentionSnapshot,
+) {
     eprintln!(
         "[floor-drain] receipt: groups={total_groups} \
          typed_cache_peak={} parse_cache_peak={} resolved_memo_peak={} \
@@ -5343,7 +5409,7 @@ fn emit_floor_drain_receipt(total_groups: usize, peaks: &IndexRetentionSnapshot)
             .peak_rss_bytes
             .map(|b| b.to_string())
             .unwrap_or_else(|| "unreadable".into()),
-        typed_module_cache_max_entries(),
+        typed_module_cache_cap(index),
     );
 }
 
@@ -5356,7 +5422,7 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
     if index.cross_worker_store.is_some() {
         return;
     }
-    let cap = typed_module_cache_max_entries();
+    let cap = typed_module_cache_cap(index);
     let mut cache = index.typed_module_cache.borrow_mut();
     let mut evicted = 0u64;
     while cache.len() > cap {
@@ -5829,9 +5895,6 @@ fn resolved_graph_from_sources_with_index(
         s.reconcile_assembly += reconcile_total.saturating_sub(s.typecheck_compute + s.parent_envs);
     });
 
-    for d in typed.diagnostics.iter() {
-        log_discovery_advisory_typecheck(d, &source_indices, typecheck_gate);
-    }
     let has_type_errors = typed
         .diagnostics
         .iter()
@@ -6502,19 +6565,6 @@ fn reconcile_with_typed_cache(
     let mut diag_chunks: Vec<Rc<im::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
-    // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
-    // built once, order-independent, over the whole graph before any module typechecks — see
-    // global_bare_fallback_invariant in v1_compiler_infer_env. Layering (§7.5 "fill =
-    // whole tree; policy gates lookup, never fill"): the base below is the entry's
-    // closure census plus the whole-pool QUALIFIED underlay; each module that
-    // actually typechecks additionally gets its OWN tree's bare census underlaid
-    // (bare = own tree, qualified = whole pool, cross-tree bare stays refused),
-    // composed lazily per root in `tree_symbol_index_memo`.
-    let symbol_index =
-        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
-    let mut tree_symbol_index_memo: std::collections::HashMap<String, Rc<SymbolIndex>> =
-        std::collections::HashMap::new();
-
     // S2a move 2 (resolver-graph-major-design.md §7): per-module typecheck is DISPATCHED in
     // the module-node schedule's antichain-batch order, with the typed cache as the
     // node-keyed store a dependent's handler reads its imports' results from — once-per-node
@@ -6538,6 +6588,25 @@ fn reconcile_with_typed_cache(
     )? {
         return Ok(assembled);
     }
+    // Corpus-wide bare-name census lives on SymbolIndex.global_bare (namespace-resolution-design.md §8 PR-4):
+    // built once, order-independent, over the whole graph before any module typechecks — see
+    // global_bare_fallback_invariant in v1_compiler_infer_env. Layering (§7.5 "fill =
+    // whole tree; policy gates lookup, never fill"): the base below is the entry's
+    // closure census plus the whole-pool QUALIFIED underlay; each module that
+    // actually typechecks additionally gets its OWN tree's bare census underlaid
+    // (bare = own tree, qualified = whole pool, cross-tree bare stays refused),
+    // composed lazily per root in `tree_symbol_index_memo`.
+    //
+    // Built AFTER the all-cache-hits shortcut (fix axis 2b,
+    // docs/plans/floor-memory-pool-parse-regression-diagnosis.md §9): the shortcut
+    // consumes no symbol index, so an all-hits entry — the warm single-process case,
+    // and any cold child whose closure fully hits the typed/cross-process caches —
+    // must not pay the whole-pool census `pool_qualified_fill` performs. Genuine
+    // misses reach the build below exactly as before.
+    let symbol_index =
+        build_symbol_index_for_reconcile(index, graph.clone(), source_indices.clone())?;
+    let mut tree_symbol_index_memo: std::collections::HashMap<String, Rc<SymbolIndex>> =
+        std::collections::HashMap::new();
     let schedule = module_schedule_batches(&closure_modules, &closure_names);
     // Interface hashes of processed modules, for dependents' content keys — filled in
     // batch order (a batch's imports all live in earlier batches), read by
@@ -6640,15 +6709,13 @@ fn reconcile_with_typed_cache(
             note_interface_hash(&mut interface_hash_by_name, &mod_name, &tc_result);
             let typed = tc_result.typed.clone();
             let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
-            variant_surfaces = v1_rt::rc_map_insert(
+            let variant_surface = v1_compiler_infer::build_variant_export_surface(
+                typed.clone(),
                 variant_surfaces.clone(),
-                typed_path.clone(),
-                v1_compiler_infer::build_variant_export_surface(
-                    typed.clone(),
-                    variant_surfaces.clone(),
-                    source_indices.clone(),
-                ),
+                source_indices.clone(),
             );
+            variant_surfaces =
+                v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
             module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
             dispatched[slot] = Some((parent_diags, tc_result));
         }
@@ -6770,7 +6837,6 @@ fn resolved_graph_from_sources(
         let mut msgs = Vec::new();
         for d in result.diagnostics.iter() {
             if !is_resolve_typecheck_blocking(d.diagnostic.clone(), typecheck_gate) {
-                log_discovery_advisory_typecheck(d, &si, typecheck_gate);
                 continue;
             }
             let span = diagnostic_to_span(d.diagnostic.clone());
@@ -11799,7 +11865,8 @@ fn discovery_entry_fast_skip_without_resolve(
 }
 
 /// Keep the width-1 closure calibration oracle honest when resolve is skipped: count the
-/// same resolved modules `roster_import_closure_nodes_pre_resolve` uses.
+/// same loader-closure module names `roster_import_closure_nodes_pre_resolve` uses —
+/// a genuinely elided resolve stays elided (the skip path must never be the heavy path).
 fn augment_closure_modules_from_import_facts(
     index: &MultiEntryIndex,
     entry_path: &str,
@@ -12409,7 +12476,7 @@ pub fn run_discovery_corpus_with_options(
         };
         let n = roster_import_closure_nodes_pre_resolve(&rows, prefix_entries, &index)?;
         eprintln!(
-            "[calibration] roster_import_closure_nodes={} rows={} (resolved-module union, pre-resolve; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
+            "[calibration] roster_import_closure_nodes={} rows={} (loader both-closure union, pre-resolve, no resolve/typecheck; pairs with the floor cgroup memory.peak steps — on a killed run this line plus the last [gantt] rss_mib sample are the lower-bound receipt)",
             n,
             rows.len()
         );
@@ -12545,16 +12612,17 @@ pub fn run_discovery_corpus_with_options(
             // skew — refuse rather than emit a lying receipt.
             if summary.roster_closure_nodes != pre_resolve_closure_nodes {
                 return Err(format!(
-                    "[calibration] closure-definition drift: pre-resolve resolved-module union = {} nodes, \
+                    "[calibration] closure-definition drift: pre-resolve loader-closure union = {} nodes, \
                      post-resolve resolved union = {} — the two closure definitions diverged \
-                     (loader fork or seeding change); reconcile the definitions before trusting \
-                     bytes-per-node calibration (roster_import_closure_nodes_pre_resolve is the \
-                     shared authority)",
+                     (loader fork or seeding change: resolve loaded a module set the loader \
+                     both-closure fixpoint did not produce, or vice versa); reconcile the \
+                     definitions before trusting bytes-per-node calibration \
+                     (roster_import_closure_nodes_pre_resolve is the shared authority)",
                     pre_resolve_closure_nodes, summary.roster_closure_nodes
                 ));
             }
             eprintln!(
-                "[calibration] closure consistency: pre-resolve resolved-module union == post-resolve union == {} node(s)",
+                "[calibration] closure consistency: pre-resolve loader-closure union == post-resolve union == {} node(s)",
                 pre_resolve_closure_nodes
             );
             Ok(attach_deferred_discovery_rows(summary, deferred_rows))
@@ -12646,7 +12714,7 @@ pub fn run_discovery_corpus_with_options(
                     drain_peaks = retention_snapshot_peak(&drain_peaks, &snap);
                     drain_prev = snap;
                 }
-                emit_floor_drain_receipt(total_groups, &drain_peaks);
+                emit_floor_drain_receipt(&index, total_groups, &drain_peaks);
                 return Ok(attach_deferred_discovery_rows(
                     merge_discovery_summaries(summaries),
                     deferred_rows,
