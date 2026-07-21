@@ -3,7 +3,7 @@ module std.effect_axes
 import std.types { Bool, List, String }
 import std.effect_grant {
   NamespacePosition, filesystem_position, position_under,
-  Grant, Envelope, Verb, Read, Write, Execute,
+  Grant, Envelope, Verb, Read, Write, verb_eq,
   HandlerBinding, RealTransport, Replay,
 }
 
@@ -31,35 +31,16 @@ fn classify_region(root: NamespacePosition) -> EffectRegion {
   }
 }
 
-fn grant_is_read(g: Grant) -> Bool {
-  match g.verb {
-    Read => true
-    Write => false
-    Execute => false
-  }
-}
-
-fn grant_is_write(g: Grant) -> Bool {
-  match g.verb {
-    Write => true
-    Read => false
-    Execute => false
-  }
-}
-
-fn binding_is_replay(b: HandlerBinding) -> Bool {
-  match b {
-    Replay { fixture_store: s } => true
-    RealTransport => false
-  }
-}
-
 fn read_grant_replayable(g: Grant) -> Bool {
-  match classify_region(root: g.root) {
-    SubstrateClosure => true
-    RepoTree => binding_is_replay(b: g.binding)
-    FrameScratch => binding_is_replay(b: g.binding)
-    UnclassifiedRegion => binding_is_replay(b: g.binding)
+  match g.binding {
+    Replay { fixture_store: s } => true
+    RealTransport =>
+      match classify_region(root: g.root) {
+        SubstrateClosure => true
+        RepoTree => false
+        FrameScratch => false
+        UnclassifiedRegion => false
+      }
   }
 }
 
@@ -91,7 +72,7 @@ fn grants_all_read_replayable(grants: List<Grant>) -> Bool {
   } else {
     let g = grants.first()
     let rest = grants.skip(n: 1)
-    if grant_is_read(g: g) {
+    if verb_eq(a: g.verb, b: Read) {
       read_grant_replayable(g: g) && grants_all_read_replayable(grants: rest)
     } else {
       grants_all_read_replayable(grants: rest)
