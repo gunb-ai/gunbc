@@ -53,6 +53,9 @@ type HostEffect =
     }
   | Srv3BootOnceReadBackSleep
   | Srv3ReceiptEmit { lines: List<String> }
+  | HostIdentityShortHostnameRead
+  | SystemdUnitMemoryMaxRead { unit: NonEmptyStr }
+  | SystemdUnitMemoryPropertiesRead { unit: NonEmptyStr }
 
 type NodeControlPlane =
     HostOs { node: ComputeHost }

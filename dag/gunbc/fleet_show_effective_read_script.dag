@@ -1,0 +1,25 @@
+module gunbc.fleet_show_effective_read_script
+
+import std.types { String, NonEmptyStr }
+
+fn fleet_runner_slice_memory_max_read_script(unit: NonEmptyStr) -> String {
+  concat(
+    concat("systemctl show \"", unit, "\" --property=MemoryMax --value 2>/dev/null || true")
+  )
+}
+
+fn fleet_runner_unit_memory_props_read_script(unit: NonEmptyStr) -> String {
+  concat(
+    concat(
+      concat("u=\"", unit, "\"; printf '%s\\n' \"$(systemctl show \"$u\" --property="),
+      systemd_memory_max_property
+    ),
+    concat(
+      concat(" --value 2>/dev/null || true)\" \"$(systemctl show \"$u\" --property=", systemd_memory_swap_max_property),
+      concat(
+        concat(" --value 2>/dev/null || true)\" \"$(systemctl show \"$u\" --property=", systemd_memory_high_property),
+        " --value 2>/dev/null || true)\""
+      )
+    )
+  )
+}

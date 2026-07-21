@@ -71,32 +71,10 @@ data fleet_show_effective_read_transport_script_scaffold: Disposition = Scaffold
   }
 }
 
-fn fleet_runner_slice_memory_max_read_script(unit: NonEmptyStr) -> String {
-  concat(
-    concat("systemctl show \"", unit, "\" --property=MemoryMax --value 2>/dev/null || true")
-  )
-}
-
 fn fleet_runner_unit_property_read_script(unit: NonEmptyStr, property: NonEmptyStr) -> String {
   concat(
     concat(concat("systemctl show \"", unit, "\" --property="), property),
     " --value 2>/dev/null || true"
-  )
-}
-
-fn fleet_runner_unit_memory_props_read_script(unit: NonEmptyStr) -> String {
-  concat(
-    concat(
-      concat("u=\"", unit, "\"; printf '%s\\n' \"$(systemctl show \"$u\" --property="),
-      systemd_memory_max_property
-    ),
-    concat(
-      concat(" --value 2>/dev/null || true)\" \"$(systemctl show \"$u\" --property=", systemd_memory_swap_max_property),
-      concat(
-        concat(" --value 2>/dev/null || true)\" \"$(systemctl show \"$u\" --property=", systemd_memory_high_property),
-        " --value 2>/dev/null || true)\""
-      )
-    )
   )
 }
 
@@ -143,7 +121,7 @@ fn fleet_runner_unit_memory_read_apply(
           Present {
             value: host_effect_apply(
               target: cp,
-              effect: ShellCommand { script: fleet_runner_unit_memory_props_read_script(unit: unit) },
+              effect: SystemdUnitMemoryPropertiesRead { unit: unit },
               evidence: host_effect_read_evidence,
               transport: transport,
             )
@@ -288,7 +266,7 @@ fn fleet_runner_slice_cap_read_apply(
           Present {
             value: host_effect_apply(
               target: cp,
-              effect: ShellCommand { script: fleet_runner_slice_memory_max_read_script(unit: slice_unit) },
+              effect: SystemdUnitMemoryMaxRead { unit: slice_unit },
               evidence: host_effect_read_evidence,
               transport: transport,
             )
