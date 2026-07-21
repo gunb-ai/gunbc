@@ -2072,8 +2072,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     concat(dag_import_lines, concat(carrier_import_lines, prelude |> split(delimiter: "\n"))) |> flat_map(l => imported_names_in_use_line(line: l))
   )
   let reference_use_lines = reference_derived_use_lines(items: typed_module.items, unlisted_type_names: unlisted_type_names, this_module_name: authored_name(env: scope.type_env, node: m), registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
-  let rdbg_line = concat("// RDBG unlisted_type_names=[", concat(unlisted_type_names |> join(separator: ","), concat("] ref_use_lines=[", concat(reference_use_lines |> join(separator: " | "), "]"))))
-  let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), concat([rdbg_line], reference_use_lines))) |> join(separator: "\n")
+  let merged_imports = dedupe_rust_import_lines(lines: concat(concat(dag_import_lines, carrier_import_lines), reference_use_lines)) |> join(separator: "\n")
   let imports_section = if merged_imports == "" { "" } else { concat("\n", merged_imports) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
