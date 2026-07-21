@@ -1,0 +1,260 @@
+module gunbc.roadmap_serve
+
+import std.types { String, Int, Bool, List, HttpMethod, GET, POST }
+import std.http_path { PathParamBinding, path_param_value }
+import std.markup { MarkupNode }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.uri_path {
+  ParsedPathTemplate,
+  MalformedPathTemplate,
+  parse_path_template,
+}
+import extdeps.http.server {
+  HttpContentType, TextHtmlUtf8, TextPlainUtf8, ApplicationJsonUtf8,
+  ServeHttpRequest,
+  ServeHttpResponse,
+  ServeWireResponse, serve_wire_response,
+  ServedRoute, StaticRoute, DynamicRoute,
+  ServedRouteTable,
+  RouteSelection, SelectedStatic, SelectedDynamic, MethodNotAllowed, NoRouteMatched,
+  serve_select_route,
+  HttpMethodParse, KnownMethod, UnknownMethod,
+  parse_http_method_label,
+  http_content_type_wire_label,
+}
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+import extdeps.languages.json.emit { serialize_json }
+import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
+import gunbc.roadmap_static_site {
+  roadmap_site_roadmap_md_body,
+  roadmap_site_dispatch_json_body,
+  roadmap_site_healthz_body,
+}
+import gunbc.roadmap_belt_actuate {
+  BeltDispatchResult,
+  DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
+  DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchSpawnFailed,
+  belt_dispatch_node,
+  belt_dispatch_result_json_value,
+}
+
+data roadmap_serve_note: String = "The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B, parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the artifact table and this serve table are two projections of one authority set, never two copies of content, and every body is computed at request time so the served page is the LIVE roadmap, not a deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove). Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel. The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page (lane agreement 2026-07-20): the page never knows which backend answers."
+
+data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_serve",
+    decl_name: "roadmap_serve_handle",
+    field: WholeDeclaration
+  }
+}
+
+data roadmap_serve_interpreted_scaffold_note: String = "ROADMAP section-4 rules a NEW long-running interpreted workload a review reject, routed through emit-on-demand. gunbc serve under the tree-walker is exactly that workload, so it lands as this DECLARED scaffold: dissolution = emit-on-demand of the serve closure (emit -> build -> run native, artifact shared by content-hash — the same lane as the S1 parse census receipt). Interim cost is bounded and strictly better than the belt-A alternative it supersedes: A pays a full CLI startup (load + compile + resolve) per dispatch click; this process pays it once at bind time."
+
+type RoadmapServeHandler
+  = RoadmapDailyPageHandler
+  | RoadmapFullPageHandler
+  | RoadmapMdHandler
+  | DispatchJsonHandler
+  | HealthzHandler
+  | BeltDispatchHandler
+
+data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
+
+type RoadmapServeRouteSpec {
+  method: HttpMethod
+  raw: String
+  handler: RoadmapServeHandler
+}
+
+type RoadmapServeTableBuild
+  = RoadmapServeTable { table: ServedRouteTable<RoadmapServeHandler> }
+  | RoadmapServeTableRefused { raw: String, segment: String, reason: String }
+
+fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
+  [
+    RoadmapServeRouteSpec { method: GET, raw: "/", handler: RoadmapDailyPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/roadmap", handler: RoadmapFullPageHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/ROADMAP.md", handler: RoadmapMdHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/target/roadmap-dispatch.json", handler: DispatchJsonHandler },
+    RoadmapServeRouteSpec { method: GET, raw: "/healthz", handler: HealthzHandler },
+    RoadmapServeRouteSpec { method: POST, raw: "/dispatch/\{node_id\}", handler: BeltDispatchHandler },
+  ]
+}
+
+type RoadmapServeRouteRow
+  = RouteRow { route: ServedRoute<RoadmapServeHandler> }
+  | RouteRowRefused { raw: String, segment: String, reason: String }
+
+data roadmap_serve_build_shape_note: String = "Cost-shape per DESIGN §6 bare-minimum-cost (review 40297 note: the first cut grew the route list by concat inside a fold — the copied-accumulator class that is always fixed regardless of realized n): the build is now map (per-spec row sum) + a scalar first-refusal fold (no list accumulation) + flat_map projection — linear by construction. The projection's RouteRowRefused arm contributes nothing and is reached only in the refusal-free branch (the scalar fold structurally excludes refused rows there), so it is a projection, never a fabricated value."
+
+fn roadmap_serve_route_row(spec: RoadmapServeRouteSpec) -> RoadmapServeRouteRow {
+  match parse_path_template(raw: spec.raw) {
+    MalformedPathTemplate { raw: r, segment: s, reason: why } =>
+      RouteRowRefused { raw: r, segment: s, reason: why }
+    ParsedPathTemplate { template: tpl } =>
+      RouteRow { route: DynamicRoute { method: spec.method, path_pattern: tpl, handler: spec.handler } }
+  }
+}
+
+fn roadmap_serve_build_from_specs(specs: List<RoadmapServeRouteSpec>) -> RoadmapServeTableBuild {
+  let rows = map(specs, spec => roadmap_serve_route_row(spec: spec))
+  let first_refusal = fold(rows, init: none, f: (acc, r) =>
+    match acc {
+      Present { value: v } => acc
+      Absent =>
+        match r {
+          RouteRowRefused { raw: rr, segment: s, reason: why } =>
+            Present { value: RoadmapServeTableRefused { raw: rr, segment: s, reason: why } }
+          RouteRow { route: _ } => Absent
+        }
+    }
+  )
+  match first_refusal {
+    Present { value: refusal } => refusal
+    Absent =>
+      RoadmapServeTable {
+        table: ServedRouteTable {
+          routes: rows |> flat_map(r => match r {
+            RouteRow { route: rt } => [rt]
+            RouteRowRefused { raw: _, segment: _, reason: _ } => []
+          })
+        }
+      }
+  }
+}
+
+fn roadmap_serve_route_table_build() -> RoadmapServeTableBuild {
+  roadmap_serve_build_from_specs(specs: roadmap_serve_route_specs())
+}
+
+fn serve_text_response(status: Int, content_type: HttpContentType, body: String) -> ServeHttpResponse {
+  ServeHttpResponse { status: status, content_type: content_type, body: body }
+}
+
+data serve_page_response_note: String = "A page render refusal is a TYPED 500 carrying the emitter's reason — never an empty page and never a dropped route (the EmitRejected => [] route-drop in node_http_server_emit is a silent widen this path deliberately does not copy; DESIGN 5)."
+
+fn serve_page_response(page: MarkupNode) -> ServeHttpResponse {
+  match try_serialize_html_source(node: page) {
+    EmitOk { html: h } =>
+      serve_text_response(status: 200, content_type: TextHtmlUtf8, body: h)
+    EmitRejected { reason: r } =>
+      serve_text_response(
+        status: 500,
+        content_type: TextPlainUtf8,
+        body: join(["page render refused: ", r, "\n"], ""),
+      )
+  }
+}
+
+data belt_dispatch_status_note: String = "TOTAL per-variant status mapping — every BeltDispatchResult arm has its own row, no lazy 200-or-500 collapse (DESIGN 5; parent review 2026-07-20). Spawned/AlreadyLive = 200 (the click achieved or already holds the desired state — the same idempotent-success fold the CLI's exit map uses); NodeNotFound = 404; AlreadyDone = 409 (the operator's signoff makes the node undisp atchable — a conflict with current state, retryable never); ObserveRefused = 503 (the live session set was unknowable, retry can succeed); SpawnFailed = 502 (actuation behind the server failed; the receipt carries step + detail)."
+
+fn belt_dispatch_status(r: BeltDispatchResult) -> Int {
+  match r {
+    DispatchSpawned { node_id: _, session_name: _ } => 200
+    DispatchAlreadyLive { node_id: _, session_name: _ } => 200
+    DispatchNodeNotFound { node_id: _ } => 404
+    DispatchNodeAlreadyDone { node_id: _ } => 409
+    DispatchObserveRefused { node_id: _, reason: _ } => 503
+    DispatchSpawnFailed { node_id: _, step: _, detail: _ } => 502
+  }
+}
+
+fn belt_dispatch_response(r: BeltDispatchResult) -> ServeHttpResponse {
+  serve_text_response(
+    status: belt_dispatch_status(r: r),
+    content_type: ApplicationJsonUtf8,
+    body: serialize_json(v: belt_dispatch_result_json_value(r: r)),
+  )
+}
+
+data serve_dispatch_param_note: String = "The node_id param is bound by the route template, so an empty value is unreachable by construction (match_path_template refuses empty segments); the empty-check below is the typed backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN 5: an unreachable arm refuses, never fabricates)."
+
+fn serve_dispatch_handler_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+  let node_id = path_param_value(params: params, name: "node_id")
+  if node_id == "" {
+    serve_text_response(
+      status: 400,
+      content_type: TextPlainUtf8,
+      body: "dispatch requires a node id path segment (fail-closed; empty binding is unreachable by construction)\n",
+    )
+  } else {
+    belt_dispatch_response(r: belt_dispatch_node(node_id: node_id))
+  }
+}
+
+data serve_invoke_request_note: String = "Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was formerly accepted at the seam and dropped before invoke, so a future body-reading POST handler would have silently seen the empty string — a latent widen). No handler consumes request.body today; when one does, the plumbing is already honest, and ServeHttpRequest gains its executing consumer here instead of sitting inert in extdeps."
+
+fn roadmap_serve_invoke(handler: RoadmapServeHandler, params: List<PathParamBinding>, request: ServeHttpRequest) -> ServeHttpResponse {
+  match handler {
+    RoadmapDailyPageHandler => serve_page_response(page: roadmap_daily_workspace_page_for_authority())
+    RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority())
+    RoadmapMdHandler => serve_text_response(status: 200, content_type: TextPlainUtf8, body: roadmap_site_roadmap_md_body())
+    DispatchJsonHandler => serve_text_response(status: 200, content_type: ApplicationJsonUtf8, body: roadmap_site_dispatch_json_body())
+    HealthzHandler => serve_text_response(status: 200, content_type: ApplicationJsonUtf8, body: roadmap_site_healthz_body())
+    BeltDispatchHandler => serve_dispatch_handler_response(params: params)
+  }
+}
+
+fn http_method_label_join(methods: List<HttpMethod>) -> String {
+  join(map(methods, m => match m {
+    GET => "GET"
+    POST => "POST"
+    PUT => "PUT"
+    PATCH => "PATCH"
+    DELETE => "DELETE"
+    HEAD => "HEAD"
+    OPTIONS => "OPTIONS"
+  }), ", ")
+}
+
+fn roadmap_serve_selection_response(sel: RouteSelection<RoadmapServeHandler>, request: ServeHttpRequest) -> ServeHttpResponse {
+  match sel {
+    SelectedDynamic { handler: h, params: ps } => roadmap_serve_invoke(handler: h, params: ps, request: request)
+    SelectedStatic { route: r } =>
+      ServeHttpResponse { status: r.status_on_hit, content_type: r.content_type, body: r.body }
+    MethodNotAllowed { allowed: ms } =>
+      serve_text_response(
+        status: 405,
+        content_type: TextPlainUtf8,
+        body: join(["method not allowed; allowed: ", http_method_label_join(methods: ms), "\n"], ""),
+      )
+    NoRouteMatched =>
+      serve_text_response(status: 404, content_type: TextPlainUtf8, body: "not found\n")
+  }
+}
+
+fn roadmap_serve_respond(method_label: String, path: String, body: String) -> ServeHttpResponse {
+  match parse_http_method_label(label: method_label) {
+    UnknownMethod { label: l } =>
+      serve_text_response(
+        status: 501,
+        content_type: TextPlainUtf8,
+        body: join(["unrecognized method: ", l, "\n"], ""),
+      )
+    KnownMethod { method: m } =>
+      match roadmap_serve_route_table_build() {
+        RoadmapServeTableRefused { raw: r, segment: s, reason: why } =>
+          serve_text_response(
+            status: 500,
+            content_type: TextPlainUtf8,
+            body: join([
+              "route table refused: malformed route literal raw=", r,
+              " segment=", s,
+              " reason=", why,
+              " (fail-closed — fix the literal in gunbc.roadmap_serve.roadmap_serve_route_specs)\n",
+            ], ""),
+          )
+        RoadmapServeTable { table: t } =>
+          roadmap_serve_selection_response(
+            sel: serve_select_route(table: t, method: m, path: path),
+            request: ServeHttpRequest { method: m, path: path, body: body },
+          )
+      }
+  }
+}
+
+fn roadmap_serve_handle(method: String, path: String, body: String) -> ServeWireResponse {
+  serve_wire_response(r: roadmap_serve_respond(method_label: method, path: path, body: body))
+}
