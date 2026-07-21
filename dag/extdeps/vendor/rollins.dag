@@ -1,0 +1,16 @@
+module extdeps.vendor.rollins
+
+import extdeps.vendor { Vendor }
+import extdeps.securities { Securities }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=ROL"
+  }
+}
+
+data rollins: Vendor<Securities> = Vendor { legal_name: "Rollins, Inc." }
