@@ -1,0 +1,50 @@
+module v2.test.lens_mock_totality.sec_edgar_mock_totality
+
+
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+type MaterializedSecEdgarMock {
+  tag: Symbol
+}
+
+data sec_edgar_red_omit_keys: List<String> = [
+  "sec.Edgar.GetCompanyFacts",
+  "sec.Edgar.GetCompanyConcept",
+]
+
+fn materialize_sec_edgar_mock(case: PublishedMockCase) -> Outcome<MaterializedSecEdgarMock> {
+  if case.operation_key == "sec.Edgar.GetCompanyFacts" {
+    outcome_accepted(value: MaterializedSecEdgarMock { tag: ^materialized_get_company_facts })
+  } else if case.operation_key == "sec.Edgar.GetCompanyConcept" {
+    outcome_accepted(value: MaterializedSecEdgarMock { tag: ^materialized_get_company_concept })
+  } else {
+    mock_unhandled_rejection()
+  }
+}
+
+fn real_consumer_handles(case: PublishedMockCase) -> Bool {
+  outcome_accepted_p(outcome: materialize_sec_edgar_mock(case: case))
+}
+
+fn omits_edgar_consumer_handles(case: PublishedMockCase) -> Bool {
+  omit_consumer_handles(
+    case: case,
+    omit_keys: sec_edgar_red_omit_keys,
+    total_consumer_handles: real_consumer_handles
+  )
+}
+
+test fn sec_edgar_mock_consumer_is_total_holds() -> Bool {
+  mock_totality_green_holds(
+    published: sec_edgar_published_mock_corpus,
+    consumer_handles: real_consumer_handles
+  )
+}
+
+test fn sec_edgar_mock_omitted_member_is_red_holds() -> Bool {
+  mock_totality_red_on_omission_holds(
+    published: sec_edgar_published_mock_corpus,
+    consumer_handles: omits_edgar_consumer_handles
+  )
+}
