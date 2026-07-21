@@ -15,6 +15,7 @@ import v2.compiler.emit_module { EmitFamilyMember, emit_family }
 import v2.compiler.emit_host {
   emit_host_octets_byte_string,
   run_emit_host_cached_with_run_args,
+  run_test_claim_from_source_emit_vs_eval_cached,
 }
 import v2.compiler.eval {
   Inputs,
@@ -27,7 +28,10 @@ import v2.extdeps.languages.dag {
   dag_meet_arrow_with_body_swapped_arms_fixture,
   dag_meet_eval_subgraph_fixture,
   dag_join_arrow_with_body_fixture,
+  dag_join_arrow_with_body_swapped_arms_fixture,
+  dag_join_eval_subgraph_fixture,
   dag_complement_arrow_with_body_fixture,
+  dag_complement_arrow_with_body_swapped_arms_fixture,
 }
 import v2.extdeps.languages.rust_test {
   rust_logic_meet_target_model_staging,
@@ -38,9 +42,13 @@ import v2.extdeps.languages.rust_test {
 }
 import v2.test.execution.emit_host_meet_join_equals_eval {
   meet_join_eval_tree_for,
+  meet_join_eval_subject,
+  meet_join_eval_verdict_is_pass,
 }
 import v2.test.execution.emit_host_complement_equals_eval {
   emit_complement_eval_tree_for,
+  emit_complement_eval_subject,
+  emit_complement_eval_verdict_is_pass,
 }
 import std.algebra { Cons, Empty }
 import v2.std.collection { List }
@@ -51,7 +59,7 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_family_crate_note: String = "Family-grain build receipt (std.emit_on_demand witness_family_build_grain_ruling, operator-directed 2026-07-21): per-witness crates measured ~17s each and LOSE to the interpreter; ONE family crate wins. Members meet + join + complement concatenate into one emitted source (emit_family, per-member target models) under the derived argv-dispatched family main (rust_logic_family_target_model_staging). THE flip receipt is family_crate_one_build_members_warm_holds: the first member run builds the crate (compile_skipped false); every later member run on the same family workspace is compile_skipped TRUE — under per-witness grain each member would be its own ~17s cold build. REDs: unknown member id refuses (dispatcher exits 2 — refused logical_run, never fabricated octets); a changed member tree changes family_closure_digest -> new key -> cold rebuild with the discriminating octet flip (swapped-arms meet: 1 -> 0). Key sensitivity is pure: family digest differs from every member digest (tag-seeded, singleton included) and member LIST ORDER is declared key material."
+data emit_on_demand_family_crate_note: String = "Family-grain build receipt (std.emit_on_demand witness_family_build_grain_ruling, operator-directed 2026-07-21): per-witness crates measured ~17s each and LOSE to the interpreter; ONE family crate wins. Members meet + join + complement concatenate into one emitted source (emit_family, per-member target models) under the derived argv-dispatched family main (rust_logic_family_target_model_staging). THE flip receipt is family_crate_one_build_members_warm_holds: the first member run builds the crate (compile_skipped false); every later member run on the same family workspace is compile_skipped TRUE — under per-witness grain each member would be its own ~17s cold build. This module is the ONE executing consumer for the logic family's native execution (suite migration, merry-pike-487 follow-on): the eval-anchored member agreements (interpreted == native via run_test_claim_from_source_emit_vs_eval_cached, per-member fixtures derived from each subject's claim) and the unknown-member refusal all run WARM on the same one-build workspace — the per-witness native builds formerly in emit_on_demand_meet_join_family_witness_test and emit_on_demand_complement_family_witness_test are deleted, those suites keep the pure key/store/budget receipts. REDs: unknown member id refuses (dispatcher exits 2 — refused logical_run, never fabricated octets); the ALL-ALT family (every member the swapped-arms tree) changes family_closure_digest -> new key -> ONE cold rebuild carrying every wrong-fixture discriminator at once (meet 1 -> 0, join 1 -> 0, complement 0 -> 1; members 2..3 warm). Key sensitivity is pure: family digest differs from every member digest (tag-seeded, singleton included) and member LIST ORDER is declared key material."
 
 data family_crate_cache_root: String = "/tmp/gunbc_emit_on_demand_family_crate"
 data family_crate_emitter: String = "v2.compiler.emit"
@@ -89,6 +97,14 @@ fn family_crate_members() -> List<EmitFamilyMember> {
   ]
 }
 
+fn family_crate_join_alt_tree() -> InferredTree {
+  meet_join_eval_tree_for(root: dag_join_arrow_with_body_swapped_arms_fixture)
+}
+
+fn family_crate_complement_alt_tree() -> InferredTree {
+  emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)
+}
+
 fn family_crate_alt_members() -> List<EmitFamilyMember> {
   [
     EmitFamilyMember {
@@ -96,11 +112,11 @@ fn family_crate_alt_members() -> List<EmitFamilyMember> {
       target: rust_logic_meet_target_model_staging()
     },
     EmitFamilyMember {
-      tree: family_crate_join_tree(),
+      tree: family_crate_join_alt_tree(),
       target: rust_logic_join_target_model_staging()
     },
     EmitFamilyMember {
-      tree: family_crate_complement_tree(),
+      tree: family_crate_complement_alt_tree(),
       target: rust_logic_complement_target_model_staging()
     }
   ]
@@ -182,6 +198,39 @@ fn family_crate_member_run(
       }
     Rejected { diagnostics: _ } => false
   }
+}
+
+fn family_crate_meet_join_member_agreement(
+  workspace: String,
+  source: Medium<String>,
+  tree: InferredTree,
+  subgraph: Node,
+  member_id: String
+) -> Bool {
+  meet_join_eval_verdict_is_pass(
+    run: run_test_claim_from_source_emit_vs_eval_cached(
+      subject: meet_join_eval_subject(tree: tree, subgraph: subgraph),
+      source_outcome: Accepted { value: source, diagnostics: None },
+      target: rust_logic_family_target_model_staging(),
+      workspace_dir: workspace,
+      run_args: rust_family_member_run_args(member_id: member_id)
+    )
+  )
+}
+
+fn family_crate_complement_member_agreement(
+  workspace: String,
+  source: Medium<String>
+) -> Bool {
+  emit_complement_eval_verdict_is_pass(
+    run: run_test_claim_from_source_emit_vs_eval_cached(
+      subject: emit_complement_eval_subject(tree: family_crate_complement_tree()),
+      source_outcome: Accepted { value: source, diagnostics: None },
+      target: rust_logic_family_target_model_staging(),
+      workspace_dir: workspace,
+      run_args: rust_family_member_run_args(member_id: "complement")
+    )
+  )
 }
 
 fn family_crate_member_run_refused(
@@ -269,6 +318,29 @@ test fn family_crate_one_build_members_warm_holds() -> Bool {
           expect_compile_skipped: true,
           expected_octet: 1
         )
+        && family_crate_meet_join_member_agreement(
+          workspace: workspace,
+          source: source,
+          tree: family_crate_meet_tree(),
+          subgraph: dag_meet_eval_subgraph_fixture,
+          member_id: "meet"
+        )
+        && family_crate_meet_join_member_agreement(
+          workspace: workspace,
+          source: source,
+          tree: family_crate_join_tree(),
+          subgraph: dag_join_eval_subgraph_fixture,
+          member_id: "join"
+        )
+        && family_crate_complement_member_agreement(
+          workspace: workspace,
+          source: source
+        )
+        && family_crate_member_run_refused(
+          workspace: workspace,
+          source: source,
+          member_id: "absent_member"
+        )
     Rejected { diagnostics: _ } => false
   }
 }
@@ -295,28 +367,22 @@ test fn family_crate_member_change_cold_rebuild_holds() -> Bool {
           expect_compile_skipped: false,
           expected_octet: 0
         )
+          && family_crate_member_run(
+            workspace: workspace,
+            source: source,
+            member_id: "join",
+            expect_compile_skipped: true,
+            expected_octet: 0
+          )
+          && family_crate_member_run(
+            workspace: workspace,
+            source: source,
+            member_id: "complement",
+            expect_compile_skipped: true,
+            expected_octet: 1
+          )
       Rejected { diagnostics: _ } => false
     }
-  }
-}
-
-test fn family_crate_unknown_member_refuses_holds() -> Bool {
-  let members = family_crate_members()
-  let workspace = family_crate_evict_and_workspace(
-    test_id: "unknown_member_refuses",
-    members: members
-  )
-  match emit_family(
-    members: members,
-    transport_target: rust_logic_family_target_model_staging()
-  ) {
-    Accepted { value: source, diagnostics: _ } =>
-      family_crate_member_run_refused(
-        workspace: workspace,
-        source: source,
-        member_id: "absent_member"
-      )
-    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -326,5 +392,4 @@ test fn emit_on_demand_family_crate_witnesses() -> Bool {
     && family_crate_member_order_key_sensitivity_holds()
     && family_crate_one_build_members_warm_holds()
     && family_crate_member_change_cold_rebuild_holds()
-    && family_crate_unknown_member_refuses_holds()
 }

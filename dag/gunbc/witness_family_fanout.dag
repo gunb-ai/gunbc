@@ -26,10 +26,10 @@ data witness_family_fanout_lanes: List<WitnessFamilyLane> = [
     lane_number: 4,
     kind: EmitHostExecutionFamily,
     title: "meet_join — std/logic meet and join emit-on-demand native witnesses",
-    scope_note: "emit_on_demand_meet_join_family_witness_test: native cold/warm octet receipts (NOT equals_eval agreement — pre-red debt in emit_host_meet_join_equals_eval_test.dag), swapped-arms RED, closure_digest key sensitivity. Template: emit_on_demand_kernel_witness_test.dag.",
+    scope_note: "emit_on_demand_meet_join_family_witness_test: PURE receipts only (grain/closure key sensitivity, store materialization, role bound, budget refusal) — native execution MIGRATED to the lane-6 family crate (one-build members-warm + eval-anchored member agreements + all-alt wrong-fixture octet flips); the per-witness cold/warm/wrong-fixture crate builds are deleted.",
     witness_entry: "src/v2/test/claim/execution/emit_on_demand_meet_join_family_witness_test.dag",
     witness_function: "emit_on_demand_meet_join_family_witnesses",
-    lane_state: "LANDED (wise-fox-351)"
+    lane_state: "LANDED (wise-fox-351); native execution migrated to lane 6 (merry-pike-487)"
   },
   WitnessFamilyLane {
     lane_id: ^witness_family_lane_variant_construct,
@@ -56,9 +56,9 @@ data witness_family_fanout_lanes: List<WitnessFamilyLane> = [
     lane_number: 6,
     kind: EmitHostExecutionFamily,
     title: "family-crate grain — one native crate per witness family (build-grain flip)",
-    scope_note: "Operator-directed 2026-07-21, answered by measurement: per-witness crates ~17s each LOSE to the interpreter; ONE family crate wins. Members concatenate via emit_family (per-member target models) under a DERIVED argv-dispatched main (fail-closed: unknown member exits 2); first member run builds, members 2..N are compile_skipped. Key = emit_on_demand_key over family_closure_digest (std.emit_on_demand witness_family_build_grain_ruling; member list order is declared key material).",
+    scope_note: "Operator-directed 2026-07-21, answered by measurement: per-witness crates ~17s each LOSE to the interpreter; ONE family crate wins. Members concatenate via emit_family (per-member target models) under a DERIVED argv-dispatched main (fail-closed: unknown member exits 2); first member run builds, members 2..N are compile_skipped. Key = emit_on_demand_key over family_closure_digest (std.emit_on_demand witness_family_build_grain_ruling; member list order is declared key material). This module is the ONE executing consumer for the logic family's native execution: eval-anchored member agreements (run_test_claim_from_source_emit_vs_eval_cached) and the unknown-member refusal run warm on the one-build workspace; the all-alt family carries every wrong-fixture octet flip in one cold rebuild. The meet_join and complement suites keep pure receipts only.",
     witness_entry: "src/v2/test/claim/execution/emit_on_demand_family_crate_witness_test.dag",
     witness_function: "emit_on_demand_family_crate_witnesses",
-    lane_state: "LANDED (merry-pike-487)"
+    lane_state: "LANDED (merry-pike-487); suite migration LANDED (merry-pike-487 follow-on)"
   }
 ]
