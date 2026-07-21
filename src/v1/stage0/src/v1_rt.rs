@@ -4,6 +4,7 @@
 #![allow(unused_variables, dead_code)]
 
 use im::{HashMap, OrdSet as BTreeSet, Vector as Vec};
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 #[cfg(feature = "text_lookup_work_counter")]
@@ -64,6 +65,120 @@ pub fn record_source_chars_index_lookup() {
 
 #[cfg(not(feature = "text_lookup_work_counter"))]
 pub fn record_source_chars_index_lookup() {}
+
+/// Read-only silent-pick telemetry for resolution divergence census slice 2.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GlobalBareLcpPickSite {
+    pub env_module_path: String,
+    pub name: String,
+    pub candidate_count: usize,
+    pub chosen_module_path: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GlobalBareLcpTieSite {
+    pub env_module_path: String,
+    pub name: String,
+    pub candidate_count: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FnParentFirstHitSite {
+    pub env_module_path: String,
+    pub name: String,
+    pub parent_match_count: usize,
+    pub chosen_parent_module: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SilentPickTelemetry {
+    pub global_bare_lcp_picks: std::vec::Vec<GlobalBareLcpPickSite>,
+    pub global_bare_lcp_ties: std::vec::Vec<GlobalBareLcpTieSite>,
+    pub fn_parent_first_hits: std::vec::Vec<FnParentFirstHitSite>,
+}
+
+thread_local! {
+    static RESOLUTION_SILENT_PICK_ENABLED: Cell<bool> = const { Cell::new(false) };
+    static RESOLUTION_SILENT_PICK: RefCell<SilentPickTelemetry> = RefCell::new(SilentPickTelemetry::default());
+}
+
+pub fn resolution_silent_pick_enable() {
+    RESOLUTION_SILENT_PICK.with(|t| *t.borrow_mut() = SilentPickTelemetry::default());
+    RESOLUTION_SILENT_PICK_ENABLED.with(|e| e.set(true));
+}
+
+pub fn resolution_silent_pick_disable() -> SilentPickTelemetry {
+    RESOLUTION_SILENT_PICK_ENABLED.with(|e| e.set(false));
+    RESOLUTION_SILENT_PICK.with(|t| std::mem::take(&mut *t.borrow_mut()))
+}
+
+pub fn resolution_silent_pick_is_enabled() -> bool {
+    RESOLUTION_SILENT_PICK_ENABLED.with(|e| e.get())
+}
+
+pub fn resolution_silent_pick_record_global_bare_lcp_pick(
+    env_module_path: String,
+    name: String,
+    candidate_count: i64,
+    chosen_module_path: String,
+) {
+    let candidate_count = candidate_count.max(0) as usize;
+    if !resolution_silent_pick_is_enabled() || candidate_count < 2 {
+        return;
+    }
+    RESOLUTION_SILENT_PICK.with(|t| {
+        t.borrow_mut()
+            .global_bare_lcp_picks
+            .push(GlobalBareLcpPickSite {
+                env_module_path,
+                name,
+                candidate_count,
+                chosen_module_path,
+            });
+    });
+}
+
+pub fn resolution_silent_pick_record_global_bare_lcp_tie(
+    env_module_path: String,
+    name: String,
+    candidate_count: i64,
+) {
+    let candidate_count = candidate_count.max(0) as usize;
+    if !resolution_silent_pick_is_enabled() || candidate_count < 2 {
+        return;
+    }
+    RESOLUTION_SILENT_PICK.with(|t| {
+        t.borrow_mut()
+            .global_bare_lcp_ties
+            .push(GlobalBareLcpTieSite {
+                env_module_path,
+                name,
+                candidate_count,
+            });
+    });
+}
+
+pub fn resolution_silent_pick_record_fn_parent_first_hit(
+    env_module_path: String,
+    name: String,
+    parent_match_count: i64,
+    chosen_parent_module: String,
+) {
+    let parent_match_count = parent_match_count.max(0) as usize;
+    if !resolution_silent_pick_is_enabled() || parent_match_count < 2 {
+        return;
+    }
+    RESOLUTION_SILENT_PICK.with(|t| {
+        t.borrow_mut()
+            .fn_parent_first_hits
+            .push(FnParentFirstHitSite {
+                env_module_path,
+                name,
+                parent_match_count,
+                chosen_parent_module,
+            });
+    });
+}
 
 // Vec here is im's persistent Vector (one realization with the
 // interpreter's Value::List). VecCompat papers the std-Vec API deltas the

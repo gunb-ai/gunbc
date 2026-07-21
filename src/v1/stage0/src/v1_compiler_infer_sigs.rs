@@ -116,7 +116,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
         Some(sig) => Some(sig.clone()),
         None => {
-            if crate::resolution_silent_pick_telemetry::is_enabled() {
+            if v1_rt::resolution_silent_pick_is_enabled() {
                 let scan = env.parents.clone().iter().cloned().fold(
                     ParentSigScan::default(),
                     |mut acc: ParentSigScan, p: Rc<ResolvedFuncEnv>| {
@@ -134,10 +134,10 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<
                 );
                 if scan.match_count >= 2 && scan.sig.is_some() {
                     if let Some(chosen_parent) = scan.first_parent.clone() {
-                        crate::resolution_silent_pick_telemetry::record_fn_parent_first_hit(
+                        let _ = v1_rt::resolution_silent_pick_record_fn_parent_first_hit(
                             env.name.clone(),
                             name.clone(),
-                            scan.match_count,
+                            scan.match_count as i64,
                             chosen_parent,
                         );
                     }

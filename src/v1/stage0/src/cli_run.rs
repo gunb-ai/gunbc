@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::module_path_index::{parse_module_binding, ParsedModuleBinding};
-use crate::v1_rt::SilentPickTelemetry;
 use crate::shared_typecheck_store::{self, SharedTypecheckCaches};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
@@ -29,6 +28,7 @@ use crate::v1_compiler_resolve;
 use crate::v1_compiler_tokenize;
 use crate::v1_interpreter;
 use crate::v1_rt;
+use crate::v1_rt::SilentPickTelemetry;
 use crate::v1_std_core::{
     arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
     byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,

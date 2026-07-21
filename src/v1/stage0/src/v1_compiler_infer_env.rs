@@ -1266,12 +1266,12 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => {
-            let cand_count = cands.clone().len() as usize;
-            if crate::resolution_silent_pick_telemetry::is_enabled() && cand_count >= 2 {
+            if v1_rt::resolution_silent_pick_is_enabled() && (cands.clone().len() as i64) >= 2 {
+                let cand_count = cands.clone().len() as i64;
                 match global_bare_nearest_ancestor_candidate(env.module_path.clone(), cands.clone())
                 {
                     Some(cand) => {
-                        crate::resolution_silent_pick_telemetry::record_global_bare_lcp_pick(
+                        let _ = v1_rt::resolution_silent_pick_record_global_bare_lcp_pick(
                             env.module_path.clone(),
                             name.clone(),
                             cand_count,
@@ -1279,7 +1279,7 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
                         );
                     }
                     None => {
-                        crate::resolution_silent_pick_telemetry::record_global_bare_lcp_tie(
+                        let _ = v1_rt::resolution_silent_pick_record_global_bare_lcp_tie(
                             env.module_path.clone(),
                             name.clone(),
                             cand_count,
