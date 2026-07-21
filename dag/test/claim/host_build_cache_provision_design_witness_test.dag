@@ -181,4 +181,6 @@ test fn host_build_cache_provision_design_witnesses() -> Bool {
     && design_witness_stats_ok_placement_unknown_refuses()
     && design_witness_stats_ok_unit_owned_converges()
     && witness_red_control_widen_on_lazy_spawned_rejected_by_gate()
+    && build_cache_provision_placement_fails_closed()
+    && build_cache_provision_stats_ok_is_not_success_alone()
 }
