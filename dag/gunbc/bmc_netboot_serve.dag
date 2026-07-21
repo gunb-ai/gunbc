@@ -1,6 +1,6 @@
 module gunbc.bmc_netboot_serve
 
-import std.types { NonEmptyStr, String, Int }
+import std.types { NonEmptyStr, String, Int, List }
 import extdeps.uri { Uri, Http, Https, uri_wire }
 import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
 import extdeps.bootloader.grub { GrubConfig, GrubMenuEntry, grub_config_render }
@@ -85,4 +85,57 @@ fn bmc_netboot_http_boot_entry(plan: BmcNetbootServePlan) -> UefiHttpBootEntry {
 
 fn bmc_netboot_nocloud_user_data(plan: BmcNetbootServePlan) -> String {
   autoinstall_user_data(payload: plan.autoinstall)
+}
+
+data bmc_netboot_bootstrap_artifact_dir: NonEmptyStr = "/var/lib/gunbc/artifacts/netboot"
+
+type StagedContentSource
+  = InlineText { text: String }
+  | LocalArtifact { path: NonEmptyStr }
+  | FetchFromUri { source: Uri }
+
+type BmcStagedFile {
+  remote_path: NonEmptyStr
+  content: StagedContentSource
+}
+
+fn bmc_netboot_artifact(name: NonEmptyStr) -> NonEmptyStr {
+  join([bmc_netboot_bootstrap_artifact_dir as String, "/", name as String], "") as NonEmptyStr
+}
+
+fn bmc_netboot_staged_path(plan: BmcNetbootServePlan, name: NonEmptyStr) -> NonEmptyStr {
+  join([plan.netboot_dir as String, "/", name as String], "") as NonEmptyStr
+}
+
+fn bmc_netboot_staging_manifest(plan: BmcNetbootServePlan) -> List<BmcStagedFile> {
+  [
+    BmcStagedFile {
+      remote_path: bmc_netboot_staged_path(plan: plan, name: "busybox"),
+      content: LocalArtifact { path: bmc_netboot_artifact(name: "busybox") },
+    },
+    BmcStagedFile {
+      remote_path: bmc_netboot_staged_path(plan: plan, name: "vmlinuz"),
+      content: LocalArtifact { path: bmc_netboot_artifact(name: "vmlinuz") },
+    },
+    BmcStagedFile {
+      remote_path: bmc_netboot_staged_path(plan: plan, name: "initrd"),
+      content: LocalArtifact { path: bmc_netboot_artifact(name: "initrd") },
+    },
+    BmcStagedFile {
+      remote_path: bmc_netboot_staged_path(plan: plan, name: "grubaa64.efi"),
+      content: LocalArtifact { path: bmc_netboot_artifact(name: "grubaa64.efi") },
+    },
+    BmcStagedFile {
+      remote_path: bmc_netboot_staged_path(plan: plan, name: "grub.cfg"),
+      content: InlineText { text: bmc_netboot_grub_cfg_text(plan: plan) },
+    },
+    BmcStagedFile {
+      remote_path: bmc_netboot_staged_path(plan: plan, name: "nocloud/user-data"),
+      content: InlineText { text: bmc_netboot_nocloud_user_data(plan: plan) },
+    },
+    BmcStagedFile {
+      remote_path: bmc_netboot_staged_path(plan: plan, name: "nocloud/meta-data"),
+      content: InlineText { text: join(["instance-id: ", plan.autoinstall.identity.hostname as String], "") },
+    },
+  ]
 }

@@ -1,12 +1,17 @@
 module test.claim.bmc_netboot_serve
 
 import std.logic { Bool }
+import std.types { list_length }
 import extdeps.firmware.uefi_http_boot { uefi_http_boot_uri_wire }
 import gunbc.bmc_netboot_serve {
   srv4_bmc_netboot_serve_plan,
   bmc_netboot_grub_cfg_text,
   bmc_netboot_http_boot_entry,
   bmc_netboot_nocloud_user_data,
+  bmc_netboot_staging_manifest,
+  InlineText,
+  LocalArtifact,
+  FetchFromUri,
 }
 
 test fn srv4_grub_cfg_boots_mirror_bulk_with_bmc_seed() -> Bool {
@@ -27,4 +32,23 @@ test fn srv4_bmc_served_seed_carries_fleet_keys() -> Bool {
   string_contains(s: ud, pattern: "hostname: srv4")
     && string_contains(s: ud, pattern: "allow-pw: false")
     && string_contains(s: ud, pattern: "fleet-automation@gunbc")
+}
+
+test fn srv4_staging_manifest_stages_rendered_grub_and_seed() -> Bool {
+  let m = bmc_netboot_staging_manifest(plan: srv4_bmc_netboot_serve_plan)
+  let grub_ok = fold(m, init: false, f: (acc, file) =>
+    acc || (string_contains(s: file.remote_path as String, pattern: "/grub.cfg")
+      && match file.content {
+        InlineText { text: t } => string_contains(s: t, pattern: "ds=nocloud-net")
+        LocalArtifact { path: _ } => false
+        FetchFromUri { source: _ } => false
+      }))
+  let seed_ok = fold(m, init: false, f: (acc, file) =>
+    acc || (string_contains(s: file.remote_path as String, pattern: "nocloud/user-data")
+      && match file.content {
+        InlineText { text: t } => string_contains(s: t, pattern: "fleet-automation@gunbc")
+        LocalArtifact { path: _ } => false
+        FetchFromUri { source: _ } => false
+      }))
+  grub_ok && seed_ok && list_length(items: m) == 7
 }
