@@ -1,0 +1,76 @@
+module gunbc.business_journey_plan
+
+import std.types { String, List }
+
+data business_journey_doc: String = "The business journey as a DAG (operator + Business session, 2026-07-21). Same idiom as v1_deletion_plan.dag: gates, bricks, typed dependencies, ConfidenceBasis-style attackability to follow once this leaves draft. THESIS: gunbc is positioned as the compiler for LLM-written code — bug classes banned by construction (superfluous-loop lens, fail-closed refusals, affected-set-sound verification), low adoption cost because it ingests existing languages where Lossless and emits any target. The moat sequence: knowable ground first, then a practice business, then the differentiated wedge (sell FEWER CI minutes, not cheaper ones), then the node-level forge for agent-written code. Funding posture: bootstrap-first (the operator has runway but no deployable capital base); each gate is priced to be fundable by the previous gate's receipts, and the marketing artifact at every stage is the receipt itself — this repo built by agent fleets under its own lenses is the demo."
+
+type JourneyGate = GateKnowableGround | GatePracticeBusiness | GateDifferentiatedWedge | GateForge | GatePositioning
+
+type JourneyBrickState = Placed | InFlight | Gated
+
+type JourneyBrick {
+  id: String,
+  gate: JourneyGate,
+  state: JourneyBrickState,
+  title: String
+}
+
+type JourneyDependency {
+  before: String,
+  after: String
+}
+
+data business_journey_bricks: List<JourneyBrick> = [
+  JourneyBrick { id: "sec_form_authority", gate: GateKnowableGround, state: InFlight, title: "extdeps SEC EDGAR + us-gaap taxonomy authority, GitLab GTLB first instantiation (child dispatched 2026-07-21) — the forge-category cost structure becomes Measured facts" },
+  JourneyBrick { id: "boring_issuer_rows", gate: GateKnowableGround, state: Gated, title: "boring-company calibration rows on the same types: Rollins (pest control) + Chemed Roto-Rooter segment (drain/septic) — public filings that check the Heacock margin claims" },
+  JourneyBrick { id: "pricing_surfaces", gate: GateKnowableGround, state: Gated, title: "pricing-page authorities: GitHub Actions per-minute, Hetzner list, AWS on-demand and reserved, Ubicloud runners — the umbrella side, Measured" },
+  JourneyBrick { id: "wedge_model_landed", gate: GateKnowableGround, state: Gated, title: "migrate the scratchpad wedge model (econ_wedge.dag) onto the extdeps facts: margin envelopes derived from Measured rows, holder-specific alpha relation, Pareto readout refusing on Unknown" },
+  JourneyBrick { id: "runner_unit_economics", gate: GatePracticeBusiness, state: Gated, title: "runner-MVP unit economics computed from Measured rows only: Hetzner floor vs GitHub umbrella, breakeven customers, support load assumptions marked" },
+  JourneyBrick { id: "runner_mvp_live", gate: GatePracticeBusiness, state: Gated, title: "CI runner MVP live with first paying customer — the deliverable is tuition (marketing, sales, support receipts) plus the customer list; margin is expected to compress, priced as temporary" },
+  JourneyBrick { id: "affected_set_external", gate: GateDifferentiatedWedge, state: Gated, title: "affected-set-sound CI selection productized for an EXTERNAL repo (first non-gunbc corpus) — sell fewer minutes, the claim resellers structurally cannot follow; gated on per-language Lossless ingest" },
+  JourneyBrick { id: "design_partner_wedge", gate: GateDifferentiatedWedge, state: Gated, title: "first external design partner running selection-CI in anger, receipt published: minutes billed vs baseline, zero missed-selection incidents (the falsifier cadence pattern applied to a customer)" },
+  JourneyBrick { id: "keyed_delta_core", gate: GateForge, state: Gated, title: "node-level transacting core — rides the module-identity keyed-delta thread already in DESIGN (transacting without files, typed conflicts refuse); the forge is that thread productized" },
+  JourneyBrick { id: "git_compatible_surface", gate: GateForge, state: Gated, title: "git-compatible porcelain over the semantic core: every repo works file-level day one, Lossless languages light up semantic diff and typed merge — DecodeFidelity as progressive enhancement" },
+  JourneyBrick { id: "agent_dev_beachhead", gate: GateForge, state: Gated, title: "beachhead market = agent-fleet development (merge-conflict and review-bandwidth collapse at line level is the acute growing pain); enterprise-first Gitea-style sales, loss-leading only after profitability" },
+  JourneyBrick { id: "llm_compiler_positioning", gate: GatePositioning, state: InFlight, title: "positioning: the compiler for LLMs writing code — rails for the LLM, receipts for the human (sell constraints to the machine, review-bandwidth relief to the person; never say rails-for-developers); one-liner: make the bug class extinct, not caught" },
+  JourneyBrick { id: "falsifiable_demo_catalog", gate: GatePositioning, state: Gated, title: "demo catalog shipped as red/green pairs (the falsifier ships WITH the claim): complexity wall refusing quadratic folds, sound test selection with published divergence-zero falsifier record, determinism unwritable, absorbing-fallback rejection, and the meta-demo (this repo built by agent fleet under its own lenses)" },
+  JourneyBrick { id: "runs_on_their_code", gate: GatePositioning, state: Gated, title: "rung 1 conversion asset: the receipt runs on the VISITOR own repo in under 5 minutes — which makes the first Lossless ingest language a MARKETING decision (TS/Python for LLM-codegen audience vs Rust for credibility density); ready BEFORE any launch spike, attention is perishable" },
+  JourneyBrick { id: "github_action_channel", gate: GatePositioning, state: Gated, title: "rung 2 distribution: free GitHub Action running one wall (complexity) on PRs — every posted finding is marketing inside someone else repo read by their team (Codecov/Dependabot growth shape, mechanized word-of-mouth, true zero CAC); lives in their CI, the same socket the paid compute later attaches to" },
+  JourneyBrick { id: "validation_tiers", gate: GatePositioning, state: Gated, title: "measurement discipline: interest (stars) vs use (weekly runs on real external repos) vs payment are THREE tiers, never conflated — trust only the tier measured; stars are not demand" },
+  JourneyBrick { id: "read_faithful_rust_fragment", gate: GateDifferentiatedWedge, state: Gated, title: "read-faithful Rust ingest fragment for the complexity lens (NOT full Lossless — that is forge-gate work): loop/fold/accumulator structure projected honestly; out-of-fragment constructs land as typed located COUNTED refusals, never silent skips; the receipt prints judged-vs-refused (judged 84 percent, refused 16 with reasons) — the honesty boundary IS the differentiator, no linter prints it. RIDES the existing namespace to SymbolIndex to general-body-producer chain — self-host critical path and marketing critical path are now the SAME lane" },
+  JourneyBrick { id: "typescript_ingest_second", gate: GateDifferentiatedWedge, state: Gated, title: "TypeScript read-faithful fragment as the deliberate SECOND language (volume audience) once the Rust demo proves the format; language N+1 is grammar rows in extdeps/languages/, not a parser codebase — the marginal-cost story is itself a marketing claim" },
+  JourneyBrick { id: "language_tier_ledger", gate: GateDifferentiatedWedge, state: Gated, title: "per-language tier frontier as a typed authority (self-host-frontier pattern generalized): XL = Rust + TypeScript then Python; L = Go + Java (Java promotes at forge-sales gate); M = C++ with declared boundary (preprocessor/template honesty). XL bar is 6 requirements: corpus-weighted read-faithful ingest, idiomatic emit, their-vocabulary diagnostics, toolchain interop, extdeps ecosystem semantics, counted fidelity ledger — comfortable is MEASURABLE (judged fraction + refusal quality on a real corpus)" },
+  JourneyBrick { id: "merge_driver_mvp", gate: GateDifferentiatedWedge, state: Gated, title: "semantic git companion MVP leg 1: node-level 3-way merge as a git custom merge driver (.gitattributes per-path) for supported Rust files — line-adjacency false conflicts vanish, real conflicts refuse typed+located; out-of-fragment files hand back to git default merge LOUDLY as a counted disposition, never silent; NO FORGE NEEDED — git own extension surface hosts the demo inside their existing workflow" },
+  JourneyBrick { id: "derivable_repair_catalog", gate: GateDifferentiatedWedge, state: Gated, title: "repair layer census: which diagnostic classes have mechanically DERIVABLE resolutions (import closure — already computed by the emitter today, rename propagation, arity, mechanical complexity rewrites) — a derived fix cannot hallucinate; the token-economics claim: deterministic repair replaces stochastic regeneration, sell FEWER TOKENS the way selection sells fewer minutes; measurable on the customer own agent bill" },
+  JourneyBrick { id: "pr_suggestion_bot", gate: GateDifferentiatedWedge, state: Gated, title: "semantic git companion MVP leg 2: PR bot posting derivable fixes as GitHub suggested-changes (apply-on-agree ALREADY BUILT into the PR UI) each with its receipt, plus the complexity-wall receipt — one installable Action: line conflicts melt, import errors self-fix, quadratic folds refused" },
+  JourneyBrick { id: "semantic_conflict_detection", gate: GateForge, state: Gated, title: "the capability git cannot express: two textually-disjoint edits that jointly break a third consumer, caught by running the affected set at merge time — we detect conflicts git calls clean; forge-gate because it needs merge-time witness execution infrastructure" },
+  JourneyBrick { id: "funding_decision", gate: GatePositioning, state: Gated, title: "funding fork evaluated only behind demand receipts: bootstrap-from-revenue default; seed raise optional once design-partner receipts exist (AI-devtools narrative is fundable, but capital buys speed not truth)" }
+]
+
+data business_journey_dependencies: List<JourneyDependency> = [
+  JourneyDependency { before: "sec_form_authority", after: "boring_issuer_rows" },
+  JourneyDependency { before: "sec_form_authority", after: "wedge_model_landed" },
+  JourneyDependency { before: "pricing_surfaces", after: "wedge_model_landed" },
+  JourneyDependency { before: "wedge_model_landed", after: "runner_unit_economics" },
+  JourneyDependency { before: "runner_unit_economics", after: "runner_mvp_live" },
+  JourneyDependency { before: "runner_mvp_live", after: "design_partner_wedge" },
+  JourneyDependency { before: "affected_set_external", after: "design_partner_wedge" },
+  JourneyDependency { before: "design_partner_wedge", after: "agent_dev_beachhead" },
+  JourneyDependency { before: "keyed_delta_core", after: "git_compatible_surface" },
+  JourneyDependency { before: "git_compatible_surface", after: "agent_dev_beachhead" },
+  JourneyDependency { before: "design_partner_wedge", after: "funding_decision" },
+  JourneyDependency { before: "falsifiable_demo_catalog", after: "runs_on_their_code" },
+  JourneyDependency { before: "runs_on_their_code", after: "github_action_channel" },
+  JourneyDependency { before: "github_action_channel", after: "runner_mvp_live" },
+  JourneyDependency { before: "llm_compiler_positioning", after: "falsifiable_demo_catalog" },
+  JourneyDependency { before: "read_faithful_rust_fragment", after: "runs_on_their_code" },
+  JourneyDependency { before: "read_faithful_rust_fragment", after: "typescript_ingest_second" },
+  JourneyDependency { before: "read_faithful_rust_fragment", after: "affected_set_external" },
+  JourneyDependency { before: "read_faithful_rust_fragment", after: "merge_driver_mvp" },
+  JourneyDependency { before: "keyed_delta_core", after: "merge_driver_mvp" },
+  JourneyDependency { before: "derivable_repair_catalog", after: "pr_suggestion_bot" },
+  JourneyDependency { before: "github_action_channel", after: "pr_suggestion_bot" },
+  JourneyDependency { before: "merge_driver_mvp", after: "git_compatible_surface" },
+  JourneyDependency { before: "merge_driver_mvp", after: "semantic_conflict_detection" },
+  JourneyDependency { before: "language_tier_ledger", after: "typescript_ingest_second" }
+]
