@@ -4352,7 +4352,7 @@ pub fn reference_derived_use_lines(
         }
         Rc::new(vec![])
     } else {
-        let referenced = unique_strings(Rc::new({
+        let direct_referenced = unique_strings(Rc::new({
             let mut __r = Vec::new();
             for item in items.clone().iter().cloned() {
                 __r.extend(
@@ -4363,6 +4363,42 @@ pub fn reference_derived_use_lines(
             }
             __r
         }));
+        // Field-type expansion: an anonymous nested record literal (`io: { .. }`)
+        // is emitted with the type NAME of its target field, which is a field
+        // type of the enclosing record's declaration and never appears in source
+        // text. So expand the referenced set with the field types of every
+        // referenced record type (bounded fixpoint over type_decl_items) -- the
+        // nested constructor's sibling-module type then gets a use-line too.
+        let referenced = {
+            let mut acc: Vec<String> = (*direct_referenced).clone();
+            let mut seen: std::collections::HashSet<String> = acc.iter().cloned().collect();
+            let mut frontier: Vec<String> = acc.clone();
+            let mut rounds = 0;
+            while (frontier.is_empty() == false) && (rounds < 6) {
+                rounds = rounds + 1;
+                let mut next: Vec<String> = Vec::new();
+                for name in frontier.iter().cloned() {
+                    match v1_rt::map_get(&emit_info.type_decl_items, name.clone()) {
+                        Some(decl) => {
+                            for fname in
+                                collect_referenced_names_deep(decl.clone(), source_indices.clone())
+                                    .iter()
+                                    .cloned()
+                            {
+                                if (seen.contains(&fname) == false) {
+                                    seen.insert(fname.clone());
+                                    acc.push(fname.clone());
+                                    next.push(fname);
+                                }
+                            }
+                        }
+                        None => {}
+                    }
+                }
+                frontier = next;
+            }
+            unique_strings(Rc::new(acc))
+        };
         if trace {
             eprintln!(
                 "[reftrace] {} svn={} referenced={}",
