@@ -4,6 +4,7 @@ import std.algebra { AbelianGroup, GroupCompletion }
 import std.nat { Nat }
 import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 import std.measure { bit_width, bit_width_count }
+import std.induction { int_pow_bounded }
 
 type Int8 = Compose<Int, MachineWidth<8>>
 type Int16 = Compose<Int, MachineWidth<16>>
@@ -30,5 +31,8 @@ data uint8_channel_bit_width: Nat = 8
 
 fn uint8_channel_inclusive_max_value() -> Int {
   let bits = bit_width_count(b: bit_width(count: uint8_channel_bit_width))
-  if bits == 8 { 255 } else { 0 }
+  match int_pow_bounded(base: 2, exp: bits) {
+    Present { value: two_pow } => two_pow - 1
+    Absent => (0 - 1)
+  }
 }

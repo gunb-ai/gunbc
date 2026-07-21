@@ -31,6 +31,8 @@ data base16_digit_rows: List<Base16DigitRow> = [
 
 data base16_digit_refusal_sentinel: String = "!"
 
+data base16_digit_miss_note: String = "Lookup miss returns base16_digit_refusal_sentinel (fail-loud: corrupt hex/JSON emission, never silent empty string). Callers gate d to [0,15] via /16 and %16; witness_base16_digit_refuses_out_of_range pins the miss arm."
+
 fn base16_digit_char(rows: List<Base16DigitRow>, d: Int, upper: Bool) -> String {
   let found = fold(rows, init: "", f: (acc, row) =>
     if row.value == d {
