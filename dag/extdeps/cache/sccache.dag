@@ -20,6 +20,7 @@ import std.cache_interface {
   LocalDiskUs,
   ReadYourWrites,
   VendorCitation,
+  RunnerObserved,
   ManualPurge,
   ToolchainChange,
   Org,
@@ -89,7 +90,7 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
     {
       field: "content_verified_on_read"
       evidence: VendorCitation {
-        source: "sccache src/cache/disk.rs DiskCache::get/get_raw: the local-disk backend reads the file at make_key_path(key) and returns it as Cache::Hit with no hash/checksum/size check against the cache key or a stored digest; WriteThenRename atomicity covers the write path only, not the read path"
+        source: "sccache src/cache/disk.rs DiskCache::get/get_raw read the file at make_key_path(key) and return it as Cache::Hit with no hash/checksum/size check against the cache key or a stored digest. The gap is a FORMAT gap, not a missing check: src/cache/cache_io.rs's CacheWrite/CacheRead archive (a ZipWriter/ZipArchive of zstd-compressed per-object entries) carries no digest/checksum field anywhere in its write or read path, so content_verified_on_read cannot be made true for this backend by any read-side config change alone; it would require a store-time digest to be added to the entry format first. ZIP central-directory parsing at ZipArchive::new() validates archive-level structure and fails loudly on a torn archive, but a single entry whose payload is a well-formed zero-length zstd stream deserializes cleanly — the exact shape that lets a build exit 0 while one served object is silently empty, nested inside an otherwise well-formed archive"
         url: "https://github.com/mozilla/sccache/blob/main/src/cache/disk.rs"
       }
     },
@@ -98,6 +99,20 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
       evidence: VendorCitation {
         source: "sccache issue #916 (lru_disk_cache footgun: files can be silently corrupted with no enforcement) and #2122 (sccache-dist: cache can end up somehow corrupted, no read-time detection) corroborate the missing read verification observed in gunbc CI as a zero-byte artifact served on a reported cache hit (runs 29855292758 et al)"
         url: "https://github.com/mozilla/sccache/issues/916"
+      }
+    },
+    {
+      field: "atomicity"
+      evidence: VendorCitation {
+        source: "CONFIRMED: DiskCache::put_raw (src/cache/disk.rs) calls LruDiskCache::prepare_add, which stages the write via tempfile::Builder::tempfile_in(&self.root); LruDiskCache::commit finalizes with NamedTempFile::persist(path) (a rename()) — write-to-tempfile-then-rename, genuinely atomic for the put/put_raw path sccache's DiskCache uses. (The underlying lru_disk_cache crate also exposes a separate direct-write insert_by/insert_bytes/insert_file/insert_with API with no tempfile staging, but DiskCache::put_raw does not call it.) Atomicity on write is real and is not the source of the zero-byte-serve defect — the defect is the missing store-time digest (see content_verified_on_read evidence above), which a torn write would not explain since ZIP-open validates archive structure and fails loudly on truncation"
+        url: "https://github.com/mozilla/sccache/blob/main/src/lru_disk_cache/mod.rs"
+      }
+    },
+    {
+      field: "content_verified_on_read"
+      evidence: RunnerObserved {
+        receipt: "Hermetic scratch-SCCACHE_DIR reproduction (2026-07-21, sccache 0.15.0, local disk backend): `sccache cc -c trivial.c -o trivial.o` on a fresh scratch cache produced a real cache miss and wrote a well-formed cache entry (a single-member ZIP, member 'obj', ZIP_STORED, holding zstd-compressed object bytes). The 'obj' member's stored payload was spliced (via libzstd.so.1 ZSTD_compress of a zero-length input, producing the genuine 9-byte empty zstd frame 28b52ffd2000010000) for a well-formed empty object, leaving the ZIP container itself untouched and structurally valid. Re-running the IDENTICAL `sccache cc` invocation against this doctored entry reported `Cache hits: 1`, `Cache misses: 0`, exit code 0, and wrote a genuine 0-byte trivial.o — reproducing exactly the CI incident (runs 29855292758 et al: content_verified_on_read=true falsified by a zero-byte artifact served on a reported cache hit). No SCCACHE server restart or config change was needed to make the read path serve it; confirms content_verified_on_read: false is correct, not merely plausible from source reading"
+        observed_at: "2026-07-21"
       }
     },
   ]
