@@ -1,5 +1,6 @@
 module gunbc.site.tokens
 
+import std.types { Milliseconds }
 import extdeps.accessibility.wcag_contrast {
   hsl_contrast_at_least,
   wcag_aa_normal_text_hundredths,
@@ -273,7 +274,7 @@ fn assignment_paint(a: RoleAssignment) -> String {
 
 type TimingToken {
   name: String
-  duration_ms: Int
+  duration_ms: Milliseconds
   easing: String
 }
 
