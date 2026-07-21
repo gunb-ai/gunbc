@@ -1,6 +1,11 @@
 module v2.test.lens_doc_reachability.doc_reachability_test
 
 import gunbc.doc_graph_roots { plan_doc_graph_roots }
+import v2.lens.doc_reachability {
+  doc_graph_orphan_clean_holds,
+  doc_graph_dangling_clean_holds,
+  doc_graph_universe_nonempty_holds,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
