@@ -6640,15 +6640,13 @@ fn reconcile_with_typed_cache(
             note_interface_hash(&mut interface_hash_by_name, &mod_name, &tc_result);
             let typed = tc_result.typed.clone();
             let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
-            variant_surfaces = v1_rt::rc_map_insert(
+            let variant_surface = v1_compiler_infer::build_variant_export_surface(
+                typed.clone(),
                 variant_surfaces.clone(),
-                typed_path.clone(),
-                v1_compiler_infer::build_variant_export_surface(
-                    typed.clone(),
-                    variant_surfaces.clone(),
-                    source_indices.clone(),
-                ),
+                source_indices.clone(),
             );
+            variant_surfaces =
+                v1_rt::rc_map_insert(variant_surfaces, typed_path.clone(), variant_surface);
             module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
             dispatched[slot] = Some((parent_diags, tc_result));
         }

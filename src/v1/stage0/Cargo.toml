@@ -130,6 +130,10 @@ name = "complexity_linearity_audit"
 path = "src/bin/complexity_linearity_audit.rs"
 
 [[bin]]
+name = "measure_cold_compile"
+path = "src/bin/measure_cold_compile.rs"
+
+[[bin]]
 name = "measure_whole_tree_resolve"
 path = "src/bin/measure_whole_tree_resolve.rs"
 

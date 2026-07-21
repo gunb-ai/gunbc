@@ -496,9 +496,17 @@ pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
 }
 
 pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
-    let mut v = list;
-    Rc::make_mut(&mut v).push_back(item);
-    v
+    match Rc::try_unwrap(list) {
+        Ok(mut v) => {
+            v.push_back(item);
+            Rc::new(v)
+        }
+        Err(rc) => {
+            let mut v = rc;
+            Rc::make_mut(&mut v).push_back(item);
+            v
+        }
+    }
 }
 
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
@@ -516,21 +524,39 @@ pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     key: K,
     value: V,
 ) -> Rc<HashMap<K, V>> {
-    let mut m = map;
-    Rc::make_mut(&mut m).insert(key, value);
-    m
+    match Rc::try_unwrap(map) {
+        Ok(mut m) => {
+            m.insert(key, value);
+            Rc::new(m)
+        }
+        Err(rc) => {
+            let mut m = rc;
+            Rc::make_mut(&mut m).insert(key, value);
+            m
+        }
+    }
 }
 
 pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     base: Rc<HashMap<K, V>>,
     overlay: Rc<HashMap<K, V>>,
 ) -> Rc<HashMap<K, V>> {
-    let mut result = base;
-    let inner = Rc::make_mut(&mut result);
-    for (k, v) in overlay.iter() {
-        inner.insert(k.clone(), v.clone());
+    match Rc::try_unwrap(base) {
+        Ok(mut result) => {
+            for (k, v) in overlay.iter() {
+                result.insert(k.clone(), v.clone());
+            }
+            Rc::new(result)
+        }
+        Err(rc) => {
+            let mut result = rc;
+            let inner = Rc::make_mut(&mut result);
+            for (k, v) in overlay.iter() {
+                inner.insert(k.clone(), v.clone());
+            }
+            result
+        }
     }
-    result
 }
 
 pub fn rc_index_by<V: Clone, F: Fn(&V) -> String>(
