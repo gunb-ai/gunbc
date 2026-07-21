@@ -34,9 +34,9 @@ type ServiceNotReady {
   last_probe: String
 }
 
-data live_deploy_roadmap_unit_expected_startup: Second = second(count: 30)
+data live_deploy_roadmap_unit_expected_startup: Second = second(count: 90)
 
-data live_deploy_service_ready_poll_bound_reason: String = "Conservative default for gunbc-roadmap.service cold-start after systemctl restart (node HTTP bind + localhost healthz); revisit if false ServiceNotReady observed in production."
+data live_deploy_service_ready_poll_bound_reason: String = "Belt-B cold-start bound for gunbc-roadmap.service after systemctl restart: gunbc serve compiles the entry closure BEFORE bind (cli_run handle_serve), so Type=simple start ≠ listening yet — deploy run 29868103362 (post-#7011 rsync fix) hit ServiceNotReady at waited_s=30 while the live_deploy apply.dag compile alone took ~32s on srv1 ARM. 90s = measured compile + headroom for roadmap_serve_handle; still fail-closed (no fabricated convergence)."
 
 data live_deploy_service_ready_poll_bound: Second = live_deploy_roadmap_unit_expected_startup
 

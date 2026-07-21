@@ -20,7 +20,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn witness_readback_requires_service_ready_gate() -> Bool {
   let rb = live_deploy_readback_for_spec(spec: deployment_spec_srv1())
-  second_count(s: rb.after.timeout) == 30
+  second_count(s: rb.after.timeout) == 90
     && rb.after.probe.health_url == live_deploy_health_url_for_port(port: 8080)
 }
 

@@ -47,7 +47,7 @@ fn witness_service_not_ready_reason_is_located() -> Bool {
 
 fn witness_readiness_poll_bound_grounded_on_std_measure_second() -> Bool {
   live_deploy_readiness_poll_bound_is_positive()
-    && second_count(s: live_deploy_readiness_poll_bound_seconds()) == 30
+    && second_count(s: live_deploy_readiness_poll_bound_seconds()) == 90
 }
 
 fn witness_health_probe_path_matches_service_ready_endpoint() -> Bool {
@@ -81,7 +81,7 @@ fn witness_red_control_never_ready_refuses_at_poll_bound() -> Bool {
   let refusal = service_not_ready_refusal_at_poll_bound(last_probe: "health probe never succeeded")
   let reason = service_not_ready_reason(refusal: refusal)
   string_contains(s: reason, pattern: "ServiceNotReady")
-    && string_contains(s: reason, pattern: "waited_s=30")
+    && string_contains(s: reason, pattern: "waited_s=90")
     && string_contains(s: reason, pattern: "health probe never succeeded")
     && !string_contains(s: reason, pattern: "converged")
     && !string_contains(s: reason, pattern: "proceed anyway")
@@ -98,8 +98,8 @@ fn witness_host_sleep_frontier_trigger_binds_srv3_consumer() -> Bool {
   }
 }
 
-fn witness_poll_max_attempts_is_thirty() -> Bool {
-  live_deploy_service_ready_poll_max_attempts() == 30
+fn witness_poll_max_attempts_tracks_startup_bound() -> Bool {
+  live_deploy_service_ready_poll_max_attempts() == 90
 }
 
 fn witness_poll_max_attempts_tracks_cadence() -> Bool {
@@ -115,7 +115,7 @@ test fn live_deploy_service_ready_witnesses() -> Bool {
     && witness_scaffold_carries_named_dissolution_trigger()
     && witness_scaffold_dissolution_trigger_binds_readiness_poll()
     && witness_host_sleep_frontier_trigger_binds_srv3_consumer()
-    && witness_poll_max_attempts_is_thirty()
+    && witness_poll_max_attempts_tracks_startup_bound()
     && witness_poll_max_attempts_tracks_cadence()
     && witness_red_control_never_ready_refuses_at_poll_bound()
 }
