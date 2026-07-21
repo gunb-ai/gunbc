@@ -1,6 +1,6 @@
 module test.claim.host_converge_slice1_witness
 
-import std.types { Bool }
+import std.types { Bool, NonEmptyStr, List }
 import extdeps.os.systemd { systemd_memory_max_property }
 import gunbc.host_converge { Drifted, PerSlotMemoryCap }
 import gunbc.fleet_intent_network { operator_host_srv1 }
@@ -23,7 +23,20 @@ import gunbc.host_converge_slice1 {
   host_converge_slice1_memory_max_read_script,
   host_converge_slice1_memory_max_set_script,
   host_converge_slice1_transport_script_scaffold,
+  host_converge_slice1_enumerate_units_script,
+  host_converge_slice1_cross_check_enumeration,
+  host_converge_slice1_usage_guard,
+  HostConvergeSlice1UsageSafe,
+  HostConvergeSlice1UsageUnsafe,
+  HostConvergeSlice1UsageUnknown,
+  HostConvergeSlice1EnumerationMismatch,
+  HostConvergeSlice1UnitOutcome,
+  HostConvergeSlice1UnitUsageGuardRefused,
+  HostConvergeSlice1Refused,
+  host_converge_slice1_unit_outcome_to_legacy_result,
 }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_host_budget { declared_runner_count }
 import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -125,4 +138,44 @@ test fn host_converge_slice1_wires_srv1_memory_cap() -> Bool {
     && witness_verdict_uses_converge_target_not_string_flatten()
     && witness_transport_scripts_are_read_only_systemctl()
     && witness_transport_script_scaffold_carries_dissolution_trigger()
+}
+
+fn witness_enumerate_units_script_is_read_only_list_units() -> Bool {
+  let script = host_converge_slice1_enumerate_units_script(instance_glob: "actions-runner@srv3-*.service")
+  string_contains(s: script, pattern: "systemctl list-units")
+    && string_contains(s: script, pattern: "actions-runner@srv3-*.service")
+    && string_contains(s: script, pattern: "awk")
+}
+
+fn witness_cross_check_enumeration_none_iff_length_matches_declared() -> Bool {
+  let declared = declared_runner_count()
+  let empty_units: List<NonEmptyStr> = []
+  match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: empty_units) {
+    Present { value: mismatch } =>
+      mismatch.host == operator_host_srv3
+        && mismatch.declared_count == declared
+        && length(mismatch.observed_units) == 0
+        && declared != 0
+    Absent => declared == 0
+  }
+}
+
+fn witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason() -> Bool {
+  let outcome: HostConvergeSlice1UnitOutcome = HostConvergeSlice1UnitUsageGuardRefused {
+    unit: host_converge_slice1_probe_unit,
+    current_bytes: 200,
+    target_cap_bytes: 100,
+  }
+  match host_converge_slice1_unit_outcome_to_legacy_result(outcome) {
+    HostConvergeSlice1Refused { reason: r } =>
+      string_contains(s: r, pattern: "usage guard")
+        && string_contains(s: r, pattern: "retryable")
+    _ => false
+  }
+}
+
+test fn host_converge_slice1_wires_srv3_multi_unit_generalization() -> Bool {
+  witness_enumerate_units_script_is_read_only_list_units()
+    && witness_cross_check_enumeration_none_iff_length_matches_declared()
+    && witness_usage_guard_refusal_routes_to_legacy_refused_with_retryable_reason()
 }
