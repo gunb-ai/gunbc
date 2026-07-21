@@ -1,35 +1,5 @@
 module extdeps.formats.elf.types
 
-import extdeps.formats.elf.primitives {
-  ElfClass,
-  ElfClass64,
-  ElfDataEncoding,
-  ElfFileType,
-  ElfMachine,
-  elf_class_32,
-  elf_class_64,
-  elf_class_none,
-  elf_data_2lsb,
-  elf_data_2msb,
-  elf_data_none,
-  elf_mag0,
-  elf_mag1,
-  elf_mag2,
-  elf_mag3,
-  elf64_ehdr_size,
-  et_core,
-  et_dyn,
-  et_exec,
-  et_none,
-  et_rel,
-  em_none,
-  em_x86_64,
-}
-import std.exec_format { EntryPoint }
-import std.types { Bool }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
