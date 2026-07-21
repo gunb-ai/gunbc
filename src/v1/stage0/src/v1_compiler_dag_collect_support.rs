@@ -149,14 +149,14 @@ pub fn dag_node_bag_hash(digests: Rc<Vec<String>>) -> String {
     .cloned()
     .fold(
         v1_rt::atom_identity_hash("^dag_collect_bag_empty".to_string()),
-        |acc: _, d: String| v1_rt::hash_combine(acc, d.clone()),
+        |acc: v1_rt::Hash, d: String| v1_rt::hash_combine(acc, d.clone()),
     )
 }
 
 pub fn dag_node_seq_hash(digests: Rc<Vec<String>>) -> String {
     digests.clone().iter().cloned().fold(
         v1_rt::atom_identity_hash("^dag_collect_seq_empty".to_string()),
-        |acc: _, d: String| v1_rt::hash_combine(acc, d.clone()),
+        |acc: v1_rt::Hash, d: String| v1_rt::hash_combine(acc, d.clone()),
     )
 }
 

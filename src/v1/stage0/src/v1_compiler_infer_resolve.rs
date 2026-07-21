@@ -1196,7 +1196,7 @@ pub fn resolve_node_bounded(
                     .cloned()
                     .fold(
                         v1_rt::rc_empty_map::<String, Rc<Node>>(),
-                        |acc: _, pair: (i64, Rc<Node>)| {
+                        |acc: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<Node>)| {
                             let idx = pair.0.clone();
                             let slot_name =
                                 authored_name_at(env.source_indices.clone(), pair.1.clone());
