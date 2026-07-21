@@ -52,7 +52,7 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
     key_inputs: NativeInternal { cited_inputs: [RustcInvocation, ToolchainSpec] }
     overwritable: true
     prefix_fallback_allowed: false
-    content_verified_on_read: true
+    content_verified_on_read: false
     visibility_scope: Org
     invalidation_triggers: [ManualPurge, ToolchainChange]
   }
@@ -84,6 +84,20 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
       evidence: VendorCitation {
         source: "sccache cache size and LRU eviction policy"
         url: "https://github.com/mozilla/sccache/blob/main/docs/Configuration.md#cache-size"
+      }
+    },
+    {
+      field: "content_verified_on_read"
+      evidence: VendorCitation {
+        source: "sccache src/cache/disk.rs DiskCache::get/get_raw: the local-disk backend reads the file at make_key_path(key) and returns it as Cache::Hit with no hash/checksum/size check against the cache key or a stored digest; WriteThenRename atomicity covers the write path only, not the read path"
+        url: "https://github.com/mozilla/sccache/blob/main/src/cache/disk.rs"
+      }
+    },
+    {
+      field: "content_verified_on_read"
+      evidence: VendorCitation {
+        source: "sccache issue #916 (lru_disk_cache footgun: files can be silently corrupted with no enforcement) and #2122 (sccache-dist: cache can end up somehow corrupted, no read-time detection) corroborate the missing read verification observed in gunbc CI as a zero-byte artifact served on a reported cache hit (runs 29855292758 et al)"
+        url: "https://github.com/mozilla/sccache/issues/916"
       }
     },
   ]
