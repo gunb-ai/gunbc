@@ -651,6 +651,10 @@ impl MemoryGovernor {
     /// `memory.max` > `/proc/meminfo` MemTotal. Announces itself on stderr — the
     /// governor replaces the plan-evaluated spawn width, so its one log line is the
     /// width story for the run.
+    pub fn budget_bytes(&self) -> Option<u64> {
+        self.limits.budget_bytes
+    }
+
     pub fn from_environment(max_width: usize) -> MemoryGovernor {
         let (budget, source_label) = read_host_budget_bytes();
         let sensor_dir = binding_high_cgroup_dir()
@@ -899,6 +903,32 @@ impl Drop for AdmittedSlot {
 /// (self-host frontier row for `memory_governor` cgroup-budget readers).
 pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16_106_127_360;
 
+/// SCAFFOLD (§7 seed-retained HAND-RUST — authority: `dag/gunbc/runner_slot_allocation.dag`
+/// `gunbc_floor_minimum_viable_armed_budget` = `byte_size(12884901888)`; doomed/success witness
+/// receipts in the same module):
+/// arm-time floor refusal when the governor budget is below the measured minimum viable
+/// footprint — crowded uncapped hosts with low MemAvailable would otherwise start a doomed
+/// ~30min walk (runs 29834380839, 29845210061).
+/// dissolve-on: v2 emit of stage0 host-budget constants from `gunbc.runner_slot_allocation`
+/// (self-host frontier row for `memory_governor` cgroup-budget readers); re-measure when
+/// bright-seal #6999 fill-deferral cuts mature index residency.
+pub const DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES: u64 = 12_884_901_888;
+
+/// Fail-fast refusal when a floor walk's armed budget is provably below the measured
+/// minimum viable footprint. Returns a typed diagnostic when `budget` is known and
+/// strictly below the declaration; `None` when budget is unreadable or sufficient.
+pub fn floor_budget_below_minimum_footprint(budget: Option<u64>) -> Option<String> {
+    let budget = budget?;
+    if budget < DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES {
+        Some(format!(
+            "FloorBudgetBelowMinimumFootprint: armed budget={budget} bytes < minimum viable {} bytes (gunbc.runner_slot_allocation.gunbc_floor_minimum_viable_armed_budget; doomed witnesses 29834380839, 29845210061) — requeue on a less-crowded runner (fail-fast, not a doomed walk)",
+            DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES
+        ))
+    } else {
+        None
+    }
+}
+
 /// Cap an uncapped-host MemAvailable sample at the declared runner-slot throttle
 /// line. Returns `(budget, capped)` where `capped` is true when `avail` exceeded
 /// the declaration.
@@ -1080,6 +1110,29 @@ mod tests {
             events_high: Some(0),
             events_oom_kill: Some(0),
         }
+    }
+
+    #[test]
+    fn floor_budget_below_minimum_footprint_refuses_doomed_class() {
+        let doomed = floor_budget_below_minimum_footprint(Some(6_987_137_024));
+        assert!(doomed.is_some());
+        assert!(
+            doomed.unwrap().contains("FloorBudgetBelowMinimumFootprint"),
+            "typed refusal variant"
+        );
+        assert!(floor_budget_below_minimum_footprint(Some(
+            DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES
+        ))
+        .is_none());
+        assert!(floor_budget_below_minimum_footprint(Some(
+            DECLARED_FLOOR_MINIMUM_VIABLE_ARMED_BUDGET_BYTES - 1
+        ))
+        .is_some());
+        assert!(floor_budget_below_minimum_footprint(None).is_none());
+        assert!(
+            floor_budget_below_minimum_footprint(Some(DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES))
+                .is_none()
+        );
     }
 
     #[test]
