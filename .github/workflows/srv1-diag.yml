@@ -1,0 +1,29 @@
+name: srv1-diag
+on:
+  push:
+    branches: [session/royal-carp-451]
+jobs:
+  diag:
+    runs-on: [self-hosted, linux, arm64, srv1]
+    timeout-minutes: 5
+    steps:
+      - name: Read-only runner and host facts
+        run: |
+          echo "=== id ==="
+          id
+          echo "=== sudo -n -l ==="
+          sudo -n -l || true
+          echo "=== /opt/gunbc ownership ==="
+          ls -la /opt/gunbc /opt/gunbc/bin 2>&1 || true
+          ls -ld /opt/gunbc/gunbc /opt/gunbc/dispatch-worktrees 2>&1 || true
+          echo "=== gunbc-roadmap unit ==="
+          systemctl show gunbc-roadmap.service -p User,Group,ExecStart,ActiveState,SubState --no-pager 2>&1 || true
+          echo "=== actions-runner units ==="
+          systemctl list-units 'actions-runner*' --no-pager --all 2>&1 || true
+          for u in $(systemctl list-units 'actions-runner*' --no-pager --all --plain --no-legend 2>/dev/null | awk '{print $1}'); do
+            echo "--- $u"; systemctl show "$u" -p User,ExecStart --no-pager 2>&1 || true
+          done
+          echo "=== listener on 8080 ==="
+          ss -tlnp 2>/dev/null | grep 8080 || true
+          echo "=== node server processes ==="
+          ps aux | grep -E 'server\.js|gunbc serve' | grep -v grep || true
