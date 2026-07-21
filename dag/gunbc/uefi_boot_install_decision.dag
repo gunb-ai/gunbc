@@ -1,0 +1,139 @@
+module gunbc.uefi_boot_install_decision
+
+import std.types { NonEmptyStr, String, Bool, List }
+import extdeps.firmware.uefi_shell {
+  UefiShellEnvironment,
+  UefiNetworkInterface,
+  UefiDeviceMapping,
+  uefi_interface_has_link,
+  UefiShellCommand,
+  MapDevices,
+  BcfgDump,
+  BcfgAdd,
+  BcfgBoot,
+  Ifconfig,
+  IfconfigSetDhcp,
+  Reset,
+  ResetWarm,
+}
+
+type DesiredOutcome
+  = | InstalledFleetNode
+
+type BootInstallSituation
+  = InstallMediaReady { boot_file: NonEmptyStr }
+  | NetworkReady { interface: NonEmptyStr }
+  | NetworkUpNeedsDhcp { interface: NonEmptyStr }
+  | NoBootSourceAvailable { reason: NonEmptyStr }
+
+fn ipv4_unconfigured(ipv4: NonEmptyStr) -> Bool {
+  ipv4 == "0.0.0.0"
+    || string_contains(s: ipv4 as String, pattern: "169.254.")
+}
+
+fn mapping_is_removable_install_media(m: UefiDeviceMapping) -> Bool {
+  string_contains(s: m.device_path as String, pattern: "CDROM")
+    || string_contains(s: m.device_path as String, pattern: "USB")
+    || string_contains(s: m.device_path as String, pattern: "CDDVD")
+}
+
+type MediaScan {
+  found: Bool
+  boot_file: NonEmptyStr
+}
+
+fn scan_install_media(env: UefiShellEnvironment) -> MediaScan {
+  fold(
+    env.mappings,
+    init: MediaScan { found: false, boot_file: "none" },
+    f: (acc, m) =>
+      if acc.found { acc }
+      else if mapping_is_removable_install_media(m: m) {
+        MediaScan { found: true, boot_file: concat(m.fs_alias, ":\\EFI\\BOOT\\BOOTAA64.EFI") as NonEmptyStr }
+      } else { acc }
+  )
+}
+
+type IfaceScan {
+  found: Bool
+  name: NonEmptyStr
+  routable: Bool
+}
+
+fn scan_up_interface(env: UefiShellEnvironment) -> IfaceScan {
+  fold(
+    env.interfaces,
+    init: IfaceScan { found: false, name: "none", routable: false },
+    f: (acc, i) =>
+      if acc.found { acc }
+      else if uefi_interface_has_link(iface: i) {
+        IfaceScan { found: true, name: i.name, routable: !ipv4_unconfigured(ipv4: i.ipv4) }
+      } else { acc }
+  )
+}
+
+fn diagnose_boot_install(env: UefiShellEnvironment) -> BootInstallSituation {
+  let media = scan_install_media(env: env)
+  if media.found {
+    InstallMediaReady { boot_file: media.boot_file }
+  } else {
+    let iface = scan_up_interface(env: env)
+    if iface.found {
+      if iface.routable {
+        NetworkReady { interface: iface.name }
+      } else {
+        NetworkUpNeedsDhcp { interface: iface.name }
+      }
+    } else {
+      NoBootSourceAvailable {
+        reason: "no removable install media mapped and no network interface with link — cannot reach an installer",
+      }
+    }
+  }
+}
+
+type BootInstallAction
+  = BootFromMappedMedia { boot_file: NonEmptyStr }
+  | DhcpThenNetworkBoot { interface: NonEmptyStr }
+  | RefuseNoSource { reason: NonEmptyStr }
+
+fn decide_boot_install(situation: BootInstallSituation, goal: DesiredOutcome) -> BootInstallAction {
+  match goal {
+    InstalledFleetNode =>
+      match situation {
+        InstallMediaReady { boot_file: f } => BootFromMappedMedia { boot_file: f }
+        NetworkReady { interface: i } => DhcpThenNetworkBoot { interface: i }
+        NetworkUpNeedsDhcp { interface: i } => DhcpThenNetworkBoot { interface: i }
+        NoBootSourceAvailable { reason: r } => RefuseNoSource { reason: r }
+      }
+  }
+}
+
+fn boot_install_commands(action: BootInstallAction) -> List<UefiShellCommand>? {
+  match action {
+    BootFromMappedMedia { boot_file: f } =>
+      Present {
+        value: [
+          MapDevices { refresh: true },
+          BcfgAdd { target: BcfgBoot, index: 0, file: f, description: "gunbc-install-media" as NonEmptyStr },
+          Reset { mode: ResetWarm },
+        ]
+      }
+    DhcpThenNetworkBoot { interface: i } =>
+      Present {
+        value: [
+          Ifconfig { action: IfconfigSetDhcp { interface: i } },
+          BcfgDump { target: BcfgBoot },
+        ]
+      }
+    RefuseNoSource { reason: _ } => Absent
+  }
+}
+
+fn boot_install_is_refused(action: BootInstallAction) -> Bool {
+  match action {
+    RefuseNoSource { reason: _ } => true
+    BootFromMappedMedia { boot_file: _ } => false
+    DhcpThenNetworkBoot { interface: _ } => false
+  }
+}
