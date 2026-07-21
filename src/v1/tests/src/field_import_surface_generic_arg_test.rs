@@ -2,10 +2,7 @@
 //! tree so `List<InnerStruct>` contributes both container and element names to
 //! `field_import_surface_names`.
 
-use std::rc::Rc;
-
-use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
-use v1_compiler::v1_compiler_infer::build_emit_graph_info;
+use crate::helpers::compile_dag_resolved;
 use v1_compiler::v1_compiler_infer_emit_info::TypeRepr;
 
 const FIXTURE: &str = concat!(
@@ -21,11 +18,7 @@ const FIXTURE: &str = concat!(
 
 #[test]
 fn field_import_surface_names_include_generic_list_element() {
-    let sources = vec![Rc::new(SourceFile {
-        path: "src/v1/field_import_surface_fixture.dag".to_string(),
-        content: FIXTURE.to_string(),
-    })];
-    let resolved = compile_to_resolved(Rc::new(sources.into()));
+    let resolved = compile_dag_resolved(FIXTURE);
     assert!(
         resolved.diagnostics.is_empty(),
         "fixture should resolve cleanly, got: {:?}",
@@ -35,8 +28,12 @@ fn field_import_surface_names_include_generic_list_element() {
             .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
             .collect::<Vec<_>>()
     );
-    let emit_info = build_emit_graph_info(resolved.modules.clone(), false);
-    let summary = emit_info
+    let graph = resolved
+        .graph
+        .as_ref()
+        .expect("resolved graph should be present");
+    let summary = graph
+        .emit_graph_info
         .type_summaries
         .get("OuterFacts")
         .unwrap_or_else(|| panic!("OuterFacts summary missing"));
