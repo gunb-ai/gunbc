@@ -56,7 +56,26 @@ Resolve-before-frontend grew **~4× median** in shared-index discovery workers.
 
 The +20min is **not** typed-cache memo collapse or materialization waste growth.
 
-### 1.4 Advisory diagnostic volume (typecheck overhead signal)
+### 1.4 Governor receipt — cap-saturated on capped hosts (srv1-04, run 29850515721)
+
+Post-#6848 floor on cgroup-capped runners now runs **at** the memory ceiling, not merely
+near it. Run `29850515721` (PR #6999, merge of `origin/main` at `b339226`) on srv1-04:
+
+| field | value |
+|---|---|
+| `budget` | 16,106,127,360 bytes (cgroup `memory.high`) |
+| `peak_current` | 16,100,560,896 bytes (**99.97% of budget**) |
+| `hard_backoffs` | 1 |
+| `forced_serial` | 1 |
+| `creep_backoffs` | 1 |
+| `max_width_reached` | 1 |
+
+Interpretation: #6956+#6972 brought peaks down from the 32 GB class, but the post-#6848
+resolve walk keeps the floor **cap-saturated** even on 16 GB hosts — throttle cost on the
+time axis, and one bad allocation from exit-137. Pairs with §1.1–1.3 as a memory-beside-time
+receipt for this bisect lane (not a separate fix target in #6999).
+
+### 1.5 Advisory diagnostic volume (typecheck overhead signal)
 
 | | PRE 07-19 | POST |
 |---|---:|---:|
