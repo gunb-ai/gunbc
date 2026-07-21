@@ -12344,7 +12344,12 @@ pub fn run_discovery_corpus_with_options(
                     )?);
                     let snap = index_retention_snapshot(&index);
                     if drain_detail {
-                        emit_floor_drain_group_line(group_idx + 1, total_groups, &drain_prev, &snap);
+                        emit_floor_drain_group_line(
+                            group_idx + 1,
+                            total_groups,
+                            &drain_prev,
+                            &snap,
+                        );
                     }
                     drain_peaks = retention_snapshot_peak(&drain_peaks, &snap);
                     drain_prev = snap;
