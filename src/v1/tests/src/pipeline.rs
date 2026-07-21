@@ -1413,6 +1413,41 @@ fn pool_parse_heads_only_does_not_prefill_parse_cache() {
 }
 
 #[test]
+fn entry_closure_sources_memo_reuses_name_derived_walk() {
+    use v1_compiler::cli_run::{
+        build_multi_entry_index, entry_closure_sources_len_for_test, resolve_entry_with_index,
+    };
+
+    let roots = vec![
+        crate::helpers::workspace_root()
+            .join("src/v2")
+            .to_string_lossy()
+            .into_owned(),
+        crate::helpers::workspace_root()
+            .join("dag")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    let entry = crate::helpers::workspace_root()
+        .join("src/v2/lens/doc_reachability_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let index = build_multi_entry_index(&roots);
+    resolve_entry_with_index(&index, &entry).expect("first resolve");
+    assert_eq!(
+        entry_closure_sources_len_for_test(&index),
+        1,
+        "first resolve must memo the entry closure"
+    );
+    resolve_entry_with_index(&index, &entry).expect("second resolve");
+    assert_eq!(
+        entry_closure_sources_len_for_test(&index),
+        1,
+        "second resolve must not re-run the bare-reference fixpoint walk"
+    );
+}
+
+#[test]
 fn census_heads_fn_stand_in_is_fail_loud_not_empty() {
     use v1_compiler::cli_run::{
         census_heads_body_traversal_refusal, census_heads_fn_stand_in_for_test,
