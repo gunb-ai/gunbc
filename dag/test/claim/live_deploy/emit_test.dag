@@ -114,6 +114,16 @@ fn witness_dependency_ensure_is_idempotent() -> Bool {
     && string_contains(s: tmux, pattern: "apt-get install --yes tmux")
 }
 
+fn witness_apply_script_contains_preflight_and_sudoers() -> Bool {
+  let sh = expected_live_deploy_apply_script()
+  string_contains(s: sh, pattern: "deploy-access-bootstrap-preflight")
+    && string_contains(s: sh, pattern: "whoami")
+    && string_contains(s: sh, pattern: "visudo -cf")
+    && string_contains(s: sh, pattern: "/etc/sudoers.d/gunbc-deploy")
+    && string_contains(s: sh, pattern: "deploy-access-preflight: PASS principal=ghrunner")
+    && !string_contains(s: sh, pattern: "gunbc-deploy-privileged")
+}
+
 fn witness_apply_script_contains_systemd_and_tailscale() -> Bool {
   let sh = expected_live_deploy_apply_script()
   !string_contains(s: sh, pattern: "sudo bash")
@@ -306,6 +316,7 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_tailnet_domain_propagates_optional()
     && witness_tailnet_url_absent_not_fabricated()
     && witness_dependency_ensure_is_idempotent()
+    && witness_apply_script_contains_preflight_and_sudoers()
     && witness_apply_script_contains_systemd_and_tailscale()
     && witness_scripts_stay_within_ci_runner_grants()
     && witness_retract_script_owned_only()

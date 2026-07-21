@@ -12,7 +12,7 @@ import std.effect_grant {
 }
 
 data fleet_posix_accounts_scope_disposition: Disposition = Terminal {
-  reason: "Single authority for fleet POSIX principals on srv1/srv2: closed roster construction only (no arbitrary-string principal). §3: PosixUser is extdeps/access; fleet rows live in gunbc/. declared_probe is authored provenance of the intended id(1) check — NOT live observation; live existence proof is deploy_access_check_observed. Grant alignment seam (#6146): GroundedPosixPrincipal is POSIX WHO; secret_access_grant.GrantPrincipal is GCP WIF WHO; operator links via FleetAccountOperator + fleet_operator_gcp_iam_member()."
+  reason: "Single authority for fleet POSIX principals on srv1/srv2/srv3: closed roster construction only (no arbitrary-string principal). §3: PosixUser is extdeps/access; fleet rows live in gunbc/. declared_probe is authored provenance of the intended id(1) check — NOT live observation; live existence proof is deploy_access_check_observed. Grant alignment seam (#6146): GroundedPosixPrincipal is POSIX WHO; secret_access_grant.GrantPrincipal is GCP WIF WHO; operator links via FleetAccountOperator + fleet_operator_gcp_iam_member(). DeployRunnerPrincipal grounds the unit_user vs job_user split for CI runners."
 }
 
 type PosixAccountDeclaredProbe {
@@ -44,10 +44,23 @@ type GroundedPosixPrincipal {
   declared_probe: PosixAccountDeclaredProbe
 }
 
+type DeployRunnerPrincipal {
+  unit_user: NonEmptyStr
+  job_user: NonEmptyStr
+}
+
+data deploy_runner_principal_note: String = "Two-phase runner principal (#6096 declared-vs-effective): unit_user is the systemd User= on the actions-runner unit (root on srv1); job_user is the deprivileged effective principal for workflow steps (ghrunner on srv1). Deploy authorization and sudoers roster ground on job_user only — never unit_user."
+
+data srv1_ci_deploy_runner_principal: DeployRunnerPrincipal = DeployRunnerPrincipal {
+  unit_user: "root",
+  job_user: "ghrunner",
+}
+
 type FleetPosixAccountKey
   = FleetAccountRoot
   | FleetAccountOperator
   | FleetAccountCiRunner
+  | FleetAccountSrv3Host
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
@@ -67,6 +80,12 @@ data fleet_posix_ci_runner_user: PosixUser = PosixUser {
   gid: 1001,
 }
 
+data fleet_posix_srv3_host_user: PosixUser = PosixUser {
+  name: "ubuntu",
+  uid: 1000,
+  gid: 1000,
+}
+
 data fleet_posix_root_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
   probed_at: "2026-07-02",
   probe_command: "id root",
@@ -83,6 +102,12 @@ data fleet_posix_ci_runner_declared_probe: PosixAccountDeclaredProbe = PosixAcco
   probed_at: "2026-07-02",
   probe_command: "id ghrunner",
   host: "srv1",
+}
+
+data fleet_posix_srv3_host_declared_probe: PosixAccountDeclaredProbe = PosixAccountDeclaredProbe {
+  probed_at: "2026-07-21",
+  probe_command: "id ubuntu",
+  host: "srv3",
 }
 
 data fleet_hostnamectl_command_path: NonEmptyStr = "/usr/bin/hostnamectl"
@@ -108,6 +133,10 @@ fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
 
 data fleet_apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 
+data gunbc_deploy_privileged_helper_path: NonEmptyStr = "/opt/gunbc/bin/gunbc-deploy-privileged"
+
+data gunbc_deploy_privileged_helper_check_argv: NonEmptyStr = "probe"
+
 fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
   [
     PosixSudoGrant { command_path: fleet_apt_get_binary_path, check_argv: "--help" },
@@ -116,6 +145,10 @@ fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
     PosixSudoGrant { command_path: "/usr/bin/tailscale", check_argv: "version" },
     PosixSudoGrant { command_path: "/usr/bin/rm", check_argv: "--version" },
   ]
+}
+
+fn fleet_posix_srv3_host_sudo_grants() -> List<PosixSudoGrant> {
+  []
 }
 
 fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
@@ -138,7 +171,21 @@ fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
         sudo_grants: fleet_posix_ci_runner_sudo_grants(),
         declared_probe: fleet_posix_ci_runner_declared_probe,
       }
+    FleetAccountSrv3Host =>
+      GroundedPosixPrincipal {
+        posix: fleet_posix_srv3_host_user,
+        sudo_grants: fleet_posix_srv3_host_sudo_grants(),
+        declared_probe: fleet_posix_srv3_host_declared_probe,
+      }
   }
+}
+
+fn fleet_deploy_job_principal(runner: DeployRunnerPrincipal) -> GroundedPosixPrincipal? {
+  fleet_posix_account_from_name(name: runner.job_user)
+}
+
+fn posix_principal_is_root(p: GroundedPosixPrincipal) -> Bool {
+  p.posix.name == fleet_posix_root_user.name
 }
 
 fn grounded_posix_principal_name(p: GroundedPosixPrincipal) -> NonEmptyStr {
@@ -159,7 +206,11 @@ fn fleet_posix_account_from_name(name: NonEmptyStr) -> GroundedPosixPrincipal? {
         false =>
           match name == fleet_posix_ci_runner_user.name {
             true => Present { value: fleet_posix_principal(key: FleetAccountCiRunner) }
-            false => Absent
+            false =>
+              match name == fleet_posix_srv3_host_user.name {
+                true => Present { value: fleet_posix_principal(key: FleetAccountSrv3Host) }
+                false => Absent
+              }
           }
       }
   }
