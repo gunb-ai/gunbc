@@ -7181,6 +7181,62 @@ fn eval_emit_host_run_transport_builtin(
 /// emit_host_run_transport_cached; dissolve-on: witness_realization_kernel emits
 /// this builtin from v2 self-hosted transport rows (same dissolution as
 /// emit_host_run_transport seed handler).
+/// Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR
+/// precedent): the root is WHERE the cache lives, never WHAT identifies an
+/// artifact — the content-hash path component stays the key. Opt-in; only the
+/// declared /tmp/gunbc_ scratch prefix (std.emit_on_demand root authority) is
+/// rebased, so an arbitrary caller path never silently moves. SINGLE authority
+/// for every host op on the native-cache namespace: the cached run transport AND
+/// emit_host_native_cache_evict share this mapping, so eviction always targets
+/// the same workspace the transport warms (a fork here silently un-evicts).
+fn native_cache_rebase_workspace_dir(workspace_dir: String) -> String {
+    match std::env::var("GUNBC_NATIVE_CACHE_ROOT") {
+        Ok(root) if !root.trim().is_empty() => match workspace_dir.strip_prefix("/tmp/") {
+            Some(rest) if rest.starts_with("gunbc_") => {
+                format!("{}/{}", root.trim_end_matches('/'), rest)
+            }
+            _ => workspace_dir,
+        },
+        _ => workspace_dir,
+    }
+}
+
+/// Evict one native-cache workspace (the witness content-change/cold legs' evictor).
+/// Lives beside the cached transport so both sides of the cache lifecycle read the
+/// SAME rebase mapping; a shell.Remove on the .dag-composed /tmp path would miss a
+/// rebased workspace and falsely leave it warm. Wet-only like the transport's other
+/// host effects; removing an absent workspace is a no-op success (idempotent evict).
+fn eval_emit_host_native_cache_evict_builtin(
+    workspace_dir_arg: Option<&Value>,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    ctx.effect_dispatch_count
+        .set(ctx.effect_dispatch_count.get().wrapping_add(1));
+    if ctx.execution_mode.is_hermetic() {
+        return Err(InterpError::TypeError {
+            msg: "hermetic mode: emit_host_native_cache_evict refuses filesystem removal \
+                  (no mock arm; run wet)"
+                .to_string(),
+        });
+    }
+    let workspace_dir = free_monoid_to_string(workspace_dir_arg.ok_or_else(|| {
+        InterpError::TypeError {
+            msg: "emit_host_native_cache_evict requires a workspace_dir argument".to_string(),
+        }
+    })?)
+    .ok_or_else(|| InterpError::TypeError {
+        msg: "emit_host_native_cache_evict: workspace_dir must be String".to_string(),
+    })?;
+    let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
+    match std::fs::remove_dir_all(&workspace_dir) {
+        Ok(()) => Ok(Value::Bool(true)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Value::Bool(true)),
+        Err(e) => Err(InterpError::TypeError {
+            msg: format!("emit_host_native_cache_evict: {workspace_dir}: {e}"),
+        }),
+    }
+}
+
 fn eval_emit_host_run_transport_cached_builtin(
     admission_arg: Option<&Value>,
     workspace_dir_arg: Option<&Value>,
@@ -7295,20 +7351,7 @@ fn eval_emit_host_run_transport_cached_builtin(
         });
     }
 
-    // Durable re-root (realization-side config, GUNBC_RESOLVED_GRAPH_CACHE_DIR
-    // precedent): the root is WHERE the cache lives, never WHAT identifies an
-    // artifact — the content-hash path component stays the key. Opt-in; only the
-    // declared /tmp/gunbc_ scratch prefix is rebased, so an arbitrary caller path
-    // never silently moves.
-    let workspace_dir = match std::env::var("GUNBC_NATIVE_CACHE_ROOT") {
-        Ok(root) if !root.trim().is_empty() => match workspace_dir.strip_prefix("/tmp/") {
-            Some(rest) if rest.starts_with("gunbc_") => {
-                format!("{}/{}", root.trim_end_matches('/'), rest)
-            }
-            _ => workspace_dir,
-        },
-        _ => workspace_dir,
-    };
+    let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
     let workspace = std::path::PathBuf::from(&workspace_dir);
     std::fs::create_dir_all(&workspace).map_err(|e| InterpError::TypeError {
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
@@ -8114,6 +8157,11 @@ fn eval_builtin_inner(
             positional.get(2).copied(),
             positional.get(3).copied(),
             positional.get(4).copied(),
+            ctx,
+        )?)),
+
+        "emit_host_native_cache_evict" => Ok(Some(eval_emit_host_native_cache_evict_builtin(
+            positional.first().copied(),
             ctx,
         )?)),
 
