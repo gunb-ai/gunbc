@@ -58,8 +58,8 @@ fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
   let principal = fleet_posix_principal(key: FleetAccountCiRunner)
   let grounded = grounded_principal_privileged_commands(p: principal)
   let composed = srv1_live_deploy_privileged_commands()
-  length(grounded) == 5
-    && length(composed) == 5
+  length(grounded) == 6
+    && length(composed) == 6
     && composed == grounded
     && grounded.first().path == deploy_access_apt_get_binary_path
     && !any(grounded, c => c.path == "/usr/bin/bash")
@@ -116,12 +116,12 @@ fn witness_operator_grounded_access_gate_permits() -> Bool {
 fn witness_deploy_authorization_query_grounds_expected_principal() -> Bool {
   let query = deploy_access_authorization_query(access: ci_deploy_srv1_access)
   query.expected_principal == "ghrunner"
-    && query.envelope.grants.count() == 5
+    && query.envelope.grants.count() == 6
 }
 
 fn witness_deploy_preflight_plan_has_whoami_plus_privileged_probes() -> Bool {
   let plan = deploy_access_preflight_plan(access: ci_deploy_srv1_access)
-  plan.steps.count() == 6
+  plan.steps.count() == 7
 }
 
 fn witness_deploy_preflight_plan_uses_typed_probes() -> Bool {

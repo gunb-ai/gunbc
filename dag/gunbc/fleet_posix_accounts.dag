@@ -133,6 +133,8 @@ fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
 
 data fleet_apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
 
+data fleet_visudo_binary_path: NonEmptyStr = "/usr/sbin/visudo"
+
 data gunbc_deploy_privileged_helper_path: NonEmptyStr = "/opt/gunbc/bin/gunbc-deploy-privileged"
 
 data gunbc_deploy_privileged_helper_check_argv: NonEmptyStr = "probe"
@@ -141,6 +143,7 @@ fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
   [
     PosixSudoGrant { command_path: fleet_apt_get_binary_path, check_argv: "--help" },
     PosixSudoGrant { command_path: "/usr/bin/install", check_argv: "--version" },
+    PosixSudoGrant { command_path: fleet_visudo_binary_path, check_argv: "-V" },
     PosixSudoGrant { command_path: "/usr/bin/systemctl", check_argv: "--version" },
     PosixSudoGrant { command_path: "/usr/bin/tailscale", check_argv: "version" },
     PosixSudoGrant { command_path: "/usr/bin/rm", check_argv: "--version" },

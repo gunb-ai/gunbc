@@ -13,6 +13,7 @@ import gunbc.ci_deploy_access {
 import gunbc.fleet_posix_accounts {
   PosixSudoGrant,
   fleet_posix_ci_runner_sudo_grants,
+  fleet_visudo_binary_path,
 }
 
 data deploy_sudoers_note: String = "Wave C envelope: /etc/sudoers.d/gunbc-deploy is EMITTED from the roster grants (never hand-managed). visudo -c gates install. Generic movers (rsync/chown) are refused in the roster — #7011 realization routes tree sync through gunbc-tree-sync.service and ownership through install -o/-g. Sudo-grant lint allow-list is DERIVED from fleet_posix_ci_runner_sudo_grants() command_path rows — never a parallel path list."
@@ -97,10 +98,10 @@ fn deploy_sudoers_install_shell(access: DeployAccess) -> String {
     "cat > \"$_gunbc_stage/gunbc-deploy.sudoers\" <<'GUNBC_SUDOERS_EOF'\n",
     deploy_sudoers_dropin_content(access: access),
     "GUNBC_SUDOERS_EOF\n",
-    "sudo -n visudo -cf \"$_gunbc_stage/gunbc-deploy.sudoers\"\n",
+    "sudo -n ", fleet_visudo_binary_path as String, " -cf \"$_gunbc_stage/gunbc-deploy.sudoers\"\n",
     "sudo -n install -m 0440 \"$_gunbc_stage/gunbc-deploy.sudoers\" ",
     gunbc_deploy_sudoers_dropin as String,
     "\n",
-    "sudo -n visudo -cf ", gunbc_deploy_sudoers_dropin as String,
+    "sudo -n ", fleet_visudo_binary_path as String, " -cf ", gunbc_deploy_sudoers_dropin as String,
   ], "")
 }
