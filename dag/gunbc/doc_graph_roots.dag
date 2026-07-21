@@ -1,10 +1,83 @@
 module gunbc.doc_graph_roots
 
-import gunbc.plan { Plan, plan_path }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.plan { Plan, plan_path, DissolutionTrigger, HasTrigger }
 import gunbc.plan_registry { all_plans }
 
-data doc_graph_roots_note: String = "Registered-plan doc-graph roots, derived — never listed. A registered PlanArtifact IS the document binding: the plan carrier (dag/gunbc/plans/*) is the authority, the md at plan_path is its drift-gated projection, so reachability of that md is a fact of the registration, not of a prose 'bind: <path>' string the seed text-scans out of .dag content (reference-grounding-migration.md: a String reference is an un-checkable edge). This fn is the actual dag reference: the doc-reachability walk (cli_run.rs build_doc_graph_report) takes these as roots via the doc_graph_orphan_count builtin, and doc_graph_admitted_root_count proves the plumbing live by execution (every derived path must name a doc in the universe — a plan whose md is missing reds the witness, counted, never silently dropped). The 'bind:' text-scan lane remains ONLY for hand-authored docs with no carrier; each such row dissolves when its doc migrates into a registered gunbc.plan.Plan row (the invert-hand-maintained pattern)."
+data doc_graph_roots_note: String = "The single authority for doc-graph roots. Registered plans derive theirs (a PlanArtifact registration IS the document binding); hand-authored docs declare theirs as typed HandAuthoredDocBind rows — doc, the .dag work it binds to, and the trigger that deletes the row. No prose 'bind:' scan remains: an unbound doc is an orphan, loudly."
 
 fn plan_doc_graph_roots() -> List<String> {
   map(all_plans, p => plan_path(p: p))
+}
+
+type HandAuthoredDocBind {
+  doc_path: String,
+  work: DeclarationRef,
+  dissolution: DissolutionTrigger,
+}
+
+data hand_authored_doc_binds: List<HandAuthoredDocBind> = [
+  HandAuthoredDocBind {
+    doc_path: "docs/plans/accelerator-demo-roundtrip.md",
+    work: DeclarationRef { module_path: "extdeps.languages.simd.kernel", decl_name: "simd_kernel_medium", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row; §6 item 2 execution lane lands on the simd handler" },
+  },
+  HandAuthoredDocBind {
+    doc_path: "docs/plans/accelerator-demo-roundtrip.md",
+    work: DeclarationRef { module_path: "gunbc.accelerator_demo_plan", decl_name: "AcceleratorRecognitionOutcome", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)" },
+  },
+  HandAuthoredDocBind {
+    doc_path: "docs/plans/machine-shape-orthogonal-scheduling.md",
+    work: DeclarationRef { module_path: "gunbc.accelerator_demo_plan", decl_name: "AcceleratorRecognitionOutcome", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves into a registered gunbc.plan.Plan row at its Phase-1 landing (trigger declared in the md header)" },
+  },
+  HandAuthoredDocBind {
+    doc_path: "docs/plans/commit-workflow.md",
+    work: DeclarationRef { module_path: "gunbc.plans.commit_workflow", decl_name: "commit_workflow_plan", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "commit_workflow_plan registers in gunbc.plan_registry (its deferred checkpoint 1); the registration becomes the binding" },
+  },
+  HandAuthoredDocBind {
+    doc_path: "docs/plans/effect-namespace-grants.md",
+    work: DeclarationRef { module_path: "gunbc.plans.host_effect_orchestration", decl_name: "host_effect_orchestration_plan", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "the grant/envelope model lands (the doc's FLAG-A §6 interim is its only near-term consumer)" },
+  },
+  HandAuthoredDocBind {
+    doc_path: "docs/probes/curated_cargo_frontier_probe_report.md",
+    work: DeclarationRef { module_path: "tools.self_host_curated_probe_cargo", decl_name: "curated_probe_cargo_toml_from_cssl_authority", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "modeled probe transport lands (bash-emit #5828)" },
+  },
+  HandAuthoredDocBind {
+    doc_path: "docs/plans/rc-ownership-wrap-decision-design.md",
+    work: DeclarationRef { module_path: "v2.compiler.wrap_decision", decl_name: "WrapDecisionBundleChildLookup", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)" },
+  },
+  HandAuthoredDocBind {
+    doc_path: "docs/plans/module-identity-storage-binding-design.md",
+    work: DeclarationRef { module_path: "v2.lens.effect_reach", decl_name: "effect_reach_law", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "typed SourceRef at host boundaries is ENFORCED and the bare-string file-dependency class is migrated (effect_reach_law's own dissolve condition)" },
+  },
+  HandAuthoredDocBind {
+    doc_path: "docs/plans/module-identity-storage-binding-design.md",
+    work: DeclarationRef { module_path: "v2.workflow.witness_admission", decl_name: "consumer_for_explicit_rosters", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)" },
+  },
+  HandAuthoredDocBind {
+    doc_path: "docs/plans/live-read-witness-classification-design.md",
+    work: DeclarationRef { module_path: "v2.lens.live_read_classification", decl_name: "live_read_classification_law", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "doc migrates into a registered gunbc.plan.Plan row (the registration becomes the binding)" },
+  },
+  HandAuthoredDocBind {
+    doc_path: "docs/plans/witness-realization-plan.md",
+    work: DeclarationRef { module_path: "v2.workflow.ci_floor_plan", decl_name: "gunbc_ci_floor_batches", field: WholeDeclaration },
+    dissolution: HasTrigger { text: "dissolves into a registered gunbc.plan.Plan row when its P1 lands" },
+  },
+]
+
+fn hand_authored_doc_graph_roots() -> List<String> {
+  map(hand_authored_doc_binds, b => b.doc_path)
+}
+
+fn doc_graph_roots_all() -> List<String> {
+  concat(plan_doc_graph_roots(), hand_authored_doc_graph_roots())
 }
