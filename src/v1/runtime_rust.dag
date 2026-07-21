@@ -7,6 +7,7 @@ fn rt_header() -> String {
     "#![allow(unused_variables, dead_code)]\n\n",
     "use im::\{HashMap, OrdSet as BTreeSet, Vector as Vec\};\n",
     "use std::cell::\{Cell, RefCell\};\n",
+    "use std::rc::Rc;\n",
     "use std::sync::Arc;\n\n")
 }
 

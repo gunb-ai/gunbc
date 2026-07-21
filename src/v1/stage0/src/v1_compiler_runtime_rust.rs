@@ -9,6 +9,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub fn rt_header() -> String {
     v1_rt::concat(
@@ -25,7 +26,10 @@ pub fn rt_header() -> String {
             ),
             "use std::cell::{Cell, RefCell};\n".to_string(),
         ),
-        "use std::sync::Arc;\n\n".to_string(),
+        v1_rt::concat(
+            "use std::rc::Rc;\n".to_string(),
+            "use std::sync::Arc;\n\n".to_string(),
+        ),
     )
 }
 
