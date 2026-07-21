@@ -5,6 +5,8 @@
 # docs/plans/compile-clean-whole-tree-time-diagnosis.md.
 # dissolve-on: gunbc bash-emit capability (#5828 / ROADMAP shell-emission) realizes profile
 # orchestration through host_effect_apply transport handlers instead of hand-rolled bash.
+# Owed (not named in dissolve-on): a .dag single-authority model of the profile steps
+# themselves — today this script is the orchestration authority (locate-only interim).
 #
 # Profile whole-tree compile-clean (locate, don't fix).
 # Profile receipt: docs/plans/compile-clean-whole-tree-time-diagnosis.md

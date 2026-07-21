@@ -42,6 +42,12 @@ GUNBC_FLOOR_GANTT=1 ./target/release/compile_clean_diagnostic_histogram
 
 Harness: `scripts/profile_whole_tree_compile_clean.sh` (runs both + prints a table).
 
+**Hand-shell honesty (DESIGN §2/§3/§6):** the script is an interim locate-only receipt
+entrypoint — it carries a `SCAFFOLD — dissolve-on:` marker and names bash-emit #5828 as the
+transport retirement, but the **`.dag`-modeled profile orchestration** (single authority for
+"histogram + floor receipt + phase parse") is still owed; until that model lands, the bash
+runner *is* the authority. Acceptable for a diagnostic receipt, not for runtime orchestration.
+
 ---
 
 ## 2. Phase attribution (current main, by execution)
