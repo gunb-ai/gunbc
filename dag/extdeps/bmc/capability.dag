@@ -22,6 +22,7 @@ type BmcCapability
   | CapabilityVirtualMedia
   | CapabilityNbdProxyVirtualMedia
   | CapabilityBiosAttributeConfig
+  | CapabilitySerialConsole
 
 type BmcFirmwareVersion {
   family: BmcFirmwareFamily
