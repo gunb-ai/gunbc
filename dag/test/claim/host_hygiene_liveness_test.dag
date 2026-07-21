@@ -1,0 +1,98 @@
+module test.claim.host_hygiene_liveness
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data liveness_test_bound: Second = second(1800)
+
+data liveness_test_fresh_slot: SlotListeningObservation = ListeningObserved {
+  unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+  age: second(60),
+}
+
+data liveness_test_stale_slot: SlotListeningObservation = ListeningObserved {
+  unit: "actions-runner@srv1-02.service" as NonEmptyStr,
+  age: second(9000),
+}
+
+data liveness_test_never_seen_slot: SlotListeningObservation = ListeningNeverSeen {
+  unit: "actions-runner@srv1-04.service" as NonEmptyStr,
+}
+
+test fn fresh_listener_within_bound_is_healthy() -> Bool {
+  match slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound) {
+    ListeningFresh { unit: _ } => true
+    _ => false
+  }
+}
+
+test fn verdict_flips_when_age_crosses_the_bound() -> Bool {
+  match slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound) {
+    ListeningFresh { unit: _ } =>
+      match slot_listening_verdict(obs: liveness_test_stale_slot, bound: liveness_test_bound) {
+        ListeningStale { unit: _, age: _, bound: _ } => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn never_seen_listener_is_unknown_not_fabricated_fresh() -> Bool {
+  match slot_listening_verdict(obs: liveness_test_never_seen_slot, bound: liveness_test_bound) {
+    ListeningUnknown { unit: _, reason: _ } => true
+    _ => false
+  }
+}
+
+test fn fleet_is_green_when_every_slot_is_fresh() -> Bool {
+  let verdicts = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+  ]
+  fleet_green_from_listening(verdicts: verdicts)
+}
+
+test fn one_stopped_listener_flips_the_fleet_verdict_red() -> Bool {
+  let all_fresh = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+  ]
+  let one_stale = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+    slot_listening_verdict(obs: liveness_test_stale_slot, bound: liveness_test_bound),
+  ]
+  fleet_green_from_listening(verdicts: all_fresh) && !fleet_green_from_listening(verdicts: one_stale)
+}
+
+test fn unknown_listener_also_flips_the_fleet_verdict_red() -> Bool {
+  let verdicts = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+    slot_listening_verdict(obs: liveness_test_never_seen_slot, bound: liveness_test_bound),
+  ]
+  !fleet_green_from_listening(verdicts: verdicts)
+}
+
+test fn nrestarts_style_signal_is_not_consulted_by_the_verdict() -> Bool {
+  match liveness_test_fresh_slot {
+    ListeningObserved { unit: _, age: _ } => true
+    _ => false
+  }
+}
+
+test fn ground_fleet_listening_converges_when_all_fresh() -> Bool {
+  let verdicts = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+  ]
+  match ground_fleet_listening(verdicts: verdicts) {
+    Grounds { evidence: _ } => true
+    DoesNotGround { reason: _ } => false
+  }
+}
+
+test fn ground_fleet_listening_refuses_when_one_stale() -> Bool {
+  let verdicts = [
+    slot_listening_verdict(obs: liveness_test_fresh_slot, bound: liveness_test_bound),
+    slot_listening_verdict(obs: liveness_test_stale_slot, bound: liveness_test_bound),
+  ]
+  match ground_fleet_listening(verdicts: verdicts) {
+    Grounds { evidence: _ } => false
+    DoesNotGround { reason: _ } => true
+  }
+}

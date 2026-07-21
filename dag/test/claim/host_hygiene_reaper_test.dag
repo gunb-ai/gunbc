@@ -1,0 +1,147 @@
+module test.claim.host_hygiene_reaper
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data reaper_test_active_slot: ResidualSlotObservation = ResidualSlotObservation {
+  unit: "actions-runner@srv1-03.service" as NonEmptyStr,
+  unit_active_state: Active,
+  occupant: CgroupOrdinaryProcesses,
+  has_control_override: false,
+}
+
+data reaper_test_dead_slot_empty_no_override: ResidualSlotObservation = ResidualSlotObservation {
+  unit: "actions-runner@srv1-06.service" as NonEmptyStr,
+  unit_active_state: Inactive,
+  occupant: CgroupEmpty,
+  has_control_override: false,
+}
+
+data reaper_test_dead_slot_stale_override: ResidualSlotObservation = ResidualSlotObservation {
+  unit: "actions-runner@srv1-07.service" as NonEmptyStr,
+  unit_active_state: Inactive,
+  occupant: CgroupEmpty,
+  has_control_override: true,
+}
+
+data reaper_test_dead_slot_ordinary_residue: ResidualSlotObservation = ResidualSlotObservation {
+  unit: "actions-runner@srv1-08.service" as NonEmptyStr,
+  unit_active_state: Inactive,
+  occupant: CgroupOrdinaryProcesses,
+  has_control_override: true,
+}
+
+data reaper_test_stranded_build_cache_slot: ResidualSlotObservation = ResidualSlotObservation {
+  unit: "actions-runner@srv1-10.service" as NonEmptyStr,
+  unit_active_state: Failed,
+  occupant: CgroupBuildCacheServerOccupant,
+  has_control_override: true,
+}
+
+test fn active_unit_is_never_reaped() -> Bool {
+  match residual_reap_action(obs: reaper_test_active_slot) {
+    ReapRefused { cause: RefusalUnitActive } => true
+    _ => false
+  }
+}
+
+test fn active_unit_refusal_flips_when_unit_goes_inactive() -> Bool {
+  let toggled = ResidualSlotObservation {
+    unit: reaper_test_active_slot.unit,
+    unit_active_state: Inactive,
+    occupant: reaper_test_active_slot.occupant,
+    has_control_override: reaper_test_active_slot.has_control_override,
+  }
+  match residual_reap_action(obs: reaper_test_active_slot) {
+    ReapRefused { cause: RefusalUnitActive } =>
+      match residual_reap_action(obs: toggled) {
+        KillOccupantAndRemoveOverride => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+test fn empty_dead_slot_with_no_override_needs_no_action() -> Bool {
+  match residual_reap_action(obs: reaper_test_dead_slot_empty_no_override) {
+    NoActionNeeded => true
+    _ => false
+  }
+}
+
+test fn empty_dead_slot_with_stale_override_removes_override_only() -> Bool {
+  match residual_reap_action(obs: reaper_test_dead_slot_stale_override) {
+    RemoveOverrideOnly => true
+    _ => false
+  }
+}
+
+test fn ordinary_residue_on_dead_slot_is_killed() -> Bool {
+  match residual_reap_action(obs: reaper_test_dead_slot_ordinary_residue) {
+    KillOccupantAndRemoveOverride => true
+    _ => false
+  }
+}
+
+test fn build_cache_server_occupant_on_dead_slot_refuses_to_reap() -> Bool {
+  match residual_reap_action(obs: reaper_test_stranded_build_cache_slot) {
+    ReapRefused { cause: RefusalBuildCacheServerOccupant { unit: _ } } => true
+    _ => false
+  }
+}
+
+test fn guard_discriminates_against_the_naive_widen_sketch() -> Bool {
+  let guarded = action_kills_build_cache_server(
+    a: residual_reap_action(obs: reaper_test_stranded_build_cache_slot),
+    obs: reaper_test_stranded_build_cache_slot,
+  )
+  let naive = action_kills_build_cache_server(
+    a: residual_reap_action_absorbing_fallback_widen_sketch(obs: reaper_test_stranded_build_cache_slot),
+    obs: reaper_test_stranded_build_cache_slot,
+  )
+  !guarded && naive
+}
+
+test fn build_cache_guard_is_not_a_bare_allowlist_it_reads_occupant_structure() -> Bool {
+  let ordinary_on_same_unit = ResidualSlotObservation {
+    unit: reaper_test_stranded_build_cache_slot.unit,
+    unit_active_state: reaper_test_stranded_build_cache_slot.unit_active_state,
+    occupant: CgroupOrdinaryProcesses,
+    has_control_override: reaper_test_stranded_build_cache_slot.has_control_override,
+  }
+  match residual_reap_action(obs: ordinary_on_same_unit) {
+    KillOccupantAndRemoveOverride => true
+    _ => false
+  }
+}
+
+test fn ground_residual_reap_converges_on_clean_and_refused_only_rows() -> Bool {
+  let rows = [
+    reaper_test_active_slot,
+    reaper_test_dead_slot_empty_no_override,
+    reaper_test_stranded_build_cache_slot,
+  ]
+  match ground_residual_reap(obs_list: rows) {
+    Grounds { evidence: _ } => true
+    DoesNotGround { reason: _ } => false
+  }
+}
+
+test fn ground_residual_reap_refuses_to_ground_while_residue_remains() -> Bool {
+  let rows = [
+    reaper_test_active_slot,
+    reaper_test_dead_slot_stale_override,
+  ]
+  match ground_residual_reap(obs_list: rows) {
+    Grounds { evidence: _ } => false
+    DoesNotGround { reason: _ } => true
+  }
+}
+
+test fn exempt_causes_are_counted_not_silently_dropped() -> Bool {
+  let rows = [
+    reaper_test_active_slot,
+    reaper_test_dead_slot_empty_no_override,
+    reaper_test_stranded_build_cache_slot,
+  ]
+  collect_exempt_causes(obs_list: rows).length() == 1
+}

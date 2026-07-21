@@ -1,0 +1,43 @@
+module gunbc.host_hygiene_liveness_script
+
+import std.types { String, Bool }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data host_hygiene_liveness_script_dissolution_trigger: String = "🟡 dissolve-on: host_hygiene_liveness_script — concat-built journalctl-mining bash text. DISSOLVES WHEN bash-emit (issue 5828) realizes the liveness read as typed host-effect argv routed through host_effect_apply, retiring the raw shell_exec_via_bash transport this scaffold stands in for."
+
+data host_hygiene_liveness_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_hygiene_liveness_script",
+    decl_name: "host_hygiene_liveness_script_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data host_hygiene_liveness_slot_unit_glob: String = "actions-runner@*.service"
+
+fn host_hygiene_liveness_read_body() -> String {
+  concat(
+    concat("now_epoch=$(date +%s)\n", concat("for unit in $(systemctl list-units --all --no-legend '", concat(host_hygiene_liveness_slot_unit_glob, "' | awk '{print $1}'); do\n"))),
+    concat(
+      "  last=$(journalctl -u \"$unit\" --no-pager -o short-unix 2>/dev/null | grep -F 'Listening for Jobs' | tail -1 | awk '{print $1}')\n",
+      concat(
+        "  if [ -z \"$last\" ]; then\n    printf 'HostHygieneListeningReceipt: unit=%s state=never_seen\\n' \"$unit\"\n    continue\n  fi\n",
+        concat(
+          "  last_int=${last%%.*}\n",
+          concat(
+            "  age=$((now_epoch - last_int))\n",
+            "  printf 'HostHygieneListeningReceipt: unit=%s state=observed age_seconds=%s\\n' \"$unit\" \"$age\"\ndone\n"
+          )
+        )
+      )
+    )
+  )
+}
+
+fn host_hygiene_liveness_reads_listening_for_jobs_line() -> Bool {
+  string_contains(s: host_hygiene_liveness_read_body(), pattern: "Listening for Jobs")
+    && string_contains(s: host_hygiene_liveness_read_body(), pattern: "state=never_seen")
+    && string_contains(s: host_hygiene_liveness_read_body(), pattern: "age_seconds=")
+}
