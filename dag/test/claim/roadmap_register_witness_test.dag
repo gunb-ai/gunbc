@@ -6,7 +6,11 @@ import gunbc.site.tokens {
   BuildRule, StaticRule, CssDecl, decl,
   ThemeRole, theme_roles, themes_coherent, day_theme, night_theme,
   reduced_motion_block, role_key, respond_fast,
+  Theme, Material, RoleAssignment, role_eq, paint,
+  CanvasRole, FigureLitRole, FieldArea, PointArea,
+  theme_root_css, serialize_rules,
 }
+import gunbc.site.moodboard { moodboard_rules, moodboard_css }
 import gunbc.site.theme_transition { unthemed_color_decls }
 import gunbc.site.mark { render_mark }
 import gunbc.site.interaction {
@@ -26,7 +30,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data roadmap_register_witness_note: String = "The roadmap dashboard as a register SITE INSTANCE (slice 1 of the roadmap-onto-register refactor, parent-acked 2026-07-21): the instance inherits the register laws by executing them over its own emission — themes_coherent over the exact Theme rows roadmap_css projects (totality, area coherence, chroma admissibility, WCAG contrast — one law set, N surfaces, never a roadmap fork); the unthemed-color census over the exact BuildRule rows the page serializes, with the RED a resurrection of the precise historical regression this refactor deleted (the hand-hex #0969da link blue) proving the census discriminates rather than vacuously passing; the shared Confluence mark consumed at nav depth from the one render authority (favicon/nav/hero cannot disagree, mark.dag). Slice 2 (manager-signed) flipped the response pin deliberately: the dispatch button's behaviors are declared rows (Approach->Brighten, Dispatch->Receipt) REALIZED through roadmap_realize_behavior — coverage total, unrealized census empty, both with located REDs (a dropped row NAMES its gap; a row with no realize arm is counted, never silently skipped) — and the reduced-motion collapse ships derived from the same rules. The Dashboard archetype rows are cross-checked BOTH directions against the shipped stylesheet: demanded-but-unused and used-but-undeclared each red (names-not-values made executable)."
+data roadmap_register_witness_note: String = "The roadmap dashboard as a register SITE INSTANCE (slice 1 of the roadmap-onto-register refactor, parent-acked 2026-07-21): the instance inherits the register laws by executing them over its own emission — themes_coherent over the exact Theme rows roadmap_css projects (totality, area coherence, chroma admissibility, WCAG contrast — one law set, N surfaces, never a roadmap fork); the unthemed-color census over the exact BuildRule rows the page serializes, with the RED a resurrection of the precise historical regression this refactor deleted (the hand-hex #0969da link blue) proving the census discriminates rather than vacuously passing; the shared Confluence mark consumed at nav depth from the one render authority (favicon/nav/hero cannot disagree, mark.dag). Slice 2 (manager-signed) flipped the response pin deliberately: the dispatch button's behaviors are declared rows (Approach->Brighten, Dispatch->Receipt) REALIZED through roadmap_realize_behavior — coverage total, unrealized census empty, both with located REDs (a dropped row NAMES its gap; a row with no realize arm is counted, never silently skipped) — and the reduced-motion collapse ships derived from the same rules. The Dashboard archetype rows are cross-checked BOTH directions against the shipped stylesheet: demanded-but-unused and used-but-undeclared each red (names-not-values made executable). Slice 3 is the PROPAGATION PROOF (the operator-named deliverable): one in-memory perturbation of a day-theme material moves the shared theme_root_css derivation both pages embed verbatim (embedding proven by string containment against each page's shipped css), and both surfaces consume the perturbed role — one authority edit, every site moves, by derivation not by hand-hunt. The scoped control: a FigureLitRole perturbation moves the shared var block but reaches PAINT only on the site (moodboard consumes var(--figure-lit); the roadmap's archetype demand excludes it and its rules carry no such var) — the demand profile executes as a real propagation boundary, not paperwork."
 
 fn witness_roadmap_theme_set_coherent() -> Bool {
   themes_coherent(themes: [day_theme, night_theme], roles: theme_roles)
@@ -108,6 +112,50 @@ fn witness_header_carries_shared_mark() -> Bool {
     && header_children_contain_mark(h: roadmap_header(title: "gunbc — daily workspace"))
 }
 
+fn theme_with_role_material(t: Theme, target: ThemeRole, m: Material) -> Theme {
+  Theme {
+    name: t.name,
+    scheme: t.scheme,
+    assignments: map(t.assignments, a =>
+      if role_eq(a: a.role, b: target) {
+        RoleAssignment { role: a.role, material: m, alpha_pct: a.alpha_pct }
+      } else {
+        a
+      }),
+  }
+}
+
+fn probe_canvas_material() -> Material {
+  Material { name: "probe-canvas", hue: 41, sat_pct: 32, light_pct: 95, area: FieldArea }
+}
+
+fn probe_figure_lit_material() -> Material {
+  Material { name: "probe-figure-lit", hue: 227, sat_pct: 58, light_pct: 20, area: PointArea }
+}
+
+fn witness_upstream_edit_propagates_to_both_surfaces() -> Bool {
+  let base = theme_root_css(base: day_theme, alternate: night_theme)
+  let perturbed_day = theme_with_role_material(t: day_theme, target: CanvasRole, m: probe_canvas_material())
+  let moved = theme_root_css(base: perturbed_day, alternate: night_theme)
+  let unchanged = base == moved
+  !unchanged
+    && string_contains(s: moved, pattern: paint(m: probe_canvas_material()))
+    && string_contains(s: roadmap_css(), pattern: base)
+    && string_contains(s: moodboard_css(), pattern: theme_root_css(base: night_theme, alternate: day_theme))
+    && string_contains(s: serialize_rules(rules: roadmap_rules()), pattern: "var(--canvas)")
+    && string_contains(s: serialize_rules(rules: moodboard_rules()), pattern: "var(--canvas)")
+}
+
+fn witness_propagation_scoped_by_demand() -> Bool {
+  let base = theme_root_css(base: day_theme, alternate: night_theme)
+  let perturbed_day = theme_with_role_material(t: day_theme, target: FigureLitRole, m: probe_figure_lit_material())
+  let moved = theme_root_css(base: perturbed_day, alternate: night_theme)
+  let unchanged = base == moved
+  !unchanged
+    && string_contains(s: serialize_rules(rules: moodboard_rules()), pattern: "var(--figure-lit)")
+    && !string_contains(s: serialize_rules(rules: roadmap_rules()), pattern: "var(--figure-lit)")
+}
+
 test fn roadmap_register_keystone_holds() -> Bool {
   witness_roadmap_theme_set_coherent()
     && witness_roadmap_colors_all_routed()
@@ -119,4 +167,6 @@ test fn roadmap_register_keystone_holds() -> Bool {
     && witness_archetype_demand_matches_shipped_css()
     && witness_archetype_verbs_match_declared_elements()
     && witness_header_carries_shared_mark()
+    && witness_upstream_edit_propagates_to_both_surfaces()
+    && witness_propagation_scoped_by_demand()
 }
