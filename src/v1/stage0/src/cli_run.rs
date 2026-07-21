@@ -18668,8 +18668,12 @@ pub fn resolution_divergence_silent_pick_refusal(census: &ResolutionDivergenceCe
     if total == 0 {
         return None;
     }
+    // "SILENT-PICK-GATE" is a stable, greppable marker (parent-session guardrail,
+    // 2026-07-21): the falsifier is currently red for unrelated reasons on other
+    // batches, so this refusal must self-identify rather than ride an
+    // undifferentiated job-conclusion flip.
     let mut lines = vec![format!(
-        "resolution-divergence-census: SILENT_PICK regression: {total} silent pick(s) \
+        "SILENT-PICK-GATE: resolution-divergence-census: SILENT_PICK regression: {total} silent pick(s) \
          (global_bare_lcp={} global_bare_lcp_tie={} fn_parent_first_hit={}) — DESIGN §5/§13: \
          a resolver that silently picks among >=2 candidates must refuse, never pick",
         census.silent_pick_global_bare_lcp,
@@ -18678,19 +18682,19 @@ pub fn resolution_divergence_silent_pick_refusal(census: &ResolutionDivergenceCe
     )];
     for row in &census.silent_pick_global_bare_lcp_rows {
         lines.push(format!(
-            "  SILENT_PICK_GLOBAL_BARE_LCP module={} name={} candidates={} chosen_module={}",
+            "  SILENT-PICK-GATE SILENT_PICK_GLOBAL_BARE_LCP module={} name={} candidates={} chosen_module={}",
             row.env_module_path, row.name, row.candidate_count, row.chosen_module_path,
         ));
     }
     for row in &census.silent_pick_global_bare_lcp_tie_rows {
         lines.push(format!(
-            "  SILENT_PICK_GLOBAL_BARE_LCP_TIE module={} name={} candidates={}",
+            "  SILENT-PICK-GATE SILENT_PICK_GLOBAL_BARE_LCP_TIE module={} name={} candidates={}",
             row.env_module_path, row.name, row.candidate_count,
         ));
     }
     for row in &census.silent_pick_fn_parent_first_hit_rows {
         lines.push(format!(
-            "  SILENT_PICK_FN_PARENT_FIRST_HIT module={} name={} parent_matches={} chosen_parent={}",
+            "  SILENT-PICK-GATE SILENT_PICK_FN_PARENT_FIRST_HIT module={} name={} parent_matches={} chosen_parent={}",
             row.env_module_path, row.name, row.parent_match_count, row.chosen_parent_module,
         ));
     }
@@ -18949,7 +18953,8 @@ mod resolution_divergence_census_tests {
     use super::{
         build_module_item_index, containment_resolve_fn_v1, containment_resolve_fn_v1_for_module,
         import_chain_owner, lookup_resolved_sig, resolution_divergence_census_live,
-        whole_tree_resolved_ctx, ContainmentResolve, ResolutionDivergenceBucket, WholeTreeCtx,
+        resolution_divergence_silent_pick_refusal, whole_tree_resolved_ctx, ContainmentResolve,
+        ResolutionDivergenceBucket, WholeTreeCtx,
     };
     use crate::v1_interpreter::ExecutionMode::Wet;
 
@@ -19085,6 +19090,156 @@ fn caller() -> Bool {
                 containment_binding.owner_module
             );
         }
+        let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    fn silent_pick_fixture_root(tag: &str) -> std::path::PathBuf {
+        super::process_workspace_root()
+            .join("target")
+            .join(format!("gunbc-resdiv-silentpick-{tag}-{}", std::process::id()))
+    }
+
+    /// Two sibling modules each declare `shared_pick`; the leaf imports one *named*
+    /// item from each (pulling each module's whole func_env in as a parent per
+    /// `v1_compiler_infer.rs`'s parent_envs construction) and calls `shared_pick`
+    /// bare/unqualified — never itself an imported name. That forces
+    /// `lookup_resolved_sig_with_telemetry`'s parent fold to see match_count=2 and
+    /// fire `fn_parent_first_hit`: a real §13 silent pick, not a synthetic count.
+    #[test]
+    fn resolution_divergence_silent_pick_positive_control_fires() {
+        let ws = super::process_workspace_root();
+        let fixture = silent_pick_fixture_root("fire");
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "a.dag",
+            r#"module test.silentpick.a
+
+import std.types { Bool }
+
+fn unrelated_a(x: Bool) -> Bool {
+  return x
+}
+
+fn shared_pick(x: Bool) -> Bool {
+  return x
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "b.dag",
+            r#"module test.silentpick.b
+
+import std.types { Bool }
+
+fn unrelated_b(x: Bool) -> Bool {
+  return x
+}
+
+fn shared_pick(x: Bool, y: Bool) -> Bool {
+  return x
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "leaf.dag",
+            r#"module test.silentpick.leaf
+
+import std.types { Bool }
+import test.silentpick.a { unrelated_a }
+import test.silentpick.b { unrelated_b }
+
+fn caller() -> Bool {
+  return shared_pick(False)
+}
+"#,
+        );
+        let roots = vec![
+            fixture.to_string_lossy().into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+        ];
+        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
+        assert!(
+            census.silent_pick_fn_parent_first_hit >= 1,
+            "expected a real fn_parent_first_hit silent pick, got 0 (silent_pick_global_bare_lcp={} silent_pick_global_bare_lcp_tie={})",
+            census.silent_pick_global_bare_lcp,
+            census.silent_pick_global_bare_lcp_tie,
+        );
+        assert!(
+            census
+                .silent_pick_fn_parent_first_hit_rows
+                .iter()
+                .any(|row| row.name == "shared_pick" && row.parent_match_count >= 2),
+            "expected a shared_pick row with parent_match_count>=2, got {:?}",
+            census.silent_pick_fn_parent_first_hit_rows
+        );
+        let refusal = resolution_divergence_silent_pick_refusal(&census);
+        assert!(
+            refusal.is_some(),
+            "§5 gate must refuse on a planted silent pick, got None"
+        );
+        let refusal_text = refusal.unwrap();
+        assert!(
+            refusal_text.contains("SILENT_PICK regression"),
+            "refusal must self-identify as a SILENT_PICK regression, got: {refusal_text}"
+        );
+        let _ = std::fs::remove_dir_all(&fixture);
+    }
+
+    /// Same fixture family, but the leaf imports only module `a` — one parent, not
+    /// two — so `shared_pick` resolves via a single parent hit (match_count=1) and
+    /// no telemetry fires. Proves the gate does not over-trigger on ordinary
+    /// bare-name-via-parent resolution, only on a genuine >=2-candidate collision.
+    #[test]
+    fn resolution_divergence_silent_pick_clean_corpus_refusal_none() {
+        let ws = super::process_workspace_root();
+        let fixture = silent_pick_fixture_root("clean");
+        let _ = std::fs::remove_dir_all(&fixture);
+        write_fixture(
+            &fixture,
+            "a.dag",
+            r#"module test.silentpickclean.a
+
+import std.types { Bool }
+
+fn unrelated_a(x: Bool) -> Bool {
+  return x
+}
+
+fn shared_pick(x: Bool) -> Bool {
+  return x
+}
+"#,
+        );
+        write_fixture(
+            &fixture,
+            "leaf.dag",
+            r#"module test.silentpickclean.leaf
+
+import std.types { Bool }
+import test.silentpickclean.a { unrelated_a }
+
+fn caller() -> Bool {
+  return shared_pick(False)
+}
+"#,
+        );
+        let roots = vec![
+            fixture.to_string_lossy().into_owned(),
+            ws.join("dag/std").to_string_lossy().into_owned(),
+        ];
+        let census = resolution_divergence_census_live(&roots, &[]).expect("resolve");
+        assert_eq!(
+            census.silent_pick_fn_parent_first_hit, 0,
+            "single-parent bare resolution must not fire silent-pick telemetry, rows={:?}",
+            census.silent_pick_fn_parent_first_hit_rows
+        );
+        assert!(
+            resolution_divergence_silent_pick_refusal(&census).is_none(),
+            "§5 gate must be None on a clean corpus with no silent pick"
+        );
         let _ = std::fs::remove_dir_all(&fixture);
     }
 }

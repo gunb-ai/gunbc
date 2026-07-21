@@ -78,6 +78,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("{refusal}");
         return Err(ExitCode::from(1));
     }
+    println!("SILENT-PICK-GATE: clean (0 silent picks, sites_checked={})", census.sites_checked);
     Ok(ExitCode::SUCCESS)
 }
 
