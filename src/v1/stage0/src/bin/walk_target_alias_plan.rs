@@ -71,7 +71,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     })?;
     let report = format_walk_target_alias_plan(&plan);
     println!("{report}");
-    if plan.global_bare_lcp_events == 0 && plan.fn_parent_first_hit_events == 0 {
+    if plan.global_bare_lcp_events == 0
+        && plan.global_bare_lcp_tie_events == 0
+        && plan.fn_parent_first_hit_events == 0
+    {
         eprintln!("walk_target_alias_plan: no silent-pick events in resolved corpus");
         return Err(ExitCode::from(2));
     }
