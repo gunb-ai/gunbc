@@ -16,7 +16,7 @@ use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::{
     lookup_binding_by_name, lookup_type_by_name, qualified_all_but_last, symbol_index_insert,
-    symbol_index_lookup, GlobalBareCandidate, GlobalBareLookupState, SymbolIndex, TypeEnv,
+    symbol_index_lookup, GlobalBareLookupState, SymbolIndex, TypeEnv,
 };
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_infer_lookup::global_bare_callable_node;
@@ -18630,6 +18630,23 @@ pub struct WalkTargetAliasPlan {
     pub fn_parent_first_hit_events: usize,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
+    /// Relative source-root labels joined with `+` (never hardcoded).
+    pub source_scope_label: String,
+}
+
+/// Format plan scope from caller-supplied source roots (relative to workspace when possible).
+pub fn walk_target_alias_plan_scope_label(source_roots: &[String]) -> String {
+    let ws = process_workspace_root();
+    source_roots
+        .iter()
+        .map(|root| {
+            Path::new(root)
+                .strip_prefix(&ws)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| root.clone())
+        })
+        .collect::<Vec<_>>()
+        .join("+")
 }
 
 fn build_module_type_env_map(ctx: &v1_interpreter::InterpContext) -> HashMap<String, Rc<TypeEnv>> {
@@ -18833,7 +18850,9 @@ pub fn walk_target_alias_plan_live(
     census.modules_resolved = modules_resolved;
     census.modules_excluded = modules_excluded;
     merge_silent_pick_telemetry(&mut census, silent_picks);
-    Ok(walk_target_alias_plan_from_census(&ctx, &census))
+    let mut plan = walk_target_alias_plan_from_census(&ctx, &census);
+    plan.source_scope_label = walk_target_alias_plan_scope_label(source_roots);
+    Ok(plan)
 }
 
 pub fn format_walk_target_alias_plan(plan: &WalkTargetAliasPlan) -> String {
