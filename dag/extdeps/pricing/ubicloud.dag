@@ -23,7 +23,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data ubicloud_pricing_provenance_note: String = "Per-minute managed-runner prices live-fetched 2026-07-21 from Ubicloud pricing docs (anchor above). Premium x64 is the default tier for new users (standard deprecated June 2026 per vendor). arm64 single-price column cited from the same page. Hardware facts project from extdeps.cloud.ubicloud catalog rows — not re-stated here."
 
-type UbicloudRunnerPricingTier = PremiumX64 | StandardX64 | Arm64
+type UbicloudRunnerPricingTier = PremiumX64 | Arm64
 
 type UbicloudRunnerPriceRow {
   catalog: UbicloudRunnerCatalogRow
