@@ -29,9 +29,15 @@ type PositiveInt    = Nat where gt_zero
 
 data uint8_channel_bit_width: Nat = 8
 
-fn uint8_channel_inclusive_max_value() -> Int? {
+data uint8_channel_inclusive_max: Int = 255
+
+fn uint8_channel_inclusive_max_value_derived() -> Int? {
   match int_pow_bounded(base: 2, exp: uint8_channel_bit_width) {
     Present { value: two_pow } => Present { value: two_pow - 1 }
     Absent => none
   }
+}
+
+fn uint8_channel_inclusive_max_value() -> Int {
+  uint8_channel_inclusive_max
 }

@@ -32,13 +32,10 @@ type CitedColorRow {
 }
 
 fn srgb8_admissible(c: Srgb8) -> Bool {
-  match uint8_channel_inclusive_max_value() {
-    Present { value: maxv } =>
-      c.r >= 0 && c.r <= maxv
-        && c.g >= 0 && c.g <= maxv
-        && c.b >= 0 && c.b <= maxv
-    Absent => false
-  }
+  let maxv = uint8_channel_inclusive_max_value()
+  c.r >= 0 && c.r <= maxv
+    && c.g >= 0 && c.g <= maxv
+    && c.b >= 0 && c.b <= maxv
 }
 
 fn srgb8_hex(c: Srgb8) -> String {
@@ -53,13 +50,11 @@ type RgbScaled {
 
 fn srgb8_to_scaled(c: Srgb8) -> RgbScaled {
   let denom = permyriad_denominator
-  match uint8_channel_inclusive_max_value() {
-    Present { value: maxv } => RgbScaled {
-      r: (c.r * denom) / maxv,
-      g: (c.g * denom) / maxv,
-      b: (c.b * denom) / maxv,
-    }
-    Absent => RgbScaled { r: 0, g: 0, b: 0 }
+  let maxv = uint8_channel_inclusive_max_value()
+  RgbScaled {
+    r: (c.r * denom) / maxv,
+    g: (c.g * denom) / maxv,
+    b: (c.b * denom) / maxv,
   }
 }
 
@@ -135,10 +130,8 @@ fn pct_round_from_scaled(v_scaled: Int) -> Int {
 
 fn srgb8_to_hsl_projection(c: Srgb8) -> HslProjection {
   let denom = permyriad_denominator
-  match uint8_channel_inclusive_max_value() {
-    Present { value: maxv } => srgb8_to_hsl_projection_for_max(c: c, maxv: maxv, denom: denom)
-    Absent => Achromatic { l_pct: 0 }
-  }
+  let maxv = uint8_channel_inclusive_max_value()
+  srgb8_to_hsl_projection_for_max(c: c, maxv: maxv, denom: denom)
 }
 
 fn srgb8_to_hsl_projection_for_max(c: Srgb8, maxv: Int, denom: Int) -> HslProjection {
