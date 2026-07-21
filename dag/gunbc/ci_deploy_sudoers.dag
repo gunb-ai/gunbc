@@ -104,10 +104,3 @@ fn deploy_sudoers_install_shell(access: DeployAccess) -> String {
     "sudo -n visudo -cf ", gunbc_deploy_sudoers_dropin as String,
   ], "")
 }
-
-fn deploy_sudoers_converge_verify_shell(access: DeployAccess) -> String {
-  concat(
-    "cmp -s \"$_gunbc_stage/gunbc-deploy.sudoers\" ",
-    concat(gunbc_deploy_sudoers_dropin as String, " || { echo deploy_sudoers: converge mismatch; exit 1; }")
-  )
-}
