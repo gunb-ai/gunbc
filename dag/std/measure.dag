@@ -89,6 +89,10 @@ fn seconds_per_minute() -> Nat {
   60
 }
 
+fn minutes_per_hour() -> Nat {
+  60
+}
+
 fn time_scale_factor_seconds(s: Scale) -> Nat? {
   match s {
     One => Present { value: 1 }
@@ -271,6 +275,8 @@ type MoneyPerHour { amount: MoneyAmountMicro, currency: CurrencyCode }
 
 type MoneyPerMonth { amount: MoneyAmountMicro, currency: CurrencyCode }
 
+type MoneyOnce { amount: MoneyAmountMicro, currency: CurrencyCode }
+
 fn money_per_minute_micros(q: MoneyPerMinute) -> Nat {
   money_amount_micro_count(m: q.amount)
 }
@@ -283,9 +289,13 @@ fn money_per_month_micros(q: MoneyPerMonth) -> Nat {
   money_amount_micro_count(m: q.amount)
 }
 
+fn money_once_micros(q: MoneyOnce) -> Nat {
+  money_amount_micro_count(m: q.amount)
+}
+
 fn per_hour_equivalent_from_per_minute(q: MoneyPerMinute) -> MoneyPerHour {
   MoneyPerHour {
-    amount: money_amount_micro(count: money_per_minute_micros(q: q) * seconds_per_minute()),
+    amount: money_amount_micro(count: money_per_minute_micros(q: q) * minutes_per_hour()),
     currency: q.currency,
   }
 }

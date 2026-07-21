@@ -1,13 +1,13 @@
 module extdeps.pricing.hetzner_dedicated
 
-import std.currency { CurrencyCode, Eur }
+import std.currency { Eur }
 import std.measure {
   ByteSize,
   byte_size,
-  MoneyAmountMicro,
+  MoneyOnce,
   MoneyPerMonth,
   money_amount_micro,
-  money_amount_micro_count,
+  money_once_micros,
 }
 import std.nat { Nat }
 import std.types { NonEmptyStr, List }
@@ -37,8 +37,7 @@ type HetznerDedicatedServerPriceRow {
   memory_bytes: ByteSize
   storage_bytes: ByteSize
   monthly: MoneyPerMonth
-  setup_fee: MoneyAmountMicro
-  currency: CurrencyCode
+  setup_fee: MoneyOnce
   pricing_citation: NonEmptyStr
 }
 
@@ -52,8 +51,10 @@ data hetzner_ax41_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicated
     amount: money_amount_micro(count: 57300000),
     currency: Eur,
   },
-  setup_fee: money_amount_micro(count: 0),
-  currency: Eur,
+  setup_fee: MoneyOnce {
+    amount: money_amount_micro(count: 0),
+    currency: Eur,
+  },
   pricing_citation: "GE-D9256#AX41-1-LTD",
 }
 
@@ -67,8 +68,10 @@ data hetzner_ax42_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicated
     amount: money_amount_micro(count: 77300000),
     currency: Eur,
   },
-  setup_fee: money_amount_micro(count: 39000000),
-  currency: Eur,
+  setup_fee: MoneyOnce {
+    amount: money_amount_micro(count: 39000000),
+    currency: Eur,
+  },
   pricing_citation: "GE-D9256#AX42-1-LTD",
 }
 
@@ -82,8 +85,10 @@ data hetzner_ax42_1_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServ
     amount: money_amount_micro(count: 97300000),
     currency: Eur,
   },
-  setup_fee: money_amount_micro(count: 49000000),
-  currency: Eur,
+  setup_fee: MoneyOnce {
+    amount: money_amount_micro(count: 49000000),
+    currency: Eur,
+  },
   pricing_citation: "GE-D9256#AX42-1",
 }
 
@@ -97,8 +102,10 @@ data hetzner_ax102_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicate
     amount: money_amount_micro(count: 157300000),
     currency: Eur,
   },
-  setup_fee: money_amount_micro(count: 39000000),
-  currency: Eur,
+  setup_fee: MoneyOnce {
+    amount: money_amount_micro(count: 39000000),
+    currency: Eur,
+  },
   pricing_citation: "GE-D9256#AX102-1-LTD",
 }
 
@@ -112,5 +119,5 @@ fn hetzner_dedicated_price_catalog() -> List<HetznerDedicatedServerPriceRow> {
 }
 
 fn hetzner_dedicated_setup_fee_micros(row: HetznerDedicatedServerPriceRow) -> Nat {
-  money_amount_micro_count(m: row.setup_fee)
+  money_once_micros(q: row.setup_fee)
 }
