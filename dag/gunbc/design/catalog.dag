@@ -1,6 +1,7 @@
 module gunbc.design.catalog
 
 import std.types { Int, String, Bool }
+<<<<<<< HEAD
 import std.color { Srgb8, PaletteSwatch, srgb8 }
 import gunbc.design.palette {
   Palette, PaletteProvenance, Cited, HouseAuthored,
@@ -54,4 +55,31 @@ fn catalog_admissible() -> Bool {
     && all(palette_catalog, p => palette_admissible(p: p))
     && okabe_ito_swatches.length() == 8
     && solarized_swatches.length() == 16
+=======
+import extdeps.color.srgb { Srgb8 }
+import gunbc.design.palette { Swatch, SwatchSet, SwatchSetProvenance, InspiredByExternal, swatch_set_admissible }
+
+data design_catalog_note: String = "The palette catalogue: the single home for approved color sets (operator directive 2026-07-21 — every palette in the repo derives from here; a color literal outside the catalogue and the site register is the wall the Phase-A lift closes). One data row per set, vendor-style; measured colorimetry receipts live in the witness (test.claim.design_palette_witness), graded by execution through the cited WCAG kernel — never restated here as prose numbers (no dual representation)."
+
+data island_pastel_provenance_note: String = "Soft high-key pastel register, operator-supplied swatches 2026-07-21, inspired by Animal Crossing: New Horizons UI colorways (inspiration, not citation — no upstream spec exists to cite). Character, measured in OKLCH (offline per CSS Color 4 sRGB<->OKLab; in-substrate recompute is the A.2 trigger, design-register-library.md sect 10 Class 2): four tints at L 0.89-1.00 with moderate perceptual chroma C 0.007-0.164 over one warm camel anchor at L 0.68 — the set the HSL saturation axis misreads as neon (mint reads hsl-S 100% at C 0.142; ivory reads hsl-S 100% at C 0.007), the discriminating case for the A.2 OKLCH re-ground of the register walls. loam is DERIVED, not authored: camel's hue projected to ink depth, oklch(0.45 0.085 73) -> #724d15, so the set carries its own text ink in-family; dissolution: recompute the projection in-substrate at A.2 and pin equality. No authored pair reaches any WCAG grade (best: camel on ivory, just under 3:1) — text capability enters via loam only; the witness pins both facts by execution."
+
+data island_mint: Swatch = Swatch { name: "mint", color: Srgb8 { r: 157, g: 255, b: 176 } }
+data island_aqua: Swatch = Swatch { name: "aqua", color: Srgb8 { r: 129, g: 241, b: 247 } }
+data island_ivory: Swatch = Swatch { name: "ivory", color: Srgb8 { r: 255, g: 255, b: 250 } }
+data island_camel: Swatch = Swatch { name: "camel", color: Srgb8 { r: 196, g: 141, b: 63 } }
+data island_butter: Swatch = Swatch { name: "butter", color: Srgb8 { r: 255, g: 245, b: 99 } }
+data island_loam: Swatch = Swatch { name: "loam", color: Srgb8 { r: 114, g: 77, b: 21 } }
+
+data island_pastel: SwatchSet = SwatchSet {
+  name: "island-pastel",
+  provenance: InspiredByExternal { note: island_pastel_provenance_note },
+  swatches: [island_mint, island_aqua, island_ivory, island_camel, island_butter, island_loam],
+}
+
+data palette_catalog: List<SwatchSet> = [island_pastel]
+
+fn catalog_admissible() -> Bool {
+  palette_catalog.length() > 0
+    && all(palette_catalog, s => swatch_set_admissible(s: s))
+>>>>>>> origin/main
 }
