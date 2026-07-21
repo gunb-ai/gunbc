@@ -164,6 +164,7 @@ fn witness_fresh_standup_bootstrap_emit_bytes_hold() -> Bool {
     && has(s: sh, p: gunbc_host_gunbc_root_path)
     && has(s: sh, p: "cargo build -p v1-compiler --release --bin gunbc")
     && !has(s: sh, p: fresh_standup_bootstrap_emit_refused_poison)
+    && fresh_standup_bootstrap_committed_byte_oracle_holds()
 }
 
 fn witness_fresh_standup_bootstrap_arm_perturb_red() -> Bool {
@@ -173,8 +174,8 @@ fn witness_fresh_standup_bootstrap_arm_perturb_red() -> Bool {
 
 fn witness_fresh_standup_bootstrap_emit_dissolution_scaffold() -> Bool {
   match fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger {
-    Scaffold { dissolves_to: _, bind: _ } => true
-    Terminal { reason: _ } => false
+    Terminal { reason: _ } => true
+    Scaffold { dissolves_to: _, bind: _ } => false
   }
 }
 

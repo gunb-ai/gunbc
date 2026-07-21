@@ -10,6 +10,7 @@ import std.layout {
   render
 }
 import std.disposition { Disposition, RealizationDispatch, Scaffold, Terminal }
+import extdeps.filesystem.filesystem_io { filesystem_read }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.fleet_converge_apply {
   converge_apply,
@@ -209,6 +210,19 @@ fn fresh_standup_bootstrap_arm_golden() -> String {
   )
 }
 
+fn fresh_standup_bootstrap_srv3_thin_line() -> String {
+  "gunbc converge --host \"srv3\" || host_failed=1"
+}
+
+fn fresh_standup_bootstrap_committed_byte_oracle_holds() -> Bool {
+  let committed = filesystem_read(path: ".github/fleet-converge.sh").content
+  let arm = fresh_standup_bootstrap_arm_golden()
+  let seam = concat(arm, fresh_standup_bootstrap_srv3_thin_line())
+  string_contains(s: committed, pattern: seam)
+    && !string_contains(s: committed, pattern: concat(seam, "x"))
+    && !string_contains(s: fresh_standup_bootstrap_script(), pattern: fresh_standup_bootstrap_emit_refused_poison)
+}
+
 fn thin_invocation_shell_line(host: HostIdentity) -> String {
   let inv = fleet_converge_thin_invocation(host: host)
   concat("gunbc converge --host ", sh_arg(s: inv.argv.last()))
@@ -310,11 +324,6 @@ data fleet_converge_steady_state_doc_projection_dissolution_trigger: Disposition
   }
 }
 
-data fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger: Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
-    module_path: "gunbc.fleet_converge_emit",
-    decl_name: "fresh_standup_bootstrap_intent",
-    field: WholeDeclaration
-  }
+data fleet_converge_fresh_standup_bootstrap_emit_dissolution_trigger: Disposition = Terminal {
+  reason: "fresh-standup bootstrap routes through orch_emit_pipeline(intent,Bash) on fresh_standup_bootstrap_intent; fresh_standup_bootstrap_committed_byte_oracle_holds witnesses exact arm+thin-run seam vs .github/fleet-converge.sh (shell→dag P2 consumer slice, #6573/#6585)"
 }
