@@ -1,0 +1,114 @@
+module gunbc.design.palette
+
+import std.types { Int, String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.color.srgb { Srgb8, srgb8_admissible, srgb8_hex }
+import extdeps.accessibility.wcag_contrast {
+  srgb8_contrast_ratio_x100,
+  wcag_aa_normal_text_hundredths,
+  wcag_aa_large_text_and_graphics_hundredths,
+  wcag_aaa_normal_text_hundredths,
+}
+
+data design_palette_note: String = "L2 palette-catalogue machinery (design-register-library.md — landed ahead of the Phase-A lift by operator request 2026-07-21; additive only, gunbc.site untouched). A SwatchSet is catalogued raw material: named colors with authored Srgb8 identity and explicit provenance — the common location every downstream palette derives from. Approval of a combination is COMPUTED, never hand-flagged: PairingGrade derives from the cited WCAG kernel against the named thresholds (sect 5 construction — an approved-combination row that fails its threshold is unwritable because approval IS the computed grade; names-not-values — thresholds import from the cite, no literal here). Pairings are ordered figure-on-ground (the WCAG ratio is symmetric; usage direction is not). graded_pairings is TOTAL over ordered distinct pairs by construction — no string-keyed roster to fall open on (sect 10 Class 3). A swatch set with no text-capable pairing is still cataloguable (the set is a fact; capability is a computed property of it) — binding such a set to text roles is what refuses, at theme level. DTCG interchange (W3C Design Tokens Community Group format) is the named external surface for swap-in/swap-out; its citation and emit land with the first external consumer, not speculatively (sect 6). Dissolution notes: when the Phase-A lift re-grounds gunbc.site materials, Material color identity re-homes onto catalogue swatches and the theme layer becomes the binding of ThemeRole -> Swatch — this module is the substrate for that, not a parallel color story."
+
+type Swatch {
+  name: String
+  color: Srgb8
+}
+
+type SwatchSetProvenance
+  = HouseAuthored { note: String }
+  | InspiredByExternal { note: String }
+  | CitedUpstream { authority: ExternalAuthority }
+
+type SwatchSet {
+  name: String
+  provenance: SwatchSetProvenance
+  swatches: List<Swatch>
+}
+
+fn swatch_paint(sw: Swatch) -> String {
+  srgb8_hex(c: sw.color)
+}
+
+fn name_seen(seen: List<String>, n: String) -> Bool {
+  fold(seen, init: false, f: (acc, x) => acc || x == n)
+}
+
+fn swatch_names_distinct(swatches: List<Swatch>) -> Bool {
+  let names = map(swatches, s => s.name)
+  let uniq = fold(names, init: [], f: (acc, n) =>
+    if name_seen(seen: acc, n: n) { acc } else { concat(acc, [n]) })
+  uniq.length() == names.length()
+}
+
+fn swatch_set_admissible(s: SwatchSet) -> Bool {
+  s.swatches.length() > 0
+    && all(s.swatches, sw => srgb8_admissible(c: sw.color))
+    && swatch_names_distinct(swatches: s.swatches)
+}
+
+type PairingGrade
+  = TextAaa
+  | TextAa
+  | LargeTextOrGraphicsAa
+  | DecorationOnly
+
+fn grade_rank(g: PairingGrade) -> Int {
+  match g {
+    TextAaa => 3
+    TextAa => 2
+    LargeTextOrGraphicsAa => 1
+    DecorationOnly => 0
+  }
+}
+
+fn grade_key(g: PairingGrade) -> String {
+  match g {
+    TextAaa => "text-aaa"
+    TextAa => "text-aa"
+    LargeTextOrGraphicsAa => "large-text-or-graphics-aa"
+    DecorationOnly => "decoration-only"
+  }
+}
+
+fn grade_of_contrast(contrast_x100: Int) -> PairingGrade {
+  if contrast_x100 >= wcag_aaa_normal_text_hundredths {
+    TextAaa
+  } else if contrast_x100 >= wcag_aa_normal_text_hundredths {
+    TextAa
+  } else if contrast_x100 >= wcag_aa_large_text_and_graphics_hundredths {
+    LargeTextOrGraphicsAa
+  } else {
+    DecorationOnly
+  }
+}
+
+type GradedPairing {
+  figure: Swatch
+  ground: Swatch
+  contrast_x100: Int
+  grade: PairingGrade
+}
+
+fn grade_pairing(figure: Swatch, ground: Swatch) -> GradedPairing {
+  let r = srgb8_contrast_ratio_x100(a: figure.color, b: ground.color)
+  GradedPairing { figure: figure, ground: ground, contrast_x100: r, grade: grade_of_contrast(contrast_x100: r) }
+}
+
+fn graded_pairings(s: SwatchSet) -> List<GradedPairing> {
+  fold(s.swatches, init: [], f: (acc, f) =>
+    concat(acc, fold(s.swatches, init: [], f: (acc2, g) =>
+      if f.name == g.name { acc2 } else { concat(acc2, [grade_pairing(figure: f, ground: g)]) })))
+}
+
+fn pairings_at_least(s: SwatchSet, min_rank: Int) -> List<GradedPairing> {
+  fold(graded_pairings(s: s), init: [], f: (acc, p) =>
+    if grade_rank(g: p.grade) >= min_rank { concat(acc, [p]) } else { acc })
+}
+
+fn set_text_capable(s: SwatchSet) -> Bool {
+  fold(graded_pairings(s: s), init: false, f: (acc, p) =>
+    acc || grade_rank(g: p.grade) >= grade_rank(g: TextAa))
+}

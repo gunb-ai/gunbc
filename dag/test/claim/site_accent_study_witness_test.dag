@@ -1,0 +1,83 @@
+module test.claim.site_accent_study_witness
+
+import gunbc.site.tokens { chroma_admissible, warm_starlight }
+import gunbc.site.starlight {
+  starlight_renders, study_candidates, m_render, g_render, signed_accent_render,
+  lit_variant, edge_variant, hue_is_green, no_green_starlight_projection,
+  candidates_admissible, renders_cover_classification, verdigris_patina, render_label,
+}
+import extdeps.astronomy.stellar_classification {
+  harvard_main_sequence_classes, no_green_stellar_class,
+  classes_hot_to_cool_by_floor, g_class, temperature_label,
+}
+import gunbc.site.accent_study { accent_study_html, accent_study_preconditions_hold }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn witness_candidates_admissible() -> Bool {
+  accent_study_preconditions_hold()
+    && candidates_admissible(rs: study_candidates)
+}
+
+fn witness_cited_classification_well_formed() -> Bool {
+  harvard_main_sequence_classes.length() == 7
+    && classes_hot_to_cool_by_floor(classes: harvard_main_sequence_classes)
+    && temperature_label(r: g_class.temperature) == "5300–6000 K"
+}
+
+fn witness_no_green_star_in_source_or_projection() -> Bool {
+  no_green_stellar_class(classes: harvard_main_sequence_classes)
+    && no_green_starlight_projection(renders: starlight_renders)
+    && hue_is_green(hue: verdigris_patina.hue)
+}
+
+fn witness_projection_covers_the_classification() -> Bool {
+  renders_cover_classification(renders: starlight_renders, classes: harvard_main_sequence_classes)
+}
+
+fn witness_envelope_prunes_m_class_at_lit() -> Bool {
+  chroma_admissible(m: m_render.figure)
+    && !chroma_admissible(m: lit_variant(m: m_render.figure))
+}
+
+fn witness_g_class_is_the_live_night_figure() -> Bool {
+  g_render.figure.hue == warm_starlight.hue
+    && g_render.figure.sat_pct == warm_starlight.sat_pct
+    && g_render.figure.light_pct == warm_starlight.light_pct
+    && render_label(r: g_render) == "G — yellow · 5300–6000 K"
+}
+
+fn witness_signed_accent_is_g_and_live() -> Bool {
+  signed_accent_render.spectral.code as String == "G"
+    && signed_accent_render.figure.hue == warm_starlight.hue
+    && signed_accent_render.figure.sat_pct == warm_starlight.sat_pct
+    && signed_accent_render.figure.light_pct == warm_starlight.light_pct
+}
+
+fn witness_study_page_emits() -> Bool {
+  let h = accent_study_html()
+  starts_with(s: h, prefix: "<!DOCTYPE html>")
+    && string_contains(s: h, pattern: "starlight accent study")
+    && string_contains(s: h, pattern: "O — blue · ≥ 33000 K")
+    && string_contains(s: h, pattern: "A — white · 7300–10000 K")
+    && string_contains(s: h, pattern: "G — yellow · 5300–6000 K")
+    && string_contains(s: h, pattern: "K — light orange · 3900–5300 K")
+    && string_contains(s: h, pattern: "green enters as material, never as starlight")
+    && string_contains(s: h, pattern: "no green, cyan, indigo, or violet stars")
+    && string_contains(s: h, pattern: "the day atlas — indigo ink on paper")
+    && !string_contains(s: h, pattern: "M — light orangish red")
+    && !string_contains(s: h, pattern: "hsl(194 88%")
+    && !string_contains(s: h, pattern: "EMIT REJECTED")
+}
+
+test fn accent_study_keystone_holds() -> Bool {
+  witness_candidates_admissible()
+    && witness_cited_classification_well_formed()
+    && witness_no_green_star_in_source_or_projection()
+    && witness_projection_covers_the_classification()
+    && witness_envelope_prunes_m_class_at_lit()
+    && witness_g_class_is_the_live_night_figure()
+    && witness_signed_accent_is_g_and_live()
+    && witness_study_page_emits()
+}
