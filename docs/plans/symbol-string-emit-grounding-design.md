@@ -50,8 +50,18 @@ backstop in `v1_interpreter.rs`).
 
 1. **Type layer.** `FreeMonoid<Char>` (and the `String` alias) → native `String` in the v2 emit realization —
    a `Char`-element grounding at the collection-repr choice (the analog of `is_host_text_carrier_type`), NOT a
-   blanket `FreeMonoid<T>` change. Discriminating receipt: emit a `String`-typed signature/field → `String`, not
-   `Vec<Char>` (before: Vec — RED; after: String — green).
+   blanket `FreeMonoid<T>` change. **Discriminating receipt LANDED** (RED):
+   `src/v2/test/claim/emit/rust_freemonoid_char_string_grounding_test.dag` projects `FreeMonoid<Char>` via
+   `translate_type_expression_project` (06_translate.dag:1501 `project_free_monoid_collection_type_node`) and
+   asserts the emitted node content-hash-equals Symbol's native-`String` type_form
+   (`rust_target_atom_realization_symbol.type_form.node`). Proven by execution: `fmc_projection_accepts` = true,
+   `fmc_freemonoid_char_grounds_to_native_string` = **false** (RED — currently a `Vec` node). The grounding flips
+   it GREEN. Design decision: `project_free_monoid_collection_type_node` must, when `elem` is the Char kernel and
+   the target provides a native text-carrier, emit the native `String` atom (a nullary atom) instead of the
+   `Vec<Char>` instantiation. `TargetRepresentation`/`TargetRepresentationChoice` (target_model.dag:9090) can only
+   express generic-apply forms today, so the grounding adds a **target-provided text-carrier realization** (rust.dag
+   row + target_model.dag shape — this lane) that the stage consults; the Char check + `String` spelling stay in the
+   realization authority, never hardcoded in the target-agnostic stage.
 2. **Op layer.** `FreeMonoid<Char>` operations used on `String` (`string_head`/`string_tail`/`string_is_empty`,
    `Empty`/`Cons` construction) get native-String realizations, mirroring Root B's `rust_host_string_op_fn_emit`.
    A module that does rope-ops on `String` needs this or it emits native-String code expecting rope ops.

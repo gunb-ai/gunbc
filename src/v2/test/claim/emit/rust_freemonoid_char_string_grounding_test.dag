@@ -1,15 +1,17 @@
 module v2.test.emit.rust_freemonoid_char_string_grounding
 
 import v2.compiler.translate {
-  translate_type_expression_project,
-  target_serialize_source_from_model
+  translate_type_expression_project
 }
 import v2.extdeps.languages.rust {
   rust_type_expression_projection,
-  rust_sg2_type_expr_projection_probe_target_model
+  rust_sg2_type_expr_projection_probe_target_model,
+  rust_target_atom_realization_symbol
 }
 import v2.std.compilers.target_model {
   TargetModel,
+  TargetAtomRealization,
+  TargetTypeExpression,
   char_kernel_type_node,
   target_carrier_free_monoid_node
 }
@@ -19,7 +21,8 @@ import v2.std.node {
   Positional,
   TypeNode,
   Instantiation,
-  SyntheticOccurrence
+  SyntheticOccurrence,
+  content_hash
 }
 import v2.std.text { String }
 import v2.std.logic { Bool }
@@ -29,8 +32,6 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data receipt_note: String = "Discriminating receipt for the Symbol/String emit grounding (Gate 1, emit_representation_mismatch). The v2 emit path grounds Symbol to native Rust String but realizes modeled String = FreeMonoid<Char> as Vec<char> via the unconditional free-monoid collection choice, so the two text carriers fork (E0308). This projects FreeMonoid<Char> through the staging target model and pins the serialized text. RED baseline: a Vec instantiation. GREEN (after element-conditional FreeMonoid<Char> to native String at the collection-repr choice): the bare String atom. See docs/plans/symbol-string-emit-grounding-design.md."
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-data fmc_fail_text: String = ""
 
 fn fmc_freemonoid_char_source_node() -> Node {
   Node {
@@ -47,23 +48,19 @@ fn fmc_target() -> TargetModel {
   rust_sg2_type_expr_projection_probe_target_model()
 }
 
-fn fmc_projected_serialized_text() -> String {
+fn fmc_native_string_type_form_node() -> Node {
+  rust_target_atom_realization_symbol.type_form.node
+}
+
+fn fmc_projected_node() -> Node {
   match translate_type_expression_project(
     node: fmc_freemonoid_char_source_node(),
     target: fmc_target(),
     projection: rust_type_expression_projection()
   ) {
-    Accepted { value: emitted, diagnostics: _ } =>
-      match target_serialize_source_from_model(target: fmc_target(), emitted: emitted) {
-        Accepted { value: source, diagnostics: _ } => source.carried
-        Rejected { diagnostics: _ } => fmc_fail_text
-      }
-    Rejected { diagnostics: _ } => fmc_fail_text
+    Accepted { value: emitted, diagnostics: _ } => emitted
+    Rejected { diagnostics: _ } => fmc_freemonoid_char_source_node()
   }
-}
-
-fn fmc_observe() -> String {
-  fmc_projected_serialized_text()
 }
 
 test fn fmc_projection_accepts() -> Bool {
@@ -77,21 +74,6 @@ test fn fmc_projection_accepts() -> Bool {
   }
 }
 
-test fn fmc_serialize_accepts() -> Bool {
-  match translate_type_expression_project(
-    node: fmc_freemonoid_char_source_node(),
-    target: fmc_target(),
-    projection: rust_type_expression_projection()
-  ) {
-    Accepted { value: emitted, diagnostics: _ } =>
-      match target_serialize_source_from_model(target: fmc_target(), emitted: emitted) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
-
 test fn fmc_freemonoid_char_grounds_to_native_string() -> Bool {
-  fmc_projected_serialized_text() == "String"
+  content_hash(n: fmc_projected_node()) == content_hash(n: fmc_native_string_type_form_node())
 }
