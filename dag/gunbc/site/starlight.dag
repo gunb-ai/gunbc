@@ -61,6 +61,10 @@ data starlight_renders: List<StarlightRender> = [o_render, b_render, a_render, f
 
 data study_candidates: List<StarlightRender> = [o_render, a_render, g_render, k_render]
 
+data accent_signed_note: String = "Checklist row 4 SIGNED (operator via review verdict on PR 6927, 2026-07-21): the night accent is the G class — the Sun's own class, the one star humans have a relationship with; harmonizes with the brass/clay warm family; O/A read near-neutral (low identity, drifting back toward the rejected cool register) and K sits close to brass in hue, softening the figure-vs-focus distinction. The decision is a row: signed_accent_render below, witnessed equal to the live night theme figure (tokens.warm_starlight), so a palette drift away from the signed class is a red witness, not a quiet restyle."
+
+data signed_accent_render: StarlightRender = StarlightRender { spectral: g_class, figure: Material { name: "g-starlight", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea } }
+
 data verdigris_patina: Material = Material { name: "verdigris-patina", hue: 165, sat_pct: 28, light_pct: 52, area: HairlineArea }
 
 fn hue_is_green(hue: Int) -> Bool {

@@ -1,0 +1,132 @@
+module extdeps.accessibility.wcag_contrast
+
+import std.types { Int, String, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/WCAG22/#dfn-relative-luminance"
+  }
+}
+
+data wcag_contrast_note: String = "Cited upstream: W3C WCAG 2.2, definitions of relative luminance and contrast ratio (retrieved 2026-07-21). Relative luminance L = 0.2126 R + 0.7152 G + 0.0722 B where each channel c (sRGB, 0..1) linearizes as: c <= 0.03928 -> c/12.92, else ((c+0.055)/1.055)^2.4 (the 0.03928 knee is WCAG's published constant). Contrast ratio = (L_lighter + 0.05) / (L_darker + 0.05); thresholds 4.5:1 (AA normal text), 3:1 (AA large text and non-text graphical objects, per SC 1.4.11), 7:1 (AAA). Arithmetic here is integer at scale 10000 (one unit = 0.0001). The single approximated kernel is the exponent 2.4, computed as x^2.4 = x^2 * (x^2)^(1/5) with the fifth root by integer Newton iteration at scale 1000 — deterministic, no floats, no lookup tables; wcag_pow24_pin_witnesses in the test claim pins it against hand-computable values of the cited formula. Threshold checks avoid the ratio division entirely: (L_hi + 0.05) >= t * (L_lo + 0.05) compared by integer cross-multiplication, so the pass/fail verdicts are exact up to channel-luminance precision (~2e-4)."
+
+type RgbScaled {
+  r: Int
+  g: Int
+  b: Int
+}
+
+fn iabs(v: Int) -> Int {
+  if v < 0 { 0 - v } else { v }
+}
+
+fn imax(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+fn imin(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
+}
+
+fn hsl_to_rgb_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> RgbScaled {
+  let l = light_pct * 100
+  let s = sat_pct * 100
+  let c = ((10000 - iabs(v: 2 * l - 10000)) * s) / 10000
+  let h2 = ((hue % 360) + 360) % 360
+  let t = ((h2 % 120) * 10000) / 60
+  let x = (c * (10000 - iabs(v: t - 10000))) / 10000
+  let m = l - c / 2
+  let sextant = h2 / 60
+  if sextant == 0 {
+    RgbScaled { r: c + m, g: x + m, b: m }
+  } else if sextant == 1 {
+    RgbScaled { r: x + m, g: c + m, b: m }
+  } else if sextant == 2 {
+    RgbScaled { r: m, g: c + m, b: x + m }
+  } else if sextant == 3 {
+    RgbScaled { r: m, g: x + m, b: c + m }
+  } else if sextant == 4 {
+    RgbScaled { r: x + m, g: m, b: c + m }
+  } else {
+    RgbScaled { r: c + m, g: m, b: x + m }
+  }
+}
+
+fn fifth_root_iterate(y: Int, target: Int, fuel: Int) -> Int {
+  if fuel <= 0 {
+    y
+  } else {
+    let y_safe = imax(a: y, b: 1)
+    let y4 = y_safe * y_safe * y_safe * y_safe
+    let next = (4 * y_safe + target / y4) / 5
+    fifth_root_iterate(y: next, target: target, fuel: fuel - 1)
+  }
+}
+
+fn fifth_root_scaled_1000(u_scaled_10000: Int) -> Int {
+  if u_scaled_10000 <= 0 {
+    0
+  } else {
+    fifth_root_iterate(y: 1000, target: u_scaled_10000 * 100000000000, fuel: 48)
+  }
+}
+
+fn pow_2_4_scaled(x_scaled: Int) -> Int {
+  if x_scaled <= 0 {
+    0
+  } else {
+    let x2 = (x_scaled * x_scaled) / 10000
+    let root5_1000 = fifth_root_scaled_1000(u_scaled_10000: x2)
+    (x2 * root5_1000) / 1000
+  }
+}
+
+fn linearize_channel_scaled(c_scaled: Int) -> Int {
+  if c_scaled <= 392 {
+    (c_scaled * 100) / 1292
+  } else {
+    pow_2_4_scaled(x_scaled: ((c_scaled + 550) * 10000) / 10550)
+  }
+}
+
+fn relative_luminance_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> Int {
+  let rgb = hsl_to_rgb_scaled(hue: hue, sat_pct: sat_pct, light_pct: light_pct)
+  let rl = linearize_channel_scaled(c_scaled: rgb.r)
+  let gl = linearize_channel_scaled(c_scaled: rgb.g)
+  let bl = linearize_channel_scaled(c_scaled: rgb.b)
+  (2126 * rl + 7152 * gl + 722 * bl) / 10000
+}
+
+fn contrast_at_least_hundredths(lum_a_scaled: Int, lum_b_scaled: Int, threshold_hundredths: Int) -> Bool {
+  let hi = imax(a: lum_a_scaled, b: lum_b_scaled)
+  let lo = imin(a: lum_a_scaled, b: lum_b_scaled)
+  100 * (hi + 500) >= threshold_hundredths * (lo + 500)
+}
+
+fn contrast_ratio_x100(lum_a_scaled: Int, lum_b_scaled: Int) -> Int {
+  let hi = imax(a: lum_a_scaled, b: lum_b_scaled)
+  let lo = imin(a: lum_a_scaled, b: lum_b_scaled)
+  ((hi + 500) * 100) / (lo + 500)
+}
+
+fn hsl_contrast_at_least(hue_a: Int, sat_a: Int, light_a: Int, hue_b: Int, sat_b: Int, light_b: Int, threshold_hundredths: Int) -> Bool {
+  contrast_at_least_hundredths(
+    lum_a_scaled: relative_luminance_scaled(hue: hue_a, sat_pct: sat_a, light_pct: light_a),
+    lum_b_scaled: relative_luminance_scaled(hue: hue_b, sat_pct: sat_b, light_pct: light_b),
+    threshold_hundredths: threshold_hundredths)
+}
+
+fn hsl_contrast_ratio_x100(hue_a: Int, sat_a: Int, light_a: Int, hue_b: Int, sat_b: Int, light_b: Int) -> Int {
+  contrast_ratio_x100(
+    lum_a_scaled: relative_luminance_scaled(hue: hue_a, sat_pct: sat_a, light_pct: light_a),
+    lum_b_scaled: relative_luminance_scaled(hue: hue_b, sat_pct: sat_b, light_pct: light_b))
+}
+
+data wcag_aa_normal_text_hundredths: Int = 450
+
+data wcag_aa_large_text_and_graphics_hundredths: Int = 300
+
+data wcag_aaa_normal_text_hundredths: Int = 700

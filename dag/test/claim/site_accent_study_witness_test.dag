@@ -2,7 +2,7 @@ module test.claim.site_accent_study_witness
 
 import gunbc.site.tokens { chroma_admissible, warm_starlight }
 import gunbc.site.starlight {
-  starlight_renders, study_candidates, m_render, g_render,
+  starlight_renders, study_candidates, m_render, g_render, signed_accent_render,
   lit_variant, edge_variant, hue_is_green, no_green_starlight_projection,
   candidates_admissible, renders_cover_classification, verdigris_patina, render_label,
 }
@@ -48,6 +48,13 @@ fn witness_g_class_is_the_live_night_figure() -> Bool {
     && render_label(r: g_render) == "G — yellow · 5300–6000 K"
 }
 
+fn witness_signed_accent_is_g_and_live() -> Bool {
+  signed_accent_render.spectral.code as String == "G"
+    && signed_accent_render.figure.hue == warm_starlight.hue
+    && signed_accent_render.figure.sat_pct == warm_starlight.sat_pct
+    && signed_accent_render.figure.light_pct == warm_starlight.light_pct
+}
+
 fn witness_study_page_emits() -> Bool {
   let h = accent_study_html()
   starts_with(s: h, prefix: "<!DOCTYPE html>")
@@ -71,5 +78,6 @@ test fn accent_study_keystone_holds() -> Bool {
     && witness_projection_covers_the_classification()
     && witness_envelope_prunes_m_class_at_lit()
     && witness_g_class_is_the_live_night_figure()
+    && witness_signed_accent_is_g_and_live()
     && witness_study_page_emits()
 }

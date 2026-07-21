@@ -1,14 +1,15 @@
 module test.claim.site_register_witness
 
 import gunbc.site.tokens {
-  Material, FieldArea, PointArea,
-  chroma_admissible, quiet_envelope,
+  Material, FieldArea, PointArea, DataVizArea,
+  chroma_admissible, quiet_envelope, area_key, role_area,
   Theme, RoleAssignment, assign,
   site_themes, theme_roles, night_theme, day_theme,
   themes_coherent, theme_gaps, theme_area_coherent, theme_contrast_ok,
-  CanvasRole, FigureRole, night_canvas, warm_starlight,
-  respond_fast, StaticRule, decl,
+  CanvasRole, FigureRole, FocusRole, BoundaryRole, night_canvas, warm_starlight,
+  respond_fast, BuildRule, StaticRule, ResponseRule, decl, role_var,
 }
+import gunbc.roadmap_style { roadmap_rules }
 import gunbc.site.interaction {
   BehaviorRow, InteractiveElement,
   Approach, Enter, Receipt,
@@ -47,6 +48,33 @@ fn witness_gamer_cyan_refused() -> Bool {
 fn witness_saturated_field_refused() -> Bool {
   let neon_field = Material { name: "neon-field", hue: 226, sat_pct: 60, light_pct: 40, area: FieldArea }
   !chroma_admissible(m: neon_field)
+}
+
+fn witness_dataviz_seam_open_but_unused() -> Bool {
+  let series_cyan = Material { name: "series-cyan", hue: 194, sat_pct: 88, light_pct: 76, area: DataVizArea }
+  let same_as_point = Material { name: "gamer-point", hue: 194, sat_pct: 88, light_pct: 76, area: PointArea }
+  chroma_admissible(m: series_cyan)
+    && !chroma_admissible(m: same_as_point)
+    && all(theme_roles, r => !(area_key(area: role_area(r: r)) == "dataviz"))
+    && all(site_themes, t => all(t.assignments, a => !(area_key(area: a.material.area) == "dataviz")))
+}
+
+fn brass_paints_text_somewhere(rules: List<BuildRule>) -> Bool {
+  fold(rules, init: false, f: (acc, r) => acc || match r {
+    StaticRule { selector: _, decls } =>
+      fold(decls, init: false, f: (inner, d) => inner || (d.prop == "color" && d.value == role_var(r: FocusRole)))
+    ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls, response_decls } =>
+      fold(concat(base_decls, response_decls), init: false, f: (inner, d) => inner || (d.prop == "color" && d.value == role_var(r: FocusRole)))
+  })
+}
+
+fn witness_brass_never_paints_text() -> Bool {
+  !brass_paints_text_somewhere(rules: moodboard_rules())
+    && !brass_paints_text_somewhere(rules: roadmap_rules())
+}
+
+fn witness_focus_boundary_differ_by_area() -> Bool {
+  !(area_key(area: role_area(r: FocusRole)) == area_key(area: role_area(r: BoundaryRole)))
 }
 
 fn witness_theme_gap_is_located() -> Bool {
@@ -200,6 +228,9 @@ test fn site_register_keystone_holds() -> Bool {
     && witness_themes_coherent()
     && witness_gamer_cyan_refused()
     && witness_saturated_field_refused()
+    && witness_dataviz_seam_open_but_unused()
+    && witness_brass_never_paints_text()
+    && witness_focus_boundary_differ_by_area()
     && witness_theme_gap_is_located()
     && witness_role_area_mismatch_refused()
     && witness_theme_contrast_holds()

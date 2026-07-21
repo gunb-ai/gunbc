@@ -1,12 +1,19 @@
 module gunbc.site.tokens
 
-data tokens_note: String = "Layer 2 of the site stack: materials, themes, scales. Three register laws live here as CONSTRUCTION. ChromaByArea: a Material carries its AreaClass; saturation ceilings are per-area. GlareEnvelope (operator seventh pass, 2026-07-20: the bright saturated cyan read as low-taste gamer blue): a material may be bright OR chromatic, never both — quiet_envelope refuses sat>45 AND light>68 together, so the gamer register is inadmissible by row. ThemeCoherence: a Theme is a TOTAL assignment of roles to materials (theme_gaps countable, mirrors interaction coverage), each material's area class must equal the role's declared area class, and every color the page uses routes through a role var — one rule set, N themes; prefers-color-scheme selects, never forks. StillUntilTouched: MotionTrigger has no ambient variant; no animation/keyframes constructor exists."
+import extdeps.accessibility.wcag_contrast {
+  hsl_contrast_at_least,
+  wcag_aa_normal_text_hundredths,
+  wcag_aa_large_text_and_graphics_hundredths,
+}
+
+data tokens_note: String = "Layer 2 of the site stack: materials, themes, scales. Register laws living here as CONSTRUCTION. ChromaByArea: a Material carries its AreaClass; saturation ceilings are per-area. GlareEnvelope (operator seventh pass, 2026-07-20: the bright saturated cyan read as low-taste gamer blue): a material may be bright OR chromatic, never both — quiet_envelope refuses sat>45 AND light>68 together, so the gamer register is inadmissible by row. DataVizArea (review finding 4 on PR 6927, pre-modeled seam): status-dense product surfaces (node-level CI views, dashboards) need mutually distinguishable categorical series at exactly the chroma-and-brightness the quiet envelope forbids — so the envelope is AREA-SCOPED by construction: DataVizArea is the one declared exemption lane, its own admission law (distinguishability + CVD separation, cited categorical palettes) lands with its first consumer (the Dashboard archetype study), and today NO theme role projects it — the witness pins that its introduction is a conscious event, never a leak. ThemeCoherence: a Theme is a TOTAL assignment of roles to materials (theme_gaps countable, mirrors interaction coverage), each material's area class must equal the role's declared area class, and every color the page uses routes through a role var — one rule set, N themes; prefers-color-scheme selects, never forks. ContrastLaw (review finding 1, hardened 2026-07-21): theme contrast is computed WCAG relative-luminance contrast via extdeps.accessibility.wcag_contrast — the earlier HSL-lightness-gap check was a non-perceptual proxy that could green while legibility failed; text roles must clear AA normal text (4.5:1), figure/focus roles AA graphical (3:1), against BOTH canvas and surface. StillUntilTouched: MotionTrigger has no ambient variant; no animation/keyframes constructor exists."
 
 type AreaClass
   = PointArea
   | HairlineArea
   | TextArea
   | FieldArea
+  | DataVizArea
 
 type Material {
   name: String
@@ -22,6 +29,7 @@ fn area_max_sat(area: AreaClass) -> Int {
     HairlineArea => 80
     TextArea => 25
     FieldArea => 40
+    DataVizArea => 100
   }
 }
 
@@ -31,6 +39,7 @@ fn area_key(area: AreaClass) -> String {
     HairlineArea => "hairline"
     TextArea => "text"
     FieldArea => "field"
+    DataVizArea => "dataviz"
   }
 }
 
@@ -38,12 +47,22 @@ fn quiet_envelope(m: Material) -> Bool {
   !(m.sat_pct > 45 && m.light_pct > 68)
 }
 
+fn area_exempt_from_quiet_envelope(area: AreaClass) -> Bool {
+  match area {
+    DataVizArea => true
+    PointArea => false
+    HairlineArea => false
+    TextArea => false
+    FieldArea => false
+  }
+}
+
 fn chroma_admissible(m: Material) -> Bool {
   m.sat_pct <= area_max_sat(area: m.area)
     && m.sat_pct >= 0
     && m.light_pct >= 0
     && m.light_pct <= 100
-    && quiet_envelope(m: m)
+    && (area_exempt_from_quiet_envelope(area: m.area) || quiet_envelope(m: m))
 }
 
 fn paint(m: Material) -> String {
@@ -210,18 +229,27 @@ fn theme_materials_admissible(t: Theme) -> Bool {
   all(t.assignments, a => chroma_admissible(m: a.material))
 }
 
-fn assignment_lightness(t: Theme, r: ThemeRole) -> Int {
-  fold(t.assignments, init: 0, f: (acc, a) =>
-    if role_eq(a: a.role, b: r) { a.material.light_pct } else { acc })
+fn assignment_material(t: Theme, r: ThemeRole) -> Material {
+  fold(t.assignments, init: Material { name: "", hue: 0, sat_pct: 0, light_pct: 0, area: FieldArea },
+    f: (acc, a) => if role_eq(a: a.role, b: r) { a.material } else { acc })
 }
 
-fn lightness_gap(a: Int, b: Int) -> Int {
-  if a > b { a - b } else { b - a }
+fn roles_clear_wcag(t: Theme, fg: ThemeRole, bg: ThemeRole, threshold_hundredths: Int) -> Bool {
+  let f = assignment_material(t: t, r: fg)
+  let b = assignment_material(t: t, r: bg)
+  hsl_contrast_at_least(
+    hue_a: f.hue, sat_a: f.sat_pct, light_a: f.light_pct,
+    hue_b: b.hue, sat_b: b.sat_pct, light_b: b.light_pct,
+    threshold_hundredths: threshold_hundredths)
 }
 
 fn theme_contrast_ok(t: Theme) -> Bool {
-  lightness_gap(a: assignment_lightness(t: t, r: TextRole), b: assignment_lightness(t: t, r: CanvasRole)) >= 40
-    && lightness_gap(a: assignment_lightness(t: t, r: FigureRole), b: assignment_lightness(t: t, r: CanvasRole)) >= 20
+  roles_clear_wcag(t: t, fg: TextRole, bg: CanvasRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: TextRole, bg: SurfaceRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: TextDimRole, bg: CanvasRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: TextDimRole, bg: SurfaceRole, threshold_hundredths: wcag_aa_normal_text_hundredths)
+    && roles_clear_wcag(t: t, fg: FigureRole, bg: CanvasRole, threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths)
+    && roles_clear_wcag(t: t, fg: FocusRole, bg: CanvasRole, threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths)
 }
 
 fn theme_coherent(t: Theme, roles: List<ThemeRole>) -> Bool {
