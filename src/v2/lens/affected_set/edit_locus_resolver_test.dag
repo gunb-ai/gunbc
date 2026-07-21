@@ -1,6 +1,49 @@
 module v2.test.lens_affected_set.edit_locus_resolver
 
+import extdeps.communication.medium { Lossless, Medium }
+import v2.lens.edit_locus {
+  EditLocusBinding,
+  EditLocusRead,
+  GitDiffNameOnly,
+  PathRegex,
+  RepoPath,
+  affected_set_reading_from_git_diff,
+  affected_set_reading_from_git_diff_provenance,
+  resolve_edit_locus
+}
+import v2.compiler.source_authority {
+    DagSourceReadWitness,
+  source_ir_artifact_provenance,
+  source_ir_node_artifact_provenance
+}
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.diagnostic { Accepted, ByteRange, Rejected, Textual }
+import v2.std.logic { Bool }
+import v2.std.cross_tree.import_model { V2Tree }
+import std.algebra { Empty }
+import v2.std.algebra { count_equal, length }
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v2.std.node { MintedOccurrence, Node, OccurrenceId, Symbol, SyntheticOccurrence, well_formed }
+import v2.std.provenance { SpanIndex, span_index_resolve_textual_locus }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates, Witness }
+import v2.test.lens_affected_set.node_precision {
+  affected_set_claim_tree,
+  affected_set_mid,
+  affected_set_mid_to_leaf_frontier_dependency,
+  affected_set_root_to_mid_frontier_dependency
+}
+import v2.test.lens_common.infer_fixture {
+  claim_inferred_facts,
+  claim_inferred_tree
+}
 
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data edit_locus_path_src_v4_affected_set: RepoPath = "src/v2/lens/affected_set.dag"

@@ -1,5 +1,61 @@
 module v2.test.lens_affected_set.irt1_empty_diff_frontier_receipt
 
+import v2.lens.affected_set {
+  ChangedDimensions,
+  ChangedSubgraphFrontier,
+  DoesNotPropagate,
+  EditDimension,
+  FailClosed,
+  Propagates,
+  FrontierDependency,
+  FrontierProduced,
+  affected_set_boundary_pure_receipt_node,
+  affected_set,
+  canonical_changed_dimension_receipt,
+  canonical_transitive_frontier,
+  canonical_propagation_receipt,
+  empty_affected_fold_acc,
+  empty_frontier,
+  frontier_from_fold_acc
+}
+import v2.lens.affected_set_examples {
+  affected_set_claim_failure_node,
+  affected_set_example_node
+}
+import v2.std.algebra { contains, length }
+import v2.std.change { DependencyDependent, DependencySource }
+import v2.std.dependency { Contains, DataDependsOn, DependencyView }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Diff,
+  Edge,
+  Edit,
+  Named,
+  Node,
+  Path,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence,
+}
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds }
+import v2.test.lens_affected_set.node_precision {
+  affected_set_leaf,
+  affected_set_mid,
+  affected_set_mid_to_leaf_dependency,
+  affected_set_root,
+  affected_set_root_to_mid_dependency
+}
 
 data irt1_public_unchanged_edit: Edit = Edit {
   at: Path { steps: [] },

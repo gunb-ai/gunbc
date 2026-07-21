@@ -1,5 +1,29 @@
 module v2.test.lens_synthesis.synthesis_no_technique_diagnostic
 
+import v2.lens.synthesis { AlgebraicRank, synthesis_lens_diagnostics }
+import v2.std.algebra { non_empty }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
 
 data synthesis_no_tech_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_no_tech_atom_symbol } },

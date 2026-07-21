@@ -1,5 +1,63 @@
 module v2.test.lens_vacuity.vacuity_test
 
+import v2.lens.vacuity {
+  HelperAlias,
+  IndependentTranscription,
+  LiteralOracle,
+  OperandProvenanceUnknown,
+  ProvenDuplicate,
+  ProvenIndependent,
+  ReadBack,
+  RenderingTransform,
+  TemporalExternalAuthority,
+  Unknown,
+  VacuityCensusRow,
+  classify_test_claim_vacuity,
+  classify_unified_test_claim_vacuity,
+  vacuity_advisory_census_from_rows,
+  vacuity_advisory_census_matches_row_count,
+  vacuity_carries_parallel_authority_debt,
+  vacuity_census_row,
+  vacuity_evidence_eq
+}
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  Unavailable,
+  node_locus
+}
+import v2.std.logic { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.node {
+  Atom,
+  Node,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.verification {
+  CompilesClaim,
+  DiagnosticClaim,
+  EmitVsEval,
+  EvalOnly,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  NodeCorpus,
+  RoundTripClaim,
+  StructuralEqualsClaim,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.test.nat_semiring.rung_5 {
+  claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval
+}
+import v2.test.rung_3_4_common { rung34_emit_host_rust_target_model }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

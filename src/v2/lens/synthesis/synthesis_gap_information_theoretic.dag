@@ -1,5 +1,39 @@
 module v2.test.lens_synthesis.synthesis_gap_information_theoretic
 
+import v2.lens.complexity { ComplexityBound, complexity_lens }
+import v2.lens.synthesis {
+  InformationTheoretic,
+  SynthesisGap,
+  SynthesisNoTechnique,
+  SynthesisOptimal,
+  assess_information_theoretic,
+  synthesis_lens
+}
+import v2.std.algebra { non_empty }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.report { SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  TestClassification,
+  ManualAnchorAbsent,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Violates }
 
 data synthesis_gap_it_leaf: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_it_atom_symbol } },
