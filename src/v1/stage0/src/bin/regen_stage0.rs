@@ -4,7 +4,7 @@ use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -720,6 +720,41 @@ fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Normalize one emitted source file's TEXT through standalone rustfmt via stdin, returning the
+/// canonically-formatted content. Reading from stdin (not a file path) means rustfmt formats
+/// exactly this content with no path-header line and no module-tree recursion — a pure per-file
+/// normalization, crate-build-independent. A separate thread feeds stdin so a large file cannot
+/// deadlock against rustfmt's stdout. rustfmt's non-zero exit (unparseable emit) propagates as a
+/// hard error (fail-closed), never a silent skip.
+fn normalize_generated_source(content: &str) -> Result<String, String> {
+    let mut child = Command::new("rustfmt")
+        .arg("--edition")
+        .arg("2021")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn rustfmt: {e}"))?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "rustfmt stdin unavailable".to_string())?;
+    let owned = content.to_string();
+    let writer = std::thread::spawn(move || stdin.write_all(owned.as_bytes()));
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("wait rustfmt: {e}"))?;
+    writer
+        .join()
+        .map_err(|_| "rustfmt stdin writer panicked".to_string())?
+        .map_err(|e| format!("write rustfmt stdin: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).to_string())
+    }
+}
+
 fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
     let output = Command::new("cargo")
         .arg("fmt")
@@ -728,15 +763,33 @@ fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
         .arg(dir.join("Cargo.toml"))
         .output()
         .map_err(|e| format!("spawn cargo fmt for {}: {e}", dir.display()))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(format!(
+    if !output.status.success() {
+        return Err(format!(
             "cargo fmt failed for {}:\n{}",
             dir.display(),
             String::from_utf8_lossy(&output.stderr)
-        ))
+        ));
     }
+    // `cargo fmt` walks the crate module tree and silently SKIPS files it cannot reach when the
+    // faithful-full-regen crate has non-building modules, leaving raw emit that diverges from the
+    // fmt-normalized committed seed by formatting alone (the #6848 regen red, and its twin in the
+    // .dag self_host_realized_comparison gate, which byte-compares this same emitted tree and
+    // cannot re-normalize on its side). Normalize every emitted generated file per-file through
+    // standalone rustfmt so the emitted ARTIFACT is canonically formatted for EVERY comparer — one
+    // normalization authority at production, not a re-normalization patched into each comparer.
+    let src = dir.join("src");
+    for file_name in GENERATED_STAGE0_FILES {
+        let path = src.join(file_name);
+        let raw = fs::read_to_string(&path)
+            .map_err(|e| format!("read emitted {}: {e}", path.display()))?;
+        let normalized = normalize_generated_source(&raw)
+            .map_err(|e| format!("rustfmt emitted {}: {e}", path.display()))?;
+        if normalized != raw {
+            fs::write(&path, normalized)
+                .map_err(|e| format!("write normalized {}: {e}", path.display()))?;
+        }
+    }
+    Ok(())
 }
 
 /// A HAND_MAINTAINED file's status relative to what the emitter would produce for it.
@@ -1100,43 +1153,7 @@ fn direct_rs_file_names(dir: &Path) -> Result<BTreeSet<String>, String> {
     Ok(files)
 }
 
-/// True when `committed_text` and `fresh_text` differ in CONTENT, not merely in formatting.
-///
-/// Fast path: byte-identical inputs need no rustfmt. On a raw-byte mismatch, BOTH sides are
-/// pushed through the same standalone rustfmt before the verdict — because the two sides are
-/// NOT normalized symmetrically upstream. The committed seed is written through TWO fmt passes
-/// (`rustfmt_generated_crate` then `rustfmt_workspace`), but `--verify`'s fresh side gets only
-/// the first, and `cargo fmt --all` on the faithful-full-regen `fresh_dir` crate silently skips
-/// any file whose modules do not build (they surface as cargo errors by design), leaving the
-/// fresh side as RAW emit. When the emitter's raw shape for a region is rustfmt-reversible
-/// (e.g. match-arm block wrapping), the raw fresh then differs from the fmt-normalized seed by
-/// formatting alone. Re-normalizing both sides here isolates real content drift from that noise
-/// (the same move `verify_hand_maintained_candidates` already makes, and §7-aligned: a
-/// byte-identical fixed point is explicitly not the goal). A side that will not parse is a
-/// genuine emit defect: rustfmt's Err propagates as a hard, located failure (fail-closed),
-/// never a silently-swallowed match.
-fn content_differs_after_rustfmt(
-    file_name: &str,
-    committed_text: &str,
-    fresh_text: &str,
-    norm_dir: &Path,
-) -> Result<bool, String> {
-    if committed_text == fresh_text {
-        return Ok(false);
-    }
-    // Both sides use the SAME tag: `rustfmt --emit stdout` prefixes a path-dependent header
-    // line ("<work_dir>/<tag>.rs:\n\n") that is not part of the formatted body. Writing both to
-    // the same temp slot (overwritten between the two sequential calls) makes that header
-    // byte-identical so it cancels, leaving the comparison to the normalized bodies alone.
-    let committed_norm = rustfmt_normalize(committed_text, norm_dir, "regen-norm")
-        .map_err(|e| format!("rustfmt committed {file_name}: {e}"))?;
-    let fresh_norm = rustfmt_normalize(fresh_text, norm_dir, "regen-norm")
-        .map_err(|e| format!("rustfmt fresh emit {file_name}: {e}"))?;
-    Ok(committed_norm != fresh_norm)
-}
-
 fn verify_stage0_matches(committed_src: &Path, fresh_src: &Path) -> Result<(), String> {
-    let norm_dir = temp_dir("v2-regen-stage0-verify-norm");
     let mut mismatches = Vec::new();
     for file_name in GENERATED_STAGE0_FILES {
         let committed = committed_src.join(file_name);
@@ -1145,11 +1162,13 @@ fn verify_stage0_matches(committed_src: &Path, fresh_src: &Path) -> Result<(), S
             .map_err(|e| format!("read committed {}: {e}", committed.display()))?;
         let fresh_text = fs::read_to_string(&fresh)
             .map_err(|e| format!("read fresh {}: {e}", fresh.display()))?;
-        if content_differs_after_rustfmt(file_name, &committed_text, &fresh_text, &norm_dir)? {
+        // Plain byte compare: the emitted fresh crate is already normalized per-file by
+        // `rustfmt_generated_crate` (production-side single authority, matching the committed
+        // seed's own fmt normalization), so any surviving difference is genuine content drift.
+        if committed_text != fresh_text {
             mismatches.push((*file_name).to_string());
         }
     }
-    let _ = fs::remove_dir_all(&norm_dir);
     // Structured divergence-count contract for the regen_divergence ratchet (#6352, two-job split):
     // regen OWNS emitting this exact key; the ratchet OWNS parsing it. This is a real per-run
     // execution output (mismatches.len()), not a prose-scrape of the human message below and not a
@@ -1203,7 +1222,6 @@ fn changed_registered_outputs(
     fresh_src: &Path,
     committed_src: &Path,
 ) -> Result<Vec<String>, String> {
-    let norm_dir = temp_dir("v2-regen-stage0-changed-norm");
     let mut changed = Vec::new();
     for file_name in GENERATED_STAGE0_FILES {
         let fresh = fresh_src.join(file_name);
@@ -1218,14 +1236,12 @@ fn changed_registered_outputs(
             }
             Err(e) => return Err(format!("read committed {}: {e}", committed.display())),
         };
-        // Same content-vs-formatting discrimination as verify_stage0_matches, so the receipt's
-        // changed-file list matches the gate verdict rather than over-reporting the fresh-side
-        // formatting noise the write path's second rustfmt pass would erase.
-        if content_differs_after_rustfmt(file_name, &committed_text, &fresh_text, &norm_dir)? {
+        // Plain byte compare: the emitted fresh crate is already per-file normalized at production
+        // (`rustfmt_generated_crate`), so the changed list carries genuine content drift only.
+        if fresh_text != committed_text {
             changed.push((*file_name).to_string());
         }
     }
-    let _ = fs::remove_dir_all(&norm_dir);
     Ok(changed)
 }
 
@@ -1299,7 +1315,7 @@ mod tests {
     fn changed_registered_outputs_lists_only_mismatched_generated_files() {
         let committed = temp_test_dir("committed");
         let fresh = temp_test_dir("fresh");
-        // Valid Rust so the content-vs-formatting rustfmt pass runs; a genuine content change.
+        // Plain byte compare: only the file whose content genuinely changed is listed.
         seed_registered_files(&committed, "fn same() {}\n");
         seed_registered_files(&fresh, "fn same() {}\n");
         fs::write(fresh.join(GENERATED_STAGE0_FILES[0]), "fn changed() {}\n")
@@ -1313,34 +1329,32 @@ mod tests {
         let _ = fs::remove_dir_all(fresh);
     }
 
-    // Regression for the #6848 regen_verify red (v1_compiler_infer.rs): the fresh side arrives
-    // as RAW emit because cargo fmt skips the non-building faithful-full-regen crate, so it
-    // differs from the fmt-normalized committed seed by rustfmt-reversible formatting ALONE.
-    // The gate must treat that as a MATCH (green), and still catch real content drift (red).
+    // Regression for the #6848 regen_verify red (v1_compiler_infer.rs): the raw emit for a region
+    // (e.g. match-arm block wrapping) differs from the fmt-normalized committed seed by
+    // rustfmt-REVERSIBLE formatting alone, and `cargo fmt --all` in `rustfmt_generated_crate`
+    // silently skips it because the faithful-full-regen crate does not build. Per-file
+    // `normalize_generated_source` is the production-side authority that erases exactly that
+    // reversible formatting (so both the Rust verify gate AND the .dag self-host comparer see a
+    // canonically-formatted artifact) while preserving genuine content differences.
     #[test]
-    fn verify_stage0_matches_ignores_rustfmt_reversible_formatting_but_catches_content_drift() {
-        let committed = temp_test_dir("committed");
-        let fresh = temp_test_dir("fresh");
-        // committed = rustfmt-clean; fresh[0] = same CONTENT, messy formatting rustfmt reverses.
+    fn normalize_generated_source_erases_rustfmt_reversible_formatting_but_preserves_content() {
         let canonical = "pub fn f(x: i32) -> i32 {\n    let y = x + 1;\n    y\n}\n";
         let raw_same = "pub fn f(x:i32)->i32{let y=x+1;y}\n";
-        seed_registered_files(&committed, canonical);
-        seed_registered_files(&fresh, canonical);
-        fs::write(fresh.join(GENERATED_STAGE0_FILES[0]), raw_same)
-            .expect("write raw-but-equivalent fresh file");
-        verify_stage0_matches(&committed, &fresh)
-            .expect("formatting-only divergence must be treated as a match");
+        let canonical_norm = normalize_generated_source(canonical).expect("rustfmt canonical form");
+        let raw_same_norm = normalize_generated_source(raw_same).expect("rustfmt raw-same form");
+        // Reversible formatting: messy raw and canonical normalize to the SAME text.
+        assert_eq!(
+            raw_same_norm, canonical_norm,
+            "formatting-only difference must vanish after normalization"
+        );
 
-        // RED control: fresh[0] differs in CONTENT (x + 2, not x + 1) — must be flagged stale.
+        // RED control: a genuine content difference (x + 2, not x + 1) must SURVIVE normalization.
         let raw_drift = "pub fn f(x:i32)->i32{let y=x+2;y}\n";
-        fs::write(fresh.join(GENERATED_STAGE0_FILES[0]), raw_drift)
-            .expect("write content-drifted fresh file");
-        let err = verify_stage0_matches(&committed, &fresh)
-            .expect_err("genuine content drift must fail the gate");
-        assert!(err.contains("stale"), "unexpected failure message: {err}");
-
-        let _ = fs::remove_dir_all(committed);
-        let _ = fs::remove_dir_all(fresh);
+        let raw_drift_norm = normalize_generated_source(raw_drift).expect("rustfmt drift form");
+        assert_ne!(
+            raw_drift_norm, canonical_norm,
+            "genuine content drift must survive normalization"
+        );
     }
 
     #[test]
