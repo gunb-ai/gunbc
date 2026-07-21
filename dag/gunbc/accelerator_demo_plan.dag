@@ -1,10 +1,6 @@
 module gunbc.accelerator_demo_plan
 
 
-data accelerator_demo_plan_doc_provenance: String = "bind: docs/plans/accelerator-demo-roundtrip.md"
-
-data machine_shape_orthogonal_scheduling_plan_doc_provenance: String = "bind: docs/plans/machine-shape-orthogonal-scheduling.md — the machine-shape end shape prices this demo's fusion (fused vs unfused both cost predicted-zero today, its Phase-0 displaced cost) and stages the WGSL handler wake; hand-authored staging carrier, dissolves into a registered gunbc.plan.Plan row at its Phase-1 landing (trigger declared in the md header)"
-
 type ElementwiseFoldClass
   = PureElementwiseChain { op_count: Int }
   | EffectfulSubgraph

@@ -21058,39 +21058,6 @@ fn normalize_doc_path(path: &Path) -> String {
     parts.join("/")
 }
 
-fn dag_comment_bind_doc_refs() -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for root in witness_layer_roots() {
-        let mut dag_files = Vec::new();
-        collect_dag_files_tolerant(&workspace_root().join(&root), &mut dag_files);
-        for path in dag_files {
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            for target in bind_md_refs(&content) {
-                out.insert(target);
-            }
-        }
-    }
-    out
-}
-
-fn bind_md_refs(content: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for (idx, _) in content.match_indices("bind:") {
-        let rest = content[idx + "bind:".len()..].trim_start();
-        let token: String = rest
-            .chars()
-            .take_while(|c| !c.is_whitespace() && *c != ')' && *c != '"' && *c != '`')
-            .collect();
-        if token.ends_with(".md") {
-            out.push(normalize_doc_path(Path::new(&token)));
-        }
-    }
-    out
-}
-
 fn doc_reachable_set(
     roots: &BTreeSet<String>,
     edges: &HashMap<String, Vec<String>>,
@@ -21121,14 +21088,14 @@ struct DocGraphReport {
     admitted_extra_roots: usize,
 }
 
-// `extra_roots` are dag-derived roots (gunbc.doc_graph_roots.plan_doc_graph_roots: a registered
-// PlanArtifact IS the binding for its generated md), passed through the doc_graph_* builtins so
-// the root set is a walked substrate fact, not only the `bind:` text-scan. Admission is counted
-// (admitted_extra_roots), so a derived path naming no doc in the universe is observable — the
-// witness pins admitted == passed, never a silent drop.
+// `extra_roots` are the dag-derived roots (gunbc.doc_graph_roots.doc_graph_roots_all: registered
+// PlanArtifacts derive theirs, hand-authored docs declare typed HandAuthoredDocBind rows), passed
+// through the doc_graph_* builtins so the root set is a walked substrate fact — the former `bind:`
+// text-scan over .dag content is deleted. Admission is counted (admitted_extra_roots), so a root
+// naming no doc in the universe is observable — the witness pins admitted == passed, never a
+// silent drop.
 fn build_doc_graph_report(extra_roots: &[String]) -> DocGraphReport {
     let universe = doc_universe();
-    let bind_refs = dag_comment_bind_doc_refs();
 
     let mut roots: BTreeSet<String> = BTreeSet::new();
     for r in DOC_PLAN_ROOTS {
@@ -21136,11 +21103,6 @@ fn build_doc_graph_report(extra_roots: &[String]) -> DocGraphReport {
     }
     if workspace_root().join(DOC_RUNBOOK_ROOT).is_file() {
         roots.insert(DOC_RUNBOOK_ROOT.to_string());
-    }
-    for b in &bind_refs {
-        if universe.contains(b) {
-            roots.insert(b.clone());
-        }
     }
     let mut admitted_extra_roots = 0usize;
     for r in extra_roots {
@@ -23518,13 +23480,6 @@ mod doc_reachability_tests {
             1,
             "exactly the missing .md link is dangling (not the http or the existing code link): {dangling:?}"
         );
-    }
-
-    #[test]
-    fn bind_md_refs_basic() {
-        let c = "// bind: docs/planning/foo.md (provenance)\n// no bind here\n// bind: bar.md";
-        let t = bind_md_refs(c);
-        assert_eq!(t, vec!["docs/planning/foo.md", "bar.md"]);
     }
 }
 
