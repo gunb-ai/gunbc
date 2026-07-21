@@ -12,9 +12,11 @@ import v2.std.node {
   Named,
   Node,
   Positional,
-  TypeNode
+  TypeNode,
+  well_formed
 }
 import v2.std.namespace_graft {
+  module_header_containment_graft,
   namespace_graft_is_metadata_edge,
   namespace_graft_is_module_shell,
   qualified_name_from_graft_spine
@@ -26,7 +28,66 @@ import v2.std.qualified_name {
 
 data normalize_graft_note: String = "§10 normalize-as-ingest: graft runs post-child-fold in 03_normalize, before resolve/fill — equivalent to desugaring at ingest for all downstream consumers."
 
-data ng_norm_module_source: String = "module v2.test.namespace_graft.norm\n\nfn norm_probe() -> Int { 1 }\n"
+data ng_norm_module_source: String = "module v2.test.namespace_graft.norm\n\nfn norm_probe(x: Int) -> Int { x }\n"
+
+fn ng_norm_parsed_root() -> Optional<Node> {
+  let lm = dag_language_model()
+  match tokenize(
+    text: ng_norm_module_source,
+    file: ^ng_norm_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => Absent
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => Absent
+        Accepted { value: artifact, diagnostics: _ } => Present { value: artifact.tree }
+      }
+  }
+}
+
+test fn namespace_graft_manual_graft_on_parsed_module_holds() -> Bool {
+  match ng_norm_parsed_root() {
+    Present { value: parsed } =>
+      match module_header_containment_graft(root: parsed) {
+        Accepted { value: grafted, diagnostics: _ } =>
+          namespace_graft_is_module_shell(root: grafted)
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn namespace_graft_well_formed_after_manual_graft_holds() -> Bool {
+  match ng_norm_parsed_root() {
+    Present { value: parsed } =>
+      match module_header_containment_graft(root: parsed) {
+        Accepted { value: grafted, diagnostics: _ } => well_formed(n: grafted)
+        Rejected { diagnostics: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn namespace_graft_normalize_accepts_holds() -> Bool {
+  let lm = dag_language_model()
+  match tokenize(
+    text: ng_norm_module_source,
+    file: ^ng_norm_probe_file,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Accepted { value: _, diagnostics: _ } => true
+            Rejected { diagnostics: _ } => false
+          }
+      }
+  }
+}
 
 fn ng_norm_normalized_root() -> Optional<Node> {
   let lm = dag_language_model()

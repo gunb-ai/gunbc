@@ -204,11 +204,7 @@ fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Nod
       ) {
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
         Accepted { value: after_body, diagnostics: cd0 } =>
-          match normalize_module_graft_finish(folded: after_body, cd: cd0) {
-            Rejected { diagnostics: r } => Rejected { diagnostics: r }
-            Accepted { value: after_graft, diagnostics: cd1 } =>
-              normalize_sugar_finish(n: n, folded: after_graft, cd: cd1)
-          }
+          normalize_sugar_finish(n: n, folded: after_body, cd: cd0)
       }
   }
 }
@@ -217,17 +213,21 @@ fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>
-      if well_formed(n: normalized) {
-        Accepted { value: normalized, diagnostics: d }
-      } else {
-        Rejected {
-          diagnostics: rejected_with_pending(
-            pending: d,
-            rejected: diagnostics_singleton(
-              d: post_normalize_not_well_formed_diagnostic(n: normalized)
-            )
-          )
-        }
+      match normalize_module_graft_finish(folded: normalized, cd: d) {
+        Rejected { diagnostics: r } => Rejected { diagnostics: r }
+        Accepted { value: grafted, diagnostics: d1 } =>
+          if well_formed(n: grafted) {
+            Accepted { value: grafted, diagnostics: d1 }
+          } else {
+            Rejected {
+              diagnostics: rejected_with_pending(
+                pending: d1,
+                rejected: diagnostics_singleton(
+                  d: post_normalize_not_well_formed_diagnostic(n: grafted)
+                )
+              )
+            }
+          }
       }
   }
 }
